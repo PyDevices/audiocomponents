@@ -59,15 +59,24 @@ NOTE_MAP = (
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, logmap,
     make_table, noise_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
 
+import array
+
 SINE = make_table(((1, 1.0),))
 SQUARE = make_table([(n, 1.0 / n) for n in range(1, 15, 2)])
 NOISE = noise_table(seed=13579)
+
+# The guiro's scrape as the hardware makes it: one noise voice whose
+# amplitude ratchets - five ridges ~20 ms apart, then the tail. Played
+# once by an amplitude LFO (the idiom tr909's clap flutter proved).
+RATCHET = array.array("h", [32767, 3000, 30000, 3000, 27500, 3000, 25000,
+                            3000, 22000, 5000]
+                      + [int(18000 * 2.718281828 ** (-i / 7.0)) for i in range(22)])
 
 
 def create(sample_rate, channel_count=2, transport=None):
@@ -95,141 +104,172 @@ def create(sample_rate, channel_count=2, transport=None):
     metal_beat = 0.8
     hat_tone = 7000.0
 
+    # Fixed circuits: 13 permanent single-Note voices (the manual's own
+    # per-voice trim-pot table argues for dedicated circuits per sound),
+    # at the 13-note ceiling. The snare is one resonant band-passed
+    # noise voice (SD Snappy is the filter's Q now - no CR-78 evidence
+    # of a dual-oscillator snare was found; flagged in the dossier with
+    # its fallback) and the hat is one circuit for closed+open (flagged
+    # low-confidence, precedent-only; degrades to two if the listen
+    # refuses it). The guiro's five staggered notes became one voice
+    # under the RATCHET amplitude LFO.
+    circuits = {}
+
+    def circuit(name, waveforms):
+        notes = circuits.get(name)
+        if notes is None:
+            notes = tuple(synthio.Note(440.0, waveform=w, amplitude=0.0)
+                          for w in waveforms)
+            circuits[name] = notes
+        return notes
+
+    PITCH_CIRCUIT = {
+        35: "bd", 36: "bd", 38: "sd", 40: "sd", 37: "rim",
+        42: "hat", 44: "hat", 46: "hat", 49: "cym",
+        54: "tamb", 55: "metal", 56: "cb", 58: "guiro",
+        60: "bongo_hi", 61: "bongo_lo", 70: "maracas", 75: "claves",
+    }
+
+    # The hardware's own limit, layered on top of residency: the CR-78
+    # could sound at most FOUR voices at once (its 14 sounds shared a
+    # 4-voice output stage). The module's proven trigger/steal machinery
+    # realizes it - keyed by circuit, fed the permanent Note tuples.
+    # MAX_VOICES is 5, not 4: the steal check fires at
+    # len(voices) + len(notes) >= max_voices with 1-Note voices, so 5 is
+    # what lands a true steady state of 4 held (hand-traced in the
+    # dossier; 4 would cap the steady state at 3). Steal-oldest is a
+    # design choice, not a sourced mechanism - flagged for the listen.
     voices = {}
     serial = 0
-    MAX_VOICES = 16
-
-
-
+    MAX_VOICES = 5
 
     def release_voice(k):
         _support.release_voice(voices, synth, k)
-
-
-    def steal_oldest():
-        _support.steal_oldest(voices, release_voice)
-
 
     def trigger_voice(k, notes):
         nonlocal serial
         serial = _support.trigger_voice(voices, synth, serial, MAX_VOICES,
                                         release_voice, k, notes)
 
-
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
         nonlocal master_level, accent_level, bd_decay, bd_pitch, sd_snappy, sd_pitch
         nonlocal rim_level, bongo_hi, bongo_lo, claves_level, cowbell_level
         nonlocal guiro_level, tamb_level, maracas_level, metal_beat, hat_tone
 
-        k = key_of(channel, note_id, data0)
-
         if event_type == EVENT_NOTE_ON and value0 > 0.0:
             pitch = data0
             vel = value0
             amp = master_level * (vel + accent_level * (1.0 if vel > 0.8 else 0.0))
-
-            notes_to_play = []
+            name = PITCH_CIRCUIT.get(pitch)
+            if name is None:
+                return
 
             # BD
-            if pitch in (35, 36):
-                env = synthio.Envelope(attack_time=0.001, decay_time=bd_decay, release_time=0.05, attack_level=1.0, sustain_level=0.0)
-                lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, bd_pitch * 2.0, Q=0.8)
-                note = synthio.Note(bd_pitch, waveform=SINE, envelope=env, filter=lp, amplitude=amp)
-                notes_to_play.append(note)
+            if name == "bd":
+                (note,) = circuit("bd", (SINE,))
+                note.frequency = bd_pitch
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=bd_decay, release_time=0.05, attack_level=1.0, sustain_level=0.0)
+                note.filter = synthio.Biquad(synthio.FilterMode.LOW_PASS, bd_pitch * 2.0, Q=0.8)
+                note.amplitude = amp
 
-            # SD
-            elif pitch in (38, 40):
-                body_env = synthio.Envelope(attack_time=0.001, decay_time=0.08, release_time=0.05, attack_level=1.0, sustain_level=0.0)
-                body = synthio.Note(sd_pitch, waveform=SQUARE, envelope=body_env, amplitude=amp*0.5)
+            # SD - one resonant band-passed noise voice; Snappy is Q
+            elif name == "sd":
+                (note,) = circuit("sd", (NOISE,))
+                note.frequency = NOISE_HZ
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.09, release_time=0.05, attack_level=1.0, sustain_level=0.0)
+                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, sd_pitch, Q=4.5 - sd_snappy * 3.5)
+                note.amplitude = amp * 0.9
 
-                snare_env = synthio.Envelope(attack_time=0.001, decay_time=0.1, release_time=0.05, attack_level=1.0, sustain_level=0.0)
-                snare_hp = synthio.Biquad(synthio.FilterMode.HIGH_PASS, 3000.0, Q=1.0)
-                snare = synthio.Note(NOISE_HZ, waveform=NOISE, envelope=snare_env, filter=snare_hp, amplitude=amp * sd_snappy)
+            # Bongos
+            elif name in ("bongo_hi", "bongo_lo"):
+                (note,) = circuit(name, (SINE,))
+                note.frequency = bongo_hi if name == "bongo_hi" else bongo_lo
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.2, release_time=0.05, attack_level=1.0, sustain_level=0.0)
+                note.amplitude = amp
 
-                notes_to_play.extend([body, snare])
+            # Rim
+            elif name == "rim":
+                (note,) = circuit("rim", (SQUARE,))
+                note.frequency = 1200.0
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.02, release_time=0.02, attack_level=1.0, sustain_level=0.0)
+                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 1200.0, Q=2.0)
+                note.amplitude = amp * rim_level
 
-            # Bongos (High 60, Low 61)
-            elif pitch in (60, 61):
-                tune = bongo_hi if pitch == 60 else bongo_lo
-                env = synthio.Envelope(attack_time=0.001, decay_time=0.2, release_time=0.05, attack_level=1.0, sustain_level=0.0)
-                note = synthio.Note(tune, waveform=SINE, envelope=env, amplitude=amp)
-                notes_to_play.append(note)
+            # Claves
+            elif name == "claves":
+                (note,) = circuit("claves", (SINE,))
+                note.frequency = 2200.0
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.05, release_time=0.02, attack_level=1.0, sustain_level=0.0)
+                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 2200.0, Q=3.0)
+                note.amplitude = amp * claves_level
 
-            # Rim (37)
-            elif pitch == 37:
-                env = synthio.Envelope(attack_time=0.001, decay_time=0.02, release_time=0.02, attack_level=1.0, sustain_level=0.0)
-                bp = synthio.Biquad(synthio.FilterMode.BAND_PASS, 1200.0, Q=2.0)
-                note = synthio.Note(1200.0, waveform=SQUARE, envelope=env, filter=bp, amplitude=amp * rim_level)
-                notes_to_play.append(note)
+            # Cowbell
+            elif name == "cb":
+                (note,) = circuit("cb", (SQUARE,))
+                note.frequency = 800.0
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.2, release_time=0.1, attack_level=1.0, sustain_level=0.0)
+                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 800.0, Q=1.5)
+                note.amplitude = amp * cowbell_level
 
-            # Claves (75)
-            elif pitch == 75:
-                env = synthio.Envelope(attack_time=0.001, decay_time=0.05, release_time=0.02, attack_level=1.0, sustain_level=0.0)
-                bp = synthio.Biquad(synthio.FilterMode.BAND_PASS, 2200.0, Q=3.0)
-                note = synthio.Note(2200.0, waveform=SINE, envelope=env, filter=bp, amplitude=amp * claves_level)
-                notes_to_play.append(note)
+            # Guiro - one voice under the RATCHET amplitude LFO
+            elif name == "guiro":
+                (note,) = circuit("guiro", (NOISE,))
+                note.frequency = NOISE_HZ
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.16, release_time=0.03, attack_level=1.0, sustain_level=0.0)
+                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 3500.0, Q=1.0)
+                scrape = synthio.LFO(waveform=RATCHET, once=True, rate=5.5, scale=1.0, interpolate=True)
+                note.amplitude = synthio.Math(synthio.MathOperation.PRODUCT, scrape, amp * guiro_level, 1.0)
 
-            # Cowbell (56)
-            elif pitch == 56:
-                env = synthio.Envelope(attack_time=0.001, decay_time=0.2, release_time=0.1, attack_level=1.0, sustain_level=0.0)
-                bp = synthio.Biquad(synthio.FilterMode.BAND_PASS, 800.0, Q=1.5)
-                note = synthio.Note(800.0, waveform=SQUARE, envelope=env, filter=bp, amplitude=amp * cowbell_level)
-                notes_to_play.append(note)
+            # Tambourine
+            elif name == "tamb":
+                (note,) = circuit("tamb", (NOISE,))
+                note.frequency = NOISE_HZ
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.15, release_time=0.05, attack_level=1.0, sustain_level=0.0)
+                note.filter = synthio.Biquad(synthio.FilterMode.HIGH_PASS, 6000.0, Q=0.8)
+                note.amplitude = amp * tamb_level
 
-            # Guiro (58) - a scraping ratchet, not a single swell: stack short
-            # staggered noise clicks so the ridges of the scrape are audible
-            elif pitch == 58:
-                bp = synthio.Biquad(synthio.FilterMode.BAND_PASS, 3500.0, Q=1.0)
-                for i, attack in enumerate((0.001, 0.02, 0.04, 0.06, 0.08)):
-                    env = synthio.Envelope(attack_time=attack, decay_time=0.03, release_time=0.02, attack_level=1.0, sustain_level=0.0)
-                    notes_to_play.append(synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=bp, amplitude=amp * guiro_level * (1.0 - i * 0.12)))
+            # Maracas
+            elif name == "maracas":
+                (note,) = circuit("maracas", (NOISE,))
+                note.frequency = NOISE_HZ
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.05, release_time=0.02, attack_level=1.0, sustain_level=0.0)
+                note.filter = synthio.Biquad(synthio.FilterMode.HIGH_PASS, 5000.0, Q=1.0)
+                note.amplitude = amp * maracas_level
 
-            # Tambourine (54)
-            elif pitch == 54:
-                env = synthio.Envelope(attack_time=0.001, decay_time=0.15, release_time=0.05, attack_level=1.0, sustain_level=0.0)
-                hp = synthio.Biquad(synthio.FilterMode.HIGH_PASS, 6000.0, Q=0.8)
-                note = synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=hp, amplitude=amp * tamb_level)
-                notes_to_play.append(note)
+            # Metal Beat
+            elif name == "metal":
+                (note,) = circuit("metal", (SQUARE,))
+                note.frequency = 600.0
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.08, release_time=0.02, attack_level=1.0, sustain_level=0.0)
+                note.filter = synthio.Biquad(synthio.FilterMode.HIGH_PASS, 4000.0, Q=1.5)
+                note.amplitude = amp * metal_beat
 
-            # Maracas (70)
-            elif pitch == 70:
-                env = synthio.Envelope(attack_time=0.001, decay_time=0.05, release_time=0.02, attack_level=1.0, sustain_level=0.0)
-                hp = synthio.Biquad(synthio.FilterMode.HIGH_PASS, 5000.0, Q=1.0)
-                note = synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=hp, amplitude=amp * maracas_level)
-                notes_to_play.append(note)
+            # Hat (closed 42/44, open 46) - one circuit, retrigger chokes
+            elif name == "hat":
+                (note,) = circuit("hat", (NOISE,))
+                note.frequency = NOISE_HZ
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.3 if pitch == 46 else 0.05, release_time=0.1, attack_level=1.0, sustain_level=0.0)
+                # Band-passed per face, not bare HP: the measured capture
+                # centroids (CH 10.1 kHz, OH 8.5 kHz) are unreachable
+                # from full-band high-passed noise at 48 kHz.
+                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, hat_tone * (1.1 if pitch == 46 else 1.35), Q=0.8)
+                note.amplitude = amp * 0.7
 
-            # Metal Beat (e.g. 55)
-            elif pitch == 55:
-                env = synthio.Envelope(attack_time=0.001, decay_time=0.08, release_time=0.02, attack_level=1.0, sustain_level=0.0)
-                hp = synthio.Biquad(synthio.FilterMode.HIGH_PASS, 4000.0, Q=1.5)
-                note = synthio.Note(600.0, waveform=SQUARE, envelope=env, filter=hp, amplitude=amp * metal_beat)
-                notes_to_play.append(note)
+            # Cymbal
+            elif name == "cym":
+                (note,) = circuit("cym", (NOISE,))
+                note.frequency = NOISE_HZ
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.8, release_time=0.1, attack_level=1.0, sustain_level=0.0)
+                note.filter = synthio.Biquad(synthio.FilterMode.HIGH_PASS, hat_tone, Q=0.7)
+                note.amplitude = amp * 0.7
 
-            # Hats / Cymbal (42, 44, 46, 49, 51)
-            elif pitch in (42, 44, 46, 49, 51, 57, 59):
-                if pitch in (42, 44):
-                    decay = 0.05
-                elif pitch == 46:
-                    decay = 0.3
-                else:
-                    decay = 0.8
-                env = synthio.Envelope(attack_time=0.001, decay_time=decay, release_time=0.1, attack_level=1.0, sustain_level=0.0)
-                hp = synthio.Biquad(synthio.FilterMode.HIGH_PASS, hat_tone, Q=0.7)
-                note = synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=hp, amplitude=amp * 0.7)
-                notes_to_play.append(note)
-
-            # Fallback (other percussion)
-            else:
-                env = synthio.Envelope(attack_time=0.001, decay_time=0.1, release_time=0.05, attack_level=1.0, sustain_level=0.0)
-                bp = synthio.Biquad(synthio.FilterMode.BAND_PASS, 3000.0, Q=1.0)
-                note = synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=bp, amplitude=amp * 0.5)
-                notes_to_play.append(note)
-
-            if notes_to_play:
-                trigger_voice(k, notes_to_play)
+            # The 4-voice arbiter admits the (single-Note) circuit
+            trigger_voice(name, circuits[name])
 
         elif event_type in (EVENT_NOTE_OFF, EVENT_NOTE_ON):
-            release_voice(k)
+            name = PITCH_CIRCUIT.get(data0)
+            if name is not None and name in voices:
+                release_voice(name)
 
         elif event_type == EVENT_PARAMETER:
             if data0 == 0: master_level = value0
