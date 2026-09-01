@@ -57,11 +57,12 @@
       }
     },
     "tr808": {
-      "cross_interpreter_equal": true,
+      "cross_interpreter_equal": false,
       "old": {
-        "cpython": "f3cff2b8a8d0673d9e46dac686e269e17baded1b055ba63928e0d665ef4cffdd",
-        "micropython": "f3cff2b8a8d0673d9e46dac686e269e17baded1b055ba63928e0d665ef4cffdd"
-      }
+        "cpython": "676dc91c01c72c45892855764f4d47c47a4e3d79345e4bd7cb3f183f540cfda5",
+        "micropython": "3abf35dc54432668eeef6e420d703e9288c1d9e8a754ed8b36175566686ff4d1"
+      },
+      "provenance": "Gate B re-blessing 2026-09-01 (APPROVE ACCURACY tr808): 'old' now holds the rebuilt module's render, superseding the vst3-script capture (was f3cff2b8a8d0673d...). Interpreters deliberately differ: micropython matches the CircuitPython oracle's re-press behavior; cpython diverges in oscillator phase on re-press (audioif#9) and converges when that core fix lands and the pin moves - re-bless the cpython hash then."
     },
     "tr909": {
       "cross_interpreter_equal": true,
