@@ -1,0 +1,18 @@
+# Shared minimum (PyDevices package repos)
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+*.so
+*.pyd
+
+# Testing & Lint caches
+.pytest_cache/
+.ruff_cache/
+
+# Cursor IDE throwaways (do not ignore the whole .cursor/ tree)
+.cursor/debug*
+.cursor/plans/

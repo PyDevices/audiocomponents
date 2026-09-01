@@ -1,0 +1,62 @@
+# The structural contract: everything that can run without a workspace.
+#
+# The instrument parity gate is deliberately absent. It needs built
+# MicroPython/CircuitPython interpreters and a micropython-vst3 checkout as
+# workspace siblings, so an external runner cannot execute it and pretending
+# otherwise would turn a real gate into a skipped one. See AGENTS.md.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        include:
+          # The components are pure Python; the platform variance comes from
+          # audioif's extension underneath them, so one Python is enough to
+          # prove the other two platforms.
+          - os: windows-latest
+            python: "3.13"
+          - os: macos-latest
+            python: "3.13"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # AUDIOIF_PIN, not the latest release: the gates below are only
+      # attributable against a fixed core. A component failure over a moving
+      # audioif cannot be told apart from a node that moved beneath it.
+      - name: Resolve the audioif pin
+        id: pin
+        shell: bash
+        run: |
+          tag=$(grep -v '^[[:space:]]*#' AUDIOIF_PIN | grep -v '^[[:space:]]*$' \
+                | head -1 | awk '{print $1}')
+          if [[ -z "$tag" ]]; then
+            echo "AUDIOIF_PIN has no pin line" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "audioif pinned at $tag"
+
+      - name: Install audioif at the pin
+        run: >-
+          python -m pip install
+          "pydevices-audioif @ git+https://github.com/PyDevices/audioif@${{ steps.pin.outputs.tag }}"
+
+      # Editable, so the tests exercise lib/ directly rather than a copy, and
+      # so each package's own pyproject.toml is exercised too.
+      - run: python -m pip install -e lib/audioinstruments -e lib/audioeffects
+
+      - run: python -m unittest discover -s tests -p "test_*.py"
+      - run: python tools/validate_api.py
+      - run: python tests/parity/effects_library_smoke.py

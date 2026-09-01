@@ -236,7 +236,7 @@ keeps its feedback below the sample grid, and the trigonometry is a proper
 series. Measured against the closed-form response, every mode lands within
 **0.03 dB from 50 Hz to 22 kHz**. `GraphicEQ`'s ten ISO bands all read
 +6.01 dB or better on a +6 dB request; `MultibandCompressor`'s three bands
-recombine flat to 0.23 dB from 30 Hz to 8 kHz. `docs/upstream-diff.md`,
+recombine flat to 0.23 dB from 30 Hz to 8 kHz. [audioif's `docs/upstream-diff.md`](https://github.com/PyDevices/audioif/blob/main/docs/upstream-diff.md),
 "The biquads were Q15, so they could not go low", has the arithmetic, the
 before-and-after table, and what it cost in instructions on an M0.
 
@@ -284,7 +284,7 @@ into parallel branches and sums them. On MicroPython and CPython you can
 chain freely after one. On CircuitPython you cannot: its Mixer stops its
 voices when it is reset, and every effect resets its source when you
 `play()` it, so the chain goes silent. audioif fixes that for its own
-builds; see `docs/upstream-diff.md`, "Resetting a Mixer silenced it".
+builds; see [audioif's `docs/upstream-diff.md`](https://github.com/PyDevices/audioif/blob/main/docs/upstream-diff.md), "Resetting a Mixer silenced it".
 
 ## A note on filters off a stock CircuitPython board
 
@@ -311,7 +311,7 @@ are worth knowing about:
 
 This library used to compensate for both - halving every frequency on the
 way in, and synthesizing bells out of notch and band-pass sections. It no
-longer does, because the engine is right. See `docs/upstream-diff.md` for
+longer does, because the engine is right. See [audioif's `docs/upstream-diff.md`](https://github.com/PyDevices/audioif/blob/main/docs/upstream-diff.md) for
 the measurements and the one-line coefficient fix.
 
 ## Testing

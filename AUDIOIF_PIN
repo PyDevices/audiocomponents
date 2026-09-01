@@ -1,0 +1,11 @@
+# The audioif floor. Every gate in this repository runs against this exact
+# audioif release: the components are held to a fixed core the same way
+# audioif itself is held to a fixed CircuitPython (its CIRCUITPYTHON_ORACLE).
+#
+# A floating core makes a component failure unattributable -- you cannot tell
+# a rewritten instrument from a moved node underneath it. Moving this pin is
+# its own change, with the gates re-run and the goldens re-read, never a
+# side effect of some other work.
+#
+# <tag> <commit>
+v0.1.1 eefc6737c345422bf56322d80474f75407b80c49
