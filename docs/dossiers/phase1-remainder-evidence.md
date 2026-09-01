@@ -48,7 +48,7 @@ where the hardware had tune pots; the mislabeled "Cowbell" pitch macro
 became a real level control with pitch fixed at the measured 506 Hz;
 BD decay corrected from 350 ms to the measured ~26 ms tau. 23/26
 naive rows pass; BD and Ride pass under the fair (trimmed) ruler;
-**clap parks at 1.42× bright — named residual, single-biquad skirt
+**clap parks at 1.42× bright ([audioif#11](https://github.com/PyDevices/audioif/issues/11), the core feature ask — re-voice at the pin move that carries it) — named residual, single-biquad skirt
 floor.**
 
 ## dmx (literature)
@@ -67,7 +67,7 @@ split) with repitch coupling on every tuned voice; "Crunch" rebound to a
 bandwidth ceiling. 13 residents — **the dossier's own table summed to 13
 though it claimed 12; 13 is at the ceiling and stands, correction
 noted.** Clap tau passes its measured row; **clap centroid parks at
-1.44× — the same named single-biquad residual as linndrum's.**
+1.44× — the same named single-biquad residual as linndrum's ([audioif#11](https://github.com/PyDevices/audioif/issues/11)).**
 
 ## Listening
 `.reference-captures/phase1-ab/<name>_{OLD,NEW}.wav` — the same two-bar
