@@ -16,3 +16,8 @@ dist/
 # Cursor IDE throwaways (do not ignore the whole .cursor/ tree)
 .cursor/debug*
 .cursor/plans/
+
+# Reference material for the accuracy program: captures and papers are
+# analyzed, never shipped or redistributed (vision section 4 tier 1) --
+# local only, whatever their license.
+.reference-captures/
