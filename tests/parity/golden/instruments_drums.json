@@ -1,39 +1,44 @@
 {
   "modules": {
     "cr78": {
-      "cross_interpreter_equal": true,
+      "cross_interpreter_equal": false,
       "old": {
-        "cpython": "4edb9ec13a8f259113b73327ef95b785e0960d255c76908033795b31f57a9c3f",
-        "micropython": "4edb9ec13a8f259113b73327ef95b785e0960d255c76908033795b31f57a9c3f"
-      }
+        "cpython": "9f30aaf6b67ceca1eed2ac6149cb36a6b4ff6ed50825afa671823d18bcbbb334",
+        "micropython": "9c3e15fd7a0b4c7c95faa33fc287883b818ef52f9575c22c09ed0947c219ffb6"
+      },
+      "provenance": "Gate B re-blessing 2026-09-01 (phase batch listen, APPROVE ACCURACY cr78): 'old' now holds the rebuilt module's render, superseding the vst3-script capture (was 4edb9ec13a8f2591...). Interpreters deliberately differ: micropython matches the CircuitPython oracle's re-press behavior; cpython carries audioif#9 and converges at the core fix + pin move - re-bless the cpython hash then."
     },
     "dmx": {
-      "cross_interpreter_equal": true,
+      "cross_interpreter_equal": false,
       "old": {
-        "cpython": "db419b564010fd1f55aa087ac8beed07cfe49c89e751bc7a016d27b49614ffe0",
-        "micropython": "db419b564010fd1f55aa087ac8beed07cfe49c89e751bc7a016d27b49614ffe0"
-      }
+        "cpython": "68c8ba056eaf1b233d8320cdb8d90847a390e40c6a0b2925667e4e4afb30020c",
+        "micropython": "9319fb93e57d1ed23d6e632a8a75f320ff3d261cdd8fcccc882f8d93534ebd45"
+      },
+      "provenance": "Gate B re-blessing 2026-09-01 (phase batch listen, APPROVE ACCURACY dmx): 'old' now holds the rebuilt module's render, superseding the vst3-script capture (was db419b564010fd1f...). Interpreters deliberately differ: micropython matches the CircuitPython oracle's re-press behavior; cpython carries audioif#9 and converges at the core fix + pin move - re-bless the cpython hash then."
     },
     "drumtraks": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "8598c128d2228d98077a11c11ea00185ee2b95dd7cb5aba562708548150833c9",
-        "micropython": "d25d5622adcec2a0d03d69a66e0a1cfbf376bbeb0041b5947914151ba70877a1"
-      }
+        "cpython": "c67e86902a07eba586f479134d0a9f0b9d8945d4bb1a54663c27df98f06a02cf",
+        "micropython": "af887a1660d52911b25f4a15453b90ccb1b6b82cedaaf009cb4c88fd843e5c0d"
+      },
+      "provenance": "Gate B re-blessing 2026-09-01 (phase batch listen, APPROVE ACCURACY drumtraks): 'old' now holds the rebuilt module's render, superseding the vst3-script capture (was 8598c128d2228d98...). Interpreters deliberately differ: micropython matches the CircuitPython oracle's re-press behavior; cpython carries audioif#9 and converges at the core fix + pin move - re-bless the cpython hash then."
     },
     "linndrum": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "4542dea78fbd4b10f3e7a22173b6849cdc4f131624e0fb4fe0ad9eb4410f4c1b",
-        "micropython": "9a78ecfb93828b016341675fa197b2abba808772884aa415c354d4ed3a72558c"
-      }
+        "cpython": "109e4dc28d5d9304b36c75bd31470992c2891dab177ffd4cfb0e61ea9bf9f12d",
+        "micropython": "403607f0d60190191ba6a0d0be40d0b860c01b364d28dc141db86314a2b1baca"
+      },
+      "provenance": "Gate B re-blessing 2026-09-01 (phase batch listen, APPROVE ACCURACY linndrum): 'old' now holds the rebuilt module's render, superseding the vst3-script capture (was 4542dea78fbd4b10...). Interpreters deliberately differ: micropython matches the CircuitPython oracle's re-press behavior; cpython carries audioif#9 and converges at the core fix + pin move - re-bless the cpython hash then."
     },
     "simmons_sdsv": {
-      "cross_interpreter_equal": true,
+      "cross_interpreter_equal": false,
       "old": {
-        "cpython": "b058a0d6c2b42c864aac259e3b909d7dc883b5ab3802aebd6916003bdcf73fc1",
-        "micropython": "b058a0d6c2b42c864aac259e3b909d7dc883b5ab3802aebd6916003bdcf73fc1"
-      }
+        "cpython": "dfe65e9b69b83fe7fc206f9718ab4b94138c5e27f8b8b3aba1b585a38d80a764",
+        "micropython": "82d0bbd34937fbd5ea6cb760c4cc342acd6a5301155472316d7ef796b59a66a0"
+      },
+      "provenance": "Gate B re-blessing 2026-09-01 (phase batch listen, APPROVE ACCURACY simmons_sdsv): 'old' now holds the rebuilt module's render, superseding the vst3-script capture (was b058a0d6c2b42c86...). Interpreters deliberately differ: micropython matches the CircuitPython oracle's re-press behavior; cpython carries audioif#9 and converges at the core fix + pin move - re-bless the cpython hash then."
     },
     "sp1200": {
       "cross_interpreter_equal": false,
@@ -44,11 +49,12 @@
       "provenance": "Gate B re-blessing 2026-09-01 (batch listen, APPROVE ACCURACY sp1200): 'old' now holds the rebuilt module's render, superseding the vst3-script capture (was 2517df986123229a...). Interpreters deliberately differ: micropython matches the CircuitPython oracle's re-press behavior; cpython carries the oscillator-phase divergence on re-press (audioif#9) and converges when that core fix lands and the pin moves - re-bless the cpython hash then."
     },
     "tr606": {
-      "cross_interpreter_equal": true,
+      "cross_interpreter_equal": false,
       "old": {
-        "cpython": "966ce1f0f1ae0a71bb7ccb6339840c9e5c06c3baabfcc0de530ec7a637a7fecc",
-        "micropython": "966ce1f0f1ae0a71bb7ccb6339840c9e5c06c3baabfcc0de530ec7a637a7fecc"
-      }
+        "cpython": "787c90daee0e09c21282cba002f2714ea82a1b9729498e7d3eee199f5f4c6db9",
+        "micropython": "eedce4aa1dbeb667029b572610cae68eace9d23bd77feedd5b6242ded604a4ec"
+      },
+      "provenance": "Gate B re-blessing 2026-09-01 (phase batch listen, APPROVE ACCURACY tr606): 'old' now holds the rebuilt module's render, superseding the vst3-script capture (was 966ce1f0f1ae0a71...). Interpreters deliberately differ: micropython matches the CircuitPython oracle's re-press behavior; cpython carries audioif#9 and converges at the core fix + pin move - re-bless the cpython hash then."
     },
     "tr707": {
       "cross_interpreter_equal": false,
