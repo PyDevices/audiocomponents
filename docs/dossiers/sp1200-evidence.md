@@ -1,10 +1,11 @@
 # sp1200 — Station C Evidence Pack
 
 **Dossier:** [sp1200.md](sp1200.md). **Status:** parked for the batch
-listen — `APPROVE ACCURACY sp1200`. Built unattended; literature grade
-(the dossier's honest downgrade stands: no authentic capture was
-obtainable — the Samples From Mars gate needs a human email signup, the
-one unparking path left open).
+listen — `APPROVE ACCURACY sp1200`. Built unattended at literature grade;
+**upgraded to GOLD the same day**: Brad completed the Samples From Mars
+signup and the full free catalogue lives at `~/SamplesFromMars` (kept
+outside the repo by his choice — measured in place, nothing copied,
+nothing redistributed, per the SFM EULA already on record).
 
 ## What was rebuilt
 
@@ -45,11 +46,28 @@ fail their own goldens (all deliberate, awaiting the batch blessing);
 tr808's blessed golden and the other six hold. Cross-interpreter: all 8
 one-shots byte-identical.
 
-## The re-check owed when the pack arrives
+## The re-check, executed: measured criteria replace literature ones
 
-One human step unparks gold: the Samples From Mars email signup. When
-the 65 real WAVs land, re-run `tools/measure_hits.py`, replace this
-table's literature tolerances with measured ones, and re-check the
-8-channel role assignment against the pack's actual kit names.
+The 65 drum WAVs were measured in place. Three upgrades followed:
+
+**The coupling criterion is now anchored to the SP-1200 itself.** The
+pack's 16-step factory-snare tuning sweep holds `f x duration` constant
+(~30) across its untruncated upper range — pure repitch, measured on the
+real machine, no longer borrowed from Yeh's SP-12. Our macro extremes
+land at 0.59x / 1.48x.
+
+**The role map was corrected by the pack's own kit** (the dossier's
+re-check clause, exercised): the reference kit carries a **crash and no
+rimshot**, so channel 5 is now Crash (note 49), filtered per the manual.
+
+**All 16 measured rows pass** (kick family tau/pitch, snare tau+centroid,
+both hats, clap, tom, crash, cowbell — each against its role's measured
+median), plus the physics rows re-verified: noise-floor tail −73.1 dB,
+bandwidth ceiling, 8-bit level DAC, VCF sweep. Voicing moved to the
+measured kit: kick family shortened, hats re-spanned, cowbell fundamental
+to the factory 398 Hz, crash at tau 0.39.
+
+Full numbers: `.reference-captures/sp1200/sfm_stats.json` (reference) and
+`renders/after_stats.json` (ours).
 
 **Awaiting the batch listen:** `APPROVE ACCURACY sp1200`

@@ -28,7 +28,7 @@ NOTE_MAP = (
     (38, "Snare"),
     (42, "Closed Hat"),
     (46, "Open Hat"),
-    (37, "Rimshot"),
+    (49, "Crash"),
     (39, "Clap"),
     (41, "Tom"),
     (56, "Cowbell"),
@@ -104,7 +104,7 @@ def create(sample_rate, channel_count=2, transport=None):
 
     PITCH_CIRCUIT = {
         36: "kick", 38: "sd", 42: "ch", 46: "oh",
-        37: "rim", 39: "clap", 41: "tom", 56: "cb",
+        49: "crash", 39: "clap", 41: "tom", 56: "cb",
     }
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
@@ -123,7 +123,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 body, grit, floor = circuit("kick", (SINE, PULSE, NOISE))
                 ratio = kick_p * master_tune
                 body.frequency = 52.0 * ratio
-                base_decay = 0.28 + kick_ring * 0.35
+                base_decay = 0.10 + kick_ring * 0.28
                 body.envelope = synthio.Envelope(attack_time=0.002, decay_time=base_decay / ratio, release_time=0.05, attack_level=1.0, sustain_level=0.0)
                 body.bend = synthio.LFO(waveform=FALL, once=True, rate=20.0, scale=0.4, interpolate=True)
                 body.filter = vcf(4200.0)
@@ -173,18 +173,21 @@ def create(sample_rate, channel_count=2, transport=None):
                 (note,) = circuit("oh" if is_open else "ch", (NOISE,))
                 ratio = hh_p * master_tune
                 note.frequency = NOISE_HZ
-                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=(0.45 if is_open else 0.05) / ratio, release_time=0.04, attack_level=1.0, sustain_level=0.0)
-                note.filter = vcf(min(BANDWIDTH, 9500.0 * ratio), q=0.8)
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=(0.30 if is_open else 0.07) / ratio, release_time=0.04, attack_level=1.0, sustain_level=0.0)
+                note.filter = vcf(min(BANDWIDTH, 11500.0 * ratio), q=0.8)
                 note.amplitude = amp * 0.6
                 synth.press(note)
 
-            # Rimshot (37) - channel 5, filtered
-            elif pitch == 37:
-                (note,) = circuit("rim", (NOISE,))
+            # Crash (49) - channel 5, filtered. The reference kit's own
+            # role list: it carries a crash and no rimshot, so the
+            # dossier's provisional channel-5 rimshot is corrected here
+            # (its re-check clause, exercised).
+            elif pitch == 49:
+                (note,) = circuit("crash", (NOISE,))
                 note.frequency = NOISE_HZ
-                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.03, release_time=0.02, attack_level=1.0, sustain_level=0.0)
-                note.filter = vcf(2400.0, q=1.2)
-                note.amplitude = amp * 0.8
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=1.15, release_time=0.3, attack_level=1.0, sustain_level=0.0)
+                note.filter = vcf(9500.0, q=0.8)
+                note.amplitude = amp * 0.7
                 synth.press(note)
 
             # Clap (39) - channel 6, filtered; one recorded sample on
@@ -211,8 +214,8 @@ def create(sample_rate, channel_count=2, transport=None):
             # Cowbell (56) - channel 8, DIRECT out
             elif pitch == 56:
                 (note,) = circuit("cb", (COWBELL,))
-                note.frequency = 270.0 * master_tune
-                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.09, release_time=0.03, attack_level=1.0, sustain_level=0.0)
+                note.frequency = 199.0 * master_tune
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.11, release_time=0.03, attack_level=1.0, sustain_level=0.0)
                 note.filter = synthio.Biquad(synthio.FilterMode.LOW_PASS, BANDWIDTH, Q=0.7)
                 note.amplitude = amp * 0.8
                 synth.press(note)
