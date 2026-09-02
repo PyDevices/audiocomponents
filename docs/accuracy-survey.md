@@ -973,6 +973,50 @@ Provenance found: none.
 
 One line: nothing surfaced feeds a Station A dossier — the "hardware-accuracy" work names real gear (Minimoog, DX7, etc.) as emulation targets but cites no sample packs, reference recordings, papers, or third-party emulators as sources, so there's nothing here to log.
 
+## SUPERSEDED 2026-09-02 — the eleven-phase plan is retired
+
+Brad's scope decision, in his own words:
+
+> "There's no budget for paid reference material... leaving an instrument where
+> it is now is an acceptable outcome. I think we gather all the information we
+> can for all instruments, just as we have been, but only pursue Golds this
+> pass. Coming back through to pick up Literature would be its own project."
+
+and then, on what that does to the family-ordered phases:
+
+> "Collapse the remaining golds into one pass."
+
+**The rule: gather evidence for everything, rebuild only what can be verified
+against real hardware.** An instrument left as it is, with a dossier recording
+what is and is not known about it, is an acceptable outcome.
+
+**Why the phases retire.** Only 13 of the 53 surveyed instruments were graded
+gold, and the grades below were assigned by this survey rather than by the
+per-instrument scrutiny a Phase 0 pass applies. That scrutiny has now run once,
+on the five electromechanical pianos, and **two of the four golds in it did not
+survive** — `pianet`'s capture is of the later magnetic-pickup Pianet T, a
+different machine from the one on the records; `cp70`'s is of a CP-**80**, a
+physically different-sized instrument. So 13 is an upper bound, not a count.
+
+The eleven family-ordered phases below cut across the rule: the remaining golds
+sit one per phase across five different families, which would have left eight of
+nine remaining phases as surveys with nothing to build.
+
+**What replaces it — one pass over the remaining golds:**
+
+| status | instruments |
+|---|---|
+| rebuilt, Phase 1 | `sp1200` `tr707` `tr808` `tr909` |
+| gold, scrutinised, to build | `rhodes` `wurlitzer` |
+| gold per the survey, **not yet scrutinised** | `cs80` `karplus` `minimoog` `polysix` `tb303` |
+| documented and deliberately left as they are | everything else, including `pianet`, `cp70` and `clavinet`, whose dossiers stand as the record |
+
+Each of the five unscrutinised golds needs a Phase 0 pass before it is committed
+to, because that is the step under which a survey grade either holds or falls.
+
+The ordering below is kept for the record and for whenever the Literature
+project happens; it is no longer the plan.
+
 ## Proposed Phase 2+ ordering (Phase 1 = the ten drum machines, already fixed)
 
 | Order | Family | Mean grade | Members surveyed |
