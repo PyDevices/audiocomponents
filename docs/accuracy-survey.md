@@ -1002,6 +1002,29 @@ The eleven family-ordered phases below cut across the rule: the remaining golds
 sit one per phase across five different families, which would have left eight of
 nine remaining phases as surveys with nothing to build.
 
+**Scrutiny outcome, 2026-09-02 — seven of nine tested golds did not survive.**
+
+Every survey gold that has now had a per-instrument Phase 0 pass:
+
+| instrument | survey | after scrutiny | why it fell |
+|---|---|---|---|
+| `rhodes` | gold | **gold** | held — Freesound licences read per sound, provenance read |
+| `wurlitzer` | gold | **gold** | held — three capture sources re-read directly |
+| `cs80` | gold | **gold** | held — uploader identified, 31 sibling packs all named after real CS-80 factory presets, one production run with no mid-life revision |
+| `pianet` | gold | literature | capture is a Pianet **T** (1977+ magnetic pickup); the records are the 1962-77 electrostatic machine |
+| `cp70` | gold | literature | capture is a CP-**80** (88 keys vs 73); the only real CP-70 capture is "impromptu and imprecise" by its own creator |
+| `karplus` | gold | literature | **no hardware exists** — the algorithm never shipped; the survey graded a guitar capture as a stand-in for a machine that was never built |
+| `minimoog` | gold | literature | could not establish the capture is hardware **at all** — one unphotographed sentence from a plugin-preset shop, and a $399 Behringer clone shares the name |
+| `polysix` | gold | literature | battery leakage is endemic; one capture states its unit was repaired **and** Tubbutec-modified, the other is silent on condition |
+| `tb303` | gold | literature | both legs paid, one mixing a stock unit with a Borg mod and four unnamed clones with no per-file attribution |
+
+Four already-rebuilt Phase 1 instruments (`sp1200`, `tr707`, `tr808`, `tr909`)
+carry survey golds that have not had this scrutiny either. They were rebuilt
+before the standard existed and are not re-opened here, but their grades should
+be read as untested.
+
+**The gold pass is therefore three instruments: `rhodes`, `wurlitzer`, `cs80`.**
+
 **What replaces it — one pass over the remaining golds:**
 
 | status | instruments |
