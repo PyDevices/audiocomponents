@@ -58,6 +58,8 @@ NOTE_MAP = (
     (70, "Maracas"),
 )
 
+import math
+
 import synthio
 
 from audioinstruments._support import (
@@ -72,13 +74,83 @@ SQUARE = make_table([(n, 1.0 / n) for n in range(1, 23, 2)])
 NOISE = noise_table(seed=808080)
 
 # The real 808's hi-hats/cymbals come from six square-wave oscillators mixed
-# together, not noise - build that same inharmonic square bank here (ratios
-# approximate the real circuit's ~205/304/369/421/497/619 Hz bank) and drive
-# each partial with a few of its own odd harmonics for square-wave grit.
+# together, not noise - build that same inharmonic square bank here. The
+# multiplier ratios approximate the real circuit's ~205/304/369/421/497/619 Hz
+# bank; METAL_HZ is that bank's least-squares fit to these multipliers,
+# sum(f*m)/sum(m*m) = 20.495 Hz, so the oscillators land within 2.3% of every
+# frequency named above (worst case the 421 Hz leg, at 430.5 Hz). It used to
+# be 90.0, which put the bank at 900-2700 Hz - two octaves high, and the
+# reason the hats read as a metallic chord rather than the dense hiss the
+# machine makes.
 _METAL_TONES = ((10, 1.0), (15, 0.85), (18, 0.75), (21, 0.65), (24, 0.55), (30, 0.45))
-_METAL_PARTS = [(m * h, a * (1.0 / h)) for m, a in _METAL_TONES for h in (1, 3, 5)]
-METAL = make_table(_METAL_PARTS, length=2048)
-METAL_HZ = 90.0
+METAL_HZ = 20.5
+
+# The hi-hat channel's band, applied to the bank while the TABLE is built
+# rather than to the Note while it plays. That placement is forced, not
+# stylistic: make_table normalizes to peak, and the wavetable is the only gain
+# stage these voices have - synthio clamps Note.amplitude at 1.0 and the kit
+# runs with no mixer or filter stage downstream of the synthesizer. A table
+# normalized BEFORE the band is applied spends its headroom on the 205-620 Hz
+# fundamentals the hi-hat then discards, and nothing downstream can give the
+# 14 dB back. Normalizing after the band is what the hardware's post-filter
+# output stage does. Butterworth magnitudes, orders chosen against the
+# reference pack's own hat band (docs/dossiers/tr808.md section 5).
+_METAL_HP_HZ, _METAL_HP_ORDER = 5000.0, 4
+_METAL_LP_HZ, _METAL_LP_ORDER = 13000.0, 2
+
+# Partial phase is a free parameter here; table crest factor is not. The six
+# hardware oscillators are free-running and never phase-lock, while make_table
+# sums every partial in sine phase and so piles all of their peaks onto one
+# table index - 20.4 dB of crest, against the 9-12 dB the reference pack's own
+# hat hits measure over their first 20 ms. Scattering the sign of each partial
+# leaves the magnitude spectrum untouched and returns ~12 dB of headroom. The
+# generator is noise_table's, and the seed is the lowest-crest of 1..2500 at
+# 48 kHz (8.5 dB); any seed in that range lands within about 2 dB.
+_METAL_SEED = 687
+
+
+def _metal_table(sample_rate, length=2048):
+    """The six-oscillator metal bank, voiced for the hi-hat/cymbal band.
+
+    Each oscillator contributes its full odd-harmonic square series, capped
+    below both the table's own harmonic ceiling and Nyquist, so the table is
+    alias-free at any sample rate instead of only at 48 kHz. The truncation
+    at h=5 this module used to ship was not a square wave at all: it left 16
+    partials in the whole table and 97% of the bank's power below the hi-hat's
+    filter.
+
+    Harmonics of different oscillators that land on the same table index are
+    summed in POWER, not amplitude - free-running oscillators do not phase-
+    lock, so their coincidences do not add coherently. Partials more than
+    20 dB below the strongest are dropped; they are inaudible and each one
+    costs a full pass over the table to build.
+    """
+    kmax = min(length // 2, int(sample_rate / 2.0 / METAL_HZ))
+    power = {}
+    for mult, level in _METAL_TONES:
+        h = 1
+        while mult * h < kmax:
+            k = mult * h
+            hz = METAL_HZ * k
+            r = hz / _METAL_HP_HZ
+            s = hz / _METAL_LP_HZ
+            gain = ((level / h) * r ** _METAL_HP_ORDER
+                    / math.sqrt(1.0 + r ** (2 * _METAL_HP_ORDER))
+                    / math.sqrt(1.0 + s ** (2 * _METAL_LP_ORDER)))
+            power[k] = power.get(k, 0.0) + gain * gain
+            h += 2
+    keys = sorted(power)
+    amps = [math.sqrt(power[k]) for k in keys]
+    floor = max(amps) * 0.1
+    parts = []
+    state = _METAL_SEED
+    for k, amp in zip(keys, amps):
+        if amp < floor:
+            continue
+        state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+        parts.append((k, amp if (state >> 15) & 1 else -amp))
+    return make_table(parts, length=length)
+
 
 # The cowbell's two-oscillator pair in one wavetable: the hardware ratio
 # is 800/540 = 1.48, within 1.3% of 3:2, so harmonics 2 and 3 of a half-
@@ -92,6 +164,10 @@ COWBELL = make_table(((2, 1.0), (3, 0.72)))
 def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     NOISE_HZ = SR / 8192.0
+    # Built here rather than at import so its harmonic series can be capped
+    # below this rate's Nyquist; make_table caches on its arguments, so a
+    # second instrument at the same rate reuses the table it already built.
+    METAL = _metal_table(SR)
     synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
 
     # Master params
@@ -249,8 +325,14 @@ def create(sample_rate, channel_count=2, transport=None):
                 (note,) = circuit("hat", (METAL,))
                 note.frequency = METAL_HZ
                 note.envelope = synthio.Envelope(attack_time=0.001, decay_time=oh_decay if is_open else ch_decay, release_time=0.05, attack_level=1.0, sustain_level=0.0)
-                note.filter = synthio.Biquad(synthio.FilterMode.HIGH_PASS, 8000.0, Q=0.8)
-                note.amplitude = amp * 0.7
+                # No runtime filter: the hi-hat channel's band is already in
+                # the table (see _metal_table), and this is the voice whose
+                # band sits highest, so a second pass over it would only take
+                # back what the table was normalized to keep. 0.8 is the
+                # largest multiplier that leaves a fully accented hit (amp
+                # 1.21 at velocity 127) under synthio's amplitude clamp of 1.0.
+                note.filter = None
+                note.amplitude = amp * 0.8
                 synth.press(note)
 
             # Cymbal (49, 51, 57, 59)
@@ -258,8 +340,11 @@ def create(sample_rate, channel_count=2, transport=None):
                 (note,) = circuit("cym", (METAL,))
                 note.frequency = METAL_HZ
                 note.envelope = synthio.Envelope(attack_time=0.001, decay_time=cym_decay, release_time=0.2, attack_level=1.0, sustain_level=0.0)
+                # The cymbal's own band, taken at runtime off the same
+                # voiced bank: its band overlaps the table's, so unlike the
+                # hat it can afford a second pass. Unchanged corner and Q.
                 note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 8000.0, Q=1.2)
-                note.amplitude = amp * 0.85
+                note.amplitude = amp * 0.8
                 synth.press(note)
 
             # Clap (39) - shares its circuit with maracas
