@@ -74,17 +74,25 @@ def create(sample_rate, channel_count=2, transport=None):
     master_tune = 1.0
 
     voices = {}
+    # Notes we have let go of. They may still be decaying in a channel, so
+    # a later key reclaims one of these before it touches a key the player
+    # is still holding. See _support.press_voice.
+    retired = []
     serial = 0
     MAX_VOICES = 16
 
 
     def release_voice(k):
-        voice = _support.release_voice(voices, synth, k)
+        voice = _support.release_voice(voices, synth, k, retired)
         if voice is not None and key_off > 0.01:
             env = synthio.Envelope(attack_time=0.001, decay_time=0.1, release_time=0.1, attack_level=1.0, sustain_level=0.0)
             bp = synthio.Biquad(synthio.FilterMode.BAND_PASS, 500.0, Q=1.0)
             n = synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=bp, amplitude=volume * key_off * 0.2)
             synth.press(n)
+            # Only a noise burst the engine actually took holds a channel,
+            # and only that one is worth offering back to a later key.
+            if n in synth.pressed:
+                _support.retire(retired, (n,))
             synth.release(n)  # let the envelope play out
 
     def steal_oldest():
@@ -122,9 +130,8 @@ def create(sample_rate, channel_count=2, transport=None):
             o_tine = synthio.Note(hz, waveform=WAVE_TINE, envelope=tine_env, filter=lp, amplitude=amp * tine_lvl * 0.4, ring_frequency=trem_rate, ring_waveform=trem_wave, panning=pan_r)
 
             serial += 1
-            voices[k] = ((o_body, o_tine), serial)
-            synth.press(o_body)
-            synth.press(o_tine)
+            voices[k] = (_support.press_voice(synth, voices, retired,
+                                              (o_body, o_tine)), serial)
 
         elif event_type in (EVENT_NOTE_OFF, EVENT_NOTE_ON):
             release_voice(k)

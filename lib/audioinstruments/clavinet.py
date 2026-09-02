@@ -65,12 +65,16 @@ def create(sample_rate, channel_count=2, transport=None):
     master_tune = 1.0
 
     voices = {}
+    # Notes we have let go of. They may still be decaying in a channel, so
+    # a later key reclaims one of these before it touches a key the player
+    # is still holding. See _support.press_voice.
+    retired = []
     serial = 0
     MAX_VOICES = 16
 
 
     def release_voice(k):
-        _support.release_voice(voices, synth, k)
+        _support.release_voice(voices, synth, k, retired)
 
     def steal_oldest():
         _support.steal_oldest(voices, release_voice)
@@ -108,9 +112,8 @@ def create(sample_rate, channel_count=2, transport=None):
             o_da = synthio.Note(hz, waveform=WAVE_DA, envelope=env, filter=lp, amplitude=amp * (1.0 - pickup_mix) * 0.7)
 
             serial += 1
-            voices[k] = ((o_cb, o_da), serial)
-            synth.press(o_cb)
-            synth.press(o_da)
+            voices[k] = (_support.press_voice(synth, voices, retired,
+                                              (o_cb, o_da)), serial)
 
         elif event_type in (EVENT_NOTE_OFF, EVENT_NOTE_ON):
             release_voice(k)

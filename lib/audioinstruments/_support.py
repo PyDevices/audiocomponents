@@ -205,7 +205,7 @@ def key_of(channel, note_id, pitch):
     return (channel, note_id if note_id >= 0 else pitch)
 
 
-def release_voice(voices, synth, k):
+def release_voice(voices, synth, k, retired=None):
     """Release the notes of the voice held under ``k``, and return that voice -
     or ``None`` when nothing was held there.
 
@@ -215,12 +215,224 @@ def release_voice(voices, synth, k):
     release tail, striking a key-off noise - read what they need from the
     tuple it hands back, which is also how they tell a real release from a
     note-on retriggering a key that was never down.
+
+    ``retired`` is the instrument's pool of let-go notes (see
+    :func:`press_voice`). Pass it and the released notes join the pool, so a
+    later key can reclaim a decaying tail instead of being refused a channel.
     """
     voice = voices.pop(k, None)
     if voice is not None:
         for note in voice[0]:
             synth.release(note)
+        if retired is not None:
+            retire(retired, voice[0])
     return voice
+
+
+#: How many let-go notes an instrument keeps a handle on. Not a capacity
+#: figure and never consulted as one - it only stops the pool growing without
+#: bound over a long performance. Anything past this many releases ago is
+#: certain to have finished on any engine we run on, so dropping it costs
+#: nothing.
+RETIRED_LIMIT = 32
+
+#: Everything ``synthio.Note.__init__`` accepts. Copying all of it is what
+#: makes a reclaimed note indistinguishable from the fresh one it stands in
+#: for - including the attributes the caller left at their defaults, which a
+#: reclaimed note would otherwise still carry from its previous life.
+NOTE_ATTRS = (
+    "frequency", "panning", "amplitude", "bend", "waveform",
+    "waveform_loop_start", "waveform_loop_end", "envelope", "filter",
+    "ring_frequency", "ring_bend", "ring_waveform",
+    "ring_waveform_loop_start", "ring_waveform_loop_end",
+)
+
+
+def retire(retired, notes):
+    """Add let-go ``notes`` to the reclaimable pool, oldest first."""
+    for note in notes:
+        retired.append(note)
+    while len(retired) > RETIRED_LIMIT:
+        retired.pop(0)
+
+
+def copy_note(source, target):
+    """Make ``target`` sound like ``source``, in place. Returns ``target``."""
+    for name in NOTE_ATTRS:
+        setattr(target, name, getattr(source, name))
+    return target
+
+
+def note_is_silent(note):
+    """True only when a note is *provably* inaudible - a numeric amplitude of
+    zero or less.
+
+    An amplitude driven by an LFO or a block input is assumed audible, because
+    it may be anywhere in its cycle. Being wrong in that direction costs a
+    thinner steal; being wrong the other way silences a key the player is
+    holding.
+    """
+    amplitude = getattr(note, "amplitude", None)
+    if isinstance(amplitude, (int, float)):
+        return amplitude <= 0.0
+    return False
+
+
+def victim_voice(voices):
+    """The held key that should give a note up, or ``None`` when none is held.
+
+    The longest-held key that still has a layer to spare - and only when no
+    key has one, the longest-held key outright. Both cost exactly one note,
+    so prefer the one that costs no *key*: spreading the loss thins several
+    keys to their primary layer and leaves them all sounding, where draining
+    one key to the end silences it. Measured over a ten-key chord at a
+    fourteen-note ceiling, that is the difference between nine keys sounding
+    and ten.
+    """
+    spare = None
+    oldest = None
+    for k in voices:
+        if oldest is None or voices[k][1] < voices[oldest][1]:
+            oldest = k
+        # "A layer to spare" means one can be taken and the key still SOUND.
+        # Counting notes alone is not enough: a macro can leave a layer at
+        # amplitude zero, and a key holding one silent and one audible note
+        # looked sparable while its only audible layer was the one that would
+        # be taken. clavinet with Pickup Mix at 0 does exactly that.
+        notes = voices[k][0]
+        audible = 0
+        silent = 0
+        for note in notes:
+            if note_is_silent(note):
+                silent += 1
+            else:
+                audible += 1
+        if silent or audible > 1:
+            if spare is None or voices[k][1] < voices[spare][1]:
+                spare = k
+    return oldest if spare is None else spare
+
+
+def take_note(voices, k):
+    """Take the last note off the voice held under ``k`` and stop tracking it,
+    dropping the voice entirely once it has no notes left. ``None`` when that
+    voice is already gone or empty.
+
+    Prefers a note that is *provably silent* - a macro can leave a layer at
+    amplitude zero, and that one is free to take. Otherwise the last note,
+    which in rhodes, wurlitzer, pianet and cp70 is the short percussive layer
+    (tine, bite, pluck, hammer), long finished by the time anything is
+    reclaimed.
+
+    That rationale does NOT hold for clavinet, whose layers are ``(o_cb,
+    o_da)`` with the percussive one FIRST - an earlier version of this
+    docstring claimed it did. There the last note is the sustaining layer, so
+    taking it thins the key rather than costing it a spent transient. It is
+    still the right note to take when the alternative is a key that never
+    speaks at all, but it is a real cost and not a free one.
+
+    A key is never left with no audible layer: if every remaining note would
+    be silent, the whole voice is given up instead of being kept as a voice
+    that sounds like nothing while still occupying a slot.
+    """
+    voice = voices.get(k)
+    if voice is None:
+        return None
+    notes = voice[0]
+    if not notes:
+        del voices[k]
+        return None
+    index = len(notes) - 1
+    for i in range(len(notes) - 1, -1, -1):
+        if note_is_silent(notes[i]):
+            index = i
+            break
+    rest = tuple(notes[:index]) + tuple(notes[index + 1:])
+    if rest and not any(not note_is_silent(n) for n in rest):
+        rest = ()
+    if rest:
+        voices[k] = (rest,) + tuple(voice[1:])
+    else:
+        del voices[k]
+    return notes[index]
+
+
+def press_voice(synth, voices, retired, notes):
+    """Press ``notes`` as one voice and return the notes that are sounding.
+
+    ``synthio.Synthesizer.press`` refuses at capacity rather than stealing:
+    past a certain key a chord simply stops sounding new notes at all. The fix
+    is to *ask* the engine rather than predict it. Every capacity figure
+    available here lies - ``max_polyphony`` is the wrong denominator once
+    notes-per-key varies with a macro, and ``len(synth.pressed)`` has been
+    measured reporting 0 while a fresh press was still refused - but the
+    refusal itself is truthful: after ``press``, ``note in synth.pressed`` is
+    False exactly when the engine turned that note away. Verified on the
+    CPython target, MicroPython and CircuitPython.
+
+    So: press, and only where the engine refused, reclaim a note this
+    instrument already owns, reconfigure it in place and press *that*. A note
+    that never left its channel cannot be refused - which is how the drum kits
+    have always worked. Nothing is counted, nothing is reserved, and while the
+    engine has room this does what pressing did before, sample for sample.
+
+    Where the reclaimed note comes from is what keeps this a fix rather than
+    a regression, and there are two sources with very different prices.
+
+    Notes we have let go of are free. They sit in ``retired``, oldest release
+    first; nobody is holding one down, so taking one back cannot cost a key,
+    and any refused layer may have one. On the CPython target that is also
+    the common case rather than the exotic one - ``release`` frees no channel
+    there until the tail has played out - and it is what lets a retriggered
+    key take its own decaying notes straight back.
+
+    **A held key is only ever raided to make a silent voice speak.** Once one
+    of this voice's notes is sounding the key is audible, and a further
+    refusal is left to stand exactly as it did before. Without that bound the
+    count goes *down*, because at capacity the engine gives a partial voice
+    away free: on cp70, pressing three-note keys over held two-note keys,
+    taking a full three layers for each new key cost one and a half old keys
+    apiece and walked the sounding count from 7 to 5 on the CPython target
+    and 10 to 8 on both native engines - while HEAD kept seven keys by
+    sounding the newest one thinly. Raiding for the first layer only turns
+    exactly one silent key audible at a price of one note, so the count can
+    never fall. See :func:`victim_voice` for which key pays it, and
+    :func:`take_note` for why the layer it loses is the one it can most
+    afford.
+
+    The returned tuple is what the voice actually holds: the fresh note where
+    the press was taken, the reclaimed one where it was not, and neither for a
+    layer that had to be left behind.
+    """
+    sounding = []
+    for note in notes:
+        synth.press(note)
+        if note in synth.pressed:
+            sounding.append(note)
+            continue
+        # Walk our own notes until one of them takes the press. A candidate
+        # the engine has already collected is refused in turn and skipped;
+        # the walk is finite because every step drops a candidate.
+        while True:
+            if retired:
+                spare = retired.pop(0)
+            elif sounding:
+                # This key is already speaking. A further layer is worth a
+                # decaying tail nobody is holding, but not a held key's note.
+                break
+            else:
+                victim = victim_voice(voices)
+                if victim is None:
+                    break
+                spare = take_note(voices, victim)
+                if spare is None:
+                    continue
+            copy_note(note, spare)
+            synth.press(spare)
+            if spare in synth.pressed:
+                sounding.append(spare)
+                break
+    return tuple(sounding)
 
 
 def release_filter(spec):
