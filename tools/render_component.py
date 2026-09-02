@@ -1,6 +1,7 @@
-"""Render an audioinstruments component's one-shots, kit hit, or demo phrase.
+"""Render an audioinstruments component's one-shots, kit hit, or phrases.
 
-    python tools/render_component.py <name> <outdir> [oneshots|kit|phrase] [sr]
+    python tools/render_component.py <name> <outdir> [MODE] [sr]
+    MODE = oneshots | kit | phrase | transitions
 
 Deliberately dual-runtime: runs under CPython and the workspace MicroPython
 (MICROPYPATH=<repo>:<repo>/lib), so Station B's cross-interpreter check and
@@ -12,6 +13,10 @@ argparse, pathlib, and wave on purpose.
   (the voice-stealing probe: if the pool exhausts, the first-struck voices
   vanish from the mix), 2.0 s.
 - phrase: a fixed two-bar groove at 120 BPM for A/B listening.
+- transitions: every shared-circuit pitch pair, played so that an inherited
+  envelope is audible as a mismatch between two hits of the SAME voice. Unlike
+  the other three this mode is CPython-only, because discovery instruments
+  synthio.Synthesizer.press (see tools/shared_circuits.py).
 
 Events land on block boundaries (the pull size), which is what makes the
 render identical across interpreters.
@@ -127,8 +132,111 @@ def main():
         digest = render(inst, 8 * beat + 1.0, sr, evs, outdir + "/phrase.wav")
         inst.deinit()
         print("phrase.wav %s" % digest[:16])
+    elif mode == "transitions":
+        # The listening case the two-bar phrase cannot make: a voice heard
+        # once in its sibling's shadow and once on its own, back to back.
+        #
+        # Several kits give two voices ONE permanent synthio.Note and
+        # reconfigure it per hit. A target that re-reads the envelope every
+        # block plays both hits identically; one that bakes the envelope into
+        # the state at press time lets the second voice keep stepping the
+        # first's decay, and a closed hat struck after an open one rings as an
+        # open hat. That defect survived a listening pass in eight of ten kits
+        # because no material ever put the two hits side by side - a long hat
+        # still sounds like a hat. Here they are adjacent, so the fault is a
+        # mismatch anyone can hear without being told what to listen for.
+        #
+        # Imported inside the branch: discovery replaces a synthio class
+        # attribute, which only takes on the CPython twin, and the other three
+        # modes must stay runnable under MicroPython.
+        try:
+            from shared_circuits import (differing, frames_per_block,
+                                         gap_blocks, solo_decay)
+        except ImportError:                       # run as -m, MICROPYPATH
+            from tools.shared_circuits import (differing, frames_per_block,
+                                               gap_blocks, solo_decay)
+        pairs = sorted(pair
+                       for circuit in differing(name, sample_rate=sr,
+                                                channel_count=2)
+                       for pair in circuit.pairs())
+        if not pairs:
+            print("%s: no shared circuit assigns differing envelopes, "
+                  "nothing to render" % name)
+            return
+        labels = dict(note_map)
+
+        def label(pitch):
+            return "%d %s" % (pitch, labels.get(pitch, "?"))
+
+        inst = audioinstruments.create(name, sample_rate=sr, channel_count=2)
+        result, buf = audiocore.get_buffer(inst.output)
+        fpb = len(bytes(buf)) // 4
+        inst.reset()
+        def at(t):
+            return int(t * sr / fpb)
+        # 0.25 s is where the fault was measured across all ten kits (a closed
+        # hat struck 250 ms after an open one). 1.5 s for the solo repeat: the
+        # longest voice on any of these circuits is gone by 0.76 s, so even a
+        # hit that inherited the sibling's full decay has ended and the repeat
+        # is a genuinely fresh press - it is the control, not a second symptom.
+        # A 3.0 s leg then leaves ~0.7 s of silence before the next one, which
+        # is what keeps the pairs from blurring into each other.
+        # The gap is taken from the FIRST voice's own decay, never fixed, and
+        # it is the difference between material that exposes the fault and
+        # material that does not. A fixed 0.25 s was tried first: on a broken
+        # floor it left 31 of the 52 legs across these kits bit-identical to a
+        # healthy one, because the fault can only express while the first
+        # note's envelope is still stepping. Any voice shorter than the gap has
+        # already finished, the next press builds a fresh state, and the leg
+        # sounds correct however broken the floor is. tr707 - the kit with the
+        # worst fault of all - exposed 1 of its 8 pairs that way.
+        #
+        # `gap_blocks` is the same rule the overlap gate measures at, imported
+        # from the same module, so what a listener hears here and what the gate
+        # asserts are the same moment. Solo decays are cached: 26 pairs need
+        # far fewer than 52 renders.
+        fpb_seconds = frames_per_block(sr) / float(sr)
+        decay_cache = {}
+
+        def decay_seconds(pitch):
+            if pitch not in decay_cache:
+                _peak, blocks = solo_decay(name, pitch, sample_rate=sr)
+                decay_cache[pitch] = (blocks or 0) * fpb_seconds
+            return decay_cache[pitch]
+
+        # One velocity throughout: order is meant to be the only variable.
+        evs = []
+        start = 0.0
+        print("%s: %d shared-circuit pair%s, %d legs"
+              % (name, len(pairs), "" if len(pairs) == 1 else "s",
+                 2 * len(pairs)))
+        for a, b in pairs:
+            for first, second in ((a, b), (b, a)):
+                lead = decay_seconds(first)
+                tail = decay_seconds(second)
+                overlap = max(2 * fpb_seconds,
+                              gap_blocks(int(round(lead / fpb_seconds)))
+                              * fpb_seconds)
+                # The control repeat waits until the pair hit is certainly
+                # over - including the case where it wrongly inherited the
+                # first voice's whole decay - so it is always a fresh press
+                # and never a second symptom.
+                solo = overlap + max(lead, tail) + tail + 0.25
+                leg = solo + tail + 0.5
+                evs.append((at(start), lambda n=first: inst.note_on(n, 100)))
+                evs.append((at(start + overlap),
+                            lambda n=second: inst.note_on(n, 100)))
+                evs.append((at(start + solo),
+                            lambda n=second: inst.note_on(n, 100)))
+                print("  %6.2f s  %s under %s (gap %5.1f ms), then %s alone"
+                      % (start, label(second), label(first),
+                         overlap * 1000.0, label(second)))
+                start += leg
+        digest = render(inst, start, sr, evs, outdir + "/transitions.wav")
+        inst.deinit()
+        print("transitions.wav %s" % digest[:16])
     else:
-        raise SystemExit("mode must be oneshots|kit|phrase")
+        raise SystemExit("mode must be oneshots|kit|phrase|transitions")
 
 
 main()
