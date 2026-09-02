@@ -1,5 +1,5 @@
 # The audioif floor. Every gate in this repository runs against this exact
-# audioif release: the components are held to a fixed core the same way
+# audioif commit: the components are held to a fixed core the same way
 # audioif itself is held to a fixed CircuitPython (its CIRCUITPYTHON_ORACLE).
 #
 # A floating core makes a component failure unattributable -- you cannot tell
@@ -7,5 +7,13 @@
 # its own change, with the gates re-run and the goldens re-read, never a
 # side effect of some other work.
 #
-# <tag> <commit>
-v0.1.1 eefc6737c345422bf56322d80474f75407b80c49
+# This pin names an UNRELEASED commit rather than a release tag, deliberately:
+# audioif carries three synthio fixes that the accuracy program needs -- the
+# CPython press semantics and filter cascade (b420dac), a re-pressed finished
+# note being dropped entirely (afb6b71, also reported upstream), and ring
+# modulation, which the CPython target had never implemented (52a1d4e) and
+# which three Phase 2 instruments depend on. The release waits until the bug
+# hunt settles; the floor did not need to.
+#
+# <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
+52a1d4ee35d6f915bcde807c519db704ac8bb2e6 52a1d4ee35d6f915bcde807c519db704ac8bb2e6
