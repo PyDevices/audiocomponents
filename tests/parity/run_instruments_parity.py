@@ -62,6 +62,29 @@ DEFAULT_OLD_ROOT = WORKSPACE / "micropython-vst3"
 #: the originals come out of its history instead, where they cannot drift.
 DEFAULT_OLD_REV = "ac87f13"
 
+#: Instruments the accuracy program has deliberately rebuilt against hardware
+#: references. Their sound is *supposed* to differ from the pre-rewrite
+#: originals at `DEFAULT_OLD_REV`, so holding them to that oracle is a
+#: category error - `--capture-old` reads a fixed revision and can never
+#: absorb a rebuild. They are reported as `rebuilt` and excluded from the
+#: failure count; every instrument NOT listed here is still guarded normally.
+#:
+#: Adding a name here is a re-blessing and is Brad's call, never an agent's.
+#: Each entry records the phase and the date its sound was blessed by ear.
+REBUILT = {
+    # Phase 1 - drums, blessed 2026-09-02
+    "tr808": "phase 1, 2026-09-02",
+    "tr909": "phase 1, 2026-09-02",
+    "tr707": "phase 1, 2026-09-02",
+    "sp1200": "phase 1, 2026-09-02",
+    "cr78": "phase 1, 2026-09-02",
+    "tr606": "phase 1, 2026-09-02",
+    "linndrum": "phase 1, 2026-09-02",
+    "dmx": "phase 1, 2026-09-02",
+    "drumtraks": "phase 1, 2026-09-02",
+    "simmons_sdsv": "phase 1, 2026-09-02",
+}
+
 
 def interpreter_table(args):
     """Map interpreter name -> argv prefix, keeping only the ones present."""
@@ -164,12 +187,18 @@ def capture(args, interpreters):
 
 def verify(args, interpreters):
     failures = []
+    retired = []
     checked = 0
     for batch in args.batch:
         key, names, _, new_rel = BATCHES[batch]
         fixture = load_golden(key)
         module_dir = str(Path(args.old_root) / new_rel) if new_rel else None
         for name in select(names, args.modules):
+            if name in REBUILT and not args.include_rebuilt:
+                print("rebuilt  %-14s %s - not held to the pre-rewrite oracle"
+                      % (name, REBUILT[name]))
+                retired.append(name)
+                continue
             record = fixture["modules"].get(name)
             if record is None:
                 failures.append("%s: nothing captured for it" % name)
@@ -191,12 +220,13 @@ def verify(args, interpreters):
                     print("FAIL     %-14s %-14s %s != %s"
                           % (name, interpreter, actual[:16], expected[:16]))
                     failures.append("%s on %s" % (name, interpreter))
-    print("\n%d comparisons, %d failures" % (checked, len(failures)))
+    print("\n%d comparisons, %d failures, %d rebuilt (not compared)"
+          % (checked, len(failures), len(retired)))
     if failures:
         for line in failures:
             print("  %s" % line)
         raise SystemExit(1)
-    if not checked:
+    if not checked and not retired:
         raise SystemExit("nothing was compared")
 
 
@@ -228,6 +258,9 @@ def main():
                         help="fail if a requested interpreter is missing")
     parser.add_argument("--capture-old", action="store_true")
     parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--include-rebuilt", action="store_true",
+                        help="also compare instruments listed in "
+                             "REBUILT, which are expected to fail")
     args = parser.parse_args()
 
     if args.capture_old == args.verify:

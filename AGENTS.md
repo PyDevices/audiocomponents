@@ -75,9 +75,22 @@ Needs `cmods/bin/micropython` and a `micropython-vst3` checkout as siblings.
 Comparison is always within one interpreter; cross-interpreter agreement is
 recorded as an observation, never enforced.
 
-**Re-capturing a golden (`--capture-old`) is a re-blessing, not a fix.** It
-is how the accuracy rewrite is supposed to move — and it is Brad's call every
-time, never an agent's.
+**`--capture-old` cannot absorb an accuracy rebuild, and never could.** It
+re-reads micropython-vst3 at the fixed revision `ac87f13`, so re-running it
+rewrites the same hashes. An instrument the accuracy program has deliberately
+rebuilt against hardware references will never match that oracle again — this
+paragraph used to claim re-capturing was "how the accuracy rewrite is supposed
+to move", which was wrong and left 14 of 20 drums comparisons red with no
+operation that could clear them.
+
+**Rebuilt instruments are retired from this gate instead.** They are named in
+`REBUILT` in `tests/parity/run_instruments_parity.py`, with the phase and the
+date their sound was blessed, and `--verify` reports them as `rebuilt` and
+excludes them from the failure count. Everything not named there is still held
+to the old oracle exactly as before; `--include-rebuilt` compares them anyway.
+
+**Adding a name to `REBUILT` is a re-blessing, and it is Brad's call every
+time, never an agent's.**
 
 ## What is not here
 
