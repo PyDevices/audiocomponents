@@ -104,19 +104,34 @@ def create(sample_rate, channel_count=2, transport=None):
     metal_beat = 0.8
     hat_tone = 7000.0
 
-    # Fixed circuits: 12 permanent voices holding 13 Notes (the manual's
+    # Fixed circuits: 13 permanent voices holding 14 Notes (the manual's
     # own per-voice trim-pot table argues for dedicated circuits per
-    # sound), at the 13-note ceiling. Eleven are one Note each; the snare
-    # is two - a tone body plus a high-passed noise path, the dossier's
-    # own named fallback, taken after Brad refused the single
-    # band-passed-noise snare by ear (it measured -46.7 LUFS against a
-    # -21.1 kick in this same kit). The 1 Note that pays for it comes
-    # from merging Claves and Cowbell onto one circuit, exactly as the
-    # dossier's SD row nominates - NOT from unmerging the hat, whose two
-    # faces are the only cr78 voices with a real measured capture and
-    # already sit healthily in the field. The hat therefore stays one
-    # circuit for closed+open, and the guiro's five staggered notes stay
-    # one voice under the RATCHET amplitude LFO.
+    # sound). Twelve are one Note each; the snare is two - a tone body
+    # plus a high-passed noise path, the shape every healthy snare in
+    # this library uses (dmx, tr909). The single band-passed-noise snare
+    # it replaces measured -46.7 LUFS against this kit's own -21.1 kick,
+    # 24 dB down and effectively inaudible under a pattern; that grid
+    # measurement is the trigger, not a listening call.
+    #
+    # It costs a 14th Note, and that is deliberate. The obvious way to
+    # stay at 13 - merging two single-hit voices onto one circuit - was
+    # built and rejected: synthio reattacks a note that is still sounding
+    # without rebuilding its envelope, so a merged Claves+Cowbell pair
+    # swapped decays (claves 53 -> 207 ms, cowbell 203 -> 55 ms), and
+    # CR-78 Latin patterns play the two together. 14 residents is safe
+    # here because the 4-voice arbiter below never presses more than five
+    # at once; all 14 fired in one block measure stable and audible.
+    # A one-Note cascade was also tried and refuted by measurement: a
+    # high-pass plus peaking EQ on noise reaches the target level but
+    # carries 1.8% of its energy below 500 Hz against the field's 23-45%,
+    # because body comes from a tone oscillator, not from filtered noise.
+    #
+    # The hat stays one circuit for closed+open - its two faces are the
+    # only cr78 voices with a real measured capture and already sit
+    # healthily in the field - and the guiro's five staggered notes stay
+    # one voice under the RATCHET amplitude LFO. Note the hat carries the
+    # same latent envelope-inheritance flaw described above; see the
+    # dossier.
     circuits = {}
 
     def circuit(name, waveforms):
@@ -130,8 +145,8 @@ def create(sample_rate, channel_count=2, transport=None):
     PITCH_CIRCUIT = {
         35: "bd", 36: "bd", 38: "sd", 40: "sd", 37: "rim",
         42: "hat", 44: "hat", 46: "hat", 49: "cym",
-        54: "tamb", 55: "metal", 56: "clcb", 58: "guiro",
-        60: "bongo_hi", 61: "bongo_lo", 70: "maracas", 75: "clcb",
+        54: "tamb", 55: "metal", 56: "cb", 58: "guiro",
+        60: "bongo_hi", 61: "bongo_lo", 70: "maracas", 75: "claves",
     }
 
     # The hardware's own limit, layered on top of residency: the CR-78
@@ -235,20 +250,19 @@ def create(sample_rate, channel_count=2, transport=None):
             # second oscillator. Neither voice's own parameters change -
             # only that hitting one now chokes the other, as two sounds
             # sharing one analog circuit would.
-            elif name == "clcb":
-                (note,) = circuit("clcb", (SINE,))
-                if pitch == 75:
-                    note.waveform = SINE
-                    note.frequency = 2200.0
-                    note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.05, release_time=0.02, attack_level=1.0, sustain_level=0.0)
-                    note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 2200.0, Q=3.0)
-                    note.amplitude = amp * claves_level
-                else:
-                    note.waveform = SQUARE
-                    note.frequency = 800.0
-                    note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.2, release_time=0.1, attack_level=1.0, sustain_level=0.0)
-                    note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 800.0, Q=1.5)
-                    note.amplitude = amp * cowbell_level
+            elif name == "claves":
+                (note,) = circuit("claves", (SINE,))
+                note.frequency = 2200.0
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.05, release_time=0.02, attack_level=1.0, sustain_level=0.0)
+                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 2200.0, Q=3.0)
+                note.amplitude = amp * claves_level
+
+            elif name == "cb":
+                (note,) = circuit("cb", (SQUARE,))
+                note.frequency = 800.0
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.2, release_time=0.1, attack_level=1.0, sustain_level=0.0)
+                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 800.0, Q=1.5)
+                note.amplitude = amp * cowbell_level
 
             # Guiro - one voice under the RATCHET amplitude LFO
             elif name == "guiro":
