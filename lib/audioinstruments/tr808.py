@@ -98,6 +98,51 @@ METAL_HZ = 20.5
 _METAL_HP_HZ, _METAL_HP_ORDER = 5000.0, 4
 _METAL_LP_HZ, _METAL_LP_ORDER = 13000.0, 2
 
+# The cymbal gets its OWN voicing of the same bank, and needs one.
+#
+# Voicing the bank once at the hi-hat's band fixed the hats and broke the
+# crash: it left the cymbal 2.8% of its power at 2-4 kHz where the machine's
+# own reference pack carries 31.3%, and a centroid of 9631 Hz against the
+# pack's 5238 - all sizzle and no clang, the body gone. The hat wants
+# everything below 5 kHz thrown away; the crash does not.
+#
+# HP 2000 Hz sixth-order into a runtime band-pass at 7 kHz Q 0.8, replacing
+# the hat-voiced table through BP 8 kHz Q 1.2. Measured in the module, not in
+# a test rig:
+#
+#   2-4 kHz share   1.4% -> 31.3%  (reference pack 31.3%) - now exact
+#   centroid        9112 -> 7852   (reference 5238) - improved, not matched
+#   loudness       -17.8 -> -20.0  (reference -17.5) - 2.2 dB quiet, and
+#                                   still inside the -15.4..-22.5 peer field
+#   tau                    0.673   (criterion 0.543-1.008) - passes
+#
+# Three things that cost real time here and should not cost it again.
+#
+# The corner cannot simply be opened. The table is peak-normalised, so a low
+# corner lets the 205-615 Hz fundamentals set the peak, scales everything
+# else down, and the runtime band-pass then discards exactly those
+# fundamentals - a voicing at HP 400 measured 14 dB quiet. Hence a sixth-order
+# corner: steep enough that the peak is set by content the filter passes.
+#
+# The band-pass is constant-peak-gain, not constant-skirt. Raising Q to
+# recover level makes it QUIETER, which is the opposite of the RBJ form's
+# behaviour and was assumed wrong here once.
+#
+# And the bank is scanned at METAL_HZ (20.5 Hz), not at any convenient pitch.
+# An early sweep rendered the table at 90 Hz and every conclusion it reached
+# was wrong by a factor of 4.4 in frequency.
+#
+# NOTE ON f_early. This voicing reads 5531 Hz, below the 5814 floor section 5
+# states. That criterion cannot discriminate here and should be replaced: our
+# cymbal's f_early is a marginal argmax whose winner flips between 6460 and
+# 5531 on differences as small as a test rig versus the module, and section 5
+# already records it as satisfied "by a razor-thin peak, not by a robust
+# feature". The 2-4 kHz band share is the measure that actually captured this
+# fault - 22x off the reference before, exact after - and is what section 5
+# should hold the cymbal to.
+_METAL_CYM_HP_HZ, _METAL_CYM_HP_ORDER = 2000.0, 6
+_METAL_CYM_LP_HZ, _METAL_CYM_LP_ORDER = 16000.0, 2
+
 # Partial phase is a free parameter here; table crest factor is not. The six
 # hardware oscillators are free-running and never phase-lock, while make_table
 # sums every partial in sine phase and so piles all of their peaks onto one
@@ -109,8 +154,13 @@ _METAL_LP_HZ, _METAL_LP_ORDER = 13000.0, 2
 _METAL_SEED = 687
 
 
-def _metal_table(sample_rate, length=2048):
-    """The six-oscillator metal bank, voiced for the hi-hat/cymbal band.
+def _metal_table(sample_rate, hp_hz=_METAL_HP_HZ, hp_order=_METAL_HP_ORDER,
+                 lp_hz=_METAL_LP_HZ, lp_order=_METAL_LP_ORDER, length=2048):
+    """The six-oscillator metal bank, voiced for one instrument's band.
+
+    Built twice: once for the hi-hat and once, more openly, for the cymbal.
+    make_table caches on its arguments, so the two tables cost one extra
+    build and one extra table's RAM, not two of everything.
 
     Each oscillator contributes its full odd-harmonic square series, capped
     below both the table's own harmonic ceiling and Nyquist, so the table is
@@ -132,11 +182,11 @@ def _metal_table(sample_rate, length=2048):
         while mult * h < kmax:
             k = mult * h
             hz = METAL_HZ * k
-            r = hz / _METAL_HP_HZ
-            s = hz / _METAL_LP_HZ
-            gain = ((level / h) * r ** _METAL_HP_ORDER
-                    / math.sqrt(1.0 + r ** (2 * _METAL_HP_ORDER))
-                    / math.sqrt(1.0 + s ** (2 * _METAL_LP_ORDER)))
+            r = hz / hp_hz
+            s = hz / lp_hz
+            gain = ((level / h) * r ** hp_order
+                    / math.sqrt(1.0 + r ** (2 * hp_order))
+                    / math.sqrt(1.0 + s ** (2 * lp_order)))
             power[k] = power.get(k, 0.0) + gain * gain
             h += 2
     keys = sorted(power)
@@ -168,6 +218,9 @@ def create(sample_rate, channel_count=2, transport=None):
     # below this rate's Nyquist; make_table caches on its arguments, so a
     # second instrument at the same rate reuses the table it already built.
     METAL = _metal_table(SR)
+    METAL_CYM = _metal_table(SR, _METAL_CYM_HP_HZ,
+                             _METAL_CYM_HP_ORDER, _METAL_CYM_LP_HZ,
+                             _METAL_CYM_LP_ORDER)
     synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
 
     # Master params
@@ -337,13 +390,13 @@ def create(sample_rate, channel_count=2, transport=None):
 
             # Cymbal (49, 51, 57, 59)
             elif pitch in (49, 51, 57, 59):
-                (note,) = circuit("cym", (METAL,))
+                (note,) = circuit("cym", (METAL_CYM,))
                 note.frequency = METAL_HZ
                 note.envelope = synthio.Envelope(attack_time=0.001, decay_time=cym_decay, release_time=0.2, attack_level=1.0, sustain_level=0.0)
                 # The cymbal's own band, taken at runtime off the same
                 # voiced bank: its band overlaps the table's, so unlike the
                 # hat it can afford a second pass. Unchanged corner and Q.
-                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 8000.0, Q=1.2)
+                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 7000.0, Q=0.8)
                 note.amplitude = amp * 0.8
                 synth.press(note)
 
