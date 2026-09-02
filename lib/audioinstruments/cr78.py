@@ -104,15 +104,34 @@ def create(sample_rate, channel_count=2, transport=None):
     metal_beat = 0.8
     hat_tone = 7000.0
 
-    # Fixed circuits: 13 permanent single-Note voices (the manual's own
-    # per-voice trim-pot table argues for dedicated circuits per sound),
-    # at the 13-note ceiling. The snare is one resonant band-passed
-    # noise voice (SD Snappy is the filter's Q now - no CR-78 evidence
-    # of a dual-oscillator snare was found; flagged in the dossier with
-    # its fallback) and the hat is one circuit for closed+open (flagged
-    # low-confidence, precedent-only; degrades to two if the listen
-    # refuses it). The guiro's five staggered notes became one voice
-    # under the RATCHET amplitude LFO.
+    # Fixed circuits: 13 permanent voices holding 14 Notes (the manual's
+    # own per-voice trim-pot table argues for dedicated circuits per
+    # sound). Twelve are one Note each; the snare is two - a tone body
+    # plus a high-passed noise path, the shape every healthy snare in
+    # this library uses (dmx, tr909). The single band-passed-noise snare
+    # it replaces measured -46.7 LUFS against this kit's own -21.1 kick,
+    # 24 dB down and effectively inaudible under a pattern; that grid
+    # measurement is the trigger, not a listening call.
+    #
+    # It costs a 14th Note, and that is deliberate. The obvious way to
+    # stay at 13 - merging two single-hit voices onto one circuit - was
+    # built and rejected: synthio reattacks a note that is still sounding
+    # without rebuilding its envelope, so a merged Claves+Cowbell pair
+    # swapped decays (claves 53 -> 207 ms, cowbell 203 -> 55 ms), and
+    # CR-78 Latin patterns play the two together. 14 residents is safe
+    # here because the 4-voice arbiter below never presses more than five
+    # at once; all 14 fired in one block measure stable and audible.
+    # A one-Note cascade was also tried and refuted by measurement: a
+    # high-pass plus peaking EQ on noise reaches the target level but
+    # carries 1.8% of its energy below 500 Hz against the field's 23-45%,
+    # because body comes from a tone oscillator, not from filtered noise.
+    #
+    # The hat stays one circuit for closed+open - its two faces are the
+    # only cr78 voices with a real measured capture and already sit
+    # healthily in the field - and the guiro's five staggered notes stay
+    # one voice under the RATCHET amplitude LFO. Note the hat carries the
+    # same latent envelope-inheritance flaw described above; see the
+    # dossier.
     circuits = {}
 
     def circuit(name, waveforms):
@@ -148,8 +167,24 @@ def create(sample_rate, channel_count=2, transport=None):
 
     def trigger_voice(k, notes):
         nonlocal serial
-        serial = _support.trigger_voice(voices, synth, serial, MAX_VOICES,
-                                        release_voice, k, notes)
+        # The arbiter counts CIRCUITS, not Notes. _support.trigger_voice's
+        # own admission check is note-counted (`len(voices) + len(notes)
+        # >= max_voices`, _support.py:255), which was exact only while
+        # every CR-78 trigger pressed exactly one Note. With SD's second
+        # oscillator restored, a snare would steal TWO voices and cap the
+        # steady state at 3 instead of the hardware's 4. Counting held
+        # circuits instead keeps the dossier's own hand-traced ceiling
+        # exact for 1-Note and 2-Note voices alike, and is bit-identical
+        # to the shared helper for every 1-Note voice (both reduce to
+        # "steal while 4 are held"). steal_oldest/release_voice are still
+        # the shared machinery, unchanged.
+        release_voice(k)
+        while voices and len(voices) >= MAX_VOICES - 1:
+            _support.steal_oldest(voices, release_voice)
+        serial += 1
+        voices[k] = (tuple(notes), serial)
+        for note in notes:
+            synth.press(note)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
         nonlocal master_level, accent_level, bd_decay, bd_pitch, sd_snappy, sd_pitch
@@ -172,13 +207,25 @@ def create(sample_rate, channel_count=2, transport=None):
                 note.filter = synthio.Biquad(synthio.FilterMode.LOW_PASS, bd_pitch * 2.0, Q=0.8)
                 note.amplitude = amp
 
-            # SD - one resonant band-passed noise voice; Snappy is Q
+            # SD - tone body plus a high-passed noise path, and Snappy
+            # back in its natural role as the tone/noise blend. The body
+            # is deliberately UNFILTERED: its energy is at its own
+            # fundamental by construction, which is how every healthy
+            # snare in this library is built (dmx.py:189-197,
+            # tr909.py:189-201) and what the manual's own two-column SD
+            # adjustment row is consistent with. Band-passing broadband
+            # noise at the BODY's pitch - the previous single-Note
+            # circuit - threw away 26 dB of the source and left no
+            # high-frequency path for Snappy to open at all.
             elif name == "sd":
-                (note,) = circuit("sd", (NOISE,))
-                note.frequency = NOISE_HZ
-                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.09, release_time=0.05, attack_level=1.0, sustain_level=0.0)
-                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, sd_pitch, Q=4.5 - sd_snappy * 3.5)
-                note.amplitude = amp * 0.9
+                body, snare = circuit("sd", (SINE, NOISE))
+                body.frequency = sd_pitch
+                body.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.1, release_time=0.05, attack_level=1.0, sustain_level=0.0)
+                body.amplitude = amp * 0.55
+                snare.frequency = NOISE_HZ
+                snare.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.14, release_time=0.05, attack_level=1.0, sustain_level=0.0)
+                snare.filter = synthio.Biquad(synthio.FilterMode.HIGH_PASS, 1800.0, Q=1.0)
+                snare.amplitude = amp * sd_snappy
 
             # Bongos
             elif name in ("bongo_hi", "bongo_lo"):
@@ -195,7 +242,14 @@ def create(sample_rate, channel_count=2, transport=None):
                 note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 1200.0, Q=2.0)
                 note.amplitude = amp * rim_level
 
-            # Claves
+            # Claves (75) + Cowbell (56) - one circuit, two faces, the
+            # waveform swapped in place per hit (the idiom tr707's
+            # rimshot/cowbell channel already proved, tr707.py:165-184).
+            # Both are simple single-hit resonators, which is why the
+            # dossier nominates this pair as the merge that funds SD's
+            # second oscillator. Neither voice's own parameters change -
+            # only that hitting one now chokes the other, as two sounds
+            # sharing one analog circuit would.
             elif name == "claves":
                 (note,) = circuit("claves", (SINE,))
                 note.frequency = 2200.0
@@ -203,7 +257,6 @@ def create(sample_rate, channel_count=2, transport=None):
                 note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 2200.0, Q=3.0)
                 note.amplitude = amp * claves_level
 
-            # Cowbell
             elif name == "cb":
                 (note,) = circuit("cb", (SQUARE,))
                 note.frequency = 800.0
@@ -263,7 +316,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 note.filter = synthio.Biquad(synthio.FilterMode.HIGH_PASS, hat_tone, Q=0.7)
                 note.amplitude = amp * 0.7
 
-            # The 4-voice arbiter admits the (single-Note) circuit
+            # The 4-voice arbiter admits the circuit (1 Note, or SD's 2)
             trigger_voice(name, circuits[name])
 
         elif event_type in (EVENT_NOTE_OFF, EVENT_NOTE_ON):
