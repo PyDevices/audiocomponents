@@ -217,20 +217,26 @@ def main():
                 overlap = max(2 * fpb_seconds,
                               gap_blocks(int(round(lead / fpb_seconds)))
                               * fpb_seconds)
-                # The control repeat waits until the pair hit is certainly
-                # over - including the case where it wrongly inherited the
-                # first voice's whole decay - so it is always a fresh press
-                # and never a second symptom.
-                solo = overlap + max(lead, tail) + tail + 0.25
-                leg = solo + tail + 0.5
-                evs.append((at(start), lambda n=first: inst.note_on(n, 100)))
-                evs.append((at(start + overlap),
+                # Control FIRST, then the pair. Ordering it the other way
+                # round puts the two hits being compared max(lead, tail) +
+                # tail apart, because the control has to outwait a hit that
+                # may have wrongly inherited the first voice's whole decay -
+                # 1.74 s on the tr707 open hat, which is longer than anyone
+                # holds a timbre in mind. Hearing the voice alone first and
+                # then in shadow needs only its OWN decay to clear: the same
+                # comparison at 0.93 s.
+                lead_in = tail + 0.15
+                pair_at = lead_in + overlap
+                leg = pair_at + max(lead, tail) + 0.5
+                evs.append((at(start), lambda n=second: inst.note_on(n, 100)))
+                evs.append((at(start + lead_in),
+                            lambda n=first: inst.note_on(n, 100)))
+                evs.append((at(start + pair_at),
                             lambda n=second: inst.note_on(n, 100)))
-                evs.append((at(start + solo),
-                            lambda n=second: inst.note_on(n, 100)))
-                print("  %6.2f s  %s under %s (gap %5.1f ms), then %s alone"
-                      % (start, label(second), label(first),
-                         overlap * 1000.0, label(second)))
+                print("  %6.2f s  %s alone, then %s under %s "
+                      "(gap %5.1f ms, %4.2f s apart)"
+                      % (start, label(second), label(second), label(first),
+                         overlap * 1000.0, pair_at))
                 start += leg
         digest = render(inst, start, sr, evs, outdir + "/transitions.wav")
         inst.deinit()
