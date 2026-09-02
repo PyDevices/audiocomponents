@@ -8,12 +8,20 @@
 # side effect of some other work.
 #
 # This pin names an UNRELEASED commit rather than a release tag, deliberately:
-# audioif carries three synthio fixes that the accuracy program needs -- the
+# audioif carries four synthio fixes that the accuracy program needs -- the
 # CPython press semantics and filter cascade (b420dac), a re-pressed finished
-# note being dropped entirely (afb6b71, also reported upstream), and ring
+# note being dropped entirely (afb6b71, also reported upstream), ring
 # modulation, which the CPython target had never implemented (52a1d4e) and
-# which three Phase 2 instruments depend on. The release waits until the bug
+# which three Phase 2 instruments depend on, and envelope reassignment not
+# being live on the CPython target (d84470a). The release waits until the bug
 # hunt settles; the floor did not need to.
 #
+# Moved to d84470a on 2026-09-02. That fix is what makes one circuit shared by
+# two voices with different decays behave correctly under CPython, as it
+# already did on MicroPython and the oracle: before it, a closed hat struck
+# 250 ms after an open hat rang for 400 ms instead of 53 ms. It changes the
+# rendered sound of tr808 and cr78, whose hats share a circuit, so both were
+# re-listened.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-52a1d4ee35d6f915bcde807c519db704ac8bb2e6 52a1d4ee35d6f915bcde807c519db704ac8bb2e6
+d84470ab205c5f0df6d462a27ae71a6388915cde d84470ab205c5f0df6d462a27ae71a6388915cde
