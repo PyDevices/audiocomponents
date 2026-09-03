@@ -1,6 +1,18 @@
-# Phase 2 listening guide — the five electromechanical pianos
+# Listening guide — the gold pass
 
-`rhodes` · `wurlitzer` · `pianet` · `cp70` · `clavinet`
+`rhodes` · `wurlitzer` · `cs80`  — the three instruments with a hardware
+reference that survived scrutiny, and the only ones being rebuilt.
+
+`pianet` · `cp70` · `clavinet` — kept here in full. Their grades fell to
+literature (the `pianet` capture is of the later magnetic-pickup Pianet T, the
+`cp70` capture is of a CP-**80**), so they are documented and deliberately left
+as they are. Read their sections if you ever return to them; do not spend a
+listening session on them now.
+
+Written when this was "the five electromechanical pianos". `cs80` joined the
+pass from a different family when the gold scrutiny ran, and it is not a piano
+at all — its section is the last one in §3 and it needs a different kind of
+listening from the rest.
 
 Phase 1 was judged on "is it musical, does it sound good." That caught the
 CR-78's missing snare instantly and missed eight kits whose closed hats rang
@@ -91,6 +103,7 @@ guitar you play from a keyboard.
 | **pianet** | Same note fortissimo, then pianissimo | Almost identical in character. No new edge when you dig in, nothing rounds off when you back away | Digging in adds a bright edge (Rhodes bark grafted on), or playing soft mellows it (Wurlitzer bite) |
 | **cp70** | Big two-handed low-mid chord, pedal down, ringing 5–6 s | Peaks fast and fades, staying focused and direct the whole way. It never blooms | A warm roomy wash that keeps opening up and getting lusher — that's a soundboard, and this machine hasn't got one |
 | **clavinet** | One low-mid note as hard as you can, then as soft as you can — listen to the instant it starts | Hard: a biting metallic snap, like a pick dragged hard across a string. Soft: a plain rounded thud with none of the edge | Same brightness both times, only louder |
+| **cs80** | Hold a chord, then lean harder into **one** finger only, without re-striking | That note alone moves — brighter and more present — while the others stay exactly where they were | The whole chord swells together (that's channel aftertouch, which every cheap keyboard has), or nothing happens until you re-strike |
 
 ---
 
@@ -432,6 +445,85 @@ moving filter, nothing shaping the note but your hands.
   pedal — judge the dry sound as the target.
 
 ---
+
+### cs80 — Yamaha CS-80
+
+Not a piano at all, and the odd one out in this guide. Eight true voices, each
+built from **two complete synthesizer layers** — sixteen oscillators, and each
+layer with its own independent high-pass *and* low-pass resonant filter. Two
+things separate it from every other instrument in this library, and neither is
+something you stumble into: **polyphonic aftertouch**, which reads how hard you
+are leaning on *each individual key* while it sounds, and a **ribbon
+controller** — a continuous strip you slide a finger along to bend pitch, with
+no frets and no note boundaries. There is also a ring modulator on every voice.
+
+One production run, 1977–79, no mid-life revision — so unlike the Pianet and
+the CP-70 there is no "which generation" question to resolve.
+
+**1. Aftertouch is per key, and that is the whole instrument** — *check this
+one first*
+- **Play:** hold a three- or four-note chord steady. Then, without
+  re-striking anything, lean harder into **one** finger only. Then release
+  that pressure and lean into a different one.
+- **Right:** the note you press into moves — brighter, louder, more present —
+  **while the others stay exactly where they were.** You can walk a melody
+  through a held chord with pressure alone, never lifting a finger.
+- **Wrong:** the whole chord swells together when you lean on any key. That is
+  channel aftertouch, which every cheap keyboard has, and it is a different
+  instrument. Also wrong: nothing happens at all until you re-strike.
+- **Why:** each key has its own pressure sensor, and the voice it owns
+  responds alone. This is the single feature a CS-80 is remembered for.
+
+**2. The ribbon slides, it does not step**
+- **Play:** hold one note and slide along the ribbon control slowly from one
+  end to the other, then quickly.
+- **Right:** one unbroken glide, like a finger on a fretless string. No
+  stair-stepping, no settling onto semitones, and the speed of the glide is
+  exactly the speed of your finger.
+- **Wrong:** you hear discrete steps, or it snaps to the nearest semitone, or
+  it lags behind and catches up. Any of those is a pitch-bend wheel wearing a
+  ribbon's name.
+
+**3. Two layers, not one voice with two settings**
+- **Play:** set the two layers to obviously different characters — one dark
+  and filtered, one bright and thin — and play a single note. Then bring one
+  layer's level to zero and play it again.
+- **Right:** with both up you hear **two sounds at once**, each with its own
+  filter colour, not a blend that averages them. Muting one leaves the other
+  completely intact and unchanged.
+- **Wrong:** muting one layer changes the character of the other, or the two
+  together sound like a single filter setting somewhere between them.
+- **Why:** eight voices of two independent layers — "eight times two patches"
+  in the machine's own literature — each with its own filter pair
+  (Vintage Synth Explorer).
+
+**4. Both filters, on both layers**
+- **Play:** on one layer, sweep the low-pass down until it is dark, then bring
+  it back and sweep the high-pass up until it is thin.
+- **Right:** both directions work, on **either** layer, and both have audible
+  resonance at their corner. You can make a layer thin and hollow (high-pass)
+  or dark and heavy (low-pass) independently.
+- **Wrong:** one layer only darkens and the other only thins — that is one
+  filter type per layer rather than both on each. *This is the specific
+  simplification our module is flagged for (§5), so expect it and tell me if
+  you hear it.*
+
+**5. Ring modulation should be metallic, not just wobbly**
+- **Play:** a single sustained mid note with ring modulation at zero, then
+  bring it up slowly.
+- **Right:** at low settings a slow tremble; as it comes up the tone turns
+  **clangy and inharmonic** — bell-like, slightly out of tune with itself, the
+  sound of two frequencies multiplying rather than one being wobbled.
+- **Wrong:** it only ever gets more tremolo — amplitude going up and down with
+  the pitch unchanged. That is an LFO on the volume, not ring modulation.
+- **Why:** the ring modulator is driven by a sub-oscillator whose frequency
+  sets the rate and whose voltage sets depth (Yamaha CS-80 instruction manual,
+  p.47).
+
+**Also:** it should sound **big** — eight voices of two layers is sixteen
+oscillators, and a full chord ought to feel thick and slightly unstable, the
+way independently-drifting analogue oscillators do. If a six-note chord sounds
+thin or perfectly in tune with itself, something is collapsing layers.
 
 ## 4. Reference recordings — calibrate before judging ours
 
