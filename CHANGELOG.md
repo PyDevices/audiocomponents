@@ -6,10 +6,11 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audioif's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
-## Unreleased
+## v0.2.0 (2026-09-03)
 
-The first release from this repository. Brad names the version; this heading
-becomes it in the release PR.
+The first release from this repository. These packages continue a version
+history begun in audioif, which published them up to 0.1.1 — that is why
+the first release from this repository is 0.2.0.
 
 ### Added
 
