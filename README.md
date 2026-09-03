@@ -70,7 +70,7 @@ gates use the pin.
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install "pydevices-audioif @ git+https://github.com/PyDevices/audioif@v0.1.1"
+.venv/bin/pip install "pydevices-audioif @ git+https://github.com/PyDevices/audioif@v0.2.0"
 .venv/bin/pip install -e lib/audioinstruments -e lib/audioeffects
 ```
 

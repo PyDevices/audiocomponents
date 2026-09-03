@@ -7,14 +7,14 @@
 # its own change, with the gates re-run and the goldens re-read, never a
 # side effect of some other work.
 #
-# This pin names an UNRELEASED commit rather than a release tag, deliberately:
-# audioif carries four synthio fixes that the accuracy program needs -- the
-# CPython press semantics and filter cascade (b420dac), a re-pressed finished
-# note being dropped entirely (afb6b71, also reported upstream), ring
-# modulation, which the CPython target had never implemented (52a1d4e) and
-# which three Phase 2 instruments depend on, and envelope reassignment not
-# being live on the CPython target (d84470a). The release waits until the bug
-# hunt settles; the floor did not need to.
+# From 2026-09-02 this pin named an UNRELEASED commit rather than a release
+# tag, deliberately: audioif carried four synthio fixes that the accuracy
+# program needed -- the CPython press semantics and filter cascade (b420dac),
+# a re-pressed finished note being dropped entirely (afb6b71, also reported
+# upstream), ring modulation, which the CPython target had never implemented
+# (52a1d4e) and which three Phase 2 instruments depend on, and envelope
+# reassignment not being live on the CPython target (d84470a). The release
+# waited until the bug hunt settled; the floor did not need to.
 #
 # Moved to d84470a on 2026-09-02. That fix is what makes one circuit shared by
 # two voices with different decays behave correctly under CPython, as it
@@ -23,5 +23,12 @@
 # rendered sound of tr808 and cr78, whose hats share a circuit, so both were
 # re-listened.
 #
+# Moved to v0.2.0 on 2026-09-03, the first audioif release that contains the
+# four fixes named above, plus the release-tail reclaim (aed9336) and the
+# 14-everywhere Note ceiling (63efb13). The pin names a release again for the
+# first time since it moved to d84470a; the floor in each pyproject.toml is
+# raised to the same release, so floor and pin agree for the first time as
+# well. The tag resolves to the commit in the second column.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-d84470ab205c5f0df6d462a27ae71a6388915cde d84470ab205c5f0df6d462a27ae71a6388915cde
+v0.2.0 ec3c67ffc42c1bf050b7179dc55fdba28ac4bb5a

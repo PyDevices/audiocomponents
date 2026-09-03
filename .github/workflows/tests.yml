@@ -57,7 +57,14 @@ jobs:
       # so each package's own pyproject.toml is exercised too.
       # numpy: two tests need it (test_cpython_asym_table through the ulab
       # bridge, test_rig_comparator directly); the packages themselves do not.
-      - run: python -m pip install -e lib/audioinstruments -e lib/audioeffects numpy
+      - run: python -m pip install numpy
+
+      # --no-deps is load-bearing: without it a floor raised above the pinned
+      # release re-resolves pydevices-audioif from the index and every
+      # measurement is taken against a core AUDIOIF_PIN does not name -- the
+      # failure the pin exists to prevent, arriving through packaging. Do not
+      # drop the flag.
+      - run: python -m pip install --no-deps -e lib/audioinstruments -e lib/audioeffects
 
       - run: python -m unittest discover -s tests -p "test_*.py"
       - run: python tools/validate_api.py
