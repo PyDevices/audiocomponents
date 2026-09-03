@@ -62,15 +62,27 @@ DEFAULT_OLD_ROOT = WORKSPACE / "micropython-vst3"
 #: the originals come out of its history instead, where they cannot drift.
 DEFAULT_OLD_REV = "ac87f13"
 
-#: Instruments the accuracy program has deliberately rebuilt against hardware
-#: references. Their sound is *supposed* to differ from the pre-rewrite
-#: originals at `DEFAULT_OLD_REV`, so holding them to that oracle is a
-#: category error - `--capture-old` reads a fixed revision and can never
-#: absorb a rebuild. They are reported as `rebuilt` and excluded from the
-#: failure count; every instrument NOT listed here is still guarded normally.
+#: Instruments whose sound was changed ON PURPOSE, so the pre-rewrite original
+#: at DEFAULT_OLD_REV is no longer the thing they are supposed to match.
 #:
-#: Adding a name here is a re-blessing and is Brad's call, never an agent's.
-#: Each entry records the phase and the date its sound was blessed by ear.
+#: This gate asks one question - does the port render what the original script
+#: rendered - and for these that answer is now "no", correctly and permanently.
+#: `--capture-old` cannot express it: it re-reads the ORIGINAL, which has not
+#: moved, so re-capturing leaves the comparison failing exactly as before.
+#: Measured on 2026-09-02 after `af837de`: rhodes original 4637b6c5 vs port
+#: 53df3217, wurlitzer 6ea2081b vs 10a00f9c, tb303 a9a28559 vs 085842c7.
+#:
+#: They are reported as `rebuilt` and excluded from the failure count.
+#: Everything NOT listed here is still held to the original exactly as before,
+#: and `--include-rebuilt` compares these anyway.
+#:
+#: Adding a name here says "this instrument deliberately left the old
+#: behaviour". It is a record of a decision, not a way to quiet a failure, and
+#: it is Brad's call - never an agent's. Each entry names the change and why.
+#:
+#: NOTE this is a different act from re-capturing a digest. A digest that drifted
+#: under an UNCHANGED port is repaired with `--capture-old` (see f7a370a, the 19
+#: stranded by b420dac). Retirement is for a port that changed on purpose.
 REBUILT = {
     # Phase 1 - drums, blessed 2026-09-02
     "tr808": "phase 1, 2026-09-02",
@@ -83,6 +95,47 @@ REBUILT = {
     "dmx": "phase 1, 2026-09-02",
     "drumtraks": "phase 1, 2026-09-02",
     "simmons_sdsv": "phase 1, 2026-09-02",
+    # Phase 2 - af837de replayed here from audioif (audiocomponents#2)
+    "andromeda": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "arp2600": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "b3": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "clavinet": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "cp70": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "cs80": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "cz101": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "d50": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "dx7": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "emulator2": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "fairlight": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "fs1r": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "jp8000": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "juno106": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "jupiter8": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "k2600": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "karplus": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "mellotron": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "microwave": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "ms20": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "ms2000": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "music_easel": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "nord_lead": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "obxa": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "odyssey": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "pianet": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "polysix": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "ppg_wave": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "prophet5": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "prophet_vs": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "rhodes": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "sh101": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "solina": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "taurus": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "tb303": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "virus": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "vl1": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "vp330": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "wasp": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "wurlitzer": "af837de - time and filter macros log-mapped, 2026-09-02",
 }
 
 
@@ -111,10 +164,25 @@ def run_probe(argv_prefix, probe, probe_args):
     # firmware on the other two. lib/ is the pure-Python tier, which the board
     # interpreters can only read out of the tree, so it stays a path entry --
     # and stays one on CPython too, so all three run the same source.
-    environment["PYTHONPATH"] = str(ROOT / "lib")
+    #
+    # The caller's PYTHONPATH is PREPENDED, never discarded, and that is
+    # load-bearing (audiocomponents#25, the same defect audioif fixed in
+    # aa51f24): this line used to assign over it, so a substituted engine put
+    # ahead of site-packages by the caller was never loaded and the run
+    # reported the installed build's digests as if they were the substitute's.
+    # Demonstrated with a planted synthio.py whose only statement raised:
+    # identical failures, identical hashes, no error. Caller entries come
+    # first, or a substituted module still loses to lib/.
+    _caller = environment.get("PYTHONPATH")
+    _own = str(ROOT / "lib")
+    environment["PYTHONPATH"] = os.pathsep.join(
+        ((_caller,) if _caller else ()) + (_own,))
     # MicroPython and CircuitPython read their search path from MICROPYPATH,
-    # which is always colon-separated regardless of platform.
-    environment["MICROPYPATH"] = "%s:%s" % (ROOT, ROOT / "lib")
+    # which is always colon-separated regardless of platform. Same rule: the
+    # caller's entries first.
+    _caller_mp = environment.get("MICROPYPATH")
+    environment["MICROPYPATH"] = ":".join(
+        ((_caller_mp,) if _caller_mp else ()) + (str(ROOT), str(ROOT / "lib")))
     result = subprocess.run(
         argv_prefix + [str(HERE / probe)] + probe_args,
         cwd=str(ROOT), env=environment, capture_output=True, check=False)
