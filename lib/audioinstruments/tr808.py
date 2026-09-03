@@ -395,8 +395,11 @@ def create(sample_rate, channel_count=2, transport=None):
                 note.envelope = synthio.Envelope(attack_time=0.001, decay_time=cym_decay, release_time=0.2, attack_level=1.0, sustain_level=0.0)
                 # The cymbal's own band, taken at runtime off the same
                 # voiced bank: its band overlaps the table's, so unlike the
-                # hat it can afford a second pass. Unchanged corner and Q.
-                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 7000.0, Q=0.8)
+                # hat it can afford a second pass. The corner sits at the
+                # pack's own centre of mass, not above it - at 7000 Hz this
+                # passed 15% of the voice's power above 8 kHz where the
+                # machine carries 2.4%, and only half its share at 2-4 kHz.
+                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 3500.0, Q=0.8)
                 note.amplitude = amp * 0.8
                 synth.press(note)
 
