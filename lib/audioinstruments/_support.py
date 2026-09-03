@@ -470,16 +470,21 @@ def steal_oldest(voices, release):
         release(oldest)
 
 
-def trigger_voice(voices, synth, serial, max_voices, release, k, notes):
-    """Press ``notes`` as one voice, stealing as needed. Returns the new serial."""
-    release(k)
-    while len(voices) + len(notes) >= max_voices:
-        steal_oldest(voices, release)
-    serial += 1
-    voices[k] = (tuple(notes), serial)
-    for note in notes:
-        synth.press(note)
-    return serial
+#: `trigger_voice` was removed on 2026-09-02. It was dead code carrying a hang.
+#:
+#: Its admission check was `while len(voices) + len(notes) >= max_voices`,
+#: which mixed units - `len(voices)` counts held KEYS while `len(notes)` counts
+#: Notes - and did not terminate on an empty pool when the incoming tuple alone
+#: met the budget: `steal_oldest` no-ops with nothing to steal and the loop
+#: spins. Verified by killing it at a 5 s timeout. Nothing shipped the hang
+#: because `cr78.py` shadowed it with its own guarded version, and no other
+#: caller existed.
+#:
+#: `press_voice` above replaces it and is what the five keyboard instruments
+#: use. It does not predict capacity at all: it presses, asks the engine
+#: whether the press was taken, and only then reclaims a Note the instrument
+#: already owns. Predicting is what made the old design wrong - see
+#: audiocomponents#10 and #18.
 
 
 def apply_patch(handle_event, patches, index, channel=0, note_id=-1,
