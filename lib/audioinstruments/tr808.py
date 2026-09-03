@@ -35,7 +35,7 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 64, 51, 59, 67, 56, 64, 64, 74, 71, 71, 67, 68, 76,
+    0: ("Default", (102, 64, 51, 59, 67, 56, 64, 64, 59, 48, 47, 67, 68, 76,
                  58, 85)),
 }
 
@@ -238,9 +238,9 @@ def create(sample_rate, channel_count=2, transport=None):
     sd_tone = 2000.0
 
     # Toms
-    lt_tune = 90.0
-    mt_tune = 130.0
-    ht_tune = 180.0
+    lt_tune = 82.8
+    mt_tune = 119.4
+    ht_tune = 165.5
 
     # Others
     clap_decay = 0.3
@@ -441,7 +441,7 @@ def create(sample_rate, channel_count=2, transport=None):
 
             # Rimshot (37) - shares its circuit with claves
             elif pitch == 37:
-                (note,) = circuit("rim", (TRIANGLE,))
+                note, ring = circuit("rim", (TRIANGLE, SQUARE))
                 # Both faces of this circuit set their own waveform. The
                 # tuple above only seeds whichever pitch strikes first,
                 # so neither face may rely on it.
@@ -455,16 +455,40 @@ def create(sample_rate, channel_count=2, transport=None):
                 # and left the voice 20 dB under the kit.
                 note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 900.0, Q=1.0)
                 note.amplitude = amp * 0.8
+                # The resonant partner. The machine's rimshot is a bridged-T
+                # ringing alongside the pulse, and one oscillator cannot hold
+                # both a 452 Hz body and a 3092 Hz centre of mass: pushing the
+                # body's passband up to reach the brightness makes the 3rd
+                # harmonic dominate and f_early jumps to 1348 Hz. So the body
+                # keeps its own band and this carries the ring.
+                #
+                # Its amplitude is the constraint, not its level. Above about
+                # 0.30 the partner wins the early spectrum outright and
+                # f_early reads 2203 Hz instead of 445 - the body is still
+                # sounding, but the measurement (and the ear) stops finding it.
+                ring.waveform = SQUARE
+                ring.frequency = 1900.0
+                ring.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.11, release_time=0.02, attack_level=1.0, sustain_level=0.0)
+                ring.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 1900.0, Q=2.0)
+                ring.amplitude = amp * 0.2
                 synth.press(note)
+                synth.press(ring)
 
             # Claves (75) - the other face of the rimshot circuit
             elif pitch == 75:
-                (note,) = circuit("rim", (TRIANGLE,))
+                note, ring = circuit("rim", (TRIANGLE, SQUARE))
                 # Explicit, not inherited: the rimshot leaves SQUARE on
                 # this shared circuit, and claves is a triangle voice.
                 note.waveform = TRIANGLE
+                # The shared circuit chokes: silence the rimshot's ring
+                # partner rather than letting it sound under the claves.
+                ring.amplitude = 0.0
                 note.frequency = 2500.0
-                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.08, release_time=0.02, attack_level=1.0, sustain_level=0.0)
+                # 0.065, not 0.08: at 0.08 this rang tau 33.1 ms against the
+                # machine's 20.8 (n=11) - a tock where the real one ticks. The
+                # relationship is not linear because synthio steps envelopes
+                # per block, so the value was measured rather than scaled.
+                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.065, release_time=0.02, attack_level=1.0, sustain_level=0.0)
                 note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 2500.0, Q=3.0)
                 note.amplitude = amp
                 synth.press(note)
