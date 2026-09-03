@@ -439,15 +439,27 @@ def create(sample_rate, channel_count=2, transport=None):
             # Rimshot (37) - shares its circuit with claves
             elif pitch == 37:
                 (note,) = circuit("rim", (TRIANGLE,))
+                # Both faces of this circuit set their own waveform. The
+                # tuple above only seeds whichever pitch strikes first,
+                # so neither face may rely on it.
+                note.waveform = SQUARE
                 note.frequency = 450.0
                 note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.05, release_time=0.02, attack_level=1.0, sustain_level=0.0)
-                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 1600.0, Q=2.0)
+                # Passband sits just above the 450 Hz fundamental so the
+                # body passes and the odd harmonics above it come through
+                # the upper skirt. A band-pass parked at 1600 Hz - between
+                # the 3rd harmonic and the 5th - rejected the fundamental
+                # and left the voice 20 dB under the kit.
+                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 900.0, Q=1.0)
                 note.amplitude = amp * 0.8
                 synth.press(note)
 
             # Claves (75) - the other face of the rimshot circuit
             elif pitch == 75:
                 (note,) = circuit("rim", (TRIANGLE,))
+                # Explicit, not inherited: the rimshot leaves SQUARE on
+                # this shared circuit, and claves is a triangle voice.
+                note.waveform = TRIANGLE
                 note.frequency = 2500.0
                 note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.08, release_time=0.02, attack_level=1.0, sustain_level=0.0)
                 note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 2500.0, Q=3.0)
