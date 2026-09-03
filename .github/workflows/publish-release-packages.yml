@@ -1,0 +1,104 @@
+name: Publish release packages
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      release-ref:
+        description: Exact vX.Y.Z tag to retry
+        required: true
+        type: string
+
+# publishing-v5 needs contents:write (attach release assets) and
+# id-token:write (PyPI Trusted Publishing); a called workflow may not
+# exceed the caller's grant, so the ceiling is set here.
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  gates:
+    # The structural gates tests.yml runs, against the audioif pin: a release
+    # must not ship what CI would not pass. The instrument parity gate stays
+    # workspace-local (see AGENTS.md), here as everywhere.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release-ref || github.ref }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      # AUDIOIF_PIN, not the dependency floor in pyproject.toml: the gates
+      # are only attributable against a fixed core.
+      - name: Resolve the audioif pin
+        id: pin
+        run: |
+          tag=$(grep -v '^[[:space:]]*#' AUDIOIF_PIN | grep -v '^[[:space:]]*$' \
+                | head -1 | awk '{print $1}')
+          if [[ -z "$tag" ]]; then
+            echo "AUDIOIF_PIN has no pin line" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "audioif pinned at $tag"
+
+      - name: Install audioif at the pin
+        run: >-
+          python -m pip install
+          "pydevices-audioif @ git+https://github.com/PyDevices/audioif@${{ steps.pin.outputs.tag }}"
+
+      - run: python -m pip install -e lib/audioinstruments -e lib/audioeffects
+
+      - run: python -m unittest discover -s tests -p "test_*.py"
+      - run: python tools/validate_api.py
+      - run: python tests/parity/effects_library_smoke.py
+
+  credentials:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm inherited TestPyPI credentials
+        env:
+          TESTPYPI_API_TOKEN: ${{ secrets.TESTPYPI_API_TOKEN }}
+        run: |
+          if [[ -z "$TESTPYPI_API_TOKEN" ]]; then
+            echo "TESTPYPI_API_TOKEN is unavailable; ensure the organization secret is visible to PyDevices/audiocomponents." >&2
+            exit 1
+          fi
+
+  publish-audioinstruments:
+    needs:
+      - gates
+      - credentials
+    uses: PyDevices/.github/.github/workflows/reusable-publish-release-packages.yml@publishing-v8
+    with:
+      build-kind: pure-python
+      distribution-name: pydevices-audioinstruments
+      import-name: audioinstruments
+      install-dependencies: true
+      working-directory: lib/audioinstruments
+      # Both MIP index entries ride on this one call, as they rode on
+      # audioif's core job before publishing moved here: the request reusable
+      # sends one dispatch per comma-separated profile and mip serializes them
+      # in its publication queue. MIP publishes lib/<package> from the tag,
+      # not the wheel, so neither entry waits on a TestPyPI upload.
+      mip-profile: audioinstruments,audioeffects
+      release-ref: ${{ inputs.release-ref }}
+    secrets: inherit
+
+  publish-audioeffects:
+    needs:
+      - gates
+      - credentials
+    uses: PyDevices/.github/.github/workflows/reusable-publish-release-packages.yml@publishing-v8
+    with:
+      build-kind: pure-python
+      distribution-name: pydevices-audioeffects
+      import-name: audioeffects
+      install-dependencies: true
+      working-directory: lib/audioeffects
+      release-ref: ${{ inputs.release-ref }}
+    secrets: inherit
