@@ -2,26 +2,29 @@
 
 `audioinstruments` (53 instruments) and `audioeffects` (46 effect classes,
 racks included): the pure-Python audio component tier that PyDevices owns,
-built on [audioif](https://github.com/PyDevices/audioif)'s nodes. Private
-repository. **Nothing here publishes.**
+built on [audioif](https://github.com/PyDevices/audioif)'s nodes. **This
+repository publishes both** — `pydevices-audioinstruments` and
+`pydevices-audioeffects` on TestPyPI, and the `audioinstruments` and
+`audioeffects` entries in the MIP index. audioif publishes the core only.
 
 ## Read this before you change anything
 
-This code exists in two places. audioif still carries `lib/audioinstruments/`
-and `lib/audioeffects/`, and **audioif's copy is the one that ships** —
-TestPyPI, the MIP index, every downstream consumer. This repository is the
-rewrite room.
+This is the canonical home of both packages and the one that ships. audioif
+still carries a pre-rewrite copy of `lib/audioinstruments/` and
+`lib/audioeffects/`; that copy is retired. Nothing ships from it, nothing is
+gated against it, and no fix belongs in it.
 
 Three rules follow from that, and they are the whole reason this file leads
 with them:
 
-1. **A user-visible bug fix belongs in audioif first.** Fixing it only here
-   fixes it for nobody. Fix it there, then replay it here.
-2. **A rewrite belongs here and only here.** Do not push accuracy work back
-   into audioif's copy; that copy's job is to keep sounding exactly as it did
-   until publishing moves.
-3. **Never delete audioif's copies.** The split is deliberately incomplete.
-   Removing them is a separate decision, Brad's, taken when publishing moves.
+1. **A bug fix belongs here.** Fixing it in audioif's copy fixes it for
+   nobody.
+2. **Accuracy work belongs here.** Do not push it into audioif's copy.
+3. **Leave audioif's copies to Brad.** Deleting them, and replaying anything
+   from them into this copy, are his decisions, taken with a diff in front
+   of him — tracked in
+   [#2](https://github.com/PyDevices/audiocomponents/issues/2). Never
+   delete or sync them yourself.
 
 ## The floor is pinned
 
@@ -37,8 +40,10 @@ side effect of other work.
 - `lib/<package>/` — the packages, each with its own `pyproject.toml`. That
   layout is load-bearing twice over: it is what makes each a standalone
   distribution, and the MIP publisher expects `<repo>/lib/<package>`.
-  `pyproject.toml`'s `project.urls` still point at audioif, correctly — that
-  is where these distributions come from today.
+  `pyproject.toml`'s `project.urls` point here, and its `dependencies` carry
+  the audioif floor, `pydevices-audioif>=<release>` — the newest audioif
+  *release*. That is not the pin: `AUDIOIF_PIN` may name a commit ahead of
+  the floor, and the gates use the pin.
 - `docs/audio-component-api.md` — the runtime contract (construction,
   methods, properties). `docs/audio-components.md` — the static metadata
   manifest. `tools/validate_api.py` and `tools/validate_metadata.py` enforce
@@ -92,11 +97,23 @@ to the old oracle exactly as before; `--include-rebuilt` compares them anyway.
 **Adding a name to `REBUILT` is a re-blessing, and it is Brad's call every
 time, never an agent's.**
 
+## The release chain
+
+- `prepare-release.yml` opens the release PR (`VERSION` + `CHANGELOG.md`);
+  `tag-release.yml` tags the merged `VERSION`; `publish-release-packages.yml`
+  runs the gates above against the pin, builds both packages from the tag
+  (`working-directory: lib/<package>`), publishes them to TestPyPI, and
+  requests the two MIP index entries (`mip-profile:
+  audioinstruments,audioeffects`, on one call — mip serializes them).
+- **Versions are Brad's to name.** An agent never edits `VERSION`, never
+  tags, never dispatches a workflow. `VERSION` holds a placeholder until he
+  names the release, and `tag-release.yml` refuses to tag anything that is
+  not a release version, so the placeholder cannot leak into a tag.
+- The two packages version and release together. A local editable install
+  reports `0.0.0` because the build workflow writes `lib/<package>/VERSION`
+  at build time; that is cosmetic.
+
 ## What is not here
 
-- No release, tag, or publication workflow. Adding one is not a cleanup task.
-- No `VERSION` file. These packages have no release identity of their own yet;
-  a local editable install reports `0.0.0`, which is cosmetic and matches
-  audioif's behaviour today.
 - No C. The native nodes these components call live in audioif; if a fix needs
   to go below the Python, it goes there.

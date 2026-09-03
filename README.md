@@ -14,35 +14,32 @@ minimoog = audioinstruments.create("minimoog", sample_rate=48000)
 chain = audioeffects.create("TapeDelay", minimoog.output, sample_rate=48000)
 ```
 
-## Status: private, and not the shipping source
+## Status: the shipping source
 
-This repository is **private** and **publishes nothing**. There are no
-release, tag, or publication workflows here, deliberately.
-
-`audioinstruments` and `audioeffects` still ship out of
-[PyDevices/audioif](https://github.com/PyDevices/audioif), which owns the
+This repository publishes `audioinstruments` and `audioeffects`: the
 `pydevices-audioinstruments` and `pydevices-audioeffects` distributions on
-TestPyPI and the `audioinstruments`/`audioeffects` entries in the MIP index.
-This repository was seeded from audioif at **v0.1.1** with the components'
-own history intact, and it exists so the accuracy rewrite has a room of its
-own — one where the sound of an instrument can change without a live release
-chain watching.
+TestPyPI, and the `audioinstruments` and `audioeffects` entries in the MIP
+index. [PyDevices/audioif](https://github.com/PyDevices/audioif) publishes
+the core only — the native nodes and the CircuitPython-compatible `synthio`
+layer these components stand on.
 
-**So there are two copies of this code, and they will drift.** That is the
-point, not an accident, but it has a cost worth stating plainly:
+The release chain lives in `.github/workflows/` and calls the org's reusable
+workflows: `prepare-release.yml` opens the release PR (`VERSION` and
+`CHANGELOG.md`), `tag-release.yml` tags the merged `VERSION`, and
+`publish-release-packages.yml` runs the gates, builds both packages from the
+tag, publishes them, and requests the two MIP entries. The version is a
+human's to name, in the release PR; `VERSION` holds a placeholder until then,
+and `tag-release.yml` refuses to tag anything that is not a release version.
 
-| | audioif's copy | this copy |
-|---|---|---|
-| Ships to users | yes | no |
-| Where bug fixes land | yes | replay them here |
-| Where the rewrite happens | no | yes |
-
-A fix made in audioif's copy has to be replayed here by hand; a change made
-here reaches nobody until publishing moves. When publishing does move, the
-rewiring is known and written down — audioif's publish workflow drops two
-jobs and its `mip-profile`, the MIP lockfile's `repository` keys change,
-micropython-vst3's `MPVST_AUDIOIF_LIB` retargets, and the org repo database
-gains an entry.
+The repository was seeded from audioif at **v0.1.1** with the components' own
+history intact, and the accuracy rewrite has happened here since. audioif
+still carries its pre-rewrite copies of `lib/audioinstruments/` and
+`lib/audioeffects/`; they are retired — nothing ships from them and no fix
+belongs in them. Deleting them, like replaying anything from them into this
+copy, is Brad's decision, tracked in
+[#2](https://github.com/PyDevices/audiocomponents/issues/2) along with the
+rest of the rewiring that follows the move: the MIP lockfile's `repository`
+keys, micropython-vst3's `MPVST_AUDIOIF_LIB`, and the org repo database.
 
 ## Layout
 
@@ -58,10 +55,16 @@ gains an entry.
 - `tests/` — the CPython suites; `tests/parity/` — the instrument parity
   harness and its goldens
 - `AUDIOIF_PIN` — the exact audioif release every gate runs against
+- `VERSION` — the version the next tag carries; a placeholder until Brad
+  names the release
+- `.github/workflows/` — CI (`tests.yml`, `lint.yml`) and the release chain
 
 Each package keeps its own `pyproject.toml` under `lib/<package>/`, which is
 both what makes it a standalone distribution and what the MIP publisher
-expects. Leave that layout alone.
+expects. Leave that layout alone. Each `pyproject.toml` carries the audioif
+floor, `pydevices-audioif>=<release>`, the newest audioif *release*; that is
+not the pin — `AUDIOIF_PIN` may name a commit ahead of the floor, and the
+gates use the pin.
 
 ## Developing
 
