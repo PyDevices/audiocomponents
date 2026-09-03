@@ -18,11 +18,16 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
-dependencies = ["pydevices-audioif"]
+# The audioif floor is the newest audioif RELEASE. It is not the pin:
+# AUDIOIF_PIN (repo root) names the exact commit the gates run against,
+# and may sit ahead of any release.
+# TODO: raise this floor to the audioif release that AUDIOIF_PIN names,
+# once that release exists (audiocomponents#2, the audioif step).
+dependencies = ["pydevices-audioif>=0.1.1"]
 
 [project.urls]
-Repository = "https://github.com/PyDevices/audioif"
-Issues = "https://github.com/PyDevices/audioif/issues"
+Repository = "https://github.com/PyDevices/audiocomponents"
+Issues = "https://github.com/PyDevices/audiocomponents/issues"
 
 [tool.setuptools]
 packages = ["audioinstruments"]
