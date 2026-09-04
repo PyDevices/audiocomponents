@@ -12,6 +12,30 @@ import sys
 
 import audiocore
 
+# PIN THE OLD SIDE'S CEILING. The reference this gate compares against must
+# not move when the port's ceiling moves, or the comparison compares two
+# things that changed together and can only agree.
+#
+# The trap is real and was measured: the original scripts this probe imports
+# do `import synthio` themselves, and run_instruments_parity renders both
+# sides with the SAME interpreter. Raise the ceiling and re-run
+# `--capture-old` without this, and 29 red comparisons become 0 red while
+# nothing whatsoever has been validated.
+#
+# Only the CPython target can be pinned here: its max_polyphony is a plain
+# class attribute. On MicroPython and CircuitPython the ceiling is compiled
+# in and `max_polyphony` is a read-only int, so the assignment raises and is
+# correctly swallowed -- there, holding the reference still means running the
+# gate's old side against an N=14 BINARY, which is a separate thing to keep.
+# Not silently: if it cannot be pinned and the interpreter is not one of
+# those, that is worth knowing about.
+OLD_SIDE_MAX_POLYPHONY = 14
+try:
+    import synthio as _synthio
+    _synthio.Synthesizer.max_polyphony = OLD_SIDE_MAX_POLYPHONY
+except (AttributeError, TypeError):
+    pass          # compiled-in ceiling; the binary's own N governs
+
 _filename = __file__.replace("\\", "/")
 _here = _filename.rsplit("/", 1)[0] if "/" in _filename else "."
 if _here not in sys.path:
