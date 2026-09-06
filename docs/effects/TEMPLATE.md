@@ -32,14 +32,34 @@ structure (vision §5).
 Recorded at the moment the set is fixed; a trait dropped later carries a
 written reason.
 
-### Tier 1 — invariants (the standard block)
+### Tier 1 — invariants (the standard block, verbatim from vision §3)
 
-- [ ] Silence in gives silence out; a decaying tail reaches exact zero.
-- [ ] Mix at zero, or drive at zero, is a wire (byte-identical to source).
-- [ ] Level-honest: unity through the dry path.
-- [ ] Reported `latency_samples` / `tail_samples` match what is measured.
+- [ ] Silence in gives silence out; a decaying tail reaches exact zero — no
+      held DC (the audioif#23 class of defect).
+- [ ] `mix` at zero, or drive at zero, is a wire (byte-identical to source).
+- [ ] Level-honest: unity through the dry path, no hidden gain.
+- [ ] Reported `latency_samples` / `tail_samples` match what is measured —
+      latency by a click against the dry path at 48 kHz and 44.1 kHz, tail
+      by the burst-then-silence probe.
+- [ ] `reset()` leaves every node the class built silent and stateless and
+      the borrowed source untouched (planted faults: a delay line left full;
+      an upstream instrument reset through a Filter- or Phaser-tailed chain).
+- [ ] `deinit()` deinitialises every node the class built and leaves the
+      source rendering (planted fault: an intermediate node left live).
+- [ ] `capabilities` names exactly the optional behaviours the class honours
+      (`"tempo_sync"` declared if and only if the transport is read).
 - [ ] Pulling `output` allocates nothing.
-- [ ] CPython and MicroPython render identical bytes, or the cause is here.
+- [ ] CPython and desktop MicroPython render identical bytes on the probe
+      material, or the cause is recorded here; the P4 and S3 digests match
+      the desktop's or carry a recorded cause (float width is the expected
+      one, never the class).
+- [ ] Rate-honest: designed and stated at 48 kHz; every invariant also holds
+      at 44.1 kHz and 22.05 kHz; Hz-valued spans and options clamp below
+      Nyquist at the running rate, never refuse; any Tier 2 trait that cannot
+      hold at a lower rate is named here with why.
+- [ ] Every invariant also holds at `channel_count` 1; a stereo-by-definition
+      class states in §4 what a mono source gets (a wire, or the mono sum of
+      its stereo behaviour), and the kit measures that statement.
 
 ### Tier 2 — circuit traits
 
@@ -68,7 +88,10 @@ the click measurement at the class gate.
 
 Which audioif nodes, in what topology; what Python computes at construction
 and on a macro move; what C runs per sample. Compose the existing palette
-first (vision §6).
+first (vision §6). Tables and coefficient sets are computed on CPython and
+shipped as data, never rebuilt on a board (the ESP32 ports are
+single-precision). State the portability tier (roadmap §3: **stock** or
+**audioif**) and what a mono source gets.
 
 ## 5. Node asks
 
