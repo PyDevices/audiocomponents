@@ -52,10 +52,17 @@ written reason.
 Characters (where the class carries several standouts) each get their own
 rows; a character that fails its traits cannot hide behind one that passes.
 
-### Tier 3 — cost
+### Tier 3 — cost and latency
 
 Budget as a fraction of one stereo block's real-time deadline: ESP32-P4
 <x>, ESP32-S3 <y>. Lean patch expected: yes | no.
+
+Latency (vision §9a): algorithmic latency of the dry-to-wet path in samples
+and in ms at 48 kHz — zero unless the algorithm must see ahead, and then the
+smallest it can be, with the knob that trades CPU for it named. Options that
+add latency (lookahead, partition length, pitch window): listed, each
+defaulting off or to its shortest. Reported `latency_samples` is verified by
+the click measurement at the class gate.
 
 ## 4. Modeling approach on the palette
 
