@@ -1,0 +1,67 @@
+* models.lib -- device models shared by ts808_drive.cir and ts808_tone.cir
+*
+* Two subcircuits: (a) the 1N4148 clipping diode, our .model line carrying
+* the parameter values of Nexperia's published model; (b) a behavioural
+* JRC4558 we wrote, whose three numbers are cited to a datasheet.  See
+* README.md, "Sources".
+*
+* ---------------------------------------------------------------------------
+* (a) 1N4148 -- silicon switching diode; the TS808's clipping pair.
+*     ElectroSmash's drawing marks them MA150 and its text lists
+*     "MA150/1N4148/1N914" as the parts fitted.  We use 1N4148 per the brief.
+*
+*     The ten parameter values below are transcribed from Nexperia's
+*     published SPICE model for the 1N4148,
+*       https://assets.nexperia.com/documents/spice-model/1N4148.prm
+*     (fetched 2026-09-06).  Nexperia's file is a .SUBCKT wrapping one D
+*     element plus a 5.827 GOhm shunt "to improve modeling in the reverse
+*     mode"; this subcircuit has the same shape.  Only the numbers are
+*     taken -- the file's own comment text is not reproduced, because
+*     Nexperia's Terms of Use grant no redistribution (README, source S2).
+*     Node 1 = anode, node 2 = cathode.
+* ---------------------------------------------------------------------------
+.subckt 1N4148 1 2
+Rrev 1 2 5.827E+9
+D1   1 2 D1N4148_nexperia
+.model D1N4148_nexperia D
++ IS=4.352E-9 N=1.906 BV=110 IBV=0.0001 RS=0.6458
++ CJO=7.048E-13 VJ=0.869 M=0.03 FC=0.5 TT=3.48E-9
+.ends
+*
+* ---------------------------------------------------------------------------
+* (b) op4558 -- behavioural JRC4558 (the TS808's op-amp; ElectroSmash's
+*     drawing labels it JNR4558, the BOM says JRC4558/RC4558).
+*
+*     Structure: one transconductance stage (gm = 1 mS) into an R-C node that
+*     sets the DC open-loop gain and the single dominant pole, so that
+*     gain-bandwidth = gm / (2*pi*C1) = GBW; then a voltage source that
+*     clamps the output to the rails minus VSAT.  That is the whole model.
+*
+*     Numbers (all from the NJM4558 datasheet Ver.2013-11-05, Nisshinbo /
+*     New Japan Radio, electrical characteristics at Ta=25C, V+/V-=+/-15V,
+*     read at https://pdf.datasheet.support/50c18840/njr.com/NJM4558LD.html;
+*     GBW cross-checked at https://www.ti.com/product/RC4558):
+*       AOL  = 1e5   -- "Large Signal Voltage Gain 86 dB (min), 100 dB (typ)",
+*                       RL>=2k, VO=+/-10V; 100 dB = 1e5
+*       GBW  = 3e6   -- "Gain Bandwidth Product 3 MHz" (TI RC4558: 3 MHz typ)
+*       VSAT = 1.0   -- "Maximum Output Voltage Swing +/-12 V (min), +/-14 V
+*                       (typ)" at RL>=10k on +/-15 V: 1 V from each rail (typ)
+*
+*     Simplifications, stated plainly:
+*       - no slew-rate limit (datasheet: 1 V/us NJM, 1.7 V/us TI).  At 1 kHz
+*         and ~1 V peak the output needs 6 mV/us, three orders below it.
+*       - no input offset, bias current, noise, or common-mode limits.
+*       - zero output resistance; one pole only (no second pole, so the
+*         phase margin is not modelled).
+*       - the clamp is a hard min/max, not the transistor-level soft limit.
+*     In the drive stage the diodes hold the swing to about +/-1 V around the
+*     4.5 V bias, so the clamp never engages; it is there for honesty.
+* ---------------------------------------------------------------------------
+.param pi=3.14159265358979
+.param aol=1e5 gbw=3e6 vsat=1.0
+.subckt op4558 inp inn out vcc vee
+G1 0 n1 inp inn 1m
+R1 n1 0 {aol/1m}
+C1 n1 0 {1m/(2*pi*gbw)}
+B1 out 0 V = max(min(V(n1), V(vcc)-vsat), V(vee)+vsat)
+.ends

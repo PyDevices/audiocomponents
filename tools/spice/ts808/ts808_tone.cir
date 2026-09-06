@@ -1,0 +1,66 @@
+* ts808_tone.cir -- Ibanez TS808 Tube Screamer, tone / volume stage
+*
+* Topology and every value below are read from the ElectroSmash "Tube
+* Screamer Circuit Analysis" tone/volume drawing and text (README, source
+* S1).  Designators are ElectroSmash's; the drawing labels both 1K output
+* resistors "R11", the BOM lists R11 and R12 as 1K, so the second is R12 here.
+*
+*   IN (clipper output, sits at 4.5 V) --R7 1K--+-- U1(+) pin 5
+*                                              C5 0.22uF to ground
+*                                              R9 10K to 4V5 bias
+*   P2 20K (Tone) strung between U1(+) and U1(-); its wiper --R8 220--C6 0.22uF-- ground
+*   R11 1K from U1 out (pin 7) to U1(-) pin 6
+*   U1 out --C7 1uF--R12 1K-- P3 100K (Level) to ground; output is P3's wiper
+*
+* `tone` is the wiper position as a resistance fraction of P2:
+*   tone = 0  -> wiper at the (+) end: R8/C6 shunt the low-pass node, unity-gain follower ("bass")
+*   tone = 1  -> wiper at the (-) end: R8/C6 shunt the feedback node, treble boost ("treble")
+*   The real pot is a "G taper" (ElectroSmash) / "20K/22K Lin" (its BOM); we
+*   simulate resistance fraction, not rotation.  1 ohm added at each end so
+*   neither half is a zero-ohm resistor.
+*
+* Level (P3) is fixed at maximum: the output node lv IS the pot's top end.
+* Two outputs are written: tout = op-amp pin 7 (the tone stage proper) and
+* lv = after C7/R12/P3 (what the output buffer would see).
+*
+* Run: AC, small signal, tone = 0 / 0.5 / 1, written to
+*   out/tone_ac_tone<tone>.csv as frequency, vdb(tout), vp(tout), vdb(lv), vp(lv) (vp in radians)
+
+.include models.lib
+
+.param tone=0.5
+
+Vcc vcc 0 dc 9
+Vb  vb  0 dc 4.5
+Vin in  vb dc 0 ac 1
+
+R7   in  p   1k
+C5   p   0   220n
+R9   p   vb  10k
+
+Rp2a p   w   {20k*tone + 1}
+Rp2b w   n   {20k*(1-tone) + 1}
+R8   w   w2  220
+C6   w2  0   220n
+
+R11  n   tout 1k
+XU1  p   n   tout vcc 0 op4558
+
+C7   tout o2  1u
+R12  o2   lv  1k
+Rp3  lv   0   100k
+
+.control
+set wr_vecnames
+set wr_singlescale
+set fe = ".csv"
+foreach t 0 0.5 1
+  set fn = "out/tone_ac_tone$t"
+  alterparam tone = $t
+  reset
+  ac dec 50 10 100k
+  wrdata $fn$fe vdb(tout) vp(tout) vdb(lv) vp(lv)
+end
+quit
+.endc
+.end

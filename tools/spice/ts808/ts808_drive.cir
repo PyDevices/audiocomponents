@@ -1,0 +1,78 @@
+* ts808_drive.cir -- Ibanez TS808 Tube Screamer, clipping ("drive") stage
+*
+* Topology and every value below are read from the ElectroSmash "Tube
+* Screamer Circuit Analysis" clipping-amplifier drawing and text (README,
+* source S1).  Designators are ElectroSmash's.  Node names are ours.
+*
+*   IN --C2 1uF--+-- U1(+) pin 3          U1 = JRC4558 (behavioural, models.lib)
+*                R5 10K to 4V5 bias
+*   U1(-) pin 2 --R4 4K7--C3 0.047uF-- ground          (720 Hz high-pass corner)
+*   U1 out pin 1 --R6 51K--P1 500K (Distortion)-- U1(-)  (gain 12 .. 118)
+*   D1, D2 anti-parallel between out and U1(-)          (MA150 / 1N4148 / 1N914)
+*   C4 51pF between out and U1(-)                        (HF roll-off)
+*
+* What is left out (see README "Simplifications"):
+*   - the JFET input buffer and its series resistor RA (unlabelled on the
+*     drawing): the stage is driven by an ideal source through C2/R5.
+*   - the 9 V rail and 4.5 V bias are ideal sources (the real divider is
+*     10K/10K with a 47 uF cap, AC-wise ground either way).
+*   - the Distortion pot is a resistance FRACTION `pos` of 500K, not knob
+*     rotation: the real pot is log ("500K Log" on the drawing), so mid
+*     rotation is well below 250K.  min/mid/max here = 0 / 250K / 500K.
+*     1 ohm is added so pos=0 is not a zero-ohm resistor.
+*
+* Runs (all in the .control block, one ngspice invocation):
+*   transient, 1 kHz sine, input peak 50 mV / 200 mV / 500 mV at pos 0 / 0.5 / 1,
+*     30 ms with 1 us fixed step, resampled uniformly with `linearize`,
+*     written to out/drive_tran_pos<pos>_amp<amp>.csv as time, v(out), v(inp)
+*   AC, small signal about the DC operating point, pos = 1,
+*     written to out/drive_ac_posmax.csv as frequency, vdb(out), vp(out) (vp in radians, ngspice default)
+*   (run.sh turns wrdata's whitespace columns into commas afterwards)
+
+.include models.lib
+
+.param pos=1
+.param amp=0.2
+
+Vcc vcc 0 dc 9
+Vb  vb  0 dc 4.5
+Vin in  0 sin(0 {amp} 1k) ac 1
+
+C2  in  inp 1u
+R5  inp vb  10k
+
+R4  inn x   4.7k
+C3  x   0   47n
+
+R6  inn f1  51k
+Rp1 f1  out {500k*pos + 1}
+XD1 out inn 1N4148
+XD2 inn out 1N4148
+C4  out inn 51p
+
+XU1 inp inn out vcc 0 op4558
+
+.control
+set wr_vecnames
+set wr_singlescale
+set fe = ".csv"
+foreach p 0 0.5 1
+  set fn = "out/drive_tran_pos$p"
+  foreach a 0.05 0.2 0.5
+    set fa = "_amp$a"
+    alterparam pos = $p
+    alterparam amp = $a
+    reset
+    tran 1u 30m 0 1u
+    linearize v(out) v(inp)
+    wrdata $fn$fa$fe v(out) v(inp)
+  end
+end
+alterparam pos = 1
+alterparam amp = 0.2
+reset
+ac dec 50 10 100k
+wrdata out/drive_ac_posmax.csv vdb(out) vp(out)
+quit
+.endc
+.end
