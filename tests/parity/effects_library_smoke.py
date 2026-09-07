@@ -32,12 +32,14 @@ import audioeffects
 SAMPLE_RATE = 48000
 CHANNEL_COUNT = 2
 
-#: Arguments a class needs beyond a source. GraphicEQ cannot be built without
-#: its gains; ConvolutionReverb can, but its default second of stereo impulse
-#: is 1.5 MB and this walks it once per patch -- a quarter second proves the
-#: same thing on a board with a small heap.
+#: Arguments a class needs beyond a source. ConvolutionReverb's default
+#: second of stereo impulse is 1.5 MB and this walks it once per patch -- a
+#: quarter second proves the same thing on a board with a small heap.
+#: `GraphicEQ`'s entry is gone with its rebuild: the old class had no
+#: default curve, the rebuilt one is flat by default and flat is a
+#: wire, and handing it a curve here made patch 0 stop matching the
+#: constructor's own defaults.
 EXTRA_ARGUMENTS = {
-    "GraphicEQ": {"gains_db": (3.0, -2.0, 4.0, -1.0, 2.0)},
     "ConvolutionReverb": {"seconds": 0.25},
 }
 

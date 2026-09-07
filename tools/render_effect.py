@@ -344,10 +344,13 @@ def block_adapter(source, rate, channels, block):
 
 #: Arguments a class cannot be built without, or that would make a probe run
 #: absurd. Same table and same reasons as
-#: `tests/parity/effects_library_smoke.py`: GraphicEQ has no default gains,
-#: and ConvolutionReverb's default second of stereo impulse is 1.5 MB.
+#: `tests/parity/effects_library_smoke.py`: ConvolutionReverb's default
+#: second of stereo impulse is 1.5 MB.
+#: `GraphicEQ`'s entry is gone with its rebuild: the old class had no
+#: default curve, the rebuilt one is flat by default and flat is a
+#: wire, and handing it a curve here made patch 0 stop matching the
+#: constructor's own defaults.
 EXTRA_ARGUMENTS = {
-    "GraphicEQ": {"gains_db": (3.0, -2.0, 4.0, -1.0, 2.0)},
     "ConvolutionReverb": {"seconds": 0.25},
 }
 

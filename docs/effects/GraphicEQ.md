@@ -168,11 +168,17 @@ channel; not stereo by definition.
   int16 between sections and `to_s16` saturates at ±32767
   (`audioif_filter_f32.c:43-50`), so +12 dB of Gain into a hot source clips at
   the first boundary. An M-108's op-amps clip too, and the docstring says so.
-- **Centres clamp below Nyquist through `self._hz()` (0.98 × Nyquist).** This
-  is stability, not tidiness: the ported biquad over Nyquist rails into a
-  full-scale square at f_s/4 while raising nothing, and renders exact zeros on
-  silence, so construct-and-catch and silence-in-silence-out both pass it
-  (App. E(iv)).
+- **Centres clamp below Nyquist through `self._hz()` (0.98 × Nyquist), and
+  the clamp is *reported*.** On the ported biquad an over-Nyquist corner
+  rails into a full-scale square at f_s/4 while raising nothing (App. E(iv)),
+  and that is the failure the seed wrote this bullet about. On `audiobiquad`
+  it does not: `audioif_filter_f32.c:94-95` clamps `frequency` to
+  0.4999 × the rate for itself, so a 16 kHz shelf at 22.05 kHz quietly runs
+  at 11022.45 Hz and reads its own `frequency` back as 16000. **That silence
+  is the defect the class's clamp exists for now** — the same shape §7's
+  defect 4 names — so `clamped` and `built_centres` say which bands moved,
+  and the class gate's planted fault is the kernel's silent move, not a
+  rail.
 
 *(The composition the seed refuted and what re-trying it actually showed:
 App. S(iii). The seed's §4 bullets, verbatim, are in App. R.)*

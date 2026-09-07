@@ -84,7 +84,7 @@ not.
 | Class | Notes |
 |---|---|
 | `ParametricEQ` | peaking bands `(freq, gain_db, q)` plus optional shelves |
-| `GraphicEQ` | ten fixed ISO bands |
+| `GraphicEQ` | MXR M-108 Ten Band: ten octave bands from 31.25 Hz plus GAIN and VOLUME, and the bands **get wider as you back off** — 1.8 octaves at +3 dB, 0.71 at +12 — which is what makes three sliders at +6 dB a broad hump several dB higher rather than +6 dB. `Constant Q` on turns it into a studio graphic instead. A band at its centre detent is a wire byte for byte; a patch change starts the bank clean, a knob move rides through. 14 macros, 6 patches, **audioif** tier (`audiobiquad`, for a tail that reaches exact zero at 31.25 Hz), twelve sections, 0.00 ms of latency, 465 ms of tail; **patches** |
 | `DynamicEQ` | notch+band split, band compressed, summed (the split is exact) |
 | `LowPass` `HighPass` `BandPass` `Notch` | single swept biquads |
 | `LadderFilter` | Moog-style 4-stage cascade, 24 dB/oct, resonant |
@@ -234,8 +234,9 @@ Both are fixed. Coefficients now get as many fractional bits as each
 individual filter has room for, the recursion accumulates in 64 bits and
 keeps its feedback below the sample grid, and the trigonometry is a proper
 series. Measured against the closed-form response, every mode lands within
-**0.03 dB from 50 Hz to 22 kHz**. `GraphicEQ`'s ten ISO bands all read
-+6.01 dB or better on a +6 dB request; `MultibandCompressor`'s three bands
+**0.03 dB from 50 Hz to 22 kHz**. `ParametricEQ`'s ten octave bands all read
++6.01 dB or better on a +6 dB request (the claim `GraphicEQ` used to carry,
+moved when it was rebuilt onto `audiobiquad`); `MultibandCompressor`'s three bands
 recombine flat to 0.23 dB from 30 Hz to 8 kHz. [audioif's `docs/upstream-diff.md`](https://github.com/PyDevices/audioif/blob/main/docs/upstream-diff.md),
 "The biquads were Q15, so they could not go low", has the arithmetic, the
 before-and-after table, and what it cost in instructions on an M0.
@@ -301,8 +302,9 @@ are worth knowing about:
 - `PEAKING_EQ` computes `b2` with the wrong sign, which costs the filter
   its unity-outside-the-band property: a +6 dB bell at 1 kHz / Q 1 is
   about **+21 dB at DC**, worse the lower the center. Still present
-  upstream. `ParametricEQ`, `GraphicEQ`, and every shelf-free bell here
-  depend on it.
+  upstream. `ParametricEQ` and every shelf-free bell here depend on it;
+  `audiobiquad`, and so the rebuilt `GraphicEQ`, computes the sign correctly
+  in its own float kernel and never went through this.
 - Biquad coefficients are Q15 and the recursion accumulates in 32 bits, so
   nothing below roughly 300 Hz is the filter it was asked to be, and one
   polynomial covers sine and cosine only as far as π/2 - 12 kHz at 48 kHz -
