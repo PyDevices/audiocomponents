@@ -20,14 +20,38 @@ What is different here, and why:
 * **A class enumerates the nodes it builds**, with `self._own(node)`, and
   `reset()` and `deinit()` walk that list. `_core.reset()` touches the output
   node only, so what a chain's reset actually clears depends on which node
-  happened to be last: `audiofilters.Filter` and `Phaser` clear their own
-  delay buffers and biquad states (`audioif/src/audiofilters/Filter.c:133`,
-  `Phaser.c` alongside it), `audioecho.FeedbackDelay` empties its whole line
-  (`audioif/src/audioecho/FeedbackDelay.c`), `audiodynamics.Dynamics` keeps
-  its detector baseline (`Dynamics.c:287`), and `audiomixer`'s voices reset
-  their sources recursively (`audioif/src/audiomixer/MixerVoice.c:97`) while
-  `audiospeed.SpeedChanger` does the same (`SpeedChanger.c:109`). One walk
-  over the class's own list is the same reset whatever the tail is.
+  happened to be last. Every node clears something different:
+  `audiofilters.Filter` and `Phaser` clear their own delay buffers and
+  biquad states (`audioif/src/audiofilters/Filter.c:133-149`);
+  `audioecho.FeedbackDelay` empties its whole line
+  (`audioecho/FeedbackDelay.c:233-244`, "everything goes");
+  `audiodynamics.Dynamics` clears its envelopes and its lookahead but lets
+  the sidechain filter's memory and the last reported gain reduction survive
+  on purpose (`shared/audioif_dynamics.c:281-295`); and `audiomixer`'s
+  voices reset their sources recursively
+  (`audiomixer/MixerVoice.c:97`), as does `audiospeed.SpeedChanger`
+  (`audiospeed/SpeedChanger.c:109`). One walk over the class's own list is
+  the same reset whatever the tail is.
+
+  Two details of the roadmap's wording at that point do not survive contact
+  with the files, checked 2026-09-07 and recorded here rather than left to
+  be rediscovered. `audiofilters/Filter.c` and `Phaser.c` do **not** reset
+  their source inside `reset_buffer` -- not in audioif
+  (`src/audiofilters/Filter.c:133-149`) and not in upstream CircuitPython
+  (`cmods/circuitpython/shared-module/audiofilters/Filter.c:126-139`). The
+  recursion in those files is in `play()` (audioif `:161`, CircuitPython
+  `:151`) and in the loop-restart path (CircuitPython `:190`); the nodes
+  whose `reset_buffer` really does recurse are `audiomixer`'s and
+  `audiospeed`'s. None of that changes the design -- the enumerated walk is
+  what makes a reset the same whatever the tail is, either way -- but it
+  changes which node an evidence pack may blame.
+
+  A second thing worth carrying: emptying a node's pending buffer makes it
+  re-read its source, and `audiocore.RawSample` hands its buffer back from
+  the beginning. A probe whose burst sits at frame 0 therefore replays it
+  after `reset()` and reads exactly like a delay line that was never
+  cleared. `tests/test_component_foundation.py` leads its probe with
+  silence for that reason.
 
 * **The borrowed source is never reset and never deinitialised.**
   `_own()` refuses to take the source, and neither walk ever names it. A node
