@@ -84,6 +84,20 @@ there, and are recorded in its changelog.
   reach the 902's ratio. Evidence:
   [`docs/effects/DeEsser.md`](docs/effects/DeEsser.md) and
   [`docs/effects/DeEsser-evidence.md`](docs/effects/DeEsser-evidence.md).
+### Added
+
+- `TransientShaper` rebuilt from scratch on the Phase 2 construction module
+  (`lib/audioeffects/rebuilt/transientshaper.py`), the effects programme's
+  first rebuilt class. SPL Transient Designer: Attack ±15 dB and Sustain
+  ±24 dB acting **at the same time** on one `audiodynamics.Dynamics` node
+  through Phase 1's `transient_dual`, a peak-hold sustain envelope through
+  `slow_hold_ms`, an Output trim, an Attack Speed scaler and a Sustain Hold
+  time — five macros and seven patches where the old class had none, and
+  latency 0 samples at every setting. `docs/effects/TransientShaper.md`
+  (traits frozen at Station A) and
+  `docs/effects/TransientShaper-evidence.md` (the class gate's record) land
+  with it. T6, the adaptive time constants both sources assert, is
+  **disconfirmed** and said so in the docstring.
 
 ## v0.2.0 (2026-09-03)
 
