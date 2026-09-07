@@ -96,8 +96,8 @@ column was found beyond the instrument dossiers they point at.
 ## Sources not reached this session
 
 These URLs were cited and did not yield a usable body. They are **not
-evidence**. Dossier license lines that depended on them are marked in the
-files.
+evidence**. Dossier license lines that depended on them **keep the
+original reading** and append a dated re-fetch result beside it.
 
 | URL | This session |
 |---|---|
@@ -120,13 +120,23 @@ files.
 ## License pages that did resolve, vs the dossier line
 
 A repackager's label is not a license. "Free download" is not a license.
-JS shells without the claimed sentence are recorded as reached-but-not-confirming.
+JS shells without the claimed sentence are recorded as reached-but-not-confirming
+on the re-fetch; they do **not** replace a prior reading made from the file
+or page itself.
+
+| Page | Original reading (kept) | re-fetch 2026-09-06 from a cloud clone |
+|---|---|---|
+| Audiorealism TR-909 pack page | Page blurb: "Free for personal & commercial use under the included license. Attribution appreciated." Included `Readme.txt`: "Disclaimer: This sample pack may not be distributed in whole or in parts without permission." The two statements are complementary (use vs no redistribution of the pack). | Page blurb still present in fetched HTML. Zip `Readme.txt` not opened (gitignored). |
+| Splice Sample Magic TR-808 pack | Page states "100% royalty free and cleared for commercial use". Clears gold's bar: capture reached, provenance stated, license read. | HTTP 200 as a JS app. Pack-specific sentence not in fetched HTML. Site nav: "100% royalty-free samples" (Splice-wide, not this pack's license page). Fetch limitation, not a finding about the license. |
+| MusicRadar SampleRadar 808 article | License on page: royalty-free, no redistribution; provenance unstated. | HTTP 200, title still "SampleRadar: 378 free 808 drum samples". Royalty-free sentence not found in fetched HTML (script-heavy article). |
+| Open303 License.txt | MIT License, confirmed verbatim. | SourceForge returned HTTP 403. |
+| Studio Brootle 707 `readme.txt` | "Feel free to use the samples in your productions… please don't redistribute the pack or samples directly." | Zip `readme.txt` not opened (gitignored). |
+| Pixabay "Minimoog lead solo" | Pixabay Content License; not used as evidence — credited Freesound uploader's own sound list did not show this title among their 23 sounds (found-and-contradicted). | HTTP 403. |
+
+Pages that resolved and still match the dossier line:
 
 | Page | What the fetched body actually states |
 |---|---|
-| Audiorealism TR-909 pack page | "Free for personal & commercial use under the included license. Attribution appreciated." Included `Readme.txt` not opened (gitignored zip) — that line remains **not reached**. |
-| Splice Sample Magic TR-808 pack | JS app. Pack-specific "100% royalty free and cleared for commercial use" **not present** in fetched HTML. Site nav: "100% royalty-free samples" (Splice-wide, not this pack's license page). |
-| MusicRadar SampleRadar 808 article | Title still "SampleRadar: 378 free 808 drum samples". Dossier's "royalty-free, no redistribution" sentence **not found** in fetched HTML (page is script-heavy). |
 | Samples From Mars terms | Audio products "licensed, not sold"; for compositions/productions only; copying/lending/duplicating/re-selling/trading prohibited. Matches simmons_sdsv.md's EULA quote. |
 | Samples From Mars FAQ | "100% royalty free" / license to use in recordings. No "no redistribution" sentence on the FAQ body fetched; the terms page carries the no-copying clause. |
 | Pianobook FAQ | "all sample packs uploaded to the Pianobook website should* be copyright free" for commercial and non-commercial compositions; forbidden to sell or redistribute libraries you do not own. Matches rhodes/wurlitzer/cp70. |
@@ -159,7 +169,7 @@ JS shells without the claimed sentence are recorded as reached-but-not-confirmin
 - Table-level `reference figure unverified: needs re-derivation from <pack>` markers on pack-backed criteria tables.
 - tr808.md §5c rimshot τ: same-decimal identity marker (27.1 / 27.1). Number not changed.
 - linndrum.md Bass Drum note: "exactly" removed as a match claim.
-- License / dead-link wording where the fetch disagreed or failed (Splice, MusicRadar, http electrongate, 403/404 citations).
+- License / dead-link wording is **added to, never replaced**: original readings stay; each re-fetch is appended as `re-fetch 2026-09-06 from a cloud clone: …` (Splice, MusicRadar, Audiorealism Readme, Studio Brootle readme, Open303, Pixabay, and 403/404 citations that already kept the original text).
 - No figure was recomputed.
 
 ## Findings table
