@@ -1,188 +1,236 @@
 # Effects Dossier — `DynamicEQ` (no historical standout — design grade)
 
-**Class:** `lib/audioeffects/eq.py` — the current implementation is read once,
-for §7, and not otherwise consulted.
-**Family / phase:** EQ, roadmap Phase 2
-**Standout:** none, per vision §4.2 — **confirmed** (§2).
-**Grade:** design
-**Portability tier:** **audioif** (`audioroute.Splitter`,
-`audiodynamics.Dynamics`), plus the stock `audiofilters.Filter` and
-`audiomixer.Mixer`.
-**Status:** seed (Phase 0)
+**Class:** rebuilt as `lib/audioeffects/rebuilt/dynamiceq.py`. The old
+`lib/audioeffects/eq.py` class is read once, for §7, and stands untouched
+beneath.
+**Family / phase:** EQ, roadmap Phase 2 · **Grade:** design ·
+**Standout:** none, per vision §4.2 — confirmed (§2)
+**Portability tier:** **audioif** — `REQUIRES = ("audiobiquad",
+"audiodynamics", "audioroute")`, plus the stock `audiofilters.Filter` guard
+and `audiomixer.Mixer`.
+**Status:** traits frozen 2026-09-07, before the rebuild. Evidence:
+[`DynamicEQ-evidence.md`](DynamicEQ-evidence.md).
 
 ## 1. The circuit, in one paragraph
 
 A dynamic EQ is an equaliser band whose gain is driven by a detector watching
 that same band, so the band moves only when something in it crosses a
-threshold: it *"combines precision equalization with selective
-compression/expansion and sidechain triggers, kicking in only when the signal
-you're EQing goes above a certain threshold at the frequency you've
-selected"*, with *"full control over width ('Q'), gain, range, threshold,
-attack, and release"* per band, and it differs from a multiband compressor
-because *"multiband compressors use crossover filters, which affect fairly
-broad frequency areas, [while] a dynamic EQ allows you to specify the precise
-frequencies"* (S6). The signal path has no nonlinearity; the only one is the
-detector's gain law. The topology is the **exactly complementary split** —
-band-pass at (f₀, Q) down one branch, notch at the same (f₀, Q) down the
-other, process the band, sum. That split needs no trimming: RBJ's notch
-numerator `(1, −2cos ω₀, 1)` and band-pass numerator `(α, 0, −α)` sum to the
-shared denominator `(1+α, −2cos ω₀, 1−α)` (S1, both blocks verbatim), so
-`H_notch + H_bandpass ≡ 1` for all z — Zavalishin's `H_N = 1 − H_BP1`
-(S4 §4.7 p. 119). Idle, the processor is a wire; working, the composite is a
-bell of exactly the detector's gain reduction, centred on f₀ and f₀/Q wide.
+threshold — S6's *"selective compression/expansion … kicking in only when the
+signal you're EQing goes above a certain threshold at the frequency you've
+selected"*, with *"width ('Q'), gain, range, threshold, attack, and release"*
+per band (the quotations in full, and the distinction S6 draws from a
+multiband compressor, are in **App. R**). The signal path has no
+nonlinearity; the only one is the detector's gain law. The topology is the
+**exactly complementary split** — band-pass at (f₀, Q) down one branch, notch
+at the same (f₀, Q) down the other, process the band, sum — and it needs no
+trimming, because RBJ's two numerators sum to their shared denominator, so
+`H_notch + H_bandpass ≡ 1` for all z (S1, both blocks verbatim; Zavalishin's
+`H_N = 1 − H_BP1`, S4 §4.7 p. 119; the arithmetic in **App. R**). Idle, the
+processor is a wire; working, the composite is a bell of exactly the
+detector's gain reduction, centred on f₀.
 
 ## 2. Sources and license calls
 
+Each row's full reading and licence text is in **App. S**; the three audit
+passes behind them are **App. A9** and **App. A10**.
+
 | Source | What it gave | License as read | URL | Reached |
 |---|---|---|---|---|
-| **S1** RBJ, *Cookbook formulae for audio EQ biquad filter coefficients* … (App. S1) | the notch and BPF (constant 0 dB peak) coefficient … (App. S1) | the `.txt` itself carries **no license … (App. S1) | https://raw.githubusercontent.com/shepazu/Audio-EQ-Cookbook/master/Audio-EQ-Cookbook.txt | 2026-09-06 |
-| **S3** J. O. Smith III, *Introduction to Digital Filters* … (App. S3) | *"Q … resonance frequency divided by the resonator … (App. S3) | © J. O. Smith III / CCRMA Stanford … (App. S3) | https://ccrma.stanford.edu/~jos/filters/Quality_Factor_Q.html | 2026-09-06 |
-| **S4** Zavalishin, *The Art of VA Filter Design* rev. 2.1.0 (discoDSP … (App. S4) | `H_N = 1 − H_BP1 = 1 − 2R·H_BP` (§4.7 p. 119) … (App. S4) | verbatim-copy-only … (App. S4) | https://www.discodsp.net/VAFilterDesign_2.1.0.pdf | 2026-09-06 |
-| **S6** Waves, *How and When to Use Dynamic EQ* | the working definition and the per-band control set … (App. S6) | *"Copyright © 2026 Waves Audio Ltd. All … (App. S6) | https://www.waves.com/how-and-when-to-use-dynamic-eq | 2026-09-06 |
-| **S7** Fontana & Karjalainen … (App. S7) | first- and second-order equalization structures whose … (App. S7) | **no copyright, licence or rights line … (App. S7) | https://www.dafx.de/paper-archive/2001/papers/fontana_a.pdf | 2026-09-06 — WebFetch reached it (HTTP 200, 118 KB) but could not read a PDF; text extracted with `pypdf` |
+| **S1** RBJ, *Cookbook formulae …* | the notch and BPF (0 dB peak) coefficients | unverified — treated as copyleft | https://raw.githubusercontent.com/shepazu/Audio-EQ-Cookbook/master/Audio-EQ-Cookbook.txt | 2026-09-06 |
+| **S3** J. O. Smith III, *Introduction to Digital Filters* | *"Q … resonance frequency divided by the resonator bandwidth"* | no grant; read as a paper | https://ccrma.stanford.edu/~jos/filters/Quality_Factor_Q.html | 2026-09-06 |
+| **S4** Zavalishin, *The Art of VA Filter Design* 2.1.0 | `H_N = 1 − H_BP1` (§4.7 p. 119) | verbatim-copy-only; read as a paper | https://www.discodsp.net/VAFilterDesign_2.1.0.pdf | 2026-09-06 |
+| **S6** Waves, *How and When to Use Dynamic EQ* | the definition and control set of §1 | all rights reserved; terminology only | https://www.waves.com/how-and-when-to-use-dynamic-eq | 2026-09-06 |
+| **S7** Fontana & Karjalainen, DAFx-01 | magnitude-complementary structures; **context only** | no rights line in the PDF; copyleft | https://www.dafx.de/paper-archive/2001/papers/fontana_a.pdf | 2026-09-06, via `pypdf` |
 
-**Reached on the audit pass, correcting "identified but not read".** The
-first run recorded the Fontana & Karjalainen paper as identified only; it is
-in fact served by the DAFx archive itself, at the path its own search API
-gives (`2001/papers/fontana_a.pdf`, S7 above) — the run's guessed path
-`…/2001/papers/dafx01_fontana.pdf` is the one that 404s, re-checked
-2026-09-06. The Aalto research-portal record was re-reached as well
-(https://research.aalto.fi/en/publications/magnitude-complementary-filters-for-dynamic-equalization/
-— title, authors, venue and dates confirmed; no abstract, no per-publication
-licence, only a site-wide *"All content on this site: Copyright © 2026 Aalto
-University's research portal, its licensors, and contributors"*). **Nothing
-in §3 rests on S7**; it is carried as context, and it answers §8's third open
-question, which is superseded — the paper is now reachable and readable.
-Still not reached: MDPI's *All About Audio Equalization* (403, re-checked).
-No AES paper on dynamic EQ specifically was surfaced by search.
-
-**Standout confirmed.** The candidate dropped was the **dbx 902 de-esser**, a
-real and well-documented dynamic band — but the vision gives it to `DeEsser`
-(§4.2, *proposed*) and its distinguishing traits (a fixed high band, a
-specific detector time constant) belong there. `DynamicEQ` is the general
-instrument: any frequency, any width, compress or expand.
-
-*(More of §2 is in **App. R** — moved under the length rule, nothing deleted.)*
+Two audit corrections are applied above (S1's licence, S7's reachability) and
+one in §3: the Waves page never uses the word *ratio* — that is the node's
+(`audioif_dynamics.h:65`). Not reached: MDPI's *All About Audio
+Equalization* (403, twice). **Standout confirmed none:** the candidate was
+the dbx 902, which the vision gives to `DeEsser`.
 
 ## 3. Traits — fixed before measurement
 
-### Tier 1 — invariants (the standard block, verbatim from vision §3)
+Frozen 2026-09-07, before a line of the rebuild was written.
 
-The standard block, verbatim from vision §3, is in **App. I** — moved there under the length rule; any class-specific note on it moved with it.
+### Tier 1 — invariants
+
+The standard block, verbatim from vision §3, is **App. I**, with its one
+class-specific note: this class builds a splitter, two filters, a gain cell
+and a mixer, so `reset()` and `deinit()` are the invariants with teeth.
 
 ### Tier 2 — circuit traits
 
-| # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Measurement (kit) |
-|---|---|---|---|---|---|
-| T1 | **The split is exact**: with the detector idle the processor is a wire — reconstruction within 0.05 dB from 20 Hz to 0.4·F_s, and an impulse comes out at its input peak | S1 (the two numerators sum to the … (App. T1) | high | any reconstruction error above 0.05 dB with the detector below threshold, at any f₀ in 100 Hz…10 kHz and Q in 0.5…8 | swept sine through the class with … (App. T1) |
-| T2 | **The band gain follows the compressor law — above the knee, and the knee is 6 dB wide by default**: for a tone at f₀ at level L with threshold T and ratio R, the composite gain is `−(L−T)(1−1/R)` dB within 1 dB **whenever L−T ≥ 3 dB**. Inside the knee the node is quadratic — `−(1−1/R)·(L−T+3)²/12` for −3 < L−T < 3 — and exactly 0 for L−T ≤ −3. So a probe sitting *on* the threshold is predicted to read −0.56 dB at R 4, not 0; stating the hard law alone would score a correct node 0.56 dB wrong at that point | S6 for the threshold semantics **only** … (App. T2) | high | any of the **five** probe levels more than 1 dB from the law that applies at that level — hard above the knee, quadratic inside it, exactly 0 below it | steady-state sine at f₀ at L ∈ … (App. T2) |
-| T3 | **Below threshold it is a wire**: a tone at f₀ at 10 dB under the threshold passes within 0.05 dB of unity | S6 (*"kicking in only when the signal … goes … (App. T3) | high | more than 0.05 dB of gain change on a tone 10 dB below threshold | the T2 sweep's lowest level |
-| T4 | **Out of band is untouched while the band is working**: a tone two octaves from f₀ moves by less than 0.2 dB whether the band is idle or 19 dB down | S6 (the precise-frequency distinction from a … (App. T4) | high | more than 0.2 dB of movement out of band between the two states — i.e. audible pumping of the whole signal | a tone at f₀/8 rendered twice … (App. T4) |
-| T5 | **The band gain is affine in the band-pass branch's own response — and the audible bell is far narrower than f₀/Q**: the detector reads the band-pass branch, so at a steady tone of level L the reduction applied to that branch is T2's law evaluated at `L + \|H_bp(f)\|_dB` — band gain (dB) = `−(1−1/R)·(L + \|H_bp(f)\|_dB − T)` above the knee, 0 where `L + \|H_bp(f)\|_dB ≤ T − 3`. Worked at f₀ = 3 kHz, Q 2, T = −30 dBFS, R 4, L = −10 dBFS: band gain −15.00 dB at f₀, −13.55 at 2.5 kHz, −7.41 at 1.5 kHz, −3.89 at 1 kHz, 0 below 429 Hz and above 14.6 kHz; composite output −15.00 / −4.11 / −0.36 / −0.09 dB. The **half-depth width is 608 Hz against f₀/Q = 1500 Hz** — the reduction tapers with the skirt, so the bell is 2.5× narrower than the filter that steers it | S1 for `\|H_bp\|`, T2 for the law, `audioif_dynamics.c:176` and `:196-206` for the knee and the clamp; the whole worked case re-derived in A11 | high (was medium; the affine form removes the hedge, because the detector's selectivity **is** `\|H_bp\|` and is therefore known, not something the kit must hold still) | at the worked setting, any probe in f₀/8…4f₀ whose composite gain is more than 0.5 dB from the closed form built from S1 and T2 | steady-state sine, **one frequency at a time at a fixed level** — f ∈ {1 k, 1.5 k, 2 k, 2.5 k, 3 k, 3.6 k, 4.5 k, 6 k} Hz — each composite gain compared point by point with the closed form. Never a swept sine: a sweep moves the detector while it measures |
+Each row's source reading, worked numbers and confidence reasoning are in
+**App. T**.
+
+| # | Trait (falsifiable as stated) | Conf. | Disconfirmed by | Measurement |
+|---|---|---|---|---|
+| T1 | **The split is exact**: detector idle, the processor is a wire — reconstruction within 0.05 dB from 20 Hz to 0.4·F_s, impulse out at its input peak | high | any reconstruction error above 0.05 dB with the detector below threshold, at any f₀ in 100 Hz…10 kHz and Q in 0.5…8 | fixed sines at threshold 0 dBFS ratio 1, differenced against a wire; plus an impulse peak |
+| T2 | **The band gain is the compressor law, knee 6 dB wide**: composite `−(L−T)(1−1/R)` dB within 1 dB for `L−T ≥ 3`; `−(1−1/R)(L−T+3)²/12` inside the knee; exactly 0 for `L−T ≤ −3`. On the threshold at R 4 that is −0.56 dB, not 0 | high | any of the **five** probe levels more than 1 dB from the law that applies there | steady sine at f₀ at L ∈ {−41, −30, −21, −10, −4} dBFS, read after the detector settles; −30 is the knee probe |
+| T3 | **Below threshold it is a wire**: a tone at f₀ 10 dB under the threshold passes within 0.05 dB of unity | high | more than 0.05 dB on a tone 10 dB below threshold | the T2 sweep's lowest level |
+| T4 | **Out of band is untouched while the band works**: a tone two octaves from f₀ moves by less than 0.2 dB whether the band is idle or 19 dB down | high | more than 0.2 dB of movement out of band between the two states | a tone at f₀/8 at a level that leaves the band idle and one that drives it hard |
+| T5 | **The band gain is affine in the band-pass's own response, and the bell is far narrower than f₀/Q**: the detector reads that branch, so the reduction is T2's law at `L + \|H_bp(f)\|_dB`. Worked at f₀ 3 kHz, Q 2, T −30, R 4, L −10 dBFS the half-depth width is **608 Hz against f₀/Q = 1500** (App. A11) | high | any probe in f₀/8…4f₀ more than 0.5 dB from the closed form built from S1 and T2 | steady sine **one frequency at a time at a fixed level**, f ∈ {1 k, 1.5 k, 2 k, 2.5 k, 3 k, 3.6 k, 4.5 k, 6 k}. Never a sweep: a sweep moves the detector while it measures |
+| T6 | **A dry/wet blend and a band-range limit are the same control**: the class is `1 + m·B·(g−1)`, so the composite at f₀ is `20·log10((1−m) + m·g₁)`, the deepest cut reachable at blend m is `−20·log10(1−m)` dB, and out of band nothing moves as m sweeps | high | a composite at f₀ more than 0.2 dB from that closed form at any m ∈ {0, ¼, ½, ¾, 0.9, 1}, or more than 0.05 dB of out-of-band movement across the sweep | the same steady tone at f₀ at six blends, point by point; a tone at f₀/8 at three |
 
 No characters: one band, one behaviour. A second band is a second instance.
 
 ### Tier 3 — cost and latency
 
-*(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
+Budget as a fraction of one stereo block's real-time deadline: **ESP32-P4
+≤ 8 %, ESP32-S3 ≤ 25 %**, unchanged. **Lean patch expected: no, and one is
+not possible** (D2). Desktop anchor, `tools/measure_effect_cost.py`,
+256-frame stereo blocks at 48 kHz, five interleaved repeats of each build:
+the rebuild is **1.458–1.560 ms/block, 27–29 % of real time**, against the
+shipped class's **1.100–1.154 ms/block, 21–22 %**. **The rebuild is about
+45 % more expensive per block**, and it is buying three nodes the shipped
+class does not have: the guard, the third splitter tap and the identity tail.
+The board budget is what governs; App. A13 carries the run and the warning
+about taking a desktop figure off a shared machine.
+
+**Latency: zero**, and **no option on this class adds any** —
+`audiodynamics`' `lookahead_ms` is the only one that could and is not
+exposed, so there is no millisecond figure to name. `tail_samples` is
+declared `4·Q·F_s/f₀ + 1`; the pole pair's worst measured ring is 3.21
+periods of `Q/f₀` across both spans (App. A13), so it is long, never short.
 
 ## 4. Modeling approach on the palette
 
-**Compose first; the topology is already right and the plumbing is not.**
-`audioroute.Splitter(source, taps=2)` fans the input out; one tap goes to an
-`audiofilters.Filter` in `NOTCH` mode, the other to one in `BAND_PASS` mode
-at the same f₀ and Q; the band feeds `audiodynamics.Dynamics`; an
-`audiomixer.Mixer` sums the two at unity. That is what `eq.py:238-256` does
-and it is correct — the reconstruction measures 0.015 dB (A2). What the
-rebuild changes:
+    source -> guard -> Splitter(taps=3)
+                         tap 0 -----------------------------> dry   voice 0
+                         tap 1  Biquad NOTCH ---------------> notch voice 1
+                         tap 2  Biquad BAND_PASS -> Dynamics -> band voice 2
+                                                        Mixer -> output
 
-- **Buffer sizes match.** Sizing the Mixer to `_core.pcm()`'s 2048 aligns it
-  with the Filters and drops a per-block overhead multiplier.
-- **Every parameter becomes live.** `frequency` and `Q` become `synthio` …  *(argument in full: App. R)*
-- **Range** (a control S6 lists and the class lacks) is the Mixer's …  *(argument in full: App. R)*
-- **Mono:** every node honours `channel_count` 1 and the Splitter's kernel
-  duplicates a mono frame across its ring (`audioif_splitter.c:30-31`).
+**`audiobiquad`, not `audiofilters`** — the seed mapped the ported node and
+the palette has had the float one since Phase 1. It matters twice: the
+reconstruction measures **0.0000 dB** against the ported node's 0.015, and a
+low band reaches **exact zero** after silence where a Q12 biquad holds
+1–4 LSB for ever (audioif#23). Both measured (App. A12, §8 D1).
+
+**A guard in front of the splitter.** `audioif_splitter.c:35-38` drags an
+unread tap's cursor forward when the writer laps the 8192-frame ring and
+`RawSample.get_buffer()` hands its whole array back in one call, so an
+impulse inside a 40 000-frame probe reaches this class as **silence**. An
+`audiofilters.Filter(filter=None, mix=1)` at 256 frames removes that, and its
+`reset_buffer` does not touch its source — which is what keeps the borrowed
+source untouched by `reset()`.
+
+**Every parameter is live**, and Frequency and Width reach both sections from
+one place, so the branches cannot drift out of complement. **Mix is the Range
+control** (T6, D4), so the class ships one knob and not two. **`expand=True`
+is a build, not a knob**: `audiodynamics` fixes its mode at construction and
+an unused second detector would cost a full block every block; neither
+direction boosts (D6). **Mono:** every node honours `channel_count` 1 and the
+Splitter duplicates a mono frame across its ring
+(`audioif_splitter.c:30-31`).
 
 *(More of §4 is in **App. R** — moved under the length rule, nothing deleted.)*
 
 ## 5. Node asks
 
-**None.** All five Tier 2 traits are reachable on today's palette, and §4
-shows how; an ask without a trait id is not an ask.
+**One**, and it is Tier 3's escape valve rather than a trait's.
+**N-DEQ-1 — a gain reduction a filter can read.** `audiodynamics` reports its
+gain reduction only through `gain_reduction_db()`, a method; nothing turns it
+into a `synthio` block input, and `audiobiquad.Biquad`'s `gain_db` accepts
+one. So the textbook "moving bell" — a `PEAKING_EQ` section whose `A` is
+driven from a sidechain detector — cannot be built here at all: it needs
+Python once per block, and nothing in the pull model calls Python per block.
+All six Tier 2 traits are reachable without it.
 
 *(More of §5 is in **App. R** — moved under the length rule, nothing deleted.)*
 
-## 6. Proposed surface
+## 6. Surface — as built
 
 | # | Label | Mode | Range | Generalizes |
 |---|---|---|---|---|
-| 0 | Frequency | UNIPOLAR | 30 Hz … min(16 kHz, 0.4·F_s), log | the band's frequency knob |
-| 1 | Width | UNIPOLAR | Q 0.5 … 12, log; displayed as f₀/Q | the Q knob (S6) |
+| 0 | Frequency | UNIPOLAR | 30 Hz … 16 kHz, log, clamped to 0.4·F_s | the band's frequency knob |
+| 1 | Width | UNIPOLAR | Q 0.5 … 12, log; **displayed as Q** (§8 D5) | the Q knob (S6) |
 | 2 | Threshold | UNIPOLAR | −60 … 0 dBFS | the threshold knob (S6) |
-| 3 | Ratio | UNIPOLAR | 1 … 20, log | the ratio knob (S6) |
+| 3 | Ratio | UNIPOLAR | 1 … 20, log | the ratio knob (the node's) |
 | 4 | Attack | UNIPOLAR | 0.1 … 100 ms, log | the attack knob (S6) |
 | 5 | Release | UNIPOLAR | 5 … 1000 ms, log | the release knob (S6) |
-| 6 | Range | UNIPOLAR | 0 … 24 dB, default 24 (no limit) | the range/depth knob (S6) |
-| 7 | Direction | TOGGLE | down (compress, default) / up (expand) | the compress/expand switch (S6) |
-| 8 | Mix | UNIPOLAR | 0 exactly … 1; values in (0, 0.01] snap to 0 | parallel processing; also Tier 1's wire test |
+| 6 | Mix | UNIPOLAR | 0 … 1; **also the Range knob** — deepest move `−20·log10(1−Mix)` dB | the range/depth knob (S6), and parallel processing |
+| 7 | Listen | TOGGLE | off / the processed band alone | the band-solo button |
 
-Nine macros, seven under the sixteen-macro ceiling. `capabilities = ()`:
-attack and release are absolute times, not beat fractions, and nothing else
-here is measured in bars — the class does not read `transport()` (D10,
-answered).
+Eight macros. `capabilities = ()`: attack and release are absolute times, not
+beat fractions, and nothing here is measured in bars — the class never reads
+`transport()` (D10, answered). `expand` and `patch` are constructor
+arguments, not macros.
 
-Patches: 0 **Wide Band** (3 kHz, Q 2, −30 dBFS, 4:1, 2 ms, 80 ms, full
-range, down, mix 1 — the constructor's defaults on the grid), 1 **Boxiness
+Patches, all at mix 1 but the last: 0 **Wide Band** (the constructor's
+defaults on the grid — 3 kHz, Q 2, −30 dBFS, 4:1, 2 ms, 80 ms), 1 **Boxiness
 Control** (400 Hz, Q 2.5, −24 dBFS, 3:1, 10 ms, 150 ms), 2 **Harshness
 Control** (3.2 kHz, Q 3, −28 dBFS, 4:1, 1 ms, 60 ms), 3 **Low End Tamer**
 (80 Hz, Q 1.2, −20 dBFS, 4:1, 20 ms, 250 ms), 4 **Sibilance** (7 kHz, Q 4,
-−30 dBFS, 8:1, 0.2 ms, 40 ms), 5 **Lift When Quiet** (2 kHz, Q 1.5,
-−36 dBFS, 2:1, 30 ms, 300 ms, up), 6 **Wide Band - lean** (the Tier 3 escape
-valve: peaking section driven from a sidechain, split not exact).
+−30 dBFS, 8:1, 0.2 ms, 40 ms), 5 **Half Measure** (3 kHz, Q 1, −34 dBFS,
+6:1, 5 ms, 200 ms, **mix 0.5** — the same band held to a 6 dB ceiling).
 
 ## 7. Defects in the current class the rebuild must not repeat
 
-From one read of `lib/audioeffects/eq.py`.
+From one read of `lib/audioeffects/eq.py`; the evidence pack's §10 says what
+the rebuild does instead of each.
 
-- **No surface at all, on the class with the most to expose.**
-  `MACRO_LABELS = ()` (`eq.py:231`) for a processor whose reference
-  description lists six per-band controls (S6).
-- **Nothing is live.** `frequency`, `threshold_db`, `ratio` and `q` are …  *(argument in full: App. R)*
-- **Attack and release are hard-coded** at 2 ms and 80 ms (`eq.py:248`) —
-  two of the six controls S6 names, unavailable at any price.
-- **No range, no make-up, no direction** — `DYN_EXPAND` is one argument away
-  (`eq.py:247` passes `DYN_COMPRESS`) and is never offered.
-- **The Mixer is built at a 1024-byte buffer** (`eq.py:250`) while both …  *(argument in full: App. R)*
-- **`reset()` and `deinit()` reach the Mixer only** (`_core.py:366-374`, …  *(argument in full: App. R)*
-- **No tail is declared** (`TAIL_SAMPLES = None`, `_core.py:141`) although …  *(argument in full: App. R)*
+- **No surface at all**, on the class with the most to expose:
+  `MACRO_LABELS = ()` (`eq.py:231`) against S6's six per-band controls, and
+  **nothing is live** — `frequency`, `threshold_db`, `ratio`, `q` are
+  constructor arguments only (`eq.py:235-236`) and the biquads take bare
+  floats (`eq.py:240`, `:243`).
+- **Attack and release are hard-coded** at 2 ms and 80 ms (`eq.py:248`); there
+  is **no range and no direction** — `DYN_EXPAND` is one argument away
+  (`eq.py:247`) and never offered.
+- **The Mixer is built at a 1024-byte buffer** (`eq.py:250`) while both
+  Filters use `_core.pcm()`'s 2048 (`_core.py:64`).
+- **`reset()` and `deinit()` reach the Mixer only** (`_core.py:366-374`,
+  `:376-385`): the Splitter, both Filters and the Dynamics are neither.
+- **No tail is declared** (`TAIL_SAMPLES = None`, `_core.py:141`) although the
+  class holds two resonators.
+- **It is built on the Q12 ported biquad**, so the split reconstructs to
+  0.015 dB and a low band would hold DC for ever.
 
 *(More of §7 is in **App. R** — moved under the length rule, nothing deleted.)*
 
-## 8. Open questions
+## 8. Open questions — settled
 
-1. **Whether a low-frequency band inherits the family's DC residual.** Both
-   branches are biquads, and at 60–80 Hz the family holds 1–4 LSB (A3, and
-   `LowPass.md` §5). The complementary sum may cancel it or may not; nobody
-   has measured a `DynamicEQ` band below 200 Hz. *Settled by:* the
-   implementation session at Phase 2, and it feeds Gate 0's answer.
-2. **Whether the lean patch's approximation is acceptable**, and what it
-   costs on the S3. *Settled by:* the implementation session, on the Phase 1
-   cost table.
-3. **The Fontana & Karjalainen paper** (§2), identified but not read. It may
-   have a cheaper magnitude-complementary structure than a two-branch split.
-   *Settled by:* the implementation session, if a copy can be reached.
-4. **Whether Range belongs on the Mixer's level or on the Dynamics' ratio.**
-   Limiting reduction by ceiling the band voice is exact but changes the bell
-   shape at the limit; limiting by ratio does not, but is not a hard stop.
-   *Settled by:* the implementation session.
-5. **What the Width macro should display**, given T5. §6 shows it as f₀/Q,
-   which is the *filter's* width; the audible bell is narrower than that by a
-   factor that depends on ratio and on how far the signal is over threshold —
-   608 Hz against 1500 at the one setting derived so far (A11). A number on a
-   panel that is 2.5× the width the user hears is a defect, not a convention.
-   *Settled by:* the implementation session at Phase 2, from a sweep of the
-   ratio-and-overshoot plane; if no single display is honest across it, the
-   macro shows Q and the docstring carries the relationship.
+All five of the seed's, from runs in this worktree
+(`tools/phase2_probes/dynamiceq_opens.py`); one new one is opened.
+
+**D1. Does a low band inherit the family's DC residual? No — 0 LSB.** Burst
+then 3 s of silence, residual over the last 4800 frames: **0 LSB at 60, 80,
+120, 400 and 3000 Hz**. `audiobiquad`'s float state is flushed to exact zero
+below 1e-20, so audioif#23 does not touch this class at any band.
+
+**D2. Is the lean patch acceptable, and what does it cost? There cannot be
+one.** A patch only moves macros and every node here runs every block whatever
+the macros say. The seed's lean idea is a different *build* and is not
+buildable on this palette — node ask N-DEQ-1. If the S3 misses its 25 %, the
+answer is that ask; the board leg is the board run's.
+
+**D3. The Fontana & Karjalainen paper.** Stale, and closed: §2 records it
+reached and read (S7) in two independent passes.
+
+**D4. Range on the Mixer's level, or on the Dynamics' ratio? Neither —
+Range *is* Mix.** With `H_notch + H_bp ≡ 1` the class is `1 + m·B·(g−1)`, so
+a blend against the dry input and a ceiling on the band branch are the same
+number. Measured: the composite at f₀ tracks `20·log10((1−m) + m·g₁)` within
+**0.003 dB** at m ∈ {0, ¼, ½, ¾, 0.9, 1}, and a tone two octaves down moves
+by **0.0006 dB** across the sweep. One control ships; it is Mix, its 0 is the
+byte-identical bypass Tier 1 asks for, and `range_db` reports
+`−20·log10(1−Mix)`. Frozen as T6.
+
+**D5. What should the Width macro display? Q.** The composite bell's
+half-depth width over the ratio-and-overshoot plane at f₀ 3 kHz, Q 2
+(f₀/Q = 1500 Hz) runs from **919 Hz** (ratio 2, 6 dB over) to **164 Hz**
+(ratio 20, 40 dB over) — 0.61 down to 0.11 of f₀/Q, monotone in both. No
+number in hertz is honest across that plane, so the macro shows **Q** and the
+class docstring carries the relationship.
+
+**D6 (new). Should either direction *boost*? Not in this revision.**
+`expand=True` cuts the band when the band falls *under* the threshold;
+neither direction lifts it. An upward dynamic EQ is reachable —
+`makeup_db = +R` against `depth_db = −R` on `DYN_EXPAND` gives unity below
+threshold and exactly +R above — but R is a target gain that fights the
+threshold-and-ratio law T2 holds this class to, so it is not half-built here.
+*Settled by:* a later revision, on an issue, with its own trait.
 
 ---
 
@@ -555,6 +603,8 @@ cell-level `App. <id>` reference.
 | T2 | **The band gain follows the compressor law — above the knee, and the knee is 6 dB wide by default**: for a tone at f₀ at level L with threshold T and ratio R, the composite gain is `−(L−T)(1−1/R)` dB within 1 dB **whenever L−T ≥ 3 dB**. Inside the knee the node is quadratic — `−(1−1/R)·(L−T+3)²/12` for −3 < L−T < 3 — and exactly 0 for L−T ≤ −3. So a probe sitting *on* the threshold is predicted to read −0.56 dB at R 4, not 0; stating the hard law alone would score a correct node 0.56 dB wrong at that point | S6 for the threshold semantics **only** — the word *ratio* appears nowhere on that page (re-fetched and searched, 2026-09-06); the ratio, the knee and its shape are the node's: `audioif_dynamics.h:65` (`float ratio`), `:66` (`float knee_db`), `:69` (`float release_coef`), with `knee_db = 6.0f` set at `audioif_dynamics.c:31`, `over = env_db − threshold_db` at `:176` and the three-branch law at `:196-206`; measured −6.50 / −14.35 / −18.86 dB against a predicted −6.92 / −14.77 / −19.28 at T = −30 dBFS, R = 4 (A2) | high | any of the **five** probe levels more than 1 dB from the law that applies at that level — hard above the knee, quadratic inside it, exactly 0 below it | steady-state sine at f₀ at L ∈ {−41, −30, −21, −10, −4} dBFS, gain read after the detector settles; L = −30 sits exactly on the threshold and is the knee probe |
 | T3 | **Below threshold it is a wire**: a tone at f₀ at 10 dB under the threshold passes within 0.05 dB of unity | S6 (*"kicking in only when the signal … goes above a certain threshold"*); measured −0.002 dB (A2) | high | more than 0.05 dB of gain change on a tone 10 dB below threshold | the T2 sweep's lowest level |
 | T4 | **Out of band is untouched while the band is working**: a tone two octaves from f₀ moves by less than 0.2 dB whether the band is idle or 19 dB down | S6 (the precise-frequency distinction from a multiband compressor); measured −0.015 dB at 300 Hz with f₀ = 3 kHz, identical at −30 and −4 dBFS (A2) | high | more than 0.2 dB of movement out of band between the two states — i.e. audible pumping of the whole signal | a tone at f₀/8 rendered twice, once with a co-existing f₀ tone below threshold and once well above |
+| T5 | **The band gain is affine in the band-pass branch's own response, and the audible bell is far narrower than f₀/Q**: band gain (dB) = `−(1−1/R)·(L + \|H_bp(f)\|_dB − T)` above the knee, 0 where `L + \|H_bp(f)\|_dB ≤ T − 3`. Worked at f₀ = 3 kHz, Q 2, T = −30 dBFS, R 4, L = −10 dBFS: band gain −15.00 dB at f₀, −13.55 at 2.5 kHz, −7.41 at 1.5 kHz, −3.89 at 1 kHz, 0 below 429 Hz and above 14.6 kHz; composite output −15.00 / −4.11 / −0.36 / −0.09 dB, half-depth width 608 Hz against f₀/Q = 1500 Hz | S1 for `\|H_bp\|`, T2 for the law, `audioif_dynamics.c:176` and `:196-206` for the knee and the clamp; re-derived independently in A13's D5 table, which lands 607.6 Hz | high (the affine form removes the hedge: the detector's selectivity **is** `\|H_bp\|`, so it is known rather than something the kit must hold still) | at the worked setting, any probe in f₀/8…4f₀ whose composite gain is more than 0.5 dB from the closed form built from S1 and T2 | steady-state sine, **one frequency at a time at a fixed level** — f ∈ {1 k, 1.5 k, 2 k, 2.5 k, 3 k, 3.6 k, 4.5 k, 6 k} Hz — each composite gain compared point by point with the closed form. Never a swept sine: a sweep moves the detector while it measures |
+| T6 | **A dry/wet blend and a band-range limit are the same control**: with `H_notch + H_bp ≡ 1` the whole class is `1 + m·B·(g−1)` at blend `m`, so a blend against the dry input and a ceiling on the band branch are the same number; the composite at f₀ is `20·log10((1−m) + m·g₁)` with `g₁` the composite at `m = 1`, the deepest cut reachable at `m` is `−20·log10(1−m)` dB, and out of band nothing moves as `m` sweeps | T1 (the identity), and the algebra: `(1−m)·1 + m·(H_notch + g·H_bp) = 1 + m·H_bp·(g−1)` because `H_notch = 1 − H_bp`. This row is why the class ships one knob where S6's control list implies two, and it is what settles §8 D4 | high | a composite at f₀ more than 0.2 dB from that closed form at any m ∈ {0, ¼, ½, ¾, 0.9, 1}, or more than 0.05 dB of out-of-band movement across the sweep | the same steady tone at f₀ rendered at six blends and compared point by point with the closed form; a tone at f₀/8 rendered at three |
 
 ### App. R — §§1–8 prose moved under the length rule
 
@@ -708,3 +758,159 @@ fight.
 - **No tail is declared** (`TAIL_SAMPLES = None`, `_core.py:141`) although
   the class holds two resonators and a release envelope; `latency_samples` 0
   is right and measured right (A8).
+
+*(from §1, moved under the length rule 2026-09-07)*
+
+The S6 quotations in full, verbatim from the page (re-fetched and searched in
+the A10 pass): *"Whereas regular EQ is applied to the sound from start to
+finish, dynamic EQ combines precision equalization with selective
+compression/expansion and sidechain triggers, kicking in only when the signal
+you're EQing goes above a certain threshold at the frequency you've
+selected"*; *"full control over width ('Q'), gain, range, threshold, attack,
+and release"*; and the distinction from a multiband compressor, *"multiband
+compressors use crossover filters, which affect fairly broad frequency areas,
+[while] a dynamic EQ allows you to specify the precise frequencies"*. The
+page's footer reads *"Copyright © 2026 Waves Audio Ltd. All rights
+reserved."*
+
+And the identity, in full: RBJ's notch numerator is `(1, −2cos ω₀, 1)` and
+his band-pass (constant 0 dB peak) numerator is `(α, 0, −α)` with
+`α = sin(ω₀)/(2Q)`; they share the denominator
+`(1+α, −2cos ω₀, 1−α)`, and the two numerators add up to exactly it.
+So `H_notch(z) + H_bandpass(z) = 1` at every z, not only in magnitude. That
+is the same statement as Zavalishin's `H_N = 1 − H_BP1 = 1 − 2R·H_BP`
+(§4.7 p. 119). `audioif/src/shared/audioif_filter_f32.c:139-157` builds both
+sections from exactly those coefficients — read 2026-09-07, `b0 = alpha,
+b1 = 0, b2 = -b0` at `:150-152` and `b0 = 1, b1 = -2*sc.c, b2 = 1` at
+`:154-156`, against `a0 = 1 + alpha, a1 = -2*sc.c, a2 = 1 - alpha` at
+`:140-142` — which is why the split is exact on this node and not merely
+close.
+
+*(from §4, moved under the length rule 2026-09-07)*
+
+**Where the 0.42 dB at the band centre comes from, and where it does not.**
+With a tone at f₀ the composite reads about 0.42 dB *above* the gain
+computer's law (measured −14.577 dB against a predicted −15.000 at f₀ 3 kHz,
+Q 2, T −30 dBFS, R 4, L −10 dBFS). The seed put that down to the notch
+branch passing a little of the tone. It does not: the notch branch measured
+**exactly zero** at f₀ — RMS 0.00 of a 10 360 LSB source, on `audiobiquad`.
+The cause is the detector. A one-pole peak follower never quite reaches the
+peak of a fast sine, so `env_db` reads low and the cell cuts that much less:
+the node's own `gain_reduction_db()` reports −14.771 dB at a 0.1 ms attack,
+−14.678 at 0.5 ms, −14.370 at 2 ms and −13.820 at 10 ms, and at a fixed
+2 ms attack it reports −14.510 at 200 Hz, −14.450 at 1 kHz, −14.370 at
+3 kHz and −13.771 at 8 kHz. Moving with attack time and with frequency is
+what a lagging follower does and what notch leakage would not. The remaining
+0.2 dB between the node's reported reduction and the measured composite is
+the ripple in the applied gain: an RMS over a rippling gain is not the gain
+at the instant the node last reported.
+
+### A13. Tail and cost, 2026-09-07 (Station A run)
+
+`tools/phase2_probes/dynamiceq_opens.py` on
+`audiocomponents/.venv/bin/python`, the rebuilt class, 48 kHz stereo.
+
+Ring-down of the split, full-scale DC burst to the last non-zero frame,
+against the declared `tail_samples`:
+
+```
+  f0     60 Hz  Q   0.5  ring    1284 samples  3.21 periods of Q/f0  (declared 1601)
+  f0     60 Hz  Q   2.0  ring    4575 samples  2.86 periods of Q/f0  (declared 6401)
+  f0     60 Hz  Q  12.0  ring   23869 samples  2.49 periods of Q/f0  (declared 38401)
+  f0    400 Hz  Q   0.5  ring     156 samples  2.60 periods of Q/f0  (declared 241)
+  f0    400 Hz  Q   2.0  ring     248 samples  1.03 periods of Q/f0  (declared 961)
+  f0    400 Hz  Q  12.0  ring    3102 samples  2.15 periods of Q/f0  (declared 5761)
+  f0   3000 Hz  Q  12.0  ring      34 samples  0.18 periods of Q/f0  (declared 768)
+```
+
+Every declaration is longer than the measurement, which is the direction
+`tail_samples` is allowed to be wrong in. The constant is 4.0 periods of
+`Q/f0` against a worst measured 3.21.
+
+Held DC after silence, burst then 3 s of silence, residual over the last
+4800 frames:
+
+```
+     60.0 Hz  last non-zero frame  19673   residual 0 LSB
+     80.0 Hz  last non-zero frame  18355   residual 0 LSB
+    120.0 Hz  last non-zero frame  17038   residual 0 LSB
+    400.0 Hz  last non-zero frame  15191   residual 0 LSB
+   3000.0 Hz  last non-zero frame  14511   residual 0 LSB
+```
+
+Desktop cost, `tools/measure_effect_cost.py`, 256-frame stereo blocks at
+48 kHz on this machine (x86-64, CPython 3.12.3):
+
+**The first pair taken in this session is withdrawn.** It read the rebuild at
+1.696 ms/block against the shipped class's 1.958 and had the rebuild ahead;
+it was taken while three other class-builder sessions were running on this
+machine at a load average above 20, and a back-to-back pair an hour later
+reversed the ordering. Recorded rather than deleted, because a cost figure off
+a shared machine is exactly the kind of number that gets quoted later.
+
+The pair below is five interleaved repeats of each build at a load average
+under 4, so the two builds meet the same machine:
+
+```
+  rebuilt  blocks/s 686.0  rt 3.66  ms/block 1.458  control 0.342  marginal 1.116
+  shipped  blocks/s 866.3  rt 4.62  ms/block 1.154  control 0.391  marginal 0.763
+  rebuilt  blocks/s 663.6  rt 3.54  ms/block 1.507  control 0.356  marginal 1.150
+  shipped  blocks/s 884.0  rt 4.71  ms/block 1.131  control 0.358  marginal 0.773
+  rebuilt  blocks/s 640.9  rt 3.42  ms/block 1.560  control 0.360  marginal 1.200
+  shipped  blocks/s 888.5  rt 4.74  ms/block 1.125  control 0.365  marginal 0.761
+  rebuilt  blocks/s 683.0  rt 3.64  ms/block 1.464  control 0.349  marginal 1.115
+  shipped  blocks/s 893.8  rt 4.77  ms/block 1.119  control 0.350  marginal 0.769
+  rebuilt  blocks/s 678.1  rt 3.62  ms/block 1.475  control 0.354  marginal 1.121
+  shipped  blocks/s 909.1  rt 4.85  ms/block 1.100  control 0.347  marginal 0.753
+
+  node:audiobiquad.Biquad      blocks/s 2810.6  rt 14.99  ms/block 0.356  marginal 0.014
+  node:audiodynamics.Dynamics  blocks/s 2809.3  rt 14.98  ms/block 0.356  marginal 0.011
+  node:audioroute.Splitter     blocks/s 2782.0  rt 14.84  ms/block 0.359  marginal 0.014
+```
+
+So the rebuild costs about **45 % more per block** than the class it replaces,
+and that is the price of the three nodes it added: the guard that keeps a long
+source from vanishing, the third splitter tap that makes `Mix` 0 a real
+bypass, and the identity tail that keeps the class from rendering silence on
+CircuitPython. Every one of those is a defect the shipped class has and this
+one does not.
+
+These are CPython numbers on a desktop, dominated by per-block Python
+overhead rather than by the DSP: they rank builds against each other on one
+machine and say nothing about either board. The P4 and S3 columns are the
+board run's.
+
+Mix against the closed form, and the out-of-band control (D4):
+
+```
+  g1 = -14.577 dB
+  mix 0.00 ->   +0.000 dB (closed form   +0.000, d +0.000)   range -0.0 dB
+  mix 0.25 ->   -1.975 dB (closed form   -1.974, d -0.001)   range 2.5 dB
+  mix 0.50 ->   -4.535 dB (closed form   -4.534, d -0.001)   range 6.0 dB
+  mix 0.75 ->   -8.180 dB (closed form   -8.178, d -0.002)   range 12.0 dB
+  mix 0.90 ->  -11.440 dB (closed form  -11.437, d -0.003)   range 20.0 dB
+  mix 1.00 ->  -14.577 dB (closed form  -14.577, d +0.000)   range inf dB
+  375 Hz, two octaves down:  mix 0.00 +0.0000 dB   0.50 -0.0006 dB   1.00 +0.0000 dB
+```
+
+Half-depth width of the composite bell over the ratio-and-overshoot plane
+(D5), closed form from S1 and the node's gain law, f0 3000 Hz, Q 2, so
+f0/Q = 1500 Hz:
+
+```
+  ratio  over    depth        width    width / (f0/Q)
+    2.0    6.0   -3.000 dB    919.0 Hz     0.61
+    2.0   20.0  -10.000 dB    794.5 Hz     0.53
+    2.0   40.0  -20.000 dB    460.9 Hz     0.31
+    4.0    6.0   -4.500 dB    882.1 Hz     0.59
+    4.0   20.0  -15.000 dB    607.6 Hz     0.41
+    4.0   40.0  -30.000 dB    259.8 Hz     0.17
+    8.0    6.0   -5.250 dB    862.9 Hz     0.58
+    8.0   20.0  -17.500 dB    528.9 Hz     0.35
+    8.0   40.0  -35.000 dB    194.9 Hz     0.13
+   20.0    6.0   -5.700 dB    851.1 Hz     0.57
+   20.0   20.0  -19.000 dB    486.2 Hz     0.32
+   20.0   40.0  -38.000 dB    164.0 Hz     0.11
+```
+
+The 607.6 Hz row is A11's 608 Hz, re-derived by a second implementation.
