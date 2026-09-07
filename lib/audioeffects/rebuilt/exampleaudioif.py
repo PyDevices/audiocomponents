@@ -2,7 +2,7 @@
 
 The sibling of `examplestock.py`, and the same kind of fixture: not one of
 the 46, absent from `audioeffects.__all__`, removed at Phase 7
-(audiocomponents#36). It exists so `tests/test_portability_tier.py` has an
+(audiocomponents#37). It exists so `tests/test_portability_tier.py` has an
 audioif-tier subject to hold to its documented `ImportError` from the day
 the test is written.
 

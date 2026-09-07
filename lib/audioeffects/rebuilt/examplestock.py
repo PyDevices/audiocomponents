@@ -10,7 +10,7 @@ its `NAME` is absent from `audioeffects.__all__`, so it never enters
   written, rather than a battery that passes because it has nothing to hold
   (`tests/test_portability_tier.py`).
 
-Both fixtures here are removed at Phase 7 - audiocomponents#36.
+Both fixtures here are removed at Phase 7 - audiocomponents#37.
 
 Read it as the template for a real rebuild: module-level `VENDOR`, one class,
 `_build` instead of `__init__`, every node handed to `self._own()`, macros
