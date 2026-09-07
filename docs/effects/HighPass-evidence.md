@@ -355,7 +355,7 @@ $ PYTHONPATH=lib .venv/bin/python -m flake8
 (no output, exit 0)
 
 $ PYTHONPATH=lib .venv/bin/python -m unittest discover -s tests -p "test_*.py"
-Ran 259 tests in 43.547s
+Ran 259 tests in 23.966s
 OK (skipped=1)
 
 $ PYTHONPATH=lib .venv/bin/python tools/validate_api.py
