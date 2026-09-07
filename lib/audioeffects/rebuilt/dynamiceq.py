@@ -57,11 +57,18 @@ dynamic EQ that ducked before the note arrived would be a different
 instrument. There is therefore **no latency-adding option to name in
 milliseconds**: `latency_samples` is 0 for the life of the instance.
 
-**Cost.** Two biquads, one detector-and-gain-cell, one three-tap splitter
-ring, a three-voice mixer and an identity `MidSide` per frame, on a graph that
-runs in 256-frame blocks throughout. The shipped class ran its mixer at a 1024-**byte** buffer,
-which made the whole chain a 128-frame graph and paid every per-block
-overhead four times over; this one does not.
+**Cost, and it went up.** Two biquads, one detector-and-gain-cell, a
+three-tap splitter ring, a three-voice mixer, a block-sized guard and an
+identity `MidSide`, on a graph that runs in 256-frame blocks throughout.
+Measured on the desktop against the class this replaces, five interleaved
+repeats of each: **1.46-1.56 ms per 256-frame stereo block against
+1.10-1.15**, about **45 % more**. Three of those nodes are new - the guard,
+the dry tap and the tail - and each is there because the shipped class has a
+defect without it: a long source vanishing, `Mix` 0 not being a real bypass,
+and silence on CircuitPython. The single 256-frame block size keeps every
+node doing the same work per pull; it is not a saving, and the first
+measurement in this session said it was only because the machine was loaded.
+Neither figure is a board figure.
 
 **One thing measured here that the dossier had wrong.** With a tone sitting
 on the band centre, the composite reads about **0.42 dB above** the gain

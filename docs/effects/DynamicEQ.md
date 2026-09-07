@@ -79,8 +79,13 @@ No characters: one band, one behaviour. A second band is a second instance.
 Budget as a fraction of one stereo block's real-time deadline: **ESP32-P4
 ≤ 8 %, ESP32-S3 ≤ 25 %**, unchanged. **Lean patch expected: no, and one is
 not possible** (D2). Desktop anchor, `tools/measure_effect_cost.py`,
-256-frame stereo blocks at 48 kHz: the rebuild is **1.696 ms/block, 32 % of
-real time**, against the shipped class's **1.958 ms/block, 37 %**.
+256-frame stereo blocks at 48 kHz, five interleaved repeats of each build:
+the rebuild is **1.458–1.560 ms/block, 27–29 % of real time**, against the
+shipped class's **1.100–1.154 ms/block, 21–22 %**. **The rebuild is about
+45 % more expensive per block**, and it is buying three nodes the shipped
+class does not have: the guard, the third splitter tap and the identity tail.
+The board budget is what governs; App. A13 carries the run and the warning
+about taking a desktop figure off a shared machine.
 
 **Latency: zero**, and **no option on this class adds any** —
 `audiodynamics`' `lookahead_ms` is the only one that could and is not
@@ -836,17 +841,44 @@ Held DC after silence, burst then 3 s of silence, residual over the last
 Desktop cost, `tools/measure_effect_cost.py`, 256-frame stereo blocks at
 48 kHz on this machine (x86-64, CPython 3.12.3):
 
+**The first pair taken in this session is withdrawn.** It read the rebuild at
+1.696 ms/block against the shipped class's 1.958 and had the rebuild ahead;
+it was taken while three other class-builder sessions were running on this
+machine at a load average above 20, and a back-to-back pair an hour later
+reversed the ordering. Recorded rather than deleted, because a cost figure off
+a shared machine is exactly the kind of number that gets quoted later.
+
+The pair below is five interleaved repeats of each build at a load average
+under 4, so the two builds meet the same machine:
+
 ```
-  ROW  effect:DynamicEQ (rebuilt)   589.7 blocks/s  rt 3.15  1.696 ms/block  marginal 1.293
-  ROW  effect:DynamicEQ (shipped)   510.7 blocks/s  rt 2.72  1.958 ms/block  marginal 1.374
-  ROW  node:audiobiquad.Biquad     2311.7 blocks/s  rt 12.33 0.433 ms/block  marginal 0.045
-  ROW  node:audiodynamics.Dynamics 1370.7 blocks/s  rt  7.31 0.730 ms/block  marginal 0.178
-  budget: 5.333 ms/block is real time; the rebuild uses 32%, the shipped class 37%
+  rebuilt  blocks/s 686.0  rt 3.66  ms/block 1.458  control 0.342  marginal 1.116
+  shipped  blocks/s 866.3  rt 4.62  ms/block 1.154  control 0.391  marginal 0.763
+  rebuilt  blocks/s 663.6  rt 3.54  ms/block 1.507  control 0.356  marginal 1.150
+  shipped  blocks/s 884.0  rt 4.71  ms/block 1.131  control 0.358  marginal 0.773
+  rebuilt  blocks/s 640.9  rt 3.42  ms/block 1.560  control 0.360  marginal 1.200
+  shipped  blocks/s 888.5  rt 4.74  ms/block 1.125  control 0.365  marginal 0.761
+  rebuilt  blocks/s 683.0  rt 3.64  ms/block 1.464  control 0.349  marginal 1.115
+  shipped  blocks/s 893.8  rt 4.77  ms/block 1.119  control 0.350  marginal 0.769
+  rebuilt  blocks/s 678.1  rt 3.62  ms/block 1.475  control 0.354  marginal 1.121
+  shipped  blocks/s 909.1  rt 4.85  ms/block 1.100  control 0.347  marginal 0.753
+
+  node:audiobiquad.Biquad      blocks/s 2810.6  rt 14.99  ms/block 0.356  marginal 0.014
+  node:audiodynamics.Dynamics  blocks/s 2809.3  rt 14.98  ms/block 0.356  marginal 0.011
+  node:audioroute.Splitter     blocks/s 2782.0  rt 14.84  ms/block 0.359  marginal 0.014
 ```
 
-These are CPython numbers on a desktop and they are dominated by per-block
-Python overhead, not by the DSP; they rank builds against each other and say
-nothing about either board. The P4 and S3 columns are the board run's.
+So the rebuild costs about **45 % more per block** than the class it replaces,
+and that is the price of the three nodes it added: the guard that keeps a long
+source from vanishing, the third splitter tap that makes `Mix` 0 a real
+bypass, and the identity tail that keeps the class from rendering silence on
+CircuitPython. Every one of those is a defect the shipped class has and this
+one does not.
+
+These are CPython numbers on a desktop, dominated by per-block Python
+overhead rather than by the DSP: they rank builds against each other on one
+machine and say nothing about either board. The P4 and S3 columns are the
+board run's.
 
 Mix against the closed form, and the out-of-band control (D4):
 

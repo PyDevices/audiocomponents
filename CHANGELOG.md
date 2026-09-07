@@ -39,6 +39,10 @@ there, and are recorded in its changelog.
   `expand=True` is a **constructor option** rather than a knob, because
   `audiodynamics` fixes its mode at construction and a second, idle detector
   would cost a full block every block. Neither direction boosts.
+  **It costs more than the class it replaces**: about 45 % more per 256-frame
+  block on the desktop (1.46-1.56 ms against 1.10-1.15, five interleaved
+  repeats of each), which is the price of the guard, the dry tap and the
+  identity tail. No board figure has been taken.
   Measured: the composite follows the node's gain law within **0.42 dB** over
   five levels; the bell matches the closed form built from the band-pass's own
   response within **0.03 dB** everywhere but the centre; a tone two octaves
