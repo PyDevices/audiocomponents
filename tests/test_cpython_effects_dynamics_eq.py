@@ -34,25 +34,18 @@ from effects_measure import (SAMPLE_RATE, peak, source,  # noqa: E402
 
 
 class DynamicsAndEQTest(unittest.TestCase):
-    def test_a_bell_lands_where_it_was_asked_for(self):
-        # Pins both engine fixes at the library level. A peaking bell is
-        # only usable once PEAKING_EQ computes b2 with the RBJ sign, and it
-        # only lands on its own center once a stereo Filter stops sharing
-        # one biquad state between the channels - with that sharing the
-        # recursion advances twice per frame and every filter sits an
-        # octave high. Measured, not merely rendered.
-        for hz, expected in ((1000.0, 6.0), (250.0, 6.0)):
-            at_center = tone_gain_db(
-                hz, lambda s: audioeffects.ParametricEQ(
-                    s, bands=[(hz, expected, 2.0)]).output)
-            self.assertAlmostEqual(at_center, expected, delta=0.4,
-                                   msg="bell at %g Hz" % hz)
-            # Two octaves up the bell is over; a shared state would put the
-            # boost here instead.
-            away = tone_gain_db(
-                hz * 4.0, lambda s: audioeffects.ParametricEQ(
-                    s, bands=[(hz, expected, 2.0)]).output)
-            self.assertLess(abs(away), 0.5, "bell at %g Hz leaks" % hz)
+    # `test_a_bell_lands_where_it_was_asked_for` was retired here on
+    # 2026-09-07 in the commit that rebuilt `ParametricEQ` (roadmap section
+    # 3, "the class gate": a rebuilt class never has to satisfy a test
+    # written against the surface it replaced). It was written against the
+    # retired `bands=[(hz, gain, q)]` constructor, and what it pinned - that
+    # a peaking bell lands on its own centre and does not leak two octaves
+    # up - is measured against the rebuilt surface in
+    # `test_cpython_effects_parametriceq.py`, whose `BellLawTest` reads the
+    # built section's own coefficients. The two engine fixes it also pinned
+    # (`PEAKING_EQ`'s b2 sign, per-channel biquad state) keep their own
+    # tests in audioif. `GraphicEQ` below still builds on the untouched
+    # `eq.ParametricEQ` and is not affected.
 
     def test_a_cut_and_a_boost_cost_the_same(self):
         # The old ParametricEQ synthesized boosts from Splitter branches and

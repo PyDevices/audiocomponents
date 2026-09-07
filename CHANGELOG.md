@@ -6,6 +6,24 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audioif's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Changed
+
+- `ParametricEQ` is rebuilt from scratch on `_component.Component` for the
+  effects program's Phase 2 (`lib/audioeffects/rebuilt/parametriceq.py`;
+  dossier `docs/effects/ParametricEQ.md`, evidence
+  `docs/effects/ParametricEQ-evidence.md`). It is a Pultec EQP-1A bottom and
+  resonant top with three API 550A proportional-Q bells between: sixteen
+  macros in the panel's own units, seven patches, `capabilities = ()`, zero
+  latency at every setting and rate. **Its portability tier is `audioif`** -
+  eight `audiobiquad.Biquad` sections, whose float state lets a decaying tail
+  reach exact zero where the ported `synthio.Biquad` parks on DC (audioif#23).
+  The old class stays in `eq.py`, untouched, beneath the registry; its
+  old-surface trait test in `tests/test_cpython_effects_dynamics_eq.py` is
+  retired in the same commit and replaced by
+  `tests/test_cpython_effects_parametriceq.py`.
+
 ## v0.2.0 (2026-09-03)
 
 The first release from this repository. These packages continue a version

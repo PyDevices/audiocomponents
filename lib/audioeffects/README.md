@@ -83,7 +83,7 @@ not.
 ### Frequency and EQ - `eq.py`
 | Class | Notes |
 |---|---|
-| `ParametricEQ` | peaking bands `(freq, gain_db, q)` plus optional shelves |
+| `ParametricEQ` | **rebuilt.** Pultec EQP-1A bottom and resonant top, three API 550A proportional-Q bells between: boost and cut the bass at once and you get the record trick, not silence; the top bell gets louder as `Bandwidth` sharpens; a bell's cut is the exact mirror of its boost. Sixteen macros, seven patches, zero latency. **Portability tier: audioif** (`audiobiquad`) - eight float biquads, so the tail reaches exact zero where the ported node parks on DC. Eight sections always built: budgeted at 43 % of an S3 stereo block and 26 % of a P4's. Dossier `docs/effects/ParametricEQ.md` |
 | `GraphicEQ` | ten fixed ISO bands |
 | `DynamicEQ` | notch+band split, band compressed, summed (the split is exact) |
 | `LowPass` `HighPass` `BandPass` `Notch` | single swept biquads |
