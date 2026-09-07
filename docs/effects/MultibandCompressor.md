@@ -2,57 +2,50 @@
 
 **Class:** `lib/audioeffects/dynamics.py` — read once, for §7.
 **Family / phase:** Dynamics, roadmap Phase 2
-**Standout:** none. Vision §4.2 lists this class with a dash and grade
-*design*, and this run **confirms that rather than arguing a swap.** Split-band
-compression is a topology, not a box: RaneNote 155 draws it as a general
-variation on the compressor (Fig. 7) and shows it built in software from
-ordinary parts, and the crossover it needs is a published alignment with a
-name and two authors rather than a pedal (S2, S3). Nothing reached this run
-names a canonical multiband unit anyone would point at.
-**Grade:** design — the traits below are the textbook properties of a
-crossover-split dynamics processor, stated as falsifiable Tier 2 rows rather
-than left to Tier 1 and Tier 3 alone, because the palette's own summing and
-fan-out fail two of them (§4) and a seed that did not say so would hand the
-rebuild a trap.
-**Portability tier:** needs audioif-own nodes (`audiodynamics`, `audioroute`)
-**Status:** seed (Phase 0), written 2026-09-06
+**Standout:** none — split-band compression is a topology, not a box, and
+nothing reached names a canonical unit (the full reading is in **App. R**).
+**Grade:** design.
+**Portability tier:** audioif — `audiobiquad`, `audiodynamics`, `audioroute` (§4).
+**Status:** seed 2026-09-06; **§§3–8 restructured, §8 settled and §6 frozen
+2026-09-07** at Station A of the rebuild.
 
 ## 1. The mechanism, in one paragraph
 
-There is no circuit, so this paragraph states the textbook object. A
-split-band compressor "divides the incoming signal into two or more frequency
-bands … Each band has its own side-chain detector and gain reduction is
-applied equally to all frequencies in the passband. After dynamics processing,
-the individual bands are re-combined into one signal" (S2, Fig. 7). Everything
+There is no circuit, so this states the textbook object. A split-band
+compressor "divides the incoming signal into two or more frequency bands …
+Each band has its own side-chain detector and gain reduction is applied
+equally to all frequencies in the passband. After dynamics processing, the
+individual bands are re-combined into one signal" (S2, Fig. 7). Everything
 interesting is in the divide-and-recombine, because the sum must be a wire
 when nothing is compressing. The alignment that makes it one is
-**Linkwitz-Riley**: two characteristics, "in-phase outputs (0° between
-outputs) at all frequencies" and "constant voltage (the outputs sum to unity
-at all frequencies)", obtained by "cascading … two Butterworth filters to create
-the desired −6 dB crossover points (since each contributes −3 dB)" (S3). The
-consequence a rebuild must not forget is that unity is not identity: the
+**Linkwitz-Riley**: "in-phase outputs (0° between outputs) at all frequencies"
+and "the outputs sum to unity at all frequencies", got by "cascading … two
+Butterworth filters to create the desired −6 dB crossover points" (S3). The
+consequence a rebuild must not forget is that **unity is not identity**: the
 summed outputs have "a flat amplitude response with a smoothly changing phase
-response", the network itself "behav[ing] like an all-pass" (S4) — so a multiband
-at rest is flat, not transparent, and a true bypass has to be a real bypass.
-Order matters for polarity: "starting with LR-2, every other solution requires
-inverting one output. That is, LR-2 and LR-6 need inverting, while LR-4 and
-LR-8 do not" (S3), which is why fourth order is the sane default. Above that
-the object is just compressors: each band gets its own threshold, ratio and
-make-up, and the bands that are not working must stay out of the way of the
-ones that are.
+response", the network itself "behav[ing] like an all-pass" (S4) — a multiband
+at rest is flat, not transparent, so a true bypass has to be a real bypass.
+Polarity follows the order: LR-2 and LR-6 "need inverting, while LR-4 and LR-8
+do not" (S3), which is why fourth order is the sane default. Above that the
+object is just compressors: each band its own threshold, ratio and make-up,
+and the bands that are not working staying out of the way of the ones that
+are.
 
 ## 2. Sources and license calls
 
 All fetched 2026-09-06; nothing from memory.
 
-| Source | What it gave | License as read | URL | Reached |
-|---|---|---|---|---|
-| **S2** Jeffs, Holden & Bohn, *Dynamics Processors*, RaneNote 155 | Split-band compression as a topology (Fig. 7) and its … (App. S2) | PDF line "© 2005 Rane Corporation" … (App. S2) | <https://www.ranecommercial.com/legacy/pdf/ranenotes/Dynamics_Processors.pdf> | yes — PDF fetched, text via `pypdf` |
-| **S3** Bohn, *Linkwitz-Riley Crossovers: A Primer*, RaneNote 160 | The two LR characteristics verbatim … (App. S3) | Page foot "© 2005 Rane" beside a Terms of Use … (App. S3) | <https://www.ranecommercial.com/legacy/note160.html> | yes — HTML |
-| **S4** Wikipedia, *Linkwitz–Riley filter* | "a flat amplitude response with a smoothly changing … (App. S4) | **CC BY-SA 4.0** (confirmed at the page foot … (App. S4) | <https://en.wikipedia.org/wiki/Linkwitz%E2%80%93Riley_filter> | yes — HTML |
-| **Local** `audioif/src/shared/audioif_splitter.{c,h}`, `audioif/src/audioroute/Splitter.c`, `audioif_dynamics.c`, `audioif/docs/upstream-diff.md`, `audiocomponents/lib/audioeffects/dynamics.py`, the probes in the Appendix | What the shipped class and the palette actually do | MIT (audioif, audiocomponents) | — | yes |
+Every reading, licence line and quotation check is in **App. S**; the gate
+conditions — id, URL, reached — are here.
 
-*(More of §2 is in **App. R** — moved under the length rule, nothing deleted.)*
+| Source | License | URL | Reached |
+|---|---|---|---|
+| **S2** Jeffs, Holden & Bohn, *Dynamics Processors*, RaneNote 155 | all rights reserved, read only | <https://www.ranecommercial.com/legacy/pdf/ranenotes/Dynamics_Processors.pdf> | yes — PDF, text via `pypdf` |
+| **S3** Bohn, *Linkwitz-Riley Crossovers: A Primer*, RaneNote 160 | all rights reserved, read only | <https://www.ranecommercial.com/legacy/note160.html> | yes — HTML |
+| **S4** Wikipedia, *Linkwitz–Riley filter* | **CC BY-SA 4.0** | <https://en.wikipedia.org/wiki/Linkwitz%E2%80%93Riley_filter> | yes — HTML |
+| **Local** the audioif C named throughout, `upstream-diff.md`, `dynamics.py`, this dossier's probes | MIT | — | yes |
+
+Two licence and citation audits, and the second needed no correction: **App. R**.
 
 ## 3. Traits — fixed before measurement
 
@@ -62,115 +55,163 @@ The standard block, verbatim from vision §3, is in **App. I** — moved there u
 
 ### Tier 2 — the textbook properties, stated so a measurement can fail them
 
-| # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Meas. |
-|---|---|---|---|---|---|
-| M1 | **Unity sum.** With every band at unity the summed magnitude is flat within **±0.25 dB** from 30 Hz to min(20 kHz, 0.45 × sample rate) — at two bands for **every** crossover setting, and at three bands for every setting whose crossovers are **at least 8:1 apart**, which the surface enforces (§6). *(Critic pass, 2026-09-06: the first draft claimed "every crossover setting" and it is false by construction — the parallel three-way sums to **−7.94 dB** at 400/800 Hz, a legal setting on the first draft's own surface. A-M6 has the ratio table.)* | S3 ("the outputs sum to unity at all … (App. M1) | high | Any tone in the sweep beyond ±0.25 dB at a legal setting; a two-band sum that deviates at any setting; a three-band sum that deviates at 8:1 or wider; a surface that accepts a crossover pair closer than 8:1 | SUM at 40/8000 … (App. M1) |
-| M2 | **Each crossover is −6 dB at its corner with a fourth-order skirt**: at a 200/2000 Hz split each band is −6.0 ± 0.5 dB at its corner and its skirt fits 24 ± 2 dB/octave over the octave-to-two-octaves band on the side that lies below Nyquist; and the two halves are in phase there — summed with no polarity inversion the level at the corner is 0.0 ± 0.25 dB, not a null | S3 ("−6 dB crossover points" … (App. M2) | high | A −3.0 dB corner (plain Butterworth rather than LR4); a fitted skirt outside 24 ± 2 dB/octave; a corner more than 0.25 dB off unity in the sum, or a null there (the LR-2/LR-6 polarity case S3 names) | XOVER |
-| M3 | **Band isolation.** Driving one band to 12 dB of gain reduction lowers that band's passband magnitude by 12.0 dB within 0.5 dB, evenly across the passband (no more than 0.5 dB of tilt from one passband edge to the other), and leaves every other band's magnitude within 0.5 dB of its idle value everywhere more than half an octave from a crossover; the test is run for each band in turn | S2 ("gain reduction is applied equally to all … (App. M3) | high | An idle band moving more than 0.5 dB when a neighbour compresses; a driven band whose reduction is more than 0.5 dB off 12 dB or tilted by more than 0.5 dB across its passband | ISO, once per band |
-| M4 | **Zero latency.** The dry-to-wet path adds no samples at any setting: an impulse emerges in the frame it entered | S3/S4 (an IIR crossover delays phase … (App. M4) | high | Any non-zero click offset; a partitioned or FIR crossover being chosen instead | CLICK |
-| M5 | **The sum survives its source.** M1 holds whatever block size the source hands out: with the same probe delivered as 256, 8192, 16384, 20000 and 32768-frame `get_buffer` calls, the rendered output is byte-identical across all five and non-silent in all five | derived — no external source … (App. M5) | high | Any of the five renders differing from the 256-frame one; any of them silent; a non-zero-sample count that falls as the source's buffer grows | LONG |
+**Frozen. M1–M5 are the seed's own rows of 2026-09-06.** The Station A pass of
+2026-09-07 restructured §§1–8, settled §8 and corrected three palette claims
+(§§4, 5); it added, removed, retired and loosened nothing. Each row's full
+statement, its source reading and its confidence reasoning are in **App. T**,
+which the gate reads; the column below is the claim in one line.
 
-No characters. M5 is in the set because the measurement in A-M5 shows the
-shipped class returning **pure silence** on exactly the probe material the
-Phase 0 kit is specified to use, and a trait that says "and it must still be
-there" is the only way that failure gets caught rather than read as agreement.
+| # | Trait | Bar | Disconfirmed by | Meas. |
+|---|---|---|---|---|
+| M1 | **Unity sum**: every band at unity, the summed magnitude is flat, 30 Hz to min(20 kHz, 0.45 fs) — at **two** bands for every crossover setting, at **three** for every setting 8:1 or wider, which §6 enforces | ±0.25 dB | any tone past the bar at a legal setting; any two-band deviation; a surface accepting a pair closer than 8:1 | SUM at 40/8000, 200/2000 and the closest legal pair per band count |
+| M2 | **LR4 crossovers**: at 200/2000 Hz each band is −6 dB at its corner on a 24 dB/octave skirt, and the halves are in phase there — the sum at the corner is unity, not a null | ±0.5 dB, 24 ± 2 dB/oct, ±0.25 dB | a −3 dB corner (plain Butterworth); a skirt outside the band; a null at the corner (S3's LR-2/LR-6 case) | XOVER |
+| M3 | **Band isolation**: 12 dB of reduction on one band lowers *that* band's passband by 12 dB, evenly, and leaves the others where they were more than half an octave from a crossover | ±0.5 dB; tilt and leak ≤ 0.5 dB | an idle band moving when a neighbour compresses; a driven band off 12 dB or tilted | ISO, per band |
+| M4 | **Zero latency**: an impulse emerges in the frame it entered, at every setting | 0 samples | any non-zero click offset; a partitioned or FIR crossover chosen instead | CLICK |
+| M5 | **The sum survives its source**: the same probe at 256, 8192, 16384, 20000 and 32768-frame `get_buffer` calls renders byte-identically and non-silently | identical digests | any render differing from the 256-frame one; any of them silent | LONG |
+
+No characters. M5 is in the set because A-M5 measures the shipped class
+returning **pure silence** on exactly the material the Phase 0 kit specifies,
+and a trait saying "and it must still be there" is the only way that reads as
+a failure rather than as agreement. The five kit measurements are defined in
+App. R.
 
 ### Tier 3 — cost and latency
 
-*(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
+**Budget**, of one stereo block's real-time deadline: **P4 25 %, S3 45 %.**
+Lean build expected: **yes**. Three bands is **fourteen nodes** — guard,
+four-tap `Splitter`, eight biquads, three detectors, four-voice `Mixer` — the
+most expensive class in this unit by about four. `bands=2` is the valve: four
+biquads, two detectors, three voices (§8.5).
 
-## 4. Modeling approach on the palette
+**Latency: 0 samples at every setting, and no option can add any** — the
+crossover is IIR, no detector looks ahead, and per-band look-ahead and any
+linear-phase crossover are deliberately not offered (App. R).
+`tail_samples` is not zero and not a constant: it is the lower crossover's
+ring-down, reported per instance.
 
-Compose first; almost all of it composes, and the two things that do not are
-measured rather than argued.
+## 4. Modeling approach on the palette — settled 2026-09-07
 
-*(More of §4 is in **App. R** — moved under the length rule, nothing deleted.)*
+All of it composes; nothing is asked for. Every run behind a line here is in
+**App. P**.
 
-## 5. Node asks
+- **Fan-out.** `source → audiofilters.Filter(filter=None) → audioroute.Splitter(taps = bands + 1)`,
+  tap 0 dry. The guard is not optional: without it a whole-buffer source loses
+  the first *n* − 8192 frames (**P4**, re-running V-M1/V-M3).
+- **Crossover.** LR4: two `audiobiquad.Biquad` sections a side at Q = 0.7071
+  — **not** the `synthio.Biquad` cascade inside `audiofilters.Filter` the
+  seed's §4 mapped, which holds DC for ever and cannot pass Tier 1's first
+  invariant (**P1**). *(Correction: `audiobiquad` landed in Phase 1, after
+  the seed.)*
+- **Detectors.** One `audiodynamics.Dynamics(DYN_COMPRESS, detector="rms")`
+  per band: RMS landed with the node's twenty-one options and S2's Fig. 7
+  draws RMS detectors (**P3**). *(Correction: §5's "the palette's are peak"
+  is stale.)*
+- **Sum.** One `audiomixer.Mixer`, a dry voice plus one per band. Make-up
+  rides `makeup_db` on the detectors — a Mixer voice level is clamped to 0..1
+  and cannot carry +12 dB.
+- **Reset order.** The Mixer is owned **first** so the walk resets it **last**:
+  its reset resets each voice's source and then pulls a chunk through it, so
+  resetting it tail-first lands the crossover's ring-down in the voice buffer,
+  where nothing later can reach it (**P5**).
 
-One, and it is a defect report rather than a feature.
+**M1 is reachable and its margin is the topology's own**, not the nodes'.
+Rebuilt on `audiobiquad` the 200/2000 Hz three-way sums to **+0.001 / −0.119
+dB** — A-M2's analytic floor, with the shipped class's Q12 rounding gone — and
+that floor tracks the crossover **ratio**: **−0.192 dB at 8:1, −0.986 at 4:1,
+−7.954 at 2:1** (**P6**, reproducing A-M6 and V-M4). Hence §6's clamp.
 
-*(More of §5 is in **App. R** — moved under the length rule, nothing deleted.)*
+**Portability tier: audioif** — `audiobiquad`, `audiodynamics`, `audioroute`
+(`upstream-diff.md:661`, `:1953`): guarded import, construction-time
+`ImportError` on a stock board. C runs everything per sample. **Mono:** the
+split and the detectors are per band, not per channel, so a mono source is
+processed identically (App. I).
 
-## 6. Proposed surface
+## 5. Node asks — none
 
-Fifteen macros, inside the sixteen-macro wall.
+- **N-MB-1 (a bounded pull on `audioroute.Splitter`) — REFUTED and it stays
+  refuted:** any block-sized node in front removes the drop, and the class
+  builds that node (§4, P4). What survives is a **defect report on audioif**,
+  filed with the V-M1/V-M2 reproduction — the Splitter still destroys audio
+  for anyone who hands it a long buffer directly, silently and consistently.
+  It gates no trait here.
+- **RMS detection — no longer an ask:** it landed (`detector="rms"`,
+  `upstream-diff.md:969`) and the rebuild uses it (P3).
+- **An all-pass — still not asked for, for a corrected reason:** the palette
+  *has* `audiobiquad.AllPass`, which the seed did not know about, but it is a
+  cascade of **first-order** sections and the three-way correction needs a
+  **second-order** all-pass at Q = 0.7071 — what LP4 + HP4 sums to — which no
+  palette node produces (**P2**). M1 is met without it (§8.1).
+
+## 6. Surface — frozen 2026-09-07
+
+**Fourteen macros.** *(The seed proposed fifteen, with `Bands` as macro 0;
+§8.5 settles that as a constructor option instead.)*
 
 | # | Macro | Mode | Range | Generalizes |
 |---|---|---|---|---|
-| 0 | Bands | TOGGLE | 2 / 3 | the band count S2's Fig. 7 leaves open |
-| 1 | Crossover Low | UNIPOLAR | 40 … 800 Hz, log | the lower LR corner |
-| 2 | Crossover High | UNIPOLAR | 800 Hz … 8 kHz, log | the upper LR corner; **at three bands it clamps to ≥ 8 × Crossover Low**, and Crossover Low clamps to ≤ ⅛ × Crossover High, so M1's ±0.25 dB is reachable at every setting the surface can produce (A-M6). The clamp is a clamp, never a refusal — the Tier 1 rate rule's shape |
-| 3–5 | Low / Mid / High Threshold | UNIPOLAR | −60 … 0 dB | per-band compressor threshold |
-| 6–8 | Low / Mid / High Ratio | UNIPOLAR | 1 … 20, log | per-band ratio |
-| 9–11 | Low / Mid / High Gain | BIPOLAR | −12 … +12 dB | per-band make-up |
-| 12 | Attack | UNIPOLAR | 0.1 … 100 ms, log | one attack, all bands |
-| 13 | Release | UNIPOLAR | 5 … 1000 ms, log | one release, all bands |
-| 14 | Mix | UNIPOLAR | 0 … 100 % | parallel compression; 0 % is the Tier 1 bypass |
+| 0 | Crossover Low | UNIPOLAR | 40 … 800 Hz, log | the lower LR corner; at two bands the only one |
+| 1 | Crossover High | UNIPOLAR | 800 Hz … 8 kHz, log | the upper LR corner, clamped to ≥ 8 × macro 0 |
+| 2–4 | Low / Mid / High Threshold | UNIPOLAR | −60 … 0 dB | per-band threshold |
+| 5–7 | Low / Mid / High Ratio | UNIPOLAR | 1 … 20, log | per-band ratio |
+| 8–10 | Low / Mid / High Gain | BIPOLAR | −12 … +12 dB | per-band make-up (`makeup_db`) |
+| 11 | Attack | UNIPOLAR | 0.1 … 100 ms, log | one attack, all bands (§8.2) |
+| 12 | Release | UNIPOLAR | 5 … 1000 ms, log | one release, all bands |
+| 13 | Mix | UNIPOLAR | 0 … 100 % | parallel compression; **0 % is the Tier 1 bypass**, a real one (App. I) |
 
-At **Bands = 2** the High macros address the upper band and the Mid ones are
-inert; the docstring says so, and the kit measures it. Characters: none.
-Patches: **Master Glue**, **Bass Control** (low band only), **Vocal Bus**,
-**De-Boom** (low threshold down, ratio up), **Loudness** (all three, gentle,
-mix 60 %), and **Master Glue - lean** (two bands, the Tier 3 escape valve).
+**The clamp is one-directional** — the lower corner is authoritative, the
+upper one is pushed up to meet it, because a mutual clamp has no defined
+answer when both macros move — and it is a clamp, never a refusal.
+`crossover_high_hz` reports what was applied; `macro(1)` what was asked.
+
+**`bands` is a constructor option, 2 or 3**, the only thing that changes the
+topology. At two bands Crossover High and the three Mid macros are inert;
+`macro_is_live(index)` says which. Characters: none. **`capabilities` = `()`**
+— nothing here refers to tempo, so the transport is never read (App. I, D10).
+
+**Patches:** 0 **Master Glue** (the constructor's defaults on the grid),
+1 **Bass Control**, 2 **Vocal Bus**, 3 **De-Boom**, 4 **Loudness** (mix 60 %).
+The seed's *Master Glue - lean* is gone: a patch cannot change the node graph,
+so it could never have been the escape valve it was proposed as (§8.5).
 
 ## 7. Defects in the current class the rebuild must not repeat
 
-- **The source goes straight into the Splitter.** The class builds
-  `audioroute.Splitter(source, taps=3)` at `dynamics.py:239` with nothing in
-  front of it, so it inherits the ring behaviour of V-M1: a source that hands
-  back more than 8192 frames in one call loses the first `n − 8192` of them,
-  which on head-loaded material (a burst, an impulse) is the whole signal and
-  renders the class silent (A-M5). The rebuild puts a block-sized node between
-  the source and the Splitter (§4). The class ships today with no test that
-  would notice.
-- **No surface, nothing live.** `MACRO_LABELS = ()` at `dynamics.py:232`,
-  `PATCHES = {0: ("Default", ())}` at `:234`; crossovers, thresholds and
-  ratios are constructor-only (`:236-238`) and the per-band attack and release
-  are hard-coded at `:267`. There is no make-up gain, no output gain and no
-  mix; `mixer.voice[index].level = 1.0` at `:272` is fixed.
-- **A dead parameter.** `def band(tap, biquads)` at `:242-243` never uses
-  `tap`, and is called as `band(0, …)`, `band(1, …)`, `band(2, …)` at
-  `:254-256` — three call sites passing an argument that does nothing, which
-  reads as a tap assignment and is not one.
-- **Mismatched block sizes with nothing saying why.** The `Filter`s take
-  `_core.pcm()`'s 2048-byte default (`:243`), the `Mixer` takes 1024
-  (`:262`), and `Dynamics` hands out at most 256 frames per call
-  (`audioif_dynamics.h:32`). The comment at `:247-249` records that an earlier
-  crossover error was "invisible while the filters themselves were wrong" —
-  the right instinct, aimed at the wrong layer.
-- **The docstring's claim is not measured anywhere.** `:223-226` states the
-  bands "recombine flat to a fraction of a decibel"; that is true as measured
-  (A-M3) and nothing in the repository checks it, so it has been a claim, not
-  a fact, for the class's whole life.
+Five, and the rebuild's answer to each; the readings, line numbers and the
+seed's own prose are in **App. D**, which is what Station B works from.
 
-## 8. Open questions
+1. **The Splitter is fed straight off the source** (`dynamics.py:239`), so a
+   long buffer loses its head — silence on head-loaded material (A-M5).
+   *Answer: a block-sized guard in front (§4).*
+2. **No surface, nothing live** — no macros, one empty patch, everything
+   constructor-only, attack and release hard-coded, no make-up, no mix.
+   *Answer: fourteen macros, five patches (§6).*
+3. **A dead parameter** — `band(tap, biquads)` never uses `tap`, and three
+   call sites pass one. *Answer: `_band_chain(band)` uses its argument.*
+4. **Three block sizes with nothing saying why** — 2048 / 1024 / 256.
+   *Answer: one, 256 frames.*
+5. **The docstring's flatness claim is measured nowhere** (`:223-226`).
+   *Answer: M1, at six settings, red on a planted fault.*
 
-1. **Spend an all-pass to close the last 0.12 dB?** The parallel three-way's
-   floor is −0.117 dB (A-M2); the textbook correction is to pass the outer
-   band through an all-pass matching the other crossover, which the palette
-   cannot build (§5). M1 passes without it. The recommendation is **no** —
-   record the floor in the evidence pack and spend nothing. *Implementation
-   session, Phase 2.*
-2. **One attack/release for all bands, or three?** Three would need six macros
-   and would break the sixteen-macro wall against the per-band gains. The
-   surface above chooses one pair, shared; whether a patch-selected per-band
-   offset is worth it is open. *Implementation session.*
-3. **Does N-MB-1 belong to this program at all?** No — the palette
-   verification refuted it as a node ask (§5). It remains a defect in an
-   audioif-own node that predates the effects program and affects every class
-   built on `Splitter`, and should be filed on audioif with the V-M1/V-M2
-   reproduction, outside the node list. *Arthur.*
-4. **Is an 8:1 minimum crossover ratio too coarse a surface?** It forbids, at
-   three bands, a 200/1000 Hz split a mastering engineer might want (−0.55 dB,
-   A-M6). The alternatives are a looser M1 bound stated per ratio, or the
-   all-pass of §8.1 — which the palette cannot build (§5). The recommendation
-   is the clamp, because a trait that holds only at some settings is the kind
-   of bar that can be passed by claiming less. *Implementation session,
-   Phase 2, with the measured table.*
-5. **Whether the two-band lean patch is honest as a patch** or should be a
-   constructor option — a patch that changes the topology is unlike every
-   other patch in this library. *Implementation session.*
+## 8. Open questions — all five settled, 2026-09-07
+
+1. **Spend an all-pass to close the last 0.12 dB? — No.** M1 passes without it
+   (−0.119 dB against ±0.25 dB, P6) and the correction is not buildable
+   anyway (P2). *(The seed's answer kept; its reason corrected.)*
+2. **One attack/release for all bands, or three? — One pair, shared.** Three
+   would need six macros and break the sixteen-macro wall against the per-band
+   gains; no source asks for per-band times. No patch-selected offset either.
+3. **Does N-MB-1 belong to this program? — No.** §5 now says so in its own
+   right: a defect report on audioif, outside the node list. *Arthur's.*
+4. **Is an 8:1 minimum ratio too coarse? — Keep the clamp.** The alternative
+   is an M1 stated per ratio, which is a bar that can be passed by claiming
+   less. The cost is named: at three bands 200/1000 Hz is unreachable
+   (−0.55 dB, A-M6); the surface offers 200/1600 at −0.192 dB.
+5. **Is the two-band lean patch honest as a patch? — No; it is a constructor
+   option.** A `program_change` moves macro positions, so a patch cannot drop
+   a node — and a `Bands` *macro* would have been worse than useless: the
+   Mixer pulls a voice at level 0 exactly as hard as one at unity, so a muted
+   middle band still costs four biquads and a detector every block. The escape
+   valve has to be a different build. **What that costs**, recorded rather
+   than hidden: the band count is not automatable from a host's macro lane.
 
 
 ## Appendix
@@ -323,6 +364,88 @@ a true null at the corner (all-zero output) and −6.75 / −2.65 / −0.55 dB a
 2828 / 2000 / 1000 Hz, while the LR4 pair sums to **0.00 dB at every one of
 those frequencies**.
 
+### App. P — palette verification, 2026-09-07 (Station A of the rebuild)
+
+Run by `tools/phase2_probes/multiband_palette.py` against the CPython build
+of audioif in `audiocomponents/.venv`, 48 kHz, stereo, 16-bit, audioif at the
+pin. Every number here is that run's own. Three of the seed's palette claims
+did not survive it; each correction is marked in §4 or §5 as well as here.
+Nothing in §3 moved.
+
+**P1 — the tail, and it decides the crossover node.** A 256-frame full-scale
+DC burst into a two-section LOW_PASS cascade, then three seconds of silence:
+
+| corner | `audiobiquad.Biquad` ×2 | `audiofilters.Filter` + `synthio.Biquad` ×2 |
+|---|---|---|
+| 100 Hz | last non-zero frame **1895**, held **0 LSB** | last non-zero frame 144511 of 144512, held **2 LSB** |
+| 40 Hz | last non-zero frame **3987**, held **0 LSB** | last non-zero frame 144511 of 144512, held **8 LSB** |
+
+The ported cascade never arrives — that is audioif#23's fixed points, in the
+one place this class cannot avoid them — and Tier 1's first invariant is that
+a decaying tail reaches exact zero. **Correction to §4:** the crossover is
+`audiobiquad`, not `audiofilters` over `synthio.Biquad`. The seed could not
+have known: `audiobiquad` landed in Phase 1, after it was written.
+
+**P2 — the palette does have an all-pass, and it is the wrong order.**
+`audiobiquad.AllPass(stages=…, frequency=…, feedback=…, mix=…)`, up to
+`MAX_STAGES` 16, is a cascade of **first-order** sections;
+`audiobiquad.MODES` is the same seven as `synthio.FilterMode` and carries no
+all-pass either. The textbook three-way correction needs a **second-order**
+all-pass at Q = 0.7071 — it is what LP4 + HP4 sums to — and no palette node
+produces one. **Correction to §5:** the reason changes, the answer does not
+(§8.1).
+
+**P3 — RMS detection landed.** A 220 Hz sine against a square, into
+`DYN_COMPRESS` at −40 dB, ratio 4:
+
+| detector | equal amplitude | equal RMS |
+|---|---|---|
+| `peak` | sine −21.38, square −21.58 dB → spread **0.20 dB** | sine −21.38, square −19.34 → spread **2.05 dB** |
+| `rms` | sine −19.43, square −21.58 dB → spread 2.15 dB | sine −19.43, square −19.34 → spread **0.10 dB** |
+
+Each detector is flat on the quantity it detects, which is the point: S2's
+Fig. 7 draws RMS detectors, and `detector="rms"` is on the pin
+(`upstream-diff.md:969`). **Correction to §5:** "the palette's are peak" is
+stale; the rebuild uses RMS.
+
+**P4 — the guard, V-M3 re-run.** One impulse at frame 64, through
+`audioroute.Splitter(taps=4)`, tap 0, non-zero output samples:
+
+| source frames | 256 | 8192 | 16384 | 20000 | 32768 |
+|---|---|---|---|---|---|
+| straight off the source | 2 | 2 | **0** | **0** | **0** |
+| through one block-sized node | 2 | 2 | 2 | 2 | 2 |
+
+**P5 — `audiomixer`'s reset pulls.** `MixerVoice.reset()` resets the voice's
+source and then takes a chunk from it, so the order the class's enumerated
+walk resets in is not cosmetic. On the class, primed to the end of an 80 Hz
+burst and then reset:
+
+| walk | after `reset()` | per band |
+|---|---|---|
+| the Mixer owned first, so reset **last** | **0 LSB** | 0, 0, 0 |
+| the Mixer reset first (tail-first, the natural order) | **1790 LSB** | low **4775**, mid **2985**, high 0 |
+
+The per-band figures are taken on their own instances with the solo set
+*before* the first pull after the reset: read them after a pull and the
+residual is already gone, which reads as a clean reset and is not one.
+
+**P6 — the three-way sum, rebuilt on `audiobiquad`, every band at unity.**
+Steady sines, 30 Hz–20 kHz. At 200/2000 Hz: **max +0.001 / min −0.119 dB**,
+which is A-M2's analytic floor with the shipped class's Q12 rounding gone
+(A-M3 measured +0.143 / −0.141 on the ported nodes). The ratio table, worst
+deviation over the same tones:
+
+| f₁/f₂ | ratio | min dB |
+|---|---|---|
+| 200/400 | 2:1 | **−7.954** |
+| 200/800 | 4:1 | −0.986 |
+| 200/1600 | 8:1 | **−0.192** |
+
+A-M6 derived −7.95 / −0.99 / −0.19 analytically and V-M4 measured −7.96 /
+−0.99 / −0.19 on the ported nodes. Three runs, three methods, the same three
+numbers.
+
 ### App. I — Tier 1 invariants, the standard block
 
 Verbatim from vision §3, moved out of §3 under the length rule. It is the
@@ -383,10 +506,13 @@ of what each source gave and how its licence reads is here.
 
 ### App. T — Tier 2 rows, in full
 
-Moved here under the length rule. The trait statement, its disconfirmation
-and its measurement stay in §3 in full — they are what the gate checks; the
-source reading and the confidence reasoning sit here behind each row's
-cell-level `App. <id>` reference.
+Moved here under the length rule. §3 carries each row's claim, bar,
+disconfirmation and measurement — that is what the gate reads — and the
+**full statement as the seed wrote it on 2026-09-06**, with its source
+reading and confidence reasoning, is here. Where the two differ it is
+compression, never a change of claim: the Station A pass of 2026-09-07 did
+not add, remove, retire or loosen a trait, and this table is the record that
+says so.
 
 | # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Meas. |
 |---|---|---|---|---|---|
@@ -396,10 +522,56 @@ cell-level `App. <id>` reference.
 | M4 | **Zero latency.** The dry-to-wet path adds no samples at any setting: an impulse emerges in the frame it entered | S3/S4 (an IIR crossover delays phase, not onset); measured on the shipped class (A-M4) | high | Any non-zero click offset; a partitioned or FIR crossover being chosen instead | CLICK |
 | M5 | **The sum survives its source.** M1 holds whatever block size the source hands out: with the same probe delivered as 256, 8192, 16384, 20000 and 32768-frame `get_buffer` calls, the rendered output is byte-identical across all five and non-silent in all five | derived — no external source; the failure is measured at A-M5, where three of those five give exactly zero non-zero samples on the shipped class | high | Any of the five renders differing from the 256-frame one; any of them silent; a non-zero-sample count that falls as the source's buffer grows | LONG |
 
+### App. D — §7 in full, the seed's reading of each defect
+
+Moved under the length rule; nothing deleted. §7 carries the finding and the
+rebuild's answer, which is what the gate checks.
+
+- **The source goes straight into the Splitter** (`dynamics.py:239`) — a
+  source handing back more than 8192 frames loses the head of every buffer,
+  which on head-loaded material is the whole signal (A-M5). *The rebuild puts
+  a block-sized guard in front (§4).*
+- **No surface, nothing live.** `MACRO_LABELS = ()` (`:232`),
+  `PATCHES = {0: ("Default", ())}` (`:234`), everything constructor-only
+  (`:236-238`), attack and release hard-coded (`:267`), no make-up, no output
+  gain, no mix. *Fourteen macros, five patches (§6).*
+- **A dead parameter.** `def band(tap, biquads)` (`:242-243`) never uses
+  `tap`; three call sites pass one (`:254-256`). *`_band_chain(band)` uses its
+  argument.*
+- **Mismatched block sizes with nothing saying why**: 2048 / 1024 / 256
+  (`:243`, `:262`, `audioif_dynamics.h:32`). *One block size, 256 frames.*
+- **The docstring's flatness claim is measured nowhere** (`:223-226`). *M1 is
+  measured at six settings and shown red on a planted fault.*
+
+
 ### App. R — §§1–8 prose moved under the length rule
 
 Derivations, source excerpts, measurement notes and per-row prose, verbatim,
 each tagged with the section it came from. The audits check them here.
+
+**Three passages below are superseded and kept anyway**, because nothing is
+deleted: the §3 Tier 3 paragraph's `" - lean"` **patch** (it is a constructor
+option — §8.5), the §4 paragraph mapping the crossover onto
+`audiofilters.Filter` over a `synthio.Biquad` cascade (it is `audiobiquad` —
+App. P, P1), and the §5 note that the palette's detectors are peak (RMS
+landed — App. P, P3). Each is marked where it sits.
+
+*(from the preamble)*
+
+**Standout:** none. Vision §4.2 lists this class with a dash and grade
+*design*, and this run **confirms that rather than arguing a swap.** Split-band
+compression is a topology, not a box: RaneNote 155 draws it as a general
+variation on the compressor (Fig. 7) and shows it built in software from
+ordinary parts, and the crossover it needs is a published alignment with a
+name and two authors rather than a pedal (S2, S3). Nothing reached this run
+names a canonical multiband unit anyone would point at.
+**Grade:** design — the traits below are the textbook properties of a
+crossover-split dynamics processor, stated as falsifiable Tier 2 rows rather
+than left to Tier 1 and Tier 3 alone, because the palette's own summing and
+fan-out fail two of them (§4) and a seed that did not say so would hand the
+rebuild a trap.
+**Portability tier:** needs audioif-own nodes (`audiodynamics`, `audioroute`)
+**Status:** seed (Phase 0), written 2026-09-06
 
 *(from §2)*
 
@@ -449,9 +621,10 @@ frames in one `get_buffer` call.
 
 *(from §3)*
 
-Budget as a fraction of one stereo block's real-time deadline: ESP32-P4
-**25 %**, ESP32-S3 **45 %**. Lean patch expected: **yes** — a `" - lean"`
-patch drops to two bands (one crossover, four biquads, two detectors), which
+*(SUPERSEDED in part — the lean build is a constructor option, not a patch;
+§8.5. The budget itself stands.)* Budget as a fraction of one stereo block's
+real-time deadline: ESP32-P4 **25 %**, ESP32-S3 **45 %**. Lean patch
+expected: **yes** — a `" - lean"` patch drops to two bands (one crossover, four biquads, two detectors), which
 is roughly two thirds of the three-band cost. The three-band build is one
 `Splitter`, eight biquads across three `Filter` chains, three `Dynamics`
 detectors and one `Mixer` per frame; it is the most expensive class in this
@@ -463,14 +636,16 @@ unit by a factor of four and the only one expected to need the escape valve.
 detectors do not look ahead, so `latency_samples` is 0 — measured on the
 shipped chain, an impulse at frame 64 came out at frame 64 (A-M4). Two
 latency-adding options are deliberately **not offered**: per-band look-ahead
-(`Dynamics` supports it, capped at 50 ms, `audioif_dynamics.h:53`) and any
+(`Dynamics` supports it, capped at 50 ms, `audioif_dynamics.h:105`) and any
 linear-phase or partitioned crossover. If a later revision adds look-ahead it
 defaults to 0, is reported in `latency_samples` the moment it is set, and is
 named in the docstring in milliseconds at 48 kHz, per vision §9a.
 
 *(from §4)*
 
-The topology is `audioroute.Splitter(taps=n)` → one `audiofilters.Filter` per
+*(SUPERSEDED — the crossover is `audiobiquad.Biquad`; the ported cascade
+cannot reach Tier 1's tail invariant, App. P, P1.)* The topology is
+`audioroute.Splitter(taps=n)` → one `audiofilters.Filter` per
 band carrying a cascade of `synthio.Biquad`s at Q = 0.707 → one
 `audiodynamics.Dynamics(DYN_COMPRESS)` per band → `audiomixer.Mixer`. Band
 count is capped at **four** by the ring's tap limit
@@ -580,11 +755,14 @@ No table is built on a board.
   audioif issue, filed with the V-M1/V-M2 reproduction, and **it is not
   additive** — a fix changes an existing own node's behaviour. It does not
   block Phase 1 and it does not gate any trait in this seed.
-- **Not asked for:** RMS detection per band. S2's Fig. 7 shows RMS detectors,
-  and the palette's are peak (`audioif_dynamics.c:265`) — but M1–M5 do not
+- *(SUPERSEDED — `detector="rms"` landed with the node's twenty-one options;
+  App. P, P3.)* **Not asked for:** RMS detection per band. S2's Fig. 7 shows
+  RMS detectors, and the palette's are peak (`audioif_dynamics.c:265`) — but M1–M5 do not
   depend on the detector type, and the ask already exists as `Expander`'s
   N-EXP-1. Recorded here so the survey counts it once.
-- **Not asked for:** an all-pass biquad. `synthio.FilterMode` offers
+- *(SUPERSEDED in part — `audiobiquad.AllPass` exists; it is first-order and
+  so is still not the section the correction needs, App. P, P2.)* **Not asked
+  for:** an all-pass biquad. `synthio.FilterMode` offers
   LOW_PASS, HIGH_PASS, BAND_PASS, NOTCH, PEAKING_EQ, LOW_SHELF and HIGH_SHELF
   and no all-pass (read from the CPython build this run), so closing M1's last
   0.12 dB by the textbook three-way correction would need one. M1 is met

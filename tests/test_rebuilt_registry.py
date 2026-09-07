@@ -58,7 +58,7 @@ class TheLookup(unittest.TestCase):
     #: roll call catches a module that never registered, the derived form
     #: catches one registered under a name nobody listed.
     REBUILT = ("Compressor", "Limiter", "Expander", "NoiseGate", "DeEsser",
-               "TransientShaper")
+               "TransientShaper", "MultibandCompressor")
 
     def test_a_rebuilt_name_hits_and_every_other_one_misses(self):
         # Both branches over the real catalogue. When this file was written
@@ -257,6 +257,16 @@ class TheLookup(unittest.TestCase):
             if name not in FIXTURES:
                 self.assertIn(name, audioeffects.ALL)
 
+    def test_known_lists_what_is_there__mbc(self):
+        # The two fixtures are always there; anything else in the list is a
+        # rebuilt member of the 46, and nothing else may appear.
+        listed = sorted(rebuilt.known())
+        self.assertIn("ExampleAudioif", listed)
+        self.assertIn("ExampleStock", listed)
+        for name in listed:
+            if name not in ("ExampleAudioif", "ExampleStock"):
+                self.assertIn(name, audioeffects.ALL)
+
 
 class TheReplacement(unittest.TestCase):
     """`_adopt` is what the package runs over its own globals at import.
@@ -350,6 +360,15 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
                     self.assertEqual(len(data) % (2 * effect.channel_count), 0)
                 finally:
                     effect.deinit()
+
+    def test_the_fixtures_are_not_among_the_46__mbc(self):
+        # The catalogue is 46 whatever has been rebuilt: a rebuild replaces a
+        # name, it never adds one. The two Example fixtures are the ones that
+        # must stay outside it.
+        self.assertEqual(len(audioeffects.ALL), 46)
+        for name in ("ExampleStock", "ExampleAudioif"):
+            self.assertNotIn(name, audioeffects.ALL)
+            self.assertNotIn(name, audioeffects.__all__)
 
 
 class TheMetadataValidatorCoversBothBases(unittest.TestCase):

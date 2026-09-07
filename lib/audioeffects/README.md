@@ -78,7 +78,7 @@ not.
 | `NoiseGate` | mutes below threshold |
 | `DeEsser` | detector high-passed at `frequency`, so only sibilance ducks the signal |
 | `TransientShaper` | SPL Transient Designer: more stick **and** less room from one instance, at any input level from −6 to −60 dBFS — no threshold, no ratio. Its time constants are fixed, not adaptive (T6 disconfirmed), and the attack section takes ~120 ms to settle on a held note (T5's 100 ms clause disconfirmed). 5 macros, 7 patches, **audioif** tier (`audiodynamics`), one node, 0.00 ms of latency; **patches** |
-| `MultibandCompressor` | 3 bands split/compressed/summed (Linkwitz-Riley crossovers: flat recombine) |
+| `MultibandCompressor` | two or three bands (`bands=`), each with its own compressor, summed back flat to 0.12 dB; `Mix` at 0 is a true bypass; **audioif tier**, fourteen nodes at three bands and the most expensive class here. Isolation is exact - driving one band moves the others 0.00 dB - and the low band's own reduction tilts 0.7 dB across 30-100 Hz; **patches** |
 
 ### Frequency and EQ - `eq.py`
 | Class | Notes |
@@ -235,8 +235,10 @@ individual filter has room for, the recursion accumulates in 64 bits and
 keeps its feedback below the sample grid, and the trigonometry is a proper
 series. Measured against the closed-form response, every mode lands within
 **0.03 dB from 50 Hz to 22 kHz**. `GraphicEQ`'s ten ISO bands all read
-+6.01 dB or better on a +6 dB request; `MultibandCompressor`'s three bands
-recombine flat to 0.23 dB from 30 Hz to 8 kHz. [audioif's `docs/upstream-diff.md`](https://github.com/PyDevices/audioif/blob/main/docs/upstream-diff.md),
++6.01 dB or better on a +6 dB request; the pre-rebuild `MultibandCompressor`'s
+three bands recombined flat to 0.23 dB from 30 Hz to 8 kHz on those biquads.
+(The rebuilt class is on `audiobiquad`'s float sections instead, for the tail
+rather than the shape, and sums to 0.12 dB from 30 Hz to 20 kHz.) [audioif's `docs/upstream-diff.md`](https://github.com/PyDevices/audioif/blob/main/docs/upstream-diff.md),
 "The biquads were Q15, so they could not go low", has the arithmetic, the
 before-and-after table, and what it cost in instructions on an M0.
 

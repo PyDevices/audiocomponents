@@ -13,10 +13,13 @@ suite moves. Until then the contract-level tests over `audioeffects.ALL` in
 `test_cpython_effects_library.py` hold the catalogue, and these hold the
 character.
 
-Covers `ParametricEQ`, `GraphicEQ`, `LowPass`, `HighPass`, `Compressor` and
-`MultibandCompressor`. `Limiter` has been rebuilt: its trait tests were
-retired from the foot of this file on 2026-09-07 and live in
-`test_cpython_effects_limiter.py`.
+Covers `ParametricEQ`, `GraphicEQ`, `LowPass`, `HighPass` and `Compressor`.
+Two classes left with their rebuilds, on 2026-09-07: `Limiter`'s trait tests
+were retired from the foot of this file and live in
+`test_cpython_effects_limiter.py`, and `MultibandCompressor`'s one assertion
+here - the bands add back up to a wire, to 0.4 dB - is now M1 in
+`test_cpython_effects_multiband.py`, at 0.25 dB, at six settings, and with
+the fault that turns it red.
 """
 
 import os
@@ -133,17 +136,6 @@ class DynamicsAndEQTest(unittest.TestCase):
                     tone_gain_db(band, lambda s, g=gains:
                                  audioeffects.GraphicEQ(s, g).output),
                     6.0, delta=0.25)
-
-    def test_the_multiband_bands_add_back_up_to_a_wire(self):
-        # Below every threshold none of the three compressors is doing
-        # anything, so what comes out is purely the crossover sum.
-        def idle(source_sample):
-            return audioeffects.MultibandCompressor(
-                source_sample, thresholds_db=(6.0, 6.0, 6.0)).output
-
-        for hz in (40.0, 100.0, 200.0, 1000.0, 2000.0, 8000.0):
-            with self.subTest(hz=hz):
-                self.assertAlmostEqual(tone_gain_db(hz, idle), 0.0, delta=0.4)
 
     def test_the_compressor_actually_compresses(self):
         # Not just "it renders". The comparison is against a Compressor whose
