@@ -392,6 +392,152 @@ def _mixer(probe):
     return node, (), (node,)
 
 
+# --- the Phase 1 nodes -----------------------------------------------------
+#
+# Eight additions landed in the firmware of 2026-09-07. Their settings below
+# are chosen so a row is comparable to the row it argues against, not so it
+# flatters: the `audiobiquad` rows use the same frequency, Q, stages and
+# feedback as the `audiofilters` rows above them, and the two "@options" rows
+# repeat their base row's settings exactly and add only the new paths.
+
+
+def q15_curve(points=1024):
+    """An odd cubic soft-clip curve as int16 Q15, integer arithmetic only.
+
+    `audioshaper.Waveshaper` takes its curve as data, and cost does not
+    depend on what is in the table - only on how long it is. What the
+    integer arithmetic buys is the same thing it buys in `probe_pcm`: the
+    two boards shape against a byte-identical table, so a digest difference
+    is the node's and never the libm's.
+
+    y = 1.5x - 0.5x^3 over -1..+1, which reaches exactly +-1 at the rails.
+    """
+    curve = array("h")
+    last = points - 1
+    for index in range(points):
+        x = (index * 65535) // last - 32767          # Q15, -32767..+32768
+        cube = (x * x // 32768) * x // 32768
+        value = (3 * x - cube) // 2
+        curve.append(_clip(value))
+    return curve
+
+
+def _waveshaper(factor):
+    def build(probe):
+        import audioshaper
+        curve = q15_curve()
+        node = audioshaper.Waveshaper(sample_rate=SAMPLE_RATE,
+                                      channel_count=CHANNELS,
+                                      oversample=factor, curve=curve,
+                                      pre_gain=8.0, bias=0.0,
+                                      post_gain=0.5, mix=1.0)
+        node.play(probe.output)
+        return node, (), (node, curve)
+    return build
+
+
+def _biquad(probe):
+    """The same low-pass the `audiofilters.Filter` row measures, on the
+    float kernel instead of the Q12 one."""
+    import audiobiquad
+    node = audiobiquad.Biquad(mode=audiobiquad.LOW_PASS, frequency=1200.0,
+                              Q=0.707, mix=1.0, sample_rate=SAMPLE_RATE,
+                              channel_count=CHANNELS)
+    node.play(probe.output)
+    return node, (), (node,)
+
+
+def _allpass(probe):
+    """The same six stages, frequency and feedback as the
+    `audiofilters.Phaser` row - the comparison audioif#36 is about."""
+    import audiobiquad
+    node = audiobiquad.AllPass(stages=6, frequency=800.0, feedback=0.6,
+                               mix=1.0, sample_rate=SAMPLE_RATE,
+                               channel_count=CHANNELS)
+    node.play(probe.output)
+    return node, (), (node,)
+
+
+def _ladder(oversample):
+    def build(probe):
+        import audioladder
+        node = audioladder.Ladder(sample_rate=SAMPLE_RATE,
+                                  channel_count=CHANNELS,
+                                  cutoff_hz=1200.0, resonance=3.5,
+                                  drive=1.0, poles=4, passband_comp=0.5,
+                                  oversample=oversample, mix=1.0)
+        node.play(probe.output)
+        return node, (), (node,)
+    return build
+
+
+def _tank(probe):
+    """Dattorro's default network - the tables the node ships - with the
+    modulation running, since a static tank is not what the class wants."""
+    import audioverb
+    node = audioverb.Tank(sample_rate=SAMPLE_RATE, channel_count=CHANNELS,
+                          max_predelay_ms=200.0, decay=0.7, diffusion=0.75,
+                          damping_hz=5000.0, bandwidth_hz=9000.0,
+                          low_cut_hz=0.0, predelay_ms=20.0,
+                          mod_depth_ms=0.5, mod_rate_hz=1.0, drive=0.0,
+                          width=1.0, tone_db=0.0, mix=0.3)
+    node.play(probe.output)
+    return node, (), (node,)
+
+
+def _suboctave(probe):
+    import audiomath
+    node = audiomath.SubOctave(probe.output, order=1, mix=1.0,
+                               threshold=0.01, hold_ms=1.0,
+                               sample_rate=SAMPLE_RATE,
+                               channel_count=CHANNELS)
+    return node, (), (node,)
+
+
+def _midside(probe):
+    import audioroute
+    node = audioroute.MidSide(probe.output, width=1.5,
+                              sample_rate=SAMPLE_RATE,
+                              channel_count=CHANNELS)
+    return node, (), (node,)
+
+
+def _feedback_delay_options(probe):
+    """The `audioecho.FeedbackDelay` row's settings, with all four of the
+    2026-09-07 options switched on. The difference between the two rows is
+    what the new paths cost, measured rather than reasoned about."""
+    import audioecho
+    shape = array("h")
+    points = 256
+    for index in range(points):                 # one period of a triangle
+        shape.append(_tri(index, points, 32767))
+    node = audioecho.FeedbackDelay(sample_rate=SAMPLE_RATE,
+                                   channel_count=CHANNELS, max_delay_ms=250)
+    node.set(delay_ms=180.0, feedback=0.45, mix=0.5,
+             wow_hz=1.5, wow_depth_ms=2.0, wow_shape=shape,
+             delay_slew=0.5, wow_am_depth=0.25,
+             loop_semitones=12.0, loop_window_ms=25.0)
+    node.play(probe.output)
+    return node, (), (node, shape)
+
+
+def _dynamics_options(probe):
+    """The `audiodynamics.Dynamics` row's settings with the expensive half
+    of the new options on: the RMS detector, the feedback tap, the 4x
+    true-peak reconstruction and a two-pole side-chain band."""
+    import audiodynamics
+    node = audiodynamics.Dynamics(audiodynamics.DYN_COMPRESS,
+                                  sample_rate=SAMPLE_RATE,
+                                  channel_count=CHANNELS)
+    node.set(threshold_db=-20.0, ratio=4.0, attack_ms=5.0, release_ms=120.0,
+             knee_db=6.0, makeup_db=0.0,
+             detector="rms", rms_ms=10.0, feedback_detector=True,
+             true_peak=2, sidechain_hz=120.0, sidechain_lp_hz=2500.0,
+             sidechain_poles=2)
+    node.play(probe.output)
+    return node, (), (node,)
+
+
 #: The audioif palette as the effects library uses it. Keys are the import
 #: path of the node, with a suffix where one node is worth measuring at more
 #: than one size.
@@ -413,6 +559,20 @@ NODES = {
     "audiodelays.PitchShift": _pitch_shift,
     "audiofreeverb.Freeverb": _freeverb,
     "audiomixer.Mixer": _mixer,
+    # The Phase 1 nodes, firmware of 2026-09-07.
+    "audiobiquad.Biquad": _biquad,
+    "audiobiquad.AllPass": _allpass,
+    "audioladder.Ladder": _ladder(1),
+    "audioladder.Ladder@os2": _ladder(2),
+    "audioverb.Tank": _tank,
+    "audiomath.SubOctave": _suboctave,
+    "audioroute.MidSide": _midside,
+    "audioshaper.Waveshaper@x1": _waveshaper(1),
+    "audioshaper.Waveshaper@x2": _waveshaper(2),
+    "audioshaper.Waveshaper@x4": _waveshaper(4),
+    "audioshaper.Waveshaper@x8": _waveshaper(8),
+    "audioecho.FeedbackDelay@options": _feedback_delay_options,
+    "audiodynamics.Dynamics@options": _dynamics_options,
 }
 
 
@@ -450,8 +610,38 @@ def resolve(target):
 # --- measurement -----------------------------------------------------------
 
 
+# MicroPython is the target; CPython is here only so the *same* builders can
+# render the same 683 ms on the desktop and produce a digest to hold a board's
+# against. The timing works either way, but a desktop ms/block is not a board
+# number and no table quotes it.
+try:
+    time.ticks_us
+    _HOST = False
+
+    def _ticks_us():
+        return time.ticks_us()
+
+    def _ticks_delta_us(start):
+        return time.ticks_diff(time.ticks_us(), start)
+except AttributeError:
+    _HOST = True
+
+    def _ticks_us():
+        return time.perf_counter_ns() // 1000
+
+    def _ticks_delta_us(start):
+        return time.perf_counter_ns() // 1000 - start
+
+
+def _mem_alloc():
+    try:
+        return gc.mem_alloc()
+    except AttributeError:
+        return 0
+
+
 def _seconds_since(start):
-    return time.ticks_diff(time.ticks_us(), start) / 1000000.0
+    return _ticks_delta_us(start) / 1000000.0
 
 
 def _warm(output, extras, want_digest, blocks=DIGEST_BLOCKS):
@@ -469,7 +659,7 @@ def _warm(output, extras, want_digest, blocks=DIGEST_BLOCKS):
     frames = 0
     pulls = 0
     gc.collect()
-    start = time.ticks_us()
+    start = _ticks_us()
     while frames < wanted:
         for extra in extras:
             audiocore.get_buffer(extra)
@@ -509,7 +699,7 @@ def _timed(output, extras):
     spent = 0.0
     gc.collect()
     while True:
-        start = time.ticks_us()
+        start = _ticks_us()
         for _ in range(per_segment):
             for extra in extras:
                 audiocore.get_buffer(extra)
@@ -573,10 +763,10 @@ def run(build, want_digest):
     """
     probe = Probe()
     gc.collect()
-    before = gc.mem_alloc()
+    before = _mem_alloc()
     output, extras, keep = build(probe)
     gc.collect()
-    after = gc.mem_alloc()
+    after = _mem_alloc()
     digest, _warm_s, _warm_frames, _warm_pulls = _warm(output, extras,
                                                        want_digest)
     spent, frames, pulls = _timed(output, extras)
