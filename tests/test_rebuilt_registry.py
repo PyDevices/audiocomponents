@@ -18,6 +18,7 @@ import audiocore
 import audioeffects
 from audioeffects import _component
 from audioeffects import rebuilt
+from tools.validate_metadata import MetadataError, validate_effects
 
 
 def source(channels=2, rate=48000):
@@ -126,6 +127,34 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
                     self.assertEqual(len(data) % (2 * effect.channel_count), 0)
                 finally:
                     effect.deinit()
+
+
+class TheMetadataValidatorCoversBothBases(unittest.TestCase):
+    """`validate_effects` used to select on `_core.Effect` alone, so a
+    rebuilt class would have been skipped in silence -- and an unvalidated
+    class reads exactly like a valid one. It now selects on both bases and
+    checks the count it validated against `ALL`."""
+
+    def test_it_validates_all_46(self):
+        self.assertEqual(len(validate_effects(audioeffects)),
+                         len(audioeffects.ALL))
+
+    def test_planted_fault_a_class_the_walk_never_reaches(self):
+        class OneShort:
+            """audioeffects with one name missing from `__all__` -- what a
+            base the validator has not been taught about looks like."""
+
+            ALL = audioeffects.ALL
+            __all__ = [name for name in audioeffects.__all__
+                       if name != "Compressor"]
+
+            def __getattr__(self, name):
+                return getattr(audioeffects, name)
+
+        with self.assertRaises(MetadataError) as caught:
+            validate_effects(OneShort())
+        self.assertIn("were skipped", str(caught.exception))
+        self.assertIn("Compressor", str(caught.exception))
 
 
 if __name__ == "__main__":
