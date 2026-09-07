@@ -72,7 +72,7 @@ not.
 ### Dynamic range - `dynamics.py`
 | Class | Notes |
 |---|---|
-| `Compressor` | `character="vca"/"fet"/"optical"/"varimu"` presets shape attack/release/knee; **patches** |
+| `Compressor` | four characters that differ in *law*, not in three numbers: `fet` (peak detector, both time knobs live and faster clockwise, threshold rising with ratio, dirty when you push it), `optical` — the default — (**no time knobs at all**: ten milliseconds of attack, half the recovery in sixty and the rest over a couple of seconds, slower after a long passage), `vca` (true-RMS, so a square and a sine of the same RMS get the same gain) and `varimu` (no ratio to speak of — the slope climbs with level; the six factory time constants are patches 8–13). Zero latency at every setting. Needs `audiodynamics` and `audioroute`, so it does not run on a stock CircuitPython board; **14 macros, 14 patches** |
 | `Limiter` | brickwall, with optional lookahead and true-peak detection; **patches** |
 | `Expander` | downward: below threshold, quiet gets quieter |
 | `NoiseGate` | mutes below threshold |

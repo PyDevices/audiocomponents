@@ -368,11 +368,16 @@ class CurveTest(unittest.TestCase):
         renders = {}
         for level in self.LEVELS:
             probe = probes.sine(1000.0, 0.5, level)
+            # `character="fet"` because CURVE's subject is the textbook
+            # single-stage law, and the Phase 2 rebuild's default character
+            # is the LA-2A: two stages, its own fixed times, and a memory.
+            # Naming the character here pins the fixture; it does not move
+            # a bar.
             renders[level], _ = render_through(
                 "Compressor", probe, 24000,
-                probe_name="sine_1k_%d" % level, threshold_db=-24.0,
-                ratio=4.0, attack_ms=1.0, release_ms=50.0, knee_db=knee_db,
-                makeup_db=0.0)
+                probe_name="sine_1k_%d" % level, character="fet",
+                threshold_db=-24.0, ratio=4.0, attack_ms=1.0,
+                release_ms=50.0, knee_db=knee_db, makeup_db=0.0)
         return kit.curve(renders, detector="peak", expected=self.EXPECTED)
 
     def test_a_hard_knee_at_the_same_threshold_and_ratio_is_red(self):
@@ -471,6 +476,7 @@ class ReadoutsTest(unittest.TestCase):
             probe = probes.sine(1000.0, 0.2, -12.0)
             render, _ = render_through("Compressor", probe, 9600,
                                        probe_name="sine_1k_-12",
+                                       character="fet",
                                        threshold_db=-24.0, ratio=4.0,
                                        knee_db=knee_db, makeup_db=0.0)
             return render

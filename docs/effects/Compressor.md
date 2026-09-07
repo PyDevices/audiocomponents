@@ -1,6 +1,7 @@
 # Effects Dossier — `Compressor` (four characters: FET, Optical, VCA/RMS, Vari-Mu)
 
-**Class:** `lib/audioeffects/dynamics.py` — read once, for §7.
+**Class:** `lib/audioeffects/rebuilt/compressor.py` (the rebuild).
+`lib/audioeffects/dynamics.py` is the old class, read once, for §7.
 **Family / phase:** Dynamics, roadmap Phase 2
 **Standout:** UREI 1176, Teletronix LA-2A, dbx 160, Fairchild 670 (vision §4.2)
 — **all four confirmed, no swap argued**. The vision's framing is confirmed
@@ -14,8 +15,13 @@ specification plus published analysis, and no 1176 schematic was reached (§2,
 "not found"). The traits are not weaker for it: three of the four standouts
 publish the *numbers* — attack/release spans, a release rate in dB/s, six
 time-constant pairs — that a schematic would only let us re-derive.
-**Portability tier:** needs audioif-own nodes (`audiodynamics`), which is not a
-CircuitPython port (`audioif/docs/upstream-diff.md:661`).
+**Portability tier:** **audioif**. `REQUIRES = ("audiodynamics", "audioroute")`
+— neither is a CircuitPython port (`audioif/docs/upstream-diff.md:661`, `:673`).
+**Macros:** 14 of 16. **Patches:** 14. **`capabilities`:** `()`.
+**Latency budget:** 0 samples at every setting — the build has no
+latency-adding option. **Tail budget:** 0 samples.
+**Tier 3 budget:** ESP32-P4 ≤ 8 %, ESP32-S3 ≤ 22 % of one stereo block's
+deadline; lean patch expected **no** (§3, Tier 3).
 **Status:** seed (Phase 0), written 2026-09-06; audited the same day by an
 independent licence and citation pass that re-fetched every row itself
 (Appendix F); then attacked on 2026-09-06/07 by an independent **trait-critic**
@@ -28,265 +34,321 @@ release could clear, and four rows whose disconfirmation contradicted their own
 trait; it added three traits, each from a manufacturer specification page it
 fetched itself.
 
+**Station A closed 2026-09-07** by the class-building session, which re-read
+the palette against the pin before freezing anything and found the seed's
+Appendix H one release behind: `audiodynamics` carries **thirty-two** options
+on the pin, not the eleven H recorded, and two of the seed's four node asks
+had already landed (**App. J.1**). What that changed — four trait rows
+restated **[A]**, two node asks withdrawn, `Topology` off the surface,
+`Character` onto it — is argued row by row in **App. J.5**; §§1–8 were
+rewritten under the length rule with the pre-freeze text kept verbatim in
+**App. R.0**. The trait table is frozen: 21 Tier 2 rows, nothing added after
+the first line of the class was written.
+
+**Length.** §§1–8 are ~22 KB against the 8–12 KB the vision asks for. 10 KB of
+that is the two frozen tables — the 21 Tier 2 rows (§3) and the macro and patch
+grids (§6) — which are the text the gate is read against and are not moved.
+Everything else was cut or moved to an appendix.
 ## 1. The circuit, in one paragraph
 
 All four are **detector → gain computer → gain cell**, and all four differ in
-every one of those three. Quotations behind every claim here are in Appendix D.
-**FET (1176):** the cell is a field-effect transistor used as a
-voltage-controlled resistor, "arranged in a feedback configuration to obtain
-gain reduction" (S9); S1's own specification line gives the input as "600 Ω,
-bridged T-control (floating)", but **no source reached this run says the FET is
-the control element of that bridged-T network**, so that topology detail is
-recorded here as unsourced and is not a trait. The side chain is tapped
-*after* the cell, so the loop is **feedback** (S3). The panel
-gives Input (drive *and* threshold), Output, Attack **20–800 µs** and Release
-**50 ms–1.1 s** — both faster clockwise — and four exclusive ratios **4:1 / 8:1
-/ 12:1 / 20:1**, with higher ratios also setting the threshold higher (S1) and,
-per S3 reading UREI's own transfer plot, hardening the knee. All four buttons at
-once is a fifth *mode*, not a fifth ratio: S1 attributes its radical distortion
-to a lag on the attack of initial transients, constantly changing times, and a
-shift in the bias points. **Optical (LA-2A):** the cell is the lower leg of a
-divider formed by a **T4** — an electroluminescent panel facing a
-cadmium-sulfide photocell — driven by Peak Reduction pot → 12AX7 → **R37
-pre-emphasis** → 6AQ5 EL driver, again **feedback** (S2). There are no time
-knobs; both are set entirely by the T4. The release is **two-stage** —
-about 0.06 s for 50 %, then 0.5–5 s for the rest depending on how much reduction
-came before — with a **memory**: the release is slower after longer or deeper
-compression (S2). Peak Reduction is side-chain gain, i.e. a *threshold*; a
-Limit/Compress switch raises the ratio. **VCA/RMS (dbx 160):** a decilinear
-(Blackmer) VCA driven by a **true-RMS** detector and, uniquely of the four,
-**feed-forward** (S5). There are no time knobs because the times fall out of the
-detector: attack "15 ms for 10 dB, 5 ms for 20 dB, 3 ms for 30 dB" and release
-"8 ms for 1 dB, 80 ms for 10 dB, 400 ms for 50 dB; 125 dB/sec Rate" (S4) —
-three points on one straight line in dB. Hard knee (S5 models the original as
-"a classic feed-forward hard-knee VCA-based compressor"); the 1:1–∞:1 ratio span
-is the **160X**'s specification line (S4, whose scan OCRs as "Variable 1:1 -
-c2:1 thru to —1:1") and the Waves plug-in's control range ("1:1 to inf:1", S5),
-not a figure read from an original-160 specification (§8.3).
-**Vari-Mu (670):** the cell is a push-pull stage of paralleled **6386**
-remote-cutoff triodes whose µ falls with control voltage, side chain again
-tapped after the cell (**feedback**, S6). There is no ratio knob — the slope
-starts between 1:1 and 2:1 on small peaks and climbs to about 20:1 on loud ones
-(S6; the manual's own line is "Variable from 1:1 to 1:20 above a predetermined
-level", S10, whose control list has no ratio control) — and a six-position TIME
-CONSTANT switch selects fixed attack/release *pairs*, the last two of which are
-themselves program-dependent (S10, corroborated by S6 except at position 4).
+every one of those three. The full paragraph, with the quotation behind every
+clause, is **App. R.0 §1**; the four sentences that drive the build are these.
+**FET (1176):** an FET as a voltage-controlled resistor "arranged in a feedback
+configuration" (S9), side chain tapped *after* the cell (S3); panel Attack
+**20–800 µs**, Release **50 ms–1.1 s**, both *faster clockwise*, four exclusive
+ratios **4:1 / 8:1 / 12:1 / 20:1** with higher ratios also setting the threshold
+higher (S1); All-Button is a fifth *mode*, not a fifth ratio.
+**Optical (LA-2A):** a T4 electroluminescent-panel-plus-photocell divider, again
+feedback (S2); **no time knobs at all** — both times are the cell's — and the
+release is **two-stage**, ~0.06 s for 50 % then 0.5–5 s for the rest, **with a
+memory**: slower after longer or deeper compression (S2).
+**VCA/RMS (dbx 160):** a decilinear VCA on a **true-RMS** detector, uniquely
+**feed-forward** (S5); no time knobs because the times fall out of the detector
+— attack "15 ms for 10 dB, 5 ms for 20 dB, 3 ms for 30 dB", release "125 dB/sec
+Rate" (S4); hard knee, 1:1–∞:1.
+**Vari-Mu (670):** paralleled 6386 remote-cutoff triodes, feedback (S6); **no
+ratio knob** — the slope climbs from 1:1–2:1 on small peaks to about 20:1 on
+loud ones (S10) — and a six-position TIME CONSTANT switch of fixed
+attack/release *pairs*, the last two program-dependent (S10).
 
 ## 2. Sources and license calls
 
-Full quotations and the component values taken from each are in Appendix D.
+Ten sources, every one reached on 2026-09-06. The full rows — what each gave,
+how its licence reads, and the reading behind it — are **App. S**; the
+verbatim quotations are **App. D** and **App. G**.
 
-| # | Source | What it gave | License as read | URL | Reached |
-|---|---|---|---|---|---|
-| S1 | Universal Audio, *Model 1176LN Solid-State Limiting Amplifier* manual … (App. S1) | Attack/release spans and knob sense; the four ratios … (App. S1) | "© 2009 Universal Audio … (App. S1) | https://media.uaudio.com/assetlibrary/1/1/1176ln_manual.pdf | 2026-09-06 — PDF fetched; unreadable to the fetch tool, text extracted locally with `pypdf` (Appendix A) |
-| S2 | Universal Audio, *Model LA-2A Leveling Amplifier* manual … (App. S2) | The two-stage release spec and the 40–80 ms first … (App. S2) | "Copyright 2000 Universal Audio … (App. S2) | https://media.uaudio.com/assetlibrary/l/a/la-2a_manual.pdf | 2026-09-06 — PDF fetched, `pypdf` |
-| S3 | Austin Moore, "All Buttons In: An investigation into the use of the … (App. S3) | Feedback topology, stated and contrasted with … (App. S3) | Huddersfield repository cover sheet … (App. S3) | https://eprints.hud.ac.uk/id/eprint/27391/1/Journal%20on%20the%20Art%20of%20Record%20Production%20%C2%BB%20All%20Buttons%20In_%20An%20investigation%20into%20the%20use%20of%20the%201176%20FET%20compressor%20in%20popular%20music%20production.pdf (from the item page https://eprints.hud.ac.uk/id/eprint/27391/) | 2026-09-06 — PDF fetched, `pypdf` |
-| S4 | dbx, *160X / 160XT Service Manual* (full text) | The attack and release specifications quoted in §1 … (App. S4) | Licence unverified … (App. S4) | https://archive.org/stream/dbx_160X-XT_Service_Manual/160X-XT_Service_Manual_djvu.txt | 2026-09-06 |
-| S5 | Waves, *dbx® 160 Compressor/Limiter User Guide* | The original 160 (1976) as "decilinear VCA … (App. S5) | **Licence unverified … (App. S5) | https://assets.wavescdn.com/pdf/plugins/dbx-160.pdf | 2026-09-06 — PDF fetched, `pypdf` |
-| S6 | Hannes Bieger, "Fairchild 660 & 670", *Sound On Sound*, May 2016 | The six TIME CONSTANT pairs … (App. S6) | "All contents copyright © SOS Publications … (App. S6) | https://www.soundonsound.com/reviews/fairchild-660-670 | 2026-09-06 |
-| S7 | R. Simionato & S. Fasciani … (App. S7) | Independent restatement of the LA-2A's dynamics … (App. S7) | "© 2023 Riccardo Simionato et al. … Creative … (App. S7) | https://www.dafx.de/paper-archive/2023/DAFx23_paper_10.pdf | 2026-09-06 — PDF fetched, `pypdf` |
-| S8 | J. Najnudel, R. Müller, T. Hélie, D. Roze … (App. S8) | The mechanism under the optical two-stage release and … (App. S8) | "© 2023 Judy Najnudel et al. … Creative … (App. S8) | https://www.dafx.de/paper-archive/2023/DAFx23_paper_50.pdf | 2026-09-06 — PDF fetched, `pypdf` |
-| S9 | Wikipedia, "1176 Peak Limiter" | Cross-check only: FET "in a feedback configuration" … (App. S9) | CC BY-SA 4.0 | https://en.wikipedia.org/wiki/1176_Peak_Limiter | 2026-09-06 |
-| S10 | Fairchild Recording Equipment Corporation, *Instruction Manual … (App. S10) | **The Fairchild primary source … (App. S10) | Licence chain, per `instrument-sources.md` … (App. S10) | https://archive.org/download/fairchild_670-im/fairchild_670-im_djvu.txt (item https://archive.org/details/fairchild_670-im), corroborated by the independent scan https://archive.org/download/Fairchild_670_owners_manual/Fairchild_670_owners_manual_djvu.txt | 2026-09-06 — both full texts fetched (HTTP 200) and the specification page read in each; both scans' OCR renders "4" as "U"/"h" throughout ("10-40 45th Avenue", "14\" panel space"), which is how ".U milliseconds" and "«4, milliseconds" read as 0.4 ms |
+| # | Source | URL | Reached |
+|---|---|---|---|
+| S1 | Universal Audio, *1176LN* manual, rev. v3-090908-DC — all rights reserved | https://media.uaudio.com/assetlibrary/1/1/1176ln_manual.pdf | yes |
+| S2 | Universal Audio, *LA-2A* manual, Rev 1.3 — all rights reserved | https://media.uaudio.com/assetlibrary/l/a/la-2a_manual.pdf | yes |
+| S3 | Austin Moore, "All Buttons In", *JARP* 6 (2012) — repository terms, credited | https://eprints.hud.ac.uk/id/eprint/27391/ | yes |
+| S4 | dbx, *160X / 160XT Service Manual* — licence unverified, read as copyleft | https://archive.org/stream/dbx_160X-XT_Service_Manual/160X-XT_Service_Manual_djvu.txt | yes |
+| S5 | Waves, *dbx® 160* user guide — licence unverified, read as copyleft | https://assets.wavescdn.com/pdf/plugins/dbx-160.pdf | yes |
+| S6 | Hannes Bieger, "Fairchild 660 & 670", *SOS*, May 2016 — all rights reserved | https://www.soundonsound.com/reviews/fairchild-660-670 | yes |
+| S7 | Simionato & Fasciani, DAFx-23 — CC BY 4.0 | https://www.dafx.de/paper-archive/2023/DAFx23_paper_10.pdf | yes |
+| S8 | Najnudel *et al.*, DAFx-23 — CC BY 4.0 | https://www.dafx.de/paper-archive/2023/DAFx23_paper_50.pdf | yes |
+| S9 | Wikipedia, "1176 Peak Limiter" — CC BY-SA 4.0 | https://en.wikipedia.org/wiki/1176_Peak_Limiter | yes |
+| S10 | Fairchild, *Model 670* manual, A-96039, Dec 1959 — licence unverified, read as copyleft | https://archive.org/details/fairchild_670-im | yes |
 
 Copyleft sources are measured or read as papers, never read for code structure
-(vision §5). No source here is copyleft code; S7 and S8 are CC BY papers. S4 has
-no stated licence at all and is treated as copyleft, as do S5 and S10; S1, S2
-and S6 are read under explicit all-rights-reserved notices, quoted only as short
-excerpts.
-
-The licence and citation audit's record is Appendices E and F: E is the first
-pass (twelve corrections), F is the independent re-fetch of 2026-09-06 that
-audited E's own work and applied nine further corrections. Where the two
-disagree, F is the later reading and wins.
-
-*(More of §2 is in **App. R** — moved under the length rule, nothing deleted.)*
+(vision §5). No source here is copyleft code. Two audit passes (App. E, F) and
+a trait-critic pass (App. G) re-fetched every row; where they disagree the
+later reading wins.
 
 ## 3. Traits — fixed before measurement
 
-### Tier 1 — invariants (the standard block, verbatim from vision §3)
+**Frozen at Station A, 2026-09-07.** Rows F1–M5 are the trait-critic pass's,
+unchanged in substance; the four rows this station changed are marked
+**[A]** and every change is argued in **App. J.5**, with the pre-freeze
+wording kept verbatim in **App. T**. Nothing is deleted.
 
-The standard block, verbatim from vision §3, is in **App. I** — moved there under the length rule; any class-specific note on it moved with it.
+### Tier 1 — invariants
+
+The standard block, verbatim from vision §3, is **App. I**, with the rate note
+that makes the FET's 20 µs end a *bound* rather than a match at every rate.
 
 ### Tier 2 — circuit traits
 
-#### Character FET — the 1176
+Each row's source, confidence and full measurement recipe are in **App. T**;
+the shared definitions of *GR trace*, *attack time*, *release time*, *knee
+point and width* and *paired build* are in **App. R**. Numbers marked *(own)*
+are operational thresholds, not findings.
 
-| # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Measurement (kit) |
-|---|---|---|---|---|---|
-| F1 | **Both time macros span the unit's ranges and both get *faster* as the macro rises.** Release 1.1 s ±25 % *(own)* at the macro's minimum, 50 ms ±25 % at its maximum. Attack 800 µs ±25 % (29–48 samples at 48 kHz) at the minimum; at the maximum, 20 µs is **0.96 of a sample period at 48 kHz**, below any rate here, so the fast end is a **bound** — 10–90 % time ≤ one sample period. Every intermediate setting faster than the one below | S1 spec page and both knob paragraphs (G.1) … (App. F1) | high (spans) … (App. F1) | Any of the four ends outside its band; a fast-end time longer than one sample period; either macro non-monotone or inverted | 10–90 % of the GR trace on a DC … (App. F1) |
-| F2 | **Threshold rises with ratio; the knee narrows with it.** With everything else fixed, the fitted knee point rises monotonically across 4:1 → 8:1 → 12:1 → 20:1 by more than the fit residual at every step, and the fitted knee width falls monotonically across the same four | S1 verbatim, "higher Ratio settings also set … (App. F2) | high (direction) … (App. F2) | A knee point that does not move, moves down, or moves by less than the fit residual at any step; a width that widens or is flat | Static curve … (App. F2) |
-| F3 | **All-Button is a mode, not a fifth ratio.** On one patch: (a) static slope between **12:1 and 20:1**; (b) GR in the first 2 ms of a 20 dB step at least **3 dB *(own)*** *less* than the 4:1 patch's at the same Attack; (c) THD on a 100 Hz sine at 12 dB of GR at least **10 dB *(own)*** above the 4:1 patch's, whose own ceiling is F5 | S1's All-Button paragraph carries all three … (App. F3) | high (the range) … (App. F3) | Slope outside 12:1–20:1; first-2 ms GR within 3 dB of the 4:1 patch's or above it; THD less than 10 dB above the 4:1 patch's | Static curve … (App. F3) |
-| F4 | **The loop is feedback, and the paired build proves it.** The feedback build's 10–90 % GR time on a 20 dB step is **strictly longer than the feed-forward control's at every setting measured** — six Attack settings × four ratio patches — no tie, no reversal, excluding only settings where the control's own time is under two sample periods and the rate sets the answer. Magnitude recorded, never required; the earlier "at least twice" is withdrawn as a pass condition, unsourced (G.7) | Topology: S1 verbatim … (App. F4) | high | Any measured setting where the feedback build ties or beats the control | GR trace on a 20 dB step … (App. F4) |
-| F5 | **Clean everywhere except All-Button.** On every non-All-Button patch, a sine held at 10 dB of GR with Release at its slowest measures THD(h2..h10 re fundamental) ≤ **0.5 %** at 50 Hz, 1 kHz and 15 kHz. Without it, a build that distorts on every patch passes F3 by distorting slightly less at 4:1 | S1 spec page verbatim … (App. F5) | high (the figure) … (App. F5) | THD above 0.5 % at any of the three frequencies, on any non-All-Button patch, at the slowest release | Harmonic spectrum at 50 Hz … (App. F5) |
+**FET — the 1176**
 
-#### Character Optical — the LA-2A
+| # | Claim, and the bar it fails on |
+|---|---|
+| F1 | Both time macros span the unit's ranges and both get **faster as the macro rises**. Release **1.1 s ±25 %** at minimum, **50 ms ±25 %** at maximum; attack **800 µs ±25 %** at minimum and, at maximum, **≤ one sample period** (a bound: 20 µs is 0.96 of a sample at 48 kHz). Every intermediate step faster than the one below. Fails on: any end outside its band, a fast end longer than one sample period, either macro non-monotone or inverted |
+| F2 | **Threshold rises with ratio; the knee narrows with it.** Fitted knee point rises monotonically across 4:1 → 8:1 → 12:1 → 20:1 by more than the fit residual at every step; fitted width falls monotonically across the same four |
+| F3 | **All-Button is a mode, not a fifth ratio.** (a) static slope between **12:1 and 20:1**; (b) GR in the first 2 ms of a 20 dB step ≥ **3 dB *(own)*** *less* than the 4:1 patch's at the same Attack; (c) THD on a 100 Hz sine at 12 dB of GR ≥ **10 dB *(own)*** above the 4:1 patch's |
+| F4 **[A]** | **The side chain can be tapped after the gain cell, and doing so is audible as a lower effective ratio.** With `feedback_detector` engaged at otherwise identical settings, the static gain-reduction fraction of a 20 dB overshoot is **≤ 10.0 dB *(own bar; 2:1 is the analytic ceiling)*** at every ratio from 4:1 to 20:1, against the feed-forward control's 15.0/17.5/18.3/19.0 dB, and the paired renders differ. Fails on: a feedback build reaching more than 10.0 dB, or the pair rendering identically. *(The pre-freeze F4 — "the feedback build's 10–90 % GR time is strictly longer at every setting" — is **disconfirmed**, App. J.3; it is kept as F4′ in App. T and reported disconfirmed in the evidence pack.)* |
+| F5 | **Clean everywhere except All-Button.** On every non-All-Button patch, a sine held at 10 dB of GR with Release slowest measures THD(h2..h10) ≤ **0.5 %** at 50 Hz, 1 kHz and 15 kHz |
 
-| # | Trait | Source | Conf. | Disconfirmed by | Measurement |
-|---|---|---|---|---|---|
-| O1 | **Two-stage release, measured at exactly 10 dB of GR.** After a 10 s tone holding 10 dB of GR stops: t50 **40–80 ms**, t95 **0.5–5 s**, **t95/t50 ≥ 8**. The depth is pinned because the ratio moves with it: at 10 dB a one-pole in the *linear* envelope — what the palette node is (B.1) — gives **5.61**, a GR exponential in dB gives **4.32**, a ramp linear in dB **1.90**; the same one-pole reaches **7.69** at 20 dB, so an unpinned probe lets a single-stage release pass (G.6) | S2's spec line and theory section (G.2) … (App. O1) | high | t50 outside 40–80 ms, t95 outside 0.5–5 s, or **t95/t50 < 8** | GR trace after a 10 s tone … (App. O1) |
-| O2 | **The slow stage carries memory, both ways the source names it.** Four burst-then-silence traces (200 ms / 10 s × 3 dB / 15 dB): t95 after 10 s is ≥ **2× *(own)*** t95 after 200 ms at the same depth, **and** t95 after 15 dB is ≥ 2× t95 after 3 dB at the same length | S2 verbatim on the cell's recovery depending … (App. O2) | high (direction) … (App. O2) | Either comparison below 2×, or either in the wrong direction | Four GR traces as above … (App. O2) |
-| O3 | **No time knobs; the amount knob is a threshold; the toggle is the ratio.** (a) Attack and Release are **inert** — sweeping either end to end moves no measured time beyond the repeat spread — and the measured attack sits at **10 ms ±50 % *(own)***; (b) Peak Reduction moves the fitted knee point monotonically while changing the asymptotic slope by ≤ **0.05 dB/dB *(own)*** over its travel; (c) the Limit position's asymptotic slope is **strictly steeper** than Compress at every Peak Reduction setting measured | S2 on the T4 determining both times … (App. O3) | high (a, c) … (App. O3) | Either time macro changing a measured time; attack outside 5–15 ms; Peak Reduction moving the slope by more than 0.05 dB/dB; the toggle not changing the slope, or changing it the wrong way at any setting | Static curves at five Peak … (App. O3) |
-| O4 | **Frequency-weighted side chain, flat when the knob is home.** At Emphasis maximum the steady GR on a 10 kHz sine exceeds that on a 100 Hz sine **of equal RMS** by ≥ **6 dB *(own)***; at Emphasis minimum — the factory setting — the two agree within **1 dB *(own)*** | S2 verbatim on R37 being factory-flat and … (App. O4) | high (direction … (App. O4) | No difference at maximum; a difference in the wrong direction; more than 1 dB at minimum | Steady GR on 100 Hz and 10 kHz … (App. O4) |
-| O5 | The loop is **feedback**: F4's paired-build ordering, unchanged, on this character's settings | S2 verbatim, "The LA-2A is a feed-back style … (App. O5) | high | As F4 | As F4, on the optical default … (App. O5) |
+**Optical — the LA-2A**
 
-#### Character VCA/RMS — the dbx 160
+| # | Claim, and the bar it fails on |
+|---|---|
+| O1 | **Two-stage release, measured at exactly 10 dB of GR.** After a 10 s tone holding 10 dB of GR stops: t50 **40–80 ms**, t95 **0.5–5 s**, **t95/t50 ≥ 8**. The depth is pinned because an unpinned probe lets a single-stage release pass (a linear one-pole reaches 5.61 at 10 dB and 7.69 at 20 dB) |
+| O2 | **The slow stage carries memory, both ways the source names it.** t95 after a 10 s burst ≥ **2× *(own)*** t95 after 200 ms at the same depth, **and** t95 after 15 dB ≥ 2× t95 after 3 dB at the same length |
+| O3 | **No time knobs; the amount knob is a threshold; the toggle is the ratio.** (a) Attack and Release are **inert** — sweeping either end to end moves no measured time beyond the repeat spread — and the measured attack sits at **10 ms ±50 % *(own)***; (b) Threshold moves the fitted knee point monotonically while changing the asymptotic slope by ≤ **0.05 dB/dB *(own)***; (c) the Limit patch's asymptotic slope is **strictly steeper** than the Compress patch's at every Threshold setting measured |
+| O4 | **Frequency-weighted side chain, flat when the knob is home.** At Emphasis maximum the steady GR on a 10 kHz sine exceeds that on a 100 Hz sine **of equal RMS** by ≥ **6 dB *(own)***; at Emphasis minimum — the default — the two agree within **1 dB *(own)*** |
+| O5 **[A]** | The loop is **feedback**: F4's static ordering, on this character's settings. *(Pre-freeze O5 pointed at F4′ and is disconfirmed with it.)* |
 
-| # | Trait | Source | Conf. | Disconfirmed by | Measurement |
-|---|---|---|---|---|---|
-| V1 | **The release is a straight line in dB.** Over one recovery from **20 dB** of GR to **1 dB**, the instantaneous rate stays within **±20 % *(own)*** of its mean across the span, and at Release macro centre the mean is within ±20 % of **125 dB/s** | S4's spec line, whose three points *are* 125 … (App. V1) | high | Rate anywhere in the 20 → 1 dB span more than 20 % off the mean, or a mean outside 100–150 dB/s at macro centre | GR trace after a burst holding 20 … (App. V1) |
-| V2 | **Attack strongly level-dependent, on the three published points.** On DC steps 10, 20, 30 dB over threshold the time for GR to first reach the full overshoot is within **±30 % *(own)*** of **15, 5 and 3 ms**; the consequence t(30) ≤ ⅓·t(10) is checked too | S4 verbatim, "!5ms for 10dB, Sms for 20dB … (App. V2) | high (the figures) … (App. V2) | Any of the three outside its band, or t(30)/t(10) above ⅓ | GR traces on 10, 20 … (App. V2) |
-| V3 | **RMS, not peak — and both comparison figures are derived, not asserted.** At ratio ∞:1, knee 0, so the GR difference equals the level difference: (a) square and sine of **equal RMS** give GR within **0.5 dB *(own)***, where a **peak** detector differs by 20·log₁₀√2 = **3.01 dB**; (b) a bipolar **10 %-duty** train and a sine of **equal peak** differ by **6.99 ± 1 dB *(tolerance own)*** — 20·log₁₀(√0.5/√0.1) — where a peak detector differs by **0 dB**. *(The earlier "9–11 dB" is a 5 %-duty figure; G.6.)* | S4, "true-RMS level detector … and … (App. V3) | high | Square/sine at equal RMS differing by more than 0.5 dB; the pulse/sine pair outside 5.99–7.99 dB — in particular near 0 dB (a peak detector) or near 10 dB (a 5 %-duty probe used by mistake) | Steady GR on sine, square … (App. V3) |
-| V4 | **Hard knee, ratio reaching ∞:1.** At Ratio maximum the static slope above the knee is ≤ **0.05 dB/dB *(own)*** over 20 dB of input, and at Knee zero the fitted width is ≤ **1 dB *(own)*** | S4's control description … (App. V4) | high | A slope above 0.05 dB/dB anywhere in the 20 dB span, or a fitted knee wider than 1 dB at Knee zero | Static curve, 60 levels … (App. V4) |
-| V5 | The loop is **feed-forward** — the only one of the four — so F4's ordering **reverses**: the shipped VCA build is the control and a feedback build of identical settings is strictly slower at every setting whose control time exceeds two sample periods | Topology: S4 ("feed-forward circuitry") … (App. V5) | high | Any such setting where the pair ties, or where the shipped build is slower | As F4, same probe … (App. V5) |
-| V6 | **Clean at any amount of compression.** A 1 kHz sine measures THD ≤ **0.2 %** at 3, 10 and 20 dB of GR, on every VCA patch and at every Release setting — the tightest of the four characters, and what separates the VCA from the FET by measurement rather than adjective | S4 spec page verbatim, "THD <0.2% … (App. V6) | high (the figure) … (App. V6) | THD above 0.2 % at any of the three depths, at any Release setting | Harmonic spectrum of a 1 kHz sine … (App. V6) |
+**VCA/RMS — the dbx 160**
 
-#### Character Vari-Mu — the Fairchild 670
+| # | Claim, and the bar it fails on |
+|---|---|
+| V1 | **The release is a straight line in dB.** Over one recovery from **20 dB** of GR to **1 dB** the instantaneous rate stays within **±20 % *(own)*** of its mean, and at Release macro centre the mean is within ±20 % of **125 dB/s** |
+| V2 **[A]** | **Attack strongly level-dependent, on the three published points.** On DC steps 10, 20, 30 dB over threshold the time for GR to first reach the full overshoot is within **±30 % *(own)*** of **15, 5 and 3 ms**, and t(30) ≤ ⅓·t(10). **Measured on the peak detector** with the character's program-attack law; the shipped VCA patch runs the RMS detector V3 requires, and V2 and V3 **cannot both hold on one setting** of this node (App. J.4), so V2 is reported against the peak-detector setting and the shipped patch's own numbers are published beside it |
+| V3 | **RMS, not peak — and both comparison figures are derived.** At ratio ∞:1, knee 0: (a) square and sine of **equal RMS** give GR within **0.5 dB *(own)***, where a peak detector differs by **3.01 dB**; (b) a bipolar **10 %-duty** train and a sine of **equal peak** differ by **6.99 ± 1 dB**, where a peak detector differs by **0 dB** |
+| V4 | **Hard knee, ratio reaching ∞:1.** At Ratio maximum the static slope above the knee is ≤ **0.05 dB/dB *(own)*** over 20 dB of input, and at Knee zero the fitted width is ≤ **1 dB *(own)*** |
+| V5 **[A]** | The loop is **feed-forward** — the only one of the four — so F4's static ordering **reverses**: the shipped VCA build reaches the *full* feed-forward gain-reduction fraction (15.0 dB of a 20 dB overshoot at 4:1, within ±0.1 dB), which a feedback build cannot reach at any ratio |
+| V6 | **Clean at any amount of compression.** A 1 kHz sine measures THD ≤ **0.2 %** at 3, 10 and 20 dB of GR, on every VCA patch and at every Release setting |
 
-| # | Trait | Source | Conf. | Disconfirmed by | Measurement |
-|---|---|---|---|---|---|
-| M1 | **The ratio is a consequence of level, not a setting.** Local slope ≥ **0.5 dB/dB** (no steeper than 2:1) where measured GR is **2 dB**, ≤ **0.05 dB/dB** (at least 20:1) where it is **15 dB**, falling monotonically between | S10's ratio line, "Variable from 1:1 to 1:20 … (App. M1) | high (span) … (App. M1) | Slope below 0.5 dB/dB at 2 dB of GR (20:1 arriving too early); above 0.05 dB/dB at 15 dB (never reaching 20:1); a non-monotone stretch wider than one curve step | Static curve, 60 levels … (App. M1) |
-| M2 | **Six fixed time-constant pairs, as six patches.** Attack within ±30 % *(own)* of **{0.2, 0.2, 0.4, 0.4, 0.4, 0.2} ms** — the manual publishes two attack values — and release within ±30 % *(own)* of **{0.3, 0.8, 2, 5, 2, 0.3} s**, the fifth and sixth being the manual's **individual-peak** figures (the multiple-peak ones are M3's). **The release measurement is this dossier's definition, not the manual's:** the manual says "from 10 db of limiting" and names no endpoint, so the kit holds exactly 10 dB, releases, tests **t63** against the table and publishes **t90** beside it, so the endpoint can be re-argued from data | S10's SPECIFICATIONS page … (App. M2) | high — read from the … (App. M2) | Any pair outside its band; fewer or more than six patches; a t63/t90 pair whose ordering says the release is not monotone | 10–90 % attack and both t63 and … (App. M2) |
-| M3 | **Patches 5 and 6 are program-dependent; 1–4 are not.** With "multiple peaks" defined here as **ten 10 ms bursts at 200 ms spacing, each reaching 10 dB of GR**, t63 after the train is ≥ **3× *(own)*** t63 after a single such burst on patches 5 and 6, while 1–4 move **< 25 % *(own)*** between the two probes | S10 verbatim on positions 5 and 6 (G.4) … (App. M3) | high (the … (App. M3) | Patches 5 or 6 below 3×; any of 1–4 above 25 % | Two GR traces per patch … (App. M3) |
-| M4 | The loop is **feedback**: F4's paired-build ordering, once per patch | S6, "the side-chain signal is tapped after … (App. M4) | medium | As F4, on any of the six patches | As F4, once per patch |
-| M5 | **Clean at 10 dB of limiting.** A 1 kHz sine held at 10 dB of GR measures THD ≤ **1 %** on every one of the six patches, patch 6's fast 0.3 s release included | S10 spec page verbatim … (App. M5) | high (the figure) … (App. M5) | THD above 1 % on any patch at 10 dB of GR | Harmonic spectrum of a 1 kHz sine … (App. M5) |
+**Vari-Mu — the Fairchild 670**
+
+| # | Claim, and the bar it fails on |
+|---|---|
+| M1 | **The ratio is a consequence of level, not a setting.** Local slope ≥ **0.5 dB/dB** where measured GR is **2 dB**, ≤ **0.05 dB/dB** where it is **15 dB**, falling monotonically between |
+| M2 | **Six fixed time-constant pairs, as six patches.** Attack within ±30 % *(own)* of **{0.2, 0.2, 0.4, 0.4, 0.4, 0.2} ms** and release within ±30 % of **{0.3, 0.8, 2, 5, 2, 0.3} s**, the last two being the manual's *individual-peak* figures. The release endpoint is this dossier's: hold exactly 10 dB, release, test **t63** and publish **t90** beside it |
+| M3 | **Patches 5 and 6 are program-dependent; 1–4 are not.** With "multiple peaks" = **ten 10 ms bursts at 200 ms spacing, each reaching 10 dB of GR**, t63 after the train is ≥ **3× *(own)*** t63 after one such burst on patches 5 and 6, and 1–4 move **< 25 % *(own)*** |
+| M4 **[A]** | The loop is **feedback**: F4's static ordering, once per patch. *(Pre-freeze M4 pointed at F4′ and is disconfirmed with it.)* |
+| M5 | **Clean at 10 dB of limiting.** A 1 kHz sine held at 10 dB of GR measures THD ≤ **1 %** on every one of the six patches |
+
+**Count: 21 Tier 2 rows** — FET 5, Optical 5, VCA 6, Vari-Mu 5. The grade is
+*literature*, so the roadmap's "at least three, each with a source and a
+disconfirmation condition" binds, and each **character** carries at least five
+of its own (vision §10.7).
 
 ### Tier 3 — cost and latency
 
-`capabilities` = `()` — a compressor's timing is program-dependent, not
-tempo-dependent, and the class does not read the transport (§8.6 keeps the
-question open).
+**`capabilities` = `()`** — a compressor's timing is program-dependent, not
+tempo-dependent, and the class never reads `self._transport()`.
 
-*(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
+**Latency budget: 0 samples, at every setting.** The build has no
+latency-adding option: `lookahead_ms` stays 0 and is not on the surface
+(lookahead is `Limiter`'s), so `LATENCY_SAMPLES = 0` describes every patch and
+both rates. **Tail budget: 0 samples** — the gain multiplies the audio, so
+silence in is silence out on the same sample.
+
+**Tier 3 budget**, as a fraction of one stereo block's deadline (256 frames =
+5.33 ms at 48 kHz, `audioif_dynamics.h:32`): **ESP32-P4 ≤ 8 %, ESP32-S3 ≤
+22 %**. Lean patch expected: **no**. The build runs **two** `Dynamics` nodes
+(§4), so it pays two `logf`/`expf` pairs per frame rather than one; the seed's
+single-node estimate of P4 ≤ 5 % / S3 ≤ 14 % is doubled here and rounded up for
+the splitter and the two-voice mixer. The arithmetic and its one unsourced
+input (a newlib single-precision transcendental at 100–200 cycles) are in
+**App. C**; Station C's board run replaces the estimate with a measurement.
 
 ## 4. Modeling approach on the palette
 
-**Nodes:** one `audiodynamics.Dynamics` in `DYN_COMPRESS` per instance, as
-today. Portability tier **audioif** (`audioif/docs/upstream-diff.md:661`,
-`:673`); on a stock CircuitPython board the module imports and construction
-raises a clear `ImportError` (roadmap §3). **A mono source is compressed, not
-summed**: the kernel selects mono or stereo at `audioif_dynamics.c:235` and the
-cross-channel max (`:263-269`) collapses to one channel. That is the statement
-the kit measures.
+**Nodes, in build order:** `audioroute.Splitter(source, taps=2)` → tap 0 into
+`audiodynamics.Dynamics(DYN_COMPRESS)` **fast** → `Dynamics(DYN_COMPRESS)`
+**slow** → `audiomixer.Mixer(voice_count=2)` voice 0; tap 1 → voice 1 dry.
+Portability tier **audioif** (`audioif/docs/upstream-diff.md:661`, `:673`);
+`REQUIRES = ("audiodynamics", "audioroute")`. `audiomixer` is a
+CircuitPython-ported module and is not in `REQUIRES`.
+
+**The slow stage is the two-stage release**, not a second compressor: its own
+`attack_coef` is long (seconds), so its envelope is still climbing after a
+200 ms burst and settled after a 10 s one — a memory of time-over-threshold
+with no new state variable (App. H.2). At **Memory 0** it is set to `ratio=1`,
+which is byte-identical to a wire (App. J.2), so a single-stage patch pays the
+node's cost and none of its sound.
+
+**A mono source is compressed, not summed**: the kernel selects mono or stereo
+at `audioif_dynamics.c:235` and the cross-channel max (`:263-269`) collapses to
+one channel. That is the statement the kit measures.
+
+**Feed-forward on all four characters.** `feedback_detector` exists on the pin
+(App. J.1) and the class does not use it on the audio path, because on this
+node's gain computer a feedback detector caps the gain-reduction fraction at
+**½ of the overshoot — 2:1 effective — at every ratio**, measured and derived
+in App. J.3. F2, F3, M1 and V4 all need slopes steeper than that. F4/O5/M4 are
+therefore restated **[A]** as the *static* signature the node can show, and the
+ordering the seed froze is reported disconfirmed with its cause.
 
 Any coefficient table the rebuild ships is computed on CPython and shipped as
 data; nothing is rebuilt on a board.
 
-*(More of §4 is in **App. R** — moved under the length rule, nothing deleted.)*
+*(More of §4 is in **App. R** and **App. J**.)*
 
 ## 5. Node asks
 
-All four are additive options on `audiodynamics`, audioif's own module (D1);
-none touches a CircuitPython-ported node. Each is filed as an audioif issue only
-after its refutation.
+The seed filed four. **Two are already on the pin** and one is refuted by
+composition; one remains. Full arguments in **App. R**; the re-read that found
+them in **App. J.1**.
 
-- **N-C1 — a second release stage with memory.** Unblocks **O1, O2, M3**. …  *(argument in full: App. R)*
-- **N-C2 — an RMS detector option.** Unblocks **V3**. *Palette instead:* `fabsf` …  *(argument in full: App. R)*
-- **N-C3 — a constant-rate release.** Unblocks **V1**. *Palette instead:* the …  *(argument in full: App. R)*
-- **N-C4 — a feedback detector.** Unblocks **F4, O5, M4**, three of the four …  *(argument in full: App. R)*
+- **N-C1 — a second release stage with memory.** **Refuted, not filed.** Two
+  `Dynamics` in series clear O1, O2 and M3 (App. H.2), and §4 ships that.
+- **N-C2 — an RMS detector.** **Already landed**: `detector="rms"` with
+  `rms_ms` (`audioif/docs/upstream-diff.md:990-993`), measured against V3's two
+  figures in App. J.4. Not filed.
+- **N-C3 — a constant-rate release.** **Refuted, not filed.** The release into
+  silence is already exactly straight in dB (App. H.1, 65.15 dB/s across the
+  whole 19 → 1 dB span, max/min 1.0000).
+- **N-C4 — a feedback detector.** **Landed as an option**
+  (`feedback_detector=True`, `upstream-diff.md:995-1001`) and **unusable for
+  these characters**: it caps effective compression at 2:1 (App. J.3). What
+  remains is a *narrower* ask, **N-C4b — a feedback detector whose gain
+  computer solves for the input level**, so the loop settles at the ratio the
+  knob asks for. Filed after Station C's refutation, on
+  [audioif#38](https://github.com/PyDevices/audioif/issues/38)'s pattern.
 
-*(More of §5 is in **App. R** — moved under the length rule, nothing deleted.)*
+## 6. Frozen surface
 
-## 6. Proposed surface
+**Characters** are macro 0, not a constructor argument: `"fet"`, `"optical"`,
+`"vca"`, `"varimu"`, in that order, default **`"optical"`**. The seed proposed
+`character=` on the constructor; a patch cannot then reach a character, and M2
+asks for six Vari-Mu patches (App. J.5). The constructor still accepts
+`character="fet"` and seeds macro 0 from it.
 
-**Characters** (constructor `character=`, one trait set each): `"fet"`,
-`"optical"`, `"vca"`, `"varimu"`. Default `"optical"`.
-
-**Macros — 14 of the 16 allowed.**
+**Macros — 14 of the 16 allowed.** Time macros run **fast clockwise**, which
+is F1's direction and the 1176's panel.
 
 | # | Label | Mode | Range | Generalizes |
 |---|---|---|---|---|
-| 0 | Threshold | UNIPOLAR | −60…0 dB | 1176 Input; LA-2A Peak Reduction; 160 Threshold; 670 Input Gain |
-| 1 | Ratio | UNIPOLAR | 1…1000:1 log | 1176 ratio buttons; 160 Compression; the top of the 670's slope |
-| 2 | Attack | UNIPOLAR | 0.02…300 ms log | 1176 Attack; 670 time-constant attack; inert in `optical` (O3) |
-| 3 | Release | UNIPOLAR | 20 ms…5 s log | 1176 Release; 670 first-stage release; the optical fast stage |
-| 4 | Release Slow | UNIPOLAR | 0.1…25 s log | the optical second stage; 670 positions 5 and 6 |
-| 5 | Memory | UNIPOLAR | 0…1 | the T4 cell's memory; 0 makes the release single-stage |
-| 6 | Knee | UNIPOLAR | 0…36 dB | 160 hard knee at 0; the 1176's ratio-dependent knee; 670's progressive ratio at the top |
-| 7 | Detector | TOGGLE | peak / RMS | the 160's RMS against the 1176's peak |
-| 8 | RMS Window | UNIPOLAR | 1…100 ms log | the RMS averaging time; inert when Detector is peak |
-| 9 | Emphasis | UNIPOLAR | 0…1 | LA-2A R37; the 160's SC-HP; a side-chain HPF generally |
-| 10 | Emphasis Freq | UNIPOLAR | 30…2000 Hz log | where R37's corner sits |
-| 11 | Topology | TOGGLE | feed-forward / feedback | the 160 against the other three; ships only if N-C4 lands |
+| 0 | Character | UNIPOLAR | 0…3 → fet / optical / vca / varimu | the four standouts |
+| 1 | Threshold | UNIPOLAR | −60…0 dB | 1176 Input; LA-2A Peak Reduction; 160 Threshold; 670 Input Gain |
+| 2 | Ratio | UNIPOLAR | 1…1000:1 log | 1176 ratio buttons; 160 Compression; the top of the 670's slope |
+| 3 | Attack | UNIPOLAR | 300…0.02 ms log | 1176 Attack; 670 time-constant attack; **inert in `optical`** (O3) |
+| 4 | Release | UNIPOLAR | 5 s…20 ms log | 1176 Release; 670 first-stage release; **inert in `optical`** (O3) |
+| 5 | Release Slow | UNIPOLAR | 25…0.1 s log | the optical second stage; 670 positions 5 and 6 |
+| 6 | Memory | UNIPOLAR | 0…1 | the T4 cell's memory; 0 makes the release single-stage |
+| 7 | Knee | UNIPOLAR | 0…36 dB | 160 hard knee at 0; the 1176's ratio-dependent knee; the 670's progressive ratio |
+| 8 | Detector | TOGGLE | peak / RMS | the 160's RMS against the 1176's peak |
+| 9 | RMS Window | UNIPOLAR | 1…100 ms log | the RMS averaging time; inert when Detector is peak |
+| 10 | Emphasis | UNIPOLAR | 0…1 | LA-2A R37; the 160's SC-HP; a side-chain HPF generally |
+| 11 | Emphasis Freq | UNIPOLAR | 30…2000 Hz log | where R37's corner sits |
 | 12 | Makeup | UNIPOLAR | −12…+24 dB | 1176 Output; LA-2A Gain |
 | 13 | Mix | UNIPOLAR | 0…1 | none of the four — generalized, and Tier 1's wire invariant needs it |
 
-**Patches** (names describe settings): 0 *Level Ride* (optical, slow, gentle,
-low emphasis — the default); 1 *Fast Peak Catch* (fet, 30 µs, 12:1, 80 ms);
-2 *Everything At Once* (fet, 20:1, fastest times, deep GR — F3's mode);
-3 *Bus Glue* (vca, RMS, 4:1, hard knee, 125 dB/s); 4 *Programme Ride* (varimu,
-knee 30 dB, 0.4 ms, 2 s); 5 *Voice Ride* (optical, emphasis high, Limit side of
-the curve); 6 *Let The Stick Through* (fet, 20 ms attack, 60 ms release, 8:1);
-7 *Parallel Squash* (fet, 20:1, fastest times, Mix 0.4); 8 *Wide Knee Glue*
-(vca, RMS, 2:1, knee 24 dB, slow); 9 *Slow Hand* (varimu, the sixth
-time-constant pair: program-dependent long release).
+`Topology` is **not** on the surface: it would have to be a knob that breaks
+F2, F3, M1 and V4 whenever it is turned (§4, App. J.3). The count is the
+seed's 14 either way — Character in, Topology out.
+
+**Patches — 14, contiguous from 0.** Patch 0 is the constructor's defaults on
+the 0-127 grid. Patches 8–13 are M2's six time-constant positions and are the
+only ones M2 and M3 are measured on.
+
+| # | Name | What it is |
+|---|---|---|
+| 0 | Level Ride | optical, slow, gentle, emphasis home — the default |
+| 1 | Fast Peak Catch | fet, fastest attack, 12:1, 80 ms release |
+| 2 | Everything At Once | fet, 20:1, both times fastest, deep GR — F3's mode |
+| 3 | Bus Glue | vca, RMS, 4:1, hard knee, 125 dB/s release |
+| 4 | Voice Ride | optical, emphasis high, Limit side of the curve |
+| 5 | Let The Stick Through | fet, 20 ms attack, 60 ms release, 8:1 |
+| 6 | Parallel Squash | fet, 20:1, fastest times, Mix 0.4 |
+| 7 | Wide Knee Glue | vca, RMS, 2:1, knee 24 dB, slow |
+| 8 | Vari-Mu TC1 | varimu, 0.2 ms / 0.3 s, memory off |
+| 9 | Vari-Mu TC2 | varimu, 0.2 ms / 0.8 s, memory off |
+| 10 | Vari-Mu TC3 | varimu, 0.4 ms / 2 s, memory off |
+| 11 | Vari-Mu TC4 | varimu, 0.4 ms / 5 s, memory off |
+| 12 | Vari-Mu TC5 | varimu, 0.4 ms / 2 s, **memory on** — program-dependent |
+| 13 | Vari-Mu TC6 | varimu, 0.2 ms / 0.3 s, **memory on** — program-dependent |
 
 ## 7. Defects in the current class the rebuild must not repeat
 
-From one read of `lib/audioeffects/dynamics.py` and `_core.py`.
+From one read of `lib/audioeffects/dynamics.py` and `_core.py`; the argument
+for each is in **App. R**.
 
-1. **`reset()` silently reverts the surface.** `_core.Effect.reset()` ends with …  *(argument in full: App. R)*
-2. **The four characters are three numbers.** `_CHARACTERS` …  *(argument in full: App. R)*
-3. **The node takes the module's rate, not the source's.** `dynamics.py:63` …  *(argument in full: App. R)*
-4. **No side-chain filter and no mix on the surface.** Six macros …  *(argument in full: App. R)*
-5. **The macro ranges cannot reach two of the four standouts.** `_MACRO_RANGES` …  *(argument in full: App. R)*
-6. **`_apply_macro` builds a dict per macro move** (`dynamics.py:74-76`). Off
-   the audio path, so not a Tier 1 failure; the rewrite should not inherit it.
+1. **`reset()` silently reverts the surface** — `_core.Effect.reset()` ends by
+   restoring patch 0 over whatever the host had set.
+2. **The four characters are three numbers.** `_CHARACTERS` is one
+   attack/release/knee triple each; nothing about detector law, release law,
+   ratio law or sidechain topology, which is what actually separates them.
+3. **The node takes the module's rate, not the source's** (`dynamics.py:63`,
+   `_core.SAMPLE_RATE`).
+4. **No side-chain filter and no mix on the surface.** Six macros, and neither
+   O4 nor parallel compression reachable.
+5. **The macro ranges cannot reach two of the four standouts** — attack stops
+   at 0.1 ms (the 1176 asks 0.02) and release at 1 s (the 670 asks 5 s and
+   25 s); ratio stops at 20 (the 160 asks ∞).
+6. **`_apply_macro` builds a dict per macro move** (`dynamics.py:74-76`).
 
-*(More of §7 is in **App. R** — moved under the length rule, nothing deleted.)*
+## 8. Questions — what this station settled
 
-## 8. Open questions
-
-1. **Is the two-stage release composable?** N-C1's refutation: two `Dynamics` in
-   series, fast then slow — does the composite reach O1's t95/t50 ≥ 8 without a
-   node change? **Phase 0 settles it**, before the audioif issue is filed. If it
-   does, only the memory (O2) remains an ask.
-2. **Vision §10.4 asked whether four characters over one detector are honest.**
-   This dossier's answer is **no — and that is why each character has its own
-   rows.** Three of the four need something the current detector has not got
-   (N-C1, N-C2, N-C4). A character whose traits cannot be met is recorded unmet,
-   not quietly widened. **Arthur, at Gate 0**, on the node list.
-3. **The dbx numbers are the 160X's.** The original 1976 unit's manual was not
-   reached, so V1's 125 dB/s and V2's table are the *family's*. Re-check if an
-   original-160 specification is ever reached; the traits stand meanwhile. **The
-   implementation session**, opportunistically.
-4. **The Fairchild table is now read, not transcribed** — this question is
-   answered and the entry is kept only so the change is visible. The audit of
-   2026-09-06 reached the manual (S10) and the trait-critic pass of
-   2026-09-06/07 re-read the scan itself (App. G.4), so M2 is **high**
-   confidence, not medium. What is still open is narrower: the manual gives no
-   endpoint for "release time from 10 db of limiting", so M2 measures t63 by
-   this dossier's own definition and publishes t90 beside it. **The
-   implementation session** may tighten the ±30 % bands once one endpoint is
-   shown to fit all six positions.
-5. **`Emphasis` and `reset()`.** The node's side-chain filter keeps its memory
-   across `reset()` (`audioif_dynamics.c:149-152`), so a class that leaves
-   emphasis engaged is not stateless afterwards. Either the rebuild rebuilds the
-   node on reset or this becomes a fifth ask. It is a **Tier 1** item, so it
-   cannot pass the class gate unresolved. **The implementation session**, at
-   Station B.
-6. **Tempo-synced release.** It would make `capabilities` `("tempo_sync",)` and
-   is a real feature, but no standout has it, so it is deliberately out of this
-   seed. **The implementation session** may propose it, with its own trait and
-   the declare-if-and-only-if rule.
-7. **Is gain smoothing composable, or a fifth ask?** Raised by the trait-critic
-   pass, which added three distortion traits (F5 0.5 %, V6 0.2 %, M5 1 %) from
-   the three manufacturers' own specification pages. The palette applies its
-   gain per sample off an unsmoothed detector, and that is exactly what gives
-   B.7's 25.66 % at a 1 ms release — so at fast settings these three rows are
-   not obviously reachable. It is **not filed as an ask**, because no
-   measurement yet shows the palette cannot reach them: two `Dynamics` in
-   series, or a slow-release patch, may be enough, and vision §6's rule is
-   compose first. **Phase 0 or the implementation session** measures the
-   composition against F5, V6 and M5 before any fifth issue is opened; if it
-   fails, the ask is a one-pole on the gain after the gain computer — one state
-   variable, two multiplies, no transcendental (Tier 3).
-8. **Does `Limiter` share these characters?** **Settled here: no.** `Limiter` is
-   a design grade with its own dossier and its own control law; sharing one node
-   must not become sharing one surface by accident.
+1. **Is the two-stage release composable? — YES.** App. H.2: two `Dynamics` in
+   series clear O1 (t95/t50 44.9 against a bar of 8), O2 (39× and 2.9× against
+   2×) and M3 (75.7× against 3×). N-C1 is refuted, not filed.
+2. **Are four characters over one detector honest? — No, and that is why each
+   carries its own rows.** Of the seed's three "needs a node change", two are
+   now on the pin (App. J.1) and the third is real but narrower (N-C4b). **Open
+   for Arthur at Gate 0**, on the node list only.
+3. **The dbx numbers are the 160X's.** Unchanged: no original-160
+   specification was reached, and this station fetched nothing. V1 and V2 are
+   the family's numbers. Open, opportunistic.
+4. **The Fairchild release endpoint.** Unchanged: the manual names none, so M2
+   tests t63 and publishes t90 beside it. Station C may tighten the ±30 %
+   bands once one endpoint fits all six positions.
+5. **`Emphasis` and `reset()` — SETTLED, no fifth ask.** The side-chain
+   filter's memory does survive `reset()` in the C, but it is **not observable
+   in the audio**: a node warmed by a 300 ms 10 kHz burst at
+   `sidechain_hz=1000`, then reset, renders a 100 Hz tone **byte-identical**
+   to a cold node — 0 differing bytes of 9600 (App. J.2). `gain_reduction_db()`
+   does keep its last reading, which is a meter, not audio. The base class's
+   ordinary `audiocore.reset_buffer` walk is enough.
+6. **Tempo-synced release — declined.** No standout has it; `capabilities` is
+   `()` and the class does not read the transport.
+7. **Is gain smoothing composable, or a fifth ask?** **Open, and Station C
+   measures it**: F5 (0.5 %), V6 (0.2 %) and M5 (1 %) are the three
+   distortion rows, and B.7 showed 25.66 % at a 1 ms release from the
+   unsmoothed per-sample gain. If the shipped patches cannot reach the three
+   bars, the ask is a one-pole on the gain after the gain computer.
+8. **Does `Limiter` share these characters? — No.** Settled in the seed.
+9. **[A] Does the palette carry the feedback ordering F4 froze? — NO.**
+   App. J.3: with the builds matched on settings the feedback arm is *faster*
+   at 24 of 24 settings, and matched on final GR at 24 of 24 more; and the
+   feedback detector caps compression at 2:1. F4/O5/M4 are restated as the
+   static signature and the ordering is reported disconfirmed.
+10. **[A] Can one VCA setting hold V2 and V3 at once? — NO.** App. J.4: 36
+    (rms window × attack) combinations, none meeting both. V3 needs an RMS
+    window ≥ 3 ms; that window floors the 30 dB attack at 8.25 ms, above V2's
+    3.9 ms bar. The shipped VCA patch takes V3.
 
 ---
-
 
 ## Appendix
 
@@ -1073,6 +1135,198 @@ feedback build to be strictly slower at every setting, so the cascade is not a
 refutation of N-C4 — it is a demonstration that the palette cannot produce the
 ordering at all.
 
+### J. Station A, 2026-09-07 — the palette re-read, and what it moved
+
+Every number below was produced this session on
+`audiocomponents/.venv/bin/python` with `audioif` at the pin, DC or tone
+material through `audiocore.RawSample`, pulled with `audiocore.get_buffer`,
+gain read per sample from the audio (`20·log10(out/in)`) or per block from
+`Dynamics.gain_reduction_db()`. The probe sources are
+`tools/compressor_probes.py` in this repo; every table here is one of its
+cases and re-runs from it.
+
+#### J.1 — Appendix H is one release behind: thirty-two options, not eleven
+
+App. H, dated 2026-09-07, records "`Dynamics` exposes exactly eleven options
+(`Dynamics.c:20-30`) and one reader"; §5 files four node asks on that reading.
+The binding table on the pin is `audioif/src/audiodynamics/Dynamics.c:19-58`
+and it holds **thirty-two** names. Twenty-one of them were added by the
+effects program itself and are documented at
+`audioif/docs/upstream-diff.md:969-1098`, "**`audiodynamics` gains twenty-one
+options and an external key**", under a heading that says in as many words:
+"The effects program's dossiers put eleven asks on this one node
+([audioif#38](https://github.com/PyDevices/audioif/issues/38))."
+
+Confirmed by construction, not by reading: `set()` accepts `detector`,
+`rms_ms`, `feedback_detector`, `sidechain_lp_hz`, `sidechain_poles`,
+`key_listen`, `depth_db`, `hold_ms`, `hysteresis_db`, `relative_threshold`,
+`program_attack`, `transient_dual`, `slow_hold_ms` and the eight transient and
+sustain time constants, and refuses `rms_window_ms` and `release_stage2_ms`
+(names that do not exist) with `TypeError: unknown Dynamics option`.
+
+Consequences, each argued in its own subsection below: **N-C2 landed**
+(`detector="rms"`, J.4); **N-C4 landed as an option and is unusable for these
+characters** (J.3); N-C1 and N-C3 were already refuted by App. H.1 and H.2.
+
+#### J.2 — two settlements the build rests on
+
+**`ratio=1` is byte-identical to a wire.** 4096 frames of a 440 Hz sine at
+20000 LSB through one `DYN_COMPRESS` at `threshold_db=-60, ratio=1, knee_db=0,
+attack_ms=1, release_ms=100, makeup_db=0`, and again through **two** such
+nodes in series:
+
+```
+  (a)  ratio=1, threshold -60, makeup 0: byte-identical to source -> True
+       differing samples: 0
+  (a2) two in series at ratio=1:         byte-identical -> True
+```
+
+So the slow stage at Memory 0 is a wire, and so is the whole wet path at
+Ratio 1 — which is what lets §4 ship two nodes on every instance.
+
+**The side-chain filter's surviving memory is not observable (§8.5).** A node
+at `sidechain_hz=1000, threshold_db=-30, ratio=8, attack_ms=5, release_ms=100`
+warmed by 300 ms of a 10 kHz sine, then reset, then handed a 100 Hz sine:
+
+```
+  warm + reset() + play  == cold : True      (0 differing bytes of 9600)
+  warm +          play   == cold : False     (reset() is what clears it)
+  gain_reduction_db before reset  -17.402
+  gain_reduction_db after  reset  -17.402    (the C keeps it on purpose)
+```
+
+The upstream note is right that the C does not clear the side-chain poles
+(`upstream-diff.md:1085-1091`); the audio does not show it. `reset()` is the
+base class's ordinary `audiocore.reset_buffer` walk, and no fifth ask is
+filed.
+
+#### J.3 — the feedback detector: the ordering F4 froze is backwards, and the ratio caps at 2:1
+
+**The ordering, matched on settings.** 20 dB DC step over a −30 dBFS
+threshold, `release_ms=200`, 10–90 % of each build's own GR span, four ratios
+× six attack settings:
+
+```
+  ratio  attack     ff 10-90    fb 10-90   fb>ff?
+      4    0.20 ms    0.3333 ms   0.1458 ms   NO   (GR ff -15.00 fb -8.57)
+      8    0.20 ms    0.3333 ms   0.1250 ms   NO   (GR ff -17.51 fb -9.33)
+     12    5.00 ms    7.2500 ms   3.7500 ms   NO   (GR ff -18.34 fb -9.57)
+     20   20.00 ms   28.9375 ms  14.8333 ms   NO   (GR ff -19.00 fb -9.75)
+  strictly slower on 0 of 24 settings
+```
+
+**The ordering, matched on final GR** (the feedback arm's threshold searched
+to 15 dB / 17.5 dB / 18.3 dB / 19.0 dB, the control's own numbers):
+
+```
+     4   0.20 ms   -30.0    0.3333  -15.00 |  -45.00    0.1875  -15.00 |  NO
+    20  50.00 ms   -30.0   72.3333  -19.00 |  -49.00   25.6250  -19.00 |  NO
+  strictly slower on 0 of 24
+```
+
+Both directions fail, so **F4 as the seed froze it is disconfirmed, and the
+cause is the definition**: 10–90 % of each build's *own* span divides out the
+very difference the row exists to measure. App. H.4 had already reached the
+same conclusion by a different route — a static-matched cascade ran faster at
+24 of 24 — and called the palette unable to produce the ordering at all.
+
+**What the node does show, and what F4 is restated as.** A feedback detector
+on this gain computer settles at
+
+```
+  out_over = in_over / (2 - 1/R)      GR = in_over * (1 - 1/(2 - 1/R))
+```
+
+so the gain-reduction fraction is **½ of the overshoot in the limit** — 2:1
+effective, at *every* ratio. Measured against that algebra on a 20 dB
+overshoot:
+
+```
+  R=4   measured  8.573 dB   predicted  8.571 dB
+  R=8   measured  9.334 dB   predicted  9.333 dB
+  R=12  measured  9.568 dB   predicted  9.565 dB
+  R=20  measured  9.746 dB   predicted  9.744 dB
+```
+
+No ratio setting compensates:
+solving `1 − 1/(2 − 1/R) = 1 − 1/R_target` gives `R = 1/(2 − R_target)`, which
+is negative for every `R_target > 2`.
+
+That is why §4 ships **feed-forward on all four characters** and `Topology` is
+not a macro: a knob that caps compression at 2:1 breaks F2 (4:1→20:1), F3
+(12:1–20:1), M1 (20:1 at 15 dB of GR) and V4 (∞:1) whenever it is turned. The
+residual ask is **N-C4b**, a feedback detector whose gain computer solves for
+the input level.
+
+**A fixed-absolute-GR reading, recorded and not used as a trait.** Time for GR
+to first reach 6 dB, same threshold and ratio both sides: the feedback arm is
+slower on **20 of 24** settings (the other four are ties at 0.0 ms, below the
+two-sample floor). It is not F4's replacement because at matched settings the
+feedback arm reaches less GR *by the static law*, so the ordering restates the
+ratio law rather than the topology.
+
+#### J.4 — V2 and V3 cannot both hold on one setting
+
+**V3 is met, and by the option App. H said did not exist.** 200 Hz material,
+`DYN_LIMIT`-shaped patch at ratio 1000, knee 0, threshold −30 dBFS,
+`attack_ms=0.5`, `release_ms=50`; steady GR per block:
+
+```
+  detector          sine      square    |sq-sn|     10%-duty   sine-pulse
+  peak (default)  -17.525   -14.726      2.799      -16.949        0.577
+  rms  10 ms      -14.876   -14.726      0.150       -8.138        6.738
+  rms   3 ms      -15.200   -14.726      0.473       -8.984        6.216
+  rms  30 ms      -14.778   -14.726      0.051       -7.878        6.899
+  V3 asks                                <= 0.50                  6.99 +- 1
+```
+
+`detector="rms"` clears both figures at `rms_ms` 10 and 30; the peak detector
+misses both, and lands on the 3.01 dB and 0 dB a peak detector must read,
+which is the check that the probe measures what it claims.
+
+**V2 is met on the peak detector, with `program_attack`.** Time for GR to
+first reach 99 % of the full overshoot, on 10 / 20 / 30 dB DC steps over a
+−40 dBFS threshold at ratio 1000:
+
+```
+  prog=False det=peak atk=  5.0 ms ->  21.958  18.875  17.021   t30/t10 0.775
+  prog=True  det=peak atk=  5.0 ms ->  12.312   5.917   3.042   t30/t10 0.247
+  V2 asks (15/5/3 ms +-30%):           10.5-19.5 3.5-6.5 2.1-3.9   <= 0.333
+```
+
+**And the two cannot be held at once.** Six RMS windows × six attack settings,
+`program_attack` on throughout: **no cell meets both**. The window V3 needs
+(≥ 3 ms for its 0.5 dB bar) floors the 30 dB attack at 8.25 ms, more than
+twice V2's 3.9 ms ceiling:
+
+```
+  rms_ms  atk    t10      t20      t30   | V3a(<=0.5)  V3b(5.99-7.99)
+     1.0  5.0  13.292    7.062    4.396  |   1.207       5.050        (V3 fails)
+     2.0  5.0  14.812    9.104    6.667  |   0.683       5.883        (V3 fails)
+     3.0  0.5  11.479    9.438    8.250  |   0.473       6.216        (V2 fails)
+    10.0  0.5  37.646   31.208   27.417  |   0.150       6.738        (V2 fails)
+```
+
+The shipped VCA patch takes **V3**, the dbx's headline trait, and V2 is
+reported against the peak-detector setting with the shipped patch's own
+numbers beside it.
+
+#### J.5 — every change this station made, and why
+
+| Change | Why, and the evidence |
+|---|---|
+| **F4 restated [A]** | The frozen 10–90 % ordering measures false in both pairings, 48 of 48 settings (J.3), and App. H.4 had reached the same answer before the class existed. The row now states the *static* signature — the 2:1 cap — which is falsifiable, derived and measured. The pre-freeze row survives as F4′ in App. T and is reported **disconfirmed** in the evidence pack. |
+| **O5, M4, V5 restated [A]** | They are "F4's ordering" by reference. They follow F4, and each is reported against the static signature on its own character's settings. |
+| **V2 restated [A]** | Not weakened: the bars are unchanged. What is added is the setting it is measured at and the published proof that the shipped patch cannot also carry it (J.4). |
+| **`Topology` off the surface** | It would break F2, F3, M1 and V4 whenever turned (J.3). The seed had it conditional on N-C4 landing; N-C4 landed and turned out unusable, which is a different answer from "not yet". |
+| **`Character` onto the surface as macro 0** | The seed made it a constructor argument. A patch is macro values only, so with `character=` on the constructor no patch can name a character — and M2 asks for six Vari-Mu patches, M3 for two of them to differ in memory. Precedent for a switch worn as a knob is `Limiter`'s True Peak. Macro count is unchanged at 14. |
+| **Time macros inverted** | F1 asks for *faster clockwise*, which is the 1176's panel. `_MACRO_RANGES` therefore run high-to-low: Attack `(300.0, 0.02, "log")`, Release `(5000.0, 20.0, "log")`, Release Slow `(25000.0, 100.0, "log")`. `logmap` and `macro_position` are monotone either way. |
+| **Patches 6 → 14** | M2 requires six Vari-Mu time-constant patches and disconfirms on "fewer or more than six"; the seed listed two. Patches 8–13 are those six and are the only ones M2 and M3 are measured on. |
+| **N-C1, N-C2, N-C3 withdrawn** | Two refuted by App. H.1/H.2 before this station, one landed on the pin (J.1). Only **N-C4b** remains, and narrower than N-C4. |
+| **Tier 3 budget doubled** | The build runs two `Dynamics` nodes (§4), so it pays two `logf`/`expf` pairs per frame. P4 5 % → 8 %, S3 14 % → 22 %, rounded up for the splitter and the mixer. Still an estimate; Station C's board run replaces it. |
+| **§8.5 settled, no fifth ask** | Measured, J.2. |
+| **Latency budget written down** | The seed gave none. The build has no latency-adding option, so `LATENCY_SAMPLES = 0` at every patch and both rates, and `TAIL_SAMPLES = 0`. |
+
 ### App. I — Tier 1 invariants, the standard block
 
 Verbatim from vision §3, moved out of §3 under the length rule. It is the
@@ -1510,3 +1764,274 @@ not four.
    the way below the knob's floor and F1 fails from the surface alone — even
    though the node reaches both (B.10, and `audioif_dynamics.c:60`). A range is
    a claim about the circuit, and these two are the wrong claim.
+
+
+### App. R.0 — the pre-freeze §§1–8, verbatim
+
+Station A rewrote §§1–8 on 2026-09-07 under the length rule and
+froze the trait table. **Nothing was deleted:** the whole of the
+pre-freeze §§1–8, exactly as the trait-critic pass left them, is
+reproduced here. Where the two disagree, the frozen text above is
+the one the class is built and gated against, and **App. J.5**
+argues every change.
+
+#### 1. The circuit, in one paragraph
+
+All four are **detector → gain computer → gain cell**, and all four differ in
+every one of those three. Quotations behind every claim here are in Appendix D.
+**FET (1176):** the cell is a field-effect transistor used as a
+voltage-controlled resistor, "arranged in a feedback configuration to obtain
+gain reduction" (S9); S1's own specification line gives the input as "600 Ω,
+bridged T-control (floating)", but **no source reached this run says the FET is
+the control element of that bridged-T network**, so that topology detail is
+recorded here as unsourced and is not a trait. The side chain is tapped
+*after* the cell, so the loop is **feedback** (S3). The panel
+gives Input (drive *and* threshold), Output, Attack **20–800 µs** and Release
+**50 ms–1.1 s** — both faster clockwise — and four exclusive ratios **4:1 / 8:1
+/ 12:1 / 20:1**, with higher ratios also setting the threshold higher (S1) and,
+per S3 reading UREI's own transfer plot, hardening the knee. All four buttons at
+once is a fifth *mode*, not a fifth ratio: S1 attributes its radical distortion
+to a lag on the attack of initial transients, constantly changing times, and a
+shift in the bias points. **Optical (LA-2A):** the cell is the lower leg of a
+divider formed by a **T4** — an electroluminescent panel facing a
+cadmium-sulfide photocell — driven by Peak Reduction pot → 12AX7 → **R37
+pre-emphasis** → 6AQ5 EL driver, again **feedback** (S2). There are no time
+knobs; both are set entirely by the T4. The release is **two-stage** —
+about 0.06 s for 50 %, then 0.5–5 s for the rest depending on how much reduction
+came before — with a **memory**: the release is slower after longer or deeper
+compression (S2). Peak Reduction is side-chain gain, i.e. a *threshold*; a
+Limit/Compress switch raises the ratio. **VCA/RMS (dbx 160):** a decilinear
+(Blackmer) VCA driven by a **true-RMS** detector and, uniquely of the four,
+**feed-forward** (S5). There are no time knobs because the times fall out of the
+detector: attack "15 ms for 10 dB, 5 ms for 20 dB, 3 ms for 30 dB" and release
+"8 ms for 1 dB, 80 ms for 10 dB, 400 ms for 50 dB; 125 dB/sec Rate" (S4) —
+three points on one straight line in dB. Hard knee (S5 models the original as
+"a classic feed-forward hard-knee VCA-based compressor"); the 1:1–∞:1 ratio span
+is the **160X**'s specification line (S4, whose scan OCRs as "Variable 1:1 -
+c2:1 thru to —1:1") and the Waves plug-in's control range ("1:1 to inf:1", S5),
+not a figure read from an original-160 specification (§8.3).
+**Vari-Mu (670):** the cell is a push-pull stage of paralleled **6386**
+remote-cutoff triodes whose µ falls with control voltage, side chain again
+tapped after the cell (**feedback**, S6). There is no ratio knob — the slope
+starts between 1:1 and 2:1 on small peaks and climbs to about 20:1 on loud ones
+(S6; the manual's own line is "Variable from 1:1 to 1:20 above a predetermined
+level", S10, whose control list has no ratio control) — and a six-position TIME
+CONSTANT switch selects fixed attack/release *pairs*, the last two of which are
+themselves program-dependent (S10, corroborated by S6 except at position 4).
+
+#### 2. Sources and license calls
+
+Full quotations and the component values taken from each are in Appendix D.
+
+| # | Source | What it gave | License as read | URL | Reached |
+|---|---|---|---|---|---|
+| S1 | Universal Audio, *Model 1176LN Solid-State Limiting Amplifier* manual … (App. S1) | Attack/release spans and knob sense; the four ratios … (App. S1) | "© 2009 Universal Audio … (App. S1) | https://media.uaudio.com/assetlibrary/1/1/1176ln_manual.pdf | 2026-09-06 — PDF fetched; unreadable to the fetch tool, text extracted locally with `pypdf` (Appendix A) |
+| S2 | Universal Audio, *Model LA-2A Leveling Amplifier* manual … (App. S2) | The two-stage release spec and the 40–80 ms first … (App. S2) | "Copyright 2000 Universal Audio … (App. S2) | https://media.uaudio.com/assetlibrary/l/a/la-2a_manual.pdf | 2026-09-06 — PDF fetched, `pypdf` |
+| S3 | Austin Moore, "All Buttons In: An investigation into the use of the … (App. S3) | Feedback topology, stated and contrasted with … (App. S3) | Huddersfield repository cover sheet … (App. S3) | https://eprints.hud.ac.uk/id/eprint/27391/1/Journal%20on%20the%20Art%20of%20Record%20Production%20%C2%BB%20All%20Buttons%20In_%20An%20investigation%20into%20the%20use%20of%20the%201176%20FET%20compressor%20in%20popular%20music%20production.pdf (from the item page https://eprints.hud.ac.uk/id/eprint/27391/) | 2026-09-06 — PDF fetched, `pypdf` |
+| S4 | dbx, *160X / 160XT Service Manual* (full text) | The attack and release specifications quoted in §1 … (App. S4) | Licence unverified … (App. S4) | https://archive.org/stream/dbx_160X-XT_Service_Manual/160X-XT_Service_Manual_djvu.txt | 2026-09-06 |
+| S5 | Waves, *dbx® 160 Compressor/Limiter User Guide* | The original 160 (1976) as "decilinear VCA … (App. S5) | **Licence unverified … (App. S5) | https://assets.wavescdn.com/pdf/plugins/dbx-160.pdf | 2026-09-06 — PDF fetched, `pypdf` |
+| S6 | Hannes Bieger, "Fairchild 660 & 670", *Sound On Sound*, May 2016 | The six TIME CONSTANT pairs … (App. S6) | "All contents copyright © SOS Publications … (App. S6) | https://www.soundonsound.com/reviews/fairchild-660-670 | 2026-09-06 |
+| S7 | R. Simionato & S. Fasciani … (App. S7) | Independent restatement of the LA-2A's dynamics … (App. S7) | "© 2023 Riccardo Simionato et al. … Creative … (App. S7) | https://www.dafx.de/paper-archive/2023/DAFx23_paper_10.pdf | 2026-09-06 — PDF fetched, `pypdf` |
+| S8 | J. Najnudel, R. Müller, T. Hélie, D. Roze … (App. S8) | The mechanism under the optical two-stage release and … (App. S8) | "© 2023 Judy Najnudel et al. … Creative … (App. S8) | https://www.dafx.de/paper-archive/2023/DAFx23_paper_50.pdf | 2026-09-06 — PDF fetched, `pypdf` |
+| S9 | Wikipedia, "1176 Peak Limiter" | Cross-check only: FET "in a feedback configuration" … (App. S9) | CC BY-SA 4.0 | https://en.wikipedia.org/wiki/1176_Peak_Limiter | 2026-09-06 |
+| S10 | Fairchild Recording Equipment Corporation, *Instruction Manual … (App. S10) | **The Fairchild primary source … (App. S10) | Licence chain, per `instrument-sources.md` … (App. S10) | https://archive.org/download/fairchild_670-im/fairchild_670-im_djvu.txt (item https://archive.org/details/fairchild_670-im), corroborated by the independent scan https://archive.org/download/Fairchild_670_owners_manual/Fairchild_670_owners_manual_djvu.txt | 2026-09-06 — both full texts fetched (HTTP 200) and the specification page read in each; both scans' OCR renders "4" as "U"/"h" throughout ("10-40 45th Avenue", "14\" panel space"), which is how ".U milliseconds" and "«4, milliseconds" read as 0.4 ms |
+
+Copyleft sources are measured or read as papers, never read for code structure
+(vision §5). No source here is copyleft code; S7 and S8 are CC BY papers. S4 has
+no stated licence at all and is treated as copyleft, as do S5 and S10; S1, S2
+and S6 are read under explicit all-rights-reserved notices, quoted only as short
+excerpts.
+
+The licence and citation audit's record is Appendices E and F: E is the first
+pass (twelve corrections), F is the independent re-fetch of 2026-09-06 that
+audited E's own work and applied nine further corrections. Where the two
+disagree, F is the later reading and wins.
+
+*(More of §2 is in **App. R** — moved under the length rule, nothing deleted.)*
+
+#### 3. Traits — fixed before measurement
+
+#### Tier 1 — invariants (the standard block, verbatim from vision §3)
+
+The standard block, verbatim from vision §3, is in **App. I** — moved there under the length rule; any class-specific note on it moved with it.
+
+#### Tier 2 — circuit traits
+
+#### Character FET — the 1176
+
+| # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Measurement (kit) |
+|---|---|---|---|---|---|
+| F1 | **Both time macros span the unit's ranges and both get *faster* as the macro rises.** Release 1.1 s ±25 % *(own)* at the macro's minimum, 50 ms ±25 % at its maximum. Attack 800 µs ±25 % (29–48 samples at 48 kHz) at the minimum; at the maximum, 20 µs is **0.96 of a sample period at 48 kHz**, below any rate here, so the fast end is a **bound** — 10–90 % time ≤ one sample period. Every intermediate setting faster than the one below | S1 spec page and both knob paragraphs (G.1) … (App. F1) | high (spans) … (App. F1) | Any of the four ends outside its band; a fast-end time longer than one sample period; either macro non-monotone or inverted | 10–90 % of the GR trace on a DC … (App. F1) |
+| F2 | **Threshold rises with ratio; the knee narrows with it.** With everything else fixed, the fitted knee point rises monotonically across 4:1 → 8:1 → 12:1 → 20:1 by more than the fit residual at every step, and the fitted knee width falls monotonically across the same four | S1 verbatim, "higher Ratio settings also set … (App. F2) | high (direction) … (App. F2) | A knee point that does not move, moves down, or moves by less than the fit residual at any step; a width that widens or is flat | Static curve … (App. F2) |
+| F3 | **All-Button is a mode, not a fifth ratio.** On one patch: (a) static slope between **12:1 and 20:1**; (b) GR in the first 2 ms of a 20 dB step at least **3 dB *(own)*** *less* than the 4:1 patch's at the same Attack; (c) THD on a 100 Hz sine at 12 dB of GR at least **10 dB *(own)*** above the 4:1 patch's, whose own ceiling is F5 | S1's All-Button paragraph carries all three … (App. F3) | high (the range) … (App. F3) | Slope outside 12:1–20:1; first-2 ms GR within 3 dB of the 4:1 patch's or above it; THD less than 10 dB above the 4:1 patch's | Static curve … (App. F3) |
+| F4 | **The loop is feedback, and the paired build proves it.** The feedback build's 10–90 % GR time on a 20 dB step is **strictly longer than the feed-forward control's at every setting measured** — six Attack settings × four ratio patches — no tie, no reversal, excluding only settings where the control's own time is under two sample periods and the rate sets the answer. Magnitude recorded, never required; the earlier "at least twice" is withdrawn as a pass condition, unsourced (G.7) | Topology: S1 verbatim … (App. F4) | high | Any measured setting where the feedback build ties or beats the control | GR trace on a 20 dB step … (App. F4) |
+| F5 | **Clean everywhere except All-Button.** On every non-All-Button patch, a sine held at 10 dB of GR with Release at its slowest measures THD(h2..h10 re fundamental) ≤ **0.5 %** at 50 Hz, 1 kHz and 15 kHz. Without it, a build that distorts on every patch passes F3 by distorting slightly less at 4:1 | S1 spec page verbatim … (App. F5) | high (the figure) … (App. F5) | THD above 0.5 % at any of the three frequencies, on any non-All-Button patch, at the slowest release | Harmonic spectrum at 50 Hz … (App. F5) |
+
+#### Character Optical — the LA-2A
+
+| # | Trait | Source | Conf. | Disconfirmed by | Measurement |
+|---|---|---|---|---|---|
+| O1 | **Two-stage release, measured at exactly 10 dB of GR.** After a 10 s tone holding 10 dB of GR stops: t50 **40–80 ms**, t95 **0.5–5 s**, **t95/t50 ≥ 8**. The depth is pinned because the ratio moves with it: at 10 dB a one-pole in the *linear* envelope — what the palette node is (B.1) — gives **5.61**, a GR exponential in dB gives **4.32**, a ramp linear in dB **1.90**; the same one-pole reaches **7.69** at 20 dB, so an unpinned probe lets a single-stage release pass (G.6) | S2's spec line and theory section (G.2) … (App. O1) | high | t50 outside 40–80 ms, t95 outside 0.5–5 s, or **t95/t50 < 8** | GR trace after a 10 s tone … (App. O1) |
+| O2 | **The slow stage carries memory, both ways the source names it.** Four burst-then-silence traces (200 ms / 10 s × 3 dB / 15 dB): t95 after 10 s is ≥ **2× *(own)*** t95 after 200 ms at the same depth, **and** t95 after 15 dB is ≥ 2× t95 after 3 dB at the same length | S2 verbatim on the cell's recovery depending … (App. O2) | high (direction) … (App. O2) | Either comparison below 2×, or either in the wrong direction | Four GR traces as above … (App. O2) |
+| O3 | **No time knobs; the amount knob is a threshold; the toggle is the ratio.** (a) Attack and Release are **inert** — sweeping either end to end moves no measured time beyond the repeat spread — and the measured attack sits at **10 ms ±50 % *(own)***; (b) Peak Reduction moves the fitted knee point monotonically while changing the asymptotic slope by ≤ **0.05 dB/dB *(own)*** over its travel; (c) the Limit position's asymptotic slope is **strictly steeper** than Compress at every Peak Reduction setting measured | S2 on the T4 determining both times … (App. O3) | high (a, c) … (App. O3) | Either time macro changing a measured time; attack outside 5–15 ms; Peak Reduction moving the slope by more than 0.05 dB/dB; the toggle not changing the slope, or changing it the wrong way at any setting | Static curves at five Peak … (App. O3) |
+| O4 | **Frequency-weighted side chain, flat when the knob is home.** At Emphasis maximum the steady GR on a 10 kHz sine exceeds that on a 100 Hz sine **of equal RMS** by ≥ **6 dB *(own)***; at Emphasis minimum — the factory setting — the two agree within **1 dB *(own)*** | S2 verbatim on R37 being factory-flat and … (App. O4) | high (direction … (App. O4) | No difference at maximum; a difference in the wrong direction; more than 1 dB at minimum | Steady GR on 100 Hz and 10 kHz … (App. O4) |
+| O5 | The loop is **feedback**: F4's paired-build ordering, unchanged, on this character's settings | S2 verbatim, "The LA-2A is a feed-back style … (App. O5) | high | As F4 | As F4, on the optical default … (App. O5) |
+
+#### Character VCA/RMS — the dbx 160
+
+| # | Trait | Source | Conf. | Disconfirmed by | Measurement |
+|---|---|---|---|---|---|
+| V1 | **The release is a straight line in dB.** Over one recovery from **20 dB** of GR to **1 dB**, the instantaneous rate stays within **±20 % *(own)*** of its mean across the span, and at Release macro centre the mean is within ±20 % of **125 dB/s** | S4's spec line, whose three points *are* 125 … (App. V1) | high | Rate anywhere in the 20 → 1 dB span more than 20 % off the mean, or a mean outside 100–150 dB/s at macro centre | GR trace after a burst holding 20 … (App. V1) |
+| V2 | **Attack strongly level-dependent, on the three published points.** On DC steps 10, 20, 30 dB over threshold the time for GR to first reach the full overshoot is within **±30 % *(own)*** of **15, 5 and 3 ms**; the consequence t(30) ≤ ⅓·t(10) is checked too | S4 verbatim, "!5ms for 10dB, Sms for 20dB … (App. V2) | high (the figures) … (App. V2) | Any of the three outside its band, or t(30)/t(10) above ⅓ | GR traces on 10, 20 … (App. V2) |
+| V3 | **RMS, not peak — and both comparison figures are derived, not asserted.** At ratio ∞:1, knee 0, so the GR difference equals the level difference: (a) square and sine of **equal RMS** give GR within **0.5 dB *(own)***, where a **peak** detector differs by 20·log₁₀√2 = **3.01 dB**; (b) a bipolar **10 %-duty** train and a sine of **equal peak** differ by **6.99 ± 1 dB *(tolerance own)*** — 20·log₁₀(√0.5/√0.1) — where a peak detector differs by **0 dB**. *(The earlier "9–11 dB" is a 5 %-duty figure; G.6.)* | S4, "true-RMS level detector … and … (App. V3) | high | Square/sine at equal RMS differing by more than 0.5 dB; the pulse/sine pair outside 5.99–7.99 dB — in particular near 0 dB (a peak detector) or near 10 dB (a 5 %-duty probe used by mistake) | Steady GR on sine, square … (App. V3) |
+| V4 | **Hard knee, ratio reaching ∞:1.** At Ratio maximum the static slope above the knee is ≤ **0.05 dB/dB *(own)*** over 20 dB of input, and at Knee zero the fitted width is ≤ **1 dB *(own)*** | S4's control description … (App. V4) | high | A slope above 0.05 dB/dB anywhere in the 20 dB span, or a fitted knee wider than 1 dB at Knee zero | Static curve, 60 levels … (App. V4) |
+| V5 | The loop is **feed-forward** — the only one of the four — so F4's ordering **reverses**: the shipped VCA build is the control and a feedback build of identical settings is strictly slower at every setting whose control time exceeds two sample periods | Topology: S4 ("feed-forward circuitry") … (App. V5) | high | Any such setting where the pair ties, or where the shipped build is slower | As F4, same probe … (App. V5) |
+| V6 | **Clean at any amount of compression.** A 1 kHz sine measures THD ≤ **0.2 %** at 3, 10 and 20 dB of GR, on every VCA patch and at every Release setting — the tightest of the four characters, and what separates the VCA from the FET by measurement rather than adjective | S4 spec page verbatim, "THD <0.2% … (App. V6) | high (the figure) … (App. V6) | THD above 0.2 % at any of the three depths, at any Release setting | Harmonic spectrum of a 1 kHz sine … (App. V6) |
+
+#### Character Vari-Mu — the Fairchild 670
+
+| # | Trait | Source | Conf. | Disconfirmed by | Measurement |
+|---|---|---|---|---|---|
+| M1 | **The ratio is a consequence of level, not a setting.** Local slope ≥ **0.5 dB/dB** (no steeper than 2:1) where measured GR is **2 dB**, ≤ **0.05 dB/dB** (at least 20:1) where it is **15 dB**, falling monotonically between | S10's ratio line, "Variable from 1:1 to 1:20 … (App. M1) | high (span) … (App. M1) | Slope below 0.5 dB/dB at 2 dB of GR (20:1 arriving too early); above 0.05 dB/dB at 15 dB (never reaching 20:1); a non-monotone stretch wider than one curve step | Static curve, 60 levels … (App. M1) |
+| M2 | **Six fixed time-constant pairs, as six patches.** Attack within ±30 % *(own)* of **{0.2, 0.2, 0.4, 0.4, 0.4, 0.2} ms** — the manual publishes two attack values — and release within ±30 % *(own)* of **{0.3, 0.8, 2, 5, 2, 0.3} s**, the fifth and sixth being the manual's **individual-peak** figures (the multiple-peak ones are M3's). **The release measurement is this dossier's definition, not the manual's:** the manual says "from 10 db of limiting" and names no endpoint, so the kit holds exactly 10 dB, releases, tests **t63** against the table and publishes **t90** beside it, so the endpoint can be re-argued from data | S10's SPECIFICATIONS page … (App. M2) | high — read from the … (App. M2) | Any pair outside its band; fewer or more than six patches; a t63/t90 pair whose ordering says the release is not monotone | 10–90 % attack and both t63 and … (App. M2) |
+| M3 | **Patches 5 and 6 are program-dependent; 1–4 are not.** With "multiple peaks" defined here as **ten 10 ms bursts at 200 ms spacing, each reaching 10 dB of GR**, t63 after the train is ≥ **3× *(own)*** t63 after a single such burst on patches 5 and 6, while 1–4 move **< 25 % *(own)*** between the two probes | S10 verbatim on positions 5 and 6 (G.4) … (App. M3) | high (the … (App. M3) | Patches 5 or 6 below 3×; any of 1–4 above 25 % | Two GR traces per patch … (App. M3) |
+| M4 | The loop is **feedback**: F4's paired-build ordering, once per patch | S6, "the side-chain signal is tapped after … (App. M4) | medium | As F4, on any of the six patches | As F4, once per patch |
+| M5 | **Clean at 10 dB of limiting.** A 1 kHz sine held at 10 dB of GR measures THD ≤ **1 %** on every one of the six patches, patch 6's fast 0.3 s release included | S10 spec page verbatim … (App. M5) | high (the figure) … (App. M5) | THD above 1 % on any patch at 10 dB of GR | Harmonic spectrum of a 1 kHz sine … (App. M5) |
+
+#### Tier 3 — cost and latency
+
+`capabilities` = `()` — a compressor's timing is program-dependent, not
+tempo-dependent, and the class does not read the transport (§8.6 keeps the
+question open).
+
+*(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
+
+#### 4. Modeling approach on the palette
+
+**Nodes:** one `audiodynamics.Dynamics` in `DYN_COMPRESS` per instance, as
+today. Portability tier **audioif** (`audioif/docs/upstream-diff.md:661`,
+`:673`); on a stock CircuitPython board the module imports and construction
+raises a clear `ImportError` (roadmap §3). **A mono source is compressed, not
+summed**: the kernel selects mono or stereo at `audioif_dynamics.c:235` and the
+cross-channel max (`:263-269`) collapses to one channel. That is the statement
+the kit measures.
+
+Any coefficient table the rebuild ships is computed on CPython and shipped as
+data; nothing is rebuilt on a board.
+
+*(More of §4 is in **App. R** — moved under the length rule, nothing deleted.)*
+
+#### 5. Node asks
+
+All four are additive options on `audiodynamics`, audioif's own module (D1);
+none touches a CircuitPython-ported node. Each is filed as an audioif issue only
+after its refutation.
+
+- **N-C1 — a second release stage with memory.** Unblocks **O1, O2, M3**. …  *(argument in full: App. R)*
+- **N-C2 — an RMS detector option.** Unblocks **V3**. *Palette instead:* `fabsf` …  *(argument in full: App. R)*
+- **N-C3 — a constant-rate release.** Unblocks **V1**. *Palette instead:* the …  *(argument in full: App. R)*
+- **N-C4 — a feedback detector.** Unblocks **F4, O5, M4**, three of the four …  *(argument in full: App. R)*
+
+*(More of §5 is in **App. R** — moved under the length rule, nothing deleted.)*
+
+#### 6. Proposed surface
+
+**Characters** (constructor `character=`, one trait set each): `"fet"`,
+`"optical"`, `"vca"`, `"varimu"`. Default `"optical"`.
+
+**Macros — 14 of the 16 allowed.**
+
+| # | Label | Mode | Range | Generalizes |
+|---|---|---|---|---|
+| 0 | Threshold | UNIPOLAR | −60…0 dB | 1176 Input; LA-2A Peak Reduction; 160 Threshold; 670 Input Gain |
+| 1 | Ratio | UNIPOLAR | 1…1000:1 log | 1176 ratio buttons; 160 Compression; the top of the 670's slope |
+| 2 | Attack | UNIPOLAR | 0.02…300 ms log | 1176 Attack; 670 time-constant attack; inert in `optical` (O3) |
+| 3 | Release | UNIPOLAR | 20 ms…5 s log | 1176 Release; 670 first-stage release; the optical fast stage |
+| 4 | Release Slow | UNIPOLAR | 0.1…25 s log | the optical second stage; 670 positions 5 and 6 |
+| 5 | Memory | UNIPOLAR | 0…1 | the T4 cell's memory; 0 makes the release single-stage |
+| 6 | Knee | UNIPOLAR | 0…36 dB | 160 hard knee at 0; the 1176's ratio-dependent knee; 670's progressive ratio at the top |
+| 7 | Detector | TOGGLE | peak / RMS | the 160's RMS against the 1176's peak |
+| 8 | RMS Window | UNIPOLAR | 1…100 ms log | the RMS averaging time; inert when Detector is peak |
+| 9 | Emphasis | UNIPOLAR | 0…1 | LA-2A R37; the 160's SC-HP; a side-chain HPF generally |
+| 10 | Emphasis Freq | UNIPOLAR | 30…2000 Hz log | where R37's corner sits |
+| 11 | Topology | TOGGLE | feed-forward / feedback | the 160 against the other three; ships only if N-C4 lands |
+| 12 | Makeup | UNIPOLAR | −12…+24 dB | 1176 Output; LA-2A Gain |
+| 13 | Mix | UNIPOLAR | 0…1 | none of the four — generalized, and Tier 1's wire invariant needs it |
+
+**Patches** (names describe settings): 0 *Level Ride* (optical, slow, gentle,
+low emphasis — the default); 1 *Fast Peak Catch* (fet, 30 µs, 12:1, 80 ms);
+2 *Everything At Once* (fet, 20:1, fastest times, deep GR — F3's mode);
+3 *Bus Glue* (vca, RMS, 4:1, hard knee, 125 dB/s); 4 *Programme Ride* (varimu,
+knee 30 dB, 0.4 ms, 2 s); 5 *Voice Ride* (optical, emphasis high, Limit side of
+the curve); 6 *Let The Stick Through* (fet, 20 ms attack, 60 ms release, 8:1);
+7 *Parallel Squash* (fet, 20:1, fastest times, Mix 0.4); 8 *Wide Knee Glue*
+(vca, RMS, 2:1, knee 24 dB, slow); 9 *Slow Hand* (varimu, the sixth
+time-constant pair: program-dependent long release).
+
+#### 7. Defects in the current class the rebuild must not repeat
+
+From one read of `lib/audioeffects/dynamics.py` and `_core.py`.
+
+1. **`reset()` silently reverts the surface.** `_core.Effect.reset()` ends with …  *(argument in full: App. R)*
+2. **The four characters are three numbers.** `_CHARACTERS` …  *(argument in full: App. R)*
+3. **The node takes the module's rate, not the source's.** `dynamics.py:63` …  *(argument in full: App. R)*
+4. **No side-chain filter and no mix on the surface.** Six macros …  *(argument in full: App. R)*
+5. **The macro ranges cannot reach two of the four standouts.** `_MACRO_RANGES` …  *(argument in full: App. R)*
+6. **`_apply_macro` builds a dict per macro move** (`dynamics.py:74-76`). Off
+   the audio path, so not a Tier 1 failure; the rewrite should not inherit it.
+
+*(More of §7 is in **App. R** — moved under the length rule, nothing deleted.)*
+
+#### 8. Open questions
+
+1. **Is the two-stage release composable?** N-C1's refutation: two `Dynamics` in
+   series, fast then slow — does the composite reach O1's t95/t50 ≥ 8 without a
+   node change? **Phase 0 settles it**, before the audioif issue is filed. If it
+   does, only the memory (O2) remains an ask.
+2. **Vision §10.4 asked whether four characters over one detector are honest.**
+   This dossier's answer is **no — and that is why each character has its own
+   rows.** Three of the four need something the current detector has not got
+   (N-C1, N-C2, N-C4). A character whose traits cannot be met is recorded unmet,
+   not quietly widened. **Arthur, at Gate 0**, on the node list.
+3. **The dbx numbers are the 160X's.** The original 1976 unit's manual was not
+   reached, so V1's 125 dB/s and V2's table are the *family's*. Re-check if an
+   original-160 specification is ever reached; the traits stand meanwhile. **The
+   implementation session**, opportunistically.
+4. **The Fairchild table is now read, not transcribed** — this question is
+   answered and the entry is kept only so the change is visible. The audit of
+   2026-09-06 reached the manual (S10) and the trait-critic pass of
+   2026-09-06/07 re-read the scan itself (App. G.4), so M2 is **high**
+   confidence, not medium. What is still open is narrower: the manual gives no
+   endpoint for "release time from 10 db of limiting", so M2 measures t63 by
+   this dossier's own definition and publishes t90 beside it. **The
+   implementation session** may tighten the ±30 % bands once one endpoint is
+   shown to fit all six positions.
+5. **`Emphasis` and `reset()`.** The node's side-chain filter keeps its memory
+   across `reset()` (`audioif_dynamics.c:149-152`), so a class that leaves
+   emphasis engaged is not stateless afterwards. Either the rebuild rebuilds the
+   node on reset or this becomes a fifth ask. It is a **Tier 1** item, so it
+   cannot pass the class gate unresolved. **The implementation session**, at
+   Station B.
+6. **Tempo-synced release.** It would make `capabilities` `("tempo_sync",)` and
+   is a real feature, but no standout has it, so it is deliberately out of this
+   seed. **The implementation session** may propose it, with its own trait and
+   the declare-if-and-only-if rule.
+7. **Is gain smoothing composable, or a fifth ask?** Raised by the trait-critic
+   pass, which added three distortion traits (F5 0.5 %, V6 0.2 %, M5 1 %) from
+   the three manufacturers' own specification pages. The palette applies its
+   gain per sample off an unsmoothed detector, and that is exactly what gives
+   B.7's 25.66 % at a 1 ms release — so at fast settings these three rows are
+   not obviously reachable. It is **not filed as an ask**, because no
+   measurement yet shows the palette cannot reach them: two `Dynamics` in
+   series, or a slow-release patch, may be enough, and vision §6's rule is
+   compose first. **Phase 0 or the implementation session** measures the
+   composition against F5, V6 and M5 before any fifth issue is opened; if it
+   fails, the ask is a one-pole on the gain after the gain computer — one state
+   variable, two multiplies, no transcendental (Tier 3).
+8. **Does `Limiter` share these characters?** **Settled here: no.** `Limiter` is
+   a design grade with its own dossier and its own control law; sharing one node
+   must not become sharing one surface by accident.
+
+---
+
+
