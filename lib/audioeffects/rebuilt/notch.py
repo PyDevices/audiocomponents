@@ -27,8 +27,8 @@ coefficient set cannot put the notch's zeros exactly on the unit circle:
 `b0` and `b1` are rounded independently, so the rejection at the centre is
 `|2*b0*cos(w0) + b1| * (1+alpha) / (2*alpha*sin(w0))` rather than nothing at
 all. Measured (dossier A16, 48 kHz): under one LSB - a true null - from
-500 Hz up at Q <= 12, **-35.6 dB at 60 Hz Q 12**, and **-11.0 dB at 20 Hz
-Q 32**. So this class is a clean utility notch across the musical range and
+500 Hz up at Q <= 12, **-35.65 dB at 60 Hz Q 12**, and **-11.21 dB at
+20 Hz Q 32**. So this class is a clean utility notch across the musical range and
 a 35 dB hum *reducer* at the bottom, not a hum eliminator. The dossier's T1
 is recorded disconfirmed below about 250 Hz for that reason, and its section
 5 carries the one node ask that would recover 17-36 dB of it. The ported

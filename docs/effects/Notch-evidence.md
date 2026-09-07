@@ -455,7 +455,7 @@ $ PYTHONPATH=lib .venv/bin/python -m flake8
 
 $ PYTHONPATH=lib .venv/bin/python -m unittest discover -s tests -p "test_*.py"
 ----------------------------------------------------------------------
-Ran 246 tests in 23.395s
+Ran 246 tests in 33.044s
 
 OK (skipped=1)
 

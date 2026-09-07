@@ -26,8 +26,8 @@ there, and are recorded in its changelog.
   **The trade that move costs, stated because a caller has to know it:** a
   `float` coefficient set cannot hold the notch's zeros exactly on the unit
   circle, so the rejection at the centre is a true null from 500 Hz up at
-  Q ≤ 12 but −35.6 dB at 60 Hz Q 12 and −11.0 dB at 20 Hz Q 32, against
-  −78.9 and −40.0 dB on the integer kernel it replaces. The dossier's T1 is
+  Q ≤ 12 but −35.65 dB at 60 Hz Q 12 and −11.21 dB at 20 Hz Q 32, against
+  −78.87 and −40.04 dB on the integer kernel it replaces. The dossier's T1 is
   recorded disconfirmed below about 250 Hz with that cause, and its §5
   carries the audioif node ask that would recover 17–36 dB of it.
   The old class stays in `eq.py`, untouched, beneath the registry.
