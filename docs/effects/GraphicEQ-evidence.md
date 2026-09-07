@@ -526,3 +526,94 @@ From the dossier's §7, and only from there.
   correctly.
 
 Nothing else is outstanding.
+
+---
+
+## Refutation record (2026-09-07)
+
+An independent session took the three **demonstrated** traits and tried to
+break each one: every measurement re-run from its own harness
+(`scratch/refute/`, CPython at `lib` on the pin), the probe material and the
+rate varied inside the trait's own terms, each planted fault re-fired, and
+each row checked for a bar that cannot go red. Every number below is from a
+run made this session.
+
+**T1 — REFUTED, on the probe level the trait never names.** The pack's
+figures reproduce exactly (81 tones, 48 kHz: **+10.89 dB at 16 kHz, +11.93 at
+20 kHz, drop 1.03**; 8 kHz bell peak +11.94, +0.54 at 16 kHz, down 11.40) and
+they survive the rate (44.1 kHz: **+11.20 / +11.94, drop 0.74**; bell down
+11.53) and a quieter probe (peak 500: unchanged to 0.01 dB). They do **not**
+survive a louder one. Neither the trait nor the measurement row states a probe
+amplitude, and the level is not free here: `to_s16` saturates between sections,
+so a +12 dB request stops being +12 dB well below full scale. On the pack's own
+81-tone grid at 48 kHz, a peak-**14000** tone (43 % of full scale) reads
+**+8.76 dB at 16 kHz and +8.93 at 20 kHz — under the trait's own +9.00 dB
+bar**; at peak 20000 the shelf reads +6.55 / +6.04 and the 8 kHz bell is down
+only **5.43 dB**, so **both halves of T1 fail**. The wet render first hits
+32767 at peak 9000. The pack's own §6 patch table uses an 11000-peak source,
+where T1 still passes but with the margin already halved (**+10.02 / +10.66**).
+*What the author must answer:* name the probe amplitude in T1's statement and
+in its measurement row — the trait as written is not reproducible without it —
+and say what headroom the +9 dB clause is claimed under. The class docstring's
+"it clips where the pedal clips" is the right disclosure in the wrong place: it
+is not in the trait, and the trait carries an absolute dB bar.
+
+**T2 — not refuted; the trait stands, but the answer beside it does not.**
+The published numbers reproduce to the third decimal (**1.780 oct at +3 dB,
+0.716 at +12, +1 dB crossing moving 0.06 %**) and survive every variation
+tried: 0.5 s tones (1.780 / 0.716), a 24-per-octave grid (1.779 / 0.713), a
+6-per-octave grid (1.784 / 0.721), **44.1 kHz** (1.778 / 0.715), **22.05 kHz**
+(1.756 / 0.708), probe peaks 11000 / 14000 / 20000 (1.780 / 0.716 at all
+three — clipping flattens the peak and can only narrow the +12 dB width, so
+that bar is one-sided under level), and the neighbouring bands (250 Hz:
+1.786 / 0.717; 4 kHz: 1.688 / 0.682). The planted fault fires: `Constant Q`
+on gives **0.698 oct at +3 dB against 0.716 at +12, ratio 0.98, edge moving
+39 %**. What does **not** hold is §1's answer to "the `Band Q` default was
+chosen to clear the bar", which says the +3-to-+12 width **ratio** is
+"2.51 predicted at *every* anchor". Measured across the macro's own range at
+the 1 kHz band, 48 kHz, 12 tones per octave:
+
+| `Band Q` | +3 dB | +12 dB | ratio | T2's bars |
+|---|---|---|---|---|
+| 0.70 | 3.978 oct | 1.911 oct | **2.08** | +12 dB **fails** |
+| 1.00 | 3.131 | 1.389 | **2.25** | +12 dB fails |
+| 1.50 | 2.286 | 0.948 | **2.41** | +12 dB fails |
+| 1.70 | 2.044 | 0.833 | **2.45** | +12 dB fails |
+| **2.00 (default)** | 1.777 | 0.714 | **2.49** | both pass |
+| 2.50 | 1.454 | 0.577 | **2.52** | +3 dB **fails** |
+
+The ratio moves monotonically from 2.08 to 2.52 — it is not anchor-free, and
+§1b's own anchor-1.5 row (2.287 / 0.949) is a ratio of **2.41**, not 2.51, so
+the sentence is refuted by a table already in this file. Both of T2's bars are
+met only in a window around the default (roughly 1.75–2.4). *What the author
+must answer:* correct that sentence. The trait is demonstrated at the frozen
+default and every in-terms variation confirms it; the invariance argument
+offered as the reason it is not a tuned result is wrong as stated, and the
+honest answer is the narrower one — the width ratio rises with the anchor, so
+the +3-to-+12 narrowing is directional at every anchor but its size is not.
+
+**T4 — not refuted; the identity is real, and six of its ten bands are
+vacuous.** Extended from four bands to **all ten, at three rates**: at 48 kHz,
+44.1 kHz and 22.05 kHz, every one of the thirty detented-versus-eleven-section
+pairs is byte-identical (`b0`…`b9` all `=`). No probe broke it. But the fault
+of the same kind — the detented section left at `mix = 1` — cannot be made to
+fire above the bottom of the bank:
+
+```
+peak  8000, 24000 frames: b0 RED b1 RED b2 RED b3 green b4..b9 green
+peak 30000, 24000 frames: b0 RED b1 RED b2 RED b3 RED   b4..b9 green
+peak  8000, 96000 frames: b0 RED b1 RED b2 RED b3 green b4..b9 green
+```
+
+So for **bands 4–9 the check cannot fail**: a class that never muted a detented
+band at all would pass T4 at band 5 and band 9 under every probe tried, and two
+of the four bands the pack reports (5 and 9) are exactly those. §1 discloses the
+asymmetry and gives the LSB-per-centre table, which is why this is recorded and
+not called a refutation — but the two vacuous rows are counted as evidence
+beside the two that are not. One correction to that table: it says a flat
+section is "exact from 250 Hz up", measured at peak 8000; at peak 30000 band 3
+(250 Hz) **does** drift, and the fault fires there. *Nothing to answer beyond
+the correction* — the trait is true, and bands 0–2 (and 3 when driven) prove it.
+
+**Not re-examined:** T3 and T5, which the pack already reports as
+disconfirmed, and every Tier 1 row.
