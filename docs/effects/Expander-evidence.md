@@ -573,3 +573,83 @@ From the dossier's §7, and only from there.
   them false. They hold the rule now instead of the count, so the second class
   will not have to touch the file — but the sixteen Phase 2 branches in flight
   will each see this hunk and one of them will land it.
+
+---
+
+## Refutation record (2026-09-07)
+
+An independent refuter, working only from §1's demonstrated rows and the
+dossier's own trait statements, re-ran each measurement with the kit
+(`PYTHONPATH=lib .venv/bin/python`, driver helpers imported from
+`tools/expander_evidence.py`), varied the probe material and the operating
+point *inside the trait's own terms*, re-planted each fault, and looked for a
+reading that cannot go red. Every number below is from a run in this session.
+
+- **E1 — not refuted, and one hole in the pack closed.** The pack tests two of
+  the dossier's three disconfirmation clauses; the third — *"a slope that
+  changes by more than 5 % when the whole staircase is moved 20 dB up or down
+  with the threshold moved with it"* — was untested. Run here at thresholds
+  −40 / −20 / 0 dBFS: the slope moves by at most **1.03 %** (ratio 1.5), and
+  by **0.30 / 0.94 / 0.87 %** at ratios 2 / 4 / 8, all against a 5 % bar.
+  Material varied too (100 Hz, 1 kHz, 5 kHz sine and a 1 kHz square at ratios
+  2 and 4): slope error **+0.92 … +1.90 %**, worst residual **0.446 dB** on
+  the square at ratio 2 — green, but that is 89 % of the 0.5 dB bar and the
+  pack quotes only 0.30. The pack's own fault reproduced exactly (**+31.65 /
+  +34.94 / +34.62 %**, ratio 8 not expressible). The ratio-8 row is therefore
+  *not* a measurement that cannot fail: the same fault driven **downward**
+  (ratio set 30 % low) turns all four rows red, ratio 8 included — slope
+  **5.6126**, **−29.84 %** off the claim. *The author must answer:* nothing.
+  The square-wave residual margin is worth a line in §11.
+- **E2 — REFUTED.** The trait fixes the level (15 dB below threshold) but
+  **no ratio**; §1 quotes one gap per rate and never says the demonstration
+  was taken at ratio 2 alone. Re-run at other ratios inside the Ratio macro's
+  own 1.0–8.0 span, at threshold −6 dBFS where the output stays 24 dB clear of
+  the int16 floor (48 kHz, 1 kHz, equal-RMS sine vs 50 % square):
+
+  | ratio | sine out | square out | gap | bar |
+  |---|---|---|---|---|
+  | 1.5 | −28.51 dBFS | −28.55 dBFS | 0.04 dB | green |
+  | 2.0 | −36.02 | −36.11 | 0.09 | green |
+  | 3.0 | −51.06 | −51.22 | 0.16 | green |
+  | 4.0 | −66.23 | −66.79 | **0.55** | **RED** |
+  | 5.0 | −82.41 | −84.29 | **1.88** | **RED** |
+  | 6.0 | −240.00 | −240.00 | 0.00 | *both renders are digital silence* |
+
+  The ratio-4 reading is the class's, not the floor's or the window's: it is
+  **0.55 dB unchanged** at 1 s / 3 s / 5 s probes, over the last 50 % / 25 % /
+  9 % of the render, and at depth −80 and −90 dB. It is rate-dependent —
+  **0.55 / 0.49 / 0.32 dB** at 48 / 44.1 / 22.05 kHz — so 48 kHz, the pack's
+  own headline rate, is the one that fails. **And the measurement cannot fail
+  at ratio ≥ 6:** at ratio 6, threshold −6 dBFS, both renders are silence, so
+  the gap is **0.00 dB clean and 0.00 dB with the pack's own peak-detector
+  fault planted**. The planted fault does discriminate where the reading is
+  live (gap **1.03 / 2.07 / 7.50 dB** at ratios 1.5 / 2 / 4), and it under-runs
+  the dossier's predicted "near 3.0 dB × (ratio−1)" everywhere (predicted 1.50
+  / 3.01 / 9.03). *The author must answer:* at which ratios E2 is claimed, why
+  §1's verdict does not name the single ratio it was taken at, and what the
+  0.55 dB at ratio 4 / 48 kHz is — the key band's two-pole 23.52 kHz end taking
+  RMS off the square and the gain computer multiplying that error by
+  (ratio−1) is the obvious candidate, and it is untested here. Until then E2
+  reads **demonstrated at ratio ≤ 3**, not demonstrated.
+- **E4 — not refuted, but the row count is overstated.** The verdict says
+  "demonstrated on the three rows a 16-bit path can show". The **depth 0 dB
+  row cannot fail**: it is green clean (error +0.00) *and* green under the
+  pack's own planted fault (depth pinned at 0 dB → error +0.00), because the
+  fault and the setting are the same value. Only the −20 and −40 rows go red
+  (+20.00, +40.00), so the demonstration rests on **two** rows, and the third
+  is a restatement of §2's "Depth 0 dB is a wire" invariant. The trait names
+  no probe frequency, and the −40 row's margin is thinner than §1 says: at
+  48 kHz it is **−0.39 / −0.37 / −0.41 / −0.44 / −0.49 / −0.49 dB** at 100 Hz
+  / 250 Hz / 1 kHz / 4 kHz / 8 kHz / 16 kHz against a **0.50 dB** bar — 98 % of
+  the bar at 8 and 16 kHz, where §1 quotes the 1 kHz figure of 0.41. Nothing
+  found goes red: 20 kHz sine (−0.44), 1 kHz and 4 kHz square (−0.31), ratio 4
+  instead of 8 (−0.41), and 22.05 kHz at 4 / 8 / 9.5 kHz (−0.38) are all
+  inside the bar. *The author must answer:* reword the verdict to two rows,
+  and quote the worst frequency rather than 1 kHz.
+
+**Commands.** `PYTHONPATH=lib .venv/bin/python tools/expander_evidence.py
+--rate 48000 --only e1|e2|e4` (reproduced §1's figures exactly: E1 slopes
+1.5077 / 2.0185 / 4.0390 / 8.0817, E2 gap 0.10 dB, E4 errors +0.00 / −0.03 /
+−0.41), then four ad-hoc drivers importing `tools/expander_evidence.py`'s
+`tone`, `render`, `dry` and `at` and `tools/effect_measurements.py`'s `curve`
+and `rms_db` directly, for the sweeps tabled above.
