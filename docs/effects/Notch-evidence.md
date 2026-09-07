@@ -27,7 +27,7 @@ closed form, the pack says by how much and why, and never moves a bar.
 | Standout | none, per vision §4.2 — the Twin-T was weighed and dropped on scope (dossier §2) |
 | Grade | design |
 | Portability tier | **audioif** (`REQUIRES = ("audiobiquad",)`) |
-| Landed in commit | `98e624b` (the class, the README row and the CHANGELOG line), `STATION_C_SHA` (this file, its probe and the class's own tests) |
+| Landed in commit | `98e624b` (the class, the README row and the CHANGELOG line), `76ced0b` (this file, its probe and the class's own tests) |
 | audioif pin | `AUDIOIF_PIN` = `2f6cbc3`; every C citation checked against the tree at that pin |
 | Interpreters | `audiocomponents/.venv/bin/python` 3.12.3; `cmods/bin/micropython` 1.28.0; `cmods/bin/circuitpython-effects` 10.2.1 |
 | Boards | **not run** — see §4 and §11 |
@@ -442,7 +442,7 @@ seed's claim about that board on those grounds.
       musician's terms.
 - [x] The class's code, the README row and the CHANGELOG line landed in
       `98e624b`; this file, its probe and the class's own tests in
-      `STATION_C_SHA`.
+      `76ced0b`.
 
 ---
 
