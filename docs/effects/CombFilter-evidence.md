@@ -761,3 +761,149 @@ From the dossier's §7, and only from there.
   a committed tool. The committed reproduction of the same traits is
   `tests/test_cpython_effects_combfilter.py`, which is narrower: it checks
   the criterion, not the whole curve.
+
+---
+
+## Refutation record (2026-09-07)
+
+An independent refuter's pass over every row §1 marks **demonstrated**. Every
+number below is from a run made this session on
+`audiocomponents/.venv/bin/python` (Python 3.12.3), `PYTHONPATH=lib`, 48 kHz
+stereo, driving the class through the committed test module's own helpers
+(`tests/test_cpython_effects_combfilter.py`: `wet_gain_db`, `tone`, `pull`,
+`left`, `bin_db`, `centroid`, `impulse_at`) so that the pack's own probe
+scaling and settling rules apply. The class was not edited.
+
+**T1 — peaks on the harmonic series. Not refuted, but its second leg is
+vacuous and one printed figure does not reproduce.** Peak *location* was
+re-read by a route the pack does not use — impulse in, 2^18-point FFT,
+parabolic peak refinement, Feedback 0.8, Mix 2 — at ten tunings including the
+seven the dossier's own measurement column names. Worst error against `k·f`:
+**−0.256 %** (3520 Hz, k=3); 20 Hz reads −0.022 %, 4 kHz −0.002 %, 438.3 Hz
+−0.002 %. Against the dossier's 1 % bar the trait stands, and the pack's
+single-tuning RESPONSE grid at 200 Hz understates what is actually true.
+Two corrections the author must make anyway: (1) **the `taps()` leg cannot
+fail.** `em.taps(expected_ms=1000/f)` on `WholeSampleCombFilter` — the class's
+own T1/T3 fault — is **green at 55, 110, 440, 880, 1760 and 3520 Hz**, because
+the bar is 0.5 ms and a whole-sample rounding error is at most 0.0104 ms at
+48 kHz. A leg that passes the fault it is offered against is not a second
+reading. (2) **"Twelve arrivals at every tuning" does not reproduce.** A
+default `taps()` call at Feedback 0.7 returns **12 taps at 55/110/440/880 Hz
+but 6 at 1760 Hz and 3 at 3520 Hz**, with `repeat_spacing_ms` reading 1.125
+and 1.111 — `arrivals()`'s `min_gap_ms=1.0` (`tools/effect_measurements.py:1351`)
+cannot resolve repeats 0.568 ms and 0.284 ms apart, so above ~1 kHz the printed
+spacing is the detector's gap, not the comb's. And the count is a readout of
+**Feedback**, not of tuning: same 440 Hz render, g = 0.3/0.5/0.7/0.8/0.9 gives
+4/7/12/18/36 taps, which is `−40 dB / 20·log10(g)`. *Answer owed: re-run T1's
+frequency leg at the seven dossier tunings, and strike or re-parameterise the
+`taps()` sentence.*
+
+**T2 — the peak/null law within 0.2 dB at and below 2 kHz. REFUTED.** The
+dossier's disconfirmation is "either extreme more than 0.2 dB from the closed
+form below 2 kHz, at g ∈ {0.3, 0.5, 0.8, 0.95}". Run at six tunings with the
+pack's own `wet_gain_db` (so the clipping defence in §1's T2 row does not
+apply — the probe is `20000·(1−g)·0.8` and the render settles):
+
+```
+tuned   200.0 g=0.95  peak  26.014 (ideal 26.02  err -0.006)
+tuned   440.0 g=0.95  peak  25.997 (ideal 26.02  err -0.024)
+tuned   880.0 g=0.80  peak  13.908 (ideal 13.98  err -0.071)
+tuned   880.0 g=0.95  peak  25.738 (ideal 26.02  err -0.282)   <-- over the bar
+tuned  1760.0 g=0.80  peak  13.753 (ideal 13.98  err -0.226)   <-- over the bar
+tuned  1760.0 g=0.95  peak  25.148 (ideal 26.02  err -0.873)   <-- over the bar
+tuned  1000.0 g=0.95  peak  26.015 (ideal 26.02  err -0.006)
+tuned  2000.0 g=0.95  peak  26.015 (ideal 26.02  err -0.005)
+```
+
+880 Hz and 1760 Hz are **below** 2 kHz. §1b already prints "−0.07 at 880,
+−0.23 at 1760" and files them under the paragraph headed *"Above 2 kHz T2 is a
+curve"* — 1760 is not above 2 kHz, and at g = 0.95, the setting §1b never ran
+at those tunings, the miss is **0.87 dB, four times the bar**. The measurement
+the pack quotes is at 200 Hz, and 200, 1000 and 2000 Hz are exactly the
+tunings where `48000/f` is a whole number of frames and the interpolator is
+not in the loop at all. *Answer owed: either restate T2's tolerance as a
+function of the fractional part of `F_s/f` (which is what the physics says and
+what these numbers measure), or move the demonstrated verdict to
+disconfirmed-with-a-bound. The committed test asserts 200 Hz only
+(`tests/test_cpython_effects_combfilter.py:345-361`), so nothing in the suite
+would catch this.*
+
+**T3 — fractional tuning within 5 cents. Not refuted; it got stronger.**
+43 requests spaced logarithmically across 20 Hz…4 kHz, at three rates, worst
+|error|: **0.0021 cents at 48 kHz, 0.0016 at 44.1 kHz, 0.0058 at 22.05 kHz**.
+The "a centroid cannot fail" worry was tested with a fault the pack did not
+plant — a class identical but for a fixed **+6 cent** bias on `delay_ms` — and
+the centroid reads **−6.000, −6.000, −5.999, −5.999 cents** at 110, 440, 1760
+and 3520 Hz, i.e. it catches a bias an eighth the size of the bar, and catches
+it at 110 Hz where the pack's own rounder fault is legitimately green. This
+row is sound.
+
+**T5 — total nulls and +6.02 dB peaks at Feedback 0, Mix 1. REFUTED.** The
+trait as frozen carries no restriction on tuning; the class's Frequency span
+is 20 Hz…4 kHz; the pack measures the row at **1 kHz only**, where
+`48000/f = 48.000` and the nulls are bit-exact by construction. The dossier
+disconfirms on "a null above −60 dB or a peak outside +6.02 ± 0.1 dB". At
+Feedback 0, Mix 1, wet against the same class at Mix 0 (stable across a 1 s
+and a 2 s render and across probe levels 2000 and 8000 LSB):
+
+```
+tuned  1000.0 (48.0000 fr)  peaks +6.021 +6.021   nulls -318.05 -318.06
+tuned   440.0 (109.0909)    peaks +6.020 +6.018   nulls  -89.23  -70.22
+tuned   438.3 (109.5140)    peaks +6.019 +6.013   nulls  -79.76  -60.68
+tuned   880.0 (54.5455)     peaks +6.013 +5.992   nulls  -67.72  -48.64  <-- null over -60
+tuned  3520.0 (13.6364)     peaks +5.914 +5.593   nulls  -44.25  -25.24  <-- both over
+```
+
+At 3520 Hz — inside the span, and the tuning T3 uses as its own discriminating
+probe — the odd-half-multiple null is **−25.2 dB, 35 dB above the bar**, and
+the 2f peak is **+5.593 dB, five times the ±0.1 dB tolerance out**. The cause
+is the same two-tap linear interpolator T3 depends on: a fractional-delay
+feedforward comb has no perfect zero. *Answer owed: T5 is true at whole-sample
+tunings and false at fractional ones. Restate it with that condition and say
+where the boundary is, or mark it disconfirmed. The committed test pins
+`TUNED_HZ = 1000.0` (`tests/test_cpython_effects_combfilter.py:376`), so the
+suite cannot see this either.*
+
+**T6 — the tuning knob is click-free. REFUTED, and the planted fault is not a
+fault.** `NoGlideCombFilter` forces `delay_slew = 0`. **Macro 5 "Glide" has
+span 0…1 and grid position 0 sets `delay_slew` to exactly 0.0** — verified:
+`e.set_macro(5, 0); e.macro(5)` returns `0.0`. So the "fault" is a legal
+position of the class's own surface. On the pack's own estimator (100 Hz →
+1 kHz over one second, block 512, second difference at the boundaries against
+the 99.9th-percentile off them, bar +1 dB):
+
+```
+clean, Glide 0.05 (the default)      -1.15 dB   pass
+NoGlideCombFilter (the planted fault) +8.28 dB   RED
+clean class, Glide macro = 0          +8.28 dB   RED   <-- same class, legal knob
+clean class, Glide 0.01               -0.44 dB   pass
+```
+
+The clean class and the planted fault read **the same number to the hundredth
+of a decibel**, because they are the same DSP. What T6 demonstrates is that
+*Glide at or above about 0.01 is click-free*, which is not what the dossier
+froze. Two further probes, both green, and both of which the pack owed and did
+not print: the dossier's second named measurement, a **440 → 441 Hz step**,
+reads −2.58 dB; a downward **1 kHz → 100 Hz** sweep reads +0.09 dB (green, but
+1.2 dB worse than the upward one the pack chose). *Answer owed: either restate
+T6 as conditional on Glide, or floor the Glide macro above zero and say so in
+the docstring — and replace `NoGlideCombFilter` with a fault the surface
+cannot reach.*
+
+**Not a trait, but found while refuting T1 and it corrects §2a.** At tuning
+**1760 Hz, Feedback 0.8**, an impulse render is still non-zero at frame
+262 143 of 262 144, parked on a **±1 LSB square wave of period 27 samples** —
+which is a tone at 48000/27 = **1777.77 Hz, 17.4 cents sharp of the tuning**,
+and it stands **+4.33 dB above the tuned resonance** in the render's own
+spectrum. §2a's account says the parked case is a lone surviving LSB and
+predicts it from the fractional part of `F_s/f` — 1760's fraction is 0.27,
+between the 0.18 that parks and the 0.51 that does not — and §2a's Feedback
+sweep at 438.3 Hz never visits 0.8 at a fractional tuning. So the parked
+residue is (a) reachable at a fraction the rule does not cover, (b) an
+oscillation rather than a DC-like fixed point, and (c) **off the tuned pitch**,
+which is a different musical statement from the docstring's "a low ring at the
+tuned pitch".
+
+**What this pass did not shake.** T3 in full; T1's peak locations; the WIRE,
+LEVEL and CLICK invariants (not re-run — they are byte comparisons with their
+own faults, and no argument against them was found).
