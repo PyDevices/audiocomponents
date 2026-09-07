@@ -636,7 +636,7 @@ unit by a factor of four and the only one expected to need the escape valve.
 detectors do not look ahead, so `latency_samples` is 0 — measured on the
 shipped chain, an impulse at frame 64 came out at frame 64 (A-M4). Two
 latency-adding options are deliberately **not offered**: per-band look-ahead
-(`Dynamics` supports it, capped at 50 ms, `audioif_dynamics.h:53`) and any
+(`Dynamics` supports it, capped at 50 ms, `audioif_dynamics.h:105`) and any
 linear-phase or partitioned crossover. If a later revision adds look-ahead it
 defaults to 0, is reported in `latency_samples` the moment it is set, and is
 named in the docstring in milliseconds at 48 kHz, per vision §9a.

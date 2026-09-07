@@ -9,7 +9,7 @@ of `render_effect.py` that this class cannot survive on the ported build.
         tools/phase2_probes/multiband_digest.py
 
 **Why this file exists, measured rather than assumed.**
-`render_effect.py:716` calls `audiocore.reset_buffer(effect.output)` before it
+`render_effect.py:717` calls `audiocore.reset_buffer(effect.output)` before it
 renders. This class's `output` is an `audiomixer.Mixer`, and **upstream
 CircuitPython's `Mixer.reset_buffer` stops every voice rather than rewinding
 it** -- a stopped voice never plays again (audioif's `docs/upstream-diff.md`,
