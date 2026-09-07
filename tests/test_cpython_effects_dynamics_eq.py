@@ -80,9 +80,19 @@ class DynamicsAndEQTest(unittest.TestCase):
         # unusable at both ends of the band for as long as they were. Q 0.707
         # is -3.01 dB at the corner by definition, so the assertion needs no
         # reference implementation to compare against.
+        # 22 kHz is dropped from the `HighPass` row on 2026-09-07, in the
+        # commit that rebuilt it: the rebuilt class's Frequency macro spans
+        # 10 Hz to 20 kHz (its dossier's section 6, D2), so a corner above
+        # that is not a setting it offers and asking for one measures the
+        # span's own ceiling rather than the coefficients. Everything from
+        # 50 Hz to 18 kHz still runs here, and the rebuilt class's own
+        # corner sweep - which walks its whole span at both slopes and at
+        # three rates - is `test_cpython_effects_highpass.py::CornerTest`.
         for hz in (50.0, 100.0, 200.0, 400.0, 1000.0, 4000.0, 12000.0,
                    18000.0, 22000.0):
             for name in ("LowPass", "HighPass"):
+                if name == "HighPass" and hz > 20000.0:
+                    continue
                 with self.subTest(filter=name, hz=hz):
                     at_corner = tone_gain_db(
                         hz, lambda s, n=name, f=hz:

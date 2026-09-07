@@ -362,7 +362,7 @@ def run_latency():
             values[50 * 2] = 20000
             values[50 * 2 + 1] = 20000
             built = nodes()
-            chain(built, raw(values, r if False else rate))
+            chain(built, raw(values, rate))
             data = pull(built[-1], 2)
             left = data[0::2]
             first = int(np.nonzero(left)[0][0])

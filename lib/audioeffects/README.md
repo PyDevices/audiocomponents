@@ -86,7 +86,8 @@ not.
 | `ParametricEQ` | peaking bands `(freq, gain_db, q)` plus optional shelves |
 | `GraphicEQ` | ten fixed ISO bands |
 | `DynamicEQ` | notch+band split, band compressed, summed (the split is exact) |
-| `LowPass` `HighPass` `BandPass` `Notch` | single swept biquads |
+| `HighPass` | **rebuilt.** The low-cut: one knob decides where the bottom stops and nothing above it is touched, one decides how loud the corner itself stands - 3 dB down at Resonance 0.707, 24 dB up at 16, where the filter whistles at its own corner. A desk's 12/24 dB/oct slope switch, a dry/wet Mix whose zero is a byte-exact wire, and a make-up Trim. Five macros, six patches, zero latency. Its transmission zero at DC is exact: a held offset decays to zero rather than to a residue. **Portability tier: audioif** (`audiobiquad`) - three float biquads, because the ported node parks on up to 71 LSB of DC at a 10 Hz corner and holds it. Budgeted at 5 % of an S3 stereo block at 12 dB/oct and 9 % at 24, 1.5 % / 2.5 % on the P4. Dossier `docs/effects/HighPass.md` |
+| `LowPass` `BandPass` `Notch` | single swept biquads |
 | `LadderFilter` | Moog-style 4-stage cascade, 24 dB/oct, resonant |
 | `CombFilter` | tuned short feedback delay |
 

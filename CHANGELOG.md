@@ -6,6 +6,34 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audioif's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Changed
+
+- **`audioeffects.HighPass` is rebuilt from scratch** for the effects
+  program's Phase 2, against `docs/effects/HighPass.md`, as
+  `lib/audioeffects/rebuilt/highpass.py` on the `_component` construction
+  module. It gains the five-macro surface the old class did not have
+  (Frequency 10 Hz - 20 kHz, Resonance Q 0.5 - 16, a 12/24 dB/oct Slope
+  switch, Mix and a +/-12 dB Trim), six named patches, a declared
+  `tail_samples` of 305 152 measured rather than assumed, and a `frequency`
+  that clamps below Nyquist instead of raising.
+- **`HighPass`'s portability tier moves to audioif** (`REQUIRES =
+  ("audiobiquad",)`). Its three sections are `audiobiquad.Biquad`, whose
+  float state reaches exact zero; the ported `synthio.Biquad` holds up to
+  71 LSB of DC at a 10 Hz corner for ever (audioif#23), which is the Tier 1
+  invariant failing at exactly the corners a low-cut is for. A stock
+  CircuitPython board can no longer construct this class, where the old one
+  ran there and quietly failed that invariant.
+- `tests/test_rebuilt_registry.py` no longer asserts that every one of the 46
+  names misses: it asserts that a name either misses and keeps its old class
+  or resolves to a `Component` of that `NAME`, so no rebuild has to edit it.
+- The `HighPass` leg of
+  `test_cpython_effects_dynamics_eq.py::test_a_filter_sits_at_its_corner_across_the_whole_band`
+  is retired above 20 kHz - outside the frozen span. Its replacement,
+  `tests/test_cpython_effects_highpass.py::CornerTest`, walks the whole span
+  at both slopes and at three rates.
+
 ## v0.2.0 (2026-09-03)
 
 The first release from this repository. These packages continue a version
