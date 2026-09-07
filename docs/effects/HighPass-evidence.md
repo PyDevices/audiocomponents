@@ -687,3 +687,106 @@ HighPass Tier 1, portable rows -- interpreter: micropython
 
 0 failures
 ```
+
+---
+
+## Refutation record (2026-09-07)
+
+An independent refuter re-ran every demonstrated trait's own measurement with
+the kit under `audiocomponents/.venv/bin/python` (PYTHONPATH=lib), varying
+probe material, f₀, Q, slope and rate **inside each trait's own stated
+terms**, and checked that each planted fault really turns its own reading
+red. Three claims broke. The class was not edited.
+
+- **T1 — exact zero at DC — stands.** Re-run over f₀ ∈ {10, 12, 20, 50, 500,
+  5 000, 15 000} Hz × both slopes × (Q 0.707/trim 0, Q 16/trim +12, Q 0.5/trim
+  −12) at 48 000 / 44 100 / 22 050 Hz: every combination reaches **exact zero,
+  residual 0 LSB**, once the render is long enough. The eighteen rows that
+  read non-zero at 3 s (up to 1 558 LSB) are the ring, not a held offset:
+  extended to 12 s they all settle to 0 LSB, and the last-non-zero sample is a
+  finite number in every case. *But see the tail row below — the same runs
+  break the declaration.*
+- **Tier 1 · TAIL / `tail_samples` — REFUTED.** `kit.tail` with
+  `declared_tail_samples=HighPass.TAIL_SAMPLES` (305 152), 48 kHz, a **DC
+  step** at the dossier's own worst-case settings (10 Hz, Resonance 16,
+  24 dB/oct, +12 dB trim, 12 s and 16 s renders, identical):
+  `tail 403375 samples exceeds the declared 305152` → **RED**. Without the
+  trim it is 402 945. The pack's §2 row and the dossier's `TAIL_SAMPLES`
+  comment were both taken from a **burst** at those settings, which measures
+  196 330 samples here and passes; a step is the longer excitation and the
+  declaration does not cover it. *The class author must answer:* re-measure
+  the ceiling with the dc_step leg as well as the burst and raise
+  `TAIL_SAMPLES` (403 375 at 48 kHz → next multiple of 2048 is 405 504), or
+  say why a step is out of scope for a declaration the contract reads off the
+  class.
+- **T2 — |H(f₀)| = Q within 0.05 dB, both slopes — REFUTED.** The pack reads
+  the corner at f₀ = 1 kHz for Q ≤ 8 and, in its own refutation pass, at
+  f₀ ∈ {30, 300, 15 000} for Q ≤ 16 — but **only at 12 dB/oct**. At
+  **24 dB/oct and a low corner** the rendered gain misses:
+  `f0=10 Q=8 → +17.462 dB` against +18.062 (**0.600 dB out**),
+  `f0=10 Q=16 → +23.792` against +24.082 (0.291 out),
+  `f0=30 Q=16 → +23.987` against +24.082 (0.095 out). All three are outside
+  the trait's own 0.05 dB bar and its disconfirmer ("any Q in 0.5–16 more than
+  0.05 dB from 20·log₁₀(Q) at f₀, at either slope"). It is **not** the settle
+  (stable from 6.65 s to 65 s), **not** the 16-bit floor (constant from −40 to
+  −20 dBFS source, peak 2 448 → 24 527 LSB), **not** the tone-bin estimator (a
+  plain RMS ratio on the same renders gives +17.466 / +23.778 / +23.991), and
+  **not** the coefficients: the exact digital cascade of what the class
+  actually built (`pole1 10.000000 Hz Q 0.541196`, `pole2 10.000000 Hz
+  Q 14.782073`) evaluates to **+18.0618 dB** at f₀. The loss is in the
+  rendered signal path at small ω₀ with a high-Q second section. The 12 dB/oct
+  control at the same corner reads +18.032 — green. *The class author must
+  answer:* f₀ = 10 Hz is patch 0's own default corner; either the trait needs
+  a stated low-f₀ bound at 24 dB/oct, or the cascade needs conditioning that
+  survives ω₀ ≈ 1.3e−3.
+- **T3 — the skirt — stands, but one third of it cannot fail.** Re-run at
+  eight f₀ the pack never took (20, 25, 45, 90, 320, 900, 2 400, 3 200 Hz) ×
+  both slopes: every |H(f₀/4)| inside its band and every fitted octave inside
+  ±0.30/±0.60 (worst 12.038 and 24.126 dB/oct). The **Nyquist leg is
+  vacuous**: read at 23 kHz with f₀ = 640 Hz, `pole_two` wired out (the pack's
+  own T3 fault) gives −0.0002 dB, **both** poles wired out — the filter
+  entirely gone — gives +0.0000 dB, and the T4 fault gives +0.0001 dB. Every
+  row reads green including a bypass. Extending the Q sweep (0.5…16 × three
+  f₀ × both slopes, 30 rows) also gives |dB| ≤ 0.0018 everywhere, which closes
+  the trait's un-run "at every f₀ **and Q**" clause but does not make the
+  check falsifiable. *The class author must answer:* what planted fault turns
+  the 23 kHz column red, or drop the claim to what the skirt legs carry.
+- **T4 — one curve on the warped axis — stands, and its unmeasured half is
+  now measured.** Extended past the pack's 4 kHz ceiling to the trait's own
+  0.4·F_s: against a 20 Hz reference curve, worst deviation
+  **0.0290 dB at 31.5 Hz, 0.0166 at 8 kHz, 0.0164 at 16 kHz, 0.0160 at
+  19 200 Hz**, all inside the 0.05 dB bar. The trait's **second clause — the
+  linear f/f₀ axis for f₀ ≤ 1280 Hz — was never measured by the pack at all**;
+  run here over f₀ ∈ {20, 40, 80, 160, 320, 640, 1280} on the ratios
+  0.125…8, adjacent octaves differ by at most **0.0302 dB** against a 0.1 dB
+  disconfirmer: green.
+- **T5 — Q is the ringing — REFUTED, twice.** (a) *As the dossier states the
+  trait* — "struck with a click", "impulse, Hilbert envelope" — the reading is
+  **0.040, 0.022, 0.012, 0.006 Q** for Q ∈ {2, 4, 8, 16}, against a
+  disconfirmer of "<0.8 Q". The pack acknowledges this and substitutes a
+  released tone burst; that substitution is a change to a **frozen** trait
+  made after measurement, and until the dossier is amended T5 is disconfirmed
+  by its own stated method. (b) Worse, *on the pack's own substitute
+  measurement*, the pack ran 12 dB/oct only. At **24 dB/oct** —
+  `ring_periods(200, q, slope=24)` — the ring is **3.82 periods = 1.91 Q
+  (Q 2), 14.88 = 1.86 Q (Q 8), 29.67 = 1.85 Q (Q 16)**, outside the trait's
+  0.8–1.25 Q band on every row. The factor is exactly the design's own
+  `1.3066/0.7071 = 1.848`: the Resonance knob reads the same *gain* at both
+  slopes by construction and therefore rings **1.85× longer** at the steep
+  one. T5 as written carries no slope qualifier. (Across f₀ ∈ {50, 200,
+  1 000, 5 000} at 12 dB/oct the substitute measure is 1.00–1.07 Q — green.)
+  *The class author must answer:* amend the dossier's T5 stimulus **and** its
+  band, or state the trait per slope.
+- **T6 — rate-honest — REFUTED on its own second clause.** The swept leg
+  against the closed form survives Q variation at 12 dB/oct. But T6 also says
+  "|H(f₀)| stays at Q" at 44.1 and 22.05 kHz, and its disconfirmer names "gain
+  at f₀ more than 0.1 dB from 20·log₁₀(Q)". The pack ran that leg at `FLAT_Q`
+  and 12 dB/oct only. At **44.1 kHz, f₀ = 10 Hz, 24 dB/oct**: `Q 8 → +17.387
+  dB` (0.675 out) and `Q 16 → +21.400 dB` (**2.682 out**); at 22.05 kHz,
+  `f₀ = 10, Q 16, 24 dB/oct → +23.963` (0.120 out). Stable over 13 s / 30 s /
+  60 s settles, RMS and tone-bin agreeing, peaks 5 104 and 6 080 LSB so
+  nothing clips. Same mechanism as T2 and the same answer is owed.
+
+**Tally after refutation: three demonstrated traits broken (T2, T5, T6), one
+Tier 1 declaration broken (`tail_samples`), one leg of T3 shown unfalsifiable,
+T1 and T4 standing and T4 extended.**
