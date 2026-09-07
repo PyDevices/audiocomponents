@@ -37,13 +37,25 @@ class TheLookup(unittest.TestCase):
     def test_a_name_with_no_file_is_a_miss_not_an_error(self):
         self.assertIsNone(rebuilt.load("NoSuchEffectAnywhere"))
 
-    def test_every_one_of_the_46_is_a_miss_today(self):
-        # The fallback branch, over the real catalogue: nothing in Phase 2's
-        # families has been rebuilt yet, so every name must miss and every
-        # old class must still be the one the package exports.
+    def test_each_of_the_46_resolves_by_whether_it_has_a_file(self):
+        # The fallback branch, over the real catalogue. It used to read
+        # "every one of the 46 is a miss today", which was true only until
+        # the first class was rebuilt and would have had to be edited by
+        # each of the sixteen in turn -- a shared file to conflict over, in
+        # the one test file whose subject is that there is no shared file.
+        # The invariant that does not expire: a name with a module under
+        # `rebuilt/` resolves to a Component carrying that NAME, and a name
+        # without one misses, so the old class stands.
+        rebuilt_names = set(rebuilt.known())
         for name in audioeffects.ALL:
             with self.subTest(name=name):
-                self.assertIsNone(rebuilt.load(name))
+                found = rebuilt.load(name)
+                if name in rebuilt_names:
+                    self.assertIsNotNone(found)
+                    self.assertEqual(found.NAME, name)
+                    self.assertTrue(issubclass(found, _component.Component))
+                else:
+                    self.assertIsNone(found)
 
     def test_a_file_whose_class_does_not_match_is_an_error(self):
         # `examplestock.py` exists, but holds no class whose NAME is
@@ -55,8 +67,15 @@ class TheLookup(unittest.TestCase):
         self.assertIn("holds no Component", str(caught.exception))
 
     def test_known_lists_what_is_there(self):
-        self.assertEqual(sorted(rebuilt.known()),
-                         ["ExampleAudioif", "ExampleStock"])
+        # The two fixtures are always there; a rebuilt class joins them, and
+        # everything `known()` reports must load back under its own name.
+        names = sorted(rebuilt.known())
+        self.assertIn("ExampleAudioif", names)
+        self.assertIn("ExampleStock", names)
+        self.assertEqual(len(names), len(set(names)))
+        for name in names:
+            with self.subTest(name=name):
+                self.assertEqual(rebuilt.load(name).NAME, name)
 
 
 class TheReplacement(unittest.TestCase):
@@ -104,8 +123,12 @@ class TheReplacement(unittest.TestCase):
 
 class TheCatalogueIsUnchanged(unittest.TestCase):
     def test_the_fixtures_are_not_among_the_46(self):
+        # The catalogue is 46 whatever has been rebuilt: a rebuilt class
+        # replaces one of the 46 by NAME and does not add to them. What must
+        # stay out are the two fixtures, which is what this test is for
+        # (audiocomponents#37 removes them at Phase 7).
         self.assertEqual(len(audioeffects.ALL), 46)
-        for name in rebuilt.known():
+        for name in ("ExampleStock", "ExampleAudioif"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
 

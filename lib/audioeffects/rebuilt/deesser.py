@@ -32,14 +32,16 @@ none to name in milliseconds.
 **Two traits the palette cannot reach, stated here because a docstring is
 where a disconfirmed trait has to be visible.**
 
-* The 902's release is a constant **925 dB/sec** - a straight line in dB.
-  `audiodynamics` releases with a one-pole in linear gain, which is a curve
-  in dB at every coefficient, so the shape is wrong however the knob is
-  set. `Release` is therefore in milliseconds. Measured at the 3 ms
-  default, 48 kHz: a 10.7 dB recovery reaches 63 % in 9.5 ms and 95 % in
-  19.8 ms, where the 902 would take 11.6 ms for the whole of it - the same
-  order, and a curve rather than a line (the trace departs from a straight
-  dB line by 4.8 dB at its worst). Dossier D4, node ask N-DEESS-2.
+* The 902's release is a constant **925 dB/sec** - a straight *line* in
+  dB. `audiodynamics` releases with a one-pole in linear gain, so the rate
+  can be tuned to the 902's and the shape cannot. `Release` is therefore in
+  milliseconds, and the 3.5 ms default is the setting that lands the rate:
+  measured at 48 kHz, 7.01 dB of an 8.12 dB recovery in 7.50 ms, which is
+  **935 dB/sec against the 902's 925 - 1.1 % away**, well inside the
+  trait's own 10 %. What is wrong is the curve: the recovery departs from a
+  straight dB line by 0.82 dB at its worst, where the 902 asks for zero.
+  Dossier D4 is met on rate and disconfirmed on shape; node ask
+  N-DEESS-2.
 * The 902's attack is program-dependent, 2 ms at 10 dB over and 600 us at
   20 dB over. `program_attack=True` is on here and it does shorten the
   attack - measured 6.4 ms down to 5.5 ms across 20 dB of programme level
@@ -50,6 +52,16 @@ where a disconfirmed trait has to be visible.**
   relative one. The two do not compose, and a de-esser cannot drive itself
   20 dB over without also being 20 dB louder. Dossier D5, node ask
   N-DEESS-7.
+* **`detector="rms"` only half-applies here.** With
+  `relative_threshold` on, the full-band level the gain computer subtracts
+  is a rectified peak follower whatever `detector` says
+  (`audioif_dynamics.c:594-600`), so the RMS option governs the band level
+  and not the reference. The option is demonstrably working - a 10 %-duty
+  train against a sine of the same RMS separates by 4.96 dB on RMS and
+  3.54 dB on peak - but dossier D6's own criterion, a matched-RMS sine and
+  square landing within 0.5 dB, cannot be *cited* on this class: it reads
+  0.41 dB with the RMS detector and 0.46 dB with a peak one, so it tells
+  the two apart not at all. Node ask N-DEESS-8.
 * The 902 splits at **12 dB/octave, maximally flat**. The audio path here is
   Linkwitz-Riley 4 (two cascaded Butterworth sections a side) because
   HF-only mode sums the two halves and a single 12 dB/octave pair nulls at
@@ -159,12 +171,12 @@ class DeEsser(_component.Component):
                      (0.1, 10.0, "log"),       # ms
                      (0.0, 1.0))               # Listen
     PATCHES = {
-        0: ("Vocal", (63, 76, 79, 0, 26, 83, 0)),
-        1: ("Bright Vocal", (89, 102, 90, 0, 26, 83, 0)),
+        0: ("Vocal", (63, 76, 79, 0, 30, 83, 0)),
+        1: ("Bright Vocal", (89, 102, 90, 0, 30, 83, 0)),
         2: ("Whispered Verse", (63, 51, 58, 0, 39, 94, 0)),
         3: ("Guitar Pick Noise", (101, 76, 79, 127, 17, 64, 0)),
         4: ("Cymbal Edge", (111, 102, 90, 127, 33, 75, 0)),
-        5: ("Hard De-Ess", (63, 127, 64, 0, 26, 64, 0)),
+        5: ("Hard De-Ess", (63, 127, 64, 0, 30, 64, 0)),
     }
 
     # Macro indexes, so the routing below reads as itself.
@@ -177,7 +189,7 @@ class DeEsser(_component.Component):
     _LISTEN = 6
 
     def _build(self, frequency=2500.0, range_db=12.0, sensitivity_db=30.0,
-               hf_only=False, release_ms=3.0, attack_ms=2.0, listen=False,
+               hf_only=False, release_ms=3.5, attack_ms=2.0, listen=False,
                patch=None):
         """Build the graph the dossier's section 4 draws.
 

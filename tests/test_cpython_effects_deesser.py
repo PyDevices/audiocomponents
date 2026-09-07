@@ -363,22 +363,74 @@ class Tier2(unittest.TestCase):
         self.assertLess(out[True][0], -5.0)
 
     def test_d6_rms_detection(self):
-        """D6. A sine and a square of equal RMS get the same reduction.
+        """D6, and why its own criterion is not measurable on this class.
 
-        `square_1k_*_rms` is the kit's matched-RMS pair for `sine_1k_*`.
-        The split goes below both so the whole tone is in the detector's
-        band, which is what the trait is about.
+        The trait asks for a sine and a square of equal RMS to get the same
+        reduction within 0.5 dB. They do - **and so do they with
+        `detector="peak"`**, 0.41 dB against 0.46 dB, so that reading tells
+        an RMS detector from a rectifier not at all and a green result on it
+        would be absence reading as agreement.
+
+        The cause is worth the paragraph. With `relative_threshold` on, the
+        gain computer subtracts a full-band reference that is a **rectified
+        peak follower whatever `detector` says** - `fabsf(sense)`,
+        `audioif_dynamics.c:594-600` - so `detector="rms"` governs only the
+        band level. A matched-RMS sine and square therefore cannot come out
+        equal: their peaks differ by 3 dB and the reference is a peak.
+
+        What *is* measurable, and what this test asserts, is that the option
+        is doing something: a 10 %-duty train against a sine of the same RMS
+        separates by 4.96 dB on the RMS detector and 3.54 dB on the peak
+        one, a 1.42 dB difference from the option alone. Node ask
+        N-DEESS-8.
         """
         rate = 48000
         readings = {}
-        for name in ("sine_1k_-6", "square_1k_-6_rms"):
-            values, wet, frames = deess(rate, name, frequency=800.0,
-                                        range_db=20.0, sensitivity_db=6.0)
-            readings[name] = settled_change(values, wet, frames, 1000, rate)
-        gap = abs(readings["sine_1k_-6"] - readings["square_1k_-6_rms"])
-        print("\n  D6 48000 Hz: sine %.3f square(rms) %.3f gap %.3f dB"
-              % (readings["sine_1k_-6"], readings["square_1k_-6_rms"], gap))
-        self.assertLess(gap, 0.5)
+        for detector in ("rms", "peak"):
+            row = {}
+            for name in ("sine_1k_-14", "train10_1k_-14_rms"):
+                values = probe(name, rate)
+                effect, _holder = build(rate=rate, values=values,
+                                        frequency=800.0, range_db=20.0,
+                                        sensitivity_db=2.0)
+                if detector == "peak":
+                    effect._duck.set(detector="peak")
+                frames = len(values) // 2
+                wet = render(effect.output, frames, rate)
+                row[name] = settled_change(values, wet, frames, 1000, rate)
+                effect.deinit()
+            readings[detector] = round(abs(row["sine_1k_-14"]
+                                           - row["train10_1k_-14_rms"]), 3)
+        # And the dossier's own pair, recorded because it is what D6 says -
+        # together with the number that shows it cannot be cited.
+        stated = {}
+        for detector in ("rms", "peak"):
+            row = {}
+            for name in ("sine_1k_-6", "square_1k_-6_rms"):
+                values = probe(name, rate)
+                effect, _holder = build(rate=rate, values=values,
+                                        frequency=800.0, range_db=20.0,
+                                        sensitivity_db=6.0)
+                if detector == "peak":
+                    effect._duck.set(detector="peak")
+                frames = len(values) // 2
+                wet = render(effect.output, frames, rate)
+                row[name] = settled_change(values, wet, frames, 1000, rate)
+                effect.deinit()
+            stated[detector] = round(abs(row["sine_1k_-6"]
+                                         - row["square_1k_-6_rms"]), 3)
+        print("\n  D6 48000 Hz: crest separation rms %.3f dB vs peak %.3f dB "
+              "(the option is active, %.3f dB of it); the dossier's own "
+              "sine/square pair reads rms %.3f dB against peak %.3f dB, "
+              "which cannot tell them apart"
+              % (readings["rms"], readings["peak"],
+                 readings["rms"] - readings["peak"],
+                 stated["rms"], stated["peak"]))
+        self.assertGreater(readings["rms"] - readings["peak"], 1.0)
+        # The disconfirmation, held so it stays visible: the stated pair does
+        # not discriminate, and this fails the day the reference follower
+        # becomes switchable.
+        self.assertLess(abs(stated["rms"] - stated["peak"]), 0.5)
 
     def test_d7_range_bounds_and_never_exceeds(self):
         """D7. The reduction never passes the Range setting, and unity
@@ -519,45 +571,52 @@ class Tier2(unittest.TestCase):
         self.assertLess(readings["+20 dB"][1], readings["+0 dB"][1])
 
     def test_d4_release_is_an_exponential_not_a_dB_ramp(self):
-        """D4, disconfirmed on purpose, and measured rather than asserted.
+        """D4, disconfirmed on shape and measured on rate.
 
         The trait asks for a straight line in dB at 925 dB/sec.
         `audiodynamics` releases with a one-pole in linear gain, which is a
-        curve in dB at every coefficient. This test holds the class to what
-        it *is*, so the day N-DEESS-2 lands it fails and someone re-reads
-        the trait.
+        curve in dB at every coefficient - so the *rate* can be tuned to the
+        902's and the *shape* cannot. Both halves are read here, and the
+        test holds the class to the shape it has, so the day N-DEESS-2 lands
+        this fails and someone re-reads the trait.
+
+        The carrier is 200 Hz and the hop is 2.5 ms, which is exactly half
+        a period of it: the RMS of a sine over any half period is the same
+        number whatever the phase, so the trace reads the gain and not the
+        carrier's own waveform. At a 1 kHz carrier and a 0.1 ms hop the same
+        measurement read 23.5 ms for a recovery that takes 8, which is the
+        method's error and not the class's.
         """
         rate = 48000
-        values = sibilant_burst(rate, low_hz=1000.0, seconds=2.0,
+        values = sibilant_burst(rate, low_hz=200.0, seconds=2.0,
                                 burst=(0.5, 1.0))
         effect, _holder = build(rate=rate, values=values, range_db=12.0,
-                                sensitivity_db=36.0, release_ms=3.0)
+                                sensitivity_db=30.0, release_ms=3.5)
         frames = len(values) // 2
         wet = render(effect.output, frames, rate)
         dry = M.Render.from_pcm(values.tobytes()[:len(wet.pcm)], rate, 2)
-        trace = M.gaintrace(wet, dry, hop_ms=1.0, release_from_ms=1000.0)
+        trace = M.gaintrace(wet, dry, hop_ms=2.5, release_from_ms=1000.0)
         effect.deinit()
         rows = trace["values"]
+        t95 = rows["release_t95_ms"]
+        self.assertIsNotNone(t95)
         marks = [(t, g) for t, g in zip(rows["trace_ms"], rows["trace_gr_db"])
-                 if g is not None and 1000.0 <= t <= 1060.0]
+                 if g is not None and 1000.0 <= t <= 1000.0 + t95]
         stamps = [t for t, _g in marks]
         series = [g for _t, g in marks]
-        begin, end = series[0], series[-1]
-        # A straight line in dB from `begin` to `end` over the same span;
-        # the deviation from it is what says the recovery curves.
+        begin, end_db = series[0], series[-1]
         span = stamps[-1] - stamps[0]
-        straight = [begin + (end - begin) * (t - stamps[0]) / span
+        straight = [begin + (end_db - begin) * (t - stamps[0]) / span
                     for t in stamps]
         deviation = max(abs(a - b) for a, b in zip(series, straight))
-        t63 = rows.get("release_t63_ms")
-        rate_db_s = (None if t63 in (None, 0)
-                     else abs(end - begin) * 0.63 / (t63 / 1000.0))
-        print("\n  D4 48000 Hz: from %.2f dB to %.2f dB, t63 %s ms, "
-              "mean rate %s dB/sec, worst deviation from a straight dB line "
-              "%.2f dB (the 902 asks for ~0)"
-              % (begin, end, t63, None if rate_db_s is None
-                 else round(rate_db_s, 1), deviation))
-        self.assertGreater(deviation, 0.5)
+        covered = abs(end_db - begin)
+        rate_db_s = covered / (span / 1000.0)
+        print("\n  D4 48000 Hz: %.2f dB of an %.2f dB recovery in %.2f ms = "
+              "%.0f dB/sec, against the 902's 925 (%.1f%% away); worst "
+              "departure from a straight dB line %.2f dB"
+              % (covered, abs(begin), span, rate_db_s,
+                 100.0 * abs(rate_db_s - 925.0) / 925.0, deviation))
+        self.assertGreater(deviation, 0.3)
 
 class PlantedFaults(unittest.TestCase):
     """Each measurement above, driven by a broken build, must go red.
@@ -690,26 +749,6 @@ class PlantedFaults(unittest.TestCase):
         print("\n  D3 fault (HF-only ducking the lows): low band %+.3f dB"
               % low)
         self.assertGreater(abs(low), 0.25)
-
-    def test_d6_goes_red_on_a_peak_detector(self):
-        """D6's fault of the same kind: `detector="peak"`, which is what
-        the node does without the option D6 asked Phase 1 for."""
-        rate = 48000
-        readings = {}
-        for name in ("sine_1k_-6", "square_1k_-6_rms"):
-            values = probe(name, rate)
-            effect, _holder = build(rate=rate, values=values,
-                                    frequency=800.0, range_db=20.0,
-                                    sensitivity_db=6.0)
-            effect._duck.set(detector="peak")
-            frames = len(values) // 2
-            wet = render(effect.output, frames, rate)
-            readings[name] = settled_change(values, wet, frames, 1000, rate)
-            effect.deinit()
-        gap = abs(readings["sine_1k_-6"] - readings["square_1k_-6_rms"])
-        print("\n  D6 fault (peak detector): sine %.3f square %.3f gap %.3f"
-              % (readings["sine_1k_-6"], readings["square_1k_-6_rms"], gap))
-        self.assertGreater(gap, 0.5)
 
     def test_d7_goes_red_when_the_range_blend_is_removed(self):
         """D7's fault: the wet path at unity with no dry beside it, which

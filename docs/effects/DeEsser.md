@@ -189,6 +189,24 @@ Additive on `audiodynamics`, each defaulting to today's behaviour.
   be produced by a one-pole in linear gain at any coefficient, and cascading
   two multiplies two exponentials, whose dB sum is still not a straight
   line. **Ask stands; D4 is disconfirmed until it lands.**
+- **N-DEESS-7 — `program_attack` should read the gain computer's own
+  overshoot (unblocks D5's ratio).** New at Station C. The option scales the
+  attack coefficient by `sqrt(level / db_to_gain(threshold_db))`
+  (`audioif_dynamics.c:731-746`) — an *absolute* overshoot — while
+  `relative_threshold` has moved the gain computer to a relative one, so the
+  two do not compose. Measured: t63 shortens 4.428 → 2.459 ms across 20 dB
+  of programme level, a ratio of 1.80 where D5 asks 3.3 ± 25 %, and on the
+  sensitivity axis it is flatter still (2.476 → 2.031 ms). A de-esser cannot
+  drive itself 20 dB over without also being 20 dB louder.
+- **N-DEESS-8 — `detector="rms"` should govern the full-band reference too
+  (unblocks D6).** New at Station C. With `relative_threshold` on, the level
+  the computer subtracts is `fabsf(sense)` peak-followed whatever `detector`
+  says (`audioif_dynamics.c:594-600`), so a matched-RMS sine and square can
+  never come out equal — their peaks differ by 3 dB and the reference is a
+  peak. Measured: the dossier's own pair reads 0.408 dB apart on the RMS
+  detector and 0.457 dB on a peak one, which discriminates not at all, so D6
+  cannot be cited on this class; a 10 %-duty train against a sine of the
+  same RMS does separate the two, 4.958 dB against 3.538 dB.
 - **N-DEESS-6 — a floor on the reduction above threshold (would make D7
   exact).** New at Station A. `dynamics_gain_db()` bounds nothing above
   threshold — `AUDIOIF_DYNAMICS_LIMIT` returns `-over` and
