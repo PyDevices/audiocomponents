@@ -6,6 +6,24 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audioif's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Changed
+
+- **`audioeffects.Limiter` rebuilt** on `_component.Component`, the first of
+  the effects program's Phase 2 classes. It is two `audiodynamics.Dynamics` in
+  series now: a shaping stage carrying the Knee, the Lookahead and a **4x
+  polyphase true-peak detector**, and a catch stage that is the reason
+  lookahead no longer overshoots — a 1 ms burst into a −12 dBFS ceiling used
+  to come out **1.45 dB over** at 10 ms of lookahead and now sits on the
+  ceiling at every setting. `latency_samples` finally reports the lookahead
+  instead of a hardcoded zero; three of the old class's five patches were
+  delaying the audio by up to 484 samples while claiming none. The surface
+  gains **Gain** (drive into the ceiling) and **Knee**, and its Release
+  default moves to 149 ms so the class's own THD bound is met. Its dossier is
+  `docs/effects/Limiter.md` and its evidence pack is
+  `docs/effects/Limiter-evidence.md`.
+
 ## v0.2.0 (2026-09-03)
 
 The first release from this repository. These packages continue a version

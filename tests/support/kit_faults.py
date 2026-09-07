@@ -30,6 +30,11 @@ import audiofilters
 import synthio
 from audioeffects import _core
 
+#: `_component` reads VENDOR off the module a class is defined in, and the
+#: CLICK fault below is a subclass of a rebuilt class. Without this the fault
+#: would refuse to construct, which is a fault that cannot fail.
+VENDOR = "PyDevices"
+
 
 class _Node:
     """A pure-Python audio node: the audiocore sample protocol, int16 in and
@@ -206,9 +211,19 @@ def under_reporting_limiter(samples):
     The DSP is untouched in both - the two renders must be byte-identical -
     so a latency check that only fires when the sound also changes stays
     silent here, which is precisely what CLICK is for.
+
+    `Limiter`'s latency is a macro, so the rebuilt class reports it from a
+    property rather than from `LATENCY_SAMPLES`; overriding the class
+    attribute alone would leave the fault inert, which is a fault that cannot
+    fail. Both are overridden here.
     """
+    def reported(self):
+        self._check_live()
+        return int(samples)
+
     return type("LimiterReporting%d" % samples, (audioeffects.Limiter,),
-                {"LATENCY_SAMPLES": int(samples)})
+                {"LATENCY_SAMPLES": int(samples),
+                 "latency_samples": property(reported)})
 
 
 class NoResetDelay(audioeffects.DigitalDelay):

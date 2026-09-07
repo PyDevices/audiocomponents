@@ -73,7 +73,7 @@ not.
 | Class | Notes |
 |---|---|
 | `Compressor` | `character="vca"/"fet"/"optical"/"varimu"` presets shape attack/release/knee; **patches** |
-| `Limiter` | brickwall, with optional lookahead and true-peak detection; **patches** |
+| `Limiter` | brickwall against a ceiling, with a gain into it, a knee, lookahead (**0 ms by default**, up to 10 ms, reported in `latency_samples`) and a 4x true-peak detector; two `audiodynamics` nodes, **audioif tier**; **patches**. Release is the distortion knob and its docstring says so |
 | `Expander` | downward: below threshold, quiet gets quieter |
 | `NoiseGate` | mutes below threshold |
 | `DeEsser` | detector high-passed at `frequency`, so only sibilance ducks the signal |
