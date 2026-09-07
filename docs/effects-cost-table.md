@@ -42,8 +42,15 @@ The unit is one **256-frame stereo block at 48 kHz**, which is 5.333 ms of
 audio. That block is not an arbitrary choice: `audioecho.FeedbackDelay`,
 `audiodynamics.Dynamics`, `audiomath.Multiply`, `audioconvolve.Convolver` and
 the `audioroute` splitter all work internally in exactly 256-frame blocks, and
-every node in the table was confirmed to hand back exactly 1024 bytes per
-pull. It is the palette's own block.
+all seventeen node targets were confirmed on the board to hand back exactly
+1024 bytes per pull. It is the palette's own block.
+
+The `audioeffects` classes are the one place that differs: `_core.pcm()` gives
+its nodes `buffer_size=2048`, so five of the six classes hand back 512-frame
+blocks (`Compressor`, whose `audiodynamics.Dynamics` has a fixed internal
+buffer, still gives 256). The tool counts frames rather than pulls, so every
+row in both tables is normalised to the same 256-frame block and the two are
+directly comparable.
 
 - **ms/blk** — wall milliseconds the whole chain (probe source + target) spent
   per block.
