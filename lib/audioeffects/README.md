@@ -77,7 +77,7 @@ not.
 | `Expander` | downward: below threshold, quiet gets quieter |
 | `NoiseGate` | mutes below threshold |
 | `DeEsser` | detector high-passed at `frequency`, so only sibilance ducks the signal |
-| `TransientShaper` | SPL Transient Designer: more stick **and** less room from one instance, at any input level — no threshold, no ratio. 5 macros, 7 patches, **audioif** tier (`audiodynamics`), one node and 0.00 ms of latency; **patches** |
+| `TransientShaper` | SPL Transient Designer: more stick **and** less room from one instance, at any input level from −6 to −60 dBFS — no threshold, no ratio. Its time constants are fixed, not adaptive (T6 disconfirmed), and the attack section takes ~120 ms to settle on a held note (T5's 100 ms clause disconfirmed). 5 macros, 7 patches, **audioif** tier (`audiodynamics`), one node, 0.00 ms of latency; **patches** |
 | `MultibandCompressor` | 3 bands split/compressed/summed (Linkwitz-Riley crossovers: flat recombine) |
 
 ### Frequency and EQ - `eq.py`

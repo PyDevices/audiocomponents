@@ -4,8 +4,9 @@ Turn the stick up or down without touching the room, and the room up or down
 without touching the stick. There is no threshold and no ratio here: both
 control voltages are *differences between two envelopes of the same signal*,
 so the level cancels and a ghost note is shaped exactly as hard as a rimshot
-(dossier T1, measured +12.000 dB of attack gain at every input level from
--6 down to -60 dBFS).
+(dossier T1, measured: +12.00, +12.00, +12.00 and +11.95 dB of attack gain
+at -6, -20, -40 and -60 dBFS - a spread of 0.047 dB where the trait allows
+0.5).
 
 **Attack** moves the first few milliseconds of every hit, +/-15 dB.
 **Sustain** moves what rings after it, +/-24 dB, and the two run at once
@@ -31,7 +32,7 @@ followers, a peak-hold, an RMS one-pole and one multiply per frame - among
 the cheapest things in the library, and there is no lean patch because there
 is nothing on the surface to turn off.
 
-**Two things this class does not claim.**
+**Three things this class does not claim.**
 
 * *The time constants do not follow the material.* Both sources say SPL's
   are "automated and optimized adaptively"; neither gives a mechanism or a
@@ -41,6 +42,15 @@ is nothing on the surface to turn off.
   16:1 - a ratio of 1.02:1 where the trait asked 5:1. **T6 is
   disconfirmed**, the class ships fixed constants, and **Attack Speed** is
   the manual stand-in.
+* *The attack section is not settled 100 ms into a held note.* The trait
+  asked for unity within 0.5 dB in the steady section 100 ms after the
+  onset; measured on a 1 kHz burst at Attack +12 it reads **+0.541 dB**
+  there, and falls inside the bar by 122 ms (+0.211 dB at 150 ms, +0.116 dB
+  at 200 ms). The cause is the attack pair's own 25 ms slow attack still
+  converging, not a standing gain - and **Attack Speed** 2x reads +0.119 dB
+  at 100 ms with the transient peak still at +12.000. **T5 is disconfirmed
+  on that clause at the 1x default**, and the default was not moved to fit
+  the number.
 * *The control is normalised over 6 dB.* The envelope difference is divided
   by 6 dB and clamped to +/-1 before it scales the setting
   (`audioif_dynamics.c:630-636`), so every transient sharper than 6 dB gets
@@ -108,9 +118,11 @@ class TransientShaper(_component.Component):
     #: A 3 ms RMS window rather than the rectified peak. Peak-detected, the
     #: two attack envelopes have different attack/release ratios and never
     #: converge on a periodic signal, so a steady tone sits under a standing
-    #: attack gain: measured +2.187 dB at Attack +12 where the dossier's T5
-    #: allows 0.5, against +0.211 dB here, with the transient peak +12.000
-    #: dB either way.
+    #: attack gain: at Attack +12 on a 1 kHz burst the steady section reads
+    #: +3.505 dB peak-detected at 100 ms and +2.187 dB at 150 ms, against
+    #: +0.541 and +0.211 dB here, with the transient peak +12.000 dB either
+    #: way. It buys most of T5's steady clause; see the docstring for the
+    #: part it does not buy.
     _RMS_MS = 3.0
 
     def _build(self, attack_db=0.0, sustain_db=0.0, output_db=0.0,
