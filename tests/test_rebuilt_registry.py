@@ -37,13 +37,25 @@ class TheLookup(unittest.TestCase):
     def test_a_name_with_no_file_is_a_miss_not_an_error(self):
         self.assertIsNone(rebuilt.load("NoSuchEffectAnywhere"))
 
-    def test_every_one_of_the_46_is_a_miss_today(self):
-        # The fallback branch, over the real catalogue: nothing in Phase 2's
-        # families has been rebuilt yet, so every name must miss and every
-        # old class must still be the one the package exports.
+    #: Names that have been rebuilt. A rebuild adds its own name here in
+    #: the same commit as its module; every other name of the 46 must still
+    #: miss, which is the fallback branch this battery exists for.
+    REBUILT = ("Compressor",)
+
+    def test_a_rebuilt_name_hits_and_every_other_one_misses(self):
+        # Both branches over the real catalogue. When this file was written
+        # `REBUILT` was empty and every name missed; Phase 2 fills it one
+        # class at a time, and a name that is not in it must still resolve
+        # to `None` so the old class in the family module stands.
         for name in audioeffects.ALL:
             with self.subTest(name=name):
-                self.assertIsNone(rebuilt.load(name))
+                found = rebuilt.load(name)
+                if name in self.REBUILT:
+                    self.assertIsNotNone(found)
+                    self.assertEqual(found.NAME, name)
+                    self.assertTrue(issubclass(found, _component.Component))
+                else:
+                    self.assertIsNone(found)
 
     def test_a_file_whose_class_does_not_match_is_an_error(self):
         # `examplestock.py` exists, but holds no class whose NAME is
@@ -56,7 +68,8 @@ class TheLookup(unittest.TestCase):
 
     def test_known_lists_what_is_there(self):
         self.assertEqual(sorted(rebuilt.known()),
-                         ["ExampleAudioif", "ExampleStock"])
+                         sorted(["ExampleAudioif", "ExampleStock"]
+                                + list(self.REBUILT)))
 
 
 class TheReplacement(unittest.TestCase):
@@ -104,10 +117,18 @@ class TheReplacement(unittest.TestCase):
 
 class TheCatalogueIsUnchanged(unittest.TestCase):
     def test_the_fixtures_are_not_among_the_46(self):
+        # The catalogue is 46 whichever half of the library serves a name.
+        # The two *fixtures* are never in it; a rebuilt class always is,
+        # under the name the old class had.
         self.assertEqual(len(audioeffects.ALL), 46)
         for name in rebuilt.known():
-            self.assertNotIn(name, audioeffects.ALL)
-            self.assertNotIn(name, audioeffects.__all__)
+            with self.subTest(name=name):
+                if name in TheLookup.REBUILT:
+                    self.assertIn(name, audioeffects.ALL)
+                    self.assertIn(name, audioeffects.__all__)
+                else:
+                    self.assertNotIn(name, audioeffects.ALL)
+                    self.assertNotIn(name, audioeffects.__all__)
 
     def test_create_still_refuses_a_name_it_does_not_have(self):
         with self.assertRaises(ImportError):

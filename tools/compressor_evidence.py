@@ -216,18 +216,50 @@ def gr_of(wet, dry):
     return None if value is None else -value
 
 
+def _analytic_level(target_db, **options):
+    """A first guess at the level that holds `target_db` of GR, from the
+    class's own threshold and ratio: above the knee the law is
+    `GR = (in - threshold) * (1 - 1/ratio)`. It is only a seed - the FET's
+    threshold tilt, the knee and the second stage all move it - but it puts
+    the search inside a few dB instead of thirty, which is the difference
+    between six renders and twenty-two."""
+    source, _ = sample([0.0, 0.0], RATE, CHANNELS)
+    effect = build(source, RATE, options.get("patch"),
+                   options.get("macros", ()),
+                   **{name: value for name, value in options.items()
+                      if name not in ("patch", "macros")})
+    threshold = effect.macro(1)
+    ratio = effect.macro(2)
+    effect.deinit()
+    slope = 1.0 - 1.0 / max(ratio, 1.0000001)
+    if slope <= 1e-6:
+        return -12.0
+    return min(-0.001, threshold + target_db / slope)
+
+
 def hold_gr(target_db, hz=200.0, seconds=1.0, low=-60.0, high=0.0,
-            rate=RATE, **options):
+            rate=RATE, iterations=7, **options):
     """The input level, in dBFS, at which the class settles at `target_db`
-    of gain reduction - the level search many rows are stated at."""
-    level = None
-    for _ in range(22):
+    of gain reduction - the level search many rows are stated at.
+
+    Seeded from the analytic level and bracketed +-8 dB around it, so a row
+    stated at a gain-reduction depth costs seven renders rather than
+    twenty-two. The bracket falls back to the full range if the seed misses.
+    """
+    seed = _analytic_level(target_db, **options)
+    low, high = max(low, seed - 8.0), min(high, seed + 8.0)
+    if high - low < 1.0:
+        low, high = -60.0, 0.0
+    level = seed
+    for attempt in range(iterations):
         level = 0.5 * (low + high)
         wet, dry = renders(tone(hz, seconds, 32768.0 * 10 ** (level / 20.0),
                                 rate), rate, **options)
         reduction = gr_of(wet, dry) or 0.0
-        if abs(reduction - target_db) <= 0.05:
+        if abs(reduction - target_db) <= 0.1:
             break
+        if attempt == 0 and not (low + 0.1 < level < high - 0.1):
+            low, high = -60.0, 0.0
         if reduction < target_db:
             low = level
         else:
@@ -861,9 +893,12 @@ def case_faults():
         print("  %-18s THD at 50 Hz, 10 dB of GR: %9.4f %%  (F5's bar 0.5)"
               % (label, thd_percent(wet, 50.0)))
 
-    print("CURVE (V4) - Ratio backed off one step from maximum")
+    # Ratio 96 is not a fault: 1000**(96/127) is 33.6:1, whose slope is
+    # 0.0298 dB/dB and still inside V4's 0.05 bar. The fault has to put the
+    # ratio *below* 20:1, which is where 0.05 dB/dB sits, so it is 50.
+    print("CURVE (V4) - Ratio backed off below 20:1")
     levels = list(range(-56, 1, 2))
-    for label, knob in (("clean (127)", 127), ("faulted (96)", 96)):
+    for label, knob in (("clean (127)", 127), ("faulted (50)", 50)):
         wet_by, dry_by = static_curve(
             levels, patch=3,
             macros=[(2, knob), (7, 0), (1, macro_for(1, -30.0))])

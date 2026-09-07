@@ -6,6 +6,27 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audioif's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Changed
+
+- **`Compressor` rebuilt from scratch** (effects program, Phase 2), against
+  `docs/effects/Compressor.md`'s frozen trait table and on the Phase 2
+  construction module. The four characters now differ in detector law,
+  release law, ratio law and side-chain weighting rather than in three time
+  constants: `fet` has both time knobs live and faster clockwise with the
+  threshold rising with ratio, `optical` — the default — has **no working
+  time knobs at all**, `vca` runs a true-RMS detector and a level-dependent
+  attack, and `varimu`'s slope climbs with level with the six factory time
+  constants as patches. Two `audiodynamics.Dynamics` in series carry the
+  two-stage release with a memory; the surface is fourteen macros and
+  fourteen patches; latency is zero at every setting. Portability tier
+  **audioif**, `REQUIRES = ("audiodynamics", "audioroute")`. Evidence:
+  `docs/effects/Compressor-evidence.md`.
+- The kit's CURVE and paired-build fixtures name `character="fet"`
+  explicitly: their subject is the textbook single-stage law, and
+  `Compressor`'s default character is now the LA-2A.
+
 ## v0.2.0 (2026-09-03)
 
 The first release from this repository. These packages continue a version
