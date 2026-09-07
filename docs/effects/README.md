@@ -9,7 +9,9 @@ accuracy program and holds instruments.
 A dossier here is written **before** the rebuild and fixes the trait set the
 rebuild must demonstrate. The shape is [TEMPLATE.md](TEMPLATE.md); the rules
 are the vision's §3 (traits), §4 (references, inverted from instruments), §5
-(the license gate) and §7 (the stations). Phase 0 seeds every file; the
+(the license gate) and §7 (the stations). The evidence file's shape is
+[EVIDENCE-TEMPLATE.md](EVIDENCE-TEMPLATE.md), one section per class-gate
+item, in the gate's order. Phase 0 seeds every file; the
 implementation session completes it at Station A and adds the evidence file
 at Station C.
 
