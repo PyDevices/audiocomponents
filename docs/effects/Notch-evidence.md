@@ -612,3 +612,128 @@ gap in the gate's own checklist item.
   probe from the one the cell names.
 - **No listening.** Per the program's mechanical-gate rule for the effects
   phases, this class was not auditioned; every claim above is a number.
+
+---
+
+## Refutation record (2026-09-07)
+
+An independent refuter re-ran every clause the pack grades **demonstrated**,
+with the kit and the pack's own probe module
+(`tools/phase2_probes/notch_evidence.py`, imported, nothing in it edited),
+under `PYTHONPATH=lib .venv/bin/python`. Each attack stays inside the
+trait's own disconfirming condition as §3 of the dossier froze it — no bar
+was moved and no span was narrowed. Three of the four demonstrated clauses
+broke.
+
+- **T1, clause 2 (f₀·1.0005 at Q 2 reads −53.96 ± 0.5 dB) — REFUTED.** The
+  row's disconfirmer names Q 2 and names no f₀, and the pack checked two
+  (1 kHz, 4 kHz). Swept across the Frequency span at 48 kHz, Q 2, the same
+  `gain_db` read: f₀ 100 Hz → **−50.662 dB against a closed form of −53.981,
+  3.319 dB out**; f₀ 60 Hz → **−96.503 dB against −53.981, 42.5 dB out**.
+  250 Hz … 16 kHz all pass (worst dev 0.149 dB). The 100 Hz row is §1a's
+  mechanism, not a probe artefact: the *shipped float coefficients* predict
+  **−50.705 dB**, 0.043 dB from the measurement. The 60 Hz row is the
+  render's int16 floor — the predicted level is −74.5 dB against a 6000
+  peak, about 1 LSB. **What the class's author must answer:** the clause is
+  false over the bottom of the class's own 20 Hz–16 kHz span, and it is
+  false in *both* directions (the coefficient floor above the closed form at
+  100 Hz, the PCM floor below it at 60 Hz). Either the row is disconfirmed
+  like T1's first clause and the pack says so, or the pack states the f₀
+  band over which it was demonstrated and why that band is the claim.
+
+- **T2 — no demonstrated clause; nothing offered to refute.** The
+  disconfirmation and its cause were re-read and not re-run.
+
+- **T3 — no demonstrated clause; nothing offered to refute.**
+
+- **T4 (notch + band-pass = 1 within 0.05 dB, 20 Hz…0.4·F_s) — REFUTED.**
+  The row's disconfirmer is "a reconstruction error above 0.05 dB anywhere
+  in 20 Hz … 0.4·F_s **with both sections at the same f₀ and Q**" — it fixes
+  neither f₀ nor Q, and the pack measured one pair (3 kHz, Q 2). Re-run with
+  the pack's own `_sum_with_bandpass` at 48 kHz, on settings inside the
+  class's own spans (Frequency 20 Hz–16 kHz, Q 0.5–32):
+
+  ```
+    f0=20.0    Q=32.0  worst  -0.7241 dB at     20.31 Hz -> FAIL
+    f0=30.0    Q=16.0  worst  +0.2699 dB at     30.95 Hz -> FAIL
+    f0=60.0    Q=32.0  worst  -0.1381 dB at     59.07 Hz -> FAIL
+    f0=60.0    Q=12.0  worst  -0.0528 dB at     62.55 Hz -> FAIL
+  ```
+
+  Reproducible to four decimals on repeat (20 Hz Q 32 at 20.31 Hz reads
+  −0.7516 / −0.7516 dB on two consecutive runs). It is not quantisation:
+  0.72 dB on a 6000-peak probe is some 480 LSB, and the failing probes are
+  the −3 dB edges, where the notch branch alone reads −6.059 dB against a
+  closed form of −3.079 — §1a's `float`-rounded numerator again, which does
+  **not** cancel against a `BAND_PASS` numerator rounded separately. The
+  identity survives everywhere the pack looked and at 44.1 and 22.05 kHz on
+  the settings tried there (worst 0.0019 dB), and the planted fault's
+  sensitivity was checked rather than assumed — a band-pass detune of 0.2 %
+  still reads green (+0.0350 dB) and 0.5 % goes red (+0.0881 dB), so the
+  1 % plant is not the smallest one that fires. **What the class's author
+  must answer:** T4 is the fifth face of the §1a finding, not the one trait
+  that escaped it, and the verdict should read *disconfirmed at low f₀ and
+  high Q* with the same cause. 60 Hz Q 12 is a hum setting this class exists
+  for.
+
+- **T5, clause 2 (four f₀·1.0005 readings within 0.5 dB of their own closed
+  form, a 36 dB spread) — NOT refuted.** Attacked by widening the Q grid
+  inside the trait's own 0.5…32 to ten points: Q 0.5 / 0.75 / 1 / 1.5 / 2 /
+  4 / 8 / 16 / 24 / 32 read −65.920 / −62.446 / −59.976 / −56.450 / −53.976
+  / −47.929 / −41.917 / −35.936 / −32.426 / −29.862 dB, **worst deviation
+  0.078 dB** against a 0.5 dB bar — the clause holds between the four points
+  it was measured at, not only on them. The planted fault was re-run and is
+  a real discriminator with a green control: clean 0.261 dB, `DepthIsWidth`
+  **66.154 dB → RED**. Note for the reader: the clause is a *1 kHz*
+  statement — R1 above shows the same kind of reading 3.3 dB off its closed
+  form at f₀ 100 Hz — but the row's four closed-form values pin it to 1 kHz,
+  so that is T1's finding and not this row's.
+
+- **T6, centre clause (centre within 0.1 % of f₀ at every rate) — REFUTED,
+  twice.**
+
+  1. *The measurement cannot fail.* `measured_centre()` brackets the two
+     −3 dB crossings by bisection on `[ideal_low·0.6, f₀]` and `[f₀,
+     ideal_high·1.4]`. When no probe in either bracket crosses −3 dB, both
+     bisections converge on **f₀ itself** and the locator reports 0 %
+     displacement by construction. Run against the row's *own* planted
+     fault, `RateBlind`, at 22.05 kHz:
+
+     ```
+       22050 Hz clean    centre   999.9640 Hz  crossings   940.143 /  1063.591  ->  0.0036 % out  PASS
+       22050 Hz faulted  centre   999.9787 Hz  crossings   999.860 /  1000.097  ->  0.0021 % out  PASS
+     ```
+
+     The faulted build's notch is not at 1 kHz at all — a direct scan reads
+     **−61.181 dB at 459.4 Hz and −0.023 dB at 1000 Hz** — and the centre
+     clause still passes at 0.0021 %. The pack's source comment at
+     `tools/phase2_probes/notch_evidence.py:815-818` knows this ("a
+     bisection … assumes the notch is near where it was asked for, which is
+     the thing this fault breaks") and reads the fault a different way, but
+     the consequence was not carried into the verdict: **the centre clause
+     is graded demonstrated with no planted fault that ever moved the
+     locator.**
+  2. *And it fails on its own bar where a fault is not needed.* The row says
+     "the centre stays at f₀ within 0.1 %" and names no f₀/Q; the pack
+     measured 1 kHz Q 8 only. At 60 Hz Q 12 — §1a's own worst setting, and
+     the one T6's curve clause already failed at:
+
+     ```
+       48000 Hz f0=60.0  Q=12.0  centre  60.0699  crossings 57.613 / 62.632 -> 0.1164 % out  FAIL
+       44100 Hz f0=60.0  Q=12.0  centre  59.9386  crossings 57.489 / 62.493 -> 0.1023 % out  FAIL
+       22050 Hz f0=60.0  Q=12.0  centre  59.9906  ->  0.0157 % out  pass
+     ```
+
+     250 Hz Q 0.5 and 4 kHz Q 32 pass at all three rates (worst 0.0862 %).
+     **What the class's author must answer:** T6 has no demonstrated clause
+     left. Either the row is disconfirmed outright with §1a's cause, or the
+     centre clause is restated with the f₀/Q band it holds over *and* given
+     a planted fault that displaces the notch **inside** the locator's
+     bracket, so the locator is shown able to read a wrong centre.
+
+**Not re-run by this refuter:** the Tier 1 invariants, the three-interpreter
+digests, the block ladder, the board figures of §4 and the latency table of
+§5 — the brief was the demonstrated Tier 2 clauses. The refuter's scripts
+were scratch and are not committed; every number above is reproducible from
+`tools/phase2_probes/notch_evidence.py`'s own `gain_db`, `closed_form`,
+`_sum_with_bandpass`, `measured_centre` and `RateBlind`.
