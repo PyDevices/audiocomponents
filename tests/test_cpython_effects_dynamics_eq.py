@@ -82,20 +82,38 @@ class DynamicsAndEQTest(unittest.TestCase):
                 self.assertFalse(hasattr(built, "splitter"))
                 self.assertGreater(peak(built.output, 8), 0.001)
 
-    def test_a_filter_above_nyquist_is_refused(self):
+    def test_a_filter_above_nyquist_is_handled_rather_than_folded(self):
         # Silently folded coefficients used to be unreachable because every
-        # frequency was halved on the way in.
+        # frequency was halved on the way in. The two halves of the library
+        # answer differently and both are covered here. `HighPass` is still
+        # the old `_core` class and raises, which is what it has always
+        # done. The rebuilt `LowPass` *clamps*: the rate-honesty invariant
+        # asks a Hz-valued span to clamp at the running rate rather than
+        # refuse (its dossier's section 7 names the raise as a defect), so
+        # the assertion is that the corner lands under Nyquist and the
+        # filter still filters.
         with self.assertRaises(ValueError):
-            audioeffects.LowPass(source(), frequency=SAMPLE_RATE * 0.75)
+            audioeffects.HighPass(source(), frequency=SAMPLE_RATE * 0.75)
+
+        clamped = audioeffects.LowPass(source(),
+                                       frequency=SAMPLE_RATE * 0.75)
+        self.assertLess(clamped.macro(0), SAMPLE_RATE * 0.5)
+        self.assertGreater(peak(clamped.output, 8), 0.001)
 
     def test_a_filter_sits_at_its_corner_across_the_whole_band(self):
         # Nothing pinned this, which is how the biquads got away with being
         # unusable at both ends of the band for as long as they were. Q 0.707
         # is -3.01 dB at the corner by definition, so the assertion needs no
         # reference implementation to compare against.
+        # 22 kHz is a `HighPass` row only: the rebuilt `LowPass`'s
+        # Frequency macro spans 20 Hz to 20 kHz (its dossier's section 6),
+        # so a corner above that is not a setting it offers and asking for
+        # one measures the clamp rather than the coefficients.
         for hz in (50.0, 100.0, 200.0, 400.0, 1000.0, 4000.0, 12000.0,
                    18000.0, 22000.0):
             for name in ("LowPass", "HighPass"):
+                if name == "LowPass" and hz > 20000.0:
+                    continue
                 with self.subTest(filter=name, hz=hz):
                     at_corner = tone_gain_db(
                         hz, lambda s, n=name, f=hz:

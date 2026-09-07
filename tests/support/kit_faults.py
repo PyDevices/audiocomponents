@@ -26,6 +26,12 @@ import math
 import numpy as np
 
 import audioeffects
+
+#: `ShiftedCornerLowPass` subclasses a rebuilt class, and `_component`
+#: reads `VENDOR` off the module a class is *defined* in, not off the module
+#: its base came from. Without this the metadata check refuses the fault
+#: before it can be measured.
+VENDOR = "PyDevices"
 import audiofilters
 import synthio
 from audioeffects import _core
@@ -261,14 +267,17 @@ class ShiftedCornerLowPass(audioeffects.LowPass):
     The class is asked for the same frequency as the control; the biquad it
     builds is 15 % away from it. The fitted corner must go red while the
     passband gain stays green.
+
+    Every other keyword is passed through untouched - `sample_rate` and
+    `transport` among them, which `create()` supplies - so this shifts the
+    corner and changes nothing else about how the class is constructed.
     """
 
     SHIFT = 1.15
 
-    def __init__(self, source, frequency=1000.0, q=0.707, mix=1.0):
-        audioeffects.LowPass.__init__(self, source,
-                                      frequency=frequency * self.SHIFT,
-                                      q=q, mix=mix)
+    def __init__(self, source, frequency=1000.0, **options):
+        options["frequency"] = frequency * self.SHIFT
+        audioeffects.LowPass.__init__(self, source, **options)
 
 
 def corrupt_one_block(pcm, block_frames=256, channels=2):

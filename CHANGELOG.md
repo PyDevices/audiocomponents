@@ -164,6 +164,23 @@ there, and are recorded in its changelog.
 - `GraphicEQ` can now be built with no `gains_db` at all (flat, and flat is a
   wire), so its entry in the test and renderer `EXTRA_ARGUMENTS` tables is
   gone. A short `gains_db` still sets the bottom of the bank, as before.
+- `LowPass` is rebuilt from scratch on `_component.Component` for the effects
+  program's Phase 2 (`lib/audioeffects/rebuilt/lowpass.py`; dossier
+  `docs/effects/LowPass.md`, evidence `docs/effects/LowPass-evidence.md`).
+  Where the old class had no macros at all, a frozen `q`, a hidden `mix` and
+  a `set_frequency` that raised above Nyquist, this one has five macros -
+  Frequency, Resonance, Slope, Mix, Trim - six patches, `capabilities = ()`,
+  zero latency at every setting and rate, and a declared `tail_samples`.
+  **Its portability tier is `audioif`** - three `audiobiquad.Biquad`
+  sections, whose float state lets a decaying tail reach exact zero where the
+  ported `synthio.Biquad` parks on 1 to 4 LSB of DC at exactly the corners a
+  low-pass is for (audioif#23). The old class stays in `eq.py`, untouched,
+  beneath the registry; its two old-surface trait tests in
+  `tests/test_cpython_effects_dynamics_eq.py` are retired in the same commit
+  and replaced by `tests/test_cpython_effects_lowpass.py`.
+- `AirSpace` drives its tone filter's Frequency macro instead of calling
+  `LowPass.set_frequency()`, which the rebuilt class does not have: hertz
+  reach a component through its macro grid, which is what the contract has.
 
 ## v0.2.0 (2026-09-03)
 

@@ -1,13 +1,13 @@
 # Effects Dossier — `LowPass` (no historical standout — design grade)
 
-**Class:** `lib/audioeffects/eq.py` — the current implementation is read once,
-for §7, and not otherwise consulted.
+**Class:** `lib/audioeffects/rebuilt/lowpass.py`. The old
+`lib/audioeffects/eq.py` implementation is read once, for §7, and not
+otherwise consulted.
 **Family / phase:** EQ / Filter, roadmap Phase 2
 **Standout:** none, per vision §4.2 — **confirmed** (§2).
 **Grade:** design
-**Portability tier:** stock CircuitPython (`audiofilters.Filter` +
-`synthio.Biquad`), with the stock-board caveat in §4.
-**Status:** seed (Phase 0)
+**Portability tier:** **audioif** — `REQUIRES = ("audiobiquad",)`, §8 D1.
+**Status:** traits frozen; Station A settled 2026-09-07 (§8, A15)
 
 ## 1. The circuit, in one paragraph
 
@@ -17,16 +17,11 @@ in unit-cutoff form (S4 §4.1 p. 96), with two controls and no nonlinearity
 anywhere — a plain low-pass is linear and time-invariant, and the growl that
 makes a Moog a Moog belongs to `LadderFilter`, which the vision gives its own
 standout. **Cutoff** ω_c slides the whole response along the log-frequency
-axis without changing its shape (S4 §2.7, quote on p. 16: *"the variation of the cutoff
-parameter doesn't change the shape of the amplitude response graph"*).
-**Damping** R sets how high the peak stands at the corner (S4 §4.2 p. 100:
-*"at R = 0 the resonance peak becomes infinitely high … R actually has the
-function of decreasing or damping the resonance"*), with `Q = 1/2R` (same
-page, n. 2). Digitised by the bilinear transform with RBJ's prewarping and
-bandwidth correction, the prototype is one biquad:
-`b0 = b2 = (1−cos ω₀)/2`, `b1 = 1−cos ω₀`, `a0 = 1+α`, `a1 = −2cos ω₀`,
-`a2 = 1−α`, `α = sin(ω₀)/(2Q)`, `ω₀ = 2π f₀/F_s` (S1, verbatim) — exactly the
-arithmetic at `audioif_biquad.c:76-86`. The panel controls are *frequency*,
+axis without changing its shape (S4 §2.7, p. 16). **Damping** R sets how
+high the peak stands at the corner (S4 §4.2 p. 100), with `Q = 1/2R` (same
+page, n. 2). Digitised by the bilinear transform with RBJ's prewarping, the
+prototype is one biquad — S1's LPF coefficient block, verbatim, with both
+Zavalishin quotations, in **App. R**. The panel controls are *frequency*,
 logarithmically, and *resonance*; slope, mix and trim (§6) are host
 conveniences no single circuit had.
 
@@ -34,17 +29,13 @@ conveniences no single circuit had.
 
 | Source | What it gave | License as read | URL | Reached |
 |---|---|---|---|---|
-| **S1** RBJ, *Cookbook formulae for audio EQ biquad filter coefficients* … (App. S1) | the LPF coefficients, `α = sin(w0)/(2Q)` … (App. S1) | the `.txt` itself carries **no license … (App. S1) | https://raw.githubusercontent.com/shepazu/Audio-EQ-Cookbook/master/Audio-EQ-Cookbook.txt | 2026-09-06 |
-| **S3** J. O. Smith III, *Introduction to Digital Filters* … (App. S3) | Q = f₀/bandwidth; the envelope reaches e^{−π} in Q … (App. S3) | © J. O. Smith III / CCRMA Stanford … (App. S3) | https://ccrma.stanford.edu/~jos/filters/Quality_Factor_Q.html , …/Decay_Time_Q_Periods.html | 2026-09-06 |
-| **S4** Zavalishin, *The Art of VA Filter Design* rev. 2.1.0 (discoDSP … (App. S4) | the 2-pole prototype `H_LP(s) = 1/(s² + 2Rs + 1)` … (App. S4) | verbatim-copy-only … (App. S4) | https://www.discodsp.net/VAFilterDesign_2.1.0.pdf | 2026-09-06 |
+| **S1** RBJ, *Cookbook formulae …* (App. S) | the LPF coefficients (App. S) | licence unverified, treated as copyleft (App. S) | https://raw.githubusercontent.com/shepazu/Audio-EQ-Cookbook/master/Audio-EQ-Cookbook.txt | 2026-09-06 |
+| **S3** J. O. Smith III, *Introduction to Digital Filters* (App. S) | Q = f₀/bandwidth; e^{−π} in Q periods (App. S) | © CCRMA Stanford, no grant (App. S) | https://ccrma.stanford.edu/~jos/filters/Quality_Factor_Q.html , …/Decay_Time_Q_Periods.html | 2026-09-06 |
+| **S4** Zavalishin, *The Art of VA Filter Design* rev. 2.1.0 (App. S) | `H_LP(s) = 1/(s² + 2Rs + 1)` (App. S) | verbatim-copy-only (App. S) | https://www.discodsp.net/VAFilterDesign_2.1.0.pdf | 2026-09-06 |
 
-Every S1 formula was cross-checked against the W3C/WebAudio HTML+MathML
-rendering (https://webaudio.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html,
-reached; *"Adapted … with permission"*, nothing further). **Looked for, not
-found:** musicdsp.org's RBJ page carries no license text (fetched);
-native-instruments.com's `VAFilterDesign_2.1.0.pdf` 404s; the archive.org
-item for rev. 2.1.2 has **no `licenseurl` field**, so the discoDSP mirror's
-own front-matter grant is the license actually read.
+Every S1 formula was cross-checked against the W3C/WebAudio rendering; the
+three licences were re-read at their own sources twice more (A11, A12). What
+was looked for and not found is in **App. R**.
 
 *(More of §2 is in **App. R** — moved under the length rule, nothing deleted.)*
 
@@ -59,59 +50,99 @@ The standard block, verbatim from vision §3, is in **App. I** — moved there u
 | # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Measurement (kit) |
 |---|---|---|---|---|---|
 | T1 | **The corner gain is the resonance**: \|H(f₀)\| = Q exactly — Q 0.707 → −3.01 dB, Q 2 → +6.02, Q 8 → +18.06, within 0.05 dB | S1, derived analytically and measured (A2) | high | any Q in 0.5–16 more than 0.05 dB from 20·log₁₀(Q) at f₀ | steady-state sine at f₀ for Q ∈ {0.5, .707, 1, 2, 4, 8, 16}, source level set so Q·level < 28 000 (A2) |
-| T2 | **Shape invariance under cutoff — on the warped axis**: the response is one curve for every f₀, and the axis it is one curve on is the **bilinear-warped** one. Plotted against f_a/f_a0 with `f_a = (F_s/π)·tan(πf/F_s)` it is f₀-independent to **0.00000 dB** for every f₀ from 20 Hz to 0.4·F_s. Plotted against the linear f/f₀ it slides without deforming only while **f₀ ≤ 250 Hz at 48 kHz**: 125 vs 250 Hz differ by 0.074 dB, 250 vs 500 Hz by 0.299, 1 k vs 2 k by 6.97 | S4 §2.7, p. 16 for the prototype's … (App. T2) | high | on the warped axis, any two f₀ in 20 Hz…0.4·F_s differing by >0.05 dB at the same f_a/f_a0; on the linear axis, two f₀ an octave apart, both ≤ 250 Hz, differing by >0.1 dB anywhere in f₀/8 … 8f₀ | swept sine at f₀ ∈ {31.5, 63 … (App. T2) |
-| T3 | **−12 dB/oct asymptote, unity DC**: on T2's warped axis, \|H\| is −24.10 dB at f_a = 4·f_a0 and −36.13 dB at 8·f_a0 — −12.03 dB/oct — at **every** f₀ (Q 0.707). On the linear axis that reads as −24.10 ± 0.10 dB two octaves above f₀ with a fitted 4f₀…8f₀ slope of −12.0 ± 0.3 dB/oct **only for f₀ ≤ 450 Hz at 48 kHz**; at 500 Hz the fitted slope is already −12.33, at 1 kHz −13.32 and at 2 kHz −19.07, by design, because the transform compresses 8f₀ toward Nyquist. DC gain is 0.00 ± 0.1 dB at f₀/100 at every f₀ | S4 §4.1 p. 97, verbatim: *"The slope rolloff speed is obviously −12dB/oct for the low- and high-pass"*; S1 for the coefficients; every figure re-derived from S1 in A13 | high | warped axis: \|H\| at 4·f_a0 outside −24.10 ± 0.05 dB at any f₀ ≤ 0.4·F_s. Linear axis, f₀ ≤ 450 Hz: fitted slope outside −11.7…−12.3 dB/oct, or DC outside ±0.1 dB | swept sine; warped-axis check at f₀ ∈ {31.5 … 4 k}; linear slope fitted 4f₀…8f₀ at f₀ ∈ {31.5, 125, 250, 450} Hz; DC from the step response's settled value |
+| T2 | **Shape invariance under cutoff — on the warped axis**: the response is one curve for every f₀, and the axis it is one curve on is the **bilinear-warped** one. Plotted against f_a/f_a0 with `f_a = (F_s/π)·tan(πf/F_s)` it is f₀-independent to **0.00000 dB** for every f₀ from 20 Hz to 0.4·F_s. Plotted against the linear f/f₀ it slides without deforming only while **f₀ ≤ 250 Hz at 48 kHz** (the octave-pair deviations that fix that span are A13's) | S4 §2.7, p. 16 for the prototype's … (App. T2) | high | on the warped axis, any two f₀ in 20 Hz…0.4·F_s differing by >0.05 dB at the same f_a/f_a0; on the linear axis, two f₀ an octave apart, both ≤ 250 Hz, differing by >0.1 dB anywhere in f₀/8 … 8f₀ | swept sine at f₀ ∈ {31.5, 63 … (App. T2) |
+| T3 | **−12 dB/oct asymptote, unity DC**: on T2's warped axis, \|H\| is −24.10 dB at f_a = 4·f_a0 and −36.13 dB at 8·f_a0 — −12.03 dB/oct — at **every** f₀ (Q 0.707). On the linear axis that reads as −24.10 ± 0.10 dB two octaves above f₀ with a fitted 4f₀…8f₀ slope of −12.0 ± 0.3 dB/oct **only for f₀ ≤ 450 Hz at 48 kHz**, by design, because the transform compresses 8f₀ toward Nyquist (the per-f₀ figures, and where 450 Hz comes from, are A13's). DC gain is 0.00 ± 0.1 dB at f₀/100 at every f₀ | S4 §4.1 p. 97, verbatim: *"The slope rolloff speed is obviously −12dB/oct for the low- and high-pass"*; S1 for the coefficients; every figure re-derived from S1 in A13 | high | warped axis: \|H\| at 4·f_a0 outside −24.10 ± 0.05 dB at any f₀ ≤ 0.4·F_s. Linear axis, f₀ ≤ 450 Hz: fitted slope outside −11.7…−12.3 dB/oct, or DC outside ±0.1 dB | swept sine; warped-axis check at f₀ ∈ {31.5 … 4 k}; linear slope fitted 4f₀…8f₀ at f₀ ∈ {31.5, 125, 250, 450} Hz; DC from the step response's settled value |
 | T4 | **Q is the ringing**: struck with a click it rings at f₀, envelope down to 4.3 % of peak after Q periods | S3, "Decay Time is Q Periods" | medium — stated for Q … (App. T4) | e^{−π} reached in <0.8 Q or >1.25 Q periods for Q ∈ {2, 4, 8, 16} | impulse, Hilbert envelope … (App. T4) |
-| T5 | **Rate-honest — against the closed form at the running rate, not against the 48 kHz curve**: at 44.1 kHz and 22.05 kHz the corner stays at f₀ within 0.1 % and \|H(f₀)\| stays at Q (−3.012 / −3.011 / −3.012 dB measured, A5), and the rendered response matches S1's closed form **evaluated at the running rate** within 0.1 dB up to 0.45·F_s. The 48 kHz *curve* is deliberately not required to repeat: the warp is a property of the rate, so at 22.05 kHz the same f₀ sits up to 0.46 dB from its 48 kHz shape even below 2205 Hz, and a class that reproduced the 48 kHz shape at 22.05 kHz would be the wrong filter | S1 (the BLT prewarps f₀ at whatever rate is running); measured at three rates (A5); the cross-rate deviation re-derived in A13 | high | corner displaced >0.1 %, gain at f₀ more than 0.1 dB from 20·log₁₀(Q), or any swept point more than 0.1 dB from the closed form **at that rate** | T2's sweep at 48 000 / 44 100 / 22 050 Hz, each differenced against its own closed form |
+| T5 | **Rate-honest — against the closed form at the running rate, not against the 48 kHz curve**: at 44.1 kHz and 22.05 kHz the corner stays at f₀ within 0.1 % and \|H(f₀)\| stays at Q (−3.012 / −3.011 / −3.012 dB measured, A5), and the rendered response matches S1's closed form **evaluated at the running rate** within 0.1 dB up to 0.45·F_s. The 48 kHz *curve* is deliberately not required to repeat: the warp is a property of the rate, so at 22.05 kHz the same f₀ sits up to 0.46 dB from its 48 kHz shape even below 2205 Hz (A13), and a class that reproduced the 48 kHz shape at 22.05 kHz would be the wrong filter | S1 (the BLT prewarps f₀ at whatever rate is running); measured at three rates (A5); the cross-rate deviation re-derived in A13 | high | corner displaced >0.1 %, gain at f₀ more than 0.1 dB from 20·log₁₀(Q), or any swept point more than 0.1 dB from the closed form **at that rate** | T2's sweep at 48 000 / 44 100 / 22 050 Hz, each differenced against its own closed form |
 
 No characters: a low-pass has one behaviour.
 
 ### Tier 3 — cost and latency
 
+**Latency budget: 0 samples, 0.000 ms**, at every rate and every setting.
+No option this class offers adds a lookahead, a partition or a window, so
+there is no latency-adding option to default off (A8; re-measured on the
+rebuild in the evidence pack).
+
+**Cost budget**, as a fraction of one stereo block's real-time deadline:
+**ESP32-P4 ≤ 1.5 %, ESP32-S3 ≤ 5 %** at the 12 dB/oct default;
+**≤ 2.5 % / ≤ 9 %** with 24 dB/oct engaged. Lean patch expected: **no** —
+if the S3 misses the steeper budget, the Slope macro's high setting is what
+gives. The basis the budget was set from is in **App. R**.
+
 *(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
 
 ## 4. Modeling approach on the palette
 
-**Compose first, and the palette already fits.** One `synthio.Biquad` in
-`LOW_PASS` mode inside one `audiofilters.Filter`, as today — the DSP is not
-what is wrong with this class, the surface is. `audioif_biquad.c:70-125`
-computes RBJ's coefficients in `double`; `choose_shift()` (`:54-68`) gives
-each filter as many fractional bits as it individually has room for, and the
-state keeps 12 bits below the sample grid (`audioif_biquad.h:14`). Measured
-against the closed form the node lands within **0.015 dB** from 50 Hz to
-20 kHz (A1) — better than the 0.03 dB the vision's palette table claims; an
-independent re-measurement on 2026-09-07 over fifteen f₀/probe pairs,
-probes 50 Hz…20 kHz, read **0.005 dB** worst (A14).
-Python computes nothing per block: `frequency` and `Q` are `synthio` block
-slots C ticks (`Filter.c:281`), so a macro move is a float store.
+**Three `audiobiquad.Biquad` sections in series, and nothing else.** The DSP
+was never what was wrong with this class; the surface was, and the tail was.
+All three sections are the same node over `shared/audioif_filter_f32.c` —
+float coefficients, float state, any state word below 1e-20 written as exact
+zero — which is the whole reason the tier moved (§8 D1). Every section's
+`frequency`, `Q`, `gain_db` and `mix` is a live slot read once per chunk, so
+a macro move is a float store and Python computes nothing per block.
 
-*(More of §4 is in **App. R** — moved under the length rule, nothing deleted.)*
+| Section | Mode | What it is | Patch 0 |
+|---|---|---|---|
+| 1 | `LOW_PASS` | the prototype's two poles; Resonance at 12 dB/oct, the fixed Butterworth 0.5412 at 24 | active |
+| 2 | `LOW_PASS` | the second pole pair; Resonance at 24 dB/oct | wire |
+| 3 | `HIGH_SHELF` @ 5 Hz | the make-up trim; a subsonic shelf is the palette's only route to gain above unity | wire |
+
+At `mix = 0` the kernel writes `to_s16(x0)` — the input sample unchanged
+(`audioif_filter_f32.c:239`) — so a section that is not in use costs a pass
+and changes no byte (A15). **The A14 cascade-mix hazard does not reach this
+class**: it is `audiofilters.Filter`'s, and this class builds no `Filter`.
+
+*(The seed's stock-palette version of this section, the resonance and slope
+laws, the mono reading and the stock-board caveat are all in **App. R** —
+moved under the length rule, nothing deleted.)*
 
 ## 5. Node asks
 
-**None.** Every Tier 2 trait above is reachable on the stock palette, and §4
-shows how; an ask without a trait id is not an ask.
+**None.** Every Tier 2 trait above is reachable on the Phase 1 palette as it
+stands, and §4 shows how; an ask without a trait id is not an ask. The one
+ask this seed did carry — a DC-clean biquad, for Tier 1 rather than for a
+Tier 2 trait — was answered by `audiobiquad` in Phase 1, which is what §8 D1
+adopts.
 
 *(More of §5 is in **App. R** — moved under the length rule, nothing deleted.)*
 
-## 6. Proposed surface
+## 6. Surface — frozen at Station A
 
-| # | Label | Mode | Range | Generalizes |
+Five macros, well inside the sixteen the contract allows.
+
+| # | Label | Mode | Span (`_MACRO_RANGES`) | Generalizes |
 |---|---|---|---|---|
-| 0 | Frequency | UNIPOLAR | 20 Hz … min(20 kHz, 0.45·F_s), log | the cutoff knob |
-| 1 | Resonance | UNIPOLAR | Q 0.5 … 16, log (R = 1/2Q, S4) | the resonance/emphasis knob |
-| 2 | Slope | TOGGLE | 12 dB/oct (default) / 24 dB/oct | a console filter's slope switch |
-| 3 | Mix | UNIPOLAR | 0 exactly … 1; values in (0, 0.01] snap to 0 | a dry/wet blend — no analog filter had one, kept because Tier 1's wire test needs it |
-| 4 | Trim | BIPOLAR | −12 … +12 dB, default 0 | the make-up a resonant peak needs |
+| 0 | Frequency | UNIPOLAR | 20 … 20 000 Hz, log; `_hz()` clamps at 0.49·F_s | the cutoff knob |
+| 1 | Resonance | UNIPOLAR | Q 0.5 … 16, log (R = 1/2Q, S4) | the resonance knob |
+| 2 | Slope | TOGGLE | 0 = 12 dB/oct (default), 1 = 24 | a console's slope switch |
+| 3 | Mix | UNIPOLAR | 0 exactly … 1 | a dry/wet blend; no analog filter had one, kept because Tier 1's wire test needs it |
+| 4 | Trim | BIPOLAR | −12 … +12 dB, default 0; under 0.2 dB the section is a wire | the make-up a resonant peak needs |
 
-`capabilities = ()`: nothing in a low-pass is measured in beats, so the class
-does not read `transport()` (D10, answered).
+`capabilities = ()` (§8 D7). The span top and the dropped `(0, 0.01]` snap
+are §8 D5 and D6.
 
-Patches, named for settings and never for products: 0 **Open** (defaults on
-the grid), 1 **Soft Roll** (6 kHz, Q 0.707, 12 dB), 2 **Steep Cut** (3 kHz,
-Q 0.707, 24 dB), 3 **Resonant Peak** (1.2 kHz, Q 6, 12 dB, −6 dB trim),
-4 **Squelch** (500 Hz, Q 12, 24 dB, −9 dB trim), 5 **Sub Only** (120 Hz,
-Q 0.707, 24 dB).
+**Patches**, named for settings and never for products; the grid column is
+`macro_of()` of the setting beside it, so patch 0 is the constructor's own
+defaults to within one step of the grid (Q 0.7071 lands on 13/127 = 0.713).
+
+| # | Name | Setting | Grid |
+|---|---|---|---|
+| 0 | Open | 20 kHz, Q 0.71, 12 dB/oct, mix 1, trim 0 | `(127, 13, 0, 127, 64)` |
+| 1 | Soft Roll | 6 044 Hz, Q 0.71, 12 dB/oct | `(105, 13, 0, 127, 64)` |
+| 2 | Steep Cut | 2 980 Hz, Q 0.71, 24 dB/oct | `(92, 13, 127, 127, 64)` |
+| 3 | Resonant Peak | 1 182 Hz, Q 5.99, 12 dB/oct, −5.95 dB | `(75, 91, 0, 127, 32)` |
+| 4 | Squelch | 495 Hz, Q 11.85, 24 dB/oct, −8.98 dB | `(59, 116, 127, 127, 16)` |
+| 5 | Sub Only | 120 Hz, Q 0.71, 24 dB/oct | `(33, 13, 127, 127, 64)` |
+
+**`tail_samples` = 204 800** (4.27 s at 48 kHz) — a ceiling over the whole
+span, because the contract reads it off the class. Measured worst case:
+20 Hz at Resonance 16 and 24 dB/oct, full-scale burst, **203 731** samples
+after the source goes silent (A15). There is no per-setting number: the
+contract reads `tail_samples` off the class, so the seed's
+`ceil(4·Q·F_s/f₀)`, recomputed on every macro move, is not expressible and
+the declaration is the measured ceiling instead. It is loose by design at
+every setting but the worst one — patch 0's own tail is 0.20 s.
 
 ## 7. Defects in the current class the rebuild must not repeat
 
@@ -129,24 +160,20 @@ From one read of `lib/audioeffects/eq.py`.
 
 *(More of §7 is in **App. R** — moved under the length rule, nothing deleted.)*
 
-## 8. Open questions
+## 8. Decisions — every open settled at Station A, 2026-09-07
 
-1. **Gate 0's biquad answer** (§5) — one decision for the whole EQ family and
-   `Phaser`. *Settled by:* Phase 0 Gate, with §5's table as input.
-2. **Where the trim lives** — a `LOW_SHELF`+`HIGH_SHELF` pair in the same
-   cascade (stock, flat to 0.002 dB, two biquads per sample), a
-   `audiomixer.Mixer` voice level (stock, cut only, one node) or an
-   `audiomath.Multiply` node (exact, audioif tier). Folding it into
-   `b0/b1/b2` was the fourth option and is **not available** — there is no
-   route from Python to a biquad's coefficients (§4, A14). *Settled by:* the
-   implementation session at Phase 2, on the cost table.
-3. **Whether Slope should reach 36 or 48 dB/oct.** Each extra section costs
-   ~16 ns/frame on the desktop anchor and would make the class a usable
-   crossover leg. *Settled by:* the implementation session, against the S3
-   budget.
-4. **Whether `LowPass` and `HighPass` share one implementation class** with
-   the mode as an argument. The 46 `NAME`s are frozen; the file layout is
-   free. *Settled by:* the implementation session.
+Nothing here is open. Each decision's argument and the run behind it are in
+**A15**; none of them is a number recalled from another class.
+
+| # | Decision | Settled by |
+|---|---|---|
+| D1 | **Portability tier: audioif**, on `audiobiquad`. A3 asked for a DC-clean audioif-own biquad; Phase 1 shipped one. Every configuration in this class's span reaches exact zero on it; on `synthio.Biquad` the same corners hold −1…−4 LSB for ever. The cost, stated not hidden: a stock CircuitPython board cannot construct this class, where the old one ran there and quietly failed Tier 1 | A3, A14, A15 |
+| D2 | **The trim is one `HIGH_SHELF` at 5 Hz**, not the stock shelf pair: flat to 0.010 dB from 50 Hz to 15 kHz, 0.100 dB worst at 20 Hz, all three rates, ±6 and ±12 dB | A15 |
+| D3 | **Slope stays 12 / 24 dB/oct.** No 36, no 48 | A15 |
+| D4 | **`LowPass` and `HighPass` do not share an implementation class.** One class per file is what lets sixteen rebuilds run in parallel | A15 |
+| D5 | **Frequency spans a fixed 20 Hz … 20 kHz**, clamped by `self._hz()` at 0.49·F_s, not the seed's `min(20 kHz, 0.45·F_s)`: `_MACRO_RANGES` is a class attribute and cannot know the rate. It clamps and never refuses, which is the invariant | A15 |
+| D6 | **The `(0, 0.01]` mix snap is dropped** with the node it was for: `Filter.c:234` has the threshold, `audiobiquad` does not | A9, evidence pack |
+| D7 | **`capabilities = ()`.** Nothing in a low-pass is measured in beats; the class never reads `self._transport()` | — |
 
 ---
 
@@ -590,6 +617,68 @@ cell-level `App. <id>` reference.
 Derivations, source excerpts, measurement notes and per-row prose, verbatim,
 each tagged with the section it came from. The audits check them here.
 
+**Length, said plainly.** After Station A, §§1–8 measure **13.5 KB** against
+the vision's 8–12 KB band, and this is where the excess is: §3's frozen
+Tier 2 table is 4.7 KB on its own and App. T's rule keeps every trait's
+statement, disconfirmation and measurement in §3; §6 now carries the frozen
+macro and patch tables and §8 the seven settled decisions, neither of which
+the seed had. Everything that could move without cutting a gate condition
+has moved here or to A15. It is over the band by 1.5 KB and the band is not
+met.
+
+*(from §1)*
+
+The two Zavalishin quotations §1 stands on, verbatim as printed: *"the
+variation of the cutoff parameter doesn't change the shape of the amplitude
+response graph"* (§2.7, p. 16) and *"at R = 0 the resonance peak becomes
+infinitely high … R actually has the function of decreasing or damping the
+resonance"* (§4.2, p. 100, whose n. 2 is `Q = 1/2R`).
+
+And the biquad §1 digitises to, S1 verbatim: `b0 = b2 = (1−cos ω₀)/2`,
+`b1 = 1−cos ω₀`, `a0 = 1+α`, `a1 = −2cos ω₀`, `a2 = 1−α`,
+`α = sin(ω₀)/(2Q)`, `ω₀ = 2π f₀/F_s` — exactly the arithmetic at
+`audioif_biquad.c:76-86`, and, on the node this class actually builds, at
+`audioif_filter_f32.c`'s float version of the same block.
+
+*(from §2)*
+
+**Looked for, not found:** musicdsp.org's RBJ page carries no license text
+(fetched); native-instruments.com's `VAFilterDesign_2.1.0.pdf` 404s; the
+archive.org item for rev. 2.1.2 has **no `licenseurl` field**, so the
+discoDSP mirror's own front-matter grant is the license actually read. Every
+S1 formula was cross-checked against the W3C/WebAudio HTML+MathML rendering
+(https://webaudio.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html,
+reached; *"Adapted … with permission"*, nothing further).
+
+*(from §4, the seed's stock-palette version — superseded by §8 D1, kept
+verbatim)*
+
+**Compose first, and the palette already fits.** One `synthio.Biquad` in
+`LOW_PASS` mode inside one `audiofilters.Filter`, as today — the DSP is not
+what is wrong with this class, the surface is. `audioif_biquad.c:70-125`
+computes RBJ's coefficients in `double`; `choose_shift()` (`:54-68`) gives
+each filter as many fractional bits as it individually has room for, and the
+state keeps 12 bits below the sample grid (`audioif_biquad.h:14`). Measured
+against the closed form the node lands within **0.015 dB** from 50 Hz to
+20 kHz (A1) — better than the 0.03 dB the vision's palette table claims; an
+independent re-measurement on 2026-09-07 over fifteen f₀/probe pairs,
+probes 50 Hz…20 kHz, read **0.005 dB** worst (A14).
+Python computes nothing per block: `frequency` and `Q` are `synthio` block
+slots C ticks (`Filter.c:281`), so a macro move is a float store.
+
+*(from §4, Station A)*
+
+**The A14 cascade-mix hazard, and why it is gone.** `audiofilters.Filter`
+blends `mix` against the whole cascade's output on MicroPython
+(`Filter.c:279-283` then `:288`) and against the last stage's input on the
+CPython target (`src/cpython/audiofilters.py:140`), so two biquads at
+`mix = 0.5` render peak 5129 against 1211 with different FNV digests (A14) —
+which is exactly Slope 24 dB/oct with Mix anywhere between the ends, and
+would have broken Tier 1's identical-bytes invariant on the desktop pair.
+This class builds no `Filter`: `mix` is per-section, in one C kernel both
+desktop targets share. The palette defect is still audioif's to fix, and the
+numbers stay in A14 for whoever files it.
+
 *(from §2)*
 
 **Standout confirmed.** Two candidates were weighed and dropped: a Sallen-Key
@@ -758,3 +847,119 @@ to audioif#23 either way.
   only (`_core.py:366-374`); here that is the `Filter`, which resets its
   source recursively, so the borrowed source *is* reset, which the contract
   forbids. The rebuild enumerates its own nodes.
+
+### A15. Station A's own runs, 2026-09-07 — the six decisions
+
+Every number below is from a run made for this section on
+`audiocomponents/.venv/bin/python` with `audioif` at the pin, through the
+worktree's own `lib`. Probes were scratch scripts, not committed; each is
+reproducible from its description.
+
+**D1, the tail.** Burst then digital silence, the source still supplying
+zeros at every pull, last non-zero output frame counted from the start of
+the burst. Every row reaches exact zero and stays there — which is the
+invariant `synthio.Biquad` cannot meet at these corners (A3).
+
+```
+  rate  slope     f0      Q   last non-zero frame        s
+ 48000     12   20.0   16.0              119575     2.491
+ 48000     12   20.0  0.707               14332     0.299
+ 48000     12  100.0   16.0               40840     0.851
+ 48000     12 1000.0  0.707                9708     0.202
+ 48000     24   20.0   16.0              191558     3.991
+ 48000     24   20.0  0.707               18989     0.396
+ 48000     24  100.0   16.0               67116     1.398
+ 48000     24 1000.0  0.707                9804     0.204
+ 44100     24   20.0   16.0              174968     3.968
+ 22050     24   20.0   16.0               87219     3.956
+```
+
+The rows above are struck with a 200 ms burst at amplitude 12 000. The
+declared `TAIL_SAMPLES` comes from the same probe at **full scale**: 20 Hz,
+Q 16, 24 dB/oct, 48 kHz, last non-zero frame **213 331**, which is 203 731
+samples after the 9 600-frame burst ends. Declared 204 800.
+
+**D2, the trim.** Steady sine, exact-bin DFT over the second half of a 0.5 s
+render, wet minus dry, level 4 000, one `audiobiquad.Biquad` `HIGH_SHELF` at
+Q 0.707. Worst deviation from the asked-for gain over probes at 20, 50, 100,
+1 k, 5 k, 10 k and 15 kHz:
+
+```
+              corner 5 Hz            corner 10 Hz
+  want   worst dev   where     worst dev   where
+  -12.0    -0.019 dB  20 Hz      +0.926 dB  20 Hz
+   -6.0    +0.033 dB  20 Hz      +0.384 dB  20 Hz
+   +6.0    -0.100 dB  20 Hz      -0.387 dB  20 Hz
+  +12.0    -0.041 dB  20 Hz      -0.951 dB  20 Hz
+```
+
+At 50 Hz and above the 5 Hz shelf is within 0.010 dB at every rate and every
+gain in the table; the same run at 44 100 and 22 050 Hz reads the same to
+0.01 dB. So one section carries the trim, where A14's stock alternative
+needed two.
+
+**D2's rejected alternatives, from A14, restated in one line each:** a
+`audiomixer.Mixer` voice level is cut-only (0.5 → −6.021 dB, 1.0 → −0.000)
+and cannot be the make-up a +24 dB corner needs to come back from;
+`audiomath.Multiply` is exact but also cannot exceed unity; and folding the
+trim into `b0/b1/b2` is not available at all — there is no route from Python
+to a biquad's coefficients.
+
+**The resonance law at both slopes.** At 24 dB/oct the first section holds
+the lower Butterworth Q (0.5412) fixed and the resonance rides the second
+(1.3066·Q/0.7071) alone, so `|H(f₀)|` is the product and reads as Q at both
+slopes — T1 holds at both settings rather than at one. Scaling *both* Qs
+would square it: Resonance 2 would stand +15.05 dB up rather than +6.02.
+Measured, 1 kHz corner, source level scaled from Q so nothing clips:
+
+```
+       Q     20log10(Q)   12 dB/oct   dev      24 dB/oct   dev
+   0.500       -6.021       -6.021   -0.000       -6.021   -0.000
+   0.707       -3.010       -3.010   -0.000       -3.010   -0.000
+   1.000       +0.000       +0.000   +0.000       +0.000   +0.000
+   2.000       +6.021       +6.021   -0.000       +6.020   -0.000
+   4.000      +12.041      +12.041   -0.000      +12.041   -0.000
+   8.000      +18.062      +18.062   +0.000      +18.062   -0.000
+  16.000      +24.082      +24.082   +0.000      +24.083   +0.000
+```
+
+The source level is chosen from Q, which A2 records as this measurement's
+own trap: at a fixed level the Q 8 row reads +14.15 dB and looks like a
+coefficient error when it is a clip.
+
+**The 24 dB/oct slope itself**, fitted 4f₀→8f₀ at f₀ = 125 Hz, Q 0.707:
+−48.179 dB at 4f₀, −72.066 dB at 8f₀, **−23.886 dB/oct**.
+
+**`mix = 0` is a byte-exact wire over the whole chain.** 997 Hz at amplitude
+20 000, three `audiobiquad` sections in series, every `mix` at 0, 0.2 s
+pulled: the chain's FNV-1a is `85b80d99` and the source's own is `85b80d99`,
+and the bytes compare equal. Through the built class the same test reads
+`4dd480f1` on both sides.
+
+**D3, why the slope stops at 24 dB/oct.** Three reasons, in order of weight.
+The dossier's S3 budget is already 9 % of one stereo block's deadline at
+24 dB/oct, and a third and fourth section would take one filter past a tenth
+of a block on the part it is tightest on. No source in §2 describes a
+steeper console filter, so a 48 dB/oct position would be a feature with no
+referent, which §1's design grade does not license. And every extra section
+would have to be built at construction and left as a wire at every other
+setting, because a node cannot join a running graph — so the cost of the
+positions nobody selects is paid by everybody. A crossover leg is a
+different class's job.
+
+**D4, why `LowPass` and `HighPass` stay separate files.** The registry rule
+is one class per file named after its `NAME`, with nothing else edited; that
+is exactly what lets sixteen classes be rebuilt in parallel with no shared
+file to conflict over. A shared mode-parameterised base would be a third
+file both rebuilds must edit, and `HighPass` is not in this batch. The form
+stays available later, as a private helper module, if the EQ family ever
+lands in one session.
+
+**D5, the span top.** `_MACRO_RANGES` is a class attribute; `macro_value()`
+reads it off the class, so it cannot depend on an instance's rate and the
+seed's `min(20 kHz, 0.45·F_s)` is not expressible there. The rate-honest
+clamp is `self._hz()` — 0.49·F_s, so 10 804 Hz on a 22.05 kHz graph — which
+clamps rather than refusing, which is what the invariant asks. A14 measured
+the node at f₀ 20 kHz reading within 0.005 dB of the closed form, so the
+band between 0.45 and 0.49·F_s is not a band the arithmetic gives up in.
+
