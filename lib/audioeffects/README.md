@@ -74,7 +74,7 @@ not.
 |---|---|
 | `Compressor` | `character="vca"/"fet"/"optical"/"varimu"` presets shape attack/release/knee; **patches** |
 | `Limiter` | brickwall, with optional lookahead and true-peak detection; **patches** |
-| `Expander` | downward: below threshold, quiet gets quieter |
+| `Expander` | **rebuilt** (Drawmer DS201 + RaneNote 155): downward, `ratio` dB out per dB in below threshold, to a `Depth` floor; true-RMS detector, two-ended 12 dB/oct key band, external key. Nine macros, six patches. **audioif tier** (`audiodynamics`), zero latency, one node. No Hold - that is `NoiseGate`'s, and the reason is measured ([dossier](../../docs/effects/Expander.md) §8.1) |
 | `NoiseGate` | mutes below threshold |
 | `DeEsser` | detector high-passed at `frequency`, so only sibilance ducks the signal |
 | `TransientShaper` | independent attack/sustain gain, level-independent |

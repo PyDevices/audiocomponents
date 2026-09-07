@@ -37,13 +37,38 @@ class TheLookup(unittest.TestCase):
     def test_a_name_with_no_file_is_a_miss_not_an_error(self):
         self.assertIsNone(rebuilt.load("NoSuchEffectAnywhere"))
 
-    def test_every_one_of_the_46_is_a_miss_today(self):
-        # The fallback branch, over the real catalogue: nothing in Phase 2's
-        # families has been rebuilt yet, so every name must miss and every
-        # old class must still be the one the package exports.
+    def test_each_of_the_46_either_misses_or_resolves_to_its_own_class(self):
+        # Both branches, over the real catalogue, in a form that does not
+        # have to be edited again as the families are rebuilt one file at a
+        # time: a name with no file misses and the old class stands; a name
+        # with a file resolves to a Component carrying that same NAME, and
+        # that is the object the package exports.
+        #
+        # (This test read `assertIsNone` for every one of the 46 while no
+        # class had been rebuilt. The first rebuild turned it red, which is
+        # a count going stale rather than the rule being broken -- so the
+        # rule is what it holds now. Rewritten by the `Expander` rebuild,
+        # 2026-09-07.)
+        misses = 0
         for name in audioeffects.ALL:
             with self.subTest(name=name):
-                self.assertIsNone(rebuilt.load(name))
+                found = rebuilt.load(name)
+                exported = next(cls for cls in
+                                (getattr(audioeffects, attribute)
+                                 for attribute in audioeffects.__all__)
+                                if audioeffects._is_provider(cls)
+                                and cls.NAME == name)
+                if found is None:
+                    misses += 1
+                    self.assertTrue(issubclass(exported,
+                                               audioeffects._core.Effect))
+                else:
+                    self.assertTrue(issubclass(found, _component.Component))
+                    self.assertEqual(found.NAME, name)
+                    self.assertIs(exported, found)
+        # Until Phase 6 retires `_core`, the miss branch above is reached by
+        # real names and not only by `NoSuchEffectAnywhere`.
+        self.assertGreater(misses, 0)
 
     def test_a_file_whose_class_does_not_match_is_an_error(self):
         # `examplestock.py` exists, but holds no class whose NAME is
@@ -55,8 +80,18 @@ class TheLookup(unittest.TestCase):
         self.assertIn("holds no Component", str(caught.exception))
 
     def test_known_lists_what_is_there(self):
-        self.assertEqual(sorted(rebuilt.known()),
-                         ["ExampleAudioif", "ExampleStock"])
+        # The two fixtures are always there; the rest of the list grows by
+        # one file per rebuilt class, so what is held is the property and
+        # not the roll call.
+        names = rebuilt.known()
+        self.assertEqual(len(names), len(set(names)))
+        for fixture in ("ExampleAudioif", "ExampleStock"):
+            self.assertIn(fixture, names)
+        for name in names:
+            with self.subTest(name=name):
+                found = rebuilt.load(name)
+                self.assertIsNotNone(found)
+                self.assertEqual(found.NAME, name)
 
 
 class TheReplacement(unittest.TestCase):
@@ -104,8 +139,12 @@ class TheReplacement(unittest.TestCase):
 
 class TheCatalogueIsUnchanged(unittest.TestCase):
     def test_the_fixtures_are_not_among_the_46(self):
+        # The fixtures, named: a rebuilt one of the 46 is *supposed* to
+        # appear in `known()` and in `ALL`, so walking `known()` here would
+        # forbid the rule this file exists to prove.
         self.assertEqual(len(audioeffects.ALL), 46)
-        for name in rebuilt.known():
+        for name in ("ExampleStock", "ExampleAudioif"):
+            self.assertIn(name, rebuilt.known())
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
 
