@@ -334,7 +334,9 @@ force):** `ClapDtrax15.wav`, measured via
 --json .reference-captures/drumtraks/sfm_free_drums_wav_stats.json`
 (command run this session against the file in place; 16 WAV files in
 that folder measured in total, one per represented machine, only the
-Drumtraks-prefixed row used here):
+Drumtraks-prefixed row used here).
+**reference figure unverified: needs re-derivation from Free Drums From
+Mars (`ClapDtrax15.wav`).**
 
 | Statistic | Value |
 |---|---|

@@ -7,6 +7,8 @@
 Reference numbers are the MusicRadar cross-check pack (219 hits), per the
 dossier's acquisition note; the Splice oracle's WAVs still await the
 account download and would re-verify, not re-derive, these targets.
+**reference figure unverified: needs re-derivation from the MusicRadar
+SampleRadar 808 pack.**
 
 ## The criteria, measured
 

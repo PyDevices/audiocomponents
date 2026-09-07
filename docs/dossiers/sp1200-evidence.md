@@ -69,5 +69,9 @@ to the factory 398 Hz, crash at tau 0.39.
 
 Full numbers: `.reference-captures/sp1200/sfm_stats.json` (reference) and
 `renders/after_stats.json` (ours).
+**Those pack medians (including the factory cowbell 398 Hz and crash tau
+0.39 named in prose) are reference figures unverified: needs re-derivation
+from Free SP From Mars.** They are not in the seven-row classifier table
+above, which remains Yeh literature vs the model.
 
 **Awaiting the batch listen:** `APPROVE ACCURACY sp1200`
