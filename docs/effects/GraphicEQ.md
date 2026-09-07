@@ -121,7 +121,7 @@ twelve-section figures, and they are promoted here from a flag to the budget.
 
 **Lean patch: no — corrected from the seed's "yes", and it is a real loss.**
 A patch sets macro values; it cannot change the node count, and a flat band is
-*not* free: `audioif_filter_f32.c:222-241` has no `mix == 0` short-circuit, so
+*not* free: `audioif_filter_f32.c:216-241` has no `mix == 0` short-circuit, so
 the recursion runs for every section at every setting. No patch on this class
 can reduce its cost. A `mix == 0` fast path in that kernel would make one
 real; it is recorded as a want in §5, not filed as a node ask, because it
@@ -131,7 +131,8 @@ unblocks no trait.
 
 **Twelve chained `audiobiquad.Biquad` nodes.** Head to tail: `Gain`
 (HIGH_SHELF at 5 Hz) → nine `PEAKING_EQ` bells at 31.25 Hz × 2ⁿ → one
-`HIGH_SHELF` at 16 kHz → `Volume` (HIGH_SHELF at 5 Hz). Python computes each
+`HIGH_SHELF` whose **corner is 11313.7 Hz**, half an octave below its 16 kHz
+band → `Volume` (HIGH_SHELF at 5 Hz). Python computes each
 band's `Q` from its gain on a macro move; C runs every sample. Nothing is
 added to the palette. **Tier: audioif.** Mono gets the same curve on one
 channel; not stereo by definition.
@@ -145,7 +146,7 @@ channel; not stereo by definition.
   makes T4 reachable. A `PEAKING_EQ` at `gain_db = 0` is *not* bit-transparent
   at this bank's lowest centres — up to **5 LSB at 31.25 Hz** over 24 000
   frames of noise, exact from 250 Hz up (App. S(iv)). At `mix = 0` the kernel
-  computes `1.0f * x0 + 0.0f * y0` (`audioif_filter_f32.c:240`), byte-exact at
+  computes `1.0f * x0 + 0.0f * y0` (`audioif_filter_f32.c:239`), byte-exact at
   every centre. **Every band is built; a band at the detent is muted, not
   absent** — stronger than the seed's "flat bands are not built", because the
   knob still turns.
@@ -166,19 +167,32 @@ channel; not stereo by definition.
   short and at 20 Hz 2.3 dB short (App. S(vi)).
 - **Panel order kept — a headroom rule, not a commutation.** Each node writes
   int16 between sections and `to_s16` saturates at ±32767
-  (`audioif_filter_f32.c:43-50`), so +12 dB of Gain into a hot source clips at
+  (`audioif_filter_f32.c:43-51`), so +12 dB of Gain into a hot source clips at
   the first boundary. An M-108's op-amps clip too, and the docstring says so.
 - **Centres clamp below Nyquist through `self._hz()` (0.98 × Nyquist), and
   the clamp is *reported*.** On the ported biquad an over-Nyquist corner
   rails into a full-scale square at f_s/4 while raising nothing (App. E(iv)),
   and that is the failure the seed wrote this bullet about. On `audiobiquad`
-  it does not: `audioif_filter_f32.c:94-95` clamps `frequency` to
+  it does not: `audioif_filter_f32.c:95-96` clamps `frequency` to
   0.4999 × the rate for itself, so a 16 kHz shelf at 22.05 kHz quietly runs
   at 11022.45 Hz and reads its own `frequency` back as 16000. **That silence
   is the defect the class's clamp exists for now** — the same shape §7's
   defect 4 names — so `clamped` and `built_centres` say which bands moved,
   and the class gate's planted fault is the kernel's silent move, not a
   rail.
+
+- **The shelf's corner is not its band centre, and its `Q` is not the bells'.**
+  *(Station C correction, 2026-09-07 — this section said "one `HIGH_SHELF` at
+  16 kHz" and the first build handed it the bells' nominal `Q` of 1.4. Both
+  were wrong, and the measurements are in
+  [`GraphicEQ-evidence.md`](GraphicEQ-evidence.md) §1a.)* An RBJ shelf's
+  `frequency` is where it has reached **half** its dB gain, so a corner on the
+  band gives that band +6.00 dB of a +12 dB request and puts the rest above
+  20 kHz; half an octave down measures **+10.91 dB at 16 kHz** and +11.94 at
+  20 kHz while lifting the 8 kHz bell's own centre by only 1.96 dB. And a
+  shelf's `Q` is a resonance, not a bandwidth: at 1.4 it **cuts 2.37 dB below
+  its corner** and overshoots the asymptote by 1.94 dB above it. The shipped
+  shelf is `Q` 0.707 at `centres[9] / √2`.
 
 *(The composition the seed refuted and what re-trying it actually showed:
 App. S(iii). The seed's §4 bullets, verbatim, are in App. R.)*
@@ -797,7 +811,7 @@ added to the palette.
   it deviates by up to **5 LSB at 31.25 Hz**, 2 at 62.5 Hz and 1 at 125 Hz,
   and is exact from 250 Hz up (App. S(iv)) — Direct Form I in float32 with
   poles that close to z = 1. At `mix = 0` the kernel computes
-  `1.0f * x0 + 0.0f * y0` (`audioif_filter_f32.c:240`), which is the input
+  `1.0f * x0 + 0.0f * y0` (`audioif_filter_f32.c:239`), which is the input
   sample exactly, so the section is byte-exact a wire at every centre and
   every rate. **Every band is built; a band at the detent is muted, not
   absent.** That is stronger than the seed's "flat bands are not built": the
@@ -826,7 +840,7 @@ added to the palette.
 - **Panel order is kept, and it is a headroom rule, not a commutation.**
   Gain sits before the bank and Volume after, as the panel reads. Each node
   writes int16 between sections and `to_s16` **saturates** at ±32767
-  (`audioif_filter_f32.c:43-50`), so +12 dB of Gain into a hot source clips
+  (`audioif_filter_f32.c:43-51`), so +12 dB of Gain into a hot source clips
   at the first node boundary — an M-108's op-amps clip too, and the
   docstring says so in the musician's terms.
 - **Clamping the centres below Nyquist is stability, not tidiness.** The
@@ -910,7 +924,7 @@ runs a second longer than the render, and the note is in the script.)*
 
 Ten *chained* flat sections at 1 kHz differ in **0** samples, so this is not
 about depth: it is Direct Form I in float32
-(`audioif_filter_f32.c:222-241`) with poles that close to z = 1, where
+(`audioif_filter_f32.c:216-241`) with poles that close to z = 1, where
 `b == a` exactly and the cancellation still loses the last bits. At
 `mix = 0` the same section is byte-identical to the source at every centre
 tested, which is what §4 builds on and what T4's planted fault inverts.

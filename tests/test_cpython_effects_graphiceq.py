@@ -243,7 +243,7 @@ class TheClampIsReported(unittest.TestCase):
 
     def test_planted_fault_a_centre_the_kernel_moves_and_nobody_reports(self):
         # The fault of the same kind is *not* railing -- `audiobiquad` does
-        # not rail, because `audioif_filter_f32.c:94-95` clamps `frequency`
+        # not rail, because `audioif_filter_f32.c:95-96` clamps `frequency`
         # to 0.4999 x the rate for itself. It is the shape the old class had
         # and section 7 names: the band moves and nothing says so. Asked for
         # 16 kHz at 22.05 kHz the section runs at 11022.45 Hz and reads its

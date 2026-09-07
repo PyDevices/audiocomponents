@@ -6,6 +6,33 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audioif's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Changed
+
+- **`audioeffects.GraphicEQ` rebuilt from scratch** on the Phase 2
+  construction module (`lib/audioeffects/rebuilt/graphiceq.py`), after the
+  MXR M-108 Ten Band. Ten octave bands on the pedal's own centres from
+  **31.25 Hz** (not the ISO series), a **shelf** on top rather than a tenth
+  bell, and GAIN and VOLUME around the bank — fourteen macros and six named
+  patches where the old class had **no surface at all**. Its bands now
+  **widen as you back off**, measured at 1.780 octaves at +3 dB against
+  0.716 at +12, where the old class was constant-Q by omission at Q 1.4; a
+  `Constant Q` toggle makes the studio-graphic behaviour a choice instead of
+  an accident. A band at its centre detent is a **wire byte for byte**, and
+  patch 0 is byte-identical to the source. Bands above Nyquist **clamp and
+  say so** (`clamped`, `built_centres`) instead of vanishing silently.
+- **`GraphicEQ` moves to the `audioif` portability tier** (`audiobiquad`).
+  On the ported `synthio.Biquad` it held **+7 LSB** after silence at
+  31.25 Hz/+6 dB and +5 LSB with all ten bands engaged, for ever
+  (audioif#23); on `audiobiquad`'s float sections the same settings reach
+  exact zero. Twelve sections, `latency_samples` 0, `tail_samples` 465 ms.
+  Costs about two thirds of an ESP32-S3's stereo block by arithmetic — not
+  yet measured on a board.
+- `GraphicEQ` can now be built with no `gains_db` at all (flat, and flat is a
+  wire), so its entry in the test and renderer `EXTRA_ARGUMENTS` tables is
+  gone. A short `gains_db` still sets the bottom of the bank, as before.
+
 ## v0.2.0 (2026-09-03)
 
 The first release from this repository. These packages continue a version

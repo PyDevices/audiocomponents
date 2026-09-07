@@ -84,7 +84,7 @@ not.
 | Class | Notes |
 |---|---|
 | `ParametricEQ` | peaking bands `(freq, gain_db, q)` plus optional shelves |
-| `GraphicEQ` | MXR M-108 Ten Band: ten octave bands from 31.25 Hz plus GAIN and VOLUME, and the bands **get wider as you back off** — 1.8 octaves at +3 dB, 0.71 at +12 — which is what makes three sliders at +6 dB a broad hump several dB higher rather than +6 dB. `Constant Q` on turns it into a studio graphic instead. A band at its centre detent is a wire byte for byte; a patch change starts the bank clean, a knob move rides through. 14 macros, 6 patches, **audioif** tier (`audiobiquad`, for a tail that reaches exact zero at 31.25 Hz), twelve sections, 0.00 ms of latency, 465 ms of tail; **patches** |
+| `GraphicEQ` | MXR M-108 Ten Band: ten octave bands from 31.25 Hz plus GAIN and VOLUME, and the bands **get wider as you back off** — 1.8 octaves at +3 dB, 0.71 at +12 — which is what makes three sliders at +6 dB a broad hump of +8.78 dB across 2.6 octaves rather than +6 dB. `Constant Q` on turns it into a studio graphic instead. A band at its centre detent is a wire byte for byte; a patch change starts the bank clean, a knob move rides through. 14 macros, 6 patches, **audioif** tier (`audiobiquad`, for a tail that reaches exact zero at 31.25 Hz), twelve sections, 0.00 ms of latency, 465 ms of tail; **patches** |
 | `DynamicEQ` | notch+band split, band compressed, summed (the split is exact) |
 | `LowPass` `HighPass` `BandPass` `Notch` | single swept biquads |
 | `LadderFilter` | Moog-style 4-stage cascade, 24 dB/oct, resonant |

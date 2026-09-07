@@ -21,9 +21,18 @@ setting, which is the other half of Bohn's paper and sounds like a studio
 graphic rather than a pedal.
 
 **Bands overlap and add.** Three adjacent sliders at +6 dB do not give you
-+6 dB: they give a broad hump several dB higher over more than two octaves.
-That is what a musician hears when they draw a curve on this pedal, and it is
-why the two level sliders exist.
++6 dB: measured, they give **+8.78 dB across 2.6 octaves**. That is what a
+musician hears when they draw a curve on this pedal, and it is why the two
+level sliders exist. All ten at +6 dB reach **+8.70 dB on average from 60 Hz
+to 8 kHz, with 2.35 dB of ripple** between the centres -- the bank is hot and
+not quite flat, and the dossier records both as measured rather than as
+intended.
+
+**The 16k slider is a shelf, and its corner sits below its label.** A shelf's
+named frequency is where it has reached *half* its gain, so a corner on
+16 kHz would move 16 kHz by 6 dB of a 12 dB request and put the rest above
+hearing. Half an octave down puts **+10.91 dB at 16 kHz** and +11.94 at
+20 kHz, and lifts the 8 kHz slider's own centre by less than 2 dB.
 
 **A band at its detent is a wire, byte for byte.** `mix` goes to zero on any
 band inside 0.1 dB of centre -- one macro step at +/-12 dB is 0.189 dB, so
@@ -82,6 +91,22 @@ DEFAULT_CENTRES = (31.25, 62.5, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0,
 _BAND_DB = 12.0
 _DETENT_DB = 0.1
 
+#: The shelf's half-gain corner sits this far below its named band.
+#:
+#: An RBJ shelf's `frequency` is where it has reached *half* its dB gain, so a
+#: shelf whose corner is its own band centre gives that band only +6.00 dB of
+#: a +12 dB request and puts the rest above 20 kHz -- measured, and most of it
+#: past hearing. Half an octave lower puts **+10.91 dB at 16 kHz** and +11.94
+#: at 20 kHz, while lifting the 8 kHz bell's centre by only 1.96 dB, so the
+#: top slider does what its label says and the two bands stay apart.
+_SHELF_CORNER_RATIO = 2.0 ** 0.5
+
+#: A shelf takes `Q` as a resonance, not a bandwidth, and 1.4 makes it
+#: overshoot: at 16 kHz and +12 dB it measures **-2.37 dB at 12 kHz** and
+#: +13.94 at 20 kHz -- a cut below the corner and 1.9 dB past the asymptote
+#: above it. 0.707 is the flat shelf a level slider means.
+_SHELF_Q = 0.7071067811865475
+
 #: The corner of the two level sections. A `HIGH_SHELF` is the only shape on
 #: this palette that can give gain above unity (`audiomixer` clamps its level
 #: to 1.0 silently, `audiomath.Multiply` can only attenuate), and 5 Hz is the
@@ -96,7 +121,7 @@ _SKIRT_DB = 1.0
 #: The anchor gain the `Band Q` macro names the Q of.
 _ANCHOR_DB = 12.0
 
-#: `audioif_filter_f32.c:99` clamps Q into this band for stability; the class
+#: `audioif_filter_f32.c:99-100` clamps Q into this band for stability; the class
 #: clamps to the same numbers so a macro cannot ask for what the kernel will
 #: silently refuse.
 _Q_MIN = 0.05
@@ -234,29 +259,36 @@ class GraphicEQ(_component.Component):
         # the 16 kHz shelf has nowhere to sit, and a biquad asked for a corner
         # over Nyquist rails into a full-scale square wave at fs/4 while
         # raising nothing. What was clamped is reported, never dropped.
-        self._built_hz = tuple(self._hz(hz) for hz in centres)
+        # The top band is a shelf, so what goes into the filter is its
+        # half-gain corner rather than the band's own name.
+        asked = tuple(list(centres[:self._BANDS - 1])
+                      + [centres[self._BANDS - 1] / _SHELF_CORNER_RATIO])
+        self._built_hz = tuple(self._hz(hz) for hz in asked)
         self._clamped = tuple(index for index in range(self._BANDS)
-                              if self._built_hz[index] != centres[index])
+                              if self._built_hz[index] != asked[index])
 
         # Head: Gain, before the bank, as the panel reads.
         self._gain = self._own(self._section(audiobiquad.HIGH_SHELF,
-                                             _LEVEL_CORNER_HZ, 0.707))
+                                             _LEVEL_CORNER_HZ, _SHELF_Q))
         self._gain.play(self._source)
         previous = self._gain
 
         # The bank: nine bells and the shelf on top.
         self._sections = []
         for index in range(self._BANDS):
-            mode = (audiobiquad.HIGH_SHELF if index == self._BANDS - 1
-                    else audiobiquad.PEAKING_EQ)
-            node = self._own(self._section(mode, self._built_hz[index], 1.4))
+            shelf = index == self._BANDS - 1
+            mode = audiobiquad.HIGH_SHELF if shelf else audiobiquad.PEAKING_EQ
+            # A bell's Q is replaced on every macro move by the law; the
+            # shelf's is not a bandwidth and stays where it is put.
+            node = self._own(self._section(mode, self._built_hz[index],
+                                           _SHELF_Q if shelf else 1.4))
             node.play(previous)
             self._sections.append(node)
             previous = node
 
         # Tail: Volume, after the bank.
         self._volume = self._own(self._section(audiobiquad.HIGH_SHELF,
-                                               _LEVEL_CORNER_HZ, 0.707))
+                                               _LEVEL_CORNER_HZ, _SHELF_Q))
         self._volume.play(previous)
         self._output = self._volume
 
@@ -309,7 +341,7 @@ class GraphicEQ(_component.Component):
         """Clear a section that is leaving the detent.
 
         The kernel runs the recursion even at `mix = 0`
-        (`audioif_filter_f32.c:222-241` has no short-circuit), so a muted
+        (`audioif_filter_f32.c:216-241` has no short-circuit), so a muted
         section's state is a filter nobody heard, tracking the input through
         coefficients nobody chose. Handing that state to the filter about to
         run is what makes a patch change slam: measured on a 220 Hz tone at
@@ -383,12 +415,15 @@ class GraphicEQ(_component.Component):
 
     @property
     def built_centres(self):
-        """The band centres actually in the filters, after the Nyquist clamp.
+        """What is actually in the filters: nine bell centres and, in the
+        tenth slot, the **shelf's half-gain corner** -- half an octave below
+        its named band, so the band gets 10.91 dB of a 12 dB request rather
+        than 6.00.
 
-        Differs from `centres` only at a rate too low to hold the top of the
-        bank -- at 22.05 kHz the 16 kHz shelf sits at 10804.5 Hz. `clamped`
-        says which, so a caller reads the clamp rather than inferring it from
-        a response that is not the one it asked for.
+        At a rate too low to hold the top of the bank the values are clamped
+        as well: at 22.05 kHz the shelf's corner sits at 10804.5 Hz rather
+        than 11313.7. `clamped` says which, so a caller reads the clamp
+        rather than inferring it from a response it did not ask for.
         """
         self._check_live()
         return self._built_hz
