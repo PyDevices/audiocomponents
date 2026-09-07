@@ -20,7 +20,7 @@ memory; where a figure has no run behind it, the row says `unmeasured` and
 | Standout | MXR M-108 / M108S Ten Band Graphic EQ |
 | Grade | literature |
 | Portability tier | **audioif** (`REQUIRES = ("audiobiquad",)`) |
-| Landed in commit | `f3ffb74` (the class) and this commit (the shelf's corner and Q, and this file) |
+| Landed in commit | `f3ffb74` (the class), `1f3a4ff` (the shelf's corner and Q, this file, the CHANGELOG line and the README row) |
 | audioif pin | `AUDIOIF_PIN` = `2f6cbc3`; every C citation checked with `git show 2f6cbc3:<file>` |
 | Interpreters | `audiocomponents/.venv/bin/python` 3.12.3; `cmods/bin/micropython` 1.28.0; `cmods/bin/circuitpython-effects` 10.2.1 |
 | Boards | **not run** — see §4 and §11 |
