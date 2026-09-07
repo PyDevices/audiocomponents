@@ -20,6 +20,17 @@ were retired from the foot of this file and live in
 here - the bands add back up to a wire, to 0.4 dB - is now M1 in
 `test_cpython_effects_multiband.py`, at 0.25 dB, at six settings, and with
 the fault that turns it red.
+Covers `ParametricEQ`, `LowPass`, `HighPass`, `Compressor`,
+`MultibandCompressor` and `Limiter`.
+
+**`GraphicEQ`'s three assertions are gone from here**, retired with its
+rebuild: they read `.biquads`, expected the all-flat class to return its own
+source, and pinned the ISO centres -- all three of which the dossier's
+section 7 names as defects. Two of them were about the *cascade* rather than
+about `GraphicEQ`, so they live on above, moved onto `ParametricEQ`; the
+third has no successor here because "an EQ with nothing to do is its own
+source" is the behaviour the rebuild deliberately does not have. What
+replaces all three is `test_cpython_effects_graphiceq.py`.
 """
 
 import os
@@ -53,16 +64,13 @@ class DynamicsAndEQTest(unittest.TestCase):
         # The old ParametricEQ synthesized boosts from Splitter branches and
         # capped them at three; cuts were notch sections. Now both are one
         # biquad in one cascade, so ten boosts build as readily as ten cuts.
-        boosts = audioeffects.GraphicEQ(source(), gains_db=(6.0,) * 10)
+        # Read on `ParametricEQ` since `GraphicEQ` was rebuilt: the claim is
+        # about the cascade, and that is the class that still carries it.
+        boosts = audioeffects.ParametricEQ(
+            source(), bands=[(31.25 * 2 ** n, 6.0, 1.4) for n in range(10)])
         self.assertEqual(len(boosts.biquads), 10)
         self.assertFalse(hasattr(boosts, "splitter"))
         self.assertGreater(peak(boosts.output, 8), 0.001)
-
-    def test_an_eq_with_nothing_to_do_is_a_wire(self):
-        src = source()
-        flat = audioeffects.GraphicEQ(src, gains_db=(0.0,) * 10)
-        self.assertEqual(flat.biquads, [])
-        self.assertIs(flat.output, src)
 
     def test_a_filter_above_nyquist_is_refused(self):
         # Silently folded coefficients used to be unreachable because every
@@ -118,16 +126,19 @@ class DynamicsAndEQTest(unittest.TestCase):
         self.assertAlmostEqual(tone_gain_db(20.0, shelf), 1.5, delta=0.25)
         self.assertAlmostEqual(tone_gain_db(2000.0, shelf), 0.0, delta=0.25)
 
-    def test_every_graphic_eq_band_lands_on_its_own_iso_centre(self):
+    def test_every_band_lands_on_its_own_centre(self):
         # The bottom three were the visible casualty of the Q15 floor: a +6 dB
         # request read +12.14, +6.96 and +3.07 dB at 31.5, 63 and 125 Hz.
-        for index, band in enumerate(audioeffects.eq.ISO_BANDS):
-            gains = [0.0] * len(audioeffects.eq.ISO_BANDS)
-            gains[index] = 6.0
+        # Read on `ParametricEQ` since `GraphicEQ` was rebuilt: its centres
+        # are the M-108's octave doublings, not the ISO series, and its Q
+        # moves with gain -- both of which this assertion would have to be
+        # rewritten around, and both of which its own tests now cover.
+        for band in audioeffects.eq.ISO_BANDS:
             with self.subTest(band=band):
                 self.assertAlmostEqual(
-                    tone_gain_db(band, lambda s, g=gains:
-                                 audioeffects.GraphicEQ(s, g).output),
+                    tone_gain_db(band, lambda s, hz=band:
+                                 audioeffects.ParametricEQ(
+                                     s, bands=[(hz, 6.0, 1.4)]).output),
                     6.0, delta=0.25)
 
     def test_the_compressor_actually_compresses(self):

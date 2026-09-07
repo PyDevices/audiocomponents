@@ -1,209 +1,296 @@
 # Effects Dossier — `GraphicEQ` (MXR M-108 Ten Band)
 
-**Class:** `lib/audioeffects/eq.py` — the current implementation is
-read once, for §7, and not otherwise consulted.
+**Class:** `lib/audioeffects/eq.py` — read once, for §7, and not otherwise
+consulted. Rebuilt at `lib/audioeffects/rebuilt/graphiceq.py`.
 **Family / phase:** EQ, roadmap Phase 2
 **Standout:** the MXR Ten Band Graphic EQ (M-108 / M108S) — vision §4.2,
-**confirmed**. It is the right referent for a ten-band class: ten octave-spaced
-bands, ±12 dB, and two level sliders, which is exactly a `GraphicEQ`'s surface.
-**Grade:** **literature.** Two manufacturer specification sheets agreeing across
-two revisions (G1, G2), a JAES paper that defines and measures the difference
-between this class of design and constant-Q (G3), and Rod Elliott's circuit
-theory for the gyrator band it is built from (G5, G6, G8). The M108 schematic
-itself was reached and is an image-only PDF (Appendix A), so no component values
-were read — hence literature, not circuit.
-**Portability tier:** **stock** — `synthio.Biquad` sections in one
-`audiofilters.Filter`. Moves to **audioif** only if Gate 0 answers audioif#23
-with a float biquad node (§5).
-**Status:** seed (Phase 0)
+**confirmed**: ten octave-spaced bands, ±12 dB, two level sliders, which is
+exactly a `GraphicEQ`'s surface.
+**Grade:** **literature.** Two manufacturer sheets agreeing across two
+revisions (G1, G2), a JAES paper defining and measuring this class of design
+against constant-Q (G3), and Elliott's circuit theory for the gyrator band it
+is built from (G5, G6, G8). The M108 schematic was reached and is an
+image-only PDF (App. A), so no component values were read.
+**Portability tier:** **audioif** — `REQUIRES = ("audiobiquad",)`. The seed
+said *stock, unless Gate 0 answers audioif#23 with a float biquad node*. It
+did: audioif#39 shipped `audiobiquad` in Phase 1
+(`audioif/docs/upstream-diff.md:1953-2075`), and this class is on it. §4.
+**Status:** **Station A complete**, 2026-09-07. Trait table frozen below,
+unchanged from the seed. Citations are against audioif `2f6cbc3`.
 
 ## 1. The circuit, in one paragraph
 
-The M-108 is **ten band sections whose sliders vary the gain of one op-amp stage
-across a tuned circuit**, boosting when the wiper sits toward the feedback end
-and cutting when it sits toward the input, with **unity gain at the centre
-detent**: without the frequency-selective network "the pot sliders simply vary
-the gain of the circuit and unity gain is achieved when the slider(s) are
-centred" (G5), a bank of ten of them has "audio gain … unity when all pots are
-centred" (G6), and of exactly this topology — one op-amp doing the equalizing
-for every band, gyrators in place of inductors — Ethan Winer's 1982 description,
-reproduced in G7 and mapped onto the M-108's own schematic there ("U5A forms the
-gyrator circuit"), says "no noise or distortion is ever contributed when the pot
-is centered". *(**Audit correction, second pass.** This sentence first read "ten
-parallel band sections between two summing amplifiers … (G3 §4)"; the first audit
-replaced that with "a centre detent at which the tuned circuit sees balanced
-signals and has no effect (G5)". Both describe a **constant-Q** circuit, not a
-gyrator pedal. Balanced-signals-at-a-grounded-centre-tap is Bohn's Case 1
-(G3 §3.1) and the same idea is Elliott's **Figure 9** constant-Q virtual-earth
-circuit — "when the pot is centred, the signal to U1 and U2 is identical, so it
-cancels" — whereas the M-108 is Elliott's **Figure 8**, where the tuned circuit
-stays connected at centre and its changed loading is precisely what makes Q vary
-(G5, and the next sentence but one). The property that survives for this class is
-unity gain at the detent, quoted above.)* Nine of
-the ten are **gyrator** bandpass sections — an op-amp simulating an inductor,
-`L = R2 × R1 × C1`, `Q ≈ 2π·f₀·L / R2` (G6) — at **31.25, 62.5, 125, 250, 500,
-1k, 2k, 4k and 8 kHz**, each ±12 dB; the tenth is different, a **±12 dB shelf at
-16 kHz**, stated as a shelf on both the current and the earlier specification
-sheets (G1, G2 — the earlier sheet's year is **unsourced** and struck; see §2) and corroborated by a reading of the schematic finding nine
-active filters on 4558-class op-amps and "the last (16 kHz) is a passive filter,
-with no op-amp being used" (G7). The behaviour that defines it is the one Bohn
-wrote a paper about: the tuned circuit is loaded by the slider, so **Q moves
-with the slider** — near centre "the load on the tuned circuit is no longer 470
-ohms, it's 470 ohms *plus* the equivalent resistance of the pot and the feed
-resistors (2.7k as shown)" (G5 — the quote completed in the audit run), and the
-band is narrow **only at the extremes**. On a one-third-octave unit at +3 dB
-"the conventional design's bandwidth is in excess of one octave … it has
-degraded into something nearer to a 10-band octave equalizer", and at +6 dB "it
-still has not approached one-third of an octave — and will not until the slider
-position reaches maximum" (G3 §2). Bands therefore overlap and add: three
-adjacent sliders at +6 dB give a conventional design +12.5 dB over 2.5 octaves,
-against a constant-Q design's +6 dB over exactly one octave (G3 §2, fig. 6).
-Around the bank are two more sliders, **GAIN** and **VOLUME**. G1 and G2 call
-them "amount of gain boost" and "overall effect volume" and give **neither a dB
-range nor a position in the signal path**, and G7's schematic reading says
-nothing about them either — so *"GAIN before the bank, VOLUME after, each
-±12 dB" is **unsourced***, and §4 and §6 carry it as this dossier's design
-choice rather than as a fact about the pedal. The pedal runs on 18 V and its
-specification sheet gives a frequency response of "±1 dB, 20 Hz to 20 kHz" (G1).
-*(Audit correction: this read "±1 dB … with every slider at 0 dB". G1 attaches
-its "All Sliders at 0 dB" qualifier to the **Max Input Level** and **Max Output
-Level** rows, not to the frequency-response row; the flat-setting reading is an
-inference, not the sheet's claim, and it matters because T4 leans on how flat
-"flat" actually is.)*
+The M-108 is **ten band sections whose sliders vary the gain of one op-amp
+stage across a tuned circuit**, boosting toward the feedback end and cutting
+toward the input, with **unity gain at the centre detent**: without the
+frequency-selective network "the pot sliders simply vary the gain of the
+circuit and unity gain is achieved when the slider(s) are centred" (G5), and
+of exactly this topology Winer's 1982 description says "no noise or
+distortion is ever contributed when the pot is centered" (G7). Nine of the
+ten are **gyrator** bandpass sections — an op-amp simulating an inductor,
+`L = R2 × R1 × C1`, `Q ≈ 2π·f₀·L / R2` (G6) — at **31.25, 62.5, 125, 250,
+500, 1k, 2k, 4k and 8 kHz**, each ±12 dB; the tenth is a **±12 dB shelf at
+16 kHz** on both specification sheets (G1, G2), corroborated by a schematic
+reading finding nine active filters and "the last (16 kHz) is a passive
+filter" (G7). The behaviour that defines it is the one Bohn wrote a paper
+about: the tuned circuit is loaded by the slider, so **Q moves with the
+slider** and the band is narrow **only at the extremes** — at low boost "the
+conventional design's bandwidth is in excess of one octave … it has degraded
+into something nearer to a 10-band octave equalizer" (G3 §2). Bands therefore
+overlap and add: three adjacent sliders at +6 dB give a conventional design
++12.5 dB over 2.5 octaves against a constant-Q design's +6 dB over one
+octave (G3 §2, fig. 6). Around the bank sit **GAIN** and **VOLUME**; G1, G2
+and G7 give **neither a dB range nor a position in the signal path**, so
+"GAIN before the bank, VOLUME after, each ±12 dB" is this dossier's design
+choice, not a fact about the pedal. The pedal runs on 18 V; its sheet gives a
+frequency response of "±1 dB, 20 Hz to 20 kHz" (G1).
+
+*(The audit corrections behind this paragraph are in **App. R**, verbatim.)*
 
 ## 2. Sources and license calls
 
-All reached 2026-09-06 in this run; nothing from memory.
+All reached 2026-09-06; nothing from memory. **What each row gave, and the
+audit's re-fetch of every one, are in App. C and App. R** — moved there under
+the length rule. Copyleft and unverified sources are read as papers, never for
+code structure (vision §5).
 
-| Source | What it gave | License as read | URL | Reached |
-|---|---|---|---|---|
-| **G1** Dunlop, *M108S Ten Band Graphic EQ* product instructions, doc. 92503020568 REV D | the specification table — "±12db at: 31.25, 62.5, 125, 250, 500, 1k, 2k, 4k, 8kHz / **±12dB shelf at 16kHz**", 470 kΩ in, 5 kΩ out, +14 dBV max in and out ("All Sliders at 0 dB" qualifies **those rows only**), frequency response "±1 dB, 20 Hz to 20 kHz", noise floor −101.4 dBv, 18 V, 48 mA — plus VOLUME "controls overall effect volume" and GAIN "controls amount of gain boost". *Audit note:* the PDF's extracted text drops a digit from 250 at the column break; the panel legend in the same sheet and G2 both carry it (Appendix C) | manufacturer document; **no copyright and no terms line on the sheet** — the only imprint is an address block (re-read in the audit run) | https://www.jimdunlop.com/content/manuals/M108S.pdf | fetched and read via `pypdf` in the audit run |
-| **G2** MXR *M108 Ten Band Graphic EQ*, doc. 92503002230 revC | the same Filtering line word for word, an earlier revision; VOLUME and GAIN described in the same words; noise floor −100 dBv, 26 mA, 18 V. **It does not contain** the "±12dB provides approximately four times the output level" sentence, nor any statement that GAIN sits before and VOLUME after the EQ circuitry — both struck by the first audit. *Second-pass audit:* the **"(2012)" date is struck as unsourced** (no year on the sheet; this copy's PDF metadata says 2017-04-03), and the sheet **contradicts itself** — its CONTROLS block says "±18dB at six different frequency centers" against its own spec table's ±12 dB at ten (Appendix C) | manufacturer document; **no copyright and no terms line on the sheet** | **https://www.jimdunlop.com/content/manuals/M108.pdf** — the same document number, served by the manufacturer | fetched and read via `pypdf` in both audit runs. The seed's original URL, `zikinf.com/manuels/…-49015.pdf`, is **not reached**: HTTP 403, re-confirmed |
-| **G3** Bohn, *Constant-Q Graphic Equalizers*, JAES **34**(9), Sept 1986 | the **conventional**-versus-constant-Q analysis and its numbers (§2 — Bohn's word is *conventional*; neither this paper nor G4 ever writes *proportional*, which is API's term via S5 of `ParametricEQ.md`); the grounded-centre-tap property (**§3.1**, stated for Bohn's own Case 1 constant-Q topology, **not** for a gyrator design); the four-pole middle cancellation and "two-pole is the optimum order of choice", figs. 19 and 23 (§4.1); Q = 4.318 at ⅓ octave (§4.1) | **No copyright or licence line in the PDF** (re-read in the audit run); the hosting site does carry a **Terms of Use** — personal, non-commercial, all content reserved (https://www.ranecommercial.com/terms-of-use) — while the paper's own rights are AES's: **license unverified, treated as copyleft**, read as a paper, its mathematics re-derived, no code taken | https://www.ranecommercial.com/legacy/pdf/constanq.pdf | fetched and read via `pypdf` in the audit run |
-| **G4** Bohn, RaneNote 101/117 ("written 1982 & 1987; last revised 11/05") | the Q and bandwidth definitions (Q = f₀ ÷ bandwidth in Hz; ⅓ octave ⇒ Q 4.31); "over three times the bandwidth expected when boosting or cutting modest amounts" | "© 2005 Rane" on the page, under the same site-wide Terms of Use as G3 (personal, non-commercial) — **verified all-rights-reserved**, read as a document | https://www.ranecommercial.com/legacy/note101.html | re-read in the audit run |
-| **G5** Elliott, *Equalisers, The Various Types And How They Work* | why Q tracks the slider (the pot and its feed resistors load the tuned circuit, so "this type of circuit cannot provide a constant loading … so cannot provide a constant Q"); "at low boost or cut settings the bandwidth is much wider than expected"; **Figure 8**, the inductor/gyrator scheme this pedal belongs to, where "unity gain is achieved when the slider(s) are centred"; and, separately, **Figure 9**, the constant-Q virtual-earth alternative where the centred pot makes the two summers' signals cancel — *the two must not be mixed, and the first audit mixed them* (§1); "a 1 octave filter requires a Q of 2". Quotations in Appendix C | "Copyright © 2015", Rod Elliott: reproduction prohibited, "personal use only", commercial use prohibited — **verified all-rights-reserved**, read as a document | https://sound-au.com/articles/eq.htm | re-read in the audit run |
-| **G6** Elliott, *Gyrator Filters* | the gyrator's inductance — exactly `L = (R2 − R1) × R1 × C1`, "almost always abbreviated" to `L = R1 × R2 × C1` — and `Q ≈ 2π·f₀·L / R2`, worked at 1 kHz (C1 3.9 nF, R1 62 kΩ, R2 470 Ω → 113 mH, Q 1.51); his own ten-band octave table, nominal Q 1.57, and "the audio gain is unity when all pots are centred" (Appendix C) | "Copyright © May 2014 - Rod Elliott (ESP)", same personal-use-only notice as G5 — **verified all-rights-reserved** | https://sound-au.com/articles/gyrator-filters.htm | re-read in the audit run |
-| **G7** gr33nonline, *Changing up Op-amps* | a reading of the M108 schematic — "ten frequency stages, nine of which are active filters, using 4558 op-amps … and the last (16 kHz is a passive filter, with no op-amp being used", and "U5A forms the gyrator circuit"; a PCB parts list (board 93503001897 Rev E) giving U1/U3 **33174**, U2/U4 **33179**, i.e. the shipped board's op-amps differ from the schematic's 4558s and the page does not reconcile it; and, reproduced in full, **Ethan Winer's 1982 *Recording-engineer/producer* article** — the source of "no noise or distortion is ever contributed when the pot is centered" for exactly this topology (Appendix C) | no licence or copyright notice on the page (re-checked in the audit run) — license unverified, treated as copyleft, read as a document | https://gr33nonline.wordpress.com/2018/07/23/changing-up-op-amps/ | re-read in the audit run |
-| **G8** Elliott, *Guitar/ Bass Graphic Equaliser, Mk II* (Project 149) | a **nine**-band octave gyrator EQ with values (42 Hz … 15.6 kHz), whose combined response has ripple "generally below 1dB" (Figure 7) and "less than 2dB" with all sliders at maximum. **Two caveats the audit adds, because T5 leans on this row:** its sliders run "fully off to fully on … not the more conventional +/-12dB", so "there is no flat setting (other than all off!)" — its "all sliders at maximum" is *not* a ±12 dB bank's "+6 dB on every band"; and the article never says whether Figure 7 is measured or simulated, so "measured" is struck | "© May 2014, Rod Elliott (ESP)", same personal-use-only notice as G5 — **verified all-rights-reserved** | https://sound-au.com/project149.htm | re-read in the audit run |
+| id | Source | Licence as read | Reached |
+|---|---|---|---|
+| **G1** | Dunlop, *M108S Ten Band Graphic EQ* instructions, 92503020568 REV D | no copyright or terms line on the sheet | `pypdf`, twice |
+| **G2** | MXR *M108 Ten Band Graphic EQ*, 92503002230 revC | no copyright or terms line on the sheet | `pypdf`, twice |
+| **G3** | Bohn, *Constant-Q Graphic Equalizers*, JAES **34**(9), 1986 | no licence line in the PDF; host's Terms of Use are all-rights-reserved — **unverified, treated as copyleft** | `pypdf` |
+| **G4** | Bohn, RaneNote 101/117 | "© 2005 Rane" — **all rights reserved** | HTML |
+| **G5** | Elliott, *Equalisers, The Various Types And How They Work* | "© 2015", personal use only — **all rights reserved** | HTML |
+| **G6** | Elliott, *Gyrator Filters* | "© May 2014", same notice — **all rights reserved** | HTML |
+| **G7** | gr33nonline, *Changing up Op-amps* (M108 schematic reading + Winer 1982) | no licence notice on the page — **unverified, treated as copyleft** | HTML |
+| **G8** | Elliott, *Guitar/Bass Graphic Equaliser Mk II* (Project 149) | "© May 2014", same notice — **all rights reserved** | HTML |
 
-What was **not** reached, and what was looked for and not found: Appendix A.
+What was **not** reached, and what was looked for: App. A.
 
-*(More of §2 is in **App. R** — moved under the length rule, nothing deleted.)*
+## 3. Traits — frozen 2026-09-07, before any code
 
-## 3. Traits — fixed before measurement
+### Tier 1 — invariants
 
-### Tier 1 — invariants (the standard block, verbatim from vision §3)
-
-The standard block, verbatim from vision §3, is in **App. I** — moved there under the length rule; any class-specific note on it moved with it.
+The standard block, verbatim from vision §3, is in **App. I**, with this
+class's notes on it (the 22.05 kHz clamp, the silence-to-zero exception).
+**One note there is now out of date.** The seed called silence-to-zero "the
+invariant this class is known to fail", at +7 / +2 / +5 LSB held forever. That
+is the *ported* biquad; on `audiobiquad` the same three configurations reach
+**exact zero** (App. S(i)), and the ported readings become the positive
+control.
 
 ### Tier 2 — circuit traits
 
-| # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Measurement (kit) |
-|---|---|---|---|---|---|
-| **T1** | **The top band is a shelf, the other nine are bells.** 16 kHz macro at +12 dB alone ⇒ the level at 20 kHz is within **1.5 dB** of the level at 16 kHz and at least **+9 dB**; the 8 kHz macro at +12 dB alone ⇒ the level at 16 kHz is at least **6 dB** below its own peak. | G1 and G2, two revisions, verbatim … (App. T1) | high | **either half missed.** The 16 kHz band returning toward flat above its centre — more than 1.5 dB down at 20 kHz, or not reaching +9 dB at all (it is a bell, not a shelf); or the 8 kHz band still within 6 dB of its own peak at 16 kHz, which is a bank too wide for the shelf to be told apart from its neighbour | swept-sine to 22 kHz at 48 kHz … (App. T1) |
-| **T2** | **Proportional Q — the bands narrow as the slider travels.** For the 1 kHz band, mid-gain bandwidth at **+3 dB is ≥ 1.5 oct** and at **+12 dB is ≤ 0.8 oct**, while the first +1 dB crossing moves **less than 10 %** between them. | G3 §2; G5 for the mechanism; G4 | medium-high … (App. T2) | **any of the three missed.** Mid-gain bandwidth under 1.5 oct at +3 dB, or over 0.8 oct at +12 dB — in the limit a bandwidth that does not change at all across travel, which is constant-Q; or the +1 dB crossing moving > 10 %. The law of `ParametricEQ.md` Appendix A gives 1.795 oct at +3 dB and 0.714 at +12 at the anchor `Q(12 dB) = 2`, so both thresholds are floors with margin, not the prediction | swept-sine at +3, +6 … (App. T2) |
-| **T3** | **Adjacent bands overshoot when summed.** 500 Hz, 1 kHz and 2 kHz all at +6 dB give a combined peak of at least **+9 dB**, and the region within 3 dB of it spans more than **two octaves**. | G3 §2, fig. 6 | medium — direction … (App. T3) | **either half missed.** A combined peak under +9 dB — in the limit within 1 dB of +6 dB, which is a constant-Q bank adding nothing; or the region within 3 dB of the peak spanning two octaves or less | swept-sine with three adjacent … (App. T3) |
-| **T4** | **A band at zero is out of the circuit.** With band *k* at 0 dB and its neighbours at ±12 dB, the render is **byte-identical** to the same setting built without band *k* at all. | **Re-sourced by the audit.** G6 ("the audio … (App. T4) | high as a **design … (App. T4) | any difference at all between the two renders | FNV digest of both builds over … (App. T4) |
-| **T5** | **All ten together are smooth but hot.** Every band at +6 dB ⇒ peak-to-peak ripple from 60 Hz to 8 kHz under **2 dB**, and the mean level over that span above **+9 dB**. | G8's ripple figure on a nine-band octave … (App. T5) | medium, and the audit … (App. T5) | **either half missed.** Peak-to-peak ripple **above 2 dB** over 60 Hz–8 kHz (the bands do not overlap enough to fill between their centres); or a mean level **at or below +9 dB** over that span — in the limit at or below +6 dB, which is bands that do not add at all | swept-sine with all macros at +6 … (App. T5) |
+**Unchanged from the seed. Nothing was added, dropped or renumbered at
+Station A, and no threshold was moved.** The rows in full — source,
+confidence and the reasoning behind each cell — are in **App. T**; the
+statement, the disconfirmation and the measurement stay here, because they
+are what the gate checks.
 
-No characters. The `Q Law` macro (§6) is an option, not a character: the table is
-stated at its default, proportional, and Station C measures there.
+| # | Trait (falsifiable as stated) | Disconfirmed by | Measurement (kit) |
+|---|---|---|---|
+| **T1** | **The top band is a shelf, the other nine are bells.** 16 kHz macro at +12 dB alone ⇒ the level at 20 kHz is within **1.5 dB** of the level at 16 kHz and at least **+9 dB**; the 8 kHz macro at +12 dB alone ⇒ the level at 16 kHz is at least **6 dB** below its own peak. | **either half missed** — the shelf returning toward flat above its centre, or the 8 kHz band still within 6 dB of its peak at 16 kHz | RESPONSE, swept to 22 kHz at 48 kHz, one macro at a time |
+| **T2** | **Proportional Q — the bands narrow as the slider travels.** For the 1 kHz band, mid-gain bandwidth at **+3 dB is ≥ 1.5 oct** and at **+12 dB is ≤ 0.8 oct**, while the first +1 dB crossing moves **less than 10 %** between them. | **any of the three missed** — in the limit a bandwidth that does not change at all, which is constant-Q | RESPONSE at +3, +6, +12 dB on one band |
+| **T3** | **Adjacent bands overshoot when summed.** 500 Hz, 1 kHz and 2 kHz all at +6 dB give a combined peak of at least **+9 dB**, and the region within 3 dB of it spans more than **two octaves**. | **either half missed** — in the limit a peak within 1 dB of +6 dB, which is a bank adding nothing | RESPONSE, three adjacent macros at +6 dB |
+| **T4** | **A band at zero is out of the circuit.** With band *k* at 0 dB and its neighbours at ±12 dB, the render is **byte-identical** to the same setting built without band *k* at all. | any difference at all between the two renders | DIGEST, both builds over the full probe set, 48 and 44.1 kHz |
+| **T5** | **All ten together are smooth but hot.** Every band at +6 dB ⇒ peak-to-peak ripple from 60 Hz to 8 kHz under **2 dB**, and the mean level over that span above **+9 dB**. | **either half missed** — ripple above 2 dB, or a mean at or below +9 dB | RESPONSE, all macros at +6 dB |
 
-*(What the trait-critic pass changed in this table, and why: Appendix D.)*
+No characters. `Constant Q` (§6) is an option, not a character: the table is
+stated at its default — proportional, `Band Q` 2.0 — and Station C measures
+there. Where the thresholds came from: App. B.
 
 ### Tier 3 — cost and latency
 
-**Latency: zero.** Every section is a biquad; `latency_samples` is 0 at every
-macro setting and every rate, and **no option on this class adds latency** —
-no lookahead, no partition, no window. `tail_samples` is set by the 31.25 Hz
-band's measured 60 dB ring-down, the longest in the bank.
+**Latency: zero, at every setting and every rate.** Every section is a
+biquad; **no option on this class adds latency** — no lookahead, no
+partition, no window. `latency_samples` is 0.
 
-*(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
+**Tail: 22314 frames (465 ms) at 48 kHz**, measured on the worst case (all
+ten bands at +12 dB, 40 Hz burst then silence) and constant in *time* across
+rates — 20520 at 44.1 kHz, 10262 at 22.05 kHz (App. S(ii)). The class reports
+the rate-scaled bound, 470 ms.
+
+**Twelve sections, always running** — ten bands plus the two level macros
+(§4), one `audiobiquad.Biquad` node each. By `ParametricEQ.md` Appendix C's
+arithmetic (100 instructions per sample per section per channel, 256-frame
+stereo block) one stereo section is **4.00 %** of the S3's block and
+**2.40 %** of the P4's, so twelve are 48 % / 28.8 % raw and, with that
+appendix's one-third overhead, **S3 64 %, P4 38 %**. That is the budget — the
+seed's palette-verifier pass already flagged these as the honest
+twelve-section figures, and they are promoted here from a flag to the budget.
+
+**Lean patch: no — corrected from the seed's "yes", and it is a real loss.**
+A patch sets macro values; it cannot change the node count, and a flat band is
+*not* free: `audioif_filter_f32.c:216-241` has no `mix == 0` short-circuit, so
+the recursion runs for every section at every setting. No patch on this class
+can reduce its cost. A `mix == 0` fast path in that kernel would make one
+real; it is recorded as a want in §5, not filed as a node ask, because it
+unblocks no trait.
 
 ## 4. Modeling approach on the palette
 
-**One `audiofilters.Filter`; one `synthio.Biquad` per non-flat band; Python
-computing each band's `Q` from its gain on a macro move.** Nothing is added to
-the palette.
+**Twelve chained `audiobiquad.Biquad` nodes.** Head to tail: `Gain`
+(HIGH_SHELF at 5 Hz) → nine `PEAKING_EQ` bells at 31.25 Hz × 2ⁿ → one
+`HIGH_SHELF` whose **corner is 11313.7 Hz**, half an octave below its 16 kHz
+band → `Volume` (HIGH_SHELF at 5 Hz). Python computes each
+band's `Q` from its gain on a macro move; C runs every sample. Nothing is
+added to the palette. **Tier: audioif.** Mono gets the same curve on one
+channel; not stereo by definition.
 
-- Nine `PEAKING_EQ` sections and one `HIGH_SHELF` — the shelf is what makes T1 …  *(argument in full: App. R)*
-- `frequency`, `Q` and `A` are block slots (`src/synthio/Biquad.c:46`, `:54`, …  *(argument in full: App. R)*
-- **Two-pole sections, deliberately.** Bohn's optimisation shows four-pole …  *(argument in full: App. R)*
-- **Q from gain, per macro move**, by the proportional-Q law derived in …  *(argument in full: App. R)*
-- **Flat bands are not built** — T4 is a design rule, not an optimisation.
-- **Clamping the centres below Nyquist is not tidiness; the node rails without …  *(argument in full: App. R)*
-- **The two level macros are two more biquad sections, and they do not …  *(argument in full: App. R)*
-- **Mono:** the same curve on one channel; a stereo `Filter` keeps per-channel
-  biquad state (`docs/upstream-diff.md:983-1020`). **Tier: stock.**
+- **Why `audiobiquad`, not the stock bank.** On `audiofilters.Filter` over
+  `synthio.Biquad` this class holds **+7 LSB** after silence at 31.25 Hz/+6 dB
+  and **+5 LSB** with all ten — reproduced here, a third independent
+  reproduction of audioif#23's figures. On `audiobiquad` every one reads
+  **exact zero**. App. S(i).
+- **A flat band is a `mix = 0` wire, not an unbuilt node**, and that is what
+  makes T4 reachable. A `PEAKING_EQ` at `gain_db = 0` is *not* bit-transparent
+  at this bank's lowest centres — up to **5 LSB at 31.25 Hz** over 24 000
+  frames of noise, exact from 250 Hz up (App. S(iv)). At `mix = 0` the kernel
+  computes `1.0f * x0 + 0.0f * y0` (`audioif_filter_f32.c:239`), byte-exact at
+  every centre. **Every band is built; a band at the detent is muted, not
+  absent** — stronger than the seed's "flat bands are not built", because the
+  knob still turns.
+- **The detent is one macro step wide.** ±12 dB over 0–127 makes a step
+  0.189 dB, so codes 63 and 64 land at ∓0.094 dB and nothing else is within
+  0.1 dB of zero: `|gain| < 0.1 dB` *is* the M-108's mechanical centre detent
+  in the macro's own units.
+- **Q from gain**, by `ParametricEQ.md` Appendix A's law with the anchor
+  exposed as a macro: `Q(G) = Q₁₂ · sqrt((A² − L²/A²) / (A₁₂² − L²/A₁₂²))`,
+  `A = 10^(|G|/40)`, `L = 10^(1/20)`. One `sqrt` and one `10**` per move,
+  never per block; it reproduces Appendix A's table to three decimals at
+  `Q₁₂ = 2` (App. S(v)). Below +1 dB the law has no root and `Q` floors at the
+  kernel's 0.05 — the limit of the law, not a fudge.
+- **Two level macros cost two more sections, because no palette node gives
+  gain above unity** (`Mixer.c:332` clamps silently, `audioif_multiply.c:38-45`
+  can only attenuate). A HIGH_SHELF at **5 Hz** measures +11.97 dB at 30 Hz
+  and +12.00 at 100 Hz, 1 kHz and 10 kHz; at a 10 Hz corner 30 Hz is 0.16 dB
+  short and at 20 Hz 2.3 dB short (App. S(vi)).
+- **Panel order kept — a headroom rule, not a commutation.** Each node writes
+  int16 between sections and `to_s16` saturates at ±32767
+  (`audioif_filter_f32.c:43-51`), so +12 dB of Gain into a hot source clips at
+  the first boundary. An M-108's op-amps clip too, and the docstring says so.
+- **Centres clamp below Nyquist through `self._hz()` (0.98 × Nyquist), and
+  the clamp is *reported*.** On the ported biquad an over-Nyquist corner
+  rails into a full-scale square at f_s/4 while raising nothing (App. E(iv)),
+  and that is the failure the seed wrote this bullet about. On `audiobiquad`
+  it does not: `audioif_filter_f32.c:95-96` clamps `frequency` to
+  0.4999 × the rate for itself, so a 16 kHz shelf at 22.05 kHz quietly runs
+  at 11022.45 Hz and reads its own `frequency` back as 16000. **That silence
+  is the defect the class's clamp exists for now** — the same shape §7's
+  defect 4 names — so `clamped` and `built_centres` say which bands moved,
+  and the class gate's planted fault is the kernel's silent move, not a
+  rail.
 
-*(More of §4 is in **App. R** — moved under the length rule, nothing deleted.)*
+- **The shelf's corner is not its band centre, and its `Q` is not the bells'.**
+  *(Station C correction, 2026-09-07 — this section said "one `HIGH_SHELF` at
+  16 kHz" and the first build handed it the bells' nominal `Q` of 1.4. Both
+  were wrong, and the measurements are in
+  [`GraphicEQ-evidence.md`](GraphicEQ-evidence.md) §1a.)* An RBJ shelf's
+  `frequency` is where it has reached **half** its dB gain, so a corner on the
+  band gives that band +6.00 dB of a +12 dB request and puts the rest above
+  20 kHz; half an octave down measures **+10.91 dB at 16 kHz** and +11.94 at
+  20 kHz while lifting the 8 kHz bell's own centre by only 1.96 dB. And a
+  shelf's `Q` is a resonance, not a bandwidth: at 1.4 it **cuts 2.37 dB below
+  its corner** and overshoots the asymptote by 1.94 dB above it. The shipped
+  shelf is `Q` 0.707 at `centres[9] / √2`.
+
+*(The composition the seed refuted and what re-trying it actually showed:
+App. S(iii). The seed's §4 bullets, verbatim, are in App. R.)*
 
 ## 5. Node asks
 
-**None from this class's Tier 2 traits.** T1–T5 are all reachable on stock
-biquads. The palette's EQ math is inside **0.03 dB of the closed form from
-50 Hz to 22 kHz** — audioif's own measurement, `docs/upstream-diff.md:1123`.
-*(Palette-verifier correction: this cited `ParametricEQ.md` Appendix B, which
-measures held DC after silence and says nothing about flatness.)*
+**None.** The one this family had — a DC-clean biquad — was Gate 0's, was
+answered, and shipped: `audiobiquad`, audioif#39. T1–T5 are all reachable on
+it. The palette's EQ math is inside **0.03 dB of the closed form from 50 Hz
+to 22 kHz** (`audioif/docs/upstream-diff.md:1123`).
 
-*(More of §5 is in **App. R** — moved under the length rule, nothing deleted.)*
+One **want**, not a node ask, because it unblocks no trait: a `mix == 0`
+short-circuit in `audioif_biquad_f32_process_s16`, which would make a lean
+patch real (§3).
 
-## 6. Proposed surface
+## 6. Surface — frozen
 
-Fourteen macros, two under the ceiling. Ranges are engineering spans; the host
-sees 0–127.
+Fourteen macros, two under the ceiling. Ranges are engineering spans; the
+host sees 0–127.
 
-| # | Label | Mode | Range | Generalizes |
-|---|---|---|---|---|
-| 0–8 | 31 · 63 · 125 · 250 · 500 · 1k · 2k · 4k · 8k | BIPOLAR | ±12 dB each | the nine gyrator band sliders (centres 31.25 Hz × 2ⁿ) |
-| 9 | 16k Shelf | BIPOLAR | ±12 dB | the tenth slider — a shelf, not a bell (T1) |
-| 10 | Gain | BIPOLAR | ±12 dB | the GAIN slider, before the bank |
-| 11 | Volume | BIPOLAR | ±12 dB | the VOLUME slider, after the bank |
-| 12 | Band Q | UNIPOLAR | 0.7…2.5 at full boost | no panel control — the anchor of the proportional-Q law |
-| 13 | Q Law | TOGGLE | proportional \| constant | no panel control — the G3/G5 axis, default proportional |
+| # | Label | Mode | Range | Default | Generalizes |
+|---|---|---|---|---|---|
+| 0–8 | `31` `63` `125` `250` `500` `1k` `2k` `4k` `8k` | BIPOLAR | ±12 dB | 0 dB | the nine gyrator band sliders (centres 31.25 Hz × 2ⁿ) |
+| 9 | `16k Shelf` | BIPOLAR | ±12 dB | 0 dB | the tenth slider — a shelf, not a bell (T1) |
+| 10 | `Gain` | BIPOLAR | ±12 dB | 0 dB | the GAIN slider, before the bank |
+| 11 | `Volume` | BIPOLAR | ±12 dB | 0 dB | the VOLUME slider, after the bank |
+| 12 | `Band Q` | UNIPOLAR | 0.7…2.5 | **2.0** | no panel control — the anchor of the proportional-Q law |
+| 13 | `Constant Q` | TOGGLE | off \| on | **off** | no panel control — the G3/G5 axis |
+
+**Two changes from the seed's proposal, both Station A's to make.** Macro 13
+was `Q Law`, TOGGLE, "proportional | constant": renamed `Constant Q` so that
+**off is the default and off is proportional** — a TOGGLE whose 0 is the
+non-default state is a surface a host gets wrong once. `Band Q`'s default is
+pinned at **2.0**, the anchor both Appendix A's table and this dossier's T2
+thresholds were computed at (App. B); G6's gyrator Q of 1.51, nominal 1.57,
+sits inside the span. **The refuter's obvious argument is that the default
+was chosen to pass T2, and it is half right:** the absolute thresholds move
+with the anchor, T2's content does not — `Q ∝ Q₁₂`, so the **ratio** between
+the +3 dB and +12 dB widths is 2.51 at every anchor. At `Band Q` 1.5 the
++12 dB half would not be met, and Station C reports 1.5 beside 2.0.
 
 **Characters:** none. **Patches:** `0 Flat` · `1 Scooped Mids` ·
-`2 Pushed Mids` · `3 Trimmed Bottom` · `4 Rolled Top` · `5 Full Boost` ·
-`6 Ten Band - lean` (Tier 3's escape valve, five bands maximum).
+`2 Pushed Mids` · `3 Trimmed Bottom` · `4 Rolled Top` · `5 Full Boost`.
+`6 Ten Band - lean` is **dropped**, with the reason in §3.
 
 The constructor keeps a `gains_db` sequence so local code can set the whole
-curve in one call, and gains a `centres` option so a rebuild is not locked to
-one band list.
+curve in one call, and a `centres` option — **exactly ten ascending
+frequencies**, because the macro surface is fixed at fourteen and a shorter
+list would leave macros addressing nothing, which is this workspace's
+signature failure. The 16 kHz shelf is always `centres[9]`, so it tracks a
+retune by construction (§8.3).
 
 ## 7. Defects in the current class the rebuild must not repeat
 
-One read of `lib/audioeffects/eq.py`.
+One read of `lib/audioeffects/eq.py`. The full argument behind rows 2, 4, 5
+and 6 is in **App. R**.
 
 1. **No surface at all** — `MACRO_LABELS = ()` (`eq.py:81`),
-   `PATCHES = {0: ("Default", ())}` (`:83`): ten sliders, no knob a host can turn.
-2. **Every band is a bell, including the top one.** `GraphicEQ.__init__` hands …  *(argument in full: App. R)*
+   `PATCHES = {0: ("Default", ())}` (`:83`): no knob a host can turn.
+2. **Every band is a bell, including the top one** (`eq.py:93-95`, `:47-49`).
+   T1 is not implemented at any setting.
 3. **Q is a hard-coded 1.4 for every band at every gain** (`eq.py:94`) — the
    class is constant-Q by omission and T2 is not expressible.
-4. **Bands above Nyquist are dropped silently** — `if abs(gain) > 0.01 and …  *(argument in full: App. R)*
-5. **Centres are the ISO preferred series** (`ISO_BANDS`, `eq.py:67-68`: 31.5, …  *(argument in full: App. R)*
-6. **Inherited from `ParametricEQ`:** `check_hz()` refuses instead of clamping …  *(argument in full: App. R)*
+4. **Bands above Nyquist are dropped silently** (`eq.py:92`, `:95`): at
+   22.05 kHz the top two bands vanish and nothing says so.
+5. **Centres are the ISO preferred series** (`eq.py:67-68`) where the
+   standout's are exact octave doublings from 31.25 Hz (G1, G2), hard-coded
+   at module level where a constructor cannot reach them.
+6. **Inherited from `ParametricEQ`:** `check_hz()` refuses instead of
+   clamping (`eq.py:48`, `_core.py:471-474`); the all-flat case returns the
+   source itself (`eq.py:56-61`) and so takes a different path through
+   `reset()`/`deinit()`; `Effect.__new__` mutates module-wide format state
+   (`_core.py:149-152`).
 
-*(More of §7 is in **App. R** — moved under the length rule, nothing deleted.)*
+## 8. Open questions — all four settled at Station A
 
-## 8. Open questions
+1. **audioif#23's one answer.** *Settled, and not by this session:* Gate 0
+   answered it with a node — `audiobiquad`, audioif#39, shipped in Phase 1 and
+   on the pin. The seed's own conditional fired exactly as written: §4 changed,
+   the tier moved to **audioif**, no trait moved.
+2. **T2's and T3's thresholds are scaled, not measured.** *Settled as
+   standing, on the seed's own evidence:* Appendix A's law — which this class
+   implements literally (App. S(v)) — predicts 1.795 oct at +3 dB and 0.714 at
+   +12 against thresholds of 1.5 and 0.8, so they are floors with margin.
+   **Not moved. Station C records the real numbers whatever they are.**
+3. **Whether the 16 kHz shelf tracks a `centres` change.** *Settled by
+   construction:* `centres` takes exactly ten ascending frequencies and the
+   shelf is always `centres[9]`. It cannot silently become a bell mid-bank.
+4. **The M-108 schematic could not be read** (App. A). *Settled as closed,
+   not deferred:* image-only PDF, no OCR on this machine, and the three other
+   hosts carrying per-band values return 403 or do not resolve. Grade stays
+   **literature**; T2's Q is derived, not read off the hardware.
 
-1. **audioif#23's one answer** — tail gate, float node, or recorded
-   disconfirmation. *Gate 0*, once, for the whole EQ family and the Phaser.
-2. **T2's and T3's thresholds** are scaled from Bohn's ⅓-octave figures by
-   argument, not measured (Appendix B). If Phase 2's first measurement lands
-   outside them, the honest move is to record the disconfirmation with the real
-   numbers, not to widen the band. *Implementation session*, with the refutation
-   pass watching.
-3. **Whether the 16 kHz shelf tracks a `centres` change.** If a rebuild offers a
-   different band list the shelf's corner must move with it or stop being the
-   top band. *Implementation session.*
-4. **The M-108 schematic was reached and could not be read** (Appendix A). Real
-   values would raise this class to a circuit grade and give T2 a measured Q
-   instead of a scaled one. Not a blocker.
-
----
-
-
+**What Station A did not settle:** the board leg. Every Tier 3 number above
+is arithmetic from audioif's instruction counts, not a measurement on a P4 or
+an S3, and the per-node overhead of a twelve-node chain is not in it — the
+desktop cannot see it, because the desktop's `audiobiquad` is a Python shim
+over the same kernel.
 ## Appendix
 
 ### A. Sources not reached, and what was looked for
@@ -658,3 +745,220 @@ changes; nothing else here does.
    source itself (`eq.py:56-61`) and so takes a different path through
    `reset()`/`deinit()` (`_core.py:368`, `:380`); `Effect.__new__` mutates
    module-wide format state (`_core.py:149-152`).
+
+*(from §1 — the seed's paragraph in full, with the audit corrections it
+carried in place. Moved here at Station A under the length rule; §1 keeps the
+substance and every source id.)*
+
+The M-108 is **ten band sections whose sliders vary the gain of one op-amp
+stage across a tuned circuit**, boosting when the wiper sits toward the
+feedback end and cutting when it sits toward the input, with **unity gain at
+the centre detent**: without the frequency-selective network "the pot sliders
+simply vary the gain of the circuit and unity gain is achieved when the
+slider(s) are centred" (G5), a bank of ten of them has "audio gain … unity
+when all pots are centred" (G6), and of exactly this topology Winer's 1982
+description says "no noise or distortion is ever contributed when the pot is
+centered" (G7). Nine of the ten are **gyrator** bandpass sections — an op-amp
+simulating an inductor, `L = R2 × R1 × C1`, `Q ≈ 2π·f₀·L / R2` (G6) — at
+**31.25, 62.5, 125, 250, 500, 1k, 2k, 4k and 8 kHz**, each ±12 dB; the tenth
+is a **±12 dB shelf at 16 kHz** on both specification sheets (G1, G2) and
+corroborated by a schematic reading finding nine active filters and "the last
+(16 kHz) is a passive filter" (G7). The behaviour that defines it is the one
+Bohn wrote a paper about: the tuned circuit is loaded by the slider, so **Q
+moves with the slider** — the band is narrow **only at the extremes**, and at
+low boost "the conventional design's bandwidth is in excess of one octave …
+it has degraded into something nearer to a 10-band octave equalizer" (G3 §2).
+Bands therefore overlap and add: three adjacent sliders at +6 dB give a
+conventional design +12.5 dB over 2.5 octaves against a constant-Q design's
++6 dB over one octave (G3 §2, fig. 6). Around the bank are two more sliders,
+**GAIN** and **VOLUME**; G1, G2 and G7 give **neither a dB range nor a
+position in the signal path**, so "GAIN before the bank, VOLUME after, each
+±12 dB" is this dossier's design choice, not a fact about the pedal. The
+pedal runs on 18 V; its sheet gives a frequency response of "±1 dB, 20 Hz to
+20 kHz" (G1).
+
+*(The audit corrections behind this paragraph are in **App. R**, verbatim.)*
+
+
+*(from §4 — the seed's palette bullets in full, as Station A found them.
+Superseded by §4's audioif-tier mapping; kept because the arguments about
+section order, the four-pole question and the block-slot reads are unchanged
+by the node swap.)*
+
+**Twelve chained `audiobiquad.Biquad` nodes.** Head to tail: `Gain`
+(HIGH_SHELF at 5 Hz) → nine `PEAKING_EQ` bells at 31.25 Hz × 2ⁿ → one
+`HIGH_SHELF` at 16 kHz → `Volume` (HIGH_SHELF at 5 Hz). Python computes each
+band's `Q` from its gain on a macro move; C runs every sample. Nothing is
+added to the palette.
+
+- **Why `audiobiquad` and not the stock bank.** The seed's tier was stock
+  *conditionally*, and the condition fired. On `audiofilters.Filter` over
+  `synthio.Biquad` this class holds **+7 LSB** after silence with the
+  31.25 Hz band at +6 dB and **+5 LSB** with all ten — reproduced here
+  (App. S(i)), a third independent reproduction of audioif#23's figures. On
+  `audiobiquad` every one of those reads **exact zero**.
+- **The composition the seed refuted, re-tried and now half-rehabilitated.**
+  §5 recorded that appending a **stock** `HIGH_PASS` to clear the residue
+  adds a larger residue of its own. An `audiobiquad` high-pass at 5 Hz behind
+  the stock bank *does* clear it to exact zero (App. S(iii)) — so the seed's
+  refutation is correct about the stock node and wrong if read as being about
+  any high-pass. It is not the design here anyway: it leaves a node holding
+  DC forever and hides it at the output, and it costs the same twelve
+  sections.
+- **A flat band is a `mix = 0` wire, not an unbuilt node** — and that is what
+  makes T4 reachable at all. A `PEAKING_EQ` section at `gain_db = 0` is *not*
+  bit-transparent at this bank's lowest centres: over 24 000 frames of noise
+  it deviates by up to **5 LSB at 31.25 Hz**, 2 at 62.5 Hz and 1 at 125 Hz,
+  and is exact from 250 Hz up (App. S(iv)) — Direct Form I in float32 with
+  poles that close to z = 1. At `mix = 0` the kernel computes
+  `1.0f * x0 + 0.0f * y0` (`audioif_filter_f32.c:239`), which is the input
+  sample exactly, so the section is byte-exact a wire at every centre and
+  every rate. **Every band is built; a band at the detent is muted, not
+  absent.** That is stronger than the seed's "flat bands are not built": the
+  node is there, so a host can turn the knob.
+- **The detent is one macro step wide.** ±12 dB over 0–127 makes one step
+  0.189 dB, so codes 63 and 64 land at ∓0.094 dB and nothing else is within
+  0.1 dB of zero. `|gain| < 0.1 dB` is therefore exactly the two centre
+  codes — the M-108's mechanical centre detent, in the macro's own units.
+- **Q from gain, per macro move**, by `ParametricEQ.md` Appendix A's law,
+  rearranged so the anchor is a macro:
+  `Q(G) = Q₁₂ · sqrt((A² − L²/A²) / (A₁₂² − L²/A₁₂²))`, `A = 10^(|G|/40)`,
+  `L = 10^(1/20)` (a 1 dB skirt). One `sqrt` and one `10**` per move, never
+  per block. At `Q₁₂ = 2` it reproduces Appendix A's table to three decimals
+  — 0.532 / 0.754 / 1.220 / 1.609 / 2.000 at 2 / 3 / 6 / 9 / 12 dB
+  (App. S(v)). Below +1 dB the law has no root (a 1 dB skirt cannot sit on a
+  1 dB bell) and `Q` floors at the kernel's own 0.05, which is the limit of
+  the law, not a fudge. `Constant Q` swaps the whole law for `Q₁₂`.
+- **Two level macros, two more sections, because no palette node gives gain
+  above unity.** `audiomixer.MixerVoice.level` clamps to 0–1 *silently*
+  (`src/audiomixer/Mixer.c:332`) and `audiomath.Multiply` can only attenuate
+  (`shared/audioif_multiply.c:38-45`). A HIGH_SHELF at 5 Hz with
+  `gain_db = +12` measures **+12.00 dB at 30 Hz, 100 Hz, 1 kHz and 10 kHz**
+  (App. S(vi)); at a 10 Hz corner 30 Hz is already 0.22 dB short, and at
+  20 Hz 2.3 dB short, which is why the corner is 5 Hz and not "subsonic,
+  roughly".
+- **Panel order is kept, and it is a headroom rule, not a commutation.**
+  Gain sits before the bank and Volume after, as the panel reads. Each node
+  writes int16 between sections and `to_s16` **saturates** at ±32767
+  (`audioif_filter_f32.c:43-51`), so +12 dB of Gain into a hot source clips
+  at the first node boundary — an M-108's op-amps clip too, and the
+  docstring says so in the musician's terms.
+- **Clamping the centres below Nyquist is stability, not tidiness.** The
+  ported `synthio.Biquad` over Nyquist rails into a full-scale square wave
+  at f_s/4 while raising nothing, and renders exact zeros on silence, so
+  construct-and-catch and silence-in-silence-out both pass it (App. E(iv)).
+  Every centre goes through `self._hz()`, which clamps at 0.98 × Nyquist.
+- **Mono:** the same curve on one channel. Not stereo by definition.
+
+
+### S. Station A bench — the probes §§3, 4 and 6 rest on
+
+2026-09-07, `audiocomponents/.venv/bin/python` with
+`PYTHONPATH=ac-wt-graphiceq/lib`, audioif at the pin `2f6cbc3`. Every probe
+here drives its source through an `audiofilters.Filter(filter=None, mix=1)`
+adapter played `loop=False`, which is `tools/render_effect.py`'s own
+re-blocking seam — **the first draft of these probes fed an
+`audiocore.RawSample` straight in, it looped, and every "tail" reading was
+the probe playing again.** The scripts are transcribed in the evidence pack;
+the numbers below are what they printed.
+
+**(i) The tail, three compositions, burst then in-sample silence.** 200 Hz at
+peak 20000 for 0.1 s, then 3.0 s of digital silence, 48 kHz stereo; the value
+is the last sample of the render. `tools/phase2_probes/graphiceq_bench.py`
+prints all six of these.
+
+| bank | all ten at +6 dB | 31.25 Hz at +6 dB | all flat |
+|---|---|---|---|
+| ten chained `audiobiquad.Biquad` | **0** | **0** | **0** |
+| one `audiofilters.Filter`, ten `synthio.Biquad` | **+5** | **+7** | 0 |
+| the same, then an `audiobiquad` HIGH_PASS at 5 Hz | **0** | **0** | 0 |
+
+The middle row reproduces audioif#23 at this class's own settings for the
+third independent time (the seed's Appendix E(iii), and the licence audit's
+own probe, are the first two). The top row is why the tier moved.
+
+**(ii) Ring-down, for `TAIL_SAMPLES`.** All ten bands at +12 dB, `Band Q` 2.0,
+40 Hz burst at peak 24000 for 0.25 s, then silence; the frame of the last
+non-zero sample, minus the burst end:
+
+```
+48000 Hz: tail 22314 frames (464.9 ms)
+44100 Hz: tail 20520 frames (465.3 ms)
+22050 Hz: tail 10262 frames (465.4 ms)
+```
+
+Constant in time, so the class reports `int(rate * 0.47)` rather than one
+number — 22560 / 20727 / 10363, each above its measurement.
+
+**(iii) The seed's refuted composition, re-tried.** §5 recorded that
+appending a **stock** `HIGH_PASS` to clear the residue adds a larger residue
+of its own — a 5 Hz stock high-pass after a 20 Hz/+10 dB shelf reading −284
+LSB where the shelf alone read −32. An **`audiobiquad`** high-pass is a
+different node and does not do that:
+
+```
+  1.0 Hz high-pass on a held +7 LSB: last sample 0
+  5.0 Hz high-pass on a held +7 LSB: last sample 0
+ 20.0 Hz high-pass on a held +7 LSB: last sample 0
+```
+
+and behind the stock ten-band bank the reading in (i) goes from +5 / +7 to
+**0**. So the seed's refutation is right about the ported node and would be
+wrong if read as being about any high-pass. **It is still not the design**:
+it leaves a node holding DC for ever and hides it at the output, and it costs
+the same twelve sections. *(This probe's own first draft ran the DC for
+exactly the length of the render and read −7 / −6 / −4 — the trailing edge of
+its own stimulus, the adapter having begun handing out silence. The DC now
+runs a second longer than the render, and the note is in the script.)*
+
+**(iv) A flat section is not a wire at the bottom of this bank.** One
+`audiobiquad.Biquad`, `PEAKING_EQ`, `Q = 1.4`, `gain_db = 0`, `mix = 1`, over
+24 000 frames of deterministic noise at peak 8000, against the bare source:
+
+```
+    31.25 Hz: 39316 differing samples, first at 1414, worst 5
+    62.50 Hz: 18680 differing samples, first at  520, worst 2
+   125.00 Hz:  1078 differing samples, first at 12024, worst 1
+   250 Hz .. 16 kHz: 0 differing samples
+```
+
+Ten *chained* flat sections at 1 kHz differ in **0** samples, so this is not
+about depth: it is Direct Form I in float32
+(`audioif_filter_f32.c:216-241`) with poles that close to z = 1, where
+`b == a` exactly and the cancellation still loses the last bits. At
+`mix = 0` the same section is byte-identical to the source at every centre
+tested, which is what §4 builds on and what T4's planted fault inverts.
+
+**(v) The Q law reproduces `ParametricEQ.md` Appendix A.** At `Q₁₂ = 2`,
+`L = 1 dB`:
+
+```
+1 dB: 0.050 (floored)   2 dB: 0.532   3 dB: 0.754
+6 dB: 1.220             9 dB: 1.609  12 dB: 2.000
+```
+
+Appendix A's table reads 0.532, 0.754, 1.220, 1.609, 2.000 at the same
+gains. The rearrangement in §4 is therefore the same law, not a new one.
+
+**(vi) A subsonic HIGH_SHELF is a clean broadband gain, and the corner
+matters.** `gain_db = +12`, `Q = 0.707`, wet-minus-dry RMS on a sine at each
+frequency:
+
+| corner | 30 Hz | 100 Hz | 1 kHz | 10 kHz |
+|---|---|---|---|---|
+| 2 Hz | +12.04 | +12.00 | +12.00 | +12.00 |
+| **5 Hz** | **+11.97** | **+12.00** | **+12.00** | **+12.00** |
+| 10 Hz | +11.84 | +12.00 | +12.00 | +12.00 |
+| 20 Hz | +9.71 | +11.98 | +12.00 | +12.00 |
+
+5 Hz is the corner the class uses, at `Q = 0.707`: 0.03 dB short at 30 Hz and
+exact from 100 Hz up, against 0.16 dB at a 10 Hz corner and 2.3 dB at 20 Hz.
+The 2 Hz row *overshoots* — a shelf has its own Q and the corner is below the
+band, so pushing it lower is not monotonically better. The seed's Appendix
+E(i) measured +12.00 ± 0.01 dB on the *ported* shelf; this is that reading
+re-taken on the node the class actually builds.
+
+**What this bench does not show.** No board. No P4 or S3 figure in §3 comes
+from a measurement, and the twelve-node chain's per-block overhead cannot be
+seen from the desktop at all, because the desktop's `audiobiquad` is a Python
+shim over the same kernel the board runs natively.
