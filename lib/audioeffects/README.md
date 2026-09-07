@@ -24,8 +24,9 @@ Every class takes its audio source as the first argument - a synthesizer, an
 `.output` - and exposes its chain tail as `.output`. The underlying nodes are
 kept as attributes (`.node`, `.mixer`, `.cutoff`, ...) so applications can
 bind parameters straight to them; the classes with a natural swept control
-also expose `set_*` helpers (`LadderFilter.set_cutoff`,
-`DigitalDelay.set_time`, ...).
+also expose `set_*` helpers (`DigitalDelay.set_time`, ...). A class that
+has been rebuilt on the component contract drops those helpers for its macro
+surface: `LadderFilter` is the first, and its cutoff is macro 0.
 
 Every public effect class explicitly declares `NAME`, `MACRO_LABELS`,
 `MACRO_MODES`, and `PATCHES`. `VENDOR` is declared once at module scope for
@@ -92,7 +93,8 @@ not.
 | `LowPass` `BandPass` `Notch` | single swept biquads |
 | `Notch` | **rebuilt.** Everything except one band: a tuned band-stop with a Width knob that is a bandwidth and not a depth, a Harmonics toggle that adds a second notch an octave up and half as wide in hertz for mains hum, a Depth blend whose zero is a byte-exact wire, and a make-up Trim. Five macros, six patches, zero latency. **Portability tier: audioif** (`audiobiquad`) - three float biquads, so the tail reaches exact zero where the ported node parks on 2 to 18 LSB of DC at exactly the hum settings. **What it does not do:** a `float` coefficient set cannot put the zeros exactly on the unit circle, so the centre is a true null from 500 Hz up but only −35.65 dB at 60 Hz Q 12 and −11.21 dB at 20 Hz Q 32 - a hum *reducer* at the bottom, not a hum eliminator. Budgeted at 5 % of an S3 stereo block with one notch and 9 % with two, 1.5 % / 2.5 % on the P4. Dossier `docs/effects/Notch.md` |
 | `LowPass` `HighPass` `BandPass` | single swept biquads |
-| `LadderFilter` | Moog-style 4-stage cascade, 24 dB/oct, resonant |
+| `LadderFilter` | the Moog transistor ladder: four poles round one feedback loop with a saturator inside it. The passband sinks as `Resonance` rises - that droop is the circuit - and at the top of the knob it sings a sine of its own at the cutoff. `Drive` is the only warmth control; the growl follows the input level. **Rebuilt on the component contract; needs audioif** (`audioladder`), so it does not run on a stock CircuitPython board. Zero latency at every setting; budgeted at 14 % of a stereo block on an S3 (7 % on patch 6, `Ladder - lean`) and 8 % on a P4, **unmeasured on either board** |
+| `LowPass` `HighPass` `BandPass` `Notch` | single swept biquads |
 | `CombFilter` | tuned short feedback delay |
 
 ### Time and space - `reverb.py`, `delay.py`

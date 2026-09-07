@@ -33,6 +33,14 @@ from tools.validate_metadata import MetadataError, validate_effects
 #: the shared file the registry rule exists to avoid.
 FIXTURES = ("ExampleAudioif", "ExampleStock")
 
+#: Every one of the 46 that Phase 2 has rebuilt, in merge order.
+#: `TheLookup.REBUILT` is this same tuple: the class branches that
+#: met here read the roster under both spellings.
+REBUILT = ("Compressor", "Limiter", "Expander", "NoiseGate", "DeEsser",
+           "TransientShaper", "MultibandCompressor", "ParametricEQ",
+           "GraphicEQ", "LowPass", "HighPass", "BandPass", "Notch",
+           "LadderFilter")
+
 
 def source(channels=2, rate=48000):
     return audiocore.RawSample(
@@ -57,9 +65,7 @@ class TheLookup(unittest.TestCase):
     #: roster is kept AND derived from `known()` in the test below it: the
     #: roll call catches a module that never registered, the derived form
     #: catches one registered under a name nobody listed.
-    REBUILT = ("Compressor", "Limiter", "Expander", "NoiseGate", "DeEsser",
-               "TransientShaper", "MultibandCompressor", "ParametricEQ",
-               "GraphicEQ", "LowPass", "HighPass", "BandPass", "Notch")
+    REBUILT = REBUILT
 
     def test_a_rebuilt_name_hits_and_every_other_one_misses(self):
         # Both branches over the real catalogue. When this file was written
@@ -456,6 +462,34 @@ class TheLookup(unittest.TestCase):
         self.assertIn("ExampleStock", rebuilt.known())
         self.assertIn("ExampleAudioif", rebuilt.known())
 
+    def test_every_name_not_yet_rebuilt_is_still_a_miss(self):
+        # The fallback branch, over the real catalogue: a name with no file
+        # must miss, so the old class in the family module stands. The
+        # assertion used to be "all 46 miss"; it is scoped rather than
+        # deleted, because the branch it covers is the one 45 of the 46
+        # still rely on.
+        for name in audioeffects.ALL:
+            if name in REBUILT:
+                continue
+            with self.subTest(name=name):
+                self.assertIsNone(rebuilt.load(name))
+
+    def test_every_rebuilt_name_resolves_to_a_component(self):
+        # The other branch, and the one a rebuild has to prove: the file is
+        # found, and what comes back is the new class, not the old one.
+        for name in REBUILT:
+            with self.subTest(name=name):
+                found = rebuilt.load(name)
+                self.assertIsNotNone(found)
+                self.assertEqual(found.NAME, name)
+                self.assertTrue(issubclass(found, _component.Component))
+                self.assertFalse(
+                    issubclass(found, audioeffects._core.Effect))
+
+    def test_known_lists_what_is_there__lf(self):
+        self.assertEqual(sorted(rebuilt.known()),
+                         sorted(FIXTURES + REBUILT))
+
 
 class TheReplacement(unittest.TestCase):
     """`_adopt` is what the package runs over its own globals at import.
@@ -617,6 +651,19 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         for name in ("ExampleStock", "ExampleAudioif"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
+
+    def test_the_fixtures_are_not_among_the_46__lf(self):
+        # The catalogue is 46 whatever has been rebuilt: a rebuild replaces
+        # a name, it never adds one. The fixtures stay outside it; a rebuilt
+        # class takes the place of the old one under the same name.
+        self.assertEqual(len(audioeffects.ALL), 46)
+        for name in FIXTURES:
+            self.assertNotIn(name, audioeffects.ALL)
+            self.assertNotIn(name, audioeffects.__all__)
+        for name in REBUILT:
+            self.assertIn(name, audioeffects.ALL)
+            self.assertIn(name, audioeffects.__all__)
+        self.assertEqual(sorted(rebuilt.known()), sorted(FIXTURES + REBUILT))
 
 
 class TheMetadataValidatorCoversBothBases(unittest.TestCase):
