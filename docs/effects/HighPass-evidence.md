@@ -19,7 +19,7 @@ measurement nobody ran says `unmeasured`, with why.
 | Standout | none, per vision §4.2 — the two-pole analog low-cut, RBJ's HPF |
 | Grade | design |
 | Portability tier | **audioif** (`REQUIRES = ("audiobiquad",)`) |
-| Landed in commit | `1cc8166` (code, tests, README, CHANGELOG); this file and its two drivers in the commit named in §9 |
+| Landed in commit | `1cc8166` (code, tests, README, CHANGELOG); this file and its two drivers in `ced7eb7` |
 | audioif pin | `AUDIOIF_PIN` = `2f6cbc3791efd38dfbf0fb263052400a69b976ed`; `pydevices-audioif` 0.2.0 in the venv |
 | Interpreters | `audiocomponents/.venv/bin/python` 3.12.3 (numpy 2.5.2); `cmods/bin/micropython`; `cmods/bin/circuitpython-effects` |
 | Boards | **not run** — §4 and §11 |
@@ -343,8 +343,8 @@ stock board, which its docstring and its README row both say.
 - [x] The README catalogue row and the docstring describe the standout, the
       portability tier and the cost, in a musician's terms.
 - [x] The class's code, its tests, its README row and its CHANGELOG line
-      landed in one commit (`1cc8166`); this file and its two drivers land in
-      the commit named in §9.
+      landed in one commit (`1cc8166`); this file and its two drivers landed in
+      `ced7eb7`.
 
 ---
 
