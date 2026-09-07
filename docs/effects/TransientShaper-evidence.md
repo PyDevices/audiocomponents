@@ -598,3 +598,99 @@ From the dossier's §7, and only from there.
 | `f93ec36` | Station A — the dossier's traits frozen, §8's three opens settled, `tools/phase2_probes/transientshaper_station_a.py` |
 | `9a6d0bf` | Station B — `lib/audioeffects/rebuilt/transientshaper.py`, the README catalogue row, the CHANGELOG line |
 | `ad0d053` | Station C — this file, `tests/test_cpython_effects_transientshaper.py`, the three measurement scripts, and the docstring and README amendments that carry T5's and T6's disconfirmations |
+
+---
+
+## Refutation record (2026-09-07)
+
+Written by a **second, independent agent** — not the session that wrote §§1–11
+— against every trait §1 calls demonstrated (T1–T4). Every figure below is
+from a run made by that agent this session, all on
+`audiocomponents/.venv/bin/python` with `PYTHONPATH=lib`, at 48 kHz unless a
+line says otherwise. The pack's own driver was re-run first and reproduced
+§1 figure for figure (`transientshaper_evidence.py`, e.g. T1 spread
+`0.047 dB`, T2 `43 of 203`, T3 worst `0.385 dB`, T4 `2.43:1`, R2 `172 of 811`,
+R6 `1.95:1`), so the disagreements below are about what the numbers *mean*,
+not about the numbers.
+
+- **T1 — REFUTED, on the verdict's own wording.** §1 records the strict
+  point-by-point clause as holding "only over −6…−40 dBFS". It does not hold
+  over that span at the setting the row is measured at: re-run point-by-point
+  at Attack **+12 dB** over the three levels −6, −20, −40 the spread is
+  **3.422 dB** (bar 0.500) — the pack's own R1 adjacent-pair figure, read
+  against the span the verdict then claims. What actually holds at +12 is
+  **−20…−40: 0.163 dB**; adding −60 takes it to **1.293 dB**, and at Attack
+  **+15** the same three spans read **6.403 / 0.111 / 1.464 dB**. Second, the
+  headline *peak* readout is one setting's number, not the trait's: at Attack
+  **−12 dB** — as thresholdless a setting as +12, no clipping anywhere — the
+  peak spread over −6…−60 is **1.395 dB** (−6 `−12.004`, −20 `−12.017`, −40
+  `−12.190`, −60 `−13.399`), over the 0.500 bar. **What the author must
+  answer:** restate the narrowing in terms that survive its own runs — the
+  clause is met over −20…−40 dBFS at any Attack setting, and over −6…−40 only
+  where the render does not clip (Attack ≤ +6: spread `0.160 dB`) — and say
+  whether "demonstrated on the peak readout" is claimed at every Attack
+  setting or only at +12.
+- **T2 — NOT REFUTED; hardened further.** Four attacks, none landed. Material:
+  the 43-of-203 overlap is **43 of 203** on `hit_levels_-20` as well as
+  `hit_levels_-6`, and **21 of 1000** on an exponentially decaying note, with
+  the planted `transient_dual=False` reading **0** on every one of them. Rate:
+  **42 of 204** at 44.1 kHz and **45 of 210** at 22.05 kHz, planted fault
+  **0 of 204** and **0 of 210**. Hop: the pack's own 1.0/0.25 ms pair
+  reproduced. Setting: at Attack +6 / Sustain −6 the hit still reads
+  **25 of 203**. Two limits worth recording, neither a refutation of the trait
+  as frozen (it names one hit at +12/−12): on `sibilant_-20` the count is
+  **0 of 1500** at every setting tried, and at ±3 dB the count is 0 on all
+  material — the statistic needs a percussive onset and a setting whose two
+  effects clear ±0.5 dB.
+- **T3 — REFUTED on the Sustain leg; the Attack leg hardened.** R3 is
+  confirmed independently, and by a test the pack did not run: rendering the
+  same Attack +15 through a probe with headroom, `hit_levels_-20`, reads
+  **+15.000 dB with 0 samples clipped** (against `+14.615` and 884 clipped on
+  `hit_levels_-6`), and `hit_levels_-40` reads **+14.997**. So the Attack span
+  does not saturate. The Sustain span is another matter: `−24.0` is not a
+  figure of the control, it is a figure of the note the pack chose. Same
+  setting, `decaying()` material varied within the trait's own terms —
+  10 dB/s 3 s (**the pack's**) `−24.321`; 10 dB/s 6 s `−26.846`; 5 dB/s 6 s
+  `−24.340`; **3 dB/s 2/3/6/12 s `−10.787 / −12.950 / −15.442 / −16.353`**.
+  On a 3 dB/s note the Sustain control saturates **8 dB short of its stated
+  end** and is still climbing when the render stops, which is T3's own
+  disconfirmer ("a control that saturates before its stated end") — and the
+  −26.846 dB over-read is the other direction, past the end. **What the author
+  must answer:** either state T3's Sustain clause as a ceiling reached only on
+  material that drives the differential to its 6 dB cap, naming the note, or
+  measure the span at the node rather than through a decaying note. (The
+  6 s over-read is plausibly the analysis floor — with `floor_db=-40` the same
+  render reads `−24.238` — but the pack names a level floor for T1 and none
+  here, and the 3 dB/s under-read is not a floor effect: that note ends at
+  −24 dBFS.)
+- **T4 — REFUTED: the planted fault is red only at the one render length the
+  pack used, and neither clause separates a peak-hold from a plain follower.**
+  The 2:1 ratio clause against the `NoPeakHold` fault, decay rates 10 and
+  40 dB/s exactly as frozen, varying only the render length the trait does not
+  state: 0.5 s **class 1.25:1 (FAIL)**, fault 1.00:1; 1.0 s class 2.43:1,
+  fault **1.92:1 RED** (the pack's run); 1.5 s class 2.61:1, fault **2.31:1
+  STILL GREEN**; 2.0 s class 2.61:1, fault **2.31:1 STILL GREEN**; 3.0 s class
+  2.62:1, fault **2.32:1 STILL GREEN**. At 1.0 s the class's own t90 is 902 ms
+  in a 1000 ms render and its peak is still climbing (peak depth 10.97 dB at
+  1.0 s against 12.03 dB at 2.0 s), so the number the row rests on is set by
+  where the render stops. R4's t80/t90/t95 sweep does not reach this: all
+  three fractions are read inside the same truncated trace. The monotone
+  clause is worse — the plain follower's drop is **0.000 / 0.000 dB** at
+  windows of 200, 400 and 800 ms, i.e. it passes the clause outright; only the
+  *other* fault (`sustain_fast_attack_ms=1.0`, 11.832 dB) turns it red, and
+  that fault is not a follower. Also, on a different 4:1 pair, 5 vs 20 dB/s at
+  the pack's 1.0 s, the class itself reads **1.58:1**. **What the author must
+  answer:** name the render length in the trait (and in the dossier's frozen
+  wording), and supply a fault that a peak-hold passes and a plain follower
+  fails at *every* render length — or record T4's peak-hold clause as
+  unmeasured.
+- **T5 — out of scope, and not challenged.** §1 already calls it disconfirmed
+  on its middle clause; nothing here was run against it.
+- **T6 — out of scope, and not challenged.** §1 already calls it disconfirmed,
+  and R6's finer-hop re-read strengthens rather than rescues it.
+
+**Effect on §8's checklist.** The line "Every demonstrated trait survived an
+independent refutation attempt" can now be run — the pass was independent —
+but it does **not** come back clean: T1's narrowing and T3's Sustain leg are
+restated-or-broken, and T4's planted fault is shown to be window-dependent.
+T2 survived, and is the one row this pass strengthened.
