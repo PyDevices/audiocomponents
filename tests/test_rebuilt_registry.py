@@ -37,13 +37,24 @@ class TheLookup(unittest.TestCase):
     def test_a_name_with_no_file_is_a_miss_not_an_error(self):
         self.assertIsNone(rebuilt.load("NoSuchEffectAnywhere"))
 
-    def test_every_one_of_the_46_is_a_miss_today(self):
-        # The fallback branch, over the real catalogue: nothing in Phase 2's
-        # families has been rebuilt yet, so every name must miss and every
-        # old class must still be the one the package exports.
+    def test_every_name_either_misses_or_resolves_to_its_own_class(self):
+        # The fallback branch, over the real catalogue. A name Phase 2 has
+        # not reached must miss, so the old class stands; a name it has
+        # reached must come back as a Component whose NAME is that name and
+        # which is what the package exports. Both branches are live now that
+        # the first classes are rebuilt, which is why this is no longer
+        # "every name misses".
+        rebuilt_names = set(rebuilt.known())
         for name in audioeffects.ALL:
             with self.subTest(name=name):
-                self.assertIsNone(rebuilt.load(name))
+                found = rebuilt.load(name)
+                if name not in rebuilt_names:
+                    self.assertIsNone(found)
+                    continue
+                self.assertIsNotNone(found)
+                self.assertEqual(found.NAME, name)
+                self.assertTrue(issubclass(found, _component.Component))
+                self.assertIs(getattr(audioeffects, name), found)
 
     def test_a_file_whose_class_does_not_match_is_an_error(self):
         # `examplestock.py` exists, but holds no class whose NAME is
@@ -55,8 +66,18 @@ class TheLookup(unittest.TestCase):
         self.assertIn("holds no Component", str(caught.exception))
 
     def test_known_lists_what_is_there(self):
-        self.assertEqual(sorted(rebuilt.known()),
-                         ["ExampleAudioif", "ExampleStock"])
+        # The two fixtures are always here; a rebuilt class joins them, and
+        # `known()` must list every module in the directory rather than a
+        # list this file keeps. So the assertion is set equality against
+        # what the directory actually holds.
+        import os
+        here = os.path.dirname(rebuilt.__file__)
+        modules = set(entry[:-3] for entry in os.listdir(here)
+                      if entry.endswith(".py") and not entry.startswith("_"))
+        self.assertEqual(set(name.lower() for name in rebuilt.known()),
+                         modules)
+        self.assertIn("ExampleStock", rebuilt.known())
+        self.assertIn("ExampleAudioif", rebuilt.known())
 
 
 class TheReplacement(unittest.TestCase):
@@ -104,8 +125,11 @@ class TheReplacement(unittest.TestCase):
 
 class TheCatalogueIsUnchanged(unittest.TestCase):
     def test_the_fixtures_are_not_among_the_46(self):
+        # The catalogue stays 46 whichever half of the library serves a
+        # name. The two fixtures are the ones that must never enter it; a
+        # rebuilt class is *expected* in it, under the name it replaced.
         self.assertEqual(len(audioeffects.ALL), 46)
-        for name in rebuilt.known():
+        for name in ("ExampleStock", "ExampleAudioif"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
 
