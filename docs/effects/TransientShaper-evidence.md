@@ -30,7 +30,7 @@ $ audiocomponents/.venv/bin/python tools/phase2_probes/transientshaper_across.py
 | Standout | SPL Transient Designer (RackPack module 2715) — Differential Envelope Technology |
 | Grade | literature |
 | Portability tier | **audioif** (`REQUIRES = ("audiodynamics",)`) |
-| Landed in commits | `f93ec36` (Station A), `9a6d0bf` (Station B), and the Station C commit that lands this file — §12, and the deviation from the gate's one-commit rule is in §11 |
+| Landed in commits | `f93ec36` (Station A), `9a6d0bf` (Station B), `ad0d053` (Station C) — §12, and the deviation from the gate's one-commit rule is in §11 |
 | audioif pin | `AUDIOIF_PIN` = `2f6cbc3`. Checked, not assumed: `git diff 2f6cbc3 HEAD` in audioif touches only `.flake8` and `apply_cp_patches.sh`, and `git diff 2f6cbc3 HEAD -- src/shared/audioif_dynamics.{c,h} src/audiodynamics/ lib/audiodynamics.py` is **empty**, so every reading here is the pin's behaviour whichever of the two the venv's `_audioif` was built from |
 | Interpreters | `audiocomponents/.venv/bin/python` 3.12.3 (`pydevices-audioif` 0.2.0); `cmods/bin/micropython` MicroPython v1.28.0-dirty, `_mpy=2822`; `cmods/bin/circuitpython-effects` CircuitPython 10.2.1-dirty, `_mpy=2822` |
 | Boards | **not run** — see §4 and §11 |
@@ -542,4 +542,4 @@ From the dossier's §7, and only from there.
 |---|---|
 | `f93ec36` | Station A — the dossier's traits frozen, §8's three opens settled, `tools/phase2_probes/transientshaper_station_a.py` |
 | `9a6d0bf` | Station B — `lib/audioeffects/rebuilt/transientshaper.py`, the README catalogue row, the CHANGELOG line |
-| *(this file's own commit)* | Station C — this file, `tests/test_cpython_effects_transientshaper.py`, the three measurement scripts, and the docstring and README amendments that carry T5's and T6's disconfirmations |
+| `ad0d053` | Station C — this file, `tests/test_cpython_effects_transientshaper.py`, the three measurement scripts, and the docstring and README amendments that carry T5's and T6's disconfirmations |
