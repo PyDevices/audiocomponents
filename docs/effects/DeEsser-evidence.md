@@ -19,7 +19,7 @@ and it is a section rather than a clause.
 | Standout | dbx 902 De-Esser |
 | Grade | literature |
 | Portability tier | **audioif** — `REQUIRES = ("audiobiquad", "audiodynamics", "audioroute")` |
-| Landed in commit | code and battery `0f936b2`; this file and the CHANGELOG line in the commit that adds them — **not one commit, see §11** |
+| Landed in commit | dossier `4dfe59b`; code and battery `0f936b2`; this file, the CHANGELOG line and two corrected readings `62364f3` — **three commits, not the one the gate asks for, see §11** |
 | audioif pin | `AUDIOIF_PIN` = `2f6cbc3791efd38dfbf0fb263052400a69b976ed`; the venv carries that build |
 | Interpreters | `audiocomponents/.venv/bin/python` (CPython 3.12); `cmods/bin/micropython`; `cmods/bin/circuitpython-effects` |
 | Boards | **not run** — see §4 and §11 |
@@ -532,6 +532,10 @@ module being edited.
   neither demonstrated nor honestly disconfirmed — it is unmeasurable on a
   relative-threshold class until N-DEESS-8 lands. What replaced it in the
   battery is a weaker claim: that the option is active.
-- **The code and this file did not land in one commit.** The class and its
-  battery are `0f936b2`; this file and the CHANGELOG line are the commit
-  that adds them. The gate asks for one, and this is two.
+- **The code and this file did not land in one commit.** The gate asks for
+  one; this is three — `4dfe59b` (the dossier at Station A), `0f936b2` (the
+  class and its battery) and `62364f3` (this file, the CHANGELOG line, and
+  the two readings Station C had to correct in the class itself). The
+  station pattern the roadmap sets out asks for a commit per station, and
+  the gate asks for one commit for the class; they do not agree, and this
+  session followed the stations.
