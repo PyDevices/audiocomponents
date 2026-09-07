@@ -1,198 +1,204 @@
 # Effects Dossier — `NoiseGate` (Drawmer DS201)
 
-**Class:** `lib/audioeffects/dynamics.py` — the current implementation is
-read once, for §7, and not otherwise consulted.
-**Family / phase:** Dynamics, roadmap Phase 2
-**Standout:** Drawmer DS201 *(proposed, vision §4.2)* — **confirmed without
-reservation.** It is the right referent by the manufacturer's own claim, in
-the manual reached this run: "These features and the DS201's user-friendliness
-have helped it to become the worldwide 'industry standard' noise gate" (S1).
-Unlike `Expander`, every trait this class needs is on the DS201's own panel;
-no second source is needed for the law, only for the detector question (S2).
-**Grade:** literature — the operator's manual gives every control range and
-the envelope rule, and the traits below rest on it. *(Audit correction: two
-Drawmer schematic sheets **were** reached in the audit run, as preview page
-images — S5, §2. The grade stays literature under vision §4.1 because no trait
-below is derived from them and no SPICE model or analytic derivation was made
-from them; revisiting the grade is the implementation session's call.)*
-**Portability tier:** needs audioif-own nodes (`audiodynamics`)
-**Status:** seed (Phase 0), written 2026-09-06
+**Class:** `lib/audioeffects/rebuilt/noisegate.py`; the old
+`dynamics.py:161-177` is read once, for §7. **Family:** Dynamics, Phase 2.
+**Standout:** Drawmer DS201, confirmed without reservation by the maker's own
+claim in S1 ("the worldwide 'industry standard' noise gate"); every trait
+below is on its own panel. **Grade:** literature — two Drawmer schematic
+sheets were reached (S5) but no trait derives from them (vision §4.1).
+**Tier:** **audioif**, `REQUIRES = ("audiodynamics", "audioroute",
+"audiomath")` — the first is the whole default build, the other two are
+built only by `duck=True`. **Status: traits frozen
+2026-09-07**, before a line of the rebuild was written (worktree
+`ac-wt-noisegate`, branch `effects/p2-noisegate`); seeded 2026-09-06, audited
+twice, §§1–8 shortened and settled here.
 
 ## 1. The circuit, in one paragraph
 
-Audio runs input → gain element → output, with a Bypass position on the output
-selector that "routes the input signal to the output with no processing" (S1) —
-neither manual edition names the gain element, but Drawmer's own service
-documents do, and the audit run reached them: the schematic sheet is titled
-"DS 201 (Fig.1) Audio and VCA Circuits" and the setting-up procedure probes the
-"output of V.C.A. op. amp channel 1" (S5), so **the gain element is a VCA, and
-that is now sourced**; no trait below rests on it. Everything the gate knows it
-learns from a side-chain that never touches the sound. The key is the channel's own input or, on the Ext setting,
-a separate jack, "making it possible to gate one sound according to the
-dynamics of another"; it passes two variable filters in series — L.F. **25 Hz
-to 4 kHz**, H.F. **250 Hz to 35 kHz**, so "it is the range between the two
-settings that is allowed to pass" — and Key Listen sends that filtered
-side-chain to the output for tuning, the manual noting it can simply be left
-there to use the box as a filter (S1). A Threshold from **−54 dB to infinity**
-(S1's 2005 edition; Drawmer's own current manual, S4, says "-50dBFs")
-arms a four-stage envelope: **Attack 10 µs to 1 s** ("the fastest Attack time
-ensures that the gate does not clip the leading edge of extremely fast
-transients"), **Hold 2 ms to 2 s** — "the amount of time the gate is held open
-after the signal falls below the Threshold … instrumental in creating the
-classic gated reverb sound" — and **Decay 2 ms to 4 s**. The rule that makes
-it a gate rather than a follower is stated in the Hold paragraph: "Since the
-Hold cycle starts as soon as the Threshold is crossed, the envelope cycle will
-complete even if the Key source falls below the Threshold level before the
-Attack phase is completed" (S1). The closed state is not silence but
-**Range**, "the amount of attenuation applied to the input signal when the
-gate is closed, variable from 0 dB to −80 dB" (2005 edition; S4's 2008 manual
-says "0dB - 90dB"), and the manual recommends about
-−15 dB where full closure would make the noise floor's coming and going more
-obvious than the noise. A Gate/Duck switch inverts the whole sense for
-voice-overs. RaneNote 155 supplies the two general facts the panel cannot:
-a gate "uses a fixed ratio of ∞:1 and a variable depth", and "like a limiter,
-a gate must respond very quickly to changes in level, dictating the use of a
-peak detector in the side-chain" (S2).
+Audio runs input → VCA → output, past a Bypass that passes the input
+unprocessed; everything the gate knows it learns from a **side chain that
+never touches the sound**. The key is the channel's own input or, on Ext, a
+separate jack — "making it possible to gate one sound according to the
+dynamics of another" — and passes two variable filters in series, L.F.
+**25 Hz–4 kHz** and H.F. **250 Hz–35 kHz**, "it is the range between the two
+settings that is allowed to pass"; **Key Listen** puts that filtered band on
+the output. A **Threshold** (−54 dB to infinity; S4 says "-50dBFs") arms a
+four-stage envelope — **Attack 10 µs–1 s**, **Hold 2 ms–2 s**, **Decay
+2 ms–4 s** — under the rule that makes it a gate rather than a follower:
+"the envelope cycle will complete even if the Key source falls below the
+Threshold level before the Attack phase is completed". The closed state is
+not silence but **Range**, 0 dB to −80 dB of attenuation (S4 says −90),
+about −15 dB recommended where full closure would make the noise floor's
+coming and going more obvious than the noise. A **Gate/Duck** switch inverts
+the whole sense. Quotations are S1's and the fuller reading is in **App. R2**;
+S5 names the gain element a VCA and no trait rests on it. RaneNote 155
+supplies the two facts the panel cannot: a gate "uses a fixed ratio of ∞:1
+and a variable depth", and "like a limiter, a gate must respond very quickly
+to changes in level, dictating the use of a peak detector in the side-chain"
+(S2).
 
 ## 2. Sources and license calls
 
-All fetched 2026-09-06; nothing from memory. No component value appears in
-this seed because no schematic was reached.
+All fetched 2026-09-06. **This session fetched no URL** (Station A forbids
+it) and added no source; it read the audioif C at the pin instead. What each
+source gave and how its licence line reads is in **App. S**; the id, the URL
+and the reached call are the gate conditions and stay here.
 
-| Source | What it gave | License as read | URL | Reached |
-|---|---|---|---|---|
-| **S1** Drawmer, *DS201 Dual Noise Gate Operator's Manual* … (App. S1) | Every control range in §1 … (App. S1) | The PDF carries no licence line … (App. S1) | <https://umlsrt.com/StudioDocuments/drawmer%20ds201%20manual.pdf> | yes — PDF fetched, text via `pypdf` |
-| **S2** Jeffs, Holden & Bohn, *Dynamics Processors*, RaneNote 155 | The ∞:1-plus-depth law and gate block diagram (Figs. … (App. S2) | PDF line "© 2005 Rane Corporation" … (App. S2) | <https://www.ranecommercial.com/legacy/pdf/ranenotes/Dynamics_Processors.pdf> | yes — PDF fetched, text via `pypdf` |
-| **S3** Drawmer, DS201 product page | Feature list and audio specs … (App. S3) | Footer: "Copyright © 2026 All rights … (App. S3) | <https://www.drawmer.com/products/pro-series/ds201.php> | yes — HTML; this host answers WebFetch with HTTP 429, so the audit fetched it directly (HTTP 200) |
-| **S4** Drawmer, *DS201 Operator's Manual* … (App. S4) | The same control descriptions … (App. S4) | "This manual is copyrighted © 2008 by Drawmer … (App. S4) | <https://www.drawmer.com/uploads/manuals/ds201_operators_manual.pdf> | yes — PDF fetched (HTTP 200, 14 pp.), text via `pypdf`; **added by the audit run**, where the first run had recorded this URL as unreachable |
-| **S5** Drawmer, *DS201 Service Information* (7 pp.) and *DS201 Comp … (App. S5) | Two legible hand-drawn Drawmer sheets with component … (App. S5) | The drawings are Drawmer's … (App. S5) | <https://elektrotanya.com/drawmer_ds201_comp_sch.pdf/download.html> (preview images under `/PREVIEWS/63463243/23432455/drawmer/`) | yes — preview images fetched (HTTP 200) and read; the full PDFs were **not** obtained. Added by the audit run |
-| **Local** `audioif/src/shared/audioif_dynamics.{c,h}`, `audioif/docs/upstream-diff.md`, the probes in the Appendix | What the palette's gate actually does | MIT (audioif) | — | yes |
-
-*Second-pass result: licence calls S1–S4 stand as written; S5 added; the "no
-schematic" and "VCA unsourced" findings overturned; one flag on G2.*
-
-*(More of §2 is in **App. R** — moved under the length rule, nothing deleted.)*
+| Source | Licence | URL | Reached |
+|---|---|---|---|
+| **S1** Drawmer, *DS201 Operator's Manual*, 2005 capture | all-rights-reserved (chased to S4's notice) | <https://umlsrt.com/StudioDocuments/drawmer%20ds201%20manual.pdf> | yes |
+| **S2** Jeffs, Holden & Bohn, RaneNote 155 | "© 2005 Rane Corporation", all rights reserved | <https://www.ranecommercial.com/legacy/pdf/ranenotes/Dynamics_Processors.pdf> | yes |
+| **S3** Drawmer, DS201 product page | "© 2026 … Drawmer Electronics Ltd." | <https://www.drawmer.com/products/pro-series/ds201.php> | yes |
+| **S4** Drawmer, *DS201 Operator's Manual*, current edition | "© 2008 by Drawmer Electronics, Ltd." | <https://www.drawmer.com/uploads/manuals/ds201_operators_manual.pdf> | yes |
+| **S5** Drawmer service sheets — **the VCA, and that fact only** | Drawmer's, under S4's notice; host says personal use only | <https://elektrotanya.com/drawmer_ds201_comp_sch.pdf/download.html> | preview images only; full PDFs **not** obtained |
+| **Local** `audioif/src/shared/audioif_dynamics.{c,h}` at pin `2f6cbc3` | MIT | — | yes |
 
 ## 3. Traits — fixed before measurement
 
-### Tier 1 — invariants (the standard block, verbatim from vision §3)
+**Tier 1** — the standard block, verbatim from vision §3, is in **App. I**
+with this class's mono, rate and `capabilities` notes.
 
-The standard block, verbatim from vision §3, is in **App. I** — moved there under the length rule; any class-specific note on it moved with it.
+**Tier 2 — frozen 2026-09-07.** Four rows were restated in this pass because
+their first drafts were not falsifiable against a one-pole envelope; each
+correction carries its arithmetic in **App. C**, and none was written after
+seeing a render of the rebuilt class. Source and confidence per row: **App.
+T**.
 
-### Tier 2 — circuit traits
-
-| # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Meas. |
-|---|---|---|---|---|---|
-| G1 | **The envelope is one-shot.** Once the key crosses the threshold the attack runs to full open even if the key falls back below threshold first — a 1 ms key burst under a 200 ms attack still reaches 0 dB of attenuation | S1, verbatim ("the envelope cycle will … (App. G1) | high — stated as a … (App. G1) | The gate not reaching full open, or opening only in proportion to the burst's length | ONESHOT |
-| G2 | **Hold is a real stage**, variable 2 ms–2 s, timed from the key falling below threshold; through it the gain sits at 0 dB and only then does the decay begin, so the measured open time equals attack + hold + decay within 10 % | S1 (Hold description) … (App. G2) | high | Decay starting at the threshold crossing, or an open time that tracks attack + decay alone | ENV |
-| G3 | The key path is a **band**: low cut settable 25 Hz–4 kHz, high cut 250 Hz–35 kHz (clamped below Nyquist), and with the band set to 500 Hz–2 kHz a tone an octave outside either end, swept from −60 dBFS to 0 dBFS, moves the gain less than 1 dB off the Range floor at every level; Key Listen puts that band on the output | S1 (L.F., H.F., Key Listen) | high | An out-of-band tone at any level up to full scale moving the gain more than 1 dB off the floor; a gate that opens fully as an out-of-band tone is raised. *(Two clauses of the first draft are struck as unsourced: "a skirt shallower than 12 dB/oct at either end" — neither source states the key filters' order, which is a design choice, §5 — and "at any level", which is unbounded and therefore unfalsifiable; the level span the kit actually drives is named instead. **Critic pass, 2026-09-06.**)* | KEY |
-| G4 | **The closed state is Range, not zero**: with the input 30 dB below threshold at −6 dBFS, the settled closed gain equals the Range setting within 0.5 dB at 0, −20, −40 and −60 dB, and the control's full span reaches at least −80 dB (S1's 2005 edition; S4's 2008 manual says "0dB - 90dB"). The law is a fixed depth, not a slope: two inputs 10 dB apart, both at least 20 dB below threshold, get the same gain within 0.5 dB | S1 (Range); S2 ("a gate uses a fixed ratio of … (App. G4) | high | A settled closed gain more than 0.5 dB from the setting at any of the four; a closed gain that tracks the input level, i.e. a finite slope (the shipped node's ~8 dB per dB, A1); a span that stops short of −80 dB | LAW at four Range settings |
-| G5 | **Attack spans 10 µs to 1 s and decay 2 ms to 4 s**: at settings 1, 10, 100 and 1000 ms of attack and 10, 100, 1000 and 4000 ms of decay the measured 10–90 % transition is within 15 % of the setting, and at the fast end (settings below one sample period, 20.8 µs at 48 kHz) the open transition is one sample or less | S1 (Attack, Decay) | medium — panel … (App. G5) | A measured transition more than 15 % from the setting at any of the eight; a fastest attack longer than one sample; a slowest decay whose measured 10–90 % time is under 3.4 s (15 % short of 4 s) | ENV |
-| G6 | **Peak detection**: a sine and a square of **equal peak** open the gate at thresholds within 0.5 dB of each other, while the same pair at **equal RMS** open at thresholds about 3.0 dB apart (the square's crest advantage); and with attack at its fastest a burst whose peak crosses the threshold reaches full open within one cycle of its own fundamental | S2 ("a gate must respond very quickly to … (App. G6) | medium — general to … (App. G6) | Equal-**RMS** material of different crest factors opening at the same threshold, which is what RMS detection gives; or an equal-peak pair whose opening thresholds differ by more than 0.5 dB. *(Critic pass, 2026-09-06: the first draft's leading clause — first-cycle opening — was measured by LAW, a steady staircase that cannot see it. The clause is kept and given ENV; the equal-peak/equal-RMS pair is what LAW measures.)* | LAW with sine and square … (App. G6) |
-| G7 | **Duck mode inverts the sense**: with Duck selected, gain is 0.00 ± 0.05 dB below threshold and settles at the Range setting within 0.5 dB above it, on the same attack/hold/decay envelope — the measured open time obeys G2's attack + hold + decay within 10 % in Duck as in Gate | S1 (Gate/Duck); S3 | high | A settled ducked gain more than 0.5 dB from the Range setting; a resting gain other than unity below threshold; an envelope that ignores Hold in Duck | ENV |
+| # | Trait (falsifiable as stated) | Disconfirmed by | Meas. |
+|---|---|---|---|
+| G1 | **The envelope is one-shot.** Once the key crosses the threshold the attack runs to full open even if the key falls back below threshold first: a 1 ms full-scale burst under a 200 ms attack reaches within 0.5 dB of 0 dB of attenuation, after the burst has gone | The gain never leaving the Range floor; or a peak that scales with the burst's length | GAINTRACE |
+| G2 | **Hold is a real stage**, 2 ms–2 s, timed from the key falling below threshold: at Hold 20, 100, 500 and 1000 ms the time the gain stays within 0.5 dB of full open after the key drops is within 10 % of the setting, and only then does the decay begin | An open time that does not track the Hold setting; decay beginning at the threshold crossing | GAINTRACE |
+| G3 | **The key path is a band** with two separately settable ends, low cut 25 Hz–4 kHz and high cut 250 Hz–Nyquist: with the band at 500 Hz–2 kHz, the input level at which a 250 Hz tone and a 4 kHz tone first open the gate is **at least 4 dB above** the level at which a 1 kHz tone does. Key Listen puts the filtered band on the output instead of the audio | A shift of 1 dB or less at either end — which is what no key filter gives | GAINTRACE level search |
+| G4 | **The closed state is Range, not zero.** With the input 30 dB below threshold the settled closed gain equals the Range setting within 0.5 dB at 0, −20, −40, −60 and −80 dB. The law is a fixed depth, not a slope: two inputs 10 dB apart, both at least 20 dB below threshold, get the same gain within 0.5 dB | A settled closed gain more than 0.5 dB from the setting; a closed gain that tracks the input level (the memoryless computer's ~8 dB per dB, A1) | CURVE |
+| G5 | **Attack and decay are exponential stages whose time constant is the setting.** Decay: measured t63 within 15 % of the setting at 10, 100, 1000 and 4000 ms. Attack: measured 10–90 % within 15 % of 2.197 × the setting at 1, 10, 100 and 1000 ms. At the fastest attack (0.01 ms) the gate reaches full open within **0.2 ms** at 48 kHz — inside one cycle of 5 kHz, so a transient's leading edge is not clipped | A time constant more than 15 % from the setting at any of the eight; a fastest attack slower than 0.2 ms | GAINTRACE |
+| G6 | **Peak detection.** A sine and a square of **equal peak** open the gate at thresholds within 0.5 dB of each other; the same pair at **equal RMS** open at thresholds about 3.0 dB apart (the square's crest advantage) | Equal-**RMS** material of different crest factors opening at the same threshold, which is what RMS detection gives | GAINTRACE level search |
+| G7 | **Duck inverts the sense.** Built with `duck=True`, the gain is 0.00 ± 0.05 dB below threshold and settles at the Range setting within 0.5 dB above it, at Range 0, −6, −20 and −40 dB, on the same attack/hold/decay envelope | A resting gain other than unity below threshold; a ducked gain more than 0.5 dB from the setting; an envelope that ignores Hold in Duck | CURVE; GAINTRACE |
 
 No characters: gate and duck are one mechanism under a switch, and G7 states
-the switch. G3–G5 are shared with `Expander` and must be demonstrated
-separately in each class's own evidence pack.
+the switch. G3–G5 are shared with `Expander` and are demonstrated separately
+in each class's own evidence pack.
 
-### Tier 3 — cost and latency
-
-Budget as a fraction of one stereo block's real-time deadline: ESP32-P4
-**6 %**, ESP32-S3 **12 %**. Lean patch expected: **no**.
-
-*(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
+**Tier 3.** Budget as a fraction of one stereo block's real-time deadline:
+ESP32-P4 **6 %**, ESP32-S3 **12 %**. Lean patch expected: **no** — the
+default build is one node. **Latency budget 0 samples**, met by the default
+build; the one latency-adding option is `lookahead_ms`, default 0.0 (§6).
 
 ## 4. Modeling approach on the palette
 
-`audiodynamics.Dynamics(DYN_GATE)` gives a per-sample peak follower, settable
-attack and release, and a VCA — the audio path and G6 for free, and G7 with two
-more nodes (§5). G1–G5 are out of reach, and each gap is measured, not argued:
+**One `audiodynamics.Dynamics(DYN_GATE)` with the gate machine on.** Every
+ask this seed filed landed in Phase 1 and is on the pin — `hold_ms`,
+`hysteresis_db`, `depth_db`, `sidechain_lp_hz`, `sidechain_poles`,
+`key_listen`, an external `key(sample)`, a `detector=` choice
+(`upstream-diff.md:969-1099`). Only duck mode did not land (§5).
 
-- **G1** — the follower has no trigger state: it is two coefficients and a …  *(argument in full: App. R)*
-- **G2** — there is no hold anywhere in the file; the envelope falls the
-  instant `level` drops below it (`:302`).
-- **G3** — `sidechain_hz` is one pole and one end, measured at 6.0/5.9/5.6 dB
-  per octave with the corner at the set frequency, and there is no key input
-  (`Expander.md` A4).
-- **G4** — the gate law is a *slope*, not a depth: `cut = over * 8.0f` clamped …  *(argument in full: App. R)*
-- **G7** — there is no duck mode in the enum (`audioif_dynamics.h:21-27`), but …  *(argument in full: App. R)*
+Two facts read out of the C at the pin, not recalled, shape the class. **The
+gate machine is on only when `hold_frames != 0`** (`audioif_dynamics.c:452`);
+below that the node is the old memoryless computer — the `over * 8.0f`
+slope, no hold, no one-shot — so the class always passes `hold_ms` and its
+Hold macro floors at 2 ms (96 frames at 48 kHz, 44 at 22.05 kHz) and the
+machine cannot be off by accident (measured, App. P1). And **`depth_db`
+positive means unset** (`:387-388`), so `range_db = 0.0` is a real setting
+giving a floor of exactly unity — this class's wire condition, a gate having
+no mix knob.
 
-*(More of §4 is in **App. R** — moved under the length rule, nothing deleted.)*
+**Duck by composition, and only when asked:** `Splitter(taps=2)` →
+[`Dynamics` → `Multiply` against a constant −32768] and the dry tap, both
+into a two-voice `Mixer` — `x − b·g·x`, with `b = 1 − 10^(Range/20)` carried
+in the node's own `makeup_db` so it is a float rather than the `Mixer`'s Q15
+voice level. Measured at 48 kHz, settled ducked gain at Range −6/−10/−20/−40:
+**−5.999 / −9.998 / −19.997 / −39.991 dB**, and below threshold a wire to
+1 LSB (App. P3). Cost argument: **App. R2**.
+
+**Tier: audioif.** `audiodynamics` is audioif's own module, not a
+CircuitPython port (`upstream-diff.md:661`). Python computes coefficients at
+construction and on a macro move; C runs the detector, the key filters, the
+four-stage machine and the VCA per sample.
 
 ## 5. Node asks
 
-All additive on `audiodynamics` (D1), each defaulting to today's behaviour so
-`dynamics_probe.py`'s hash is unchanged — the discipline `upstream-diff.md:837`
-records for this node's last two options.
+**All closed.** N-GATE-1 (hold and a committed attack), N-GATE-2 (a settable
+depth) and N-GATE-3 (a two-ended key band and an external key) landed in
+Phase 1 inside `audiodynamics`, where §8.1 recommended they go; N-GATE-5
+recorded that look-ahead already existed and pre-ramping was not asked for.
 
-- **N-GATE-1 — a gate envelope with hold and a committed attack (unblocks G1, …  *(argument in full: App. R)*
-- **N-GATE-2 — a settable depth (unblocks G4).** `depth_db`, default −80 for …  *(argument in full: App. R)*
-- **N-GATE-3 — a two-ended key band and an external key (unblocks G3).** …  *(argument in full: App. R)*
-- **N-GATE-4 — duck mode (unblocks G7).** A fifth mode, or a `duck=True` …  *(argument in full: App. R)*
+**N-GATE-4 (duck mode) did not land** and is not re-filed: the enum still has
+five modes and no duck (`audioif_dynamics.h:21-27`), and the seed's own
+palette verification refuted the ask, `Multiply` against a constant −32768
+being an exact sign flip (`audioif_multiply.c:38`). What the composition
+costs — 32 KB of `Splitter` ring, two extra nodes, and a **source-block
+ceiling of 8192 frames** (App. P3) — is a Tier 3 argument for a flag on the
+node, filed for a later phase, not a trait the palette cannot reach.
 
-*(More of §5 is in **App. R** — moved under the length rule, nothing deleted.)*
+## 6. Surface — settled
 
-## 6. Proposed surface
-
-Eleven macros; UNIPOLAR except the three toggles.
+**Eight macros**, every one a DS201 panel control.
 
 | # | Macro | Mode | Range | Generalizes |
 |---|---|---|---|---|
-| 0 | Threshold | UNIPOLAR | −80 … 0 dB | DS201 Threshold (−54 dB … ∞) |
-| 1 | Attack | UNIPOLAR | 0.01 … 1000 ms, log | DS201 Attack (10 µs … 1 s) |
-| 2 | Hold | UNIPOLAR | 2 … 2000 ms, log | DS201 Hold |
-| 3 | Release | UNIPOLAR | 2 … 4000 ms, log | DS201 Decay |
-| 4 | Range | UNIPOLAR | 0 … −80 dB | DS201 Range |
-| 5 | Key Low | UNIPOLAR | 25 … 4000 Hz, log | DS201 L.F. |
-| 6 | Key High | UNIPOLAR | 250 Hz … Nyquist, log | DS201 H.F. |
-| 7 | Key Listen | TOGGLE | off / on | DS201 Key Listen |
-| 8 | Duck | TOGGLE | gate / duck | DS201 Gate/Duck |
-| 9 | Lookahead | UNIPOLAR | 0 … 2 ms | no panel control; S2's technique, default 0 |
-| 10 | Hysteresis | UNIPOLAR | 0 … 12 dB | no panel control and **no source** — see §8; ships only if §8.2 finds one |
+| 0 | Threshold | UNIPOLAR | −80 … 0 dB | Threshold (−54 dB … ∞) |
+| 1 | Attack | UNIPOLAR | 0.01 … 1000 ms, log | Attack (10 µs … 1 s) |
+| 2 | Hold | UNIPOLAR | 2 … 2000 ms, log | Hold |
+| 3 | Release | UNIPOLAR | 2 … 4000 ms, log | Decay |
+| 4 | Range | UNIPOLAR | 0 … −80 dB | Range |
+| 5 | Key Low | UNIPOLAR | 25 … 4000 Hz, log | L.F. |
+| 6 | Key High | UNIPOLAR | 250 … 35000 Hz, log, clamped to 0.98 Nyquist | H.F. |
+| 7 | Key Listen | TOGGLE | off / on | Key Listen |
 
-Characters: none. Patches: **Tom Tighten**, **Gated Reverb** (long hold, fast
-decay), **Vocal Breath Trim** (shallow Range, wide key), **Amp Hiss** (key
-2–8 kHz, −80 Range), **Voice Over Duck**, **Drum Bleed** (key 100 Hz–1 kHz,
-short hold). Key Listen is a diagnostic and is off in every patch; Lookahead
-is 0 in every patch except **Kick First Cycle**, which sets 0.33 ms and says
-so in its name-adjacent docstring line.
+Three proposed macros left the surface and none is lost; the arguments are in
+**App. R2**. **Duck** became the construction option `duck=False` — gate
+versus duck is a wiring decision, and no level-only change turns a built duck
+graph back into a plain gate. **Lookahead** became `lookahead_ms=0.0`
+(0…50 ms), because `latency_samples` is a static class field and a macro that
+moved the latency could not be reported honestly (App. P2). **Hysteresis** is
+**struck** under this seed's own §8.2 rule, no source having been reached for
+any figure. Two further construction options, neither a control a performer
+moves: `key=None`, the Ext key jack, a borrowed second source the class never
+owns, resets or deinitialises and which starves the node if it runs dry
+first (`Dynamics.c:255-259`); and `key_poles=1`, one or two poles per end of
+the key band (5.29 and 10.31 dB/octave upstream), left at the node's default
+because neither source states the DS201's filter order.
+
+**Patches.** 0 **Default**, 1 **Tom Tighten**, 2 **Gated Reverb** (long hold,
+fast decay), 3 **Vocal Breath Trim** (shallow Range, wide key), 4 **Amp
+Hiss** (key 2–8 kHz, −80 Range), 5 **Drum Bleed** (key 100 Hz–1 kHz, short
+hold). Key Listen is off in every patch: it replaces the output, and no patch
+should hand a host a different signal.
+
+**`capabilities` = `()`.** A gated-reverb hold in bars is tempting and
+neither source's box has one; the class does not read the transport.
 
 ## 7. Defects in the current class the rebuild must not repeat
 
 - **No surface, and no docstring at all.** `MACRO_LABELS = ()` at
-  `dynamics.py:167`, `PATCHES = {0: ("Default", ())}` at `:169`, and the class
-  body at `:161-177` carries no docstring — the only dynamics class without
-  one. Threshold, attack and release (`:170-171`) are construction-only.
-- **No Range**, so the class inherits the node's fixed −80 dB clamp and cannot
-  offer the −15 dB setting S1 recommends for exactly the case a gate is most
-  often used in.
-- **No hold**, so the gate cannot make the gated-reverb sound the DS201's own
-  manual names as a headline use.
+  `dynamics.py:167`, `PATCHES = {0: ("Default", ())}` at `:169`, and the
+  class body at `:161-177` carries no docstring — the only dynamics class
+  without one. Threshold, attack and release (`:170-171`) are
+  construction-only.
+- **No Range**, so it inherits the node's fixed −80 dB clamp and cannot offer
+  the −15 dB setting S1 recommends for exactly the case a gate is most often
+  used in.
+- **No hold**, so it cannot make the gated-reverb sound the DS201's own
+  manual names as a headline use — and, on the landed node, no hold means the
+  four-stage machine is off entirely.
 - **The gate law is a slope and nothing says so.** A caller reading "noise
-  gate" gets ~8 dB of attenuation per dB below the knee (A1), which is an
-  expander at ratio 9, not a gate.
+  gate" gets ~8 dB of attenuation per dB below the knee (A1): an expander at
+  ratio 9.
 - **The threshold default is −50 dB** (`:170`) with no key filter, so on any
   real source the gate chatters on hum and hiss it cannot be told to ignore.
 
-## 8. Open questions
+## 8. Open questions — settled
 
-1. **Does N-GATE-1's state machine belong in `audiodynamics` or in a new
-   audioif-own node?** It is a bigger change than the last two options this
-   node took. *Phase 1 node design; the recommendation here is inside
-   `audiodynamics`, because it shares the detector, the side-chain and the
-   VCA.*
-2. **Hysteresis.** Every practitioner's account of gates names it and **no
-   source reached this run states a figure for any unit**, the DS201 included.
-   Macro 10 is provisional and ships only if Phase 0 or the implementation
-   session reaches a source; otherwise it is struck and the seed records why.
-   *Implementation session, Phase 2, with a source or not at all.*
-3. **Whether Key Listen belongs on a component's macro surface** or is a
-   diagnostic the host should reach another way — it changes what the output
-   *is*, which no other macro in this library does. *Implementation session.*
+1. **Where N-GATE-1's machine belongs.** *Settled by Phase 1:* inside
+   `audiodynamics`, as this seed recommended (`upstream-diff.md:1030-1040`).
+2. **Hysteresis.** *Settled: struck.* No source reached states a figure and
+   this session fetched none. §6 records it.
+3. **Whether Key Listen belongs on a macro surface.** *Settled: it stays, a
+   TOGGLE, off in every patch.* It does change what the output is, which no
+   other macro here does — but S1 says the position may simply be left there
+   to use the box as a filter, so it is a use and not only a diagnostic, and
+   the docstring says so in one line.
 4. **The DS201 schematic** exists on elektrotanya and was not obtained. No
-   trait depends on a component value, so this is a note for the survey.
-   *Arthur.*
-
+   trait depends on a component value. *Arthur's, for the survey; unchanged.*
 
 ## Appendix
 
@@ -277,6 +283,181 @@ looked right.** `synthio_block_slot_get_limited(&voice->level, 0.0, 1.0)`
 multiply, so a negative level is silently zero. The inversion has to come from
 `audiomath.Multiply`.
 
+### App. C — the four Tier 2 rows restated on 2026-09-07, with the arithmetic
+
+Written **before** the rebuild, from the sources and from
+`audioif/src/shared/audioif_dynamics.c` at the pin, not from any render of
+the rebuilt class. Nothing is deleted: each row's first draft is quoted here
+beside what replaced it and why.
+
+**G2 — which of S1's two Hold statements the class implements.** The audit
+flagged that S1 says Hold is "the amount of time the gate is held open after
+the signal falls below the Threshold" and, two paragraphs later, that "the
+Hold cycle starts as soon as the Threshold is crossed". *The first reading is
+picked*, because it is the one the landed node implements: HOLD is entered
+when the attack completes, `hold_left` **reloads** while the key stays above
+the hysteresis point and only decrements once it falls below
+(`audioif_dynamics.c:697-711`). The second statement is about the *envelope
+cycle* committing at the crossing, which is G1, not G2. The first draft's
+"the measured open time equals attack + hold + decay within 10 %" is struck:
+attack-to-full for a one-pole is about 6.9 time constants and decay-to-floor
+about 13.8, so the sum of the three *settings* is not the open time under any
+correct implementation and the row could not go green. Replaced by a clause
+that varies Hold alone and holds the open time to it.
+
+**G3 — the out-of-band clause.** The first draft asked that an out-of-band
+tone "swept from −60 dBFS to 0 dBFS moves the gain less than 1 dB off the
+Range floor at every level". No key filter of any order can do that: a
+one-pole at an octave outside gives about 6 dB of rejection, so a full-scale
+out-of-band tone still presents about −6 dBFS to the detector and opens any
+gate whose threshold is below that. The row is restated as the **shift in the
+opening level**, which is what a stopband actually is, is falsifiable (no
+filter gives 0 dB of shift), and is what the kit's level search measures.
+
+**G5 — the tolerance, and the fast end.** *Tolerance:* for a one-pole whose
+coefficient is `1 − exp(−1000/(ms·rate))` (`audioif_dynamics.c:9-14`) the
+setting is the **time constant**; the 10–90 % transition is
+`ln(9) = 2.197` time constants. The first draft's "the measured 10–90 %
+transition is within 15 % of the setting" is therefore 120 % out by
+construction. Restated: decay by its t63 (which the kit exports directly) and
+attack by 10–90 % against 2.197 × the setting. *Fast end:* the first draft
+asked for "one sample or less" at settings below one sample period. At the
+panel's fastest, 10 µs, the coefficient is
+`1 − exp(−1000/(0.01·48000)) = 0.876`, so the gain runs 0.876, 0.985, 0.998
+and reaches the machine's 0.999 snap on the seventh sample — 0.146 ms. One
+sample is unreachable for any setting above about 1.25 µs, where the
+coefficient rounds to 1.0 in `float`. Restated against S1's own claim for the
+control ("ensures that the gate does not clip the leading edge of extremely
+fast transients") as **full open within 0.2 ms at 48 kHz**, one cycle of
+5 kHz.
+
+**G4 and G7 — the ends of their spans.** G4 keeps −80 dB because the node's
+`depth_db` reaches it exactly. G7 is stated to −40 dB rather than −80: the
+composed duck subtracts two nearly equal int16 streams, so its floor is the
+subtraction's own quantisation and not the setting. Measured this session,
+App. P3.
+
+### App. P — probes run 2026-09-07, before the rebuild
+
+CPython, `audiocomponents/.venv/bin/python` with audioif at the pin
+`2f6cbc3`, 48 kHz, stereo, 16-bit, driving the **nodes** rather than any
+class. Scripts under the session's scratch directory; the numbers are quoted
+in §4 and §6.
+
+**P1 — the gate machine is on only when `hold_frames != 0`.** A 1 kHz sine at
+0.5 amplitude (peak −6.02 dBFS) into `DYN_GATE`, threshold −6 dB, attack
+1 ms, release 50 ms, `depth_db=-40`, settled gain of the last block against
+the source:
+
+```
+hold_ms=  0.0 settled gain  -3.58 dB  gain_reduction_db -3.47
+hold_ms=  2.0 settled gain -40.04 dB  gain_reduction_db -40.00
+hold_ms= 20.0 settled gain -40.04 dB  gain_reduction_db -40.00
+```
+
+At `hold_ms=0` the node is the memoryless computer and its `over * 8.0f`
+slope; at 2 ms and above it is the four-stage machine and `depth_db` is an
+exact floor.
+
+**P1b — the one-shot, and its planted-fault shape.** A 1 ms full-scale 1 kHz
+burst then silence, threshold −20 dB, attack 200 ms, `depth_db=-80`:
+
+```
+hold_ms=20  gains at blocks 0,10,50,100,150,179:
+            -31.60  -11.89  -2.58  -0.61  -0.16  -0.07 dB
+            max -0.07 dB at block 179
+hold_ms=0   max -80.00 dB   (the gate never opens at all)
+```
+
+**P2 — latency is the look-ahead and nothing else.** One full-scale sample at
+frame 100 of an 8192-frame stereo probe, gate forced open:
+
+```
+lookahead_ms=0.0 -> impulse out at frame 100 (delay  0)
+lookahead_ms=1.0 -> impulse out at frame 148 (delay 48)
+lookahead_ms=2.0 -> impulse out at frame 196 (delay 96)
+```
+
+48 frames is exactly 1.000 ms at 48 kHz.
+
+**P2b — Key Listen replaces the output.** A 220 Hz tone at 0.5 amplitude with
+the key high-passed at 4 kHz: `key_listen=True` peaks at **684**, the
+ordinary output at **16384**.
+
+**P3 — the composed duck, and the Splitter's source-block ceiling.**
+`Splitter(taps=2)` → [`Dynamics(DYN_GATE)` → `Multiply` against a constant
+−32768] and the dry tap into a two-voice `Mixer` at level 1.0 each, with
+`b = 1 − 10^(Range/20)` in the node's `makeup_db`. Loud material (gate open,
+so the duck is at its depth):
+
+```
+Range   -6.0 dB -> settled  -5.999 dB
+Range  -10.0 dB -> settled  -9.998 dB
+Range  -20.0 dB -> settled -19.997 dB
+Range  -40.0 dB -> settled -39.991 dB
+Range  -60.0 dB -> settled -59.679 dB
+Range  -80.0 dB -> settled -78.268 dB
+```
+
+The last two are the int16 subtraction's own floor, not the `Mixer`'s Q15
+level, which the `makeup_db` route bypasses: subtracting `0.9999·x` from `x`
+leaves about one LSB. G7 is stated to −40 dB for that reason.
+
+Below threshold, with the source re-blocked to 256 frames through a
+transparent `audiofilters.Filter` adapter (the renderer's own device):
+`max |out − dry| = **1 LSB**` over 28 672 samples, **−0.0005 dB**.
+
+The same test with the probe handed straight from a 24 000-frame
+`audiocore.RawSample`, whose `get_buffer` returns the whole array in one
+call: `max |out − dry| = **28 377 LSB**`. That is the `Splitter`'s
+8192-frame ring being lapped (`audioif_splitter.h:20`) — the same failure
+`MultibandCompressor.md` A-M5 records — and it is why §5 states an
+8192-frame source-block ceiling for the duck build. The plain gate build has
+no `Splitter` and no ceiling.
+
+### App. R2 — prose moved out of §§1–6 on 2026-09-07
+
+*(from §1)* The fuller reading of S1, kept verbatim where §1 now paraphrases:
+Bypass "routes the input signal to the output with no processing"; the
+schematic sheet is titled "DS 201 (Fig.1) Audio and VCA Circuits" and the
+setting-up procedure probes the "output of V.C.A. op. amp channel 1" (S5), so
+the gain element is a VCA and that is sourced. Attack: "the fastest Attack
+time ensures that the gate does not clip the leading edge of extremely fast
+transients". Hold: "the amount of time the gate is held open after the signal
+falls below the Threshold … instrumental in creating the classic gated reverb
+sound". Range: "the amount of attenuation applied to the input signal when
+the gate is closed, variable from 0 dB to −80 dB". Key Listen: the manual
+notes it can simply be left there to use the box as a filter.
+
+*(from §6)* **Why Duck is a construction option and not macro 8.** A live
+toggle needs the `Splitter`, `Multiply` and `Mixer` built on every instance —
+32 KB of ring, two extra nodes on the audio path and the 8192-frame source
+ceiling of App. P3, paid by every plain gate — or a graph rebuilt inside
+`_apply_macro`. Neither is acceptable, and there is no third way: the `Mixer`
+clamps a voice level to 0…1 before its Q15 multiply (`Mixer.c:332`) so it
+cannot subtract, and `Multiply` against +32767 is not a wire — 32767/32768 is
+the WIRE planted fault exactly. Gate versus duck is a wiring decision and it
+is taken at construction.
+
+*(from §6)* **Why Lookahead is a construction option and not macro 9.**
+`_component.Component.latency_samples` reads `type(self).LATENCY_SAMPLES`, a
+class field, so two instances of one class cannot report different latencies
+and a macro that moved the latency would be reported wrongly by every host
+that asked. The class overrides the property to report its own instance's
+figure, declares `LATENCY_SAMPLES = 0` for the default build, and takes the
+option at construction where a host can read the answer once and route around
+it. S2's numbers stand behind the default: a look-ahead of 16 samples
+(333 µs at 48 kHz) "allow[s] accurate reproduction of signals at or above
+750 Hz" and 96 samples (2 ms) is "somewhere around" the live-sound limit.
+
+*(from §6)* **Why Hysteresis is struck.** §8.2 of this seed set the rule
+before any of this was built: the macro "ships only if Phase 0 or the
+implementation session reaches a source; otherwise it is struck and the seed
+records why". Neither manual edition uses the word, RaneNote 155 gives no
+figure for any unit, and Station A forbids fetching. The node's
+`hysteresis_db` exists and defaults to 0.0; the class does not set it and
+claims nothing about it.
+
 ### App. I — Tier 1 invariants, the standard block
 
 Verbatim from vision §3, moved out of §3 under the length rule. It is the
@@ -335,12 +516,14 @@ of what each source gave and how its licence reads is here.
 | **S4** Drawmer, *DS201 Operator's Manual*, the manufacturer's own current edition, 14 pp. | The same control descriptions, and **two values that differ from S1's 2005 capture**: Threshold "-50dBFs - infinate" and Range "0dB - 90dB". Also an explicit copyright line, and a block diagram on p. 14 (an image, not extracted) | "This manual is copyrighted © 2008 by Drawmer Electronics, Ltd. With all rights reserved. Under copyright laws, this manual may not be duplicated in whole or in part without the written consent of Drawmer." Read only | <https://www.drawmer.com/uploads/manuals/ds201_operators_manual.pdf> | yes — PDF fetched (HTTP 200, 14 pp.), text via `pypdf`; **added by the audit run**, where the first run had recorded this URL as unreachable |
 | **S5** Drawmer, *DS201 Service Information* (7 pp.) and *DS201 Comp Sch* (3 pp.) — the manufacturer's own service documents, reached as `elektrotanya.com`'s own preview page images (first two pages of each) | Two legible hand-drawn Drawmer sheets with component values: "DS 201 (Fig.1) Audio and VCA Circuits" (signal and key inputs, Int/Ext key source, Threshold, Range, By-Pass/Key Listen, control voltage, "All Op. Amps. TL072 or LF353") and "DS 201 (Fig. 2) Rectifier. Attack, Hold, Decay Circuits"; and a setting-up procedure naming the "output of V.C.A. op. amp channel 1" and a "F.e.t. bias pre-set". **Used here for one fact only: the gain element is a VCA.** | The drawings are Drawmer's, under S4's all-rights-reserved notice; the host's own terms read "Please do not offer the downloaded file for sell only use it for personal usage" — **personal use only**. Read as a document (vision §5); nothing reproduced, no component value carried into a trait | <https://elektrotanya.com/drawmer_ds201_comp_sch.pdf/download.html> (preview images under `/PREVIEWS/63463243/23432455/drawmer/`) | yes — preview images fetched (HTTP 200) and read; the full PDFs were **not** obtained. Added by the audit run |
 
-### App. T — Tier 2 rows, in full
+### App. T — Tier 2 rows: the sources, the confidence, and the pre-freeze drafts
 
-Moved here under the length rule. The trait statement, its disconfirmation
-and its measurement stay in §3 in full — they are what the gate checks; the
-source reading and the confidence reasoning sit here behind each row's
-cell-level `App. <id>` reference.
+Two things live here. **The Source and Conf. columns are live** — §3 dropped
+them under the length rule and this is where they are read. **The trait
+statements below are the seed's pre-freeze drafts**, superseded by §3 as of
+the freeze of 2026-09-07 and kept unchanged under "delete nothing"; where a
+row here and §3 disagree, §3 is the frozen trait and **App. C** carries the
+arithmetic for the change. G1, G4 and G6 are unchanged between the two.
 
 | # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Meas. |
 |---|---|---|---|---|---|
