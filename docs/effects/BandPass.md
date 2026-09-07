@@ -5,9 +5,13 @@ for §7, and not otherwise consulted.
 **Family / phase:** EQ / Filter, roadmap Phase 2
 **Standout:** none, per vision §4.2 — **confirmed** (§2).
 **Grade:** design
-**Portability tier:** stock CircuitPython (`audiofilters.Filter` +
-`synthio.Biquad`), with the stock-board caveat in §4.
-**Status:** seed (Phase 0)
+**Portability tier:** **audioif** — `REQUIRES = ("audiobiquad",)`. The seed
+proposed stock (`audiofilters.Filter` + `synthio.Biquad`); Phase 1 granted the
+DC-clean biquad A3 routed to Gate 0, and §4 records the move with its
+measurements. The stock reading is kept, unchanged, in App. R.
+**Status:** **traits frozen 2026-09-07** for the Phase 2 rebuild (was: seed,
+Phase 0). Sections 1–8 are the five-minute read; every figure moved out of
+them sits in an appendix, and nothing has been deleted.
 
 ## 1. The circuit, in one paragraph
 
@@ -54,60 +58,127 @@ The standard block, verbatim from vision §3, is in **App. I** — moved there u
 
 ### Tier 2 — circuit traits
 
-| # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Measurement (kit) |
-|---|---|---|---|---|---|
-| T1 | **0 dB peak, at every Q**: the gain at f₀ is 0.00 dB ± 0.05 for every Q from 0.1 to 100 — narrowing the band does not change the level of what passes | S1 ("constant 0 dB peak gain" form) … (App. T1) | high | any Q in 0.1…100 whose gain at f₀ is more than 0.05 dB from 0 | steady-state sine at f₀ for Q ∈ … (App. T1) |
-| T2 | **Width is f₀/Q**: the −3 dB points sit at `f₀·(√(1+1/4Q²) ∓ 1/2Q)`, so their difference is exactly f₀/Q — at f₀ 1 kHz, Q 2 that is 780.8 Hz and 1280.8 Hz | S3 (Q = f₀/bandwidth) … (App. T2) | high | either predicted edge reading outside −3.0 ± 0.15 dB, for any Q in 0.5…16 | swept sine; the two −3 dB … (App. T2) |
-| T3 | **Exact zeros at DC and Nyquist**: the numerator `(α, 0, −α)` vanishes at `z = ±1`, so a DC offset and a Nyquist-rate alternation both produce exactly zero, at every f₀ | S1 (BPF numerator), verified analytically | high | a settled output that is not bit-exactly zero for a held DC offset, at any f₀ ≥ 20 Hz | DC step, and a ±FS alternating … (App. T3) |
-| T4 | **±6 dB/oct skirts, and the two skirts do not have the same span**: the **low** skirt is +6.005 dB/oct fitted over f₀/8…f₀/4 at every f₀ from 20 Hz to 2 kHz, and at f₀/100 with Q 0.707 the gain is −37.0 ± 0.1 dB at every f₀ (the 1/Q·(f/f₀) law: 0.01/0.707 = −37.0 dB). The **high** skirt is −6.0 ± 0.3 dB/oct fitted over 4f₀…8f₀ only while **f₀ ≤ 600 Hz at 48 kHz** — −6.226 dB/oct at 600 Hz, −6.309 at 700, −6.653 at 1 kHz, −9.531 at 2 kHz — because 8f₀ runs into the bilinear compression toward Nyquist; above that span the claim is the closed form itself | S1, derived analytically; measured −37.07 dB (A6); both spans re-derived from S1 in A12 | high | low skirt outside +(5.7…6.3) dB/oct at any f₀ ≤ 2 kHz, or \|H(f₀/100)\| outside −37.0 ± 0.1 dB at any f₀; high skirt outside −(5.7…6.3) dB/oct at any f₀ ≤ 600 Hz; or, at any f₀, a rendered point more than 0.1 dB from S1's closed form | swept sine, low skirt fitted f₀/8…f₀/4 at f₀ ∈ {100, 500, 1 k, 2 k} Hz, high skirt fitted 4f₀…8f₀ at f₀ ∈ {100, 250, 500, 600} Hz, and the whole sweep differenced against the closed form at f₀ ∈ {1 k, 2 k} Hz |
-| T5 | **Geometric symmetry — about the *prewarped* centre**: folded about f_a0 on the bilinear-warped axis `f_a = (F_s/π)·tan(πf/F_s)`, the response at f_a0·r equals the response at f_a0/r to **0.00000 dB** for every r in 1…8 and every f₀ from 20 Hz to 0.1·F_s — the symmetry is exact, on the right axis. Folded about f₀ on the *linear* axis it holds within 0.1 dB only while the upper probe f₀·r stays below about 0.06·F_s (≈ 2.9 kHz at 48 kHz): at f₀ = 1 kHz, r = 8 the two sides differ by 0.824 dB, and at f₀ = 0.1·F_s r = 8 is above Nyquist and cannot be probed at all — which is what the old "f₀ ≤ 0.1·F_s" qualifier hid | S4 §4.6 p. 114, verbatim: *"the result of the … (App. T5) | high (was medium … (App. T5) | on the warped axis, any r in 1…8 at any f₀ ≤ 0.1·F_s where the two gains differ by >0.05 dB; on the linear axis, any r whose upper probe is below 0.06·F_s and whose two gains differ by >0.1 dB | swept sine, response resampled … (App. T5) |
-| T6 | **Rate-honest — against the closed form at the running rate, not against the 48 kHz curve**: at 44.1 kHz and 22.05 kHz the centre stays at f₀ within 0.1 %, T1's 0 dB peak and T2's f₀/Q edges hold to their own tolerances, and the rendered response matches S1's closed form **evaluated at the running rate** within 0.1 dB up to 0.45·F_s. The 48 kHz *curve* is not required to repeat: at 22.05 kHz the same f₀ sits up to 0.23 dB from its 48 kHz shape even below 2205 Hz, at every f₀ from 31.5 Hz to 2 kHz — so the old 0.1 dB cross-rate band was unreachable at any centre, and reaching it would mean the filter was wrong at one of the two rates | S1 (the BLT prewarps f₀ at whatever rate is … (App. T6) | high | centre displaced >0.1 %, T1 or T2 outside its own tolerance at either rate, or any swept point more than 0.1 dB from the closed form **at that rate** | the T1, T2 and T4 measurements at … (App. T6) |
+The source reading and the confidence call for every row are in **App. T**,
+where that appendix's own rule puts them.
+
+| # | Trait (falsifiable as stated) | Disconfirmed by | Measurement (kit) |
+|---|---|---|---|
+| T1 | **0 dB peak, at every Q**: the gain at f₀ is 0.00 dB ± 0.05 for every Q from 0.1 to 100 — narrowing the band does not change the level of what passes | any Q in 0.1…100 whose gain at f₀ is more than 0.05 dB from 0 | steady-state sine at f₀ for Q ∈ … (App. T1) |
+| T2 | **Width is f₀/Q**: the −3 dB points sit at `f₀·(√(1+1/4Q²) ∓ 1/2Q)`, so their difference is exactly f₀/Q — at f₀ 1 kHz, Q 2 that is 780.8 Hz and 1280.8 Hz | either predicted edge reading outside −3.0 ± 0.15 dB, for any Q in 0.5…16 | swept sine; the two −3 dB … (App. T2) |
+| T3 | **Exact zeros at DC and Nyquist**: the numerator `(α, 0, −α)` vanishes at `z = ±1`, so a DC offset and a Nyquist-rate alternation both produce exactly zero, at every f₀ | a settled output that is not bit-exactly zero for a held DC offset, at any f₀ ≥ 20 Hz | DC step, and a ±FS alternating … (App. T3) |
+| T4 | **±6 dB/oct skirts, and the two skirts do not have the same span**: the **low** skirt is +6.005 dB/oct fitted over f₀/8…f₀/4 at every f₀ from 20 Hz to 2 kHz, and \|H(f₀/100)\| is −37.0 ± 0.1 dB at every f₀ at Q 0.707 (the 1/Q·(f/f₀) law). The **high** skirt is −6.0 ± 0.3 dB/oct over 4f₀…8f₀ only while **f₀ ≤ 600 Hz at 48 kHz** — above that, 8f₀ runs into the bilinear compression and the claim is the closed form itself … (App. T4) | low skirt outside +(5.7…6.3) dB/oct at any f₀ ≤ 2 kHz, or \|H(f₀/100)\| outside −37.0 ± 0.1 dB at any f₀; high skirt outside −(5.7…6.3) dB/oct at any f₀ ≤ 600 Hz; or, at any f₀, a rendered point more than 0.1 dB from S1's closed form | swept sine, low skirt fitted f₀/8…f₀/4 … (App. T4) |
+| T5 | **Geometric symmetry — about the *prewarped* centre**: folded about f_a0 on the bilinear-warped axis `f_a = (F_s/π)·tan(πf/F_s)`, the response at f_a0·r equals the response at f_a0/r to **0.00000 dB** for every r in 1…8 and every f₀ from 20 Hz to 0.1·F_s. On the *linear* axis it holds within 0.1 dB only while f₀·r stays below about 0.06·F_s … (App. T5) | on the warped axis, any r in 1…8 at any f₀ ≤ 0.1·F_s where the two gains differ by >0.05 dB; on the linear axis, any r whose upper probe is below 0.06·F_s and whose two gains differ by >0.1 dB | swept sine, response resampled … (App. T5) |
+| T6 | **Rate-honest — against the closed form at the running rate, not against the 48 kHz curve**: at 44.1 kHz and 22.05 kHz the centre stays at f₀ within 0.1 %, T1's peak and T2's edges hold to their own tolerances, and the rendered response matches S1's closed form **evaluated at the running rate** within 0.1 dB up to 0.45·F_s. The 48 kHz *curve* is not required to repeat … (App. T6) | centre displaced >0.1 %, T1 or T2 outside its own tolerance at either rate, or any swept point more than 0.1 dB from the closed form **at that rate** | the T1, T2 and T4 measurements at … (App. T6) |
 
 No characters: a band-pass has one behaviour.
 
+**Every row above is stated at Slope = 1 section**, patch 0's setting. At
+Slope = 2 sections T1, T2, T3, T5 and T6 hold unchanged (§4's Q compensation
+keeps T2's width) and **only T4's slope figure doubles** — ±12 dB/oct, and
+\|H(f₀/100)\| = −74.0 dB. A slope switch, not a second character.
+
 ### Tier 3 — cost and latency
+
+**Latency: zero**, at every rate and every setting, and no option this class
+offers adds any. `latency_samples` = 0, held to the measured click delay at
+48 kHz and 44.1 kHz (A8; Station C's CLICK).
+
+**Tail: the ring time, reported from the build**, because a band-pass *is* a
+resonator and its tail is a function of both knobs: `ceil(4·Q·F_s/f₀)` samples
+for one section, `ceil(6·Q·F_s/f₀)` for two (App. R). The surface's widest
+setting — Q 32 at 20 Hz, 48 kHz — is 307 200 samples, 6.4 s, and that is the
+class-level `TAIL_SAMPLES` upper bound; the instance property narrows it to
+the settings in force.
+
+**Tier 3 budget** (fraction of one stereo block's real-time deadline):
+P4 ≤ 2.5 % / S3 ≤ 8 % at Slope = 1, P4 ≤ 4 % / S3 ≤ 13 % at Slope = 2. Lean
+patch expected: **no** — patch 0 *is* the lean path. Basis and its
+arithmetic: App. R. **Desktop-derived; neither board has been measured.**
 
 *(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
 
 ## 4. Modeling approach on the palette
 
-One `synthio.Biquad` in `BAND_PASS` mode inside one `audiofilters.Filter`.
-The node implements exactly RBJ's constant-0 dB form
-(`audioif_biquad.c:83`: `b0 = alpha; b1 = 0; b2 = -b0`), and measured
-against the closed form it lands within **0.003 dB** across the band and
-within 0.002 dB of 0 dB at the peak for Q from 0.1 to 100 (A1, A2); an
-independent re-measurement on 2026-09-07 read **0.001 dB** across the band and
-+0.0002 dB at the peak for Q 0.1…16, −0.0017 dB at Q 100 (`LowPass.md` A14).
-`frequency` and `Q` are `synthio` block slots that C ticks
-(`Filter.c:281`); Python runs nothing per block.
+**One `audiobiquad.Biquad` in `BAND_PASS` mode per section**, playing the
+source directly — audioif's float-state biquad, not the ported Q15 one.
+`frequency`, `Q` and `mix` are `synthio` block slots the kernel reads once per
+chunk, so Python runs nothing per block, and the node carries the same RBJ
+constant-0 dB numerator the seed measured on the stock palette (`b2 = −b0`,
+`b1 = 0`; `gain_db` discarded in this mode — A14).
+
+**Why the tier moved from stock to audioif.** Tier 1's *silence in, silence
+out; the tail reaches exact zero* is **red on the stock palette**, and this
+seed routed it to Gate 0 rather than working round it (A3, §5). Gate 0's
+answer landed in Phase 1 — `audiobiquad`, float state with a 1e-20 flush
+(`upstream-diff.md:1953`) — and on it the same probe reads **0 LSB at every
+f₀/Q the surface allows**, where `synthio.Biquad` holds −1 LSB for ever at
+80 Hz Q 4 (A14). It also removes A9's `Filter.c:234` divergence in
+`(0, 0.01]`: this kernel crossfades with no bypass threshold
+(`audioif_filter_f32.c:222-223,239`), and `mix = 0` is **byte-identical to the
+source** (A14) — Tier 1's wire test, exactly.
+
+**Steeper skirts** are a second identical section in series, with the
+requested Q compensated so T2's width still holds:
+**Q_used = Q_requested · √(√2 − 1) = 0.643594 · Q**. The seed's App. R says
+"dividing … by √(√2 − 1)", the reciprocal, which narrows the band to 206.1 Hz
+where 500.0 Hz was asked for (A14). Corrected here.
+
+**Mix rides on both sections** — `section2.mix` is the same `m` when Slope is
+on and `0` when it is off — which is what makes `mix = 0` a wire in *both*
+settings. Slope off is the exact linear dry/wet `(1−m)x + m·H(x)`; Slope on is
+that mixed section run twice, `((1−m)I + mH)²x`, because per-section
+crossfades cannot cancel their own cross terms. The docstring says so.
+
+**No trim macro.** The seed proposed one as a shelf pair; dropped on two
+measurements (A14). A shelf is **not** bit-transparent at 0 dB (3 586 of
+4 096 samples differ, up to 8 LSB), so an always-present trim node forfeits
+the wire invariant; and one shelf is flat only to 0.02–0.21 dB, so the flat
+version is the *pair* — two more float sections, which is where the S3 budget
+goes.
+
+*Mono:* identical filter, measured exact (A4).
 
 *(More of §4 is in **App. R** — moved under the length rule, nothing deleted.)*
 
 ## 5. Node asks
 
-**None.** Every Tier 2 trait is reachable on the stock palette, and §4 shows
-how.
+**None new, and the one this seed made was granted.** The ask it routed to
+Gate 0 — a DC-clean biquad in an audioif-own module (A3; §5's full paragraph
+in App. R) — is on the pin as `audiobiquad.Biquad`, and §4 records the
+measurement that says it answers. Every Tier 2 trait is reachable on that
+palette; nothing here needs a node audioif does not have.
 
 *(More of §5 is in **App. R** — moved under the length rule, nothing deleted.)*
 
-## 6. Proposed surface
+## 6. Surface — frozen 2026-09-07
 
-| # | Label | Mode | Range | Generalizes |
+| # | Label | Mode | Engineering span | Generalizes |
 |---|---|---|---|---|
-| 0 | Frequency | UNIPOLAR | 20 Hz … min(16 kHz, 0.4·F_s), log | the centre-frequency knob |
+| 0 | Frequency | UNIPOLAR | 20 Hz … 16 kHz, log; clamped to `min(16 kHz, 0.4·F_s)` at the running rate | the centre-frequency knob |
 | 1 | Width | UNIPOLAR | Q 0.5 … 32, log; displayed as bandwidth f₀/Q | the bandwidth/Q knob |
 | 2 | Slope | TOGGLE | 1 section (default) / 2 sections | a filter bank's skirt switch |
-| 3 | Mix | UNIPOLAR | 0 exactly … 1; values in (0, 0.01] snap to 0 | a dry/wet blend, kept because Tier 1's wire test needs it |
-| 4 | Trim | BIPOLAR | −12 … +12 dB, default 0 | make-up for a narrow band |
+| 3 | Mix | UNIPOLAR | 0 … 1, linear; 0 is a byte-exact wire | a dry/wet blend, kept because Tier 1's wire test needs it |
 
-`capabilities = ()`: nothing in a band-pass is measured in beats (D10,
-answered).
+Four macros, not the seed's five: **Trim is dropped** (§4). The 16 kHz span
+top is a class constant and the `0.4·F_s` ceiling is applied per instance, so
+a 22.05 kHz graph gets 8 820 Hz at the top of the knob rather than a
+`ValueError`. The seed's five-macro proposal is kept verbatim in App. R.
 
-Patches: 0 **Wide Mid** (1 kHz, Q 0.707, 1 section — the constructor's
-defaults on the grid), 1 **Telephone** (1.4 kHz, Q 1.2, 2 sections),
-2 **Snare Crack** (200 Hz, Q 2, 1 section), 3 **Presence Window** (4 kHz,
-Q 1.5, 1 section), 4 **Narrow Probe** (1 kHz, Q 24, 1 section, −6 dB trim),
-5 **Sub Window** (60 Hz, Q 3, 2 sections).
+`capabilities = ()`: nothing in a band-pass is measured in beats — the class
+never reads `self._transport()` (D10, answered).
+
+Patches, on the 0-127 grid, `(Frequency, Width, Slope, Mix)`:
+
+| # | Name | Grid | What it is |
+|---|---|---|---|
+| 0 | Wide Mid | (74, 11, 0, 127) | 983 Hz, Q 0.72 — the constructor's defaults (1 kHz, Q 0.707) on the grid |
+| 1 | Telephone | (81, 27, 127, 127) | 1 421 Hz, Q 1.21, 2 sections — the handset band |
+| 2 | Snare Crack | (44, 42, 0, 127) | 203 Hz, Q 1.98 — a snare's body, isolated |
+| 3 | Presence Window | (101, 34, 0, 127) | 4 072 Hz, Q 1.52 — the presence band a host can ride |
+| 4 | Narrow Probe | (74, 118, 0, 127) | 983 Hz, Q 23.8 — a resonant probe (the seed's −6 dB trim goes with the dropped macro) |
+| 5 | Sub Window | (21, 55, 127, 127) | 60 Hz, Q 3.03, 2 sections — the sub band, steep-sided |
+
+**Latency budget 0 samples; Tier 3 budget in §3.**
 
 ## 7. Defects in the current class the rebuild must not repeat
 
@@ -128,20 +199,26 @@ From one read of `lib/audioeffects/eq.py`.
 
 *(More of §7 is in **App. R** — moved under the length rule, nothing deleted.)*
 
-## 8. Open questions
+## 8. Open questions — settled 2026-09-07
 
-1. **Gate 0's biquad answer** (§5). *Settled by:* Phase 0 Gate.
-2. **Whether Width should be exposed as Q or as bandwidth in octaves.** RBJ
-   gives the octave form its own α (`alpha = sin(w0)*sinh(ln(2)/2 * BW *
-   w0/sin(w0))`, S1, verbatim), which is what a graphic-EQ-minded host
-   expects; Q is what a synth-minded host expects. The macro can display one
-   and store the other. *Settled by:* the implementation session at Phase 2.
-3. **Whether the two-section setting should be two identical band-passes or
-   a low-pass/high-pass pair.** The pair gives independent edges and would
-   need two macros. *Settled by:* the implementation session.
+1. **Gate 0's biquad answer** (§5). **Settled:** granted. Phase 1 landed
+   `audiobiquad.Biquad` and the class is built on it, so the tier is
+   **audioif**, `REQUIRES = ("audiobiquad",)` (§4).
+2. **Width as Q or as bandwidth in octaves.** **Settled: store Q, label the
+   knob *Width*, display the bandwidth f₀/Q** — the seed's own "display one
+   and store the other". Q is what T2 is stated in and what the node takes;
+   the octave form needs RBJ's second α and a second measurement for the same
+   curve.
+3. **Two identical band-passes, or a low-pass/high-pass pair.** **Settled:
+   two identical band-passes.** The pair needs two macros (the seed's own
+   objection) and would break T2 — two independently moving edges have no
+   f₀/Q width to state — and T5, whose symmetry belongs to the band-pass
+   prototype and not to an arbitrary LP/HP product. The identical pair keeps
+   T1, T2, T3, T5 and T6 as stated and moves only T4's slope figure.
 
----
-
+Nothing in §§1–7 is left open. Not settled here, and belonging to a run:
+both Tier 3 budget cells (no board measured) and every Tier 2 verdict
+(Station C).
 
 ## Appendix
 
@@ -426,6 +503,107 @@ the whole simple-filter unit. What it changed here:
   corrected in §4.
 - **No node ask survives or arises here.** §5's "None" stands.
 
+### A14. Class-builder pass, 2026-09-07 — the palette move and the surface
+
+Run on this machine at branch `effects/p2-bandpass`, interpreter
+`audiocomponents/.venv/bin/python` (CPython 3.12, audioif pin `2f6cbc3`,
+numpy 2.5.2), 48 000 Hz, stereo, `audiobiquad` unless the row says otherwise.
+Every number below is from this run; the probes are scratch scripts and each
+row states what reproduces it.
+
+**1. `mix = 0` is a byte-exact wire.** 440 Hz at level 12 000, 4 096 samples
+compared against the same source rendered alone:
+
+```
+mix=0  compared 4096 samples, differing 0, max |d| 0
+```
+
+Tier 1's wire test, met exactly, and it is the reason Mix stays on the
+surface. `audioif_filter_f32.c:222-223,239` is a straight crossfade
+(`dry = 1.0f - mix`; `out[index] = to_s16(dry * x0 + mix * y0)`) with **no
+`mix <= 0.01` bypass**, so A9's cross-target divergence does not arise on this
+node.
+
+**2. The held-DC residual is gone.** A3's probe, unchanged — 0.09 s of 440 Hz
+then 3.0 s of zeros, read strictly inside a source still supplying silence,
+peak over the last 1 024 frames:
+
+```
+dc  f0=80      q=4     last-1024-frame peak 0 LSB
+dc  f0=1000    q=0.707 last-1024-frame peak 0 LSB
+dc  f0=40      q=8     last-1024-frame peak 0 LSB
+dc  f0=20      q=32    last-1024-frame peak 0 LSB
+```
+
+A3 read −1 LSB at `f0=80 q=4` on `synthio.Biquad` and reproduced it again in
+A13. On `audiobiquad` every one of the four is exact zero, including the
+corner of the frozen surface (Q 32 at 20 Hz).
+
+**3. The trim stage is not bit-transparent at 0 dB.** A single `HIGH_SHELF`,
+`gain_db = 0`, against its own source:
+
+```
+shelf 0 dB corner 5: differing 3586 of 4096, max |d| 8
+shelf 0 dB corner 20: differing 2784 of 4096, max |d| 6
+```
+
+and a single shelf is not flat enough to be a trim on its own — worst
+deviation from the requested gain over 20 Hz…20 kHz, from the node's own
+`coefficients`:
+
+```
+shelf corner 2     gain  -12.0 dB: worst deviation 0.1673 dB
+shelf corner 5     gain  -12.0 dB: worst deviation 0.0246 dB
+shelf corner 5     gain   -6.0 dB: worst deviation 0.1663 dB
+shelf corner 10    gain  -12.0 dB: worst deviation 0.8601 dB
+shelf corner 20    gain  -12.0 dB: worst deviation 6.0402 dB
+```
+
+Both readings point the same way: an always-present trim node costs the wire
+invariant, and the flat version is the *pair*, two more sections. Trim is
+dropped (§4, §6).
+
+**4. Desktop cost, like for like.** Two seconds of audio per row, one build
+per row, ns per stereo frame against the 20 833 ns real-time budget:
+
+```
+audiofilters.Filter(filter=None)           19.8 ns/stereo frame   0.10 %
+stock synthio.Biquad in a Filter           36.2 ns/stereo frame   0.17 %
+audiobiquad.Biquad x1                      61.0 ns/stereo frame   0.29 %
+audiobiquad.Biquad x2                      90.0 ns/stereo frame   0.43 %
+```
+
+These are **not** comparable with A7's 146.6 ns — a different session on a
+different machine state — which is why the stock build was re-measured here
+beside the new one. The ratio, 1.69× and 2.49× over the stock single section,
+is what §3's Tier 3 budget scales the seed's figures by.
+
+**5. The seed's Q compensation is a reciprocal out.** −3 dB edges located by
+bisection on S1's closed form, `k = √(√2 − 1) = 0.643594`, `1/k = 1.553774`:
+
+```
+f0=1000  Q=2   want BW  500.00 | 1 sect  497.22 | 2 sect Q*k  497.39 | 2 sect Q/k  206.09
+f0=200   Q=2   want BW  100.00 | 1 sect   99.75 | 2 sect Q*k   99.78 | 2 sect Q/k   41.33
+f0=1000  Q=8   want BW  125.00 | 1 sect  124.34 | 2 sect Q*k  124.39 | 2 sect Q/k   51.52
+f0=60    Q=3   want BW   20.00 | 1 sect   19.95 | 2 sect Q*k   19.96 | 2 sect Q/k    8.27
+```
+
+`Q·k` reproduces the single-section width to better than 0.6 %; `Q/k`, which
+is what App. R's sentence says, narrows the band to 41 % of it. The class
+multiplies. App. R's sentence is left standing with this note beside it.
+
+**6. `gain_db` is discarded in `BAND_PASS` mode**, so a trim cannot be folded
+into the band-pass section's own coefficients — the seed's A13 finding,
+re-confirmed on the new node:
+
+```
+gain_db 0.0  ['0.031600378', '0.000000000', '-0.031600378', '-1.920229673', '0.936799228']
+gain_db 6.0  ['0.031600378', '0.000000000', '-0.031600378', '-1.920229673', '0.936799228']
+gain_db 12.0 ['0.031600378', '0.000000000', '-0.031600378', '-1.920229673', '0.936799228']
+```
+
+`b2 = −b0` and `b1 = 0`: RBJ's constant-0 dB-peak numerator, as §1 states it.
+
 ### App. I — Tier 1 invariants, the standard block
 
 Verbatim from vision §3, moved out of §3 under the length rule. It is the
@@ -557,6 +735,30 @@ two-section (steeper skirts) setting. Lean patch expected: **no**. Basis:
 (`audioif/docs/upstream-diff.md:1172`); desktop anchor 147 ns per stereo
 frame against a 20 833 ns budget, +16 ns per extra section (A7).
 
+*(from §3, the tail derivation and the Tier 3 budget's arithmetic, added
+2026-09-07 with the frozen surface)*
+
+**The tail.** One RBJ band-pass section is a two-pole resonator whose
+envelope decays with a time constant of `Q·F_s/(π·f₀)` samples (S3: the
+envelope reaches e^(−π) in Q periods). From a full-scale burst, the output
+reaches half an int16 LSB — −96 dBFS — after `ln(65536) = 11.09` time
+constants, i.e. `3.53·Q·F_s/f₀` samples; `4·Q·F_s/f₀` is that rounded up, and
+is the seed's own figure. Two cascaded sections share the pole pair, so the
+envelope is `t·e^(−t/τ)` rather than `e^(−t/τ)` and reaches the same floor
+about 1.5 time constants later: `6·Q·F_s/f₀`, again rounded up. Both are
+upper bounds and the kit's TAIL goes red only when the *measured* tail
+exceeds the declared one, never when it undershoots.
+
+**The Tier 3 budget's arithmetic.** The seed's stock-palette budget was
+P4 ≤ 1.5 % / S3 ≤ 5 % for one section and P4 ≤ 2.5 % / S3 ≤ 9 % for two. A14
+measured, on one machine in one run, 36.2 ns per stereo frame for the stock
+build, 61.0 ns for one `audiobiquad` section and 90.0 ns for two — 1.69× and
+2.49× the stock single section. Applying those ratios to the seed's
+single-section cells gives P4 ≤ 2.5 % / S3 ≤ 8.5 % and P4 ≤ 3.7 % /
+S3 ≤ 12.4 %, rounded in §3 to ≤ 2.5 % / ≤ 8 % and ≤ 4 % / ≤ 13 %. A desktop
+ratio is not a board measurement and the budget is not a result: the P4 and
+S3 columns of the evidence pack are empty until the board run fills them.
+
 *(from §3)*
 
 **Latency: zero.** Nothing looks ahead; `latency_samples` is 0 at every rate
@@ -632,3 +834,41 @@ Recommendation and reasoning: A3.
 - **No tail is declared**, and for a resonator this is the worst place in the
   family to leave `TAIL_SAMPLES = None` (`_core.py:141`): a Q 30 band-pass
   rings for the better part of a second.
+
+*(from §6, the seed's proposed surface, superseded 2026-09-07 by the frozen
+surface in §6 — kept here in full)*
+
+## 6. Proposed surface
+
+| # | Label | Mode | Range | Generalizes |
+|---|---|---|---|---|
+| 0 | Frequency | UNIPOLAR | 20 Hz … min(16 kHz, 0.4·F_s), log | the centre-frequency knob |
+| 1 | Width | UNIPOLAR | Q 0.5 … 32, log; displayed as bandwidth f₀/Q | the bandwidth/Q knob |
+| 2 | Slope | TOGGLE | 1 section (default) / 2 sections | a filter bank's skirt switch |
+| 3 | Mix | UNIPOLAR | 0 exactly … 1; values in (0, 0.01] snap to 0 | a dry/wet blend, kept because Tier 1's wire test needs it |
+| 4 | Trim | BIPOLAR | −12 … +12 dB, default 0 | make-up for a narrow band |
+
+`capabilities = ()`: nothing in a band-pass is measured in beats (D10,
+answered).
+
+Patches: 0 **Wide Mid** (1 kHz, Q 0.707, 1 section — the constructor's
+defaults on the grid), 1 **Telephone** (1.4 kHz, Q 1.2, 2 sections),
+2 **Snare Crack** (200 Hz, Q 2, 1 section), 3 **Presence Window** (4 kHz,
+Q 1.5, 1 section), 4 **Narrow Probe** (1 kHz, Q 24, 1 section, −6 dB trim),
+5 **Sub Window** (60 Hz, Q 3, 2 sections).
+
+*(from §4, on the seed's Q compensation)*
+
+The seed's sentence reads "the class compensates by dividing the requested Q
+by √(√2 − 1)". Measured in A14, that is the reciprocal of what the cascade
+needs: dividing narrows the −3 dB width to 41 % of the requested one, and the
+class **multiplies** by √(√2 − 1) = 0.643594. The sentence stands above as
+written; the correction is §4's.
+
+*(from §3, T4's source and measurement cells, moved under the length rule)*
+
+**Source:** S1, derived analytically; measured −37.07 dB (A6); both spans
+re-derived from S1 in A12. **Measurement:** swept sine, low skirt fitted
+f₀/8…f₀/4 at f₀ ∈ {100, 500, 1 k, 2 k} Hz, high skirt fitted 4f₀…8f₀ at
+f₀ ∈ {100, 250, 500, 600} Hz, and the whole sweep differenced against the
+closed form at f₀ ∈ {1 k, 2 k} Hz.
