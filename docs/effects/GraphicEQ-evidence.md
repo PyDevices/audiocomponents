@@ -34,9 +34,18 @@ written after it.
 
 ## 1. Traits
 
+> **Revised by the Phase 2 gate audit, 2026-09-07.** The verdicts in the table
+> below are the audited ones: every row the independent refutation pass broke
+> was changed here, and the class was **not** touched. The *Gate audit* block
+> at the end of this section carries the ruling and its cause per row; the
+> *Refutation record* at the foot of the file carries the pass itself. Notes
+> under the table that predate the pass are superseded by them — including any
+> tally, any "all of them carry all three", and any sentence saying no
+> refutation pass ran.
+
 | # | Trait, as the dossier stated it | Verdict | Measurement · rate · interpreter | Planted fault → result | Refutation: argument, and the answer |
 |---|---|---|---|---|---|
-| **T1** | The top band is a shelf, the other nine are bells: 16 kHz macro at +12 dB ⇒ 20 kHz within **1.5 dB** of 16 kHz and at least **+9 dB**; 8 kHz macro at +12 dB ⇒ 16 kHz at least **6 dB** below its own peak | **demonstrated** | RESPONSE, 81 tones 20 Hz–22 kHz, 48 kHz, cpython. Shelf: **+10.89 dB at 16 kHz, +11.93 at 20 kHz**, drop **1.03 dB**. 8 kHz bell: peak **+11.94 dB at 7896 Hz**, **+0.54 dB at 16 kHz**, down **11.40 dB** | the top band rebuilt as a `PEAKING_EQ` at 16 kHz → **+12.00 / +2.14 dB, drop 9.86 dB → RED** (clean run green) | *"You moved the shelf's corner until it passed."* Half true and it is in the code: the corner sits at `centres[9] / √2`. But an RBJ shelf's `frequency` is its **half-gain** point, so a corner on the band gives that band 6.00 dB of a 12 dB request and puts the rest above 20 kHz — measured, in §1a. The trait's own second clause ("at least +9 dB") is the same expectation written down before the code, so the trait and the design agree about what a treble slider is for. The corner is stated in the class and in the dossier's §4, not hidden. |
+| **T1** | The top band is a shelf, the other nine are bells: 16 kHz macro at +12 dB ⇒ 20 kHz within **1.5 dB** of 16 kHz and at least **+9 dB**; 8 kHz macro at +12 dB ⇒ 16 kHz at least **6 dB** below its own peak | **disconfirmed above a probe peak of about 11 000 LSB** — REFUTED | RESPONSE, 81 tones 20 Hz–22 kHz, 48 kHz, cpython. Shelf: **+10.89 dB at 16 kHz, +11.93 at 20 kHz**, drop **1.03 dB**. 8 kHz bell: peak **+11.94 dB at 7896 Hz**, **+0.54 dB at 16 kHz**, down **11.40 dB** | the top band rebuilt as a `PEAKING_EQ` at 16 kHz → **+12.00 / +2.14 dB, drop 9.86 dB → RED** (clean run green) | *"You moved the shelf's corner until it passed."* Half true and it is in the code: the corner sits at `centres[9] / √2`. But an RBJ shelf's `frequency` is its **half-gain** point, so a corner on the band gives that band 6.00 dB of a 12 dB request and puts the rest above 20 kHz — measured, in §1a. The trait's own second clause ("at least +9 dB") is the same expectation written down before the code, so the trait and the design agree about what a treble slider is for. The corner is stated in the class and in the dossier's §4, not hidden. |
 | **T2** | Proportional Q: for the 1 kHz band, mid-gain bandwidth at **+3 dB ≥ 1.5 oct** and at **+12 dB ≤ 0.8 oct**, first +1 dB crossing moving **< 10 %** | **demonstrated** | RESPONSE, 73 tones 125 Hz–8 kHz, 48 kHz, cpython. **1.780 oct at +3 dB** (539.0–1850.9 Hz), 1.146 at +6, **0.716 at +12** (780.2–1281.3 Hz); +1 dB crossing **432.5 → 432.2 Hz, 0.06 %** | `Constant Q` on, which is the trait's own limiting case → **0.698 oct at +3 dB against 0.716 at +12 — no change across travel → RED** | *"The `Band Q` default was chosen to clear the bar."* The default is 2.0 and the bar was derived at 2.0 (dossier App. B), so the absolute numbers do move with it. What does not is the **ratio**: `Q ∝ Q₁₂`, so the +3-to-+12 width ratio is 2.49 measured here and 2.51 predicted at *every* anchor. §1b measures the same band at anchor 1.5 and the ratio holds. |
 | **T3** | Adjacent bands overshoot: 500 Hz, 1 kHz, 2 kHz all at +6 dB ⇒ combined peak at least **+9 dB**, region within 3 dB of it spanning more than **two octaves** | **disconfirmed** (one half) | RESPONSE, 73 tones, 48 kHz, cpython. Peak **+8.78 dB at 1000 Hz** — **0.22 dB under the +9.00 dB bar**. −3 dB span **2.583 oct** (408–2444 Hz), which **passes** the second half | `Band Q` at its maximum with `Constant Q` on, so the bands do not overlap → **peak 6.79 dB, span 1.559 oct → RED** | *"0.22 dB is measurement noise."* It is not: the same sweep reads the 1 kHz band's own peak at 12.00 dB against a 12.00 dB request, so the grid is good to a hundredth. The bands really do add to 8.78 and not 9. **The bar is not moved** (roadmap's rule); the cause is in §1b — at anchor 1.5 the same setting reads **+10.17 dB**, so this half is a function of the `Band Q` default and T2 pulls the other way. |
 | **T4** | A band at zero is out of the circuit: band *k* at 0 dB with neighbours at ±12 dB renders **byte-identical** to the same setting built without band *k* | **demonstrated** | DIGEST, 24 000 frames of deterministic noise, bands 0/1/5/9, **48 kHz and 44.1 kHz**, cpython. Every pair identical — e.g. 48 kHz band 0 `2957c4fd` = `2957c4fd`, band 9 `30a89151` = `30a89151`. The reference is the class's own chain with section *k* **unlinked** (section *k*+1 played from *k*−1), so it is eleven sections and not twelve | the detented band left unmuted (`mix = 1`) at **band 0** → `f6d22be1` against `2957c4fd` → **RED**. The same fault at **band 5 is still green** | *"Then the fault is not a fault."* It is, and where it matters: a flat section is bit-transparent from 250 Hz up, so the plant is only *detectable* at the bottom three bands — 5 LSB at 31.25 Hz, 2 at 62.5, 1 at 125, 0 at 250. That asymmetry is reported here rather than hidden by choosing a band where the check happens to fire. |
@@ -95,6 +104,37 @@ carries both bands and the LSB-per-centre table), and T3's 0.22 dB
 (re-measured against the grid's own accuracy rather than argued away). What
 it could not break: T1's shelf-versus-bell separation, T2's narrowing, T4's
 byte identity, and every Tier 1 row.
+
+
+### Gate audit — the refutation pass's verdicts, ruled on (2026-09-07)
+
+Ruled by the Phase 2 gate auditor against the **Refutation record** at the
+foot of this file. Where a refutation stands the verdict above was changed
+and the class was **not** touched; where the auditor re-ran a figure itself
+the run is named. The roadmap's class-gate rule is the test applied: a
+*demonstrated* trait needs a measurement, that measurement shown red on a
+planted fault of the same kind, **and** a surviving refutation.
+
+| Row | Ruling | Cause recorded, and the auditor's check |
+|---|---|---|
+| T1 | **refutation stands** → disconfirmed above a probe peak of about 11 000 LSB | Neither the trait nor its measurement row names a probe amplitude, and the level is not free: `to_s16` saturates between sections, so a +12 dB request stops being +12 dB well below full scale. The pack's figures reproduce (81 tones, 48 kHz: +10.89 at 16 kHz, +11.93 at 20 kHz, drop 1.03; bell down 11.40) and survive the rate and a quieter probe, and fail a louder one: at peak **14 000** the shelf reads **+8.76 / +8.93 dB — under the trait's own +9.00 dB bar**; at peak 20 000, +6.55 / +6.04 with the 8 kHz bell down only **5.43 dB**, so both halves fail. The wet render first hits 32 767 at peak 9 000, and §6's own patch table uses an 11 000-peak source where the margin is already halved. |
+
+T2 and T4 survive. Two corrections the Refutation record states are owed and
+are not refutations: T2's "2.51 at *every* anchor" answer is wrong (the ratio
+moves 2.08 → 2.52 across the `Band Q` macro, and both bars are met only in a
+window around the default); and six of T4's ten bands are vacuous — the
+detented-section fault cannot be made to fire above band 3, so bands 5 and 9,
+two of the four §1 reports, are counted as evidence on a check that cannot
+fail there.
+
+**Rule applied to the two non-`disconfirmed` outcomes.** A refutation that
+shows the class failing its own bar makes the row **disconfirmed**. A
+refutation that shows the *demonstration* invalid — a fault that cannot fire,
+a reading that is green on a bypass, a bar that was never asserted — leaves no
+number that tests the trait, so the row becomes **unmeasured**, on this pack's
+own precedent for a measurement that "produced a number that does not test the
+claim". Neither outcome is a licence to edit the class.
+
 
 ---
 

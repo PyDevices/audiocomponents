@@ -38,6 +38,15 @@ restatements come from the sources and from `audioif_dynamics.c` at the pin.
 
 ## 1. Traits
 
+> **Revised by the Phase 2 gate audit, 2026-09-07.** The verdicts in the table
+> below are the audited ones: every row the independent refutation pass broke
+> was changed here, and the class was **not** touched. The *Gate audit* block
+> at the end of this section carries the ruling and its cause per row; the
+> *Refutation record* at the foot of the file carries the pass itself. Notes
+> under the table that predate the pass are superseded by them — including any
+> tally, any "all of them carry all three", and any sentence saying no
+> refutation pass ran.
+
 Verdicts use the dossier's own numbering. **Six demonstrated, one
 disconfirmed, none unmeasured** — with one clause of G4 carried as
 unmeasured inside a demonstrated row, and said so in §11.
@@ -47,13 +56,13 @@ unmeasured inside a demonstrated row, and said so in §11.
 | G1 | The envelope is one-shot: a 1 ms full-scale burst under a 200 ms attack reaches within 0.5 dB of full open after the burst has gone | **demonstrated** | GAINTRACE, 48 kHz, cpython: peak gain reduction reached **0.00 dB** on a probe whose burst is 1 ms and whose remainder is 40 dB under the threshold | `NoHoldGate` (`hold_ms` forced to 0, so the node falls back to its memoryless computer): peak **−81.97 dB** — the gate never opens at all → RED | *"The tone after the burst opened it, not the burst."* It is 40 dB below the threshold, and the fault run proves it: the same tone under the same settings leaves the faulted gate shut at the floor for the whole render. |
 | G2 | Hold is a real stage, 2 ms–2 s: the time the gain stays within 0.5 dB of full open after the key falls is within 10 % of the setting | **demonstrated** | GAINTRACE, 48 kHz, cpython, release at its 2 ms minimum, hop 0.5 ms: **19.5 / 100.5 / 513.5 / 986.0 ms** for settings of 20 / 100 / 500 / 1000 ms (−2.5 / +0.5 / +2.7 / −1.4 %) | `NoHoldGate`: no open period is measurable at any setting → RED | *"The release is doing this, not the hold."* Release is pinned at 2 ms across all four points and only Hold moves; a 2 ms release cannot account for 986 ms. The first draft's version of this row measured with a 1000 ms release and read +170 % at the 20 ms point — the release's own first 0.5 dB — which is why the release is pinned here and why the dossier's App. C struck the "attack + hold + decay" formulation. |
 | G3 | The key path is a band with two settable ends: with the band at 500 Hz–2 kHz, a 250 Hz and a 4 kHz tone need at least 4 dB more level to open the gate than a 1 kHz tone does. Key Listen puts the band on the output | **demonstrated** | Bisected opening level, 48 kHz, cpython: 1 kHz opens at **−37.42 dBFS**, 250 Hz at **−32.33** (**+5.09 dB**), 4 kHz at **−32.11** (**+5.30 dB**). Key Listen: a 220 Hz tone with the key high-passed at 4 kHz peaks at **684** against the ordinary output's **16384** | `OpenKeyBand` (both corners pinned at their end stops): shifts collapse to **+0.04** and **+0.05 dB** → RED | *"5 dB is one pole; a real DS201 might be steeper."* Neither source states the filters' order, which the dossier records, and the trait asks for a band and not a slope. The number is what one pole gives; `key_poles=2` is offered and unmeasured (§11). |
-| G4 | The closed state is Range, not zero: settled closed gain equals the setting within 0.5 dB at 0, −20, −40, −60 and −80 dB; and the law is a depth, not a slope | **demonstrated** (the −80 dB point is unmeasured — §11) | GAINTRACE settled gain, 48 kHz, cpython, input −6 dBFS at threshold 0 dB: **0.000 / −20.162 / −40.349 / −60.128 dB** for settings of 0 / −20 / −40 / −60. Depth-not-slope: two inputs 10 dB apart at Range −20 give **−20.175** and **−20.233 dB**, 0.058 dB apart | `NoHoldGate` two dB under the threshold, where the memoryless `over * 8.0f` has not yet clamped: **−16 dB** against the setting's −40 → RED (clean run at the same settings: −40.0 ± 0.5) | *"You picked an input level that flatters it."* The level is named and it is the highest one 16 bits allow: a −6 dBFS input at −80 dB of Range is 1.6 LSB, which is why that point is unmeasured rather than reported. |
+| G4 | The closed state is Range, not zero: settled closed gain equals the setting within 0.5 dB at 0, −20, −40, −60 and −80 dB; and the law is a depth, not a slope | **disconfirmed at the dossier's own condition** — REFUTED | GAINTRACE settled gain, 48 kHz, cpython, input −6 dBFS at threshold 0 dB: **0.000 / −20.162 / −40.349 / −60.128 dB** for settings of 0 / −20 / −40 / −60. Depth-not-slope: two inputs 10 dB apart at Range −20 give **−20.175** and **−20.233 dB**, 0.058 dB apart | `NoHoldGate` two dB under the threshold, where the memoryless `over * 8.0f` has not yet clamped: **−16 dB** against the setting's −40 → RED (clean run at the same settings: −40.0 ± 0.5) | *"You picked an input level that flatters it."* The level is named and it is the highest one 16 bits allow: a −6 dBFS input at −80 dB of Range is 1.6 LSB, which is why that point is unmeasured rather than reported. |
 | G5 | Attack and decay are exponential stages whose time constant is the setting; the fastest attack opens inside 0.2 ms at 48 kHz | **demonstrated** | GAINTRACE trace read on the **gain** axis, 48 kHz, cpython. Attack 10–90 %: **2.241 / 21.582 / 227.877 / 2181.243 ms** at settings 1 / 10 / 100 / 1000 ms against 2.197 × the setting (+2.0 / −1.8 / +3.7 / −0.7 %). Decay t63: **9.364 / 94.862 / 986.456 / 3926.666 ms** at 10 / 100 / 1000 / 4000 (−6.4 / −5.1 / −1.4 / −1.8 %). Fastest attack (0.01 ms): byte-identical to the source **3 samples** after the onset, **0.0625 ms** | `HalvedTimes` (coefficients from half the setting): 10–90 % measures **111 ms** against the 219.7 ms a 100 ms setting asks for, 49 % out against a 15 % bar → RED | *"You chose the axis that fits."* The trait names a transition of the *gain*, and a gain is linear; GAINTRACE's own `attack_t10_90_ms` reads its dB trace, which for a gate's ∞:1 law is a different quantity — it reads 1.00 × the setting where the linear reading reads 2.20 ×. Both numbers are in §9's notes so a reader can check the choice. |
 | G6 | Peak detection: equal-**peak** sine and square open within 0.5 dB of each other; equal-**RMS** open about 3.0 dB apart | **disconfirmed** — the equal-peak clause. Equal-RMS holds | Bisected Threshold, 48 kHz, cpython. Equal peak: **+0.630 dB** apart, against a 0.5 dB bar. Equal RMS: **−2.520 dB** apart. Bare `Dynamics` node with no key filters, same material: **0.000 dB** apart at equal peak; with the class's key filters in circuit: **+0.403 dB** | `RmsDetector` (`detector="rms"`): the pair swaps — equal-peak **+2.520**, equal-RMS **−0.630 dB** → RED on the clause that separates the detectors | **Cause, measured not argued:** the class's key high-pass is always in circuit (the DS201's L.F. control bottoms at 25 Hz, it does not switch off), and a one-pole high-pass overshoots a square's edges, lifting its detected peak. The detector itself is a peak detector: the bare node opens both at exactly the same threshold, and the equal-RMS separation is 2.52 dB where an RMS detector gives 0.63. Carried in the class docstring and the catalogue row. |
 | G7 | Duck inverts the sense: unity below threshold (±0.05 dB) and the Range setting above it (±0.5 dB) at 0, −6, −20 and −40 dB, on the same envelope | **demonstrated** | GAINTRACE settled gain, 48 kHz, cpython, `duck=True`: **0.000 / −6.299 / −20.155 / −40.279 dB**. Below threshold, LEVEL wet:dry **−0.0009 dB** both channels. Same hold: ducked for **105.5** and **518.5 ms** at settings of 100 and 500 ms | `AddingDuck` (the inverter's modulator at +32767): the "duck" **boosts**, +3.61 dB at Range −6 and +5.58 dB at −20 → RED | *"Two nearly equal int16 streams subtracted cannot be accurate."* True at the deep end and measured: Range −60 reads −59.47 and −80 reads −77.18, which is the subtraction's own quantisation floor, which is why the dossier states the trait to −40 dB and records the deep end in App. C. |
 
 - **demonstrated** = a measurement, that measurement red on a planted fault
-  of the same kind, and a surviving refutation. All six carry all three.
+  of the same kind, and a surviving refutation. **After the gate audit five carry all three (G1, G2, G3, G5, G7); G4 is disconfirmed at the dossier's own condition.**
 - **disconfirmed** carries the cause and what the class does instead. G6's is
   in the class docstring and in the catalogue row of
   [`README.md`](README.md), not only here.
@@ -70,6 +79,32 @@ attempt read GAINTRACE's dB-axis transition and was re-run on the gain axis
 the trait names. What the pass could not break was G1 — the fault run pins
 the gate shut on the same material — and G4's depth-not-slope clause, whose
 two levels differ by 0.058 dB where a slope would put them 80 dB apart.
+
+
+### Gate audit — the refutation pass's verdicts, ruled on (2026-09-07)
+
+Ruled by the Phase 2 gate auditor against the **Refutation record** at the
+foot of this file. Where a refutation stands the verdict above was changed
+and the class was **not** touched; where the auditor re-ran a figure itself
+the run is named. The roadmap's class-gate rule is the test applied: a
+*demonstrated* trait needs a measurement, that measurement shown red on a
+planted fault of the same kind, **and** a surviving refutation.
+
+| Row | Ruling | Cause recorded, and the auditor's check |
+|---|---|---|
+| G4 | **refutation stands** → disconfirmed at the dossier's own condition | `NoiseGate.md` §3 freezes "**with the input 30 dB below threshold**"; §1 restates the row without that condition and measures a −6 dBFS input against a 0 dB threshold — 6 dB below, not 30. At the trait's own condition the settled closed gain reads **0.000 / −20.233 / −41.001 / −64.110 / silent** at Range 0 / −20 / −40 / −60 / −80: three of five outside the 0.5 dB bar, and §11 discloses only the −80 point. The cause is measured and is *not* a slope in the class — the error tracks the **output** level, not the depth below threshold, and a peak-sample readout that bypasses the envelope agrees — so it is int16's own floor. The depth-not-slope clause holds at Range −20 (0.058 dB) and fails at Range −40 (0.567 dB). |
+
+G1, G2, G3, G5 and G7 survive, hardened at three rates; G5 gained a planted
+fault for its fastest-attack clause, which had none.
+
+**Rule applied to the two non-`disconfirmed` outcomes.** A refutation that
+shows the class failing its own bar makes the row **disconfirmed**. A
+refutation that shows the *demonstration* invalid — a fault that cannot fire,
+a reading that is green on a bypass, a bar that was never asserted — leaves no
+number that tests the trait, so the row becomes **unmeasured**, on this pack's
+own precedent for a measurement that "produced a number that does not test the
+claim". Neither outcome is a licence to edit the class.
+
 
 ---
 

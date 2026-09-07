@@ -33,10 +33,19 @@ recording what a statement *implies*; this pack grades the statements.
 
 ## 1. Traits
 
+> **Revised by the Phase 2 gate audit, 2026-09-07.** The verdicts in the table
+> below are the audited ones: every row the independent refutation pass broke
+> was changed here, and the class was **not** touched. The *Gate audit* block
+> at the end of this section carries the ruling and its cause per row; the
+> *Refutation record* at the foot of the file carries the pass itself. Notes
+> under the table that predate the pass are superseded by them — including any
+> tally, any "all of them carry all three", and any sentence saying no
+> refutation pass ran.
+
 | # | Trait, as the dossier stated it | Verdict | Measurement · rate · interpreter | Planted fault → result | Refutation: argument, and the answer |
 |---|---|---|---|---|---|
 | E1 | `ratio` dB out per dB in below threshold; slope within 5 % at ratios 1.5/2/4/8, no point 0.5 dB off the line; 0.00 ± 0.05 dB above threshold | **demonstrated**, over the span a 16-bit path can carry | CURVE points + E1's own least-squares slope; 48 k / 44.1 k / 22.05 k, cpython. Slope error **+0.44 … +1.34 %** across all three rates, worst residual **0.30 dB**, above threshold **+0.000 dB** at every level | Ratio driven 30 % high → **RED at 1.5, 2 and 4** (+31.7 %, +34.9 %, +34.6 %); at ratio 8 the fault is not expressible (8 × 1.3 is past the Ratio macro's own 8.0 ceiling) and the row is the clean run, said rather than counted | *"The span was chosen to make it pass."* It was chosen to keep the lowest step's **output** above the int16 floor, and the rule is printed with every row: `span = min(30, (75 + threshold)/ratio)`. Widen it and the bottom step lands under one LSB, where a 0.5 dB residual is one quantiser step. E1's own 30 dB clause needs 210 dB of output range at ratio 8 (dossier B1); nothing can carry it. |
-| E2 | Sine and square of equal RMS, 15 dB below threshold, within 0.5 dB | **demonstrated** | XF → CURVE; 48 k / 44.1 k / 22.05 k, cpython. Gap **0.10 / 0.09 / 0.11 dB** | Detector toggle forced to peak → **RED, gap 2.07 dB** | *"The gap is small because the probe is a sine both times."* The two probes are a sine and a 50 % square generated at the same RMS; the faulted run separates them by 2.07 dB on the same pair, so the pair discriminates. |
+| E2 | Sine and square of equal RMS, 15 dB below threshold, within 0.5 dB | **disconfirmed at ratio ≥ 4** — REFUTED; demonstrated at ratio ≤ 3 | XF → CURVE; 48 k / 44.1 k / 22.05 k, cpython. Gap **0.10 / 0.09 / 0.11 dB** | Detector toggle forced to peak → **RED, gap 2.07 dB** | *"The gap is small because the probe is a sine both times."* The two probes are a sine and a 50 % square generated at the same RMS; the faulted run separates them by 2.07 dB on the same pair, so the pair discriminates. |
 | E3 | Key band 25 Hz–4 kHz / 250 Hz–35 kHz, and an out-of-band tone swept to 0 dBFS leaves the gain within 1 dB of its floor | **disconfirmed** | KEY → RESPONSE; 48 k / 44.1 k / 22.05 k, cpython. Both ends move and both reject, but a **−20 dBFS** tone an octave outside a 500–2000 Hz band already opens the gain fully: departure from the −60 dB floor **60.0 dB**, bar 1.0 | not required for a disconfirmed trait | The clause implies better than 40 dB of stopband rejection one octave out — an eighth-order key filter per end. No source states an order; the node ask specified 12 dB/octave and the class ships it (`sidechain_poles=2`). **What the class does instead:** two poles each end, measured 25 dB two octaves out (dossier B3), stated in the class docstring and the README row. |
 | E4 | Depth is a control: settled attenuation within 0.5 dB of the setting at 0, −20, −40, −60 dB, span reaching −80 | **demonstrated on the three rows a 16-bit path can show** | LAW at four depths; 48 k / 44.1 k / 22.05 k, cpython. Error at 0, −20 and −40 dB is **−0.00 / −0.03 / −0.41 dB** at 48 kHz and **−0.00 / −0.04 / −0.38 dB** at 44.1 kHz and at 22.05 kHz — worst 0.41 dB against a 0.50 bar. The −60 row lands under one LSB (output −92.97 dBFS at 48 kHz) and is not a reading of the class | Depth pinned at 0 dB → **RED, 20 / 40 / 60 dB of error** | *"Then the deep end is unproven."* On the node it is: dossier B4 has **−60.15 dB** and **−81.68 dB** at the −60 and −80 settings. What the class cannot do is put the trait's own operating point (input −6 dBFS, threshold 30 dB above it) on its Threshold macro, whose span stops at 0 dBFS — as the DS201's own does. |
 | E5 | The envelope is one-shot: the attack completes even if the key falls back, and Hold times from that fall | **disconfirmed** | ENV → GAINTRACE; 48 k, cpython. The class has no Hold to turn on, and `hold_ms` is silently inert in `DYN_EXPAND` (`audioif_dynamics.c:452-453`); the machine it drives replaces the ratio law with a binary open/floor (`:679-724`). Dossier B5 has the two traces, identical with and without it | not required | *"Then it was not tried."* It was: B5 runs the same 1 ms burst under a 200 ms attack in both modes, and `DYN_GATE` moves from −80.00 dB to −1.96 dB with the same option. The class is the mode that cannot have it. E5 belongs to `NoiseGate`, whose own pack has to demonstrate it; nothing here claims that it has. |
@@ -60,6 +69,33 @@ was quietly dropped (it is measured on the node in B4 and named as outside the
 class's Threshold span). What it could not break: nothing in the three
 survived unchanged — E1's span rule and E4's operating point are both narrowed
 statements now, and they say so.
+
+
+### Gate audit — the refutation pass's verdicts, ruled on (2026-09-07)
+
+Ruled by the Phase 2 gate auditor against the **Refutation record** at the
+foot of this file. Where a refutation stands the verdict above was changed
+and the class was **not** touched; where the auditor re-ran a figure itself
+the run is named. The roadmap's class-gate rule is the test applied: a
+*demonstrated* trait needs a measurement, that measurement shown red on a
+planted fault of the same kind, **and** a surviving refutation.
+
+| Row | Ruling | Cause recorded, and the auditor's check |
+|---|---|---|
+| E2 | **refutation stands** → disconfirmed at ratio ≥ 4 | The trait fixes the level (15 dB below threshold) and no ratio. Auditor's check: `tools/expander_evidence.py` `e2_detector` hardcodes `ratio=2.0` in its settings dict, so §1's three figures are one ratio. At threshold −6 dBFS, 1 kHz, 48 kHz the gap reads **0.04 / 0.09 / 0.16 / 0.55 / 1.88 dB** at ratios 1.5 / 2 / 3 / 4 / 5 against a 0.50 dB bar, unchanged at 1 s / 3 s / 5 s and at depth −80 and −90 dB; and at ratio ≥ 6 both renders are digital silence, so the reading is **0.00 dB clean and 0.00 dB faulted** — it cannot fail there. Demonstrated at ratio ≤ 3. |
+
+E1 and E4 survive, each with a wording correction the Refutation record states
+(E1's square-wave residual at 89 % of its bar; E4's third row is the depth-0
+wire and cannot fail, so the demonstration rests on two rows).
+
+**Rule applied to the two non-`disconfirmed` outcomes.** A refutation that
+shows the class failing its own bar makes the row **disconfirmed**. A
+refutation that shows the *demonstration* invalid — a fault that cannot fire,
+a reading that is green on a bypass, a bar that was never asserted — leaves no
+number that tests the trait, so the row becomes **unmeasured**, on this pack's
+own precedent for a measurement that "produced a number that does not test the
+claim". Neither outcome is a licence to edit the class.
+
 
 ---
 

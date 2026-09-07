@@ -63,19 +63,62 @@ written reason.
 
 ### Tier 2 — circuit traits
 
-| # | Trait (falsifiable as stated) | Source | Confidence | What would disconfirm it | Measurement (kit) |
-|---|---|---|---|---|---|
-| T1 | | | | | |
-| T2 | | | | | |
-| T3 | | | | | |
+| # | Trait (falsifiable as stated) | Source | Confidence | Held fixed | Quantified over | What would disconfirm it | Measurement (kit) |
+|---|---|---|---|---|---|---|---|
+| T1 | | | | | | | |
+| T2 | | | | | | | |
+| T3 | | | | | | | |
+
+**`Held fixed` and `Quantified over` are not optional, and a blank in either
+is a trait that is not yet fixed** — Station A does not close until both are
+filled. This is Phase 2's largest finding
+([`../effects-phase2-pattern-revision.md`](../effects-phase2-pattern-revision.md)
+§1.1): 28 of the 45 clauses an independent refutation pass broke across
+sixteen classes broke for one reason — the row was quantified over a span
+(*"every probe"*, *"any Q in 0.5…16"*, *"at any f₀"*, *"both slopes"*) and was
+measured at one point in it, with the point chosen after the trait was frozen.
+
+- **Held fixed** — the settings the trait is *stated at*: probe level and
+  material, rate, render length, and every macro the row does not sweep. A
+  bar with no level behind it is not a bar; `ParametricEQ` T3 read +7.95 dB at
+  −16 dBFS and +0.74 dB at −6 dBFS on the same build.
+- **Quantified over** — the span the row claims, **in the class's own macro
+  units**, so the kit's sweep can run it. If the span is the macro's full
+  travel, say so, and expect the row to be measured **at the stops**:
+  `BandPass` T1 and `LowPass` T1 both miss their bar at a macro's end
+  position, one `set_macro` call from a player's fingers.
+- If the trait is true only over part of a control's travel, that belongs
+  here, in advance — not in a verdict written after the measurement.
 
 Characters (where the class carries several standouts) each get their own
 rows; a character that fails its traits cannot hide behind one that passes.
+
+**A trait's measurement must be able to fail.** State, per row, the *null
+build* the measurement is required to go red on — the class at `mix` 0, the
+trait's own mechanism removed, or the section wired out. Eleven of Phase 2's
+broken clauses read green on a build that did nothing at all, including one
+that read green on its own planted fault.
+
+**A planted fault may not be reachable from the surface.** A "fault" the macro
+grid can dial is a disconfirmation waiting to be written down, not a fault:
+`CombFilter`'s `NoGlideCombFilter` and macro 5 at grid position 0 are the same
+build, and `Compressor` filed a Release knob position as a planted fault twice.
 
 ### Tier 3 — cost and latency
 
 Budget as a fraction of one stereo block's real-time deadline: ESP32-P4
 <x>, ESP32-S3 <y>. Lean patch expected: yes | no.
+
+**The settings the budget is stated at:** <patch, macros, the state the cost
+is about — a compressor actually reducing gain, a drive stage above unity, a
+filter with its sections engaged>. **How the budget was derived:**
+instruction-count arithmetic | a measured graph on a board | a comparable
+class's measured figure. Twelve of Phase 2's sixteen classes overran a budget
+derived from instruction counts, for one reason the board run states: that
+arithmetic cannot see the per-block Python of a node graph, which is most of
+the cost. A budget from instruction counts alone is marked as such here, and
+the first measured graph on a board **replaces** it rather than failing
+against it.
 
 Latency (vision §9a): algorithmic latency of the dry-to-wet path in samples
 and in ms at 48 kHz — zero unless the algorithm must see ahead, and then the

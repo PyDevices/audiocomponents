@@ -32,17 +32,26 @@ frozen §3 table is what §1 below is read against.
 
 ## 1. Traits
 
+> **Revised by the Phase 2 gate audit, 2026-09-07.** The verdicts in the table
+> below are the audited ones: every row the independent refutation pass broke
+> was changed here, and the class was **not** touched. The *Gate audit* block
+> at the end of this section carries the ruling and its cause per row; the
+> *Refutation record* at the foot of the file carries the pass itself. Notes
+> under the table that predate the pass are superseded by them — including any
+> tally, any "all of them carry all three", and any sentence saying no
+> refutation pass ran.
+
 Every trait the dossier fixed, in the dossier's numbering. All six rows are
 stated at Slope = 1 section (patch 0) unless the row says otherwise, which is
 the dossier's own scoping line.
 
 | # | Trait, as the dossier stated it | Verdict | Measurement · rate · interpreter | Planted fault → result | Refutation: argument, and the answer |
 |---|---|---|---|---|---|
-| T1 | 0 dB peak at f₀, ±0.05 dB, at every Q | **demonstrated**, over the reachable span | RESPONSE (single-bin DFT on the settled half), 48 kHz, cpython: worst \|gain\| **0.0217 dB**, at Q 32 / f₀ 100 Hz; every other cell ≤ 0.0006 dB over Q ∈ {0.5, 0.707, 2, 8, 32} × f₀ ∈ {100, 1 k, 4.8 k} Hz. Two sections at 1 kHz: ≤ 0.0001 dB for Q ∈ {0.707, 2, 8} | a `PEAKING_EQ` section at the same centre and Q, `gain_db = 1` — the shape a wrong numerator takes: **+1.0000 dB → RED**; clean run −0.0001 dB → green | *"0.1 and 100 are in the row and not in your table."* True: the class's Width knob reaches Q 0.5…32 and the node's kernel clamps Q to 0.05…60, so Q 100 is unreachable on this palette at all. Recorded as a range restriction, not a pass — see §11 |
-| T2 | −3 dB points at `f₀·(√(1+1/4Q²) ∓ 1/2Q)`, difference exactly f₀/Q | **demonstrated** | RESPONSE, 48 kHz, cpython, f₀ 1 kHz. Q 0.707: predicted 517.59 / 1932.02 (BW 1414.43 = f₀/Q) measured **−3.018 / −3.039 dB**. Q 2: 780.78 / 1280.78 (BW 500.00) → **−3.021 / −3.027**. Q 8: 939.45 / 1064.45 (BW 125.00) → **−3.022 / −3.024**. Two sections, compensated: −3.019/−3.044, −3.023/−3.030, −3.024/−3.027 | width knob 10 % out: **−3.455 dB at the predicted low edge → RED** (bar −3.00 ± 0.15). And the cascade with `_CASCADE_Q = 1.0`, which is the dossier's own reciprocal error: **−6.040 dB → RED**. Clean −3.021 → green | *"the second section could be hiding a width error the first one cancels."* Answered by the two-section row above: the same predicted edges, measured through the cascade, land within 0.044 dB of −3 dB |
+| T1 | 0 dB peak at f₀, ±0.05 dB, at every Q | **disconfirmed at f₀ ≤ 25 Hz with Q ≥ 16 — the build's own** — REFUTED | RESPONSE (single-bin DFT on the settled half), 48 kHz, cpython: worst \|gain\| **0.0217 dB**, at Q 32 / f₀ 100 Hz; every other cell ≤ 0.0006 dB over Q ∈ {0.5, 0.707, 2, 8, 32} × f₀ ∈ {100, 1 k, 4.8 k} Hz. Two sections at 1 kHz: ≤ 0.0001 dB for Q ∈ {0.707, 2, 8} | a `PEAKING_EQ` section at the same centre and Q, `gain_db = 1` — the shape a wrong numerator takes: **+1.0000 dB → RED**; clean run −0.0001 dB → green | *"0.1 and 100 are in the row and not in your table."* True: the class's Width knob reaches Q 0.5…32 and the node's kernel clamps Q to 0.05…60, so Q 100 is unreachable on this palette at all. Recorded as a range restriction, not a pass — see §11 |
+| T2 | −3 dB points at `f₀·(√(1+1/4Q²) ∓ 1/2Q)`, difference exactly f₀/Q | **disconfirmed above about 2 kHz** — REFUTED | RESPONSE, 48 kHz, cpython, f₀ 1 kHz. Q 0.707: predicted 517.59 / 1932.02 (BW 1414.43 = f₀/Q) measured **−3.018 / −3.039 dB**. Q 2: 780.78 / 1280.78 (BW 500.00) → **−3.021 / −3.027**. Q 8: 939.45 / 1064.45 (BW 125.00) → **−3.022 / −3.024**. Two sections, compensated: −3.019/−3.044, −3.023/−3.030, −3.024/−3.027 | width knob 10 % out: **−3.455 dB at the predicted low edge → RED** (bar −3.00 ± 0.15). And the cascade with `_CASCADE_Q = 1.0`, which is the dossier's own reciprocal error: **−6.040 dB → RED**. Clean −3.021 → green | *"the second section could be hiding a width error the first one cancels."* Answered by the two-section row above: the same predicted edges, measured through the cascade, land within 0.044 dB of −3 dB |
 | T3 | Exact zeros at DC and Nyquist — a held DC offset and a ±FS alternation both settle to bit-exact zero, at every f₀ | **demonstrated** | TAIL, 48/44.1/22.05 kHz, cpython (and byte-identical on mp and cpy, §3). `dc_step` with the offset removed **while the source still supplies frames**: `dc_residual_lsb = 0` at all three rates, and 0 at f₀ ∈ {20, 80, 1 k, 16 k} Hz with Q 4. `alt_fs`: settled peak over the second half **0 LSB** | +1 LSB of stuck DC in the settled state: **RED — "residual 1 LSB in the last 6240 frames (bar 0)" and "the state never returns to zero"**; clean run tail 116 samples, residual 0 → green | *"you are reading past the end of the source, where `Filter.c` memsets to zero — A3's own trap."* Answered by construction: the `dc_step` probe holds 96 000 frames of supplied zeros after the offset is removed, and the reading is taken inside them |
-| T4a | Low skirt +6.005 dB/oct fitted over f₀/8…f₀/4, f₀ 20 Hz…2 kHz | **demonstrated** | RESPONSE with a 5-point grid per octave pair, 48 kHz, cpython: **+6.006 / +6.005 / +6.006 / +6.009 dB/oct** at f₀ = 100 / 500 / 1 k / 2 k Hz (bar +6.0 ± 0.3) | the two-section cascade read against the one-section bar: **+10.987 dB/oct → RED**; clean +6.005 → green | *"a 5-point fit over one octave can hit 6 dB/oct by accident."* Answered by the fault: the same fit refuses the cascade by 5 dB/oct |
-| T4b | High skirt −6.0 ± 0.3 dB/oct over 4f₀…8f₀ while f₀ ≤ 600 Hz at 48 kHz | **demonstrated**, and the boundary confirmed | RESPONSE, 48 kHz, cpython: **−6.011 / −6.043 / −6.155 / −6.221** at f₀ = 100 / 250 / 500 / 600 Hz — inside the band; **−6.305 at 700 Hz and −6.646 at 1 kHz** — outside it, which is exactly where the row says the claim stops | same fault as T4a (the cascade), which the same fit refuses | *"600 Hz is a number someone picked."* Answered by the 700 Hz and 1 kHz readings: the band is crossed between 600 and 700 Hz, as the dossier's A12 derivation said |
+| T4a | Low skirt +6.005 dB/oct fitted over f₀/8…f₀/4, f₀ 20 Hz…2 kHz | **disconfirmed at Q ≥ 8** — REFUTED | RESPONSE with a 5-point grid per octave pair, 48 kHz, cpython: **+6.006 / +6.005 / +6.006 / +6.009 dB/oct** at f₀ = 100 / 500 / 1 k / 2 k Hz (bar +6.0 ± 0.3) | the two-section cascade read against the one-section bar: **+10.987 dB/oct → RED**; clean +6.005 → green | *"a 5-point fit over one octave can hit 6 dB/oct by accident."* Answered by the fault: the same fit refuses the cascade by 5 dB/oct |
+| T4b | High skirt −6.0 ± 0.3 dB/oct over 4f₀…8f₀ while f₀ ≤ 600 Hz at 48 kHz | **disconfirmed at Q ≥ 8** — REFUTED | RESPONSE, 48 kHz, cpython: **−6.011 / −6.043 / −6.155 / −6.221** at f₀ = 100 / 250 / 500 / 600 Hz — inside the band; **−6.305 at 700 Hz and −6.646 at 1 kHz** — outside it, which is exactly where the row says the claim stops | same fault as T4a (the cascade), which the same fit refuses | *"600 Hz is a number someone picked."* Answered by the 700 Hz and 1 kHz readings: the band is crossed between 600 and 700 Hz, as the dossier's A12 derivation said |
 | T4c | `\|H(f₀/100)\|` = −37.0 ± 0.1 dB at Q 0.707, **at every f₀** | **disconfirmed** — and the cause is the prototype, not the class | Single-tone gain, 48 kHz, cpython, against RBJ's closed form at the same rate: f₀ 500 Hz **−36.994** (form −36.991), 1 kHz **−37.001** (−37.001), 2 kHz **−37.037** (−37.038), 4.8 kHz **−37.279** (−37.281), 8 kHz **−37.837** (−37.837), 16 kHz **−41.350** (−41.359) | none needed for a disconfirmation, but the same-kind check is run: the class tracks the closed form to **≤ 0.009 dB** everywhere, so the deviation cannot be the build | *"your filter is wrong at high centres."* Answered by the closed-form column: the clause's ±0.1 dB band is what fails, above about 2.5 kHz, and for the same bilinear-warp reason A12 already fixed in T4's high-skirt clause and left standing here. Recorded in the class docstring, not only here |
 | T5 | Geometric symmetry about the **prewarped** centre, 0.00000 dB for r ∈ 1…8, f₀ 20 Hz…0.1·F_s | **demonstrated** to the measurement's own floor | Folded pairs, 48 kHz, cpython. \|upper − lower\|: f₀ 100 Hz — 0.00132 / 0.00140 / 0.00108 / 0.00187 dB at r = 1.5 / 2 / 4 / 8; f₀ 1 kHz — 0.00077 / 0.00153 / 0.00055 / 0.00116; f₀ 4.8 kHz — 0.00004 / 0.00069 / 0.00084 / 0.00293. Bar 0.05 dB. The linear-axis half, f₀ 1 kHz r = 8: **0.8259 dB**, against the dossier's predicted 0.824 | the fold taken about 1.1·f₀: **1.4611 dB apart → RED** (bar 0.05); clean 0.00153 → green | *"0.001 dB is not 0.00000 dB, so the row is not met."* The row's exactness is a property of the closed form; a render is int16, and 0.001–0.003 dB is the quantisation floor of a −12 dBFS tone read through a single-bin DFT. Stated as "to the measurement's floor" rather than as 0.00000 |
 | T6 | Rate-honest: centre within 0.1 %, T1/T2 to their own tolerances, and the response within 0.1 dB of the closed form **at the running rate** up to 0.45·F_s | **demonstrated** | Single tones at f₀/2, f₀, 2f₀ for f₀ ∈ {100, 1 k} Hz, Q 2, at 48 000 / 44 100 / 22 050 Hz, each differenced against its own rate's closed form: worst deviation **0.002 dB** (44.1 kHz, f₀ 100 Hz, probe 200 Hz); every other cell ≤ 0.001 dB. Gain at f₀ ≤ 0.05 dB at all three rates | the same readings taken against the **48 kHz** curve at 22.05 kHz: **worst 0.2137 dB → RED** (bar 0.1) while the same renders against their own rate read 0.0011 dB → green | *"you have only shown two centres."* True — 100 Hz and 1 kHz, three probes each. The centre-does-not-move check adds a third reading at every rate; a full sweep at every rate is not run and is named in §11 |
@@ -61,6 +70,39 @@ DC reading was A3's own past-the-end trap; whether a one-octave slope fit can
 pass by accident; whether T5's "0.00000 dB" survives int16; and whether T6's
 two centres are enough. Two of the six landed: T1's range is restricted and
 T4c is disconfirmed outright.
+
+
+### Gate audit — the refutation pass's verdicts, ruled on (2026-09-07)
+
+Ruled by the Phase 2 gate auditor against the **Refutation record** at the
+foot of this file. Where a refutation stands the verdict above was changed
+and the class was **not** touched; where the auditor re-ran a figure itself
+the run is named. The roadmap's class-gate rule is the test applied: a
+*demonstrated* trait needs a measurement, that measurement shown red on a
+planted fault of the same kind, **and** a surviving refutation.
+
+| Row | Ruling | Cause recorded, and the auditor's check |
+|---|---|---|
+| T1 | **refutation stands** → disconfirmed at f₀ ≤ 25 Hz with Q ≥ 16, and it is **the build's** | §1 reads f₀ ∈ {100, 1 k, 4.8 k}; the macro stops are 20 Hz and Q 32. **Re-run by the auditor** (`scratch/audit/bp_t1.py`, through `tests/test_cpython_effects_bandpass.py`'s own `tone_gain_db`): `set_macro(0,0); set_macro(1,127)` reads back **centre 20.0000 Hz, Q 32.0000**, and the settled gain at f₀ is **−0.5373 dB** on the pack's own `seconds` rule against a ±0.05 dB bar; f₀ 25 Hz Q 32 **−0.2059**, f₀ 20 Hz Q 16 **+0.0665**, f₀ 60 Hz Q 32 −0.0220, f₀ 1 kHz Q 0.707 +0.0000. The refuter's longer settles give −0.4858 / −0.4820 / −0.4801, so it is not a settling artefact. RBJ's closed form at that cell is **+0.00000 dB**, so unlike T4c the deviation is not the prototype. Separately, T1's planted fault is a bare `audiobiquad.Biquad` built *outside* the class, so its red never passes through `BandPass`. |
+| T2 | **refutation stands** → disconfirmed above about 2 kHz | The disconfirmer names "any Q in 0.5…16" and no centre; §1 measures f₀ = 1 kHz only. At f₀ = 4 kHz — patch 3 `Presence Window` sits at 4 072 Hz — the predicted edges read **Q 16: −3.209 / −3.222 dB; Q 0.5: −3.130 / −3.803 dB**, three of four outside the −3.0 ± 0.15 bar. The class tracks the prototype to ≤ 0.0005 dB there, so this is T4c's bilinear warp in T2's clause. |
+| T4a | **refutation stands** → disconfirmed at Q ≥ 8 | The disconfirmer names "any f₀ ≤ 2 kHz" and no width; §1 fits at Q 0.707 only. The same 5-point fit over f₀/8…f₀/4: **+6.435 dB/oct at Q 8 (f₀ 500 Hz), +6.436 at Q 32 (f₀ 500), +6.431 at Q 32 (f₀ 2 k)**, against +(5.7…6.3). Patch 4 `Narrow Probe` is Q 23.8, so this is a shipped setting. The closed form over the same grid gives +6.435 / +6.439 / +6.437 — the prototype's curvature, not the build. |
+| T4b | **refutation stands** → disconfirmed at Q ≥ 8 | Same axis. Inside the clause's own centre condition (f₀ ≤ 600 Hz), the 4f₀…8f₀ fit reads **−6.586 dB/oct at f₀ 500 Hz Q 8, −6.572 at Q 32, −6.653 at f₀ 600 Hz Q 32**, against −6.0 ± 0.3; closed form −6.585 / −6.589. What §1 claims does reproduce at Q 0.707 and extends down to 20 Hz. |
+
+T3, T5 and T6 survive, each hardened past §1's own coverage; T6 would have
+produced a false red at f₀ 100 Hz on the pack's own probe level, and the
+Refutation record says where. The shape of all four breaks is one shape: **the
+dossier's filter rows are quantified over spans the bilinear warp does not
+survive**, and §11's note that `LowPass`, `HighPass` and `Notch` likely carry
+it too now has three further instances behind it.
+
+**Rule applied to the two non-`disconfirmed` outcomes.** A refutation that
+shows the class failing its own bar makes the row **disconfirmed**. A
+refutation that shows the *demonstration* invalid — a fault that cannot fire,
+a reading that is green on a bypass, a bar that was never asserted — leaves no
+number that tests the trait, so the row becomes **unmeasured**, on this pack's
+own precedent for a measurement that "produced a number that does not test the
+claim". Neither outcome is a licence to edit the class.
+
 
 ---
 

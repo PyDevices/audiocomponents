@@ -33,6 +33,15 @@ and no trait was written or edited after `0462960`.
 
 ## 1. Traits
 
+> **Revised by the Phase 2 gate audit, 2026-09-07.** The verdicts in the table
+> below are the audited ones: every row the independent refutation pass broke
+> was changed here, and the class was **not** touched. The *Gate audit* block
+> at the end of this section carries the ruling and its cause per row; the
+> *Refutation record* at the foot of the file carries the pass itself. Notes
+> under the table that predate the pass are superseded by them — including any
+> tally, any "all of them carry all three", and any sentence saying no
+> refutation pass ran.
+
 Command for every row below, unless another is named:
 
 ```
@@ -46,11 +55,11 @@ OK
 | # | Trait, as the dossier stated it | Verdict | Measurement · rate · interpreter | Planted fault → result | Refutation: argument, and the answer |
 |---|---|---|---|---|---|
 | T1 | The split is exact: detector idle, reconstruction within 0.05 dB from 20 Hz to 0.4·F_s, impulse out at its input peak | **demonstrated** | eight fixed sines at threshold 0 dBFS ratio 1, **worst 0.0000 dB**; impulses at (f₀, Q) = (100, 0.5), (3000, 2), (10000, 8) all peak 20000 at frame 50. 48 kHz, cpython; the same graph on mp and cpy renders byte-identical PCM (§3) | band branch detuned 1 % → worst **0.2218 dB**; Q 10 % apart → worst **0.4009 dB**, both against a 0.05 dB bar and a clean run at 0.0000 | *"Measured at f₀ this proves nothing — the notch is zero and the band-pass is unity there whatever Q is."* Correct, and it is why the first cut of both faults came back green at 0.0068 and 0.0000 dB. The sweep and both faults now read the skirt (2500 and 3600 Hz), where the fault lives |
-| T2 | The band gain is the compressor law, knee 6 dB wide; five probe levels within 1 dB | **demonstrated** | five levels at f₀, deviations **+0.000 / +0.188 / +0.422 / +0.423 / +0.423 dB**, worst 0.423 against a 1 dB bar. 48 kHz, cpython. Also run at 44.1 and 22.05 kHz (§2's LAW row): −14.630 and −14.631 dB against −15.000 | knee dropped to 0 dB → the knee probe reads **+0.000** where the law says −0.562 and the class reads −0.374; ratio moved 4 → 2 → **−9.718** where the law says −15.000 and the class reads −14.577 | *"A 0.42 dB offset that is the same at three levels is a systematic error you are calling a pass."* It is systematic, and its cause is now measured rather than assumed: not notch leakage (that branch is exactly zero at f₀) but the detector's finite attack, which moves with attack time and frequency. App. R of the dossier carries the numbers |
+| T2 | The band gain is the compressor law, knee 6 dB wide; five probe levels within 1 dB | **disconfirmed above about 5 ms of attack** — REFUTED | five levels at f₀, deviations **+0.000 / +0.188 / +0.422 / +0.423 / +0.423 dB**, worst 0.423 against a 1 dB bar. 48 kHz, cpython. Also run at 44.1 and 22.05 kHz (§2's LAW row): −14.630 and −14.631 dB against −15.000 | knee dropped to 0 dB → the knee probe reads **+0.000** where the law says −0.562 and the class reads −0.374; ratio moved 4 → 2 → **−9.718** where the law says −15.000 and the class reads −14.577 | *"A 0.42 dB offset that is the same at three levels is a systematic error you are calling a pass."* It is systematic, and its cause is now measured rather than assumed: not notch leakage (that branch is exactly zero at f₀) but the detector's finite attack, which moves with attack time and frequency. App. R of the dossier carries the numbers |
 | T3 | Below threshold it is a wire: 10 dB under, within 0.05 dB of unity | **demonstrated** | −41 dBFS at f₀ → **+0.0000 dB**. 48 kHz, cpython; **+0.0000 dB** on mp and cpy at 48, 44.1 and 22.05 kHz (§2 LEVEL) | threshold lifted −30 → −55 dBFS → **−10.1381 dB** against a 0.05 dB bar | *"A wire at one level is not a wire."* The row is one level by construction (10 dB under the threshold); the WIRE invariant carries the byte-identical claim across the whole probe, and T1 carries eight frequencies |
-| T4 | Out of band untouched while the band works: less than 0.2 dB between idle and 19 dB down | **demonstrated** | 750 Hz (two octaves down) at −41 and −4 dBFS → **+0.0000 and −0.0553 dB**, delta **0.0553**. 48 kHz, cpython | the broadband-ducker topology — gain cell on the whole signal, keyed from the band — moves the same tone **17.157 dB** between the two levels | *"Keying the detector off the dry tap would be the natural fault and you did not use it."* It was used first and came back **0.045 dB** — out of band the band branch carries almost nothing, so ducking it moves the sum by nothing whatever the key hears. The topology is what T4 is about, so the topology is what is planted |
-| T5 | The band gain is affine in the band-pass's own response; composite within 0.5 dB of the closed form built from S1 and T2 | **demonstrated** | eight frequencies at a fixed −10 dBFS: deviations **+0.005 / +0.007 / +0.011 / +0.027 / +0.423 / +0.029 / +0.011 / +0.009 dB**, worst 0.423 (at f₀, T2's detector offset) against a 0.5 dB bar. 48 kHz, cpython | the detector's key mistuned to a 6 kHz band → at 2500 Hz the class reads **+0.000** where the closed form says −4.112 and the clean class reads −4.084 | *"Every point but f₀ agrees to 0.03 dB — the closed form and the class share the same arithmetic and this is circular."* They do not: the closed form is Python from S1's coefficients and `audioif_dynamics.c`'s law, the class is C from `audioif_filter_f32.c`. The agreement is between two implementations, and the one point where they part is the detector, which the closed form does not model |
-| T6 | A dry/wet blend and a band-range limit are the same control | **demonstrated** | six blends against `20·log10((1−m) + m·g₁)`: worst **0.0035 dB** against a 0.2 dB bar; 375 Hz across the sweep **+0.0000 / −0.0006 / +0.0000 dB** against a 0.05 dB bar. 48 kHz, cpython | dry voice left at unity while the wet voices blend — two mechanisms instead of one — reads **+0.775 dB** where the closed form says −4.534 and the class reads −4.535 | *"`g₁` is measured on the same class, so the closed form is fitted to it."* One number is measured; the shape across five other blends is predicted from it and from nothing else, and the fault shows the prediction is not automatic |
+| T4 | Out of band untouched while the band works: less than 0.2 dB between idle and 19 dB down | **disconfirmed below Q 2** — REFUTED | 750 Hz (two octaves down) at −41 and −4 dBFS → **+0.0000 and −0.0553 dB**, delta **0.0553**. 48 kHz, cpython | the broadband-ducker topology — gain cell on the whole signal, keyed from the band — moves the same tone **17.157 dB** between the two levels | *"Keying the detector off the dry tap would be the natural fault and you did not use it."* It was used first and came back **0.045 dB** — out of band the band branch carries almost nothing, so ducking it moves the sum by nothing whatever the key hears. The topology is what T4 is about, so the topology is what is planted |
+| T5 | The band gain is affine in the band-pass's own response; composite within 0.5 dB of the closed form built from S1 and T2 | **disconfirmed above about 5 ms of attack** — REFUTED | eight frequencies at a fixed −10 dBFS: deviations **+0.005 / +0.007 / +0.011 / +0.027 / +0.423 / +0.029 / +0.011 / +0.009 dB**, worst 0.423 (at f₀, T2's detector offset) against a 0.5 dB bar. 48 kHz, cpython | the detector's key mistuned to a 6 kHz band → at 2500 Hz the class reads **+0.000** where the closed form says −4.112 and the clean class reads −4.084 | *"Every point but f₀ agrees to 0.03 dB — the closed form and the class share the same arithmetic and this is circular."* They do not: the closed form is Python from S1's coefficients and `audioif_dynamics.c`'s law, the class is C from `audioif_filter_f32.c`. The agreement is between two implementations, and the one point where they part is the detector, which the closed form does not model |
+| T6 | A dry/wet blend and a band-range limit are the same control | **blend law demonstrated; the out-of-band clause disconfirmed below Q 2, and it never carried a fault** — REFUTED | six blends against `20·log10((1−m) + m·g₁)`: worst **0.0035 dB** against a 0.2 dB bar; 375 Hz across the sweep **+0.0000 / −0.0006 / +0.0000 dB** against a 0.05 dB bar. 48 kHz, cpython | dry voice left at unity while the wet voices blend — two mechanisms instead of one — reads **+0.775 dB** where the closed form says −4.534 and the class reads −4.535 | *"`g₁` is measured on the same class, so the closed form is fitted to it."* One number is measured; the shape across five other blends is predicted from it and from nothing else, and the fault shows the prediction is not automatic |
 
 - **demonstrated** needs all three of: a measurement, that measurement shown
   red on a planted fault of the same kind, and a surviving refutation.
@@ -70,6 +79,37 @@ it could not break: T1's 0.0000 dB (four decimal places on eight
 frequencies), T6's closed form, and the byte-identity of the three
 interpreters. **It is not an independent pass** — nobody but this session has
 looked at these numbers, and §11 says so.
+
+
+### Gate audit — the refutation pass's verdicts, ruled on (2026-09-07)
+
+Ruled by the Phase 2 gate auditor against the **Refutation record** at the
+foot of this file. Where a refutation stands the verdict above was changed
+and the class was **not** touched; where the auditor re-ran a figure itself
+the run is named. The roadmap's class-gate rule is the test applied: a
+*demonstrated* trait needs a measurement, that measurement shown red on a
+planted fault of the same kind, **and** a surviving refutation.
+
+| Row | Ruling | Cause recorded, and the auditor's check |
+|---|---|---|
+| T2 | **refutation stands** → disconfirmed above about 5 ms of attack | §1 demonstrates the law at attack 2 ms and ratio 4 only, gets +0.423 dB, and names the cause itself without running the axis — the module docstring at `lib/audioeffects/rebuilt/dynamiceq.py:78-81` says the shortfall "moves with the attack time (0.23 dB short at 0.1 ms, 1.18 dB at 10 ms)". Run, inside `_MACRO_RANGES`' own declared spans (`dynamiceq.py:166-174`): worst deviation **0.423 (2 ms, R 4) / 0.535 (2 ms, R 20) / 0.975 (10 ms, R 4) / 1.234 (10 ms, R 20) / 1.857 (30 ms, R 4) / 3.370 (100 ms, R 4) / 4.269 dB (100 ms, R 20)** against a 1 dB bar. Not a corner nobody reaches: **patch 1 "Boxiness Control"** reads +0.888 dB at its shipped settings and **patch 3 "Low End Tamer" +1.439 dB — a shipped patch outside the trait's own bar.** Monotone in attack and in ratio, so it is a property of the class. |
+| T4 | **refutation stands** → disconfirmed below Q 2 | The trait says "less than 0.2 dB"; §1 measures Q 2 and one side only. Q has a declared floor of 0.5. Same probe, same levels, only Q moved: 750 Hz idle→work reads **0.0553 (Q 2) / 0.2624 (Q 1) / 1.0154 dB (Q 0.5)** and 12 000 Hz **0.0299 / 0.1581 / 0.6472**. At **patch 5 "Half Measure"'s shipped Q 1.01** the deltas are **0.2713** and 0.1679 dB — a shipped patch past the bar. Two octaves out, \|H_bp\| is only "far below" f₀ when Q is high, and the trait was written as if it were unconditional. |
+| T5 | **refutation stands** → disconfirmed above about 5 ms of attack | The obvious criticism fails — extending the closed form's span to 375…12 000 Hz gives worst 0.240 dB against 0.5. But the closed form is built on `law()`, and T2's detector shortfall lives inside it: attack moved and nothing else, **0.423 (2 ms) / 0.984 (10.18 ms, patch 1's) / 1.465 dB (20 ms)** against a 0.5 dB bar. T5 falls with T2 rather than separately, which is exactly what §1's own defence says it should do. |
+| T6 (out-of-band clause) | **refutation stands** → disconfirmed below Q 2 | The blend law survives at eight blends and three geometries (worst 0.0053 dB against 0.2). The second clause — "out of band nothing moves as m sweeps", disconfirmed above 0.05 dB — is the one demonstrated claim in this pack with **no planted fault of its own**, and it is false at the declared Q floor: at f₀ 3000, **Q 0.5 the span is 0.2376 dB**, and at patch 5's shipped Q 1.01, **0.0481 dB**, sitting on the bar. It is T4's claim wearing another hat and inherits T4's Q dependence. |
+
+T1 survives well outside where it was demonstrated (nine frequencies × six
+geometries, worst 0.0041 dB against 0.05). T3 survives but has no independent
+power: 10 dB under a 6 dB knee the law returns exactly 0, so T3 reduces to T1's
+reconstruction at one frequency and cannot fail for a reason of its own.
+
+**Rule applied to the two non-`disconfirmed` outcomes.** A refutation that
+shows the class failing its own bar makes the row **disconfirmed**. A
+refutation that shows the *demonstration* invalid — a fault that cannot fire,
+a reading that is green on a bypass, a bar that was never asserted — leaves no
+number that tests the trait, so the row becomes **unmeasured**, on this pack's
+own precedent for a measurement that "produced a number that does not test the
+claim". Neither outcome is a licence to edit the class.
+
 
 ---
 
@@ -610,3 +650,179 @@ From the dossier's §7, and only from there.
 - **The rebuild is more expensive than the class it replaces**, by about 45 %
   per block on the desktop. That is a fact about this build, not a
   measurement that is still to come.
+
+---
+
+## Refutation record (2026-09-07)
+
+An **independent** refuter, not the class's session. Every trait marked
+`demonstrated` in §1 was re-measured with the kit
+(`PYTHONPATH=audiocomponents/lib audiocomponents/.venv/bin/python`), on
+`effects/p2-integration`, and then varied *inside the trait's own terms* —
+which for this class means inside the ranges `_MACRO_RANGES` itself declares:
+Frequency 30–16000 Hz, **Width (Q) 0.5–12**, Threshold −60…0 dBFS,
+**Ratio 1–20**, **Attack 0.1–100 ms**, Release 5–1000 ms, Mix 0–1
+(`lib/audioeffects/rebuilt/dynamiceq.py:167-174`).
+
+The battery reproduces as the pack states it:
+
+```
+$ PYTHONPATH=<worktree>/lib audiocomponents/.venv/bin/python \
+      -m unittest tests.test_cpython_effects_dynamiceq
+Ran 33 tests in 22.492s
+
+OK
+```
+
+Every planted fault was checked to be a live-instance mutation with a clean
+control in the same test, asserting the clean run under the bar and the
+faulted run over it — they are real, and they printed red in the run above
+(T1 `0.2218` and `0.4009` dB, T4 ducker `17.157` dB).
+
+**The shipped patches matter to three of the findings below.** Read back from
+the instances (`effect.macro(i)`, patches 0–5):
+
+| Patch | f₀ | Q | Threshold | Ratio | Attack |
+|---|---|---|---|---|---|
+| 0 Wide Band | 2978.9 | 1.98 | −29.8 | 4.02 | 1.99 ms |
+| 1 Boxiness Control | 392.4 | 2.48 | −24.1 | 3.03 | **10.18 ms** |
+| 2 Harshness Control | 3129.9 | 3.03 | −27.9 | 4.02 | 0.98 ms |
+| 3 Low End Tamer | 80.6 | **1.20** | −19.8 | 4.02 | **19.56 ms** |
+| 4 Sibilance | 6903.8 | 3.99 | −29.8 | 7.97 | 0.20 ms |
+| 5 Half Measure | 2978.9 | **1.01** | −34.0 | 6.01 | 5.02 ms |
+
+- **T1 — not refuted.** §1 reads the sweep at one geometry only (the default
+  f₀ 3000, Q 2), while the dossier's disconfirmer is "at **any** f₀ in
+  100 Hz…10 kHz and Q in 0.5…8" and the span is "20 Hz to 0.4·F_s" — neither
+  end of which the pack measures. Re-run at nine frequencies (**20, 50, 100,
+  500, 1500, 3000, 6000, 12000, 19200 Hz**) across six geometries
+  (f₀, Q) = (3000, 2), (100, 0.5), (100, 8), (10000, 8), (10000, 0.5),
+  (300, 4), detector idle at threshold 0 dBFS ratio 1: worst deviation
+  **0.0041 dB** (at f₀ 100, Q 8, 100 Hz), against a 0.05 dB bar. The claim
+  holds well outside where it was demonstrated, including at 20 Hz
+  (**−0.0024 dB**) and at 0.4·F_s (**+0.0000 dB**). Nothing to answer.
+
+- **T2 — REFUTED.** The trait is "the composite is `−(L−T)(1−1/R)` **within
+  1 dB**", disconfirmed by "any of the five probe levels more than 1 dB from
+  the law". §1 demonstrates it at attack 2 ms and ratio 4 only, gets
+  +0.423 dB, and then *names the cause itself*: the module docstring
+  (`lib/audioeffects/rebuilt/dynamiceq.py:78-81`) says the shortfall "moves
+  with the attack time (0.23 dB short at 0.1 ms, 1.18 dB at 10 ms)". The pack
+  states that as an explanation and never runs the axis. Run here, same probe
+  levels, same rate, only Attack and Ratio moved inside their declared
+  ranges:
+
+  | Attack | Ratio | worst deviation from the law (bar 1 dB) |
+  |---|---|---|
+  | 2 ms | 4 | 0.423 dB |
+  | 2 ms | 20 | 0.535 dB |
+  | 10 ms | 4 | **0.975 dB** |
+  | 10 ms | 20 | **1.234 dB** |
+  | 30 ms | 4 | **1.857 dB** |
+  | 100 ms | 4 | **3.370 dB** |
+  | 100 ms | 20 | **4.269 dB** |
+
+  e.g. `attack 100.0 ms R=20.0 -10.0 dBFS -> -14.732 (law -19.000, d +4.268)`.
+  This is not a corner nobody reaches: at **patch 1 "Boxiness Control"'s own
+  shipped settings** (392.4 Hz, Q 2.48, −24.1 dBFS, R 3.03, 10.18 ms) the
+  deviation is **+0.888 dB**, and at **patch 3 "Low End Tamer"** (80.6 Hz,
+  Q 1.20, −19.8 dBFS, R 4.02, 19.56 ms) it is **+1.439 dB** — a shipped patch
+  outside the trait's own bar. The deviation is monotone in attack and in
+  ratio, so it is a property of the class, not noise.
+  **The class author must answer:** either restate T2 as bounded by attack
+  (the law within 1 dB *at attack ≤ ~5 ms*, with the shortfall stated as a
+  function of attack), or hold the class to the law and fix the detector
+  reading (the node's RMS/peak mode, or a compensation), or move the patches
+  off attacks the trait cannot survive. As frozen, T2's verdict cannot stand
+  at `demonstrated`.
+
+- **T3 — not refuted, but it has no independent power.** Re-measured at six
+  settings including both extremes of the declared ranges — (3000, Q 2,
+  −30, R 4, 2 ms), (100, Q 0.5), (100, Q 12, −6 dBFS, R 20, **100 ms**),
+  (16000, Q 12, −50, R 20, 0.1 ms) and patches 3 and 1 — each with the tone
+  10 dB under its own threshold: worst **−0.0013 dB** against a 0.05 dB bar.
+  It survives everything T2 does not, which is the point: 10 dB under a 6 dB
+  knee the law returns *exactly* 0, so T3 reduces to T1's reconstruction at
+  one frequency and cannot fail for any reason of its own. Its planted fault
+  (threshold lifted to −55 dBFS) moves the *detector*, not the claim T3
+  makes. Recorded as an argument, not a refutation: the row is true, and it
+  is entailed by T1.
+
+- **T4 — REFUTED.** The trait: "a tone two octaves from f₀ moves by **less
+  than 0.2 dB** whether the band is idle or 19 dB down." §1 measures it at
+  the default Q 2 and one side only (750 Hz, below f₀), reading 0.0553 dB.
+  Q is a live control with a declared floor of **0.5**. Same probe, same
+  levels (−41 and −4 dBFS), only Q moved:
+
+  | f₀ | Q | 750 Hz idle→work | 12000 Hz idle→work |
+  |---|---|---|---|
+  | 3000 | 2.0 | 0.0553 dB | 0.0299 dB |
+  | 3000 | 1.0 | **0.2624 dB** | 0.1581 dB |
+  | 3000 | 0.5 | **1.0154 dB** | **0.6472 dB** |
+  | 3000 | 8.0 | 0.0000 dB | 0.0000 dB |
+
+  And at **patch 5 "Half Measure"'s shipped Q 1.01** (2978.9 Hz, −34.0 dBFS):
+  744.7 Hz idle **−0.0000** → working **−0.2713 dB**, delta **0.2713**;
+  11915.6 Hz delta **0.1679**. A shipped patch breaks the trait's own bar.
+  The mechanism is T5's: two octaves out, |H_bp| is only "far below" f₀ when
+  Q is high, and the trait was written as if it were unconditional.
+  **The class author must answer:** restate T4 with the Q it is true at
+  (it is a statement about the bell's skirt, so the bound has to be
+  Q-dependent — e.g. the movement is bounded by the composite's own closed
+  form, which T5 already supplies), or re-cut the demonstration at the Q
+  floor and accept a different number. `demonstrated` at Q 2 alone
+  overclaims.
+
+- **T5 — REFUTED, on the same axis as T2.** The closed form's span
+  (f₀/8…4f₀ = 375…12000 Hz) is wider than the eight probes §1 uses
+  (1000…6000); extending it changes nothing — 375, 500, 750, 1000, 2900,
+  3100, 7500, 9000, 12000 Hz at −10 dBFS give worst **0.240 dB** against a
+  0.5 dB bar, so that criticism fails. But the closed form is built on
+  `law()`, and the detector shortfall T2 exposes lives inside it. Attack
+  moved, nothing else:
+
+  | Attack | worst deviation from the closed form (bar 0.5 dB) |
+  |---|---|
+  | 2 ms | 0.423 dB |
+  | 10.18 ms (patch 1's) | **0.984 dB** |
+  | 20 ms | **1.465 dB** |
+
+  e.g. `atk 20.00 ms 3000.0 Hz -> -13.535 (closed -15.000, d +1.465)`.
+  **The class author must answer:** the same answer T2 needs. T5's own
+  defence in §1 — that the closed form and the class are two independent
+  implementations and "the one point where they part is the detector" — is
+  exactly right, and it is why T5 falls with T2 rather than separately.
+
+- **T6 — REFUTED on its second clause; the first survives.** The closed form
+  `20·log10((1−m) + m·g₁)` is solid: re-run at eight blends (0, 0.1, 0.25,
+  0.5, 0.75, 0.9, 0.95, 1) at three geometries — (3000, Q 2, −10 dBFS),
+  (3000, Q 2, −4 dBFS) and (1000, Q 4, −6 dBFS) — worst **0.0053 dB**
+  against a 0.2 dB bar, and the two blends §1 never probed (0.1 and 0.95)
+  land on it too. The circularity objection is answered as §1 answers it.
+  The trait's *second* clause is not: "out of band nothing moves as m
+  sweeps", disconfirmed by "more than **0.05 dB** of out-of-band movement
+  across the sweep". §1 measures f₀/8 at Q 2 (span 0.0006 dB) and **plants no
+  fault for this clause at all** — it is the one demonstrated claim in the
+  pack with no planted fault of its own. At the declared Q floor it is false:
+
+  ```
+  f0= 3000.0 Q=2.00    375.0 Hz: +0.0000, -0.0006, +0.0000  span 0.0006
+  f0= 3000.0 Q=0.50    375.0 Hz: +0.0000, -0.1481, -0.2376  span 0.2376
+  f0= 2978.9 Q=1.01    372.4 Hz: +0.0000, -0.0279, -0.0481  span 0.0481
+  ```
+
+  **0.2376 dB** at Q 0.5 against a 0.05 dB bar, and **0.0481 dB** at patch 5's
+  shipped Q 1.01 — sitting on the bar.
+  **The class author must answer:** split T6 into the blend law (which is
+  demonstrated) and the out-of-band clause (which is T4's claim wearing
+  another hat, and inherits T4's Q dependence), and give the second clause a
+  planted fault or drop it.
+
+**What this pass did not touch.** The Tier 1 block, §2's per-interpreter
+table, §3's digests, and §4's board figures were not re-run; §11's gaps stand
+as written. The runs above are CPython at 48 kHz on this worktree.
+
+**Scripts.** The refuter's probes are `scratch/refute_dynamiceq.py`,
+`scratch/t2max.py`, `scratch/patch3.py`, `scratch/patchcheck.py` and
+`scratch/t3t6.py` in this worktree — untracked working files, not part of the
+class's kit.

@@ -36,13 +36,22 @@ and froze §6's surface, and both landed in `331ba1c` before
 
 ## 1. Traits
 
+> **Revised by the Phase 2 gate audit, 2026-09-07.** The verdicts in the table
+> below are the audited ones: every row the independent refutation pass broke
+> was changed here, and the class was **not** touched. The *Gate audit* block
+> at the end of this section carries the ruling and its cause per row; the
+> *Refutation record* at the foot of the file carries the pass itself. Notes
+> under the table that predate the pass are superseded by them — including any
+> tally, any "all of them carry all three", and any sentence saying no
+> refutation pass ran.
+
 | # | Trait, as the dossier stated it | Verdict | Measurement · rate · interpreter | Planted fault → result | Refutation |
 |---|---|---|---|---|---|
-| T1 | \|H(f₀)\| = Q exactly, within 0.05 dB, for Q ∈ {0.5…16} | **demonstrated** | steady sine at f₀ = 1 kHz, exact-bin DFT over the settled half; 48 kHz, cpython. Worst deviation **0.000 dB** over seven Qs **at both slopes** (bar 0.05) | (a) A2's own fault — one source level for every Q, so Q·level > 28 000: Q 16 reads **+21.473** against +24.082, **−2.609 dB RED**, while Q 8 at the same level stays green. (b) the kit's RESPONSE fault, `ShiftedCornerLowPass`: corner **1148.9 Hz** against 1000, **14.9 % out, RED**, passband green at −0.004 dB | "It only holds because the second section is a wire." Answered: the 24 dB/oct rows are the same to 0.001 dB, and that is a design decision, not luck — the resonance rides section 2 alone against a fixed Butterworth 0.5412 in section 1. Scaling both is the fault `tests/test_cpython_effects_lowpass.py::test_scaling_both_butterworth_qs_is_red` plants, and it lands on 40·log₁₀(Q)+3.01 |
-| T2 | shape invariance on the bilinear-warped axis, f₀-independent for 20 Hz…0.4·F_s; bar 0.05 dB between any two f₀ at the same f_a/f_a0 | **demonstrated** | six corners 31.5 Hz…4 kHz × six ratios 1/8…8, each an exact-bin DFT; 48 kHz, cpython. Worst spread across corners **0.0135 dB** (bar 0.05) | one section retuned 15 % at 24 dB/oct: worst deviation **2.871 dB, RED** | "0.0135 dB is not zero — the dossier says 0.00000." Answered: the dossier's 0.00000 is A13's *arithmetic* on the coefficients; this is a render through int16, and the whole 0.0135 sits in the 31.5 Hz row's 1/8 ratio — a 3.94 Hz tone, the lowest thing the probe set can carry. Every other row agrees to 0.002 dB |
+| T1 | \|H(f₀)\| = Q exactly, within 0.05 dB, for Q ∈ {0.5…16} | **disconfirmed at f₀ ≤ 31.5 Hz, Q 16, 24 dB/oct** — REFUTED | steady sine at f₀ = 1 kHz, exact-bin DFT over the settled half; 48 kHz, cpython. Worst deviation **0.000 dB** over seven Qs **at both slopes** (bar 0.05) | (a) A2's own fault — one source level for every Q, so Q·level > 28 000: Q 16 reads **+21.473** against +24.082, **−2.609 dB RED**, while Q 8 at the same level stays green. (b) the kit's RESPONSE fault, `ShiftedCornerLowPass`: corner **1148.9 Hz** against 1000, **14.9 % out, RED**, passband green at −0.004 dB | "It only holds because the second section is a wire." Answered: the 24 dB/oct rows are the same to 0.001 dB, and that is a design decision, not luck — the resonance rides section 2 alone against a fixed Butterworth 0.5412 in section 1. Scaling both is the fault `tests/test_cpython_effects_lowpass.py::test_scaling_both_butterworth_qs_is_red` plants, and it lands on 40·log₁₀(Q)+3.01 |
+| T2 | shape invariance on the bilinear-warped axis, f₀-independent for 20 Hz…0.4·F_s; bar 0.05 dB between any two f₀ at the same f_a/f_a0 | **disconfirmed at f₀ 20–25 Hz** — REFUTED | six corners 31.5 Hz…4 kHz × six ratios 1/8…8, each an exact-bin DFT; 48 kHz, cpython. Worst spread across corners **0.0135 dB** (bar 0.05) | one section retuned 15 % at 24 dB/oct: worst deviation **2.871 dB, RED** | "0.0135 dB is not zero — the dossier says 0.00000." Answered: the dossier's 0.00000 is A13's *arithmetic* on the coefficients; this is a render through int16, and the whole 0.0135 sits in the 31.5 Hz row's 1/8 ratio — a 3.94 Hz tone, the lowest thing the probe set can carry. Every other row agrees to 0.002 dB |
 | T3 | −12.03 dB/oct on the warped axis: −24.10 dB at 4·f_a0, −36.13 at 8·f_a0, at every f₀; DC 0.00 ± 0.1 dB | **demonstrated** | four corners 31.5 Hz…2 kHz, stopband probes at −6 dBFS; 48 kHz, cpython. **−24.099/−24.100 dB** at 4·f_a0 and **−36.125** at 8·f_a0 at every corner, fitted **−12.025 dB/oct**; DC within **0.014 dB** | the second section left as a wire at 24 dB/oct: fitted **−11.754 dB/oct** against −23.983, **RED** | "The first run read −22.2 dB/oct at 24 dB/oct — was that hidden?" No: it is recorded here. At −20 dBFS the 8·f_a0 point of a fourth-order roll-off lands at −92 dBFS, under one LSB, so that run measured the quantizer. Re-run at −6 dBFS it reads −23.97…−24.00. Both runs are in §9 |
-| T4 | struck with a click it rings at f₀, envelope to e^{−π} in Q periods, for Q ∈ {2,4,8,16}, bar 0.8–1.25 Q | **demonstrated** | `click_stereo` through a 500 Hz corner, Hilbert envelope; 48 kHz, cpython. 1.74 / 3.62 / 7.53 / 15.43 periods for Q 2 / 4 / 8 / 16 — every one inside its band | the resonance halved on the section: Q 4 reads **1.74 periods** against a 3.20–5.00 bar and Q 16 reads **7.53** against 12.80–20.00, **both RED**, with the clean run green beside each | "1.74 periods for Q 2 is near the 1.60 floor." True, and S3 states the law for Q ≫ ½, which is why the dossier's own bar starts at Q 2 and the band is asymmetric. Q 4, 8 and 16 sit at 0.90, 0.94 and 0.96 of Q |
-| T5 | rate-honest against the closed form **at the running rate**: corner within 0.1 %, \|H(f₀)\| = Q, swept points within 0.1 dB | **demonstrated** | \|H(f₀)\| at 1 kHz: **−3.010 / −3.011 / −3.009 dB** at 48 000 / 44 100 / 22 050 Hz (want −3.010). Against S1's closed form evaluated at each rate, six probes 125 Hz…4 kHz: worst **0.0009 / 0.0009 / 0.0011 dB** (bar 0.1) | a corner expressed in 48 kHz units on a 22.05 kHz graph — the "designed at 48 kHz and never scaled" bug: corner built at 2176.9 Hz, worst **13.711 dB** from the closed form, **RED**, against 0.001 dB clean | "Your first T5 fault didn't fire." It did not, and that is recorded: removing the class's Nyquist clamp changed nothing measurable, because a corner at 0.9·F_s and one at 0.49·F_s both warp to at-or-past Nyquist and both render flat. The clamp is a second line of defence, not the only one; the fault that fires is the one above |
+| T4 | struck with a click it rings at f₀, envelope to e^{−π} in Q periods, for Q ∈ {2,4,8,16}, bar 0.8–1.25 Q | **disconfirmed above about 0.17·F_s, and at 24 dB/oct throughout** — REFUTED | `click_stereo` through a 500 Hz corner, Hilbert envelope; 48 kHz, cpython. 1.74 / 3.62 / 7.53 / 15.43 periods for Q 2 / 4 / 8 / 16 — every one inside its band | the resonance halved on the section: Q 4 reads **1.74 periods** against a 3.20–5.00 bar and Q 16 reads **7.53** against 12.80–20.00, **both RED**, with the clean run green beside each | "1.74 periods for Q 2 is near the 1.60 floor." True, and S3 states the law for Q ≫ ½, which is why the dossier's own bar starts at Q 2 and the band is asymmetric. Q 4, 8 and 16 sit at 0.90, 0.94 and 0.96 of Q |
+| T5 | rate-honest against the closed form **at the running rate**: corner within 0.1 %, \|H(f₀)\| = Q, swept points within 0.1 dB | **disconfirmed at f₀ 20 Hz, Q 16, 24 dB/oct, at 48 and 44.1 kHz** — REFUTED | \|H(f₀)\| at 1 kHz: **−3.010 / −3.011 / −3.009 dB** at 48 000 / 44 100 / 22 050 Hz (want −3.010). Against S1's closed form evaluated at each rate, six probes 125 Hz…4 kHz: worst **0.0009 / 0.0009 / 0.0011 dB** (bar 0.1) | a corner expressed in 48 kHz units on a 22.05 kHz graph — the "designed at 48 kHz and never scaled" bug: corner built at 2176.9 Hz, worst **13.711 dB** from the closed form, **RED**, against 0.001 dB clean | "Your first T5 fault didn't fire." It did not, and that is recorded: removing the class's Nyquist clamp changed nothing measurable, because a corner at 0.9·F_s and one at 0.49·F_s both warp to at-or-past Nyquist and both render flat. The clamp is a second line of defence, not the only one; the fault that fires is the one above |
 
 **Characters.** None. A low-pass has one behaviour (dossier §3).
 
@@ -53,6 +62,41 @@ planted as a fault); whether T3's shortfall at 24 dB/oct was the class or the
 measurement (the measurement — the int16 floor — and both runs are recorded);
 and whether the T5 fault was a fault at all (it was not, and it was replaced
 rather than quietly dropped). What it could not break: T2 and T4.
+
+
+### Gate audit — the refutation pass's verdicts, ruled on (2026-09-07)
+
+Ruled by the Phase 2 gate auditor against the **Refutation record** at the
+foot of this file. Where a refutation stands the verdict above was changed
+and the class was **not** touched; where the auditor re-ran a figure itself
+the run is named. The roadmap's class-gate rule is the test applied: a
+*demonstrated* trait needs a measurement, that measurement shown red on a
+planted fault of the same kind, **and** a surviving refutation.
+
+| Row | Ruling | Cause recorded, and the auditor's check |
+|---|---|---|
+| T1 | **refutation stands** → disconfirmed at f₀ ≤ 31.5 Hz, Q 16, 24 dB/oct | §1 measures one corner (1 kHz) while the Frequency macro spans 20 Hz–20 kHz and the trait states no corner restriction. Settle scaled to the ring: f₀ **20 Hz dev −0.4440 dB** (converged: 10 / 20 / 30 s give −0.4446 / −0.4488 / −0.4479), 31.5 Hz −0.0941, 40 Hz −0.0260, 63 Hz +0.0025, bar 0.05. Not the probe and not the quantiser: levels 1625 / 1200 / 800 / 400 all read −0.05…−0.10 dB at 31.5 Hz, and the instance's own live coefficients predict **+23.8107 dB against +24.0824, −0.2717 dB**, with no audio in the loop. Float32 coefficients at a low corner with the steep section's Q = 29.56. |
+| T2 | **refutation stands** → disconfirmed at f₀ 20–25 Hz | The upper half survives — 31.5 Hz to 19 200 Hz × six ratios, worst spread 0.0135 dB, §1's own figure. It breaks at the bottom of the trait's own span, which §1 never reached: at warped ratio 1/8, f₀ 20 / 25 / 31.5 / 125 Hz read **−0.0192 / +0.0599 / +0.0112 / −0.0005 dB**, a 20-vs-25 Hz spread of **0.0791 dB** against a 0.05 bar. §1's probe-floor explanation is wrong: the same points off the live coefficients agree to 0.001 dB with no audio, and the ideal double-precision RBJ curve reads −0.001060 dB at every one of those corners. The residual is float32, which matters because only that gets worse where `mp_float_t` is single. |
+| T4 | **refutation stands** → disconfirmed above about 0.17·F_s and at 24 dB/oct | The readout was validated first (500 Hz, 48 kHz, slope 12: 1.74 / 3.61 / 7.52 / 15.43 against §1's 1.74 / 3.62 / 7.53 / 15.43). Both axes §1 left alone go red on the trait's own 0.8–1.25 Q disconfirmer: at slope 12, Q 2, **f₀ 12 kHz reads 2.750 and 16 kHz 3.667 periods** (bar 1.60–2.50), and 44.1 / 22.05 kHz fail at 0.181·F_s; at slope 24 the ring is a uniform **≈1.85 × Q**, which is exactly `BUTTERWORTH_HIGH/FLAT_Q` = 1.848 — the same design choice T1 is built around. |
+| T5 | **refutation stands** → disconfirmed at f₀ 20 Hz, Q 16, 24 dB/oct | §1 exercises one corner, one Q and six probes stopping at 4 kHz; the disconfirmer names none of those and runs to 0.45·F_s. The middle clause fires on the T1 renders: **−0.3777 dB at 48 kHz and −0.2931 dB at 44.1 kHz** against a 0.1 dB bar, while 22.05 kHz reads −0.0084 and stays green — the rate-dependence is the point, because the warp is smallest at the low corner and the pole sits closest to z = 1. Where it holds it holds well: worst 0.0128 dB over probes 0.001…0.45·F_s at all three rates. |
+
+T3 survives on corner range, rate and DC. **Separately, and not a trait:** the
+readout behind the T1/T2/T3 regression tests *and* their three planted faults
+short-circuits to 0.0 only when `node.mix == 0.0` exactly
+(`tests/test_cpython_effects_lowpass.py:45-46`, `magnitude_db`), so it is blind
+to the Mix macro — clean, `mix` 0.001 and `mix` 0.5 all read 18.0618 dB. A
+fault leaving every section at `mix = 0.001` — the class audibly a wire —
+leaves those tests green. That is a hole in the regression net the width of the
+Mix macro; it belongs in §11.
+
+**Rule applied to the two non-`disconfirmed` outcomes.** A refutation that
+shows the class failing its own bar makes the row **disconfirmed**. A
+refutation that shows the *demonstration* invalid — a fault that cannot fire,
+a reading that is green on a bypass, a bar that was never asserted — leaves no
+number that tests the trait, so the row becomes **unmeasured**, on this pack's
+own precedent for a measurement that "produced a number that does not test the
+claim". Neither outcome is a licence to edit the class.
+
 
 ---
 
@@ -577,3 +621,181 @@ From the dossier's §7, and only from there.
   vision's 8–12 KB. Recorded in the dossier's App. R with where the excess
   is.
 - **No issue was filed** for any of the above.
+
+---
+
+## Refutation record (2026-09-07)
+
+Independent pass, run by a session that did not build the class, against
+`effects/p2-integration`. Method: renders through the real class
+(`audioeffects.create("LowPass", …)`, integer sine sources, exact-bin DFT of
+the settled window, wet ratioed against the same source pulled dry), plus a
+second reading taken off each built section's own live `coefficients`. The
+two agree to 0.001 dB wherever both were taken, so a deviation that shows in
+both is the filter and not the probe. Harness: `.refute-lp/` (scratch,
+untracked); interpreter `.venv/bin/python` (CPython 3.12.3, numpy 2.5.2),
+`PYTHONPATH=audiocomponents/lib:audiocomponents/.refute-lp`. Every number
+below is from a run in this session; nothing is quoted from §1.
+
+**T1 — REFUTED.** §1 measures one corner, 1 kHz, and the trait states no
+corner restriction while the Frequency macro spans 20 Hz…20 kHz. Swept over
+seven corners at both slopes with the settle time scaled to the ring
+(`settle = 12·Q/f₀`), the corner gain leaves the 0.05 dB bar at the bottom of
+the class's own span at 24 dB/oct:
+
+```
+render, 48 kHz, slope 24, Q 16, level 1625 (Q·level < 28 000)
+  f0    20.0  dev -0.4440 dB   (settle 10/20/30 s: -0.4446 / -0.4488 / -0.4479 - converged)
+  f0    31.5  dev -0.0941 dB   (settle 6/12/20 s x meas 2/8/16 s: -0.092 .. -0.097)
+  f0    40.0  dev -0.0260 dB
+  f0    63.0  dev +0.0025 dB
+render, slope 24, Q 16, f0 20 Hz, three rates
+  48000 Hz  |H(f0)| +23.7047 want +24.0824  dev -0.3777 dB
+  44100 Hz  |H(f0)| +23.7893 want +24.0824  dev -0.2931 dB
+  22050 Hz  |H(f0)| +24.0740 want +24.0824  dev -0.0084 dB   (green)
+```
+
+Not the probe and not the quantiser: level 1625 / 1200 / 800 / 400 all read
+−0.05…−0.10 dB at 31.5 Hz, and the same instance's live coefficients predict
+it without rendering at all — `(1.7093e-06, 3.4187e-06, 1.7093e-06,
+−1.9951673746109009, 0.99517422914505)` and `(…, −1.9999046325683594,
+0.9999114274978638)` at f₀ 20 Hz give **+23.8107 dB against +24.0824,
+−0.2717 dB**. Both `a1` values are exactly representable in binary32: these
+are float32 coefficients, and at a low corner with the 24 dB/oct section's
+Q = 1.3066·16/0.7071 = 29.56 the rounding moves the peak by a quarter of a
+decibel. Coefficient-side scan, `|dev| > 0.05 dB` only at: 48 kHz slope 24
+f₀ 20/25/31.5 Hz Q 16 (−0.2717 / −0.0511 / −0.0703) and 44.1 kHz slope 24
+f₀ 20 Hz Q 16 (−0.1228). **The class author must answer:** either T1's span
+is narrower than the Frequency macro's and the dossier must say so, or the
+class owes a fix (the obvious one — hold section two's Q and put the
+resonance on section one at low corners — is a design change, not a wording
+change). §1's "0.000 dB over seven Qs at both slopes" is true at 1 kHz and
+only there.
+
+**T2 — REFUTED.** Extending the corner set *upward* does not break it: at
+slope 12, corners 31.5 Hz…19 200 Hz (= 0.4·F_s, the top of the trait's own
+span) × six ratios 1/8…8 give a worst spread of **0.0135 dB**, the same
+figure §1 reports, and the ratio-8 column reads −36.124 at every corner. It
+breaks at the *bottom* of the stated span, which §1 never reached (it starts
+at 31.5 Hz; the trait says 20 Hz):
+
+```
+render, 48 kHz, slope 12, Q 0.707, warped-axis ratio 1/8
+  f0  20.0  probe  2.500 Hz  -0.0192 dB   (level 30000, meas 4 s and 16 s identical)
+  f0  25.0  probe  3.125 Hz  +0.0599 dB
+  f0  31.5  probe  3.938 Hz  +0.0112 dB
+  f0 125.0  probe 15.625 Hz  -0.0005 dB
+  spread 20 Hz vs 25 Hz = 0.0791 dB, 25 Hz vs 125 Hz = 0.0604 dB   (bar 0.05)
+```
+
+§1's answer to its own 0.0135 dB — *"a 3.94 Hz tone, the lowest thing the
+probe set can carry"* — is **wrong**, and this is the part that matters more
+than the number. The same points read off the live coefficients give
+−0.0177 / +0.0590 / +0.0114 / −0.0005 dB, agreeing with the render to
+0.001 dB with no audio in the loop; and the ideal double-precision RBJ curve
+gives **−0.001060 dB at every one of those corners**, identical to six
+decimals. The residual is the class's float32 coefficients, not the probe.
+The figures are also stable against level (16 000 and 30 000 agree) and
+against window length (4 s and 16 s agree to 0.0001 dB), which a quantiser
+floor would not be. **The class author must answer:** re-run T2 at 20 and
+25 Hz, and replace the probe-floor explanation with the coefficient-precision
+one — the two have different consequences, because only one of them gets
+worse on a board where `mp_float_t` is single (§4 already names that split).
+
+**T3 — not refuted.** Attacked on three fronts and it held. (a) Corner range:
+§1 stops at 2 kHz; extended to 20 Hz…19 200 Hz at slope 12 the warped-axis
+points read **−24.0983…−24.1000 dB at 4·f_a0** and **−36.1240…−36.1251 at
+8·f_a0**, fitted −12.026 dB/oct, against a −24.10 ± 0.05 bar. (b) Rate: on
+the coefficient reading, 44.1 kHz and 22.05 kHz at f₀ 31.5 Hz…0.4·F_s give
+−24.0991…−24.0994 and a fitted −12.0253/−12.0255 dB/oct at every corner.
+(c) DC, which §1 reports only as "within 0.014 dB": at z = 1 the built
+sections give **−0.0169…+0.0127 dB at 12 dB/oct and −0.0318…+0.0010 at
+24 dB/oct** over 20 Hz…19 200 Hz, against a ±0.1 bar — the same float32
+mechanism that broke T1 and T2 is present here and is an order of magnitude
+inside this trait's bar. §1's −20 dBFS/−6 dBFS story checks out: the trait's
+own stopband points are far enough down that the source level, not the
+filter, sets what you read, and §9 records both runs.
+
+**T4 — REFUTED, twice.** The method first: rendering a click and reading the
+Hilbert envelope down to e^{−π} reproduces §1's four numbers at its own
+setting to 0.01 periods (500 Hz, 48 kHz, slope 12: **1.74 / 3.61 / 7.52 /
+15.43** against §1's 1.74 / 3.62 / 7.53 / 15.43), so the readout is the same
+one. §1 then measured one corner and one slope. Both of the axes it left
+alone go red on the trait's *own* 0.8–1.25 Q disconfirmer:
+
+```
+slope 12, Q 2, bar 1.60-2.50 periods
+  48000 Hz  f0  8000  (0.167 Fs)   2.500   green, exactly on the bar
+  48000 Hz  f0 12000  (0.250 Fs)   2.750   RED
+  48000 Hz  f0 16000  (0.333 Fs)   3.667   RED
+  44100 Hz  f0  8000  (0.181 Fs)   2.540   RED
+  22050 Hz  f0  4000  (0.181 Fs)   2.540   RED
+  22050 Hz  f0  6000  (0.272 Fs)   3.537   RED
+
+slope 24, 48 kHz, f0 500 Hz          Q2 2.74  Q4 6.54  Q8 13.49  Q16 27.42
+slope 24, 48 kHz, f0 100 Hz          Q2 2.73  Q4 6.53  Q8 13.46  Q16 26.61
+slope 24, 22.05 kHz, f0 2000 Hz      Q2 3.63  Q4 6.71  Q8 14.42  Q16 28.48
+  every one outside 0.8-1.25 Q
+```
+
+Two separate failures. (i) Above roughly 0.17·F_s the ring measured in
+periods of f₀ stretches, because the decay is set by the *warped* pole and
+f₀ is not it — the same warp T2 and T3 are careful to state their axis in,
+and T4 states none. 12 kHz is well inside the Frequency macro's span.
+(ii) At 24 dB/oct the ring is a uniform **≈1.85×** the trait's Q periods,
+which is exactly `BUTTERWORTH_HIGH/FLAT_Q` = 1.848 — the class's own design
+decision, the one T1 is built around. So the same choice that makes
+`|H(f₀)| = Q` read the same at both slopes makes *the ringing* read 1.85 Q at
+the steep one, and the dossier's T4 asserts the two are the same thing.
+**The class author must answer:** state T4's axis and its slope. Either it is
+a 12 dB/oct trait below ~0.17·F_s and the dossier says so, or "Q is the
+ringing" is disconfirmed as written at 24 dB/oct and above 12 kHz. §1's
+"1.74 near the 1.60 floor" defence is about the wrong end of the band.
+
+**T5 — REFUTED.** §1 exercises the trait at one corner (1 kHz) and one Q
+(0.707) with six probes stopping at 4 kHz; the trait's disconfirmer is
+"corner displaced > 0.1 %, gain at f₀ more than 0.1 dB from 20·log₁₀(Q), or
+any swept point more than 0.1 dB from the closed form at that rate", with no
+corner, Q or slope restriction, up to 0.45·F_s. The middle clause fires on
+the T1 renders above: **−0.3777 dB at 48 kHz and −0.2931 dB at 44.1 kHz**
+(f₀ 20 Hz, Q 16, 24 dB/oct), against a 0.1 dB bar, while 22.05 kHz reads
+−0.0084 and stays green. That the *failure is rate-dependent* is the point:
+T5 exists to police exactly this, and at the class's lowest corner it is the
+two high rates that miss, because the warp is smallest there and the pole
+sits closest to z = 1 where binary32 runs out. Where the trait *does* hold, it
+holds well: over probes 0.001…0.45·F_s at all three rates, the class's live
+coefficients sit within **0.0128 dB** of the double-precision closed form
+evaluated at the running rate (f₀ 20/100/1000 Hz, Q 0.707 and 4, worst
++0.0128 dB at 22.05 kHz f₀ 20 Hz Q 16). §1's own note that its first T5 fault
+did not fire and was replaced is honest and stands. **The class author must
+answer:** the 0.1 dB clause at low corner and high Q, at 48 and 44.1 kHz.
+
+**A measurement that cannot fail.** `tests/test_cpython_effects_lowpass.py`'s
+`response_db` — the readout behind the T1, T2 and T3 tests *and* behind their
+three planted faults — sums each section's `|H|` from its live coefficients
+and short-circuits to `0.0` only when `node.mix == 0.0` exactly
+(`tests/test_cpython_effects_lowpass.py:45-46`). For every other `mix` it
+reports the full filter magnitude, so it is blind to the Mix macro:
+
+```
+$ .venv/bin/python -c "... from test_cpython_effects_lowpass import response_db ..."
+clean, mix=1      : 18.0618
+mix forced 0.001  : 18.0618
+mix forced 0.5    : 18.0618
+```
+
+A fault that left every section at `mix = 0.001` — the class audibly a wire —
+leaves T1, T2 and T3 green in that file. The three planted faults there do
+fire (all 21 tests pass, and each fault assertion is a positive assertion of
+redness), but they all move `Q`, `frequency` or `mix` *to exactly zero*,
+which is the one case this readout can see. Whatever §1's render-based
+measurements prove, the regression net under them has a hole the width of the
+Mix macro. **The class author must answer:** either give `response_db` the
+crossfade (`mix·H + (1−mix)`) or add one render-based fault at
+`0 < mix < 1`.
+
+**What could not be broken.** T3, on corner range, on rate and on DC. T2's
+upper half — corners to 0.4·F_s hold to 0.0135 dB. T4's readout itself —
+it reproduces §1's numbers at §1's setting. And §1's own recorded
+self-refutations (the −20 dBFS T3 run, the T5 fault that did not fire) are
+accurate as written; the pack does not hide either.

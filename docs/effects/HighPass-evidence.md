@@ -42,16 +42,25 @@ Two drivers produce everything below, both committed:
 
 ## 1. Traits
 
+> **Revised by the Phase 2 gate audit, 2026-09-07.** The verdicts in the table
+> below are the audited ones: every row the independent refutation pass broke
+> was changed here, and the class was **not** touched. The *Gate audit* block
+> at the end of this section carries the ruling and its cause per row; the
+> *Refutation record* at the foot of the file carries the pass itself. Notes
+> under the table that predate the pass are superseded by them — including any
+> tally, any "all of them carry all three", and any sentence saying no
+> refutation pass ran.
+
 | # | Trait, as the dossier stated it | Verdict | Measurement · rate · interpreter | Planted fault → result | Refutation: argument, and the answer |
 |---|---|---|---|---|---|
 | T1 | Exact zero at DC, at Mix 1, every f₀ from 10 Hz up, both slopes | **demonstrated** | TAIL's `dc_step` leg, 48 kHz, cpython: residual **0 LSB**, DC after removal **0.000 LSB**, at f₀ ∈ {10, 30, 100, 2000} Hz and both slopes. Portable row `TAIL exact zero` repeats it at 48 / 44.1 / 22.05 kHz on all three interpreters | the ported `synthio.Biquad` this class moved off, same probe, same 3 s → **RED, residual 71 LSB** | *"Exact zero could be a mute: a class that wrote silence would pass."* The same render carries **10 525 samples of tail** before the zero, and 1 kHz through the same 10 Hz corner reads **+0.0000 dB**. Not a mute |
-| T2 | \|H(f₀)\| = Q exactly, both slopes, within 0.05 dB | **demonstrated** | tone at f₀, 48 kHz, cpython: worst **0.001 dB** over Q ∈ {0.5, .707, 1, 2, 4, 8}, at both slopes | the resonance on *both* Butterworth sections → **RED, +15.052 dB where the trait says +6.021** | *"Only checked at f₀ = 1 kHz."* Re-read at 30, 300 and 15 000 Hz and Q ∈ {0.5, 4, 16}: all inside 0.05 dB — **once the settle is scaled to the ring**. A Q-16 corner at 30 Hz rings for half a second, and the first reading (a 1 s render read from its midpoint) was 0.149 dB out. That is the measurement, not the class |
-| T3 | +12 dB/oct at the 12 slope, +24 at the 24; −24.10 ± 0.30 dB at f₀/4 (−48.20 ± 0.60 steep); 0.00 ± 0.1 dB at Nyquist | **demonstrated** | tones, 48 kHz, cpython: f₀ ∈ {20, 160, 640, 1280, 3200} Hz, both slopes, every row inside its band; 23 kHz reads **0.000 dB** at every f₀ and both slopes | the second pole left as a wire at 24 dB/oct → **RED, −24.475 dB where the trait says −48.20 ± 0.60** | *"A one-octave fit; two points fit any line."* Re-fitted over three octaves, five points: **12.038 and 12.042 dB/oct** at 12 dB/oct. At 24 dB/oct the wide fit is **unmeasurable in 16 bits** — f₀/32 is 120 dB down and renders as zero, 3 of 5 points under 20 LSB. A bound on the measurement, not on the class |
+| T2 | \|H(f₀)\| = Q exactly, both slopes, within 0.05 dB | **disconfirmed at 24 dB/oct with a low corner** — REFUTED | tone at f₀, 48 kHz, cpython: worst **0.001 dB** over Q ∈ {0.5, .707, 1, 2, 4, 8}, at both slopes | the resonance on *both* Butterworth sections → **RED, +15.052 dB where the trait says +6.021** | *"Only checked at f₀ = 1 kHz."* Re-read at 30, 300 and 15 000 Hz and Q ∈ {0.5, 4, 16}: all inside 0.05 dB — **once the settle is scaled to the ring**. A Q-16 corner at 30 Hz rings for half a second, and the first reading (a 1 s render read from its midpoint) was 0.149 dB out. That is the measurement, not the class |
+| T3 | +12 dB/oct at the 12 slope, +24 at the 24; −24.10 ± 0.30 dB at f₀/4 (−48.20 ± 0.60 steep); 0.00 ± 0.1 dB at Nyquist | **skirt legs demonstrated; the Nyquist leg unmeasured — it cannot fail** — REFUTED in part | tones, 48 kHz, cpython: f₀ ∈ {20, 160, 640, 1280, 3200} Hz, both slopes, every row inside its band; 23 kHz reads **0.000 dB** at every f₀ and both slopes | the second pole left as a wire at 24 dB/oct → **RED, −24.475 dB where the trait says −48.20 ± 0.60** | *"A one-octave fit; two points fit any line."* Re-fitted over three octaves, five points: **12.038 and 12.042 dB/oct** at 12 dB/oct. At 24 dB/oct the wide fit is **unmeasurable in 16 bits** — f₀/32 is 120 dB down and renders as zero, 3 of 5 points under 20 LSB. A bound on the measurement, not on the class |
 | T4 | One curve on the bilinear-warped axis, f₀-independent to 0.00000 dB | **demonstrated** to the render's floor, not to 0.00000 dB | tones on the warped grid, 48 kHz, cpython: worst deviation from the 31.5 Hz curve **0.0125 dB** over f₀ ∈ {125, 500, 1 k, 2 k, 4 k}, against the trait's 0.05 dB bar | the built corner 15 % off the asked-for one → **RED, 2.4480 dB against a 0.05 dB bar** | The dossier's 0.00000 dB is arithmetic on the coefficients (A12); a *render* carries int16 quantization, so 0.0125 dB is the render's own floor. Recorded rather than rounded away |
-| T5 | Q is the ringing: e^{−π} of peak after Q periods | **demonstrated**, with the dossier's measurement cell corrected | tone burst at f₀ released, 48 kHz, cpython: **1.01, 1.00, 1.00, 1.00 Q** for Q ∈ {2, 4, 8, 16} | the built Q a quarter of the asked-for one → **RED, 0.25 Q** | **The dossier's cell says "impulse", and for this class that is wrong.** A high-pass passes the click itself: the impulse response's first sample is the strike arriving unfiltered, 20–30 dB above the ring behind it, so an envelope peak over the whole response is the strike and e^{−π} of it is reached in a tenth of a period at every Q — measured: Q 2 and Q 16 both read 0.01 Q. A released tone burst excites the same resonance and leaves only its decay |
-| T6 | Rate-honest against S1's closed form at the running rate, ≤ 0.1 dB | **demonstrated** | tones at 48 000 / 44 100 / 22 050 Hz differenced against the closed form evaluated at each rate: worst **0.0153 dB** over every rate/f₀/probe combination | coefficients built for 48 kHz while 44.1 kHz runs → **RED, −27.107 dB against a closed form of −24.100** | *"Three rates agreeing could mean the class ignores the rate."* The fault moves the reading 3.0 dB, so the measurement can tell the difference; and each rate is differenced against its own closed form, never against 48 kHz's |
+| T5 | Q is the ringing: e^{−π} of peak after Q periods | **disconfirmed** — REFUTED, twice | tone burst at f₀ released, 48 kHz, cpython: **1.01, 1.00, 1.00, 1.00 Q** for Q ∈ {2, 4, 8, 16} | the built Q a quarter of the asked-for one → **RED, 0.25 Q** | **The dossier's cell says "impulse", and for this class that is wrong.** A high-pass passes the click itself: the impulse response's first sample is the strike arriving unfiltered, 20–30 dB above the ring behind it, so an envelope peak over the whole response is the strike and e^{−π} of it is reached in a tenth of a period at every Q — measured: Q 2 and Q 16 both read 0.01 Q. A released tone burst excites the same resonance and leaves only its decay |
+| T6 | Rate-honest against S1's closed form at the running rate, ≤ 0.1 dB | **swept leg demonstrated; the \|H(f₀)\| = Q clause disconfirmed at 44.1 and 22.05 kHz** — REFUTED | tones at 48 000 / 44 100 / 22 050 Hz differenced against the closed form evaluated at each rate: worst **0.0153 dB** over every rate/f₀/probe combination | coefficients built for 48 kHz while 44.1 kHz runs → **RED, −27.107 dB against a closed form of −24.100** | *"Three rates agreeing could mean the class ignores the rate."* The fault moves the reading 3.0 dB, so the measurement can tell the difference; and each rate is differenced against its own closed form, never against 48 kHz's |
 
-**Tally: six demonstrated, none disconfirmed, none unmeasured.**
+**Tally after the gate audit: two demonstrated (T1, T4), three disconfirmed (T2, T5, T6), one split (T3: skirt legs demonstrated, Nyquist leg unmeasured)** — and the Tier 1 `tail_samples` declaration is red. *(Was: six demonstrated, none disconfirmed, none unmeasured.)*
 
 **Characters:** none. A high-pass has one behaviour (dossier §3).
 
@@ -62,6 +71,36 @@ readings**: T2's corner gain at a low f₀ and high Q (a settle too short for
 the ring), and T3's wide-span slope fit at 24 dB/oct (below the 16-bit
 floor). Neither was a class defect; both are recorded above with their
 numbers and both were re-taken. It did not break T1, T4, T5 or T6.
+
+
+### Gate audit — the refutation pass's verdicts, ruled on (2026-09-07)
+
+Ruled by the Phase 2 gate auditor against the **Refutation record** at the
+foot of this file. Where a refutation stands the verdict above was changed
+and the class was **not** touched; where the auditor re-ran a figure itself
+the run is named. The roadmap's class-gate rule is the test applied: a
+*demonstrated* trait needs a measurement, that measurement shown red on a
+planted fault of the same kind, **and** a surviving refutation.
+
+| Row | Ruling | Cause recorded, and the auditor's check |
+|---|---|---|
+| Tier 1 · TAIL | **refutation stands** → the `tail_samples` declaration is **red** | `kit.tail(..., declared_tail_samples=HighPass.TAIL_SAMPLES)` (305 152) at 48 kHz on a **DC step** at the dossier's own worst case (10 Hz, Q 16, 24 dB/oct, +12 dB trim) returns `tail 403375 samples exceeds the declared 305152` → RED, identical at 12 s and 16 s renders (402 945 without the trim). §2's row and the `TAIL_SAMPLES` comment were both taken from a **burst**, which measures 196 330 and passes; a step is the longer excitation and the declaration does not cover it. This is a Tier 1 invariant, so it decides the gate's second item — see §8. |
+| T2 | **refutation stands** → disconfirmed at 24 dB/oct with a low corner | The pack reads the corner at 1 kHz for Q ≤ 8 and, in its own refutation pass, at f₀ ∈ {30, 300, 15 000} for Q ≤ 16 — but only at 12 dB/oct. At 24 dB/oct: **f₀ 10 Q 8 → +17.462 dB** against +18.062 (0.600 out), f₀ 10 Q 16 → +23.792 (0.291 out), f₀ 30 Q 16 → +23.987 (0.095 out), all outside the 0.05 dB bar. Not the settle (stable 6.65 s → 65 s), not the 16-bit floor (constant −40 to −20 dBFS source), not the estimator (a plain RMS ratio agrees), and not the coefficients (the exact digital cascade of what the class built evaluates to +18.0618 dB). f₀ = 10 Hz is **patch 0's own default corner**. |
+| T3 (Nyquist leg) | **refutation stands in part** → the Nyquist leg unmeasured | The skirt legs hold at eight further f₀ (worst 12.038 and 24.126 dB/oct). The Nyquist leg cannot fail: read at 23 kHz with f₀ = 640 Hz, `pole_two` wired out gives −0.0002 dB, **both** poles wired out — the filter entirely gone — gives +0.0000 dB, and the T4 fault gives +0.0001 dB. Every row reads green including a bypass. |
+| T5 | **refutation stands** → disconfirmed | Two ways. (a) As the dossier states the trait — "struck with a click", "impulse, Hilbert envelope" — the reading is **0.040 / 0.022 / 0.012 / 0.006 Q** for Q ∈ {2, 4, 8, 16} against a "<0.8 Q" disconfirmer; the pack substitutes a released tone burst, which is a change to a **frozen** trait made after measurement. (b) On the substitute, the pack ran 12 dB/oct only: at 24 dB/oct the ring is **1.91 / 1.86 / 1.85 Q**, outside the 0.8–1.25 band on every row, and the factor is the design's own `1.3066/0.7071 = 1.848`. |
+| T6 | **refutation stands** → the \|H(f₀)\| = Q clause disconfirmed at 44.1 and 22.05 kHz | The swept closed-form leg survives Q variation at 12 dB/oct. The second clause does not: at **44.1 kHz, f₀ = 10 Hz, 24 dB/oct**, Q 8 → +17.387 dB (0.675 out) and Q 16 → **+21.400 dB (2.682 out)**; at 22.05 kHz, Q 16 → +23.963 (0.120 out), against a 0.1 dB disconfirmer. Stable over 13 / 30 / 60 s settles, RMS and tone-bin agreeing, peaks 5 104 and 6 080 LSB so nothing clips. Same mechanism as T2. |
+
+T1 (exact zero at DC) and T4 survive, and T4's second clause — never measured
+by the pack — was measured and is green (worst 0.0302 dB against 0.1).
+
+**Rule applied to the two non-`disconfirmed` outcomes.** A refutation that
+shows the class failing its own bar makes the row **disconfirmed**. A
+refutation that shows the *demonstration* invalid — a fault that cannot fire,
+a reading that is green on a bypass, a bar that was never asserted — leaves no
+number that tests the trait, so the row becomes **unmeasured**, on this pack's
+own precedent for a measurement that "produced a number that does not test the
+claim". Neither outcome is a licence to edit the class.
+
 
 ---
 

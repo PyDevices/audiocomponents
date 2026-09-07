@@ -46,15 +46,24 @@ and T4's "no absolute h3 floor" are unchanged.
 
 ## 1. Traits
 
+> **Revised by the Phase 2 gate audit, 2026-09-07.** The verdicts in the table
+> below are the audited ones: every row the independent refutation pass broke
+> was changed here, and the class was **not** touched. The *Gate audit* block
+> at the end of this section carries the ruling and its cause per row; the
+> *Refutation record* at the foot of the file carries the pass itself. Notes
+> under the table that predate the pass are superseded by them — including any
+> tally, any "all of them carry all three", and any sentence saying no
+> refutation pass ran.
+
 | # | Trait, as the dossier fixed it | Verdict | Measurement · rate · interpreter | Planted fault → result | Refutation: argument, and the answer |
 |---|---|---|---|---|---|
-| **T1** | Four poles; **−12.0 ± 0.5 dB at f_c**, **−3 dB at 435 ± 20 Hz**, **−23…−27 dB/octave over 4→8 kHz** | **demonstrated** | RESPONSE, 16 tones, 48 kHz cp: **−12.055 dB** at 1 kHz, **434.9 Hz**, **−24.10 dB/octave**. 44.1 kHz: **−12.058**, **434.9 Hz**, **−23.84** | class built at 1150 Hz (corner moved 15 %), bars unchanged → **RED**: level at 1 kHz −9.79 dB, corner 500.1 Hz. Clean run green | *"the corner is whatever your reference tone happens to read"* — the first run reported 446.4 Hz because `response()`'s corner is 3 dB below the **passband reference**, and at 100 Hz the ladder is already 0.173 dB down. Answer: 50 Hz added to the grid and the **absolute** −3.0103 dB crossing computed as well. Both are exported; 434.9 Hz is the absolute one, against the analytic 434.98 |
+| **T1** | Four poles; **−12.0 ± 0.5 dB at f_c**, **−3 dB at 435 ± 20 Hz**, **−23…−27 dB/octave over 4→8 kHz** | **level and corner clauses demonstrated and hardened; the stopband-slope clause disconfirmed** — REFUTED | RESPONSE, 16 tones, 48 kHz cp: **−12.055 dB** at 1 kHz, **434.9 Hz**, **−24.10 dB/octave**. 44.1 kHz: **−12.058**, **434.9 Hz**, **−23.84** | class built at 1150 Hz (corner moved 15 %), bars unchanged → **RED**: level at 1 kHz −9.79 dB, corner 500.1 Hz. Clean run green | *"the corner is whatever your reference tone happens to read"* — the first run reported 446.4 Hz because `response()`'s corner is 3 dB below the **passband reference**, and at 100 Hz the ladder is already 0.173 dB down. Answer: 50 Hz added to the grid and the **absolute** −3.0103 dB crossing computed as well. Both are exported; 434.9 Hz is the absolute one, against the analytic 434.98 |
 | **T2** | Passband droops as `1/(1+k)`: at k = 0,1,2,3,4 the level at 0.1·f_c is **0.00, −6.02, −9.54, −12.04, −13.98 dB ± 0.5** | **demonstrated** | RESPONSE at 0.1·f_c, read frequency-selectively, 48 kHz cp: **−0.173, −5.931, −9.444, −11.953, −13.902 dB**. Identical to three decimals at 44.1 kHz | `Passband Comp` at 1 — the droop's own negation — → **RED** on four of five rows: **−0.17, +0.09, +0.10, +0.09, +0.08**. Clean run green | *"±0.5 dB is loose enough to pass anything"* — the deltas are **−0.173** at k = 0 and **+0.078…+0.096** at k ≥ 1, which is dossier App. A's own prediction (−0.17, and +0.08…+0.09) to the second decimal, computed before the node existed. The tolerance is not doing the work |
 | **T3** | **Self-oscillation at k = 4, at the cutoff, and not before**: top of travel, a tone within 3 % of f_c decaying < 3 dB in 2 s; 90 % of travel, below −40 dB within 2 s | **demonstrated** | impulse + 3 s silence, 48 kHz cp: top of travel **999.82 Hz** (0.018 % out), **+0.01 dB** over 2 s; 90 % of travel **exact zero** in the last second, **207.3 dB** below its own peak. 44.1 kHz: **999.95 Hz**, **+0.00 dB**, **208.1 dB** | `Resonance` travel capped at k = 3.9 — the old class's defect 3 — → **RED**: "nothing sustains at the top of travel". Clean run green | *"both windows read −240 dB, so the 90 % leg proves nothing"* — true of the **first** run, which compared two windows that were both on the floor and reported "0.0 dB of decay". Answer: the two positions are read differently because the trait states them differently — a settled window against a later settled window at the top, the last second against the render's own peak at 90 % |
 | **T4** | The nonlinearity is **(a) bounded** (±1 dB over 2 s, THD < 15 %), **(b) odd** (evens < −40 dB re h1 and ≥ 20 dB below h3), **(c) in the loop** (h3 rises monotonically ≥ 10 dB across `Drive` 0→+24 dB) | **demonstrated** | 48 kHz cp. (a) tone 999.82 Hz, drift **0.010 dB**, THD **0.068 %**. (b) h2 **−131.11 dB**, h4 −135.47, h5 −138.68, h6 −135.05, h7 −135.10, against h3 **−63.35** — h2 is **67.8 dB** below h3. (c) h3 **−65.69 → −58.98 → −52.92 → −26.06 dB**, monotonic, **+39.62 dB** end to end | (b) `y + 0.05·y²` on the same render → **RED**, worst even **−39.17 dB**; clean **−131.11 dB**. (c) the `Drive` knob frozen at 0 dB → **RED**, h3 flat at −65.69 four times, **+0.00 dB** end to end | *"h2 at −74.5 dB is only 8.6 dB below h3, so this thing is not odd"* — that was the first run, and it was **spectral leakage**. The fundamental is the **filter's own** 999.82 Hz, which `exact_bin_size()` cannot land on a bin, and a rectangular window's skirt from a full-scale fundamental reads −74 dB two thousand bins away. Measured three ways: rectangular −74.49, hann −134.53, blackman-harris −131.11, with h3 within 0.3 dB of itself in all three. Both readings are printed by the driver so the artefact is on the record |
-| **T5** | Character follows input level: at k = 3 a **20 dB input rise moves the resonant peak ≥ 3 dB** and THD rises monotonically; **below −40 dBFS in, THD < 0.5 %** | **demonstrated** | 48 kHz cp, peak read over a 9-tone grid 800–1050 Hz. Peak **+3.360 dB (−20 dBFS in) → −0.496 dB (0 dBFS in)** = **−3.857 dB**, the peak going **DOWN**. THD **0.0036 → 0.0066 → 0.0245 → 0.0537 → 0.1351 → 0.2385 → 0.3861 %**, monotonic from −26 to 0 dBFS. Below −40 dBFS in: **0.0055 %** at −40 and **0.0598 %** at −60, both under the 0.5 % bar | the frozen-`Drive` fault above is the same kind and is **RED** (a level-independent loop reads flat); and the k = 3.9 T3 fault removes the loop's oscillation | *"the 0.93 % THD you measured at −60 dBFS in is the class"* — no: the **wire** at the same level, through the same analysis, reads **0.1679 %**, three times higher. That is the 16-bit render's quantization floor and the driver now prints a wire control at every level. *"and your peak barely moved"* — the first run read the transfer **at f_c**; at k = 3 the peak is at **925 Hz**, and reading it where it is turns 1.15 dB into 3.86 dB |
+| **T5** | Character follows input level: at k = 3 a **20 dB input rise moves the resonant peak ≥ 3 dB** and THD rises monotonically; **below −40 dBFS in, THD < 0.5 %** | **disconfirmed** — REFUTED; five of the six 20 dB windows the class's own grid offers fail | 48 kHz cp, peak read over a 9-tone grid 800–1050 Hz. Peak **+3.360 dB (−20 dBFS in) → −0.496 dB (0 dBFS in)** = **−3.857 dB**, the peak going **DOWN**. THD **0.0036 → 0.0066 → 0.0245 → 0.0537 → 0.1351 → 0.2385 → 0.3861 %**, monotonic from −26 to 0 dBFS. Below −40 dBFS in: **0.0055 %** at −40 and **0.0598 %** at −60, both under the 0.5 % bar | the frozen-`Drive` fault above is the same kind and is **RED** (a level-independent loop reads flat); and the k = 3.9 T3 fault removes the loop's oscillation | *"the 0.93 % THD you measured at −60 dBFS in is the class"* — no: the **wire** at the same level, through the same analysis, reads **0.1679 %**, three times higher. That is the 16-bit render's quantization floor and the driver now prints a wire control at every level. *"and your peak barely moved"* — the first run read the transfer **at f_c**; at k = 3 the peak is at **925 Hz**, and reading it where it is turns 1.15 dB into 3.86 dB |
 
-**Tally: 5 demonstrated, 0 disconfirmed, 0 unmeasured.**
+**Tally after the gate audit: 3 demonstrated (T2, T3, T4), 1 disconfirmed (T5), 1 split (T1: level and corner clauses demonstrated, stopband-slope clause disconfirmed).** *(Was: 5 demonstrated, 0 disconfirmed, 0 unmeasured.)*
 
 **Characters:** none. A diode ladder is a different circuit (dossier §3).
 
@@ -77,6 +86,38 @@ then answered, and four of them changed a number: T1's corner, T3's 90 %
 reading, T4(b)'s window, T5's peak frequency and its quantization control.
 That is a self-refutation pass, not an independent one, and the gate line
 that asks for an independent one is **not met** — §11.
+
+
+### Gate audit — the refutation pass's verdicts, ruled on (2026-09-07)
+
+Ruled by the Phase 2 gate auditor against the **Refutation record** at the
+foot of this file. Where a refutation stands the verdict above was changed
+and the class was **not** touched; where the auditor re-ran a figure itself
+the run is named. The roadmap's class-gate rule is the test applied: a
+*demonstrated* trait needs a measurement, that measurement shown red on a
+planted fault of the same kind, **and** a surviving refutation.
+
+| Row | Ruling | Cause recorded, and the auditor's check |
+|---|---|---|
+| T1 (slope clause) | **refutation stands** → the stopband-slope clause disconfirmed | The level-at-f_c and 0.435·f_c clauses survive hard, and the measurement discriminates pole count (poles 4 green; 3 / 2 / 1 all RED) — which no fault in §1 had shown. The slope clause fails at **22.05 kHz**, a rate this pack renders every Tier 1 invariant at: cutoff 1 kHz, 4→8 kHz reads **−178.38 dB/octave** against a −23…−27 bar, and raising the probe out of the render floor to −1 dBFS still reads **−29.73**, because the bilinear map steepens toward Nyquist. The clause is also level-dependent where it passes: the same −1 dBFS probe at 48 kHz reads **−25.23 dB/oct** against the pack's −24.10 at −20 dBFS — **1.13 dB, half the trait's own ±2 dB, moved by a probe level the trait does not fix.** |
+| T5 (peak clause) | **refutation stands** → disconfirmed | The trait says "at k = 3 a **20 dB input rise** moves the resonant peak ≥ 3 dB". Auditor's check: `tools/ladderfilter_evidence.py:496` hardcodes `move = by_level[0.0]["peak_db"] − by_level[-20.0]["peak_db"]`, one window. On a grid with −50 and −30 added, peak height reads +3.490 / +3.489 / +3.486 / +3.475 / +3.455 / +3.360 / +3.014 / +2.434 / +1.580 / +0.615 / −0.496 dB at −60…0 dBFS, giving **six 20 dB windows and one pass**: −60→−40 −0.004 **fails**, −50→−30 −0.014 **fails**, −40→−20 −0.126 **fails**, −30→−10 −1.041 **fails**, −26→−6 −1.875 **fails**, −20→0 −3.857 passes. The monotone-THD clause is scoped the same way at `:498`; over the full grid THD is not monotonic. |
+
+T2, T3 and T4 survive. T3 is stronger than §1 shows — the onset scan the
+trait's own words name puts it at **k = 4.00 to a hundredth** — and T4(a),
+cited in §1 with no fault of its own, now has four that fire (flat-topped at
+0.1 → THD 37.226 % RED; +2 dB drift → 1.008 dB RED), against a clean control
+of drift 0.010 dB / THD 0.0680 %. Neither refutation touches the class's code:
+in both the class does what the circuit does and the *trait's stated bar* is
+what does not survive the variation.
+
+**Rule applied to the two non-`disconfirmed` outcomes.** A refutation that
+shows the class failing its own bar makes the row **disconfirmed**. A
+refutation that shows the *demonstration* invalid — a fault that cannot fire,
+a reading that is green on a bypass, a bar that was never asserted — leaves no
+number that tests the trait, so the row becomes **unmeasured**, on this pack's
+own precedent for a measurement that "produced a number that does not test the
+claim". Neither outcome is a licence to edit the class.
+
 
 ---
 
@@ -675,3 +716,109 @@ From the dossier's §7, and only from there.
   whoever fixes a floor.
 
 Nothing else is outstanding.
+
+---
+
+## Refutation record (2026-09-07)
+
+An independent session that did not write this class re-ran the five Tier 2
+measurements, varied the probe material and the rate inside each trait's own
+terms, and checked every planted fault. The driver reproduced verbatim first
+(`PYTHONPATH=lib .venv/bin/python tools/ladderfilter_evidence.py all`, 1m38s,
+every figure in §1 identical). The probe used for the variations is
+`scratch/refute-ladder/probe.py`; it imports this pack's own driver, so the
+class is driven identically and only the *choices* are the refuter's.
+
+- **T1 — REFUTED, on the slope clause.** The two-thirds of T1 that the class
+  is really about survive hard: the level at f_c and the 0.435·f_c corner hold
+  at cutoffs and rates the pack never tried — `fc 500 Hz: −12.046 dB, corner
+  217.48 Hz (ratio 0.4350)`; `fc 2000 Hz: −12.097 dB, ratio 0.4346`;
+  `22050 Hz, fc 1 kHz: −12.107 dB, ratio 0.4345` — and the measurement
+  discriminates pole count sharply, which no planted fault in §1 showed:
+  `poles 4 → −12.055 / 434.88 / −24.10 green; poles 3 → −9.045 / 508.44 /
+  −18.89 RED; poles 2 → −6.035 / 636.57 / −12.61 RED; poles 1 → −3.025 /
+  996.30 / −6.64 RED`. But the **stopband-slope clause fails at 22.05 kHz**, a
+  rate this pack renders every Tier 1 invariant at and this class ships:
+  `T1 RESPONSE 22050 Hz, cutoff 1000 Hz … slope 4->8 kHz −178.38 dB/octave
+  (bar −23..−27) → RED`. Raising the probe out of the 16-bit render floor does
+  not rescue it: with a −1 dBFS tone the same band reads **−29.73 dB/octave**
+  at 22.05 kHz (4 kHz −51.138, 8 kHz −80.863), still outside the band, because
+  the bilinear map steepens toward Nyquist. The same −1 dBFS probe at 48 kHz
+  reads **−25.23 dB/octave** against the pack's **−24.10** at −20 dBFS: **the
+  cited number moves 1.13 dB — half the trait's own ±2 dB — with a probe level
+  the trait does not fix**, and the low-level reading is flattened by the
+  render's quantization floor (at −20 dBFS in, the 8 kHz output is under
+  1 LSB). *What the class author must answer:* whether T1's slope clause is
+  claimed at every supported rate or only where 8 kHz sits well below Nyquist
+  — §1 says "48 kHz cp … 44.1 kHz" and never says the third rate is red; and
+  which probe level the clause is stated at, since ±2 dB does not cover the
+  choice.
+- **T2 — not refuted.** The droop is the same reading everywhere it was moved:
+  `fc 300 Hz @ 48 kHz: −0.173 / −5.931 / −9.444 / −11.953 / −13.902`;
+  `fc 1 kHz @ 22.05 kHz: −0.173 / −5.932 / −9.444 / −11.954 / −13.903`;
+  `fc 2 kHz @ 44.1 kHz: identical to three decimals` — green against the
+  dossier's 0.00 / −6.02 / −9.54 / −12.04 / −13.98 at all three. The
+  `Passband Comp = 1` fault is the trait's own negation and turns four of the
+  five rows red. The "±0.5 dB is loose" charge in §1 is answered correctly:
+  the deltas are 0.08–0.17 dB and do not use the tolerance.
+- **T3 — not refuted; the trait is stronger than the pack shows.** The pack
+  measures only the top of travel (k = 4.2) and 90 % of it (k = 3.78), so the
+  trait's actual words — "at k = 4, **and not before**" — are never tested at
+  k = 4. An onset scan closes that: `k 3.50/3.70/3.80/3.90/3.95 → nothing
+  sustains (tone −, 2.9–3.0 s = −240.00 dB)`, `k 3.99 → 999.36 Hz but decays
+  −176.14 dB`, **`k 4.00 → 999.81 Hz, decay −2.04 dB over 2 s`** (inside the
+  trait's own < 3 dB bar), `k 4.01 → +0.03 dB`, `k 4.05 → −0.00`, `k 4.20 →
+  +0.01`. The onset is at k = 4.00 to a hundredth. It also tracks the cutoff
+  rather than living at 1 kHz: `fc 200 → 199.95 Hz (0.024 % out); 400 →
+  399.91 (0.023 %); 1000 → 999.82 (0.018 %); 3000 → 3000.00; 8000 → 8000.11`,
+  all sustaining. *Recommended, not owed:* put the onset scan in §1, because
+  it is the measurement the trait's words actually name.
+- **T4 — not refuted, and part (a) had no planted fault until this pass.** The
+  whole of T4 re-ran green at three (rate, cutoff) points the pack never
+  used: `44.1 kHz / 1 kHz: h2 −127.50 vs h3 −63.79, h3 ladder −66.00 →
+  −59.28 → −53.20 → −26.32, +39.67 dB, monotonic`; `48 kHz / 400 Hz: h2
+  −123.16 vs h3 −63.74, +39.61 dB`; `48 kHz / 2500 Hz: h2 −125.37 vs h3
+  −64.01, +39.89 dB`. The leakage answer in §1 holds — the rectangular window
+  reads h2 at −70.9, −84.4, −91.9 at those three points while h3 stays within
+  3 dB of itself, which is the signature of a skirt and not of a harmonic.
+  But **§1's fault battery covers (b) and (c) only**; (a) — bounded, ±1 dB
+  drift and THD < 15 % — is cited with no fault of its own, against this
+  pack's own stated rule. Planted here: `flat-topped at 0.3 → THD 14.885 %
+  (green, just under)`, `flat-topped at 0.1 → THD 37.226 % → RED`, `+2 dB
+  drift over 3 s → drift 1.008 dB → RED`, `+6 dB → 3.008 dB → RED`; the clean
+  control reads `drift 0.010 dB, THD 0.0680 %`. So the (a) checks *can* fail —
+  they are not a measurement that cannot fail — but the pack did not show it.
+  *What the class author must answer:* fold an (a) fault into
+  `tools/ladderfilter_evidence.py`'s `faults` battery, or say in §1 that (a)
+  is cited without one.
+- **T5 — REFUTED, on the peak-height clause.** The trait says "at k = 3 a
+  **20 dB input rise** moves the resonant peak ≥ 3 dB". The driver does not
+  test that; it tests one hardcoded window —
+  `tools/ladderfilter_evidence.py:496`, `move = by_level[0.0]["peak_db"] -
+  by_level[-20.0]["peak_db"]` — and that is the only 20 dB window on the grid
+  that passes. Measured on a grid with −50 and −30 added: peak height
+  `+3.490 (−60), +3.489 (−50), +3.486 (−40), +3.475 (−30), +3.455 (−26),
+  +3.360 (−20), +3.014 (−14), +2.434 (−10), +1.580 (−6), +0.615 (−3),
+  −0.496 (0)`, giving **six 20 dB windows, one pass**:
+  `−60→−40 −0.004 dB FAILS`, `−50→−30 −0.014 FAILS`, `−40→−20 −0.126 FAILS`,
+  `−30→−10 −1.041 FAILS`, `−26→−6 −1.875 FAILS`, `−20→0 −3.857 PASSES`.
+  The monotonic-THD clause is scoped the same way at `:498` (`−26, −20, −14,
+  −10, −6, −3, 0`); over the full grid THD is **not** monotonic
+  (`0.0598, 0.0226, 0.0055, 0.0017, 0.0036, …` — it falls for the first
+  three decades). §1 answers the low end for THD with a wire control, and that
+  answer is good; **it does not cover the peak height**, which is a clean
+  reading at every level and simply does not move until the saturator is being
+  driven. *What the class author must answer:* restate T5 as "the top 20 dB of
+  input range" (or "a 20 dB rise ending at 0 dBFS") and say so in the dossier,
+  or accept the trait as written and mark it disconfirmed — as written, "a
+  20 dB input rise" is false for five of the six windows the class's own grid
+  offers.
+
+**Tally after this pass: 3 unrefuted (T2, T3, T4), 2 refuted on scope (T1's
+slope clause, T5's peak clause).** Neither refutation touches the class's
+code: in both cases the class does what the circuit does and the *trait's
+stated bar* is the thing that does not survive the variation. Both are
+dossier-side answers, and until they are given, §8's "§1 lists all five traits
+as demonstrated" overstates T1 and T5. The gate line "every demonstrated trait
+survived an independent refutation attempt" has now had its attempt; it is
+**not** met for T1 and T5.

@@ -50,27 +50,90 @@ Every trait the dossier fixed, in the dossier's own numbering. Nothing is
 added here that the dossier did not fix; a trait dropped after the fact
 carries its written reason in the last column, not a deletion.
 
-| # | Trait, as the dossier stated it | Verdict | Measurement · rate · interpreter | Planted fault → result | Refutation: argument, and the answer |
-|---|---|---|---|---|---|
-| T1 | | demonstrated \| disconfirmed \| unmeasured | RESPONSE, 48 kHz, cpython | corner moved 15 % → RED (clean run green) | <refuter's best case against it, and what settled it> |
-| T2 | | | | | |
-| T3 | | | | | |
+| # | Trait, as the dossier stated it | Verdict | Held fixed · quantified over | Measurement · rate · interpreter | Planted fault → result | Self-refutation: argument, and the answer |
+|---|---|---|---|---|---|---|
+| T1 | | demonstrated \| disconfirmed \| unmeasured | level −20 dBFS, slope 12 · f₀ 20 Hz–0.4·F_s, Q 0.5–16 | RESPONSE, 48 kHz, cpython | corner moved 15 % → RED (clean run green) | <the builder's own best case against it, and what settled it> |
+| T2 | | | | | | |
+| T3 | | | | | | |
 
 - **demonstrated** needs all three of: a measurement, that measurement shown
-  red on a planted fault *of the same kind*, and a surviving refutation.
+  red on a planted fault *of the same kind*, and a surviving **independent**
+  refutation. All three, or the row is not demonstrated.
 - **disconfirmed** carries the cause and what the class does instead. A
   disconfirmed trait is a result, not a failure — but it must be visible in
   the class's docstring and its README row, not only here.
-- **unmeasured** carries why no number exists and what it would take. It may
-  not be used for "we ran out of time" without saying so in §11.
+- **unmeasured** covers **two** cases, and says which:
+  1. no number exists — with why, and what it would take; or
+  2. a number exists and **cannot test the claim**. This is the verdict for a
+     measurement shown green on a bypass, a fault that cannot fire, or a
+     figure that moves with the grid the measurer picked. It carries the
+     demonstration of vacuity beside it — the bypass reading, the inert
+     fault's number against the clean run's, the same build read on a second
+     grid. Eleven of Phase 2's forty-five broken clauses were this
+     ([`../effects-phase2-pattern-revision.md`](../effects-phase2-pattern-revision.md)
+     §1.2): the class may well do the thing, and nothing that has been run can
+     tell.
+
+  Neither case may be used for "we ran out of time" without saying so in §11.
+
+**`Held fixed · quantified over` is copied from the dossier's Tier 2 table and
+may not be widened here.** If the measurement was taken at one point inside a
+span the row quantifies over, the verdict says so — *"demonstrated at ratio
+≤ 3"*, *"disconfirmed at f₀ ≤ 25 Hz with Q ≥ 16"* — and never reads as the
+unqualified claim. This is the defect the Phase 2 refutation pass found most:
+28 of 45.
+
+**The patch sweep comes first.** Before any chosen operating point, read every
+shipped patch back off the instance (`effect.macro(i)`, patches 0…n) and run
+every Tier 2 row at those settings; the table goes here. A shipped patch is a
+setting the class's author chose, published and expects a player to use, so a
+trait the class misses there is not a corner case — it is the product.
+Phase 2 broke `DynamicEQ` at patches 1, 3 and 5, `BandPass` at the centre
+patch 3 ships and the width patch 4 ships, and `DeEsser` at the Sensitivity
+its own Range row uses.
+
+| Trait | Patch 0 | Patch 1 | … | Worst cell | Inside its bar |
+|---|---|---|---|---|---|
+| T1 | | | | | |
 
 **Characters.** Where the class carries several (`Saturation`'s curves,
 `Rotary`'s speeds), each gets its own rows above. A character that fails its
 traits may not hide behind one that passes.
 
-**Refutation pass.** Who ran it, when, and against what: <name/session,
-date>. The record above is per trait; the pass's own summary — what it went
-after and what it could not break — goes here in two or three lines.
+**Self-refutation.** The last column above is the *builder's* own attempt on
+each row. It is worth having — Phase 2 has rows the builder's own pass changed
+rather than confirmed — but **the gate item is not read from it.**
+
+---
+
+### Refutation record (<date>) — the independent pass
+
+**Required section. Signed.** Who ran it, and the one line that matters:
+*whether its author built the class.* If they did, this section is not the
+gate's evidence and §8's refutation box stays unticked, whatever the column
+above says — eight of Phase 2's sixteen packs filled that column from the
+builder's own session and six ticked the box on it.
+
+One entry per row §1 grades **demonstrated**, each with the argument, the
+numbers behind it from a run made in that session, the command, and a verdict
+of *stands* or *REFUTED*. The pass varies the probe material, the rate and the
+operating point **inside each trait's own terms**, re-plants each fault beside
+its clean control, and looks for a reading that cannot go red. It closes with
+what it went after and could not break.
+
+### Gate audit (<date>) — the rulings
+
+Where a refutation stands, the verdict in §1's table is changed **here and in
+the table**, with the refuter's argument as the cause, and **the class is not
+touched**. Where the refuter is wrong, the reason is recorded with the
+auditor's own re-run beside it. A refutation that shows the class failing its
+own bar makes the row *disconfirmed*; one that shows the *demonstration*
+invalid makes it *unmeasured* (case 2 above). Neither is a licence to edit the
+class to save a trait.
+
+| Row | Ruling | Cause recorded, and the auditor's check |
+|---|---|---|
+| | refutation stands → disconfirmed \| unmeasured, or refuter wrong → <re-run> | |
 
 ---
 
@@ -161,7 +224,17 @@ output from 256-, 8192-, 16384-, 20000- and 32768-frame sources.
 copy a figure from the Phase 1 node table and call it this class's.)*
 
 Dossier budget: ESP32-P4 <x> of one stereo block's real-time deadline;
-ESP32-S3 <y>. Lean patch expected: yes / no.
+ESP32-S3 <y>. Lean patch expected: yes / no. **How the budget was derived:**
+instruction-count arithmetic / a measured graph / a comparable class — say
+which, because a budget from instruction counts cannot see a node graph's
+per-block Python, and twelve of Phase 2's sixteen classes overran one for
+exactly that reason.
+
+**A figure taken at construction defaults is not this class's cost** unless
+the defaults are the state the cost is about. Name the patch and the macros in
+the settings column, and check the digest: if the render's digest is the bare
+source's, the class handed the probe back and the number below is a graph
+idling, not a class working. Four of Phase 2's sixteen board figures were that.
 
 | Board | Patch | Settings the figure was taken at | Blocks/s | ms/block | RT factor | RAM | Within budget |
 |---|---|---|---|---|---|---|---|
@@ -297,8 +370,14 @@ filled from a run.
       flake8 all pass.
 - [ ] The README catalogue row and the docstring describe the standout, the
       portability tier and the cost, in a musician's terms.
-- [ ] The class's code, this file and the CHANGELOG line landed in one
-      audiocomponents commit, named in §0.
+- [ ] Every demonstrated Tier 2 row was run at **every shipped patch**, and
+      the sweep table is in §1.
+- [ ] The class's code, this file and the CHANGELOG line landed **on one
+      branch whose commits are named in §0, with the dossier freeze provably
+      first**. (The gate's original wording asked for one commit; fifteen of
+      Phase 2's sixteen packs recorded the same deviation for the same
+      reason — the freeze has to be provably earlier than the code for §0's
+      first gate item to mean anything.)
 
 ---
 

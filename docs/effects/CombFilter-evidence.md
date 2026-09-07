@@ -34,17 +34,26 @@ commits are in that order and the dossier's own header says so.
 
 ## 1. Traits
 
+> **Revised by the Phase 2 gate audit, 2026-09-07.** The verdicts in the table
+> below are the audited ones: every row the independent refutation pass broke
+> was changed here, and the class was **not** touched. The *Gate audit* block
+> at the end of this section carries the ruling and its cause per row; the
+> *Refutation record* at the foot of the file carries the pass itself. Notes
+> under the table that predate the pass are superseded by them — including any
+> tally, any "all of them carry all three", and any sentence saying no
+> refutation pass ran.
+
 The dossier's own numbering. Nothing is added here that the dossier did not
 fix.
 
 | # | Trait, as the dossier stated it | Verdict | Measurement · rate · interpreter | Planted fault → result | Refutation |
 |---|---|---|---|---|---|
-| T1 | Peaks on the harmonic series of the tuned frequency, spaced exactly f, 20 Hz…4 kHz | **demonstrated** | TAPS on the impulse response, 48 kHz, cpython — the repeat comb's spacing reads the tuned frequency at every probe (§1a); RESPONSE at 200 Hz puts every peak on an integer multiple (§1b) | the rounder (`WholeSampleCombFilter`) moves the spacing off the request at 880/1760/3520 Hz → RED | *"a comb has peaks whatever you do; the test cannot fail."* Answered by the fault: the same measurement reads a **different** comb when the tuning is rounded, and the seed's own A2 shows the class it replaces reading 46.88 Hz for every request from 47 to 880 Hz. |
-| T2 | Wet-only gain is `1/(1−g)` at the peaks and `1/(1+g)` at the nulls, within 0.2 dB at and below 2 kHz | **demonstrated** | RESPONSE, steady tones at 100…800 Hz around a 200 Hz comb, wet-only, g ∈ {0.3, 0.5, 0.8, 0.95}, 48 kHz, cpython (§1b) | `SquaredFeedbackCombFilter` runs the loop at g² → RED | *"the probe level was chosen to make it fit."* Answered in the driver: the probe is scaled as `20000·(1−g)·0.8` **because** a fixed level clips at high g — measured, a level-8000 probe reads a uniform −0.82 dB at every frequency including ones where the interpolator cannot be the cause, which is the rail, not the filter (dossier A13 §2). |
+| T1 | Peaks on the harmonic series of the tuned frequency, spaced exactly f, 20 Hz…4 kHz | **peak-location clause demonstrated and hardened; the `taps()` leg unmeasured — it cannot fail** — REFUTED in part | TAPS on the impulse response, 48 kHz, cpython — the repeat comb's spacing reads the tuned frequency at every probe (§1a); RESPONSE at 200 Hz puts every peak on an integer multiple (§1b) | the rounder (`WholeSampleCombFilter`) moves the spacing off the request at 880/1760/3520 Hz → RED | *"a comb has peaks whatever you do; the test cannot fail."* Answered by the fault: the same measurement reads a **different** comb when the tuning is rounded, and the seed's own A2 shows the class it replaces reading 46.88 Hz for every request from 47 to 880 Hz. |
+| T2 | Wet-only gain is `1/(1−g)` at the peaks and `1/(1+g)` at the nulls, within 0.2 dB at and below 2 kHz | **disconfirmed at fractional tunings below 2 kHz** — REFUTED | RESPONSE, steady tones at 100…800 Hz around a 200 Hz comb, wet-only, g ∈ {0.3, 0.5, 0.8, 0.95}, 48 kHz, cpython (§1b) | `SquaredFeedbackCombFilter` runs the loop at g² → RED | *"the probe level was chosen to make it fit."* Answered in the driver: the probe is scaled as `20000·(1−g)·0.8` **because** a fixed level clips at high g — measured, a level-8000 probe reads a uniform −0.82 dB at every frequency including ones where the interpolator cannot be the cause, which is the rail, not the filter (dossier A13 §2). |
 | T3 | Fractional tuning: every request in 20 Hz…4 kHz lands within 5 cents | **demonstrated** | first-repeat centroid, 48/44.1/22.05 kHz, cpython — 0.000 to 0.002 cents at every probe (dossier A13 §1, and `tests/test_cpython_effects_combfilter.py::TheCombTunesFractionally`) | the rounder is RED at 880/1760/3520 Hz **and green at 110 Hz**, which is the trait's own statement about where it has teeth | *"a centroid is not a pitch."* Answered: linear interpolation preserves a pulse's first moment, so the centroid *is* the tap the node was asked for; and the same class reads the same tuning through a second, independent measurement (TAPS's arrival detector, §1a). |
 | T4 | Negative feedback puts the peaks on the odd half-multiples | **unmeasured — the class does not build it** | none. The composition that reaches it was reproduced at Station A (dossier A13 §5): the impulse response alternates sign at 480, 720, 960, 1200 … frames, which is `z^(−2M)/(1+g z^(−M))`. What it would take is either a signed-feedback option on the node, or seven nodes and three delay lines in this class — dossier §4 has the count and the reason. | n/a | n/a |
-| T5 | At g = 0, Mix 1: total nulls at odd multiples of f/2, peaks exactly +6.02 dB at multiples of f | **demonstrated** | RESPONSE at 500/1000/1500/2000/2500/3000 Hz around a 1 kHz comb, 48 kHz, cpython (§1c) | `NoUnitySnapCombFilter` — the Mix snap removed, so grid "Mix 1" is 1.0079 and the dry leg 0.9921 → the null fills in to well above −60 dB, RED | *"the null is total because the arithmetic is exact, not because the class is right."* That is the point of the fault: the same arithmetic one grid step away is **not** exact, and the class's snap is what keeps it. |
-| T6 | The tuning knob is click-free (restated: no boundary step above the same render's off-boundary floor) | **demonstrated** | second difference at the block boundaries against the 99.9th percentile off them, 100 Hz → 1 kHz over one second, 48 kHz, cpython (dossier A13 §4 and `tests/…::TheTuningKnobIsClickFree`) | `NoGlideCombFilter` — `delay_slew` forced to 0 → RED, +5.5 dB above the floor | *"the estimator's floor moves with the slew, so it can hide the step."* Answered by the zero-step control, which reads its own floor at −31.8/−31.0, and by the fault, which is red **on the same estimator** at the same setting. |
+| T5 | At g = 0, Mix 1: total nulls at odd multiples of f/2, peaks exactly +6.02 dB at multiples of f | **disconfirmed at fractional tunings** — REFUTED | RESPONSE at 500/1000/1500/2000/2500/3000 Hz around a 1 kHz comb, 48 kHz, cpython (§1c) | `NoUnitySnapCombFilter` — the Mix snap removed, so grid "Mix 1" is 1.0079 and the dry leg 0.9921 → the null fills in to well above −60 dB, RED | *"the null is total because the arithmetic is exact, not because the class is right."* That is the point of the fault: the same arithmetic one grid step away is **not** exact, and the class's snap is what keeps it. |
+| T6 | The tuning knob is click-free (restated: no boundary step above the same render's off-boundary floor) | **unmeasured — the planted fault is a legal position of the class's own macro surface** — REFUTED | second difference at the block boundaries against the 99.9th percentile off them, 100 Hz → 1 kHz over one second, 48 kHz, cpython (dossier A13 §4 and `tests/…::TheTuningKnobIsClickFree`) | `NoGlideCombFilter` — `delay_slew` forced to 0 → RED, +5.5 dB above the floor | *"the estimator's floor moves with the slew, so it can hide the step."* Answered by the zero-step control, which reads its own floor at −31.8/−31.0, and by the fault, which is red **on the same estimator** at the same setting. |
 
 **Characters:** none. A comb has one behaviour (dossier §3).
 
@@ -170,6 +179,40 @@ work:
 silence and the third is 105 dB below the −60 the trait asks for — and the
 peaks are +6.02 dB, not +6.0 and not +6.05. The planted fault is one grid
 step of Mix away.
+
+
+### Gate audit — the refutation pass's verdicts, ruled on (2026-09-07)
+
+Ruled by the Phase 2 gate auditor against the **Refutation record** at the
+foot of this file. Where a refutation stands the verdict above was changed
+and the class was **not** touched; where the auditor re-ran a figure itself
+the run is named. The roadmap's class-gate rule is the test applied: a
+*demonstrated* trait needs a measurement, that measurement shown red on a
+planted fault of the same kind, **and** a surviving refutation.
+
+| Row | Ruling | Cause recorded, and the auditor's check |
+|---|---|---|
+| T1 (`taps()` leg) | **refutation stands in part** → the `taps()` leg unmeasured | Peak *location* survives and is stronger than §1 shows: worst error against `k·f` is **−0.256 %** over ten tunings against a 1 % bar. The `taps()` leg cannot fail — `em.taps(expected_ms=1000/f)` on `WholeSampleCombFilter`, the class's own T1/T3 fault, is **green at 55, 110, 440, 880, 1760 and 3520 Hz**, because the bar is 0.5 ms and a whole-sample rounding error is at most 0.0104 ms at 48 kHz. And "twelve arrivals at every tuning" does not reproduce: a default `taps()` at Feedback 0.7 returns 12 at 55/110/440/880 Hz but **6 at 1760 Hz and 3 at 3520 Hz**, because `arrivals()`'s `min_gap_ms=1.0` (`tools/effect_measurements.py:1351`) cannot resolve repeats 0.568 and 0.284 ms apart. The count is a readout of Feedback, not of tuning: g = 0.3/0.5/0.7/0.8/0.9 gives 4/7/12/18/36. |
+| T2 | **refutation stands** → disconfirmed at fractional tunings below 2 kHz | The disconfirmer is "either extreme more than 0.2 dB from the closed form **below 2 kHz**". With the pack's own `wet_gain_db`, so the clipping defence does not apply: **880 Hz g = 0.95 → 25.738 (err −0.282)**, **1760 Hz g = 0.80 → 13.753 (err −0.226)**, **1760 Hz g = 0.95 → 25.148 (err −0.873, four times the bar)**. 200, 1000 and 2000 Hz are exactly the tunings where `48000/f` is a whole number of frames and the interpolator is out of the loop. The committed test asserts 200 Hz only (`tests/test_cpython_effects_combfilter.py:348-361`), so the suite cannot see it. |
+| T5 | **refutation stands** → disconfirmed at fractional tunings | The trait carries no tuning restriction; the class's span is 20 Hz–4 kHz; the pack measures 1 kHz, where `48000/f = 48.0000` and the nulls are bit-exact by construction. At Feedback 0, Mix 1: 440 Hz nulls −89.23 / −70.22; **880 Hz −67.72 / −48.64 (over the −60 bar)**; **3520 Hz nulls −44.25 / −25.24 and peaks +5.914 / +5.593 against +6.02 ± 0.1** — 3520 Hz is the tuning T3 uses as its own discriminating probe. A fractional-delay feedforward comb has no perfect zero. The committed test pins `TUNED_HZ = 1000.0` (`tests/test_cpython_effects_combfilter.py:374`). |
+| T6 | **refutation stands** → unmeasured | The planted fault is a legal position of the class's own surface. **Auditor's check**, `PYTHONPATH=lib .venv/bin/python`: `e.set_macro(5, 0); e.macro(5)` returns **0.0** — macro 5 `Glide` spans 0…1 and grid position 0 *is* `delay_slew = 0`, which is what `NoGlideCombFilter` forces. On the pack's own estimator the clean class at Glide 0 and the "fault" read **the same +8.28 dB**, to the hundredth, because they are the same DSP; the default Glide 0.05 reads −1.15 dB. What T6 demonstrates is that Glide at or above about 0.01 is click-free, which is not what the dossier froze. |
+
+T3 survives and got stronger (worst 0.0021 cents at 48 kHz over 43 requests;
+a +6 cent bias fault reads −6.000 cents, catching a bias an eighth the bar).
+**Not a trait, and it corrects §2a:** at tuning 1760 Hz, Feedback 0.8 an
+impulse render is still non-zero at frame 262 143, parked on a ±1 LSB square
+wave of period 27 samples — 1777.77 Hz, **17.4 cents sharp of the tuning** and
++4.33 dB above the tuned resonance — so the parked residue is an oscillation
+off the tuned pitch, not the "low ring at the tuned pitch" the docstring names.
+
+**Rule applied to the two non-`disconfirmed` outcomes.** A refutation that
+shows the class failing its own bar makes the row **disconfirmed**. A
+refutation that shows the *demonstration* invalid — a fault that cannot fire,
+a reading that is green on a bypass, a bar that was never asserted — leaves no
+number that tests the trait, so the row becomes **unmeasured**, on this pack's
+own precedent for a measurement that "produced a number that does not test the
+claim". Neither outcome is a licence to edit the class.
+
 
 ---
 

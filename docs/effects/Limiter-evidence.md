@@ -37,6 +37,15 @@ the dossier's Appendix G, not invented here.
 
 ## 1. Traits
 
+> **Revised by the Phase 2 gate audit, 2026-09-07.** The verdicts in the table
+> below are the audited ones: every row the independent refutation pass broke
+> was changed here, and the class was **not** touched. The *Gate audit* block
+> at the end of this section carries the ruling and its cause per row; the
+> *Refutation record* at the foot of the file carries the pass itself. Notes
+> under the table that predate the pass are superseded by them — including any
+> tally, any "all of them carry all three", and any sentence saying no
+> refutation pass ran.
+
 Command for every row below:
 
 ```
@@ -45,16 +54,16 @@ $ PYTHONPATH=lib .venv/bin/python tools/phase2_probes/limiter_traits.py
 
 | # | Trait, as the dossier stated it | Verdict | Measurement · rate · interpreter | Planted fault → result | Refutation: argument, and the answer |
 |---|---|---|---|---|---|
-| L1 | The ceiling is a true-peak promise: ≤ 0.5 dB TP over the Ceiling on every probe, and the probe set must carry a worst-phase f_s/4 tone | **demonstrated** | TRUEPEAK on the worst-phase f_s/4 tone into a −6 dBFS ceiling: **+0.17 dB TP** at 48 kHz and at 44.1 kHz, cpython | the kit's faulted read (`read="sample_peak"`) judges the same render green at **−6.00 dBFS** while the correct read is **RED at +3.01 dB** | *"The tone is generated in the test, so it could be the wrong tone."* Its true peak reads 3.01 dB above its sample peak, which is S1's own analytic figure for f_s/4, and the committed probe `tone_fs4` has the same shape and the same pair (`effect_probes/README.md`). The digests in §3 are taken on that committed probe. |
+| L1 | The ceiling is a true-peak promise: ≤ 0.5 dB TP over the Ceiling on every probe, and the probe set must carry a worst-phase f_s/4 tone | **disconfirmed** — REFUTED on the committed probe corpus | TRUEPEAK on the worst-phase f_s/4 tone into a −6 dBFS ceiling: **+0.17 dB TP** at 48 kHz and at 44.1 kHz, cpython | the kit's faulted read (`read="sample_peak"`) judges the same render green at **−6.00 dBFS** while the correct read is **RED at +3.01 dB** | *"The tone is generated in the test, so it could be the wrong tone."* Its true peak reads 3.01 dB above its sample peak, which is S1's own analytic figure for f_s/4, and the committed probe `tone_fs4` has the same shape and the same pair (`effect_probes/README.md`). The digests in §3 are taken on that committed probe. |
 | L2 | Lookahead never creates overshoot: ≤ 0.1 dB over at every setting, **and** no rise with lookahead | **demonstrated** | 1 ms burst into a −12 dBFS ceiling, Lookahead 0→10 ms in 1 ms steps: **+0.000 dB at every one of the eleven settings**, 48 kHz, cpython | `NoCatchStage` — the catch stage removed, which is the one-node limiter — goes **RED from 1 ms (+0.144 dB) to 10 ms (+1.447 dB)**, and rises monotonically, so both clauses fire | *"+0.000 dB at every setting is suspiciously flat — is the measurement reading the ceiling instead of the output?"* The same measurement on the same probe reads +1.447 dB on the faulted build, so it is reading the output. The flatness is the C: with `attack_ms=0` the envelope is the current sample, `DYN_LIMIT` returns exactly `−over`, and that gain multiplies that same sample. |
 | L3 | A peak shorter than the lookahead is still caught, at **every** non-zero setting | **demonstrated** | single-sample impulse at 0 dBFS into a −12 dBFS ceiling, 0.5/1/2/5/10 ms: **+0.000 dB at all five**, 48 kHz, cpython | `NoCatchStage`: +0.073 dB at 0.5 ms (inside the bar — the trait is right that it loses it *worst between the ends*) then **RED at 1, 2, 5 and 10 ms**, to +1.447 dB | *"The 0.5 ms fault row is green, so the fault is weak there."* It is, and that is the trait's own point; the row is disconfirmed by *any* setting over the bar and four of the five fire. |
 | L4 | `latency_samples == floor(lookahead_ms × fs / 1000)` at three rates, for every patch and macro position, and the click agrees to the sample | **demonstrated** | 18 combinations of {48000, 44100, 22050} × {0, 0.5, 1.5, 3, 7.3, 10 ms}: reported == floor() == measured click in **all 18**, cpython. Every patch, at all three rates, in `tests/test_cpython_effects_limiter.py` | report 256 samples short with the DSP untouched → **RED**, "measured 480 samples against a reported 224"; the two audio digests are both `176dfba1`, so nothing but the report moved | *"The class picks the number it reports, so of course it matches."* It does not: the node truncates in single precision and the class's naive form disagreed with it 22 times in 489 (dossier G.3). The click is measured off the render, not read off the class. |
 | L5 | Zero by default: `latency_samples` 0, Lookahead 0 ms, True Peak off | **demonstrated** | constructed with no options at 48000, 44100 and 22050: latency 0, tail 0, Lookahead 0.000 ms, True Peak 0.00, patch 0 | patch 2 ("Loud") → latency **143 samples**, True Peak 1.00 — the same read, red | *"A default is not a measurement."* The read is against a constructed instance and against patch 0 after a `program_change`, and the fault shows the same read moving. |
-| L6 | Infinite ratio, hard knee: slope ≤ 0.02 dB/dB over 24 dB, knee width ≤ 0.5 dB at Knee 0 | **demonstrated** | 25-point static curve, −24…−0.2 dBFS into a −24 dBFS ceiling: slope **−0.00000 dB/dB**, highest output −24.0022 dBFS; knee width at Knee 0 **0.000 dB** on a 0.25 dB grid, cpython | the same width measurement at Knee 12 → **10.500 dB**, red against the 0.5 dB bar | *"A zero-width knee could mean the grid cannot resolve one."* The grid is 0.25 dB and the same grid resolves 10.5 dB at the other end of the macro, so it can. |
+| L6 | Infinite ratio, hard knee: slope ≤ 0.02 dB/dB over 24 dB, knee width ≤ 0.5 dB at Knee 0 | **unmeasured** — REFUTED; the slope clause cannot fail and the knee clause is grid-dependent | 25-point static curve, −24…−0.2 dBFS into a −24 dBFS ceiling: slope **−0.00000 dB/dB**, highest output −24.0022 dBFS; knee width at Knee 0 **0.000 dB** on a 0.25 dB grid, cpython | the same width measurement at Knee 12 → **10.500 dB**, red against the 0.5 dB bar | *"A zero-width knee could mean the grid cannot resolve one."* The grid is 0.25 dB and the same grid resolves 10.5 dB at the other end of the macro, so it can. |
 | L7 | Smoothing is a documented trade: THD ≤ 1 % at the default patch, and the fastest Release named in the docstring as a distortion setting | **demonstrated** | 60 Hz sine 12 dB into a −12 dBFS ceiling: **0.710 %** at 48 kHz and **0.710 %** at 44.1 kHz on the default patch's 149 ms release, cpython | the Release macro at its fastest, 5 ms → **11.994 %**, red; 100 ms reads 1.047 %, also red, which is why the patch is not at 100 ms | *"1 % is the class's own number, chosen after the fact to fit."* It was chosen before: the dossier fixed 1 % on 2026-09-06 and the **patch** moved to meet it — the seed proposed 100 ms and the measurement pushed it to 149 ms (dossier §6). |
 
 - **demonstrated** = a measurement, that measurement red on a planted fault of
-  the same kind, and a surviving refutation. All seven have all three.
+  the same kind, and a surviving refutation. **After the gate audit five have all three (L2, L3, L4, L5, L7); L1 is disconfirmed and L6 unmeasured.**
 - **disconfirmed**: none.
 - **unmeasured**: none at Tier 2. Tier 3 is a separate matter — see §4 and §11.
 
@@ -161,6 +170,33 @@ L7  smoothing is a documented trade (bar: 1 % at the default
       release  300.0 ms ->   0.362 %   green
     The docstring names the 5 ms end as a distortion setting; that number is recorded, not bounded.
 ```
+
+
+### Gate audit — the refutation pass's verdicts, ruled on (2026-09-07)
+
+Ruled by the Phase 2 gate auditor against the **Refutation record** at the
+foot of this file. Where a refutation stands the verdict above was changed
+and the class was **not** touched; where the auditor re-ran a figure itself
+the run is named. The roadmap's class-gate rule is the test applied: a
+*demonstrated* trait needs a measurement, that measurement shown red on a
+planted fault of the same kind, **and** a surviving refutation.
+
+| Row | Ruling | Cause recorded, and the auditor's check |
+|---|---|---|
+| L1 | **refutation stands** → disconfirmed | §1 measures one probe (`l1_true_peak`, `tools/phase2_probes/limiter_traits.py:107-124`, `worst_phase_fs4` only) while the trait's disconfirmer is "any probe". **Reproduced by the auditor** through the kit's own renderer and read with `kit.truepeak` (`scratch/audit/l1.py`, `scratch/audit/l1b.py`): at ceiling −6 dBFS, True Peak on, release 60 ms, the committed `ramp_fs` reads sample −6.00 dBFS / true peak **−3.78 dBTP / +2.22 dB over → RED**, and `dc_step` −6.02 / −4.88 / **+1.12 dB → RED**. The cause is the class's own: the catch stage (`limiter.py:174-180` — `DYN_LIMIT`, `attack_ms=0.0`) is a *sample*-peak brickwall running after the true-peak detector and re-clamps to the sample ceiling. This is a gap in the promise, not only in the measurement. |
+| L6 | **refutation stands** → unmeasured | The slope clause cannot fail: with `_BRICKWALL_RATIO` (`limiter.py:68`) swapped at build time the reading is **−0.00000 dB/dB at ratio 4, 1.5 and 1.0** — a build that does no compression at all — and only tracks the ratio with the catch stage removed (+0.25007 / +0.99996 dB/dB). The knee clause is a property of the grid: the same Knee-0 build reads **0.000 dB on the run's 0.25 dB grid and 7.900 dB, RED, on a 0.05 dB grid**. |
+
+L2, L3, L4, L5 and L7 survive; L4's answer sentence and L7's docstring clause
+carry corrections the Refutation record states.
+
+**Rule applied to the two non-`disconfirmed` outcomes.** A refutation that
+shows the class failing its own bar makes the row **disconfirmed**. A
+refutation that shows the *demonstration* invalid — a fault that cannot fire,
+a reading that is green on a bypass, a bar that was never asserted — leaves no
+number that tests the trait, so the row becomes **unmeasured**, on this pack's
+own precedent for a measurement that "produced a number that does not test the
+claim". Neither outcome is a licence to edit the class.
+
 
 ---
 
@@ -778,3 +814,126 @@ From the dossier's §7, and only from there.
   remedy would be and why it is the gate's call.
 
 Nothing else is outstanding at Stations A, B and C.
+
+---
+
+## Refutation record (2026-09-07)
+
+An independent refuter, working from §1's seven **demonstrated** rows and the
+dossier's §3 trait statements, re-ran every measurement with the kit
+(`PYTHONPATH=lib .venv/bin/python`, helpers imported from
+`tools/phase2_probes/limiter_traits.py`), varied the probe material and the
+operating point *inside each trait's own terms*, re-planted each fault, and
+looked for a reading that cannot go red. `tools/phase2_probes/limiter_traits.py`
+reproduced §1 line for line first. Every number below is from a run in this
+session.
+
+- **L1 — REFUTED.** The trait's disconfirming clause is *"any probe reading
+  more than +0.5 dB TP above the ceiling"*, and §1 measures exactly **one**
+  probe. Run over the **committed corpus** (65 of the 66 probes at 2ch, the
+  silent one excepted), ceiling −6 dBFS, True Peak **on**, release 60 ms, the
+  kit's own `truepeak`: **2 probes RED at 48 kHz and 3 at 44.1 kHz.** Worst is
+  `ramp_fs` — the kit's own WIRE probe — at **+2.22 dB TP**; then `dc_step`
+  **+1.12 dB**, and `train10_1k_-6_peak` **+0.74 dB** at 44.1 kHz. Confirmed
+  through the kit's own renderer, not a private harness:
+  `tools/render_effect.py Limiter ramp_fs … --option ceiling_db=-6.0 --option
+  true_peak=1 --option release_ms=60.0` → `sample peak −6.23 dBFS, true peak
+  −4.05 dBTP, over +1.95 dB, RED`; `dc_step` → `−6.02 dBFS / −4.88 dBTP /
+  +1.12 dB, RED`. Non-committed material agrees: a 1 ms full-scale burst reads
+  **+1.15 dB** and white noise at −0.5 dBFS **+2.38 dB**, at both rates, with
+  Lookahead at 0 **and** at 5 ms. The mechanism is the class's own §4: the
+  **catch** stage is `DYN_LIMIT` with `attack_ms=0`, a *sample*-peak brickwall,
+  and it runs **after** the true-peak detector — so it re-clamps the output to
+  the sample ceiling (measured: exactly −6.00 dBFS on `ramp_fs`) and reinstates
+  the inter-sample overshoot the shape stage had just made room for. The
+  f_s/4 tone escapes this only because its true-peak reduction leaves it below
+  the catch stage's threshold. *The author must answer:* either narrow L1 to
+  the material it actually holds for (steady tones), or make the catch stage
+  true-peak-aware so the promise survives transients and DC steps; and either
+  way state which committed probes L1 was measured over, since "every probe"
+  as written is false. Trait L1's grade should not stand at **demonstrated**.
+- **L2 — not refuted.** The flatness survives every variation inside the
+  trait's terms: burst into ceilings −6/−12/−24 dBFS at releases 5/60/500 ms,
+  the full 0→10 ms sweep in 1 ms steps, at 48 000, 44 100 **and** 22 050 Hz —
+  27 sweeps, worst reading **+0.000 dB** (**−0.002 dB** at the −24 dBFS
+  ceiling), never a rise with lookahead. The "is it reading the ceiling?"
+  suspicion was retested from a second angle: rendering with the latency trim
+  **removed** (`latency_samples=0`) gives the same +0.000 dB at 0, 5 and 10 ms,
+  so no overshoot is being cut off by the trim, and the −0.002 dB row proves
+  the read is not pinned to the ceiling value. `NoCatchStage` reproduces
+  +0.144 … +1.447 dB as §1 states. *The author must answer:* nothing.
+- **L3 — not refuted.** Impulse at **every 0.5 ms step from 0.5 to 10 ms**
+  (20 settings, not 5) at all three rates: worst **+0.000 dB** over the
+  ceiling. *The author must answer:* nothing.
+- **L4 — not refuted, with one wording correction owed.** Swept the Lookahead
+  macro over its **full 0–127 grid, 128 positions × 3 rates = 384 cases**, each
+  click-measured: **0 report mismatches and 0 click failures.** All **five
+  patches** × 3 rates likewise agree to the sample (patch 1 → 71/71/71 at
+  48 kHz, patch 2 → 143, patch 4 → 94). But §1's refutation answer — *"The
+  class picks the number it reports … It does not"* — is wrong as written for
+  the first clause: `_apply_lookahead` computes `samples = int(macro_value(…) *
+  rate / 1000.0)` (`lib/audioeffects/rebuilt/limiter.py:250-252`, method at `:236`), which **is**
+  `floor(ms × fs / 1000)` in Python, so `reported == floor()` is tautological.
+  The non-tautological half is the *click*, and that half holds over all 384
+  cases. *The author must answer:* correct that sentence to say the click is
+  what carries L4.
+- **L5 — not refuted.** Extended past construction: after `program_change(2)`
+  (latency 143 / LA 2.992 ms / TP 1.00) a `program_change(0)` returns
+  **latency 0, tail 0, Lookahead 0.000 ms, True Peak 0.00, patch 0** at all
+  three rates, so the zero is the patch's and not just the constructor's.
+  *The author must answer:* nothing.
+- **L6 — REFUTED, and its slope clause is a measurement that cannot fail.**
+  The trait's first clause is *"above the ceiling the static I/O curve's slope
+  is ≤ 0.02 dB/dB over 24 dB"*, offered as the demonstration of **infinite
+  ratio**. §1 cites it with **no planted fault of its own** — the only fault in
+  the L6 block is the Knee-12 width. Planted one here (`_BRICKWALL_RATIO`
+  swapped at build time, class otherwise untouched), 25-point curve, ceiling
+  −24 dBFS:
+
+  | build | slope | verdict |
+  |---|---|---|
+  | the class as shipped | −0.00000 dB/dB | green |
+  | ratio 1e6 → **4**, catch stage in place | **−0.00000 dB/dB** | **green** |
+  | ratio 1e6 → **1.5**, catch stage in place | **−0.00000 dB/dB** | **green** |
+  | ratio 1e6 → **1.0** (no compression at all), catch stage in place | **−0.00000 dB/dB** | **green** |
+  | ratio 4, catch stage **removed** (control) | +0.25007 dB/dB | RED |
+  | ratio 1.0, catch stage **removed** (control) | +0.99996 dB/dB | RED |
+
+  The two controls prove the fault is live — with the catch stage out, the
+  reading tracks the ratio exactly. With it in, the reading is **−0.00000
+  dB/dB for every ratio from 1.0 to 1e6**: it is measuring the catch stage's
+  hard clip, not the shape stage's ratio, so the number §1 quotes for "infinite
+  ratio" would be identical on a build that does no compression whatever.
+  The knee half is weak too: the estimator is `max(bending levels) −
+  min(bending levels)`, so a single bending point yields **0.000 dB by
+  construction** — that is what Knee 0 produces (1 bending point) — and
+  Knee 0.25, 0.50 and 0.75 all read the same quantized **0.500 dB** (3 points).
+  On a 0.05 dB grid instead of the run's 0.25 dB, the **same** Knee-0 build
+  reads **7.900 dB, RED**, from slopes of 0.93–0.94 that are peak-read noise;
+  so the quoted 0.000 dB is a property of the grid the measurer picked, not of
+  the class. *The author must answer:* give the slope clause a fault of its own
+  that can turn it red — the ratio fault above only fires with the catch stage
+  bypassed, so the honest form is to measure the **shape** stage's curve, not
+  the class output; and replace the bending-band width with an estimator that
+  cannot return 0.000 from one point and does not move 8 dB when the grid
+  changes. Trait L6's grade should not stand at **demonstrated**.
+- **L7 — not refuted, one clause unmeasured.** THD held at every operating
+  point inside the trait's terms: 60 Hz at 12 dB into ceilings −12 and
+  −24 dBFS, at 48 000 / 44 100 / 22 050 Hz, reads **0.708–0.711 %** against the
+  1 % bar (the −36 and −48 dBFS "ceilings" clamp to the macro's −24 dBFS floor
+  and are not a separate case). The Release fault reproduces: 5 ms → 11.994 %,
+  30 ms → 3.134 %, 100 ms → 1.047 %. But the trait's **second** disconfirming
+  clause — *"or a docstring that does not name the trade"* — has no automated
+  check and no planted fault; it is true on inspection
+  (`lib/audioeffects/rebuilt/limiter.py:41-47` and `:103-110` both name the
+  5 ms end and the 12.0 % figure) but it is not demonstrated under this file's
+  own rule. *The author must answer:* either add a check that reads the
+  docstring and can be shown to fail, or move that clause out of the
+  demonstrated column.
+
+**Summary: 2 of 7 refuted (L1, L6); 5 survive (L2, L3, L4, L5, L7).**
+L1 is a real gap in the promise, not only in the measurement — the class's
+true-peak ceiling is broken by committed probe material. L6's slope reading is
+a measurement that cannot fail and its knee reading is grid-dependent, so the
+"infinite ratio, hard knee" claim is undemonstrated even though nothing here
+shows it to be false.

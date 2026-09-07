@@ -40,6 +40,15 @@ can read the two side by side.
 
 ## 1. Traits
 
+> **Revised by the Phase 2 gate audit, 2026-09-07.** The verdicts in the table
+> below are the audited ones: every row the independent refutation pass broke
+> was changed here, and the class was **not** touched. The *Gate audit* block
+> at the end of this section carries the ruling and its cause per row; the
+> *Refutation record* at the foot of the file carries the pass itself. Notes
+> under the table that predate the pass are superseded by them — including any
+> tally, any "all of them carry all three", and any sentence saying no
+> refutation pass ran.
+
 Command for every row below:
 
 ```
@@ -50,12 +59,12 @@ $ PYTHONPATH=lib .venv/bin/python tools/phase2_probes/multiband_traits.py
 |---|---|---|---|---|---|
 | M1 | **Unity sum**: every band at unity, flat within ±0.25 dB from 30 Hz to min(20 kHz, 0.45 fs) — at two bands for every setting, at three for every setting 8:1 or wider | **demonstrated** | SUM, 57 tones at 1/6 octave, 48 kHz, cpython. Three bands: **+0.005/−0.009** at 40/8000, **+0.001/−0.117** at 200/2000, **+0.001/−0.168** at the closest legal pair (800 → clamped to 800/6400). Two bands: **+0.001/−0.002**, **+0.001/−0.001**, **+0.006/−0.009** at 200, 800 and 40 Hz | `NoRatioClamp` — the 8:1 push-up *and* the 800 Hz floor on Crossover High's span both removed — at 200/400 (2:1) → **RED, −7.780 dB**; at 200/800 (4:1) → **RED, −0.987 dB**. **Control:** the same faulted build at 200/1600 (8:1) is **green at −0.189 dB**, so the fault is the setting and not a broken class | *"The clamp makes the trait unfalsifiable — the class simply refuses the settings that would fail it."* It does not refuse: it clamps and reports both numbers (`macro(1)` the request, `crossover_high_hz` what landed), and the fault build reaches 2:1 and fails. The trait is stated against the clamp because A-M6 derived the ratio dependence before the surface existed. |
 | M2 | **LR4 crossovers**: at 200/2000 each band is −6 dB at its corner on a 24 ± 2 dB/octave skirt, and the halves are in phase there — the sum at the corner is unity, not a null | **demonstrated** | XOVER, soloed band against the dry tone, 48 kHz, cpython. Low band at 200 Hz **−6.06 dB**, skirt **23.7 dB/octave** over 400–800 Hz; high band at 2000 Hz **−6.05 dB**, skirt **23.7 dB/octave** over 500–1000 Hz. Sum at both corners **−0.088 dB** | `LinkwitzRiley2` — one Butterworth section a side, which RaneNote 160 says needs a polarity inversion nothing here performs → **RED: corner −3.03 / −3.02 dB, skirt 11.8 dB/octave, and the sum at both corners collapses to −20.93 dB**, which is the null S3 predicts | *"−6.06 could be a −6 dB target hit by tuning rather than by the alignment."* Nothing is tuned: both sections are Q = 0.7071 at the same frequency, which is the definition, and the fault build differs from it by exactly one section and lands on −3.03 — the Butterworth number. |
-| M3 | **Band isolation**: 12 dB on one band moves that band's passband by 12 dB within 0.5 dB, evenly (tilt ≤ 0.5 dB), and leaves every other band within 0.5 dB | **depth demonstrated · isolation demonstrated · evenness DISCONFIRMED for the low band** | ISO, per band, **soloed**, 48 kHz, cpython. Depth: **−12.18 / −11.76 / −11.91 dB** mean for low / mid / high, all inside ±0.5. Isolation: **0.00 dB** on every idle band, all three rows. Evenness: **0.27 dB** (mid) and **0.37 dB** (high) — and **0.73 dB across 30–100 Hz on the low band**, over the 0.5 dB bar | `SharedDetector` — one threshold and ratio on every band's gain computer, a full-band compressor wearing a crossover → **RED on both clauses, on different rows**: driving the low band pulls the other two down **12.01 dB**, and driving the mid or high band moves nothing at all (**+0.00 dB** where 12 were asked) | *"The low band's tilt is the measurement's, not the class's — read it off the sum and it would be worse."* It would: on the sum the low band 12 dB down reads **−10.4 dB at 100 Hz**, because the mid band's skirt is only 24.6 dB down there. The per-band read removes that, and 0.73 dB survives it. The two halves of what survives are measured separately in §1a. |
+| M3 | **Band isolation**: 12 dB on one band moves that band's passband by 12 dB within 0.5 dB, evenly (tilt ≤ 0.5 dB), and leaves every other band within 0.5 dB | **depth DISCONFIRMED for the mid band · evenness DISCONFIRMED for all three bands · isolation demonstrated, on a read that is byte-identical by construction** — REFUTED | ISO, per band, **soloed**, 48 kHz, cpython. Depth: **−12.18 / −11.76 / −11.91 dB** mean for low / mid / high, all inside ±0.5. Isolation: **0.00 dB** on every idle band, all three rows. Evenness: **0.27 dB** (mid) and **0.37 dB** (high) — and **0.73 dB across 30–100 Hz on the low band**, over the 0.5 dB bar | `SharedDetector` — one threshold and ratio on every band's gain computer, a full-band compressor wearing a crossover → **RED on both clauses, on different rows**: driving the low band pulls the other two down **12.01 dB**, and driving the mid or high band moves nothing at all (**+0.00 dB** where 12 were asked) | *"The low band's tilt is the measurement's, not the class's — read it off the sum and it would be worse."* It would: on the sum the low band 12 dB down reads **−10.4 dB at 100 Hz**, because the mid band's skirt is only 24.6 dB down there. The per-band read removes that, and 0.73 dB survives it. The two halves of what survives are measured separately in §1a. |
 | M4 | **Zero latency**: the impulse leaves in the frame it entered, at every setting | **demonstrated** | CLICK, integer onset (`subsample=False`, tolerance 0), impulse at frame 64. **Reported 0, measured 0** in all six configurations — 3 bands at 200/2000 and at 40/8000, and 2 bands at 200 — at **48 kHz and 44.1 kHz**, cpython | `LookaheadLatency` — 128 samples of `audiodynamics` lookahead, which this class deliberately does not expose, applied before the Mixer's voices take their first chunk and still reported as 0 → **RED at all six, measured [128.0, 128.0] against a reported 0** | *"An all-pass network has group delay, so 'zero latency' is a claim about the reading, not the class."* It is a claim about onset, and the row says which reading it wants: the integer one. The sub-sample reading of a minimum-phase filter is group delay and not processing latency (`effect_measurements.click` says so in its own docstring); the fault moves the integer reading by 128 and the trait's own words are "in the frame it entered". |
 | M5 | **The sum survives its source**: the same probe at 256, 8192, 16384, 20000 and 32768-frame `get_buffer` calls renders byte-identically and non-silently | **demonstrated** | LONG, 48 kHz, cpython. A 220 Hz tone at every block: **`7d18736d` five times over**. Burst-then-silence material: **5094 non-zero samples at every block** | `NoGuard` — the Splitter fed straight off the source, which is the shipped class's topology (`dynamics.py:239`) → **RED**: `7d18736d, 7d18736d, 1372899d, 1e78366d, ef869b3d`, three different renders; and on burst material **5094, 5094, 0, 0, 0** — exact silence at three of the five | *"A guard node is a workaround for a node defect and should have been an audioif ask."* It was, and the palette refuted it: the defect fires only when the Splitter's immediate source hands back more than 8192 frames, and every processing node on the palette hands back its own block. The ask is a defect report on audioif; the class needs one node it was going to build anyway. |
 
 - **demonstrated** = a measurement, that measurement red on a planted fault of
-  the same kind, and a surviving refutation. M1, M2, M4 and M5 have all three,
+  the same kind, and a surviving refutation. M1, M2, M4 and M5 have all three (M3 does not — see the gate audit block),
   and so do two of M3's three clauses.
 - **disconfirmed**: **one clause of M3**, evenness, on the low band only — see
   §1a. It is in the class docstring and in the README row, not only here.
@@ -102,6 +111,35 @@ would need either a fifteenth macro or a rule the dossier does not have, and
 states the number and what a musician hears: the low band compresses a couple
 of tenths deeper than the dial at the bottom of its range and a couple of
 tenths shallower at the top.
+
+
+### Gate audit — the refutation pass's verdicts, ruled on (2026-09-07)
+
+Ruled by the Phase 2 gate auditor against the **Refutation record** at the
+foot of this file. Where a refutation stands the verdict above was changed
+and the class was **not** touched; where the auditor re-ran a figure itself
+the run is named. The roadmap's class-gate rule is the test applied: a
+*demonstrated* trait needs a measurement, that measurement shown red on a
+planted fault of the same kind, **and** a surviving refutation.
+
+| Row | Ruling | Cause recorded, and the auditor's check |
+|---|---|---|
+| M3 | **refutation stands** → depth disconfirmed for the mid band, evenness disconfirmed for **all three** bands | Both surviving clauses rest on a tone window chosen at measurement time. Auditor's check: `grep -n BAND_TONES tools/phase2_probes/multiband_traits.py` → the table at `:370`, read at `:396`, `:412`, `:422-424`; it sits no closer than an octave to either corner, covering 400–1000 Hz of the mid band's 200–2000 — **1.3 of its 3.3 octaves**. Widened to 283 and 1414 Hz, still inside the band's own −6 dB corners and 1.75 dB below its peak, soloed at the evidence's own 200/2000 setting: mid band **mean −11.27 dB (bar ±0.5 → RED), tilt 1.31 dB (bar 0.5 → RED)**; high band tilt **1.42 dB**; low band with 141 Hz added, tilt **1.82 dB** rather than 0.73. §1a's cause generalises — `B − C` runs +0.05 to +0.13 dB across 200–2000 Hz — so every band tilts by its own LR4 skirt and only the window hid it. The class docstring's "within 0.25 dB … in the mid and high bands" and the README row are written from the narrow window. |
+| M3 (isolation) | **survives, on a read that cannot mean what it says** | The soloed read is a **byte-identical** compare — driven low band, soloed mid band at 700 Hz renders `9083457d`, the idle build renders `9083457d` — so "0.00 dB on every idle band" is evidence that a band's chain has no path to another band's macros, not evidence of acoustic isolation. The harder read (summed output, no solo) holds at worst 0.30 dB against a 0.5 bar, and that is the stronger result. |
+
+M1, M2, M4 and M5 survive; M5 was strengthened past §1's own 8192-frame limit
+(`tools/phase2_probes/multiband_traits.py:548`) to seven block sizes and whole
+renders, digest-identical, with the `NoGuard` fault giving seven different
+digests.
+
+**Rule applied to the two non-`disconfirmed` outcomes.** A refutation that
+shows the class failing its own bar makes the row **disconfirmed**. A
+refutation that shows the *demonstration* invalid — a fault that cannot fire,
+a reading that is green on a bypass, a bar that was never asserted — leaves no
+number that tests the trait, so the row becomes **unmeasured**, on this pack's
+own precedent for a measurement that "produced a number that does not test the
+claim". Neither outcome is a licence to edit the class.
+
 
 ---
 
