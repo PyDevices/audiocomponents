@@ -41,6 +41,22 @@ frames**, so it is a construction option rather than a knob and a plain gate
 pays none of it. Its depth is honest to about -40 dB; below that the
 subtraction runs into int16's own floor (dossier G7).
 
+**One thing the dossier asked for and this class does not do.** Its detector
+is a peak detector, but the key band sits in front of it and never comes out
+- the DS201's L.F. control bottoms at 25 Hz, it does not switch off - and a
+one-pole high-pass overshoots a square wave's edges. So a square and a sine
+of *equal peak* open the gate about 0.63 dB apart where the trait asks for
+0.5, while the bare node with no key filters opens both at exactly the same
+threshold. In practice: percussive, edgy material triggers this gate very
+slightly earlier than a smooth tone of the same peak. Measured in
+`docs/effects/NoiseGate-evidence.md` section 1, trait G6.
+
+**And one setting that does less than the knob says.** In `duck=True` the
+depth is honest to about -40 dB; past that the graph is subtracting two
+nearly equal 16-bit streams and runs into their own quantisation - Range
+-60 measures -59.5 dB and -80 measures -77.2. Plain gating has no such
+limit: its depth is the node's own float.
+
 The dossier is `docs/effects/NoiseGate.md` and the evidence pack that holds
 this class to it is `docs/effects/NoiseGate-evidence.md`.
 """
