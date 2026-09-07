@@ -66,6 +66,24 @@ there, and are recorded in its changelog.
 - `tools/render_effect.py` takes `--option name=value`, so a render can
   reach a class's construction options - a duck graph and a look-ahead are
   build choices, not knobs.
+- `DeEsser` is rebuilt on the effects program's Phase 1 palette and served
+  from `lib/audioeffects/rebuilt/deesser.py`; the old class stands untouched
+  beneath it. It is the dbx 902's mechanism now — the sibilant band's level
+  compared with the programme's rather than with a threshold knob — so one
+  setting works on a whisper and a belt: measured across the kit's four
+  sibilant probes from -6 to -55 dBFS, the reduction spreads 0.772 dB where
+  the class it replaces spent its whole range inside 14 dB. Seven macros
+  (Frequency, Range, Sensitivity, Mode, Release, Attack, Listen) and six
+  patches, where there were none; a broadband and an HF-only mode, where
+  there was only broadband; and Range is a real maximum, where `ratio` was
+  not. Portability tier **audioif** (`audiobiquad`, `audiodynamics`,
+  `audioroute`), latency zero, and no option that adds any. Three traits the
+  palette cannot reach are stated in its docstring rather than hidden: the
+  release curves where the 902's is a straight line in dB, Range is an
+  asymptote rather than a clamp, and the program-dependent attack does not
+  reach the 902's ratio. Evidence:
+  [`docs/effects/DeEsser.md`](docs/effects/DeEsser.md) and
+  [`docs/effects/DeEsser-evidence.md`](docs/effects/DeEsser-evidence.md).
 
 ## v0.2.0 (2026-09-03)
 
