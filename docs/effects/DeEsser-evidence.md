@@ -588,3 +588,109 @@ module being edited.
   station pattern the roadmap sets out asks for a commit per station, and
   the gate asks for one commit for the class; they do not agree, and this
   session followed the stations.
+
+---
+
+## Refutation record (2026-09-07)
+
+An independent refuter re-ran every **demonstrated** verdict above with the
+kit, varied the probe material and the rate inside each trait's own terms,
+and checked that each planted fault really turns its measurement red. Every
+figure below is from a run this session made; the scripts are
+`scratch/refute_deesser.py` and `scratch/refute2.py`…`refute11.py`, all under
+`PYTHONPATH=lib .venv/bin/python`. The battery as it stands is green —
+`python -m unittest tests.test_cpython_effects_deesser -v` → `Ran 24 tests in
+38.995s / OK` — which is part of the finding for D4.
+
+- **D1 — level independence: REFUTED as *demonstrated*.** The 0.798 dB
+  spread reproduces exactly at Sensitivity 34, and it is a property of that
+  setting, not of the class. At **Sensitivity 44 — the setting this very
+  pack uses for D7** — the same four probes read
+  `-17.682 / -17.693 / -17.834 / -20.350`, a **spread of 2.668 dB** against
+  the trait's 1 dB bar (44.1 kHz: 2.806 dB; 22.05 kHz: 1.737 dB). The
+  unity control on `sibilant_-55` reads −0.125 dB, so a measurement floor
+  explains 0.13 dB of it and not 2.7. *The author must answer:* is D1
+  demonstrated only at Sensitivity 34, and what makes the −55 dBFS probe
+  duck 2.7 dB deeper — the 16-bit truncation of the `1-alpha` dry blend, or
+  the detector?
+- **D2 — tracking clause: REFUTED, the measurement cannot fail.** The
+  test's own comment is wrong: at Range 20 / Sensitivity 0 the gain cell
+  passes unity, so voice 3 carries `alpha*h` beside voice 2's `(1-alpha)*h`
+  and the render is `l + h` — the flat LR4 sum, i.e. D8's reading again,
+  which is 0 dB at **every** frequency and every corner. Held the tone at
+  2500 Hz and swept the corner 800 → 8000 Hz: `-0.0009 / -0.0009 / -0.0009 /
+  -0.0009 / -0.0010 dB`, no movement. Then planted the fault the row has
+  none of — the crossover frozen at 2500 Hz whatever the Frequency macro
+  says: readings `-0.001 / -0.001 / -0.001` and the assertion
+  `abs(dev - corners[0]) < 0.5` **still passes**. A class whose corner does
+  not track at all is green on this test. *The author must answer:* measure
+  the high half alone (Listen path or a `Splitter` tap), not the sum.
+- **D3 — two modes: REFUTED as *demonstrated*.** The frozen dossier trait
+  names three clauses and lists "either band's reduction more than 0.5 dB
+  from the commanded 12 dB" as a disconfirming condition; the evidence table
+  restates D3 as "moves both bands together" and drops that clause without
+  declaring it. Measured: at Range 12 the reachable reduction saturates —
+  Sensitivity 34 / 44 / 54 / 64 / 80 / 100 give
+  `-9.580 / -11.162 / -11.463 / -11.463 / -11.463 / -11.463 dB`, so the best
+  any reachable setting reaches is **0.537 dB from the commanded 12**,
+  outside the 0.5 dB bar, for the same asymptote reason §8.1 declares for
+  D7. HF-only is worse (−10.913 at best, 1.087 dB off). *The author must
+  answer:* D3 needs a split verdict — "both bands move together" and "the
+  low band is untouched in HF-only" demonstrated, the 12 dB clause
+  disconfirmed and unreachable, with the same N-DEESS-6 cause as D7's.
+- **D4 — the 925 dB/sec rate: REFUTED, nothing guards it.** The test asserts
+  only `deviation > 0.3`; the rate is printed and never asserted. Rebuilt
+  with the Release macro moved and the battery re-run: release 6 ms →
+  **602 dB/sec** (34.9 % off), 12 ms → **322** (65.2 %), 30 ms → **132**
+  (85.7 %) — and the D4 test is **GREEN** in all three. Only release 1 ms
+  turned it red, and for the wrong reason (the recovery finished inside two
+  hops, so "straightness" collapsed to 0.00 dB). The 935 dB/sec is also
+  window-dependent: the same run at hop 1.25 / 2.5 / 5.0 ms reads
+  **912 / 935 / 989 dB/sec**, because an exponential has no dB/sec and the
+  number is an average over whatever the t95 window happens to be. *The
+  author must answer:* assert the rate, or withdraw "rate demonstrated" —
+  as it stands the trait is a printed number at one setting of a free
+  control.
+- **D5 — attack direction: not refuted.** Held at 48 kHz and 44.1 kHz and at
+  Range 6 and 20: t63 `4.424/3.494/2.458`, `3.989/3.483/2.465`,
+  `4.418/3.425/2.416`, `4.418/3.416/2.424` ms — monotone in all four, ratio
+  1.62–1.83, and the depths hold inside 0.4 dB. The one non-monotone reading
+  is 22.05 kHz Range 6 (`2.444/3.411/2.981`), where a 0.1 ms hop is 2.2
+  samples and `gaintrace` has nothing to average — the method's floor, not
+  the class's. Worth a line in the pack: this row is measured at 48 kHz and
+  the rig does not survive 22.05 kHz.
+- **D6 — "the option is active": not refuted at 48 kHz, and rate-fragile.**
+  The 1.420 dB holds across probe levels: `-14 → 1.420`, `-26 → 1.421`,
+  `-40 → 1.439 dB`. But the same measurement at 44.1 kHz returns a
+  **+11.678 dB "reduction"** — a *gain*, through a path whose gain cannot
+  exceed unity — because a 4800-sample bin at 1 kHz is 108.84 cycles at
+  44.1 kHz and the dry bin is a null (`-83.665 dBFS` against `-19.102` at
+  48 kHz); at 22.05 kHz it reads 0.000 dB and the gate would fail. The class
+  is not the fault here, the rig is: `settled_change` has no check that its
+  bin is coherent at the rate. *The author must answer:* say the row is
+  48 kHz-only, or guard the bin.
+- **D7 — the Range bound: REFUTED as *demonstrated*.** "Never exceeded" was
+  measured on `sibilant_-6` only. On this pack's own D1 probe set the
+  ceiling is passed at every Range setting and both rates: `sibilant_-55` at
+  Sensitivity 44 reads **−5.152 / −10.108 / −20.350 dB** at Range 5 / 10 /
+  20 (44.1 kHz: −5.120 / −10.127 / −20.447), each past `-20log10(1-alpha)`,
+  and the Range 20 excess of 0.350 dB is larger than the 0.125 dB the unity
+  control shows the probe's own floor to be. The −6 / −20 / −40 probes stay
+  under. *The author must answer:* is the excess the 16-bit truncation of
+  the dry blend at −89 dBFS, or a real breach — and either way the
+  battery's `assertGreater(reached, -range_db - 0.05)` goes red the day
+  someone runs it on `sibilant_-55`.
+- **D8 — the flat sum: not refuted.** Widened from nine points to thirteen
+  per corner, 20 Hz to `min(20 kHz, 0.45·rate)`, at three corners and three
+  rates: worst departure **0.062 dB** (44.1 kHz, corner 800 Hz, 300 Hz),
+  everywhere inside the 0.25 dB bar. Note that the 48 kHz column reads
+  exactly 0.000 at every point because the test tones divide the analysis
+  window evenly there; the 44.1 kHz and 22.05 kHz columns are the honest
+  ones and they pass too.
+
+**Summary.** Four of the eight demonstrated verdicts do not survive:
+**D1** (setting-dependent), **D2's tracking** (a measurement that cannot
+fail), **D3** (a dropped clause that is unreachable) and **D4's rate** (no
+assertion, and green at 132 dB/sec). **D5, D6 and D8** stand, with D5 and D6
+owing a rate caveat. No claim about the class's code is made here beyond the
+numbers above; the class was not edited.
