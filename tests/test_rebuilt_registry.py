@@ -346,6 +346,11 @@ class TheReplacement(unittest.TestCase):
 
 
 class TheCatalogueIsUnchanged(unittest.TestCase):
+    #: The same two names as the module-level `FIXTURES`, on the class
+    #: because the `ParametricEQ` rebuild's tests read them from
+    #: `self`.
+    FIXTURES = ("ExampleStock", "ExampleAudioif")
+
 
     def test_the_fixtures_are_not_among_the_46(self):
         # The catalogue is 46 whichever half of the library serves a name,
