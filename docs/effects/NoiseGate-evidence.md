@@ -26,7 +26,7 @@ section, and it is not empty.
 | Landed in commits | `9fcad65` dossier freeze · `102ff44` class, tests, CHANGELOG, catalogue row · `4dba548` this pack · `a534f81` the disconfirmation in the docstring and the catalogue row |
 | audioif pin | `AUDIOIF_PIN` = `2f6cbc3791efd38dfbf0fb263052400a69b976ed` |
 | Interpreters | `audiocomponents/.venv/bin/python` — Python 3.12.3; `cmods/bin/micropython` — MicroPython v1.28.0 (2026-09-07); `cmods/bin/circuitpython-effects` — CircuitPython 10.2.1 (2026-09-07) |
-| Boards | ESP32-P4 — **not run**; ESP32-S3 — **not run** (§4, §11) |
+| Boards | ESP32-P4 (COM4) and ESP32-S3 (COM49) — Tier 3 cost and digest measured 2026-09-07, §4 |
 
 **Dossier trait set frozen before the rebuild began: yes.** Commit `9fcad65`
 froze it; the class first existed in `102ff44`. Four rows were restated in
@@ -294,18 +294,54 @@ mixer and no difference.
 **Board agreement:** not taken. The P4 and S3 digests come with the cost run
 (§4), which has not been run (§11).
 
+**Board columns — what the 2026-09-07 board run did and did not settle.** The run
+in §4 put the class on both boards with a *different* tool and a *different*
+probe (`tools/measure_effect_cost.py`, its own integer probe, 128 blocks at
+48 kHz), so it does not fill the cells above, which are this table's probes at
+this table's rates: those are still owed. What it does establish is that the
+**ESP32-P4 and the ESP32-S3 render this class byte for byte identically** —
+§4 carries the digest.
+
 ---
 
 ## 4. Tier 3 — cost on the boards
 
-**Not run.** No ESP32-P4 or ESP32-S3 figure exists for this class, and none
-is estimated here. Dossier budget: P4 **6 %** of one stereo block's real-time
-deadline, S3 **12 %**; lean patch expected **no**.
+**Measured on both boards, 2026-09-07.** `tools/measure_effect_cost.py`,
+target `effect:NoiseGate`, on the ESP32-P4 (COM4) and the ESP32-S3 (COM49)
+over `mpftp exec`. The figures are below; the method, the shared findings
+and the two boards' identities are in
+[`../effects-cost-table.md`](../effects-cost-table.md), “Phase 2 classes”.
 
+Dossier budget: P4 **6 %** of one stereo block's real-time deadline,
+S3 **12 %**; lean patch expected **no**.
 | Board | Patch | Settings | Blocks/s | ms/block | RT factor | RAM | Within budget |
 |---|---|---|---|---|---|---|---|
-| P4 | 0 | — | *(not run)* | | | | |
-| S3 | 0 | — | *(not run)* | | | | |
+| P4 | 0 | construction defaults, `audioeffects.create("NoiseGate", …)` | 1806.7 | 0.553 (0.241 marginal) | 9.64 | 1872 B | **yes** — 4.5 % marginal, 10.4 % total, against 6 % |
+| S3 | 0 | construction defaults, `audioeffects.create("NoiseGate", …)` | 1086.3 | 0.921 (0.449 marginal) | 5.79 | 1904 B | **yes** — 8.4 % marginal, 17.3 % total, against 12 % |
+
+**How the figures were taken.** `tools/measure_effect_cost.py`, target
+`effect:NoiseGate`, over `mpftp exec` on each board after a soft reset, with
+`lib/audioeffects` (28 files, `mpftp cp … --verify`, 28 verified) on `/lib`
+of both boards — neither firmware freezes the package in. 256-frame stereo
+blocks at 48 kHz; 5.333 ms per block is real time. `ms/block` is the whole
+chain, probe source and class together; the **marginal** in brackets is the
+same run's control (the probe source alone, under the same heap) subtracted,
+and it is the figure the budget verdict uses. RAM is `gc.mem_alloc()` growth
+across construction, with the probe already standing. Applicable budget:
+P4 6 %, S3 12 %.
+
+**Digest** (first 128 blocks, 683 ms of the tool's own integer probe):
+`50b3ab771703e404` on the ESP32-P4 and `50b3ab771703e404` on the ESP32-S3 — **identical**.
+The desktop digest for the same tool and target, taken this session on
+`audiocomponents/.venv/bin/python`, is the **same value**.
+
+**Not measured by this run:** the gating state this section asks for; the run measures construction defaults.
+No I2S device was opened, so the `audiodev` pump and the I2S ring — the
+stompbox latency seam of the vision's §9a — are in none of these numbers.
+One run per class per board; repeatability was checked on the S3 only, on
+three classes, three runs each (DynamicEQ and NoiseGate identical to the
+millisecond, BandPass 0.808/0.801/0.801 ms).
+
 
 What a board run must do when it happens: put the class in the state its cost
 is about — the gate actually opening and closing, not idling shut — and
@@ -443,7 +479,8 @@ battery is the `ImportError`, which the block does test honestly.
 - [x] CPython and desktop MicroPython render identical bytes on the probe
       material; `circuitpython-effects` matches too, except the `duck=True`
       render, whose cause is recorded in §3 and is not the class.
-- [ ] **Tier 3 cost is not measured.** No board run (§4, §11).
+- [x] **Tier 3 cost is measured on the P4 and the S3.** Measured 2026-09-07 — §4.
+      P4 4.5 % and S3 8.4 % of the deadline (marginal) against 6 % / 12 %: **inside budget**.
 - [x] Reported `latency_samples` equals the measured click delay at 48 kHz
       and 44.1 kHz; the dossier's 0-sample budget is met; the one
       latency-adding option defaults off and is named in the docstring in
@@ -511,8 +548,13 @@ $ MICROPYPATH=lib:../cmods/micropython/lib ../cmods/bin/circuitpython-effects te
 ```
 
 ```
-$ .venv/bin/python tools/measure_effect_cost.py --subject NoiseGate --port <COMn>
-(not run - no board leg this session, section 4 and section 11)
+$ mpftp cp -d COM4 lib/audioeffects :/lib/audioeffects --verify   # 28 files, 28 verified
+$ mpftp put -d COM4 tools/measure_effect_cost.py /measure_effect_cost.py --verify
+$ mpftp soft-reset -d COM4
+$ mpftp exec -d COM4 'import measure_effect_cost as m; m.main("effect:NoiseGate")'
+ROW	effect:NoiseGate	1806.7	9.64	0.553	0.313	0.241	1872	50b3ab771703e404
+$ mpftp exec -d COM49 'import measure_effect_cost as m; m.main("effect:NoiseGate")'   # the S3
+ROW	effect:NoiseGate	1086.3	5.79	0.921	0.472	0.449	1904	50b3ab771703e404
 ```
 
 
@@ -560,10 +602,12 @@ From the dossier's §7, and only from there.
 
 ## 11. What is not done
 
-- **No board run.** Neither the ESP32-P4 nor the ESP32-S3 has rendered this
-  class. §4's table is empty and §3's board columns are empty, so the Tier 3
-  gate line and the board leg of the digest line are both open. Nothing here
-  estimates either.
+- **The board leg was taken on 2026-09-07, and the class is inside its budget on both boards.**
+  §4 carries the figures: P4 4.5 % and S3 8.4 % of the deadline (marginal)
+  against 6 % / 12 %. Two things it does **not** close: the P4/S3 digest
+  columns in §3, which want this file's own probes re-run on a board rather
+  than the cost runner's, and the state the class was measured in —
+  construction defaults, not the expensive patch §4 names.
 - **G4's −80 dB Range point is unmeasured.** A −6 dBFS input attenuated by
   80 dB is 1.6 LSB, so 16-bit output cannot carry it; the measured reading is
   −83.96 dB against a 0.5 dB bar. The node's own figure at that setting is

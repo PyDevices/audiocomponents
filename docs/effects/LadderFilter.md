@@ -122,7 +122,7 @@ invariant (App. I) and does not decay at all.
 **Measured at Station C:** latency **0 samples (integer) at 48, 44.1 and
 22.05 kHz**, budget met; the class's group delay at patch 0 is 2.119 / 2.017 /
 1.015 samples and is exported as group delay, not as latency. **The cost
-budget is still unmeasured on both boards** — `LadderFilter-evidence.md` §4.
+budget was measured on both boards on 2026-09-07 and is exceeded on both** — `LadderFilter-evidence.md` §4.
 
 *(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
 

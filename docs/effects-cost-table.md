@@ -755,3 +755,249 @@ mpftp get -d COM4 /alias/out_44100.raw tools/alias_floor/work/alias_out_COM4/out
   `audiodynamics.Dynamics` and `audiofilters.Distortion` was not chased.**
   Contraction is ruled out for all three (they differ from the FMA rebuild
   too); the remaining candidates are named above and not tested.
+
+---
+
+# Phase 2 classes — the sixteen rebuilds, on both boards
+
+**Measured 2026-09-07**, same tool, same probe material, same 256-frame
+stereo block at 48 kHz as both halves above. One target per run,
+`effect:<Class>`, so every row is `audioeffects.create(name, source, 48000)`
+at its **construction defaults** — the runner applies no patch. That matters
+for four of the rows and is said again where it does.
+
+`lib/audioeffects` is not frozen into either firmware, so the package was put
+on each board's filesystem first — 28 files (ten family modules,
+`_component.py`, `_core.py`, and the sixteen rebuilt modules plus
+`rebuilt/__init__.py`), `mpftp cp … --verify`, **28 of 28 verified on each
+board** — and `tools/measure_effect_cost.py` put at `/measure_effect_cost.py`
+(sha256 `29a17e35d5e98f86…`, verified on both). The two `rebuilt/example*.py`
+fixtures were left off the boards on purpose. **Source `.py`, never `--mpy`:**
+`rebuilt/__init__.py` finds a rebuilt class by listing the directory for
+`*.py` names, so a `.mpy` upload would make every rebuilt class silently miss
+and the *old* family class would be measured instead. Resolution was checked
+on the board rather than assumed — `rebuilt.known()` returned all sixteen
+names and `Compressor` resolved to `audioeffects.rebuilt.compressor`.
+
+## The boards, this run
+
+| | ESP32-P4 (COM4) | ESP32-S3 (COM49) |
+|---|---|---|
+| `os.uname().version` | `v1.28.0-dirty on 2026-09-07` | `v1.28.0-dirty on 2026-09-07` |
+| `os.uname().machine` | `Generic ESP32P4 module with WIFI module of external ESP32C6 with ESP32P4` | `Generic ESP32S3 module with Octal-SPIRAM with ESP32S3` |
+| `sys.implementation._build` | `ESP32_GENERIC_P4-C6_WIFI` | `ESP32_GENERIC_S3-SPIRAM_OCT` |
+| `machine.freq()` | 360 MHz | 240 MHz |
+| `gc.mem_free()` at rest | 33 091 808 B | 8 319 088 B |
+| `audioeffects` | on `/lib`, source `.py` | on `/lib`, source `.py` |
+
+**The S3 is not the image the Phase 1 sections measured.** It reports
+`ESP32_GENERIC_S3-SPIRAM_OCT` where the baseline section recorded
+`ESP32_GENERIC_S3-SPIRAM_OCT_JTAG`, and `v1.28.0-dirty on 2026-09-07` where
+the baseline recorded 2026-09-03. Neither image records which audioif
+revision it holds — the gap both sections above already name — so a
+comparison between a Phase 1 S3 row and a Phase 2 S3 row is a comparison of
+two images, not of one board twice. Nothing in this section makes one.
+
+## The sixteen classes
+
+Heaviest first, by S3 block time. `ms/blk` is the whole chain, probe source
+and class together; `marg` is the same run's control subtracted. RAM is
+`gc.mem_alloc()` growth across construction with the probe already standing,
+and it was within a few dozen bytes on the two boards for every row, so one
+column carries both (the P4's).
+
+| class | P4 ms/blk | P4 marg | P4 rt | S3 ms/blk | S3 marg | S3 rt | RAM | digest (both boards) |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| `MultibandCompressor` | 2.671 | 2.361 | 2.0 | 4.910 | 4.458 | 1.1 | 55 KB | `3239279a24c17a93` |
+| `DeEsser` | 1.777 | 1.464 | 3.0 | 3.184 | 2.711 | 1.7 | 115 KB | `a4d62601c70389fb` |
+| `Compressor` | 1.418 | 1.105 | 3.8 | 2.554 | 2.082 | 2.1 | 39 KB | `8080d323c13da81f` |
+| `GraphicEQ` | 1.523 | 1.210 | 3.5 | 2.530 | 2.059 | 2.1 | 15 KB | `4169efd90ecf44dd` |
+| `TransientShaper` | 1.106 | 0.793 | 4.8 | 2.144 | 1.672 | 2.5 | 1776 B | `4169efd90ecf44dd` |
+| `LadderFilter` | 1.182 | 0.869 | 4.5 | 1.907 | 1.436 | 2.8 | 1472 B | `b5e3a1e71748a465` |
+| `DynamicEQ` | 1.051 | 0.738 | 5.1 | 1.821 | 1.349 | 2.9 | 46 KB | `f5c99d1ed5e84f81` |
+| `ParametricEQ` | 1.121 | 0.808 | 4.8 | 1.821 | 1.350 | 2.9 | 10 KB | `4169efd90ecf44dd` |
+| `Limiter` | 0.998 | 0.685 | 5.3 | 1.732 | 1.263 | 3.1 | 3200 B | `4169efd90ecf44dd` |
+| `Expander` | 0.763 | 0.450 | 7.0 | 1.338 | 0.868 | 4.0 | 1808 B | `782ffd714b06de60` |
+| `CombFilter` | 0.683 | 0.371 | 7.8 | 1.123 | 0.651 | 4.8 | 14 KB | `06fd9da6c1a7d402` |
+| `LowPass` | 0.614 | 0.301 | 8.7 | 0.981 | 0.513 | 5.4 | 4096 B | `54e9ab9106ff4b40` |
+| `Notch` | 0.615 | 0.301 | 8.7 | 0.981 | 0.510 | 5.4 | 4112 B | `ea99a67195deb063` |
+| `HighPass` | 0.615 | 0.302 | 8.7 | 0.980 | 0.512 | 5.4 | 4096 B | `d2dc46b565a45706` |
+| `NoiseGate` | 0.553 | 0.241 | 9.6 | 0.921 | 0.449 | 5.8 | 1872 B | `50b3ab771703e404` |
+| `BandPass` | 0.515 | 0.202 | 10.4 | 0.808 | 0.332 | 6.6 | 2864 B | `b2e883b33ad63557` |
+| *(probe source alone)* | 0.124 | −0.001 | 43.2 | 0.233 | −0.000 | 22.9 | 0 | `4169efd90ecf44dd` |
+
+## Against the dossiers' budgets
+
+The verdict uses the **marginal** — the class's own cost with the harness
+floor removed, measured in the same run under the same heap. The total is
+given beside it because for the cheap classes the floor is most of the row:
+with `audioeffects` resident the control costs 0.313 ms on the P4 and 0.472
+on the S3, against 0.124 and 0.233 for a bare `source` run on the same board
+minutes earlier. That growth is the GC walking a bigger heap, it is the same
+for every class, and it is the reason `marg` and not `ms/blk` is what a
+budget can be read against.
+
+| class | P4 marg | budget | P4 | S3 marg | budget | S3 | `" - lean"` owed |
+|---|---:|---:|---|---:|---:|---|---|
+| `MultibandCompressor` | 44.3 % | 25 % | **no** | 83.6 % | 45 % | **no** | **yes** |
+| `DeEsser` | 27.5 % | 8 % | **no** | 50.8 % | 15 % | **no** | **yes** |
+| `Compressor` | 20.7 % | 8 % | **no** | 39.0 % | 22 % | **no** | **yes** |
+| `GraphicEQ` | 22.7 % | 38 % | yes | 38.6 % | 64 % | yes | — |
+| `TransientShaper` | 14.9 % | 5 % | **no** | 31.3 % | 10 % | **no** | **yes** |
+| `LadderFilter` | 16.3 % | 8 % | **no** | 26.9 % | 14 % | **no** | **yes** |
+| `DynamicEQ` | 13.8 % | 8 % | **no** | 25.3 % | 25 % | **no** | **yes** |
+| `ParametricEQ` | 15.2 % | 26 % | yes | 25.3 % | 43 % | yes | — |
+| `Limiter` | 12.8 % | 4 % | **no** | 23.7 % | 12 % | **no** | **yes** |
+| `Expander` | 8.4 % | 6 % | **no** | 16.3 % | 12 % | **no** | **yes** |
+| `CombFilter` | 7.0 % | 2 % | **no** | 12.2 % | 7 % | **no** | **yes** |
+| `LowPass` | 5.6 % | 1.5 % | **no** | 9.6 % | 5 % | **no** | **yes** |
+| `Notch` | 5.6 % | 1.5 % | **no** | 9.6 % | 5 % | **no** | **yes** |
+| `HighPass` | 5.7 % | 1.5 % | **no** | 9.6 % | 5 % | **no** | **yes** |
+| `NoiseGate` | 4.5 % | 6 % | yes | 8.4 % | 12 % | yes | — |
+| `BandPass` | 3.8 % | 4 % | yes | 6.2 % | 13 % | yes | — |
+
+**Twelve of sixteen are over their ESP32-S3 budget, and the same twelve are
+over their P4 budget.** Each is recorded as owing a `" - lean"` patch in its
+own evidence pack's §4; **no lean patch was invented by this run**, and where
+a dossier says a lean patch is not expected or not possible, that claim now
+has a measurement against it and the lever is the class session's to choose.
+Four are inside: `BandPass`, `GraphicEQ`, `NoiseGate`, `ParametricEQ`.
+
+## What the class table says
+
+### 1. Every class runs in real time on both boards; one is close to the edge
+
+`rt` is above 1.0 in all thirty-two cells, so nothing here is render-only the
+way `audiofilters.Distortion` is. The exception worth naming is
+`MultibandCompressor` on the S3: 4.910 ms of a 5.333 ms block, `rt 1.09`.
+That is a class that renders in real time with 8 % of the block left over for
+the source, the output device, and everything else on the chip — which in
+practice is not headroom at all.
+
+### 2. The two boards render the same bytes, sixteen for sixteen
+
+Every class's digest is identical on the P4 and the S3 — no exceptions, no
+`audioconvolve`-style divergence anywhere in the sixteen. That is the
+strongest statement this run makes: whatever else is true of the two images,
+these classes are the same audio on both.
+
+### 3. Nine of the sixteen differ from the desktop, and the cause is below the class
+
+| agrees with the desktop | differs from the desktop |
+|---|---|
+| `DeEsser` `a4d62601c70389fb` | `MultibandCompressor` board `3239279a24c17a93` / desktop `2a0820b67a5028ea` |
+| `GraphicEQ` `4169efd90ecf44dd` | `Compressor` board `8080d323c13da81f` / desktop `7eb62511bdfe5ba1` |
+| `TransientShaper` `4169efd90ecf44dd` | `LadderFilter` board `b5e3a1e71748a465` / desktop `8a36f0931d7a19e7` |
+| `ParametricEQ` `4169efd90ecf44dd` | `DynamicEQ` board `f5c99d1ed5e84f81` / desktop `ef4ac9527a734709` |
+| `Limiter` `4169efd90ecf44dd` | `CombFilter` board `06fd9da6c1a7d402` / desktop `e4dd5fd19c1c678b` |
+| `Expander` `782ffd714b06de60` | `LowPass` board `54e9ab9106ff4b40` / desktop `ef3e7c671ba675a8` |
+| `NoiseGate` `50b3ab771703e404` | `Notch` board `ea99a67195deb063` / desktop `9d4bdcaaa2e9cf89` |
+|  | `HighPass` board `d2dc46b565a45706` / desktop `c91f9078628c5aef` |
+|  | `BandPass` board `b2e883b33ad63557` / desktop `409d7d7a402b00d0` |
+
+**It is not the interpreter.** `cmods/bin/micropython` on the same desktop
+renders `LowPass` `ef3e7c671ba675a8`, `Compressor` `7eb62511bdfe5ba1`,
+`Expander` `782ffd714b06de60` and `BandPass` `409d7d7a402b00d0` — the CPython
+values exactly, including for the three that differ from the boards.
+
+**It is not the class either.** The same split appears one level down, on the
+nodes these classes are built from, re-measured this session on the P4 and on
+`.venv/bin/python`:
+
+| node | P4 | desktop | |
+|---|---|---|---|
+| `audiomixer.Mixer` | `4169efd90ecf44dd` | `4169efd90ecf44dd` | same |
+| `audiomath.Multiply` | `17a7e6961683c978` | `17a7e6961683c978` | same |
+| `audiofilters.Filter` | `2f191df093bf29e6` | `5e74668045b152d3` | differs |
+| `audiobiquad.Biquad` | `129cb858074b6f17` | `4f722f765d2a6cf6` | differs |
+| `audiodynamics.Dynamics` | `d99590c3e97d923c` | `e9d39fe10823e8a1` | differs |
+| `audioecho.FeedbackDelay` | `6e63708183d6d859` | `e7118d0485c800bd` | differs |
+
+The two that agree are the integer kernels; every float-path node differs.
+The mechanism is already settled above for most of the palette — fused
+multiply-add contraction, §7 of the Phase 1 section, where rebuilding the
+desktop extension with `-mfma -ffp-contract=fast` reproduced nine board
+digests bit for bit — and `audiofilters.Filter` and `audiodynamics.Dynamics`
+are named there as two nodes that differ from *both* desktop builds and so
+carry a second cause. **No FMA rebuild was made in this run**; these six node
+rows were measured against the shipped desktop extension only.
+
+### 4. Four classes hand the probe back unchanged at their defaults
+
+`GraphicEQ`, `Limiter`, `ParametricEQ` and `TransientShaper` all render the
+digest of the bare probe, `4169efd90ecf44dd`, on both boards and on the desktop.
+Three of the four have patch 0 named `Flat`; the fourth is `Limiter`'s
+`Safety Ceiling`, whose threshold this probe never reaches. The CPU figures
+for these four are still real — `GraphicEQ` costs 1.210 ms marginal on the P4
+running twelve sections that are all at `mix = 0`, which is the whole point of
+its dossier's "a flat band still runs its recursion" — but **their digests are
+not a check on the audio**, and each pack records a board run at a working
+patch as still owed. `measure_effect_cost.py` has no way to ask for a patch;
+giving it one is the smallest change that would close this.
+
+### 5. The dossiers' budgets were estimates, and they were low
+
+The twelve overruns are not a few percent: `HighPass`, `LowPass` and `Notch`
+are budgeted at 1.5 % of a P4 block and measure 5.6–5.7 %; `Compressor` at
+8 % measures 20.7 %; `MultibandCompressor` at 25 % measures 44.3 %. The
+budgets were arithmetic from audioif's instruction counts, and what that
+arithmetic cannot see is the per-block Python: a class is a graph of nodes
+pulled from Python once per block each, and `HighPass` at 0.302 ms marginal
+on the P4 against `audiobiquad.Biquad`'s 0.100 for one node is that overhead,
+not a slower filter. **Nothing here says a class is badly built**; it says the
+budget was set on the wrong model, and the roadmap's lean-patch machinery is
+now pointed at twelve classes because of it.
+
+### 6. Repeatability, on the one board where it was checked
+
+Three classes, three runs each on the S3, soft reset between: `DynamicEQ`
+1.821/1.821/1.821 ms, `NoiseGate` 0.921/0.921/0.921, `BandPass`
+0.808/0.801/0.801 (±0.9 %). Digests identical across all nine. So
+`DynamicEQ`'s S3 overrun — 25.3 % against a 25 % budget — is a reproducible
+0.3 points, not noise. **The P4 was not checked this way**, and no class
+outside those three was.
+
+## Reproducing it
+
+```bash
+cd audiocomponents
+# once per board; source .py, never --mpy (see the lead above)
+mpftp rm  -d COM4 -r /lib/audioeffects
+mpftp cp  -d COM4 lib/audioeffects :/lib/audioeffects --verify
+mpftp put -d COM4 tools/measure_effect_cost.py /measure_effect_cost.py --verify
+
+# one target per run, soft reset first so each is a fresh VM
+mpftp soft-reset -d COM4
+mpftp exec -d COM4 'import measure_effect_cost as m; m.main("effect:Compressor")'
+
+# the desktop digest each board digest is held against
+PYTHONPATH=lib .venv/bin/python -c \
+  'import tools.measure_effect_cost as m; m.main("effect:Compressor")'
+```
+
+The last line of every run is one tab-separated `ROW`:
+`target, blocks/s, rt, ms/block, control ms/block, marginal, RAM bytes, digest`.
+
+## What is NOT done in this section
+
+- **Every class was measured at its construction defaults, and no other
+  state.** Not one of the sixteen was put into the expensive path its own
+  evidence pack names — `GraphicEQ` patch 5, `ParametricEQ` patch 3,
+  `Expander` patch 5, `Compressor` at the level that holds 10 dB of gain
+  reduction, `HighPass`/`LowPass`/`Notch` at their steeper slopes. For twelve
+  classes that makes these figures a **lower bound** against a budget they
+  already miss; for the four that pass, it is the reason they should not yet
+  be called safe.
+- **No lean patch, and no lean build, was measured.** `LadderFilter` patch 6,
+  `LowPass` patch 2, `Notch` patch 2 and `MultibandCompressor`'s `bands=2` all
+  stay unmeasured; the runner builds through `audioeffects.create()` and
+  passes no construction options.
+- **No I2S device was opened.** As in both sections above, the `audiodev` pump
+  and the I2S ring — the stompbox latency seam — are in none of these numbers.
+- **No rack, and no assembled chain.** Sixteen single classes, one at a time.
+- **The §3 board-digest columns of the sixteen evidence packs are still
+  empty.** Those want each pack's own probes at its own rates, run on a board;
+  this run used one tool with one probe. Each pack says so under its §3.
+- **Repeatability was checked on three classes, on the S3 only.**
+- **Nothing was listened to.**
+

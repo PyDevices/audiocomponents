@@ -22,7 +22,7 @@ lines.
 | Landed in commit | `1f806d0` — the class, the catalogue row and the CHANGELOG line together; this file in the commit after it |
 | audioif pin | `AUDIOIF_PIN` = `2f6cbc3791efd38dfbf0fb263052400a69b976ed` |
 | Interpreters | `audiocomponents/.venv/bin/python` **cpython 3.12.3**; `cmods/bin/micropython` **micropython 1.28.0**; `cmods/bin/circuitpython-effects` **circuitpython 10.2.1** |
-| Boards | **not run** — see §4 and §11 |
+| Boards | ESP32-P4 (COM4) and ESP32-S3 (COM49) — Tier 3 cost and digest measured 2026-09-07, §4 |
 
 **Dossier trait set frozen before the rebuild began:** yes. The six trait
 statements, their disconfirmation clauses and their measurements are the Phase
@@ -203,14 +203,23 @@ is what says the driver's block adapter is `render_effect.py`'s.
 builds no `Splitter`, so `MultibandCompressor` M5's failure mode has no
 analogue here; every render above is at block 2048.
 
+**Board columns — what the 2026-09-07 board run did and did not settle.** The run
+in §4 put the class on both boards with a *different* tool and a *different*
+probe (`tools/measure_effect_cost.py`, its own integer probe, 128 blocks at
+48 kHz), so it does not fill the cells above, which are this table's probes at
+this table's rates: those are still owed. What it does establish is that the
+**ESP32-P4 and the ESP32-S3 render this class byte for byte identically** —
+§4 carries the digest.
+
 ---
 
 ## 4. Tier 3 — cost on the boards
 
-**Not run.** No board leg was taken in this session — no P4 or S3 was attached
-and `tools/measure_effect_cost.py` was not invoked, so there is no CPU figure,
-no RAM figure and no board digest. Every cell below is empty on purpose rather
-than filled from the Phase 1 node table.
+**Measured on both boards, 2026-09-07.** `tools/measure_effect_cost.py`,
+target `effect:Expander`, on the ESP32-P4 (COM4) and the ESP32-S3 (COM49)
+over `mpftp exec`. The figures are below; the method, the shared findings
+and the two boards' identities are in
+[`../effects-cost-table.md`](../effects-cost-table.md), “Phase 2 classes”.
 
 Dossier budget: ESP32-P4 **6 %** of one stereo block's real-time deadline;
 ESP32-S3 **12 %**. Lean patch expected: **no** — one node, one detector, one
@@ -218,8 +227,39 @@ gain per frame, a two-pole key band at each end.
 
 | Board | Patch | Settings the figure was taken at | Blocks/s | ms/block | RT factor | RAM | Within budget |
 |---|---|---|---|---|---|---|---|
-| P4 | 0 | | | | | | |
-| S3 | 0 | | | | | | |
+| P4 | 0 | construction defaults, `audioeffects.create("Expander", …)` | 1310.2 | 0.763 (0.450 marginal) | 6.99 | 1808 B | **no** — 8.4 % marginal, 14.3 % total, against 6 % |
+| S3 | 0 | construction defaults, `audioeffects.create("Expander", …)` | 747.6 | 1.338 (0.868 marginal) | 3.99 | 1840 B | **no** — 16.3 % marginal, 25.1 % total, against 12 % |
+
+**How the figures were taken.** `tools/measure_effect_cost.py`, target
+`effect:Expander`, over `mpftp exec` on each board after a soft reset, with
+`lib/audioeffects` (28 files, `mpftp cp … --verify`, 28 verified) on `/lib`
+of both boards — neither firmware freezes the package in. 256-frame stereo
+blocks at 48 kHz; 5.333 ms per block is real time. `ms/block` is the whole
+chain, probe source and class together; the **marginal** in brackets is the
+same run's control (the probe source alone, under the same heap) subtracted,
+and it is the figure the budget verdict uses. RAM is `gc.mem_alloc()` growth
+across construction, with the probe already standing. Applicable budget:
+P4 6 %, S3 12 %.
+
+**Digest** (first 128 blocks, 683 ms of the tool's own integer probe):
+`782ffd714b06de60` on the ESP32-P4 and `782ffd714b06de60` on the ESP32-S3 — **identical**.
+The desktop digest for the same tool and target, taken this session on
+`audiocomponents/.venv/bin/python`, is the **same value**.
+
+**Owed: a `" - lean"` patch.** At 16.3 % of the deadline the class is over
+its ESP32-S3 budget of 12 %, so the roadmap's class gate owes one. It is
+recorded as owed; this runner does not invent one. Where the dossier says a
+lean patch is not expected or not possible, that claim now has a
+measurement against it and the lever has to be chosen by the class's own
+session — a construction option, or a node ask.
+
+**Not measured by this run:** patch 5 `Hard Downward` on `noise_det`, the state this section names as the one that keeps the VCA at work.
+No I2S device was opened, so the `audiodev` pump and the I2S ring — the
+stompbox latency seam of the vision's §9a — are in none of these numbers.
+One run per class per board; repeatability was checked on the S3 only, on
+three classes, three runs each (DynamicEQ and NoiseGate identical to the
+millisecond, BandPass 0.808/0.801/0.801 ms).
+
 
 **What the board run must put the class into**, so it is not idled past: patch
 5, *Hard Downward* (ratio 8, depth −60 dB), on `noise_det`, which holds the
@@ -333,7 +373,8 @@ is blocked.
       recorded with the argument and the answer.
 - [x] CPython, desktop MicroPython and circuitpython-effects render identical
       bytes on the probe material.
-- [ ] **Tier 3 cost is measured on the P4 and the S3** — not run. §4, §11.
+- [x] **Tier 3 cost is measured on the P4 and the S3.** Measured 2026-09-07 — §4.
+      P4 8.4 % and S3 16.3 % of the deadline (marginal) against 6 % / 12 %: **over budget**. A `" - lean"` patch is owed.
 - [x] Reported `latency_samples` equals the measured click delay at 48 kHz and
       44.1 kHz; the budget is met; there is no latency-adding option, and the
       docstring says so.
@@ -433,8 +474,13 @@ $ PYTHONPATH=lib .venv/bin/python tools/render_effect.py Expander chord OUT \
 $ PYTHONPATH=lib .venv/bin/python tools/phase0_probes/expander_station_a.py
 (the dossier's App. B; the palette-level numbers cited in section 1)
 
-$ .venv/bin/python tools/measure_effect_cost.py --subject Expander --port COMn
-NOT RUN - no board was attached in this session
+$ mpftp cp -d COM4 lib/audioeffects :/lib/audioeffects --verify   # 28 files, 28 verified
+$ mpftp put -d COM4 tools/measure_effect_cost.py /measure_effect_cost.py --verify
+$ mpftp soft-reset -d COM4
+$ mpftp exec -d COM4 'import measure_effect_cost as m; m.main("effect:Expander")'
+ROW	effect:Expander	1310.2	6.99	0.763	0.313	0.450	1808	782ffd714b06de60
+$ mpftp exec -d COM49 'import measure_effect_cost as m; m.main("effect:Expander")'   # the S3
+ROW	effect:Expander	747.6	3.99	1.338	0.469	0.868	1840	782ffd714b06de60
 ```
 
 ---
@@ -481,11 +527,12 @@ From the dossier's §7, and only from there.
   full discover twice (killed at 169 both times), the 18 non-kit files
   (`OK`), `tests.test_effect_kit` alone (`OK`, 63.9 s), and
   `tests.test_effect_kit_11_20` alone (20 of 33, still running).
-- **The board leg was not taken.** No ESP32-P4 and no ESP32-S3 was attached in
-  this session, so §4 is empty, the P4/S3 digest columns in §3 are empty, and
-  the dossier's 6 % / 12 % budgets are **unmeasured**. What it would take: the
-  two boards on their ports and
-  `tools/measure_effect_cost.py --subject Expander --port <COMn>` at patch 5.
+- **The board leg was taken on 2026-09-07, and the class is over its budget on both boards.**
+  §4 carries the figures: P4 8.4 % and S3 16.3 % of the deadline (marginal)
+  against 6 % / 12 %. Two things it does **not** close: the P4/S3 digest
+  columns in §3, which want this file's own probes re-run on a board rather
+  than the cost runner's, and the state the class was measured in —
+  construction defaults, not the expensive patch §4 names. A `" - lean"` patch is owed.
 - **E3 is disconfirmed**, not demonstrated: an out-of-band tone above about
   −20 dBFS opens the expander. The band and its two ends are real; the trait's
   floor clause is not reachable at 12 dB/octave. §1 has the number.

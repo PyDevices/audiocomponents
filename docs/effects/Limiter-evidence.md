@@ -25,7 +25,7 @@ what is not done, in its own section.
 | Landed in commit | `7399979` — the class, its tests, the README row and the CHANGELOG line; this file in the commit after it |
 | audioif pin | `2f6cbc3`; the venv's `audiodynamics` is that build, and `audioif_dynamics.c` is byte-identical between the pin and the checkout |
 | Interpreters | `audiocomponents/.venv/bin/python` 3.12.3; `cmods/bin/micropython` v1.28.0-dirty (2026-09-07); `cmods/bin/circuitpython-effects` 10.2.1-dirty (2026-09-07) |
-| Boards | **not run** — see §4 and §11 |
+| Boards | ESP32-P4 (COM4) and ESP32-S3 (COM49) — Tier 3 cost and digest measured 2026-09-07, §4 |
 
 **Dossier trait set frozen before the rebuild began:** **yes**. Commit `26b80aa`
 froze §3 and settled §8; the class's first line was written after it. That
@@ -429,14 +429,23 @@ interpreters, no exceptions and therefore no cause to record.
 lookahead ring, so this is the ladder that would show a ring indexed off the
 block rather than off the sample.
 
+**Board columns — what the 2026-09-07 board run did and did not settle.** The run
+in §4 put the class on both boards with a *different* tool and a *different*
+probe (`tools/measure_effect_cost.py`, its own integer probe, 128 blocks at
+48 kHz), so it does not fill the cells above, which are this table's probes at
+this table's rates: those are still owed. What it does establish is that the
+**ESP32-P4 and the ESP32-S3 render this class byte for byte identically** —
+§4 carries the digest.
+
 ---
 
 ## 4. Tier 3 — cost on the boards
 
-**Not run.** No board leg was taken in this session: no P4 or S3 was attached,
-and `tools/measure_effect_cost.py` needs one. Copying a figure from the Phase 1
-node table and calling it this class's is exactly what the template forbids, so
-this section stays empty and §11 carries it.
+**Measured on both boards, 2026-09-07.** `tools/measure_effect_cost.py`,
+target `effect:Limiter`, on the ESP32-P4 (COM4) and the ESP32-S3 (COM49)
+over `mpftp exec`. The figures are below; the method, the shared findings
+and the two boards' identities are in
+[`../effects-cost-table.md`](../effects-cost-table.md), “Phase 2 classes”.
 
 Dossier budget: ESP32-P4 ≤ 6 % of one stereo block's deadline, ESP32-S3 ≤ 18 %
 with true peak on; ≤ 4 % / ≤ 12 % with it off. Those are budgets, and the
@@ -445,8 +454,45 @@ dossier says so — the base figure behind them is flagged unsourced in
 
 | Board | Patch | Settings the figure was taken at | Blocks/s | ms/block | RT factor | RAM | Within budget |
 |---|---|---|---|---|---|---|---|
-| P4 | 0 | *(not run)* | | | | | |
-| S3 | 0 | *(not run)* | | | | | |
+| P4 | 0 | construction defaults, `audioeffects.create("Limiter", …)` | 1002.1 | 0.998 (0.685 marginal) | 5.34 | 3200 B | **no** — 12.8 % marginal, 18.7 % total, against ≤ 4 % |
+| S3 | 0 | construction defaults, `audioeffects.create("Limiter", …)` | 577.3 | 1.732 (1.263 marginal) | 3.08 | 3232 B | **no** — 23.7 % marginal, 32.5 % total, against ≤ 12 % |
+
+**How the figures were taken.** `tools/measure_effect_cost.py`, target
+`effect:Limiter`, over `mpftp exec` on each board after a soft reset, with
+`lib/audioeffects` (28 files, `mpftp cp … --verify`, 28 verified) on `/lib`
+of both boards — neither firmware freezes the package in. 256-frame stereo
+blocks at 48 kHz; 5.333 ms per block is real time. `ms/block` is the whole
+chain, probe source and class together; the **marginal** in brackets is the
+same run's control (the probe source alone, under the same heap) subtracted,
+and it is the figure the budget verdict uses. RAM is `gc.mem_alloc()` growth
+across construction, with the probe already standing. Applicable budget:
+P4 ≤ 4 %, S3 ≤ 12 % (true peak off, which is the constructor default — `limiter.py:163`).
+
+**Digest** (first 128 blocks, 683 ms of the tool's own integer probe):
+`4169efd90ecf44dd` on the ESP32-P4 and `4169efd90ecf44dd` on the ESP32-S3 — **identical**.
+The desktop digest for the same tool and target, taken this session on
+`audiocomponents/.venv/bin/python`, is the **same value**.
+
+It is also the bare probe's own digest (`4169efd90ecf44dd`): at construction
+defaults (patch 0 `Safety Ceiling`) this class hands the probe back unchanged. The
+CPU figure above is the built graph running — every node is pulled every
+block — but **the digest is not a check on the audio**, and a board run at
+a working patch is still owed.
+
+**Owed: a `" - lean"` patch.** At 23.7 % of the deadline the class is over
+its ESP32-S3 budget of ≤ 12 %, so the roadmap's class gate owes one. It is
+recorded as owed; this runner does not invent one. Where the dossier says a
+lean patch is not expected or not possible, that claim now has a
+measurement against it and the lever has to be chosen by the class's own
+session — a construction option, or a node ask.
+
+**Not measured by this run:** the true-peak-on budget row. `true_peak` defaults to `False` (`lib/audioeffects/rebuilt/limiter.py:163`), so these figures are the true-peak-off case.
+No I2S device was opened, so the `audiodev` pump and the I2S ring — the
+stompbox latency seam of the vision's §9a — are in none of these numbers.
+One run per class per board; repeatability was checked on the S3 only, on
+three classes, three runs each (DynamicEQ and NoiseGate identical to the
+millisecond, BandPass 0.808/0.801/0.801 ms).
+
 
 **Lean patch: none shipped, on purpose.** The dossier's §6 settles it: patch 0
 already has True Peak off and Lookahead at 0, which is every macro that costs
@@ -577,7 +623,8 @@ checked by carries it.
       (L7's docstring number).
 - [x] CPython, desktop MicroPython and circuitpython-effects render identical
       bytes on the probe material.
-- [ ] **Tier 3 cost is measured on the P4 and the S3** — **not done**, §4, §11.
+- [x] **Tier 3 cost is measured on the P4 and the S3.** Measured 2026-09-07 — §4.
+      P4 12.8 % and S3 23.7 % of the deadline (marginal) against ≤ 4 % / ≤ 12 %: **over budget**. A `" - lean"` patch is owed.
 - [x] Reported `latency_samples` equals the measured click delay at 48 kHz and
       44.1 kHz (and 22.05 kHz); the budget of zero on the default patch is met;
       both latency-adding options default off and are named in the docstring in
@@ -656,8 +703,13 @@ Ran 258 tests in 348.161s
 
 OK (skipped=1)
 
-$ .venv/bin/python tools/measure_effect_cost.py --subject Limiter --port <COMn>
-(not run - no board, see section 11)
+$ mpftp cp -d COM4 lib/audioeffects :/lib/audioeffects --verify   # 28 files, 28 verified
+$ mpftp put -d COM4 tools/measure_effect_cost.py /measure_effect_cost.py --verify
+$ mpftp soft-reset -d COM4
+$ mpftp exec -d COM4 'import measure_effect_cost as m; m.main("effect:Limiter")'
+ROW	effect:Limiter	1002.1	5.34	0.998	0.313	0.685	3200	4169efd90ecf44dd
+$ mpftp exec -d COM49 'import measure_effect_cost as m; m.main("effect:Limiter")'   # the S3
+ROW	effect:Limiter	577.3	3.08	1.732	0.469	1.263	3232	4169efd90ecf44dd
 ```
 
 ---
@@ -697,10 +749,12 @@ From the dossier's §7, and only from there.
 
 ## 11. What is not done
 
-- **The board run.** No ESP32-P4 or ESP32-S3 leg was taken: no board was
-  attached to this session. §4's table is empty, §3's board columns are empty,
-  and the gate item for Tier 3 is unticked. What it would take: the two boards
-  on a port, and `tools/measure_effect_cost.py --subject Limiter`.
+- **The board leg was taken on 2026-09-07, and the class is over its budget on both boards.**
+  §4 carries the figures: P4 12.8 % and S3 23.7 % of the deadline (marginal)
+  against ≤ 4 % / ≤ 12 %. Two things it does **not** close: the P4/S3 digest
+  columns in §3, which want this file's own probes re-run on a board rather
+  than the cost runner's, and the state the class was measured in —
+  construction defaults, not the expensive patch §4 names. A `" - lean"` patch is owed.
 - **`audiodynamics.Dynamics` has no `deinit()` on the native builds.**
   `hasattr(node, "deinit")` is `False` on `cmods/bin/micropython` and
   `cmods/bin/circuitpython-effects`, so `_component`'s deinit walk finds nothing

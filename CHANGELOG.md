@@ -10,6 +10,19 @@ there, and are recorded in its changelog.
 
 ### Changed
 
+- **Phase 2's sixteen rebuilt classes measured on both boards** (ESP32-P4 on
+  COM4, ESP32-S3 on COM49, firmware `v1.28.0-dirty on 2026-09-07`), with
+  `tools/measure_effect_cost.py` at construction defaults, 256-frame stereo
+  blocks at 48 kHz. Every class renders in real time on both boards
+  (`MultibandCompressor` on the S3 is the edge, 4.910 ms of a 5.333 ms block)
+  and **all sixteen render byte-identical audio on the two boards**. Twelve of
+  the sixteen exceed their dossier's ESP32-S3 budget and are recorded as owing
+  a `" - lean"` patch; none was invented. Nine differ from the desktop digest,
+  and the cause is below the class — the integer-path nodes agree host to
+  board, every float-path node differs. Figures in
+  `docs/effects-cost-table.md` ("Phase 2 classes") and in §4 of each
+  `docs/effects/<Class>-evidence.md`. `rebuilt/ladderfilter.py`'s docstring
+  no longer says its cost is unmeasured on either board.
 - **`Compressor` rebuilt from scratch** (effects program, Phase 2), against
   `docs/effects/Compressor.md`'s frozen trait table and on the Phase 2
   construction module. The four characters now differ in detector law,

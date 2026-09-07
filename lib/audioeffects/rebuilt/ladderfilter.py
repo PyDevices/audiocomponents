@@ -30,7 +30,9 @@ patch 6, `Ladder - lean`, is patch 0 with it off for the S3.
 
 **Cost:** budgeted at 14 % of one stereo block on a 240 MHz ESP32-S3 and 8 %
 on a 400 MHz ESP32-P4 with `Oversample` on, 7 % on the S3 with the lean
-patch (dossier section 3, Tier 3). Unmeasured on either board.
+patch (dossier section 3, Tier 3). Measured 2026-09-07: 16.3 % of a block
+on the ESP32-P4 and 26.9 % on the ESP32-S3, over budget on both
+(`docs/effects/LadderFilter-evidence.md` section 4).
 
 **One invariant this class does not hold, on purpose.** A self-oscillating
 filter does not return to silence. At `Resonance` at or above k = 4 - macro

@@ -22,7 +22,7 @@ not done.
 | Landed in commit | `d77543a` — code, tests, probes, README row and CHANGELOG line. This file, and the cost correction §4 records, land in the Station C commit that follows it, which also touches the class docstring, the README row, the CHANGELOG and the dossier's Tier 3 row |
 | audioif pin | `2f6cbc3`, fixed for this program |
 | Interpreters | `audiocomponents/.venv/bin/python` 3.12.3; `cmods/bin/micropython`; `cmods/bin/circuitpython-effects` |
-| Boards | **not run** — see §4 and §11 |
+| Boards | ESP32-P4 (COM4) and ESP32-S3 (COM49) — Tier 3 cost and digest measured 2026-09-07, §4 |
 
 **Dossier trait set frozen before the rebuild began:** yes. Commit `0462960`
 froze six Tier 2 traits; `d77543a` is the class. The class was prototyped in
@@ -215,11 +215,23 @@ planted fault is the guard: the same graph with the Splitter fed straight off
 a 40000-frame `RawSample` renders peak **0** where the guarded one renders
 peak **20000**.
 
+**Board columns — what the 2026-09-07 board run did and did not settle.** The run
+in §4 put the class on both boards with a *different* tool and a *different*
+probe (`tools/measure_effect_cost.py`, its own integer probe, 128 blocks at
+48 kHz), so it does not fill the cells above, which are this table's probes at
+this table's rates: those are still owed. What it does establish is that the
+**ESP32-P4 and the ESP32-S3 render this class byte for byte identically** —
+§4 carries the digest.
+
 ---
 
 ## 4. Tier 3 — cost on the boards
 
-*(Left for the board run.)*
+**Measured on both boards, 2026-09-07.** `tools/measure_effect_cost.py`,
+target `effect:DynamicEQ`, on the ESP32-P4 (COM4) and the ESP32-S3 (COM49)
+over `mpftp exec`. The figures are below; the method, the shared findings
+and the two boards' identities are in
+[`../effects-cost-table.md`](../effects-cost-table.md), “Phase 2 classes”.
 
 Dossier budget: **ESP32-P4 ≤ 8 %** of one stereo block's real-time deadline,
 **ESP32-S3 ≤ 25 %**. Lean patch expected: **no, and one is not possible** —
@@ -229,8 +241,61 @@ node ask N-DEQ-1.
 
 | Board | Patch | Settings the figure was taken at | Blocks/s | ms/block | RT factor | RAM | Within budget |
 |---|---|---|---|---|---|---|---|
-| P4 | 0 | *(not run)* | | | | | **unmeasured** |
-| S3 | 0 | *(not run)* | | | | | **unmeasured** |
+| P4 | 0 | construction defaults, `audioeffects.create("DynamicEQ", …)` | 951.9 | 1.051 (0.738 marginal) | 5.08 | 46 KB | **no** — 13.8 % marginal, 19.7 % total, against ≤ 8 % |
+| S3 | 0 | construction defaults, `audioeffects.create("DynamicEQ", …)` | 549.2 | 1.821 (1.349 marginal) | 2.93 | 46 KB | **no** — 25.3 % marginal, 34.1 % total, against ≤ 25 % |
+
+**How the figures were taken.** `tools/measure_effect_cost.py`, target
+`effect:DynamicEQ`, over `mpftp exec` on each board after a soft reset, with
+`lib/audioeffects` (28 files, `mpftp cp … --verify`, 28 verified) on `/lib`
+of both boards — neither firmware freezes the package in. 256-frame stereo
+blocks at 48 kHz; 5.333 ms per block is real time. `ms/block` is the whole
+chain, probe source and class together; the **marginal** in brackets is the
+same run's control (the probe source alone, under the same heap) subtracted,
+and it is the figure the budget verdict uses. RAM is `gc.mem_alloc()` growth
+across construction, with the probe already standing. Applicable budget:
+P4 ≤ 8 %, S3 ≤ 25 %.
+
+**Digest** (first 128 blocks, 683 ms of the tool's own integer probe):
+`f5c99d1ed5e84f81` on the ESP32-P4 and `f5c99d1ed5e84f81` on the ESP32-S3 — **identical**.
+The desktop digest for the same tool and target, taken this session on
+`audiocomponents/.venv/bin/python`, is `ef4ac9527a734709` — it **differs**.
+
+**Cause of the desktop/board difference — not this class, and not the
+interpreter.** `cmods/bin/micropython` on the same desktop reproduces the
+CPython digest exactly (checked this session on `LowPass`, `Compressor`,
+`Expander` and `BandPass`), so the interpreter is ruled out. The split is in
+audioif's C, and it is visible one level below this class: re-measured this
+session, host and board agree byte for byte on the integer-path nodes
+(`audiomixer.Mixer` `4169efd90ecf44dd`, `audiomath.Multiply`
+`17a7e6961683c978`, x86 and P4 alike) and differ on every float-path node
+(`audiofilters.Filter` x86 `5e74668045b152d3` / P4 `2f191df093bf29e6`;
+`audiobiquad.Biquad` x86 `4f722f765d2a6cf6` / P4 `129cb858074b6f17`;
+`audiodynamics.Dynamics` x86 `e9d39fe10823e8a1` / P4 `d99590c3e97d923c`;
+`audioecho.FeedbackDelay` x86 `e7118d0485c800bd` / P4 `6e63708183d6d859`).
+The mechanism for most of the palette is already settled in
+[`../effects-cost-table.md`](../effects-cost-table.md) §7 — fused
+multiply-add contraction, reproduced there by rebuilding the desktop
+extension with `-mfma -ffp-contract=fast` — with `audiofilters.Filter` and
+`audiodynamics.Dynamics` named as nodes that differ from *both* desktop
+builds and so carry a second cause (`mp_float_t` single on the boards
+against double on the CPython target; newlib against glibc in the
+transcendentals). No FMA rebuild was made in this run; the citation is to
+that one.
+
+**Owed: a `" - lean"` patch.** At 25.3 % of the deadline the class is over
+its ESP32-S3 budget of ≤ 25 %, so the roadmap's class gate owes one. It is
+recorded as owed; this runner does not invent one. Where the dossier says a
+lean patch is not expected or not possible, that claim now has a
+measurement against it and the lever has to be chosen by the class's own
+session — a construction option, or a node ask.
+
+**Not measured by this run:** anything beyond construction defaults.
+No I2S device was opened, so the `audiodev` pump and the I2S ring — the
+stompbox latency seam of the vision's §9a — are in none of these numbers.
+One run per class per board; repeatability was checked on the S3 only, on
+three classes, three runs each (DynamicEQ and NoiseGate identical to the
+millisecond, BandPass 0.808/0.801/0.801 ms).
+
 
 **The desktop anchor, which is not a board figure and is not a substitute for
 one.** `tools/measure_effect_cost.py`, 256-frame stereo blocks at 48 kHz, on
@@ -399,7 +464,8 @@ whose tier is audioif and whose claim is that it *raises*.
       results; nobody else has looked. §1 and §11 say so.
 - [x] CPython and desktop MicroPython render identical bytes — and so does
       `circuitpython-effects`. The P4 and S3 digests are **not taken**.
-- [ ] Tier 3 cost is measured on the P4 and the S3. **Not met — no board leg.**
+- [x] **Tier 3 cost is measured on the P4 and the S3.** Measured 2026-09-07 — §4.
+      P4 13.8 % and S3 25.3 % of the deadline (marginal) against ≤ 8 % / ≤ 25 %: **over budget**. A `" - lean"` patch is owed.
 - [x] Reported `latency_samples` equals the measured click delay at 48 kHz
       and 44.1 kHz (and at 22.05 kHz); the budget is met; there is no
       latency-adding option, and the docstring says so.
@@ -463,8 +529,13 @@ $ PYTHONPATH=<worktree>/lib audiocomponents/.venv/bin/python \
       tools/phase2_probes/dynamiceq_tier1.py            # and on mp and cpy
 0 failures
 
-$ audiocomponents/.venv/bin/python tools/measure_effect_cost.py --subject DynamicEQ --port <COMn>
-NOT RUN - no board leg was taken in this session.
+$ mpftp cp -d COM4 lib/audioeffects :/lib/audioeffects --verify   # 28 files, 28 verified
+$ mpftp put -d COM4 tools/measure_effect_cost.py /measure_effect_cost.py --verify
+$ mpftp soft-reset -d COM4
+$ mpftp exec -d COM4 'import measure_effect_cost as m; m.main("effect:DynamicEQ")'
+ROW	effect:DynamicEQ	951.9	5.08	1.051	0.313	0.738	46656	f5c99d1ed5e84f81
+$ mpftp exec -d COM49 'import measure_effect_cost as m; m.main("effect:DynamicEQ")'   # the S3
+ROW	effect:DynamicEQ	549.2	2.93	1.821	0.472	1.349	46688	f5c99d1ed5e84f81
 ```
 
 The three smoke runs and the three `dynamiceq_tier1.py` runs are separate
@@ -507,10 +578,12 @@ From the dossier's §7, and only from there.
 
 ## 11. What is not done
 
-- **No board leg.** Neither the ESP32-P4 nor the ESP32-S3 was run, so §4 is
-  empty and the P4/S3 digest columns in §3 are empty. Nothing in this pack
-  says the class fits its 8 % / 25 % budget; the desktop anchor is a ranking
-  between builds on x86-64 CPython and is not a board figure.
+- **The board leg was taken on 2026-09-07, and the class is over its budget on both boards.**
+  §4 carries the figures: P4 13.8 % and S3 25.3 % of the deadline (marginal)
+  against ≤ 8 % / ≤ 25 %. Two things it does **not** close: the P4/S3 digest
+  columns in §3, which want this file's own probes re-run on a board rather
+  than the cost runner's, and the state the class was measured in —
+  construction defaults, not the expensive patch §4 names. A `" - lean"` patch is owed.
 - **The refutation pass is not independent.** It was run by the session that
   wrote the class, against its own results. Two faults it caught are recorded
   in §1; what a second reader would catch is unknown.

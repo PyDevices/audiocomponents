@@ -25,7 +25,7 @@ fault beside it is not cited. §11 is a section, not a clause.
 | Landed in commits | `331ba1c` dossier · `3548ae4` class, README row, CHANGELOG line, this class's tests and the three files that had to move with it · `55ae8e9` this file. Not one commit: Station A froze the dossier before any code was written, which is the order the roadmap asks for. |
 | audioif pin | `AUDIOIF_PIN` = `2f6cbc3791efd38dfbf0fb263052400a69b976ed`. The `audioif` checkout the venv was built from is at `98ae4bf`, which differs from the pin only in `.flake8` and `apply_cp_patches.sh` — `git diff --stat 2f6cbc3 HEAD -- src/` is empty, so every line of C and Python that renders here is the pin's. |
 | Interpreters | `audiocomponents/.venv/bin/python` CPython 3.12.3, numpy 2.5.2 · `cmods/bin/micropython` MicroPython v1.28.0-dirty (2026-09-07) · `cmods/bin/circuitpython-effects` CircuitPython 10.2.1-dirty (2026-09-07) |
-| Boards | **not run.** No P4 or S3 leg was taken in this session — §4 and §11. |
+| Boards | ESP32-P4 (COM4) and ESP32-S3 (COM49) — Tier 3 cost and digest measured 2026-09-07, §4 |
 
 **Dossier trait set frozen before the rebuild began:** yes. T1–T5 were fixed
 in the Phase 0 seed and are unchanged here; Station A settled §8's questions
@@ -201,11 +201,23 @@ renders, one digest, `68d7ac39`**. The rung that matters is 16384 and above:
 `MultibandCompressor` M5 renders zero non-zero samples there because the
 Splitter's ring is 8192 frames, and this class builds no Splitter.
 
+**Board columns — what the 2026-09-07 board run did and did not settle.** The run
+in §4 put the class on both boards with a *different* tool and a *different*
+probe (`tools/measure_effect_cost.py`, its own integer probe, 128 blocks at
+48 kHz), so it does not fill the cells above, which are this table's probes at
+this table's rates: those are still owed. What it does establish is that the
+**ESP32-P4 and the ESP32-S3 render this class byte for byte identically** —
+§4 carries the digest.
+
 ---
 
 ## 4. Tier 3 — cost on the boards
 
-*(Left for the board run. Nothing in this section is filled in.)*
+**Measured on both boards, 2026-09-07.** `tools/measure_effect_cost.py`,
+target `effect:LowPass`, on the ESP32-P4 (COM4) and the ESP32-S3 (COM49)
+over `mpftp exec`. The figures are below; the method, the shared findings
+and the two boards' identities are in
+[`../effects-cost-table.md`](../effects-cost-table.md), “Phase 2 classes”.
 
 Dossier budget: **ESP32-P4 ≤ 1.5 %** of one stereo block's real-time deadline
 and **ESP32-S3 ≤ 5 %** at the 12 dB/oct default; **≤ 2.5 % / ≤ 9 %** with
@@ -214,16 +226,70 @@ budget, the Slope macro's high setting is what gives.
 
 | Board | Patch | Settings the figure was taken at | Blocks/s | ms/block | RT factor | RAM | Within budget |
 |---|---|---|---|---|---|---|---|
-| P4 | 0 | | | | | | *not run* |
-| S3 | 0 | | | | | | *not run* |
-| S3 | 2 Steep Cut (24 dB/oct) | | | | | | *not run* |
+| P4 | 0 | construction defaults, `audioeffects.create("LowPass", …)` | 1628.4 | 0.614 (0.301 marginal) | 8.68 | 4096 B | **no** — 5.6 % marginal, 11.5 % total, against ≤ 1.5 % |
+| S3 | 0 | construction defaults, `audioeffects.create("LowPass", …)` | 1019.3 | 0.981 (0.513 marginal) | 5.44 | 4128 B | **no** — 9.6 % marginal, 18.4 % total, against ≤ 5 % |
+| S3 | 2 Steep Cut (24 dB/oct) | — | — | — | — | — | *(not run)* |
+
+**How the figures were taken.** `tools/measure_effect_cost.py`, target
+`effect:LowPass`, over `mpftp exec` on each board after a soft reset, with
+`lib/audioeffects` (28 files, `mpftp cp … --verify`, 28 verified) on `/lib`
+of both boards — neither firmware freezes the package in. 256-frame stereo
+blocks at 48 kHz; 5.333 ms per block is real time. `ms/block` is the whole
+chain, probe source and class together; the **marginal** in brackets is the
+same run's control (the probe source alone, under the same heap) subtracted,
+and it is the figure the budget verdict uses. RAM is `gc.mem_alloc()` growth
+across construction, with the probe already standing. Applicable budget:
+P4 ≤ 1.5 %, S3 ≤ 5 % (the 12 dB/oct default).
+
+**Digest** (first 128 blocks, 683 ms of the tool's own integer probe):
+`54e9ab9106ff4b40` on the ESP32-P4 and `54e9ab9106ff4b40` on the ESP32-S3 — **identical**.
+The desktop digest for the same tool and target, taken this session on
+`audiocomponents/.venv/bin/python`, is `ef3e7c671ba675a8` — it **differs**.
+
+**Cause of the desktop/board difference — not this class, and not the
+interpreter.** `cmods/bin/micropython` on the same desktop reproduces the
+CPython digest exactly (checked this session on `LowPass`, `Compressor`,
+`Expander` and `BandPass`), so the interpreter is ruled out. The split is in
+audioif's C, and it is visible one level below this class: re-measured this
+session, host and board agree byte for byte on the integer-path nodes
+(`audiomixer.Mixer` `4169efd90ecf44dd`, `audiomath.Multiply`
+`17a7e6961683c978`, x86 and P4 alike) and differ on every float-path node
+(`audiofilters.Filter` x86 `5e74668045b152d3` / P4 `2f191df093bf29e6`;
+`audiobiquad.Biquad` x86 `4f722f765d2a6cf6` / P4 `129cb858074b6f17`;
+`audiodynamics.Dynamics` x86 `e9d39fe10823e8a1` / P4 `d99590c3e97d923c`;
+`audioecho.FeedbackDelay` x86 `e7118d0485c800bd` / P4 `6e63708183d6d859`).
+The mechanism for most of the palette is already settled in
+[`../effects-cost-table.md`](../effects-cost-table.md) §7 — fused
+multiply-add contraction, reproduced there by rebuilding the desktop
+extension with `-mfma -ffp-contract=fast` — with `audiofilters.Filter` and
+`audiodynamics.Dynamics` named as nodes that differ from *both* desktop
+builds and so carry a second cause (`mp_float_t` single on the boards
+against double on the CPython target; newlib against glibc in the
+transcendentals). No FMA rebuild was made in this run; the citation is to
+that one.
+
+**Owed: a `" - lean"` patch.** At 9.6 % of the deadline the class is over
+its ESP32-S3 budget of ≤ 5 %, so the roadmap's class gate owes one. It is
+recorded as owed; this runner does not invent one. Where the dossier says a
+lean patch is not expected or not possible, that claim now has a
+measurement against it and the lever has to be chosen by the class's own
+session — a construction option, or a node ask.
+
+**Not measured by this run:** the S3 24 dB/oct row (patch 2 `Steep Cut`).
+No I2S device was opened, so the `audiodev` pump and the I2S ring — the
+stompbox latency seam of the vision's §9a — are in none of these numbers.
+One run per class per board; repeatability was checked on the S3 only, on
+three classes, three runs each (DynamicEQ and NoiseGate identical to the
+millisecond, BandPass 0.808/0.801/0.801 ms).
+
 
 **The expensive path** a board run must reach: patch 2 or 4, which put both
 LOW_PASS sections at `mix = 1` and (patch 4) the trim section too — three
 active biquads. Patch 0 idles two of the three as wires and would understate
-the class by roughly a factor of three. `tools/measure_effect_cost.py` was
-**not run**: it needs a board on a serial port and there is none in this
-session.
+the class by roughly a factor of three. `tools/measure_effect_cost.py` **was** run on
+both boards on 2026-09-07 (§4) — but at construction defaults, patch 0, so
+the figures there are the one-section case and this expensive path is still
+not measured.
 
 ---
 
@@ -352,7 +418,8 @@ construct it at all, by design and by the dossier's §8 D1.
       one. §11.**
 - [x] CPython and desktop MicroPython render identical bytes on the probe
       material. **The P4 and S3 digests are not taken.**
-- [ ] Tier 3 cost is measured on the P4 and the S3. **Not run — §4, §11.**
+- [x] **Tier 3 cost is measured on the P4 and the S3.** Measured 2026-09-07 — §4.
+      P4 5.6 % and S3 9.6 % of the deadline (marginal) against ≤ 1.5 % / ≤ 5 %: **over budget**. A `" - lean"` patch is owed.
 - [x] Reported `latency_samples` equals the measured click delay at 48 kHz
       and 44.1 kHz (and 22.05 kHz); the budget is met; there is no
       latency-adding option to default off, and the docstring says so.
@@ -406,8 +473,13 @@ $ MICROPYPATH=<worktree>/lib:../cmods/micropython/lib ../cmods/bin/circuitpython
     tests/parity/effects_library_smoke.py
 46 classes, 88 patches, 0 failures
 
-$ ... tools/measure_effect_cost.py --subject LowPass --port <COMn>
-NOT RUN - no board attached in this session (§4, §11)
+$ mpftp cp -d COM4 lib/audioeffects :/lib/audioeffects --verify   # 28 files, 28 verified
+$ mpftp put -d COM4 tools/measure_effect_cost.py /measure_effect_cost.py --verify
+$ mpftp soft-reset -d COM4
+$ mpftp exec -d COM4 'import measure_effect_cost as m; m.main("effect:LowPass")'
+ROW	effect:LowPass	1628.4	8.68	0.614	0.313	0.301	4096	54e9ab9106ff4b40
+$ mpftp exec -d COM49 'import measure_effect_cost as m; m.main("effect:LowPass")'   # the S3
+ROW	effect:LowPass	1019.3	5.44	0.981	0.468	0.513	4128	54e9ab9106ff4b40
 ```
 
 **T3 at 24 dB/oct, both runs**, because the first is the reason the second
@@ -480,9 +552,12 @@ From the dossier's §7, and only from there.
 
 ## 11. What is not done
 
-- **No board leg.** Neither the ESP32-P4 nor the ESP32-S3 was run: §4 is
-  empty and the Tier 3 budget is unverified. It needs a board on a serial
-  port and `tools/measure_effect_cost.py --subject LowPass --port <COMn>`.
+- **The board leg was taken on 2026-09-07, and the class is over its budget on both boards.**
+  §4 carries the figures: P4 5.6 % and S3 9.6 % of the deadline (marginal)
+  against ≤ 1.5 % / ≤ 5 %. Two things it does **not** close: the P4/S3 digest
+  columns in §3, which want this file's own probes re-run on a board rather
+  than the cost runner's, and the state the class was measured in —
+  construction defaults, not the expensive patch §4 names. A `" - lean"` patch is owed.
 - **The refutation pass was not independent.** §1's refutations were run by
   the session that built the class. The gate asks for an independent one.
 - **`deinit()` is unverifiable on the two native builds**, because **no
