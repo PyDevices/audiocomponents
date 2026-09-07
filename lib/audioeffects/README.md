@@ -70,32 +70,43 @@ not.
 
 ## Catalogue
 
-### Dynamic range - `dynamics.py`
-| Class | Notes |
-|---|---|
-| `Compressor` | four characters that differ in *law*, not in three numbers: `fet` (peak detector, both time knobs live and faster clockwise, threshold rising with ratio, dirty when you push it), `optical` — the default — (**no time knobs at all**: ten milliseconds of attack, half the recovery in sixty and the rest over a couple of seconds, slower after a long passage), `vca` (true-RMS, so a square and a sine of the same RMS get the same gain) and `varimu` (no ratio to speak of — the slope climbs with level; the six factory time constants are patches 8–13). Zero latency at every setting. Needs `audiodynamics` and `audioroute`, so it does not run on a stock CircuitPython board; **14 macros, 14 patches** |
-| `Limiter` | brickwall against a ceiling, with a gain into it, a knee, lookahead (**0 ms by default**, up to 10 ms, reported in `latency_samples`) and a 4x true-peak detector; two `audiodynamics` nodes, **audioif tier**; **patches**. Release is the distortion knob and its docstring says so |
-| `Expander` | **rebuilt** (Drawmer DS201 + RaneNote 155): downward, `ratio` dB out per dB in below threshold, to a `Depth` floor; true-RMS detector, two-ended 12 dB/oct key band, external key. Nine macros, six patches. **audioif tier** (`audiodynamics`), zero latency, one node. No Hold - that is `NoiseGate`'s, and the reason is measured ([dossier](../../docs/effects/Expander.md) §8.1) |
-| `NoiseGate` | mutes below threshold |
-| `DeEsser` | detector high-passed at `frequency`, so only sibilance ducks the signal |
-| `TransientShaper` | SPL Transient Designer: more stick **and** less room from one instance, at any input level from −6 to −60 dBFS — no threshold, no ratio. Its time constants are fixed, not adaptive (T6 disconfirmed), and the attack section takes ~120 ms to settle on a held note (T5's 100 ms clause disconfirmed). 5 macros, 7 patches, **audioif** tier (`audiodynamics`), one node, 0.00 ms of latency; **patches** |
-| `MultibandCompressor` | two or three bands (`bands=`), each with its own compressor, summed back flat to 0.12 dB; `Mix` at 0 is a true bypass; **audioif tier**, fourteen nodes at three bands and the most expensive class here. Isolation is exact - driving one band moves the others 0.00 dB - and the low band's own reduction tilts 0.7 dB across 30-100 Hz; **patches** |
+### Dynamic range - `rebuilt/`
 
-### Frequency and EQ - `eq.py`
-| Class | Notes |
-|---|---|
-| `ParametricEQ` | **rebuilt.** Pultec EQP-1A bottom and resonant top, three API 550A proportional-Q bells between: boost and cut the bass at once and you get the record trick, not silence; the top bell gets louder as `Bandwidth` sharpens; a bell's cut is the exact mirror of its boost. Sixteen macros, seven patches, zero latency. **Portability tier: audioif** (`audiobiquad`) - eight float biquads, so the tail reaches exact zero where the ported node parks on DC. Eight sections always built: budgeted at 43 % of an S3 stereo block and 26 % of a P4's. Dossier `docs/effects/ParametricEQ.md` |
-| `GraphicEQ` | MXR M-108 Ten Band: ten octave bands from 31.25 Hz plus GAIN and VOLUME, and the bands **get wider as you back off** — 1.8 octaves at +3 dB, 0.71 at +12 — which is what makes three sliders at +6 dB a broad hump of +8.78 dB across 2.6 octaves rather than +6 dB. `Constant Q` on turns it into a studio graphic instead. A band at its centre detent is a wire byte for byte; a patch change starts the bank clean, a knob move rides through. 14 macros, 6 patches, **audioif** tier (`audiobiquad`, for a tail that reaches exact zero at 31.25 Hz), twelve sections, 0.00 ms of latency, 465 ms of tail; **patches** |
-| `DynamicEQ` | one bell that does nothing until the sound *in that band* crosses a threshold, then cuts by the compressor law - and is a **wire** when it is idle, measured 0.0000 dB from 100 Hz to 12 kHz, because the notch and band-pass numerators sum to their shared denominator. `Mix` is also the Range knob (deepest move `-20 log10(1 - Mix)` dB) and `Mix` 0 is byte-identical to the source; `expand=True` is the same band gated the other way round. Latency 0 at every setting. **audioif tier**, nine nodes and about 45% more desktop cost per block than the class it replaces - the price of the guard, the dry tap and the identity tail; the board figure is not measured yet; **patches** |
-| `LowPass` | **rebuilt.** The two-pole analog prototype: one knob slides the whole curve, one decides how loud the corner stands - 3 dB down at Resonance 0.707, 24 dB up at 16, where a click rings for seconds. A console's 12/24 dB/oct slope switch, a dry/wet Mix whose zero is a byte-exact wire, and a make-up Trim. Five macros, six patches, zero latency. **Portability tier: audioif** (`audiobiquad`) - three float biquads, so the tail reaches exact zero where the ported node parks on DC. Budgeted at 5 % of an S3 stereo block at 12 dB/oct and 9 % at 24, 1.5 % / 2.5 % on the P4. Dossier `docs/effects/LowPass.md` |
-| `HighPass` `BandPass` `Notch` | single swept biquads |
-| `HighPass` | **rebuilt.** The low-cut: one knob decides where the bottom stops and nothing above it is touched, one decides how loud the corner itself stands - 3 dB down at Resonance 0.707, 24 dB up at 16, where the filter whistles at its own corner. A desk's 12/24 dB/oct slope switch, a dry/wet Mix whose zero is a byte-exact wire, and a make-up Trim. Five macros, six patches, zero latency. Its transmission zero at DC is exact: a held offset decays to zero rather than to a residue. **Portability tier: audioif** (`audiobiquad`) - three float biquads, because the ported node parks on up to 71 LSB of DC at a 10 Hz corner and holds it. Budgeted at 5 % of an S3 stereo block at 12 dB/oct and 9 % at 24, 1.5 % / 2.5 % on the P4. Dossier `docs/effects/HighPass.md` |
-| `LowPass` `BandPass` `Notch` | single swept biquads |
-| `Notch` | **rebuilt.** Everything except one band: a tuned band-stop with a Width knob that is a bandwidth and not a depth, a Harmonics toggle that adds a second notch an octave up and half as wide in hertz for mains hum, a Depth blend whose zero is a byte-exact wire, and a make-up Trim. Five macros, six patches, zero latency. **Portability tier: audioif** (`audiobiquad`) - three float biquads, so the tail reaches exact zero where the ported node parks on 2 to 18 LSB of DC at exactly the hum settings. **What it does not do:** a `float` coefficient set cannot put the zeros exactly on the unit circle, so the centre is a true null from 500 Hz up but only −35.65 dB at 60 Hz Q 12 and −11.21 dB at 20 Hz Q 32 - a hum *reducer* at the bottom, not a hum eliminator. Budgeted at 5 % of an S3 stereo block with one notch and 9 % with two, 1.5 % / 2.5 % on the P4. Dossier `docs/effects/Notch.md` |
-| `LowPass` `HighPass` `BandPass` | single swept biquads |
-| `LadderFilter` | the Moog transistor ladder: four poles round one feedback loop with a saturator inside it. The passband sinks as `Resonance` rises - that droop is the circuit - and at the top of the knob it sings a sine of its own at the cutoff. `Drive` is the only warmth control; the growl follows the input level. **Rebuilt on the component contract; needs audioif** (`audioladder`), so it does not run on a stock CircuitPython board. Zero latency at every setting; budgeted at 14 % of a stereo block on an S3 (7 % on patch 6, `Ladder - lean`) and 8 % on a P4, **unmeasured on either board** |
-| `LowPass` `HighPass` `BandPass` `Notch` | single swept biquads |
-| `CombFilter` | **rebuilt.** A delay line short enough to be a pitch, fed back on itself: tune it and noise grows resonances on the harmonic series of that note, so a chord turns metallic and a click rings. Feedback is how hard they stand - a ripple at 0.3, a comb at 0.7, seconds of ring at 0.95; Tone darkens each pass the way a real resonator's losses do; Glide is the tuning knob's own portamento, so turning Frequency *bends* the comb instead of clicking. Six macros, six patches, zero latency. Trim is **input** headroom and runs to -18 dB, because a comb's peak gain is `1/(1-Feedback)`. **Portability tier: audioif** (`audioecho`, `audiobiquad`) - the stock `audiodelays.Echo` floors its line at the buffer length, which turns every frequency from 47 to 880 Hz into the same 46.9 Hz comb. Two things it does not do: the *negative* comb (peaks on the odd half-multiples - reachable, but seven nodes against a budget for one), and a tail that always reaches exactly zero above Feedback 0.5 - where the tuning lands near a whole number of samples the int16 loop parks on at most 10 LSB, -70 dBFS, and where it lands half a sample out it drains to zero. Budgeted at 2 % of a P4 stereo block and 7 % of an S3's. Dossier `docs/effects/CombFilter.md` |
+The seven Dynamics classes of the effects program's Phase 2, each rebuilt from
+scratch against a frozen trait table and an evidence pack. Every one of them
+is **audioif** tier - none runs on a stock CircuitPython board - and every one
+adds **zero samples of latency** at its defaults. Dossiers and evidence packs
+are in [`docs/effects/`](../../docs/effects/).
+
+| Class | Tier | Macros | Latency | Standout |
+|---|---|---|---|---|
+| `Compressor` | audioif (`audiodynamics`, `audioroute`) | 14 | 0 samples | UREI 1176 (FET), Teletronix LA-2A (Optical), dbx 160 (VCA/RMS) and Fairchild 670 (Vari-Mu) - four characters that differ in *law*, not in three numbers: `optical`, the default, has no working time knobs at all |
+| `Limiter` | audioif (`audiodynamics`) | 6 | 0 samples at the default; up to **480** at 10 ms of Lookahead, 143 worst over the five factory patches, and reported rather than hidden | none - ITU-R BS.1770-5 Annex 2 and Hämäläinen (DAFx-02): a 4x polyphase true-peak detector and a catch stage, so lookahead no longer overshoots the ceiling |
+| `Expander` | audioif (`audiodynamics`) | 9 | 0 samples | Drawmer DS201 with RaneNote 155 - downward, `ratio` dB out per dB in below threshold to a `Depth` floor, true-RMS detector, two-ended key band, external key. No Hold: that is `NoiseGate`'s, and the reason is measured |
+| `NoiseGate` | audioif (`audiodynamics`, `audioroute`, `audiomath`) | 8 | 0 samples | Drawmer DS201 dual noise gate - the four-stage attack/hold/decay machine the ratio law does not have, with the key filters always in circuit |
+| `DeEsser` | audioif (`audiobiquad`, `audiodynamics`, `audioroute`) | 7 | 0 samples | dbx 902 De-Esser - the detector is high-passed at `Frequency`, so only sibilance ducks the signal, and `Range` is an asymptote rather than a clamp |
+| `TransientShaper` | audioif (`audiodynamics`) | 5 | 0 samples | SPL Transient Designer (RackPack 2715), Differential Envelope Technology - more stick **and** less room from one instance, at any input level from −6 to −60 dBFS: no threshold, no ratio |
+| `MultibandCompressor` | audioif (`audiobiquad`, `audiodynamics`, `audioroute`) | 14 | 0 samples | none - RaneNote 155 Fig. 7 over a Linkwitz-Riley alignment (RaneNote 160): three bands split, compressed and summed back to +0.001/−0.119 dB of a wire; `Mix` at 0 is a true bypass |
+
+### Frequency and EQ - `rebuilt/`
+
+The nine EQ and filter classes of Phase 2, on the same terms: all **audioif**
+tier (`audiobiquad`, `audioladder` or `audioecho` - the float nodes, whose
+tails reach exact zero where the ported integer kernel parks on DC), all
+**zero latency** at every setting, none of them available on a stock
+CircuitPython board.
+
+| Class | Tier | Macros | Latency | Standout |
+|---|---|---|---|---|
+| `ParametricEQ` | audioif (`audiobiquad`) | 16 | 0 samples | Pultec EQP-1A bottom and resonant top with three API 550A proportional-Q bells between: boost and cut the bass at once and you get the record trick, not silence; a bell's cut is the exact mirror of its boost |
+| `GraphicEQ` | audioif (`audiobiquad`) | 14 | 0 samples | MXR M-108 Ten Band - ten octave bands from 31.25 Hz whose bells **get wider as you back off**, 1.8 octaves at +3 dB and 0.71 at +12, so three sliders at +6 dB make a +8.78 dB hump. A band at its detent is a wire byte for byte |
+| `DynamicEQ` | audioif (`audiobiquad`, `audiodynamics`, `audioroute`) | 8 | 0 samples | none - the exactly complementary split: one bell that does nothing until the sound *in that band* crosses a threshold, and a measured **wire** when it is idle |
+| `LowPass` | audioif (`audiobiquad`) | 5 | 0 samples | none - the two-pole analog prototype `H(s) = 1/(s² + 2Rs + 1)`: one knob slides the curve, one decides how loud the corner stands, −3 dB at Resonance 0.707 and +24 dB at 16 |
+| `HighPass` | audioif (`audiobiquad`) | 5 | 0 samples | none - RBJ's two-pole low-cut, with an exact transmission zero at DC: a held offset decays to zero rather than to the 71 LSB the ported node parks on at a 10 Hz corner |
+| `BandPass` | audioif (`audiobiquad`) | 4 | 0 samples | none - the two-pole resonant band-pass in RBJ's constant 0 dB peak-gain form, so `Width` moves the skirts without moving the peak |
+| `Notch` | audioif (`audiobiquad`) | 5 | 0 samples | none (the Twin-T was weighed and dropped on scope) - a band-stop whose `Width` is a bandwidth and not a depth, with a Harmonics toggle for mains hum. A `float` coefficient set cannot put the zeros exactly on the unit circle, so at 60 Hz it is a hum *reducer*, not an eliminator |
+| `LadderFilter` | audioif (`audioladder`) | 7 | 0 samples | the Moog transistor ladder - four one-pole stages round one global feedback loop with an odd saturator **inside** it, so the passband sinks as `Resonance` rises. That droop is the circuit |
+| `CombFilter` | audioif (`audioecho`, `audiobiquad`) | 6 | 0 samples | none - the naked textbook feedback comb `y(n) = x(n) + g·y(n−M)`: a delay short enough to be a pitch, fed back, so noise grows resonances on that note's harmonic series |
 
 ### Time and space - `reverb.py`, `delay.py`
 | Class | Notes |
@@ -241,15 +252,13 @@ Both are fixed. Coefficients now get as many fractional bits as each
 individual filter has room for, the recursion accumulates in 64 bits and
 keeps its feedback below the sample grid, and the trigonometry is a proper
 series. Measured against the closed-form response, every mode lands within
-**0.03 dB from 50 Hz to 22 kHz**. `GraphicEQ`'s ten ISO bands all read
-+6.01 dB or better on a +6 dB request; the pre-rebuild `MultibandCompressor`'s
-three bands recombined flat to 0.23 dB from 30 Hz to 8 kHz on those biquads.
-(The rebuilt class is on `audiobiquad`'s float sections instead, for the tail
-rather than the shape, and sums to 0.12 dB from 30 Hz to 20 kHz.) [audioif's `docs/upstream-diff.md`](https://github.com/PyDevices/audioif/blob/main/docs/upstream-diff.md),
-**0.03 dB from 50 Hz to 22 kHz**. `ParametricEQ`'s ten octave bands all read
-+6.01 dB or better on a +6 dB request (the claim `GraphicEQ` used to carry,
-moved when it was rebuilt onto `audiobiquad`); `MultibandCompressor`'s three bands
-recombine flat to 0.23 dB from 30 Hz to 8 kHz. [audioif's `docs/upstream-diff.md`](https://github.com/PyDevices/audioif/blob/main/docs/upstream-diff.md),
+**0.03 dB from 50 Hz to 22 kHz**. Ten octave bands all read +6.01 dB or
+better on a +6 dB request - the claim `GraphicEQ` used to carry, and read on
+`ParametricEQ` since both were rebuilt onto `audiobiquad`. The pre-rebuild
+`MultibandCompressor`'s three bands recombined flat to 0.23 dB from 30 Hz to
+8 kHz on those Q15 biquads; the rebuilt class is on `audiobiquad`'s float
+sections instead, for the tail rather than the shape, and sums to 0.12 dB
+from 30 Hz to 20 kHz. [audioif's `docs/upstream-diff.md`](https://github.com/PyDevices/audioif/blob/main/docs/upstream-diff.md),
 "The biquads were Q15, so they could not go low", has the arithmetic, the
 before-and-after table, and what it cost in instructions on an M0.
 
@@ -314,9 +323,11 @@ are worth knowing about:
 - `PEAKING_EQ` computes `b2` with the wrong sign, which costs the filter
   its unity-outside-the-band property: a +6 dB bell at 1 kHz / Q 1 is
   about **+21 dB at DC**, worse the lower the center. Still present
-  upstream. `ParametricEQ` and every shelf-free bell here depend on it;
-  `audiobiquad`, and so the rebuilt `GraphicEQ`, computes the sign correctly
-  in its own float kernel and never went through this.
+  upstream. It no longer reaches the catalogue's bells: `ParametricEQ`,
+  `GraphicEQ` and `DynamicEQ` are all rebuilt onto `audiobiquad`, which
+  computes the sign correctly in its own float kernel and never went
+  through this. The superseded `eq.py:ParametricEQ` still calls it, and is
+  what a stock board would fall back to.
 - Biquad coefficients are Q15 and the recursion accumulates in 32 bits, so
   nothing below roughly 300 Hz is the filter it was asked to be, and one
   polynomial covers sine and cosine only as far as π/2 - 12 kHz at 48 kHz -
