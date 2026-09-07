@@ -22,7 +22,7 @@ fault beside it is not cited. §11 is a section, not a clause.
 | Standout | none — the two-pole analog low-pass prototype, `H(s) = 1/(s² + 2Rs + 1)` |
 | Grade | design |
 | Portability tier | **audioif** (`REQUIRES = ("audiobiquad",)`) |
-| Landed in commits | `331ba1c` dossier · `3548ae4` class, README row, CHANGELOG line, this class's tests and the three files that had to move with it · this file's own commit. Not one commit: Station A froze the dossier before any code was written, which is the order the roadmap asks for. |
+| Landed in commits | `331ba1c` dossier · `3548ae4` class, README row, CHANGELOG line, this class's tests and the three files that had to move with it · `55ae8e9` this file. Not one commit: Station A froze the dossier before any code was written, which is the order the roadmap asks for. |
 | audioif pin | `AUDIOIF_PIN` = `2f6cbc3791efd38dfbf0fb263052400a69b976ed`. The `audioif` checkout the venv was built from is at `98ae4bf`, which differs from the pin only in `.flake8` and `apply_cp_patches.sh` — `git diff --stat 2f6cbc3 HEAD -- src/` is empty, so every line of C and Python that renders here is the pin's. |
 | Interpreters | `audiocomponents/.venv/bin/python` CPython 3.12.3, numpy 2.5.2 · `cmods/bin/micropython` MicroPython v1.28.0-dirty (2026-09-07) · `cmods/bin/circuitpython-effects` CircuitPython 10.2.1-dirty (2026-09-07) |
 | Boards | **not run.** No P4 or S3 leg was taken in this session — §4 and §11. |
