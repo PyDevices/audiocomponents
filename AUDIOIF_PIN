@@ -30,5 +30,20 @@
 # raised to the same release, so floor and pin agree for the first time as
 # well. The tag resolves to the commit in the second column.
 #
+#
+# Moved to 2f6cbc3 on 2026-09-07 by the effects program's Phase 1 (anchor
+# docs/effects-roadmap.md; audiocomponents#29). That commit is audioif main
+# with the eight palette nodes Phase 0's survey asked for and Phase 1 built
+# (audioif#37-#44, #47): four FeedbackDelay options, eleven Dynamics options,
+# audioshaper.Waveshaper, audiobiquad.Biquad/AllPass, audioladder.Ladder,
+# audioverb.Tank, audiomath.SubOctave and audioroute.MidSide, each with its
+# own parity probe and golden, all fifteen probes byte-identical on CPython
+# and MicroPython. No release: audioif is released once, at Phase 7, when
+# the effects work is complete (Brad, 2026-09-06), so this pin names a commit
+# and the pyproject floors stay at v0.2.0 until then. This is also the first
+# floor to carry the 64-voice ceiling (audioif 8f8b10d); the three
+# instruments the ceiling moves at the gate's material are retired to
+# REBUILT with Brad's listen of 2026-09-06 as the blessing (audioif#31).
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.2.0 ec3c67ffc42c1bf050b7179dc55fdba28ac4bb5a
+2f6cbc3791efd38dfbf0fb263052400a69b976ed 2f6cbc3791efd38dfbf0fb263052400a69b976ed

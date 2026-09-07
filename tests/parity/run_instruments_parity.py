@@ -95,6 +95,14 @@ REBUILT = {
     "dmx": "phase 1, 2026-09-02",
     "drumtraks": "phase 1, 2026-09-02",
     "simmons_sdsv": "phase 1, 2026-09-02",
+    # The 64-voice ceiling (audioif 8f8b10d) - Brad listened to the held-chord
+    # A/B on 2026-09-06 and blessed it (audioif#31); the pin moved to 2f6cbc3 on
+    # 2026-09-07 (effects Phase 1), the first floor to carry it. These three
+    # are the comparisons the ceiling moves at this gate's material
+    # (audiocomponents#24).
+    "farfisa": "ceiling 64, blessed 2026-09-06",
+    "minimoog": "ceiling 64, blessed 2026-09-06",
+    "vox_continental": "ceiling 64, blessed 2026-09-06",
     # Phase 2 - af837de replayed here from audioif (audiocomponents#2)
     "andromeda": "af837de - time and filter macros log-mapped, 2026-09-02",
     "arp2600": "af837de - time and filter macros log-mapped, 2026-09-02",
