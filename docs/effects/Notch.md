@@ -84,8 +84,13 @@ evidence pack).
 **Cost budget**, as a fraction of one stereo block's real-time deadline:
 **ESP32-P4 ≤ 1.5 %, ESP32-S3 ≤ 5 %** for the one-notch default;
 **≤ 2.5 % / ≤ 9 %** with the harmonic notch engaged. Lean patch expected:
-**no** — if the S3 misses the two-notch budget the Harmonics toggle is what
-gives. The basis is in **App. R**.
+**no**. The basis is in **App. R**. *Station C found the split unmeetable
+half at a time*: all three sections are built at every setting and the kernel
+runs each recursion before it blends, with no branch on `mix`
+(`audioif/src/shared/audioif_filter_f32.c:216-241`), so one notch costs what
+two cost and the higher pair is the pair that governs
+([`Notch-evidence.md`](Notch-evidence.md) §4). The budget is not rewritten
+here — the board run is what settles it.
 
 *(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
 

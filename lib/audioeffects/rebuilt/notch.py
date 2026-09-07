@@ -42,10 +42,15 @@ far: at 16 kHz and Q 0.5 the band is 32 kHz wide and 0.48*Fs reads
 -0.21 dB. That is the probe sitting inside the band, not the filter
 leaking, and it is why Frequency clamps at 0.4*Fs rather than at Nyquist.
 
-**Cost.** Three sections, always built, two of them wires at patch 0. The
-dossier budgets 1.5 % of one stereo block's real-time deadline on the
-ESP32-P4 and 5 % on the S3 with one notch, 2.5 % / 9 % with the harmonic
-notch engaged; the board run in the evidence pack is what settles it.
+**Cost.** Three sections, always built, two of them wires at patch 0 - and
+a wire costs what a notch costs, because the kernel runs each recursion
+before it blends and there is no branch on `mix`
+(`audioif/src/shared/audioif_filter_f32.c:216-241`). So Harmonics buys back
+no CPU: the class costs three sections at every setting. The dossier budgets
+1.5 % of one stereo block's real-time deadline on the ESP32-P4 and 5 % on
+the S3 with one notch and 2.5 % / 9 % with two, and since the two are the
+same figure it is the higher pair that governs; the board run in the
+evidence pack is what settles it.
 
 **Latency: zero samples, at every setting and every rate.** Every section is
 a recursive biquad reading no sample it has not been given. No option on
