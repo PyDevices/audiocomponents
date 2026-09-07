@@ -275,10 +275,20 @@ def state(rate):
                 "output raises after deinit, and deinit twice is safe") and ok
 
     # The borrowed source is never deinitialised, so it must still render.
-    still = peak(pull(source, 256))
-    ok = report("STATE the source still renders", True,
-                "%d LSB off the source after the class was deinited"
-                % still) and ok
+    # It has to be read where it still has audio in it: the source above has
+    # been pulled past the burst by the reset check, and reading *that* would
+    # report zero on a healthy build - a check that cannot fail. So this leg
+    # gets its own source and its own probe, a continuous tone, and the read
+    # is after the class over it has been deinited.
+    tone = sine(rate, rate // 4, 1000.0, 20000)
+    borrowed = source_of(tone, rate)
+    passing = audioeffects.create("Limiter", borrowed, rate, ceiling_db=-6.0)
+    pull(passing.output, 512)
+    passing.deinit()
+    still = peak(pull(borrowed, 512))
+    ok = report("STATE the source still renders", still > 0,
+                "%d LSB off the borrowed source after the class over it was "
+                "deinited" % still) and ok
 
     releasable = [node for node in nodes if hasattr(node, "deinit")]
     if not releasable:
