@@ -45,7 +45,6 @@ and the mixer costs more than the sum -- so derate.
 """
 
 import gc
-import sys
 import time
 
 try:
