@@ -5,153 +5,240 @@
 **Standout:** dbx 902 De-Esser *(proposed, vision §4.2)* — **confirmed, and it
 is the strongest referent in this unit.** dbx's own owner's manual was reached
 (S1) and gives the mechanism, the filter order, the crossover span, the
-attack and release laws and the gain-reduction range. It is also the right
-*kind* of referent: RaneNote 155 independently argues that comparing the
-band to the broadband level "is the best dynamics processor for this task",
-which is exactly what the 902 does, and names the alternative — a side-chain
-EQ feeding an ordinary compressor — as the "primitive de-esser" whose failure
-it draws (S2). The class this seed replaces is that primitive one (§7).
+attack and release laws and the gain-reduction range; RaneNote 155 (S2)
+independently names that mechanism — band level compared with broadband level
+— "the best dynamics processor for this task", and names the alternative, a
+side-chain EQ feeding an ordinary compressor, as the "primitive de-esser".
+The class this dossier replaces is that primitive one (§7). *(The full
+argument is in **App. R**, from §Standout.)*
 **Grade:** literature — a manufacturer's manual with the theory of operation
 and a full specification table, but no schematic (§2).
-**Portability tier:** needs audioif-own nodes (`audiodynamics`, `audioroute`)
-**Status:** seed (Phase 0), written 2026-09-06
+**Portability tier:** **audioif** — `REQUIRES = ("audiobiquad",
+"audiodynamics", "audioroute")` (§4).
+**Status:** traits frozen 2026-09-06 (Phase 0 seed); **Station A closed
+2026-09-07**, opens settled below, table unchanged.
 
 ## 1. The circuit, in one paragraph
 
 The 902 is a VCA whose control voltage comes from a **comparison of two
 levels, in decibels**, and that is the whole idea. The audio is split by a
 "two-pole, maximally flat filter design … user adjusted over a range of
-**800 Hz to 8 kHz**" — the specification table calls it "12 dB/octave, phase
-coherent" — and dbx's "patented RMS level detectors" measure the
-high-frequency portion and the full-bandwidth signal. *(Audit: the manual names
-the detectors and names the two levels compared; it never states how many
-detectors there are, so "two" is this seed's reading of the mechanism, not the
-manual's word. No trait depends on the count.)* The 902 then "examines the differences in dB
-between the high frequency and full-bandwidth portions of the signal", and
+**800 Hz to 8 kHz**" — "12 dB/octave, phase coherent" in the specification
+table — and dbx's "patented RMS level detectors" measure the high-frequency
+portion and the full-bandwidth signal. The 902 "examines the differences in
+dB between the high frequency and full-bandwidth portions of the signal", and
 "when the high frequency level is excessive relative to the full bandwidth
-level, the 902 will de-ess" (S1). Because the comparison is a ratio, absolute
-level drops out: the manual's headline claim is de-essing "of signals which
-change in level by as much as 60 dB", the specification says the unit
-"operates uniformly over input range of −40 dBu to +24 dBu without requiring
-adjustment", and — the sentence that separates it from every threshold-based
-de-esser — "the 902 does not even have a threshold control to require
-adjustment". Two knobs remain: **Frequency**, the split point (12 o'clock is
-2.5 kHz), and **Range**, "the amount of de-essing effect produced when a
-sibilant is detected", specified as "Maximum 'Ess' Attenuation: Variable 0 to
-20 dB". A **Mode** switch chooses whether the gain reduction "affect[s] either
-the entire audio bandwidth, or the high frequencies only" — the HF ONLY
-setting being for "de-edging" and "de-clicking" instrumental material. The
+level, the 902 will de-ess" (S1). Because the comparison is a **ratio**,
+absolute level drops out: de-essing holds "of signals which change in level
+by as much as 60 dB", and "the 902 does not even have a threshold control to
+require adjustment". Two knobs remain — **Frequency**, the split point
+(12 o'clock is 2.5 kHz), and **Range**, "Maximum 'Ess' Attenuation: Variable
+0 to 20 dB" — plus a **Mode** switch choosing whether the reduction affects
+"either the entire audio bandwidth, or the high frequencies only". The
 dynamics are specified rather than knobbed: attack is program-dependent,
 "2 ms for 10 dB above threshold, 600 µs for 20 dB above threshold, to achieve
-63 % gain reduction", and release is a constant **925 dB/sec** — a rate, not a
-time constant. Gain is unity, frequency response 20 Hz–20 kHz, and the control
-voltage is available at 50 mV/dB (S1).
+63 % gain reduction"; release is a constant **925 dB/sec** — a rate, not a
+time constant. Gain is unity, response 20 Hz–20 kHz (S1). *(The audit note on
+the detector count, and the remaining specification lines, are in **App. R**,
+from §1.)*
 
 ## 2. Sources and license calls
 
-All fetched 2026-09-06; nothing from memory.
+All fetched 2026-09-06; nothing from memory. Both licence calls stand after a
+second pass; every S1 and S2 quotation was re-read against the document.
 
-| Source | What it gave | License as read | URL | Reached |
+| Source | Lead | License as read | URL | Reached |
 |---|---|---|---|---|
-| **S1** dbx, *902 de-Esser* owner's manual, part no. 18-2015-B, 4/30/96 … (App. S1) | Log-domain comparison … (App. S1) | **Licence unverified** … (App. S1) | <https://adn.harmanpro.com/product_documents/documents/502_1323992524/902%20Owners%20Manual_original.pdf> | yes — PDF fetched, text via `pypdf` |
-| **S2** Jeffs, Holden & Bohn, *Dynamics Processors*, RaneNote 155 | "True de-essing involves comparing the relative … (App. S2) | PDF line "© 2005 Rane Corporation" … (App. S2) | <https://www.ranecommercial.com/legacy/pdf/ranenotes/Dynamics_Processors.pdf> | yes — PDF fetched, text via `pypdf` |
-| **Local** `audioif/src/shared/audioif_dynamics.{c,h}`, `audioif/docs/upstream-diff.md`, the probes in the Appendix | What the current de-esser actually does | MIT (audioif) | — | yes |
+| **S1** dbx, *902 de-Esser* owner's manual, part no. 18-2015-B, 4/30/96 | mechanism, filter, ranges, attack/release laws (App. S1) | **Licence unverified** — no copyright or terms line on any of its 8 pages; vision §5 treats that as copyleft: read only | <https://adn.harmanpro.com/product_documents/documents/502_1323992524/902%20Owners%20Manual_original.pdf> | yes — PDF, text via `pypdf` |
+| **S2** Jeffs, Holden & Bohn, *Dynamics Processors*, RaneNote 155 | relative-threshold de-essing is the right mechanism; Fig. 12 is the wrong one (App. S2) | **Verified all-rights-reserved**; read only | <https://www.ranecommercial.com/legacy/pdf/ranenotes/Dynamics_Processors.pdf> | yes — PDF, text via `pypdf` |
+| **Local** `audioif/src/shared/audioif_dynamics.{c,h}`, `audioif/docs/upstream-diff.md`, the probes in the Appendix | what the current de-esser actually does, and what the Phase 1 palette can reach | MIT (audioif) | — | yes |
 
-*Second-pass result: both licence calls stand as written (S1's document carries
-no copyright, trademark or terms line on any of its 8 pages — re-checked page by
-page — so "unverified, treated as copyleft" is correct); every S1 and S2
-quotation verified verbatim; three flags, marked inline.*
+*(Full source rows: **App. S**. The audit trail, the not-found 902 schematic
+and the list of unsourced quantities: **App. R**, from §2.)*
 
-*(More of §2 is in **App. R** — moved under the length rule, nothing deleted.)*
+## 3. Traits — frozen
 
-## 3. Traits — fixed before measurement
+### Tier 1 — invariants
 
-### Tier 1 — invariants (the standard block, verbatim from vision §3)
-
-The standard block, verbatim from vision §3, is in **App. I** — moved there under the length rule; any class-specific note on it moved with it.
+The standard block, verbatim from vision §3, is in **App. I**, with this
+class's mono and rate notes.
 
 ### Tier 2 — circuit traits
 
+**Frozen 2026-09-06 and unchanged at Station A.** Eight rows; the source
+reading and the confidence reasoning behind each cell sit in **App. T**.
+
 | # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Meas. |
 |---|---|---|---|---|---|
-| D1 | **Threshold-free and level-independent.** One probe of fixed spectral balance, rendered at −6, −20, −40 and −55 dBFS, produces gain-reduction traces whose settled values agree within 1 dB — a 49 dB window, which is what 16-bit probe material carries; S1's claim is 60 dB, and the shortfall is the int16 floor of the kit, not the class, so a float render extends the window and is recorded if made | S1 ("de-essing of signals which change in … (App. D1) | high — stated twice … (App. D1) | Settled reduction differing by more than 1 dB between any two of the four levels; any level at which the reduction collapses to zero (the shape of S2's Fig. 12, and what A8 measures on the shipped class) | LEVEL |
-| D2 | **The split point is settable 800 Hz–8 kHz and each half is maximally flat with a 12 dB/octave skirt**: with the split at 2.5 kHz each band is −3.0 ± 0.5 dB at the corner (Butterworth) and its skirt fits 12 ± 1.5 dB/octave over the octave-to-two-octaves band either side (625 Hz–1.25 kHz below, 5–10 kHz above — all below Nyquist at 22.05 kHz, so the fit is rate-honest), and the −3 dB corner tracks the Frequency control within 5 % at 800 Hz, 2.5 kHz and 8 kHz | S1 ("two-pole, maximally flat filter design … … (App. D2) | high — the manual's … (App. D2) | A skirt outside 12 ± 1.5 dB/octave; a corner that does not move with the Frequency control; a corner at −6 dB (a Linkwitz-Riley alignment rather than the two-pole Butterworth S1 names) | SPLIT |
-| D3 | **Two modes.** Driving 12 dB of reduction: in broadband mode both bands fall by 12 dB within 0.5 dB; in HF-only mode the high band falls by 12 dB within 0.5 dB while the low band moves less than 0.25 dB | S1 (Mode switch: "affect either the entire … (App. D3) | high | The low band moving more than 0.25 dB in HF-only mode; either band's reduction more than 0.5 dB from the commanded 12 dB; the two modes measuring within 0.25 dB of each other | SPLIT under reduction |
-| D4 | **Release is linear in dB at a fixed rate**, not an exponential time constant: from 12 dB of reduction the recovery is a straight line in dB reaching 0 dB in 13.0 ms at the 902's specified 925 dB/sec, within 10 % | S1 ("Release Rate: 925 dB/sec") | high — a rate in … (App. D4) | A recovery whose dB trace curves, i.e. an exponential in linear gain | REL |
-| D5 | **Attack is program-dependent**: the time to 63 % of final reduction shortens as the overshoot grows — about 2 ms at 10 dB over and 600 µs at 20 dB over, a ratio of ~3.3 within 25 % | S1 ("Attack Rate: Program-dependent … (App. D5) | high | One attack time independent of overshoot, which is what a fixed coefficient gives | ATT |
-| D6 | **RMS detection**: a sine and a square of equal RMS in the high band, at the same spectral balance, produce the same reduction within 0.5 dB | S1 ("dbx patented RMS level detectors … sense … (App. D6) | high | A ~3 dB difference, which is what a peak detector gives | XF |
-| D7 | **Range bounds the reduction**, variable 0 to 20 dB: with the sibilant probe driven 20 dB past the sensitivity setting, the measured reduction stops at the Range setting within 0.5 dB at 5, 10 and 20 dB, and never exceeds it; on the low tone alone (no sibilant) the gain is unity within 0.1 dB | S1 ("Maximum 'Ess' Attenuation: Variable 0 to … (App. D7) | high | Reduction exceeding the Range setting at any of the three; a settled reduction more than 0.5 dB from the setting under heavy drive; a resting gain more than 0.1 dB from unity on the no-sibilant probe | LEVEL (Range clause) … (App. D7) |
-| D8 | **The audio path sums flat.** With no sibilant present and both bands at unity, the summed magnitude is within 0.25 dB of flat from 20 Hz to min(20 kHz, 0.45 × sample rate). **This is the dossier's own criterion, not S1's** — S1 says "phase coherent" and prints no summed response — and it is *not* satisfiable by the 12 dB/octave pair D2 describes: an in-phase second-order Butterworth LP+HP pair has a true **null** at the corner (A-D1) and **+3.01 dB** there with one half inverted, while a fourth-order Linkwitz-Riley pair sums to 0.0000 dB (A-D1). The audio-path order is therefore a **design choice under vision D2** and §4 records it; D2 stays the sourced description of the 902's own filter and governs the **detector** split | derived and measured this run (A-D1) … (App. D8) | high for the … (App. D8) | A summed magnitude beyond ±0.25 dB anywhere in the band; a null or a +3 dB peak at the crossover, which is what shipping D2's order in the audio path unmodified would give | SPLIT |
+| D1 | **Threshold-free and level-independent.** One probe of fixed spectral balance, rendered at −6, −20, −40 and −55 dBFS, produces gain-reduction traces whose settled values agree within 1 dB — a 49 dB window, which is what 16-bit probe material carries … (App. D1) | S1 … (App. D1) | high … (App. D1) | Settled reduction differing by more than 1 dB between any two of the four levels; any level at which the reduction collapses to zero (the shape of S2's Fig. 12, and what A8 measures on the shipped class) | LEVEL |
+| D2 | **The split point is settable 800 Hz–8 kHz and each half is maximally flat with a 12 dB/octave skirt**: at a 2.5 kHz split each band is −3.0 ± 0.5 dB at the corner and its skirt fits 12 ± 1.5 dB/octave over the octave-to-two-octaves band either side (625 Hz–1.25 kHz below, 5–10 kHz above, all below Nyquist at 22.05 kHz), and the −3 dB corner tracks the Frequency control within 5 % at 800 Hz, 2.5 kHz and 8 kHz | S1 … (App. D2) | high … (App. D2) | A skirt outside 12 ± 1.5 dB/octave; a corner that does not move with the Frequency control; a corner at −6 dB (a Linkwitz-Riley alignment rather than the two-pole Butterworth S1 names) | SPLIT |
+| D3 | **Two modes.** Driving 12 dB of reduction: in broadband mode both bands fall by 12 dB within 0.5 dB; in HF-only mode the high band falls by 12 dB within 0.5 dB while the low band moves less than 0.25 dB | S1 … (App. D3) | high | The low band moving more than 0.25 dB in HF-only mode; either band's reduction more than 0.5 dB from the commanded 12 dB; the two modes measuring within 0.25 dB of each other | SPLIT under reduction |
+| D4 | **Release is linear in dB at a fixed rate**, not an exponential time constant: from 12 dB of reduction the recovery is a straight line in dB reaching 0 dB in 13.0 ms at the 902's specified 925 dB/sec, within 10 % | S1 … (App. D4) | high … (App. D4) | A recovery whose dB trace curves, i.e. an exponential in linear gain | REL |
+| D5 | **Attack is program-dependent**: the time to 63 % of final reduction shortens as the overshoot grows — about 2 ms at 10 dB over and 600 µs at 20 dB over, a ratio of ~3.3 within 25 % | S1 … (App. D5) | high | One attack time independent of overshoot, which is what a fixed coefficient gives | ATT |
+| D6 | **RMS detection**: a sine and a square of equal RMS in the high band, at the same spectral balance, produce the same reduction within 0.5 dB | S1 … (App. D6) | high | A ~3 dB difference, which is what a peak detector gives | XF |
+| D7 | **Range bounds the reduction**, variable 0 to 20 dB: with the sibilant probe driven 20 dB past the sensitivity setting, the measured reduction stops at the Range setting within 0.5 dB at 5, 10 and 20 dB, and never exceeds it; on the low tone alone (no sibilant) the gain is unity within 0.1 dB | S1 … (App. D7) | high | Reduction exceeding the Range setting at any of the three; a settled reduction more than 0.5 dB from the setting under heavy drive; a resting gain more than 0.1 dB from unity on the no-sibilant probe | LEVEL (Range clause) … (App. D7) |
+| D8 | **The audio path sums flat.** With no sibilant present and both bands at unity, the summed magnitude is within 0.25 dB of flat from 20 Hz to min(20 kHz, 0.45 × sample rate). **This is the dossier's own criterion, not S1's**, and it is not satisfiable by the 12 dB/octave pair D2 describes … (App. D8, and A-D1 for the derivation) | derived, A-D1 … (App. D8) | high … (App. D8) | A summed magnitude beyond ±0.25 dB anywhere in the band; a null or a +3 dB peak at the crossover, which is what shipping D2's order in the audio path unmodified would give | SPLIT |
+
+**Station A's reading of the table, written before the code** (the evidence
+pack measures it; nothing here changes a row). D1, D3, D6 and D7's "never
+exceeds" clause are reachable on the Phase 1 palette and are what this class
+is for. **D4 is not reachable** — no dB-linear release landed with Phase 1,
+so the release is a one-pole in linear gain and D4 is expected
+*disconfirmed*. **D2 is not reachable in either half** — the audio path ships
+LR4 (§8.3) and the detector's side chain is a cascade of two one-poles rather
+than a Butterworth section, so its corner is −6 dB and its skirt about
+10.3 dB/octave (`upstream-diff.md:1035-1037`); the *tracking* clause is
+reachable and is measured. **D7's "within 0.5 dB" clause** is an asymptote
+here, not an equality (§8.1). **D8** is met in a stronger form than stated:
+in broadband mode the audio is never split, so at Range 0 the output is
+byte-identical to the source.
 
 ### Tier 3 — cost and latency
 
-*(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
+**Budget:** ESP32-P4 **8 %** of one stereo block's real-time deadline;
+ESP32-S3 **15 %**. Lean patch expected: **no**.
+
+**What the build costs** (Station A, from §4's graph; the board run measures
+it): **four** audio-path biquads, not the seed's eight — the LR4 pair a side,
+and only HF-only mode routes audio through them — plus two side-chain
+one-poles inside `Dynamics` (free, no node), one RMS detector, one full-band
+detector, one VCA, three `Splitter` rings, one `MidSide` at width 1 and two
+`Mixer`s. Broadband mode still *runs* the four biquads, because the Mode
+toggle is live and a mixer voice at level 0 still pulls its source; that is
+the price of not taking §8.2's escape valve. If the S3 misses its budget the
+next lever is a construction-time mode, not a lean patch.
+
+**Latency: zero, and no option adds any.** `latency_samples` is 0 at every
+setting and the class ships **no look-ahead option** — a de-esser that ducked
+before the "s" would be a fault, not a feature. The 2 ms/600 µs attack of D5
+is detector response, not latency. *(The full argument is in **App. R**, from
+§3.)*
 
 ## 4. Modeling approach on the palette
 
-Compose first, and most of it composes. `audioroute.Splitter` fans the source
-to two taps; two `audiofilters.Filter` chains carry the second-order
-Butterworth split (Q = 0.707, the same pair the shipped `MultibandCompressor`
-already builds, `dynamics.py:250`); `audiomixer.Mixer` sums them. That is D2
-and D3 built entirely from what exists — HF-only mode is the same graph with
-the gain applied to one tap instead of the sum. **But the order is a decision, not a
-transcription, and the critic pass caught the seed making it silently.** S1's
-own filter is two-pole Butterworth (D2), and a two-pole Butterworth LP/HP pair
-does **not** sum flat: in phase it nulls at the corner (a true null: −66.9 dB on a
-4000-point log grid, −96.5 dB on a 200 000-point one) and with one half inverted
-it peaks at +3.01 dB, while
-a fourth-order Linkwitz-Riley pair — two cascaded Butterworth sections a side —
-sums to 0.0000 dB (A-D1 below; the same control `MultibandCompressor.md`
-records at A-M1). So the class builds the **audio-path** split as LR4 to meet
-D8 and keeps the **detector** split at S1's two-pole 12 dB/octave to meet D2,
-and the docstring says which is which. *(Palette verification, 2026-09-06: the LR2/LR4 difference was rebuilt from the
-nodes themselves and reproduces exactly — at a 4 kHz corner the one-section
-pair sums to a **true null** (all-zero output) at the corner and −6.75 / −2.65 /
-−0.55 dB at 2828 / 2000 / 1000 Hz, while the two-section LR4 pair sums to
-**0.00 dB at every one of those frequencies**. D8 needs LR4; D2's detector
-stays at S1's two-pole.)* Second caution from the `MultibandCompressor` seed,
-**corrected there by the same verification**: `audioroute.Splitter` does not
-erase a long source, it discards the first `n − 8192` frames of any buffer
-longer than its ring, and the fix is one block-sized node between the source
-and the Splitter, so this class builds `source → block-sized node → Splitter`.
-See `MultibandCompressor.md` §4 and its V-M1–V-M3 before building on the
-Splitter.
+**The detector composes on the node; the audio path composes on the mixer.**
+Phase 1 landed four of this dossier's five node asks (§5), and with them the
+902's own comparison is one `audiodynamics.Dynamics`:
+`relative_threshold=True` drives the gain computer with the side-chained
+level minus the full-band level (N-DEESS-1), `detector="rms"` gives D6
+(N-DEESS-4), `sidechain_poles=2` gives the side chain its second pole
+(N-DEESS-5) and `program_attack=True` gives D5 (N-DEESS-3). N-DEESS-2, the
+dB-linear release, did not land; D4 is disconfirmed for that reason and the
+ask stands.
 
-*(More of §4 is in **App. R** — moved under the length rule, nothing deleted.)*
+**The graph**, in build order:
+
+```
+source → MidSide(width=1)          the block adapter: the exact identity,
+                                   and it re-blocks any source to 256 frames
+       → Splitter A (4 taps)       t0 detector key (full band, raw)
+                                   t1 → low  chain    t2 → high chain
+                                   t3 → Splitter B (2 taps): the raw pair
+       low  = Biquad LOW_PASS  ×2  Q=0.707 cascaded  = LR4 low   half
+       high = Biquad HIGH_PASS ×2  Q=0.707 cascaded  = LR4 high  half
+       high → Splitter C (2 taps)  one leg to the gain cell, one to the mix
+       pre  = Mixer(2): raw | high     Mode picks which reaches the gain cell
+       duck = Dynamics(DYN_LIMIT, relative_threshold, rms, program_attack,
+                       sidechain_hz = 0.6436 × Frequency, sidechain_poles=2)
+              .play(pre) .key(Splitter A t0)
+       out  = Mixer(4): raw | low | high | duck, at the levels below
+```
+
+with `α = 1 − 10^(−Range/20)` and the four output levels
+
+| mode | raw | low | high | duck |
+|---|---|---|---|---|
+| broadband | 1 − α | 0 | 0 | α |
+| HF only | 0 | 1 | 1 − α | α |
+
+so the output is `(1−α)·s + α·g·s` in broadband and `l + (1−α)·h + α·g·h` in
+HF-only, where `g` is the gain cell's gain. **Range is the dry blend**, which
+is why it is a bound and not a knob on the detector.
+
+**Three things it buys, measured this run** (App. V-2026-09-07): broadband
+never splits the audio, so at Range 0 the render is **byte-identical to the
+source** (V7-1); the HF-only path sums an LR4 pair, which is flat (V7-3);
+and the low band never moves in HF-only mode, D3's hard half (V7-5).
+
+**The detector's corner is offset on purpose:** two cascaded one-poles put
+their −3 dB point at `1.5538 × fc`, so the class sets `sidechain_hz =
+0.6436 × Frequency` and both bands agree at −3 dB (derivation: **App. R**,
+from §4).
+
+**Portability tier: audioif**, `REQUIRES = ("audiobiquad", "audiodynamics",
+"audioroute")` — guarded imports, construction-time `ImportError` on a stock
+board. `audiomixer` and `audiocore` are ported CircuitPython and cost no tier
+claim. Python computes the split coefficients at construction and on a
+Frequency move; C runs the filters, the detectors and the VCA per sample.
+
+**Mono:** one gain from a channel-linked detector, applied to every channel;
+a mono source gets identical processing and the same graph.
+
+*(What the shipped class does instead, and the measurements behind it:
+**App. R**, from §4.)*
 
 ## 5. Node asks
 
-Additive on `audiodynamics` (D1 of the vision), each defaulting to today's
-behaviour so `dynamics_probe.py`'s hash is unchanged.
+Additive on `audiodynamics`, each defaulting to today's behaviour.
+**Four of five landed with Phase 1** (audioif#38): N-DEESS-1
+`relative_threshold`, N-DEESS-3 `program_attack`, N-DEESS-4
+`detector="rms"`, N-DEESS-5 `sidechain_poles=2`. Two remain:
 
-- **N-DEESS-1 — relative-threshold detection (unblocks D1).** A mode in which …  *(argument in full: App. R)*
-- **N-DEESS-2 — a dB-linear release (unblocks D4).** `release_db_per_sec` …  *(argument in full: App. R)*
-- **N-DEESS-3 — program-dependent attack (unblocks D5).** An attack …  *(argument in full: App. R)*
-- **N-DEESS-4 — RMS detection (unblocks D6).** *Same ask as `Expander`'s …  *(argument in full: App. R)*
-- **N-DEESS-5 — 12 dB/octave side-chain (unblocks D2's detector half).** Made …  *(argument in full: App. R)*
+- **N-DEESS-2 — a dB-linear release (unblocks D4).** `release_db_per_sec`
+  beside `release_ms`, default unset. *Refutation:* a dB-linear ramp cannot
+  be produced by a one-pole in linear gain at any coefficient, and cascading
+  two multiplies two exponentials, whose dB sum is still not a straight
+  line. **Ask stands; D4 is disconfirmed until it lands.**
+- **N-DEESS-6 — a floor on the reduction above threshold (would make D7
+  exact).** New at Station A. `dynamics_gain_db()` bounds nothing above
+  threshold — `AUDIOIF_DYNAMICS_LIMIT` returns `-over` and
+  `AUDIOIF_DYNAMICS_COMPRESS` returns `-slope·over`, both unbounded
+  (`audioif_dynamics.c:365-404`) — while `depth_db` floors only `EXPAND` and
+  `GATE`, which act *below* threshold. *Refutation attempted and failed:* the
+  subtractive form that would clamp exactly needs a negative mixer level, and
+  `audiomixer` clamps a voice level to 0..1 (`audiomixer.py:143`), so the
+  dry blend of §4 is the only bound the palette can build and it is an
+  asymptote. With the floor, broadband mode would need **no splitter and no
+  second mixer at all** — the whole Range structure collapses to one option.
 
-*(More of §5 is in **App. R** — moved under the length rule, nothing deleted.)*
+*(The full argument for each landed ask, kept for the Phase 1 record:
+**App. R**, from §5.)*
 
-## 6. Proposed surface
+## 6. Surface — seven macros, six patches
 
-Seven macros — the 902 has two knobs and a switch, and the extra four are the
-specified behaviours it hides, exposed under D2 of the vision.
+The 902 has two knobs and a switch; the extra four are the behaviours it
+specifies and hides, exposed under vision D2.
 
-| # | Macro | Mode | Range | Generalizes |
+| # | Macro | Mode | Span | Generalizes |
 |---|---|---|---|---|
 | 0 | Frequency | UNIPOLAR | 800 Hz … 8 kHz, log | 902 Frequency (12 o'clock = 2.5 kHz) |
 | 1 | Range | UNIPOLAR | 0 … 20 dB | 902 Range |
-| 2 | Sensitivity | UNIPOLAR | 0 … 24 dB of allowed HF excess | the 902's fixed internal comparison, made adjustable |
+| 2 | Sensitivity | UNIPOLAR | 0 … 48 dB — how far *below* the full-band level the sibilant band may sit and still count | the 902's fixed internal comparison, made adjustable |
 | 3 | Mode | TOGGLE | broadband / HF only | 902 Mode switch |
-| 4 | Release | UNIPOLAR | 200 … 4000 dB/sec, log | the 902's fixed 925 dB/sec |
-| 5 | Attack | UNIPOLAR | 0.1 … 10 ms, log | the 902's program-dependent rate, as its 10 dB-over value |
-| 6 | Listen | TOGGLE | off / on | no panel control; monitors the reduced band |
+| 4 | Release | UNIPOLAR | 1 … 200 ms, log | the 902's fixed 925 dB/sec, as a time constant — the shape is D4's disconfirmation |
+| 5 | Attack | UNIPOLAR | 0.1 … 10 ms, log | the 902's program-dependent rate, as its base coefficient |
+| 6 | Listen | TOGGLE | off / on | no panel control; puts the detector's own band on the output (`key_listen`) |
 
-Characters: none. Patches: **Vocal**, **Bright Vocal** (frequency up, range
-up), **Whispered Verse** (sensitivity down), **Guitar Pick Noise** (the
-manual's own instrumental case: HF only, frequency high), **Cymbal Edge**,
-**Hard De-Ess** (range at maximum). Listen is a diagnostic and is off in every
-patch.
+**Two spans moved at Station A, each with its reason.** Sensitivity was
+0…24 dB; the sibilant probe's own band-to-full ratio is about −14 dB, so
+24 dB could not drive the class 20 dB past its setting and D7's own
+measurement would have been unreachable — 48 dB reaches it. Release was
+200…4000 dB/sec; the palette has no dB/sec release (N-DEESS-2), and a
+dB/sec label on an exponential would be a false claim, so it is milliseconds
+and D4 carries the loss.
+
+| # | Patch | For |
+|---|---|---|
+| 0 | Vocal | the constructor's defaults: 2.5 kHz, 12 dB, broadband |
+| 1 | Bright Vocal | frequency and range up |
+| 2 | Whispered Verse | sensitivity down, range down |
+| 3 | Guitar Pick Noise | S1's own instrumental case: HF only, frequency high |
+| 4 | Cymbal Edge | HF only, frequency high, range up |
+| 5 | Hard De-Ess | range at maximum |
+
+No characters. Listen is a diagnostic and is off in every patch.
+**`capabilities` = `()`** — sibilance has nothing to do with tempo, and the
+class never reads `self._transport()`.
 
 ## 7. Defects in the current class the rebuild must not repeat
 
@@ -172,32 +259,38 @@ patch.
   recommends for instrumental material; the class cannot do it, because it
   never splits the audio at all.
 
-## 8. Open questions
+## 8. Open questions — settled at Station A
 
-1. **The law between 0 dB of excess and Range.** S1 gives the endpoints
-   ("when the high frequency level is excessive … the 902 will de-ess", max
-   20 dB) and no curve; the seed states D7's bound and D1's level-independence
-   and deliberately claims nothing about the shape. Whether the rebuild uses a
-   ratio, a soft knee or a straight map from excess to reduction is a design
-   choice the implementation session makes and its evidence pack records — it
-   is **not** a trait, because no source fixes it. *Implementation session.*
-2. **Does the split belong in the audio path at all in broadband mode?** D3's
-   broadband mode needs only a detector split; keeping the audio unsplit there
-   saves the eight audio-path biquads D8 costs and removes any summing error
-   entirely (there is nothing to sum). *Implementation session,
-   with the Tier 3 measurement.*
-3. **Which filter order the audio path ships.** §4 chooses LR4 for the audio
-   path (to meet D8) and S1's two-pole for the detector (to meet D2). That is a
-   design choice under vision D2, taken here rather than left implicit, and it
-   doubles the audio-path biquad count. The implementation session may instead
-   ship a single 12 dB/octave audio split and **strike D8**, recording the
-   +3.01 dB crossover peak, or the null (A-D1), as the price — but it may not claim both.
-   *Implementation session, with the Tier 3 measurement.*
-4. **Whether N-DEESS-1 should be a `DYN_DEESS` mode or an option on
-   `DYN_COMPRESS`.** The relative detector is useful beyond de-essing —
-   RaneNote 155's relative-threshold dynamic EQ is the same mechanism, and
-   `DynamicEQ` is a class in this library. *Phase 1 node design; the
-   recommendation is an option, so `DynamicEQ` can use it too.*
+1. **The law between 0 dB of excess and Range. Settled: a straight 1:1 map
+   of the excess into a limiter gain cell, floored by the dry blend.**
+   Reduction = `−20·log10((1−α) + α·10^(−excess/20))` with
+   `α = 1 − 10^(−Range/20)`, so it is monotone, smooth, bounded by Range and
+   **never exceeds it**, approaching it asymptotically rather than stopping
+   on it. A hard clamp is not buildable on this palette — see N-DEESS-6 in
+   §5 for the two lines of C and the one line of Python that block it. The
+   evidence pack records the approach at 5, 10 and 20 dB of Range rather
+   than claiming D7's equality.
+2. **Does the split belong in the audio path at all in broadband mode?
+   Settled: no, and the build takes that.** In broadband mode the gain cell
+   sits on the raw stream and the dry half of the Range blend is the same raw
+   stream, so nothing is split and nothing is summed; measured, the render at
+   Range 0 is byte-identical to the source. The split is still *built*,
+   because the Mode toggle is live, and the four biquads it costs are named
+   in Tier 3 above.
+3. **Which filter order the audio path ships. Settled: LR4, in HF-only mode
+   only.** HF-only sums the low band with the blended high band, so the two
+   halves must recombine flat, and a single 12 dB/octave pair nulls at the
+   corner (A-D1, V-D2). D2's order clause is therefore **not** carried by the
+   audio path — and it is not carried by the detector either, because
+   `sidechain_poles=2` is two cascaded one-poles, −6 dB at its corner and
+   about 10.3 dB/octave, not a Butterworth section. The dossier claims
+   neither: D2's *tracking* clause is measured, its *order* clause is
+   recorded disconfirmed with both numbers. This is the "may not claim both"
+   rule taken in the only direction the palette allows.
+4. **Whether N-DEESS-1 should be a `DYN_DEESS` mode or an option. Settled by
+   Phase 1:** it shipped as `relative_threshold=True`, an option on the
+   existing modes, so `DynamicEQ` can use it too — the seed's own
+   recommendation.
 
 
 ## Appendix
@@ -510,3 +603,188 @@ Frequency move; C runs the filters, the two detectors and the VCA per sample.
 - **N-DEESS-5 — 12 dB/octave side-chain (unblocks D2's detector half).** Made
   redundant if N-DEESS-1 lands with a proper filtered detector input; recorded
   so the Phase 1 design considers them together rather than separately.
+
+*(from §Standout, moved at Station A 2026-09-07 under the length rule)*
+
+It is also the right *kind* of referent: RaneNote 155 independently argues
+that comparing the band to the broadband level "is the best dynamics
+processor for this task", which is exactly what the 902 does, and names the
+alternative — a side-chain EQ feeding an ordinary compressor — as the
+"primitive de-esser" whose failure it draws (S2). The class this seed
+replaces is that primitive one (§7). The seed's status line read
+"seed (Phase 0), written 2026-09-06".
+
+*(from §1, moved at Station A 2026-09-07 under the length rule)*
+
+*(Audit: the manual names the detectors and names the two levels compared; it
+never states how many detectors there are, so "two" is this seed's reading of
+the mechanism, not the manual's word. No trait depends on the count.)*
+The specification says the unit "operates uniformly over input range of
+−40 dBu to +24 dBu without requiring adjustment". The HF ONLY setting of the
+Mode switch is for "de-edging" and "de-clicking" instrumental material.
+The control voltage is available at 50 mV/dB (S1).
+
+*(from §2, moved at Station A 2026-09-07 under the length rule)*
+
+*Second-pass result: both licence calls stand as written (S1's document carries
+no copyright, trademark or terms line on any of its 8 pages — re-checked page by
+page — so "unverified, treated as copyleft" is correct); every S1 and S2
+quotation verified verbatim; three flags, marked inline.*
+
+*(from §4, the seed's own text, moved at Station A 2026-09-07 under the length rule)*
+
+Compose first, and most of it composes. `audioroute.Splitter` fans the source
+to two taps; two `audiofilters.Filter` chains carry the second-order
+Butterworth split (Q = 0.707, the same pair the shipped `MultibandCompressor`
+already builds, `dynamics.py:250`); `audiomixer.Mixer` sums them. That is D2
+and D3 built entirely from what exists — HF-only mode is the same graph with
+the gain applied to one tap instead of the sum. **But the order is a decision, not a
+transcription, and the critic pass caught the seed making it silently.** S1's
+own filter is two-pole Butterworth (D2), and a two-pole Butterworth LP/HP pair
+does **not** sum flat: in phase it nulls at the corner (a true null: −66.9 dB on a
+4000-point log grid, −96.5 dB on a 200 000-point one) and with one half inverted
+it peaks at +3.01 dB, while
+a fourth-order Linkwitz-Riley pair — two cascaded Butterworth sections a side —
+sums to 0.0000 dB (A-D1 below; the same control `MultibandCompressor.md`
+records at A-M1). So the class builds the **audio-path** split as LR4 to meet
+D8 and keeps the **detector** split at S1's two-pole 12 dB/octave to meet D2,
+and the docstring says which is which. *(Palette verification, 2026-09-06: the LR2/LR4 difference was rebuilt from the
+nodes themselves and reproduces exactly — at a 4 kHz corner the one-section
+pair sums to a **true null** (all-zero output) at the corner and −6.75 / −2.65 /
+−0.55 dB at 2828 / 2000 / 1000 Hz, while the two-section LR4 pair sums to
+**0.00 dB at every one of those frequencies**. D8 needs LR4; D2's detector
+stays at S1's two-pole.)* Second caution from the `MultibandCompressor` seed,
+**corrected there by the same verification**: `audioroute.Splitter` does not
+erase a long source, it discards the first `n − 8192` frames of any buffer
+longer than its ring, and the fix is one block-sized node between the source
+and the Splitter, so this class builds `source → block-sized node → Splitter`.
+See `MultibandCompressor.md` §4 and its V-M1–V-M3 before building on the
+Splitter.
+
+*(from §4, added at Station A 2026-09-07 — the detector corner offset)*
+
+The node's side chain is a cascade of one-poles, not a Butterworth section
+(`audioif_dynamics.c:508-562`): each pole subtracts a one-pole low-pass from
+the signal, so with `sidechain_poles=2` the magnitude is `ω²/(ω² + ωc²)`. That
+is −6 dB at `fc`, and its −3 dB point is where `ω²/(ω² + ωc²) = 1/√2`, i.e.
+`ω = ωc·√(0.7071/0.2929) = 1.5538·ωc`. Setting `sidechain_hz = Frequency /
+1.5538 = 0.6436 × Frequency` therefore puts the detector's −3 dB point on the
+audio split's corner, so one Frequency macro means one thing in both paths.
+It does not make the skirt Butterworth, and the dossier does not claim it
+does.
+
+*(from §5, the seed's own asks that Phase 1 landed, moved at Station A 2026-09-07)*
+
+- **N-DEESS-1 — relative-threshold detection (unblocks D1).** A mode in which
+  the gain computer's input is the **dB difference between the side-chain
+  detector and a full-band detector**, with the front-panel control setting
+  how many dB of excess is allowed rather than an absolute threshold.
+  **LANDED** as `relative_threshold=True` (`upstream-diff.md:1043-1047`).
+- **N-DEESS-3 — program-dependent attack (unblocks D5).** An attack
+  coefficient scaled by the current overshoot, off by default. **LANDED** as
+  `program_attack=True`, scaling by the square root of the overshoot;
+  measured time-to-63 % of 1.167 ms at 10 dB over and 0.333 ms at 20 dB over,
+  a ratio of 3.50 against this dossier's 3.3 within 25 %
+  (`upstream-diff.md:1048-1056`).
+- **N-DEESS-4 — RMS detection (unblocks D6).** **LANDED** as
+  `detector="rms"` with `rms_ms`; a sine and a square of equal RMS measure
+  0.00 dB apart against 0.68 dB on the peak detector
+  (`upstream-diff.md:988-992`).
+- **N-DEESS-5 — 12 dB/octave side-chain (unblocks D2's detector half).**
+  **LANDED** as `sidechain_poles=2`, measured 10.31 dB/octave below a 2500 Hz
+  corner against 5.29 at one pole (`upstream-diff.md:1035-1037`) — a cascade
+  of one-poles, so it does not reach D2's Butterworth clause; see §8.3.
+
+*(from §8, the seed's own wording of the four opens, moved at Station A 2026-09-07)*
+
+1. **The law between 0 dB of excess and Range.** S1 gives the endpoints
+   ("when the high frequency level is excessive … the 902 will de-ess", max
+   20 dB) and no curve; the seed states D7's bound and D1's level-independence
+   and deliberately claims nothing about the shape. Whether the rebuild uses a
+   ratio, a soft knee or a straight map from excess to reduction is a design
+   choice the implementation session makes and its evidence pack records — it
+   is **not** a trait, because no source fixes it. *Implementation session.*
+2. **Does the split belong in the audio path at all in broadband mode?** D3's
+   broadband mode needs only a detector split; keeping the audio unsplit there
+   saves the eight audio-path biquads D8 costs and removes any summing error
+   entirely (there is nothing to sum). *Implementation session,
+   with the Tier 3 measurement.*
+3. **Which filter order the audio path ships.** §4 chooses LR4 for the audio
+   path (to meet D8) and S1's two-pole for the detector (to meet D2). That is a
+   design choice under vision D2, taken here rather than left implicit, and it
+   doubles the audio-path biquad count. The implementation session may instead
+   ship a single 12 dB/octave audio split and **strike D8**, recording the
+   +3.01 dB crossover peak, or the null (A-D1), as the price — but it may not claim both.
+   *Implementation session, with the Tier 3 measurement.*
+4. **Whether N-DEESS-1 should be a `DYN_DEESS` mode or an option on
+   `DYN_COMPRESS`.** The relative detector is useful beyond de-essing —
+   RaneNote 155's relative-threshold dynamic EQ is the same mechanism, and
+   `DynamicEQ` is a class in this library. *Phase 1 node design; the
+   recommendation is an option, so `DynamicEQ` can use it too.*
+
+### App. V-2026-09-07 — Station A palette verification
+
+Run against the CPython build of audioif in `audiocomponents/.venv` at the
+`AUDIOIF_PIN` commit `2f6cbc3`, 48 kHz, stereo, 16-bit, on the graph §4
+describes. Every number below is from that run; the evidence pack re-takes
+them through the kit.
+
+**V7-1 — the broadband wire is exact.** Range 0, broadband, a 1 kHz tone at
+12000 LSB, 4096 frames: **0 differing samples of 8192, maximum delta 0.**
+That is §8.2 settled: the broadband path carries no split, so there is
+nothing to sum and nothing to lose.
+
+**V7-2 — the rest state is level-honest.** Range 12, broadband, a 200 Hz tone
+with no sibilant content: in −11.729 dBFS, out −11.731 dBFS, node-reported
+gain reduction 0.000 dB.
+
+**V7-3 — the HF-only sum is flat at the corner.** Range 0, HF only, a
+2500 Hz tone at the 2500 Hz split: in −11.736 dBFS, out −11.736 dBFS. The
+LR4 pair recombines through the mixer without the null a single-section pair
+would give (A-D1).
+
+**V7-4 — level independence, on the kit's own sibilant probes.** Range 20,
+Sensitivity 34, broadband; the settled 6 kHz component measured by DFT over
+4800 frames at the probe's midpoint:
+
+| probe | 6 kHz change | 200 Hz change |
+|---|---|---|
+| `sibilant_-6` | −13.693 dB | −13.665 dB |
+| `sibilant_-20` | −13.696 dB | −13.685 dB |
+| `sibilant_-40` | −13.818 dB | −13.963 dB |
+| `sibilant_-55` | −14.362 dB | −15.664 dB |
+
+0.125 dB across the top three (a 34 dB window) and 0.67 dB across all four
+(49 dB). D1 allows 1 dB. The `-55` row is the int16 floor of the probe, as
+D1's own wording anticipates.
+
+**V7-5 — the two modes.** Range 12, Sensitivity 34: broadband moves the high
+band −9.372 dB and the low band −9.358 dB (0.014 dB apart); HF only moves the
+high band −8.990 dB and the low band **−0.001 dB**. D3's hard half holds.
+
+**V7-6 — Range bounds, and it is an asymptote.** Sensitivity 34 on
+`sibilant_-6`, which drives the detector about 21 dB past its setting:
+
+| Range | measured reduction |
+|---|---|
+| 5 dB | −4.234 dB |
+| 10 dB | −8.018 dB |
+| 20 dB | −13.693 dB |
+
+Never exceeded, never reached. This is §8.1's law measured, and the case for
+N-DEESS-6.
+
+**V7-7 — a Splitter's ring is not clearable, and what the class does about
+it.** `audioroute.Splitter` exposes `tap()` and nothing else on every target
+— no `clear`, no `reset_buffer`, no `deinit`
+(`audioif/src/audioroute/Splitter.c:92`), and `SplitterTap.reset_buffer` is
+"deliberately nothing" (`SplitterTap.c:47-55`). Measured: after resetting
+every other node and swapping the source for silence, the graph replayed
+**19999 LSB** of stale audio and did not reach an all-zero block until frame
+512. The class therefore flushes the rings itself before the reset walk
+touches anything else — a silent sample onto the adapter, 33 pulls per tap
+(the ring is 8192 frames and a take is at most 256:
+`audioif_splitter.h:20`, `audioif_splitter.c:64-70`), then the real source
+back. `audioroute.MidSide` at `width=1` is the adapter because its identity
+is exact and its `play()` does not reset its source
+(`src/audioroute/MidSide.c:57-68`), where `audiofilters.Filter.play()` does.
