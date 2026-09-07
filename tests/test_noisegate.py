@@ -335,12 +335,40 @@ class Tier1Invariants(unittest.TestCase):
 
     def test_range_zero_is_a_wire(self):
         # A gate has no mix knob; its wire setting is Range at 0 dB, which
-        # `depth_db = 0.0` makes an exact unity floor (`:387-388`).
+        # `depth_db = 0.0` makes an exact unity floor (`:387-388`). The
+        # threshold is at the top so the gate stays shut, which is the
+        # state that floor is written in; the next test measures what the
+        # first opening costs.
         data = probes.ramp_fs(8192)
         wet = render(data, 8192, settings(range_db=0.0, threshold_db=0.0))
         result = kit.wire(wet, dry(data, 8192), latency_samples=0)
         self.assertEqual(result["red"], [], result["values"])
         self.assertEqual(result["values"]["differing_samples"], 0)
+
+    def test_the_first_opening_ramps_from_the_nodes_cold_zero(self):
+        """A measured Tier 1 qualification, committed rather than described.
+
+        `state_init` and `clear_extras` set the machine's gain to 0.0
+        (`audioif_dynamics.c:265`), and only the CLOSED branch ever writes
+        `floor_gain` (`:719-722`). So the *first* opening after
+        construction or a reset ramps from silence rather than from the
+        Range floor, and at Range 0 dB - where the class should be a wire -
+        that costs one attack's worth of fade-in. Measured here at 6.9 ms
+        for patch 0's 1.0 ms attack, which is the 6.8 time constants the
+        machine's 0.999 snap needs; byte-identical from 10 ms on. The class
+        cannot reach that state through any API the node offers.
+        """
+        import numpy as np
+        data = probes.ramp_fs(8192)
+        wet = render(data, 8192, [(RANGE, 0)])
+        reference = dry(data, 8192)
+        difference = np.abs(wet.data.astype(np.int32)
+                            - reference.data.astype(np.int32))
+        differing = np.nonzero(difference.any(axis=1))[0]
+        self.assertEqual(int(differing[0]), 0)
+        self.assertLess(1000.0 * len(differing) / RATE, 8.0)
+        after = int(0.010 * RATE)
+        self.assertEqual(int(np.count_nonzero(difference[after:])), 0)
 
     def test_planted_fault_a_wire_that_is_one_lsb_light(self):
         import kit_faults as faults
