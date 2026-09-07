@@ -23,7 +23,7 @@ section, and it is not empty.
 | Standout | Drawmer DS201 dual noise gate |
 | Grade | literature |
 | Portability tier | **audioif** — `REQUIRES = ("audiodynamics", "audioroute", "audiomath")` |
-| Landed in commit | `102ff44` (class, tests, CHANGELOG, catalogue row); this file in the Station C commit named at the end of §9 |
+| Landed in commits | `9fcad65` dossier freeze · `102ff44` class, tests, CHANGELOG, catalogue row · `4dba548` this pack · `a534f81` the disconfirmation in the docstring and the catalogue row |
 | audioif pin | `AUDIOIF_PIN` = `2f6cbc3791efd38dfbf0fb263052400a69b976ed` |
 | Interpreters | `audiocomponents/.venv/bin/python` — Python 3.12.3; `cmods/bin/micropython` — MicroPython v1.28.0 (2026-09-07); `cmods/bin/circuitpython-effects` — CircuitPython 10.2.1 (2026-09-07) |
 | Boards | ESP32-P4 — **not run**; ESP32-S3 — **not run** (§4, §11) |
@@ -456,8 +456,11 @@ battery is the `ImportError`, which the block does test honestly.
 - [x] The catalogue row in [`README.md`](README.md) and the class docstring
       describe the standout and the tier in a musician's terms; the **cost**
       column is empty because the board run has not happened.
-- [x] The class, its tests and its CHANGELOG line landed in `102ff44`; this
-      file lands in the Station C commit.
+- [x] The class, its tests and its CHANGELOG line landed in `102ff44`, this
+      pack in `4dba548`, and the disconfirmation's disclosure in `a534f81`.
+      **Four commits rather than one**, which the gate asks to be one; the
+      dossier freeze had to precede the class and the pack had to follow it,
+      and they are all on `effects/p2-noisegate` and named here.
 
 ---
 
@@ -477,22 +480,20 @@ $ python tools/validate_metadata.py
 audio component metadata is valid
 
 $ python -m unittest tests.test_portability_tier
-.......
 ----------------------------------------------------------------------
-Ran 7 tests in 0.073s
+Ran 7 tests in 0.004s
 
 OK
 
 $ python -m unittest tests.test_noisegate
-...................................
 ----------------------------------------------------------------------
-Ran 35 tests in 116.790s
+Ran 35 tests in 8.298s
 
 OK
 
 $ python -m unittest discover -s tests -p "test_*.py"
 ----------------------------------------------------------------------
-Ran 262 tests in 28.680s
+Ran 262 tests in 30.583s
 
 OK (skipped=1)
 
