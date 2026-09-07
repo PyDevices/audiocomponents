@@ -1,6 +1,6 @@
 # REFUTER probe: Tremolo B4 by BIAS composition (additive), not drive modulation.
 # chain: Mixer(source200Hz, biasLFO) -> Distortion(static curve) -> Filter(HPF) -> Multiply(env)
-import math, sys
+import math
 import numpy as np
 import audiocore, audiofilters, audiomath, audiomixer, synthio
 from array import array
