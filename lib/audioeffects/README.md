@@ -24,8 +24,9 @@ Every class takes its audio source as the first argument - a synthesizer, an
 `.output` - and exposes its chain tail as `.output`. The underlying nodes are
 kept as attributes (`.node`, `.mixer`, `.cutoff`, ...) so applications can
 bind parameters straight to them; the classes with a natural swept control
-also expose `set_*` helpers (`LadderFilter.set_cutoff`,
-`DigitalDelay.set_time`, ...).
+also expose `set_*` helpers (`DigitalDelay.set_time`, ...). A class that
+has been rebuilt on the component contract drops those helpers for its macro
+surface: `LadderFilter` is the first, and its cutoff is macro 0.
 
 Every public effect class explicitly declares `NAME`, `MACRO_LABELS`,
 `MACRO_MODES`, and `PATCHES`. `VENDOR` is declared once at module scope for
@@ -87,7 +88,7 @@ not.
 | `GraphicEQ` | ten fixed ISO bands |
 | `DynamicEQ` | notch+band split, band compressed, summed (the split is exact) |
 | `LowPass` `HighPass` `BandPass` `Notch` | single swept biquads |
-| `LadderFilter` | Moog-style 4-stage cascade, 24 dB/oct, resonant |
+| `LadderFilter` | the Moog transistor ladder: four poles round one feedback loop with a saturator inside it. The passband sinks as `Resonance` rises - that droop is the circuit - and at the top of the knob it sings a sine of its own at the cutoff. `Drive` is the only warmth control; the growl follows the input level. **Rebuilt on the component contract; needs audioif** (`audioladder`), so it does not run on a stock CircuitPython board. Zero latency at every setting; budgeted at 14 % of a stereo block on an S3 (7 % on patch 6, `Ladder - lean`) and 8 % on a P4, **unmeasured on either board** |
 | `CombFilter` | tuned short feedback delay |
 
 ### Time and space - `reverb.py`, `delay.py`

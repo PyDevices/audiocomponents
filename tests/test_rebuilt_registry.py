@@ -21,6 +21,16 @@ from audioeffects import rebuilt
 from tools.validate_metadata import MetadataError, validate_effects
 
 
+#: The fixtures, which are never in the catalogue, and the catalogue names
+#: that have a rebuilt module. Every rebuild adds its own name to `REBUILT`
+#: in the same commit as its file - a one-line edit, and the only shared
+#: line a family phase touches. It exists so both branches of the rule stay
+#: covered: a name in it must resolve, and every other one of the 46 must
+#: still miss and leave the old class standing.
+FIXTURES = ("ExampleAudioif", "ExampleStock")
+REBUILT = ("LadderFilter",)
+
+
 def source(channels=2, rate=48000):
     return audiocore.RawSample(
         array.array("h", [4000, -4000] * 2048 * channels),
@@ -37,13 +47,29 @@ class TheLookup(unittest.TestCase):
     def test_a_name_with_no_file_is_a_miss_not_an_error(self):
         self.assertIsNone(rebuilt.load("NoSuchEffectAnywhere"))
 
-    def test_every_one_of_the_46_is_a_miss_today(self):
-        # The fallback branch, over the real catalogue: nothing in Phase 2's
-        # families has been rebuilt yet, so every name must miss and every
-        # old class must still be the one the package exports.
+    def test_every_name_not_yet_rebuilt_is_still_a_miss(self):
+        # The fallback branch, over the real catalogue: a name with no file
+        # must miss, so the old class in the family module stands. The
+        # assertion used to be "all 46 miss"; it is scoped rather than
+        # deleted, because the branch it covers is the one 45 of the 46
+        # still rely on.
         for name in audioeffects.ALL:
+            if name in REBUILT:
+                continue
             with self.subTest(name=name):
                 self.assertIsNone(rebuilt.load(name))
+
+    def test_every_rebuilt_name_resolves_to_a_component(self):
+        # The other branch, and the one a rebuild has to prove: the file is
+        # found, and what comes back is the new class, not the old one.
+        for name in REBUILT:
+            with self.subTest(name=name):
+                found = rebuilt.load(name)
+                self.assertIsNotNone(found)
+                self.assertEqual(found.NAME, name)
+                self.assertTrue(issubclass(found, _component.Component))
+                self.assertFalse(
+                    issubclass(found, audioeffects._core.Effect))
 
     def test_a_file_whose_class_does_not_match_is_an_error(self):
         # `examplestock.py` exists, but holds no class whose NAME is
@@ -56,7 +82,7 @@ class TheLookup(unittest.TestCase):
 
     def test_known_lists_what_is_there(self):
         self.assertEqual(sorted(rebuilt.known()),
-                         ["ExampleAudioif", "ExampleStock"])
+                         sorted(FIXTURES + REBUILT))
 
 
 class TheReplacement(unittest.TestCase):
@@ -104,10 +130,17 @@ class TheReplacement(unittest.TestCase):
 
 class TheCatalogueIsUnchanged(unittest.TestCase):
     def test_the_fixtures_are_not_among_the_46(self):
+        # The catalogue is 46 whatever has been rebuilt: a rebuild replaces
+        # a name, it never adds one. The fixtures stay outside it; a rebuilt
+        # class takes the place of the old one under the same name.
         self.assertEqual(len(audioeffects.ALL), 46)
-        for name in rebuilt.known():
+        for name in FIXTURES:
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
+        for name in REBUILT:
+            self.assertIn(name, audioeffects.ALL)
+            self.assertIn(name, audioeffects.__all__)
+        self.assertEqual(sorted(rebuilt.known()), sorted(FIXTURES + REBUILT))
 
     def test_create_still_refuses_a_name_it_does_not_have(self):
         with self.assertRaises(ImportError):
