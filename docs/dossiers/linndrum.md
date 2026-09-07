@@ -152,7 +152,7 @@ in a dedicated search this session either.
 | Vintage Synth Explorer, LinnDrum page | literature | license unverified — no rights statement; facts only | https://www.vintagesynth.com/linn-electronics/linndrum |
 | Morphoice, "LinnDrum LM-2" article | literature | license unverified — no rights statement; facts only | https://www.morphoice.com/linndrum |
 | Vintage Synth Explorer forum thread | literature | license unverified — community forum, facts only | https://forum.vintagesynth.com/viewtopic.php?t=57574 |
-| MOD WIGGLER forum thread (LM-1 hi-hat) | literature | license unverified — community forum, facts only | https://modwiggler.com/forum/viewtopic.php?t=277962 |
+| MOD WIGGLER forum thread (LM-1 hi-hat) | literature | license unverified — community forum, facts only. **Source not reached this session (HTTP 403).** | https://modwiggler.com/forum/viewtopic.php?t=277962 |
 | JM-1 (Jun's Factory) | oss candidate — disqualified | freeware, closed-source, no license text, no source available | https://plugins4free.com/plugin/175 ; https://blog.wavosaur.com/3-free-linndrum-lm-1-vsti-plugins/ |
 | DJinnDrum (SimpleRecorder) | oss candidate — disqualified | freeware, closed-source, no license text, no source available | https://blog.wavosaur.com/3-free-linndrum-lm-1-vsti-plugins/ |
 | Wave Alchemy "LinnDrum Tape" | capture — unreachable | moot (file 403s); site T&C carry no free-sample-specific grant | https://www.wavealchemy.co.uk/terms-conditions/ ; direct S3 link (403) |
@@ -314,10 +314,12 @@ these as strong-but-unlicensed literature numbers, not gold-tier
 certainty — same posture `tr707.md` took toward its own best pack.
 `n` counts individual pitch-variant files folded into each circuit's
 group (§3's tuning-range reading, not independent circuits).
+**reference figure unverified: needs re-derivation from the hyperreal
+LinnDrum pack** (`.reference-captures/linndrum/hyperreal/` is gitignored).
 
 | Voice | τ (s, min/median/max, n) | f_early (Hz, min/median/max) | Centroid (Hz, median) | Note |
 |---|---|---|---|---|
-| Bass Drum | 0.015/0.026/0.037 (n=2) | 65/65/65 | 455 | both files land on the same fundamental — matches the module's existing default `bd_pitch = 65.0` exactly; **decay is far shorter than the module's default** (`bd_decay = 0.35`; measured T60 only 0.11–0.26 s) |
+| Bass Drum | 0.015/0.026/0.037 (n=2) | 65/65/65 | 455 | both files land on the same fundamental — **65 Hz is the pack reading (n=2), which is also the module default `bd_pitch = 65.0`**. That agreement is not a pass and is not described as exact. **decay is far shorter than the module's default** (`bd_decay = 0.35`; measured T60 only 0.11–0.26 s). **reference figure unverified: needs re-derivation from the hyperreal LinnDrum pack.** |
 | Snare | 0.022/0.033/0.051 (n=3, h/m/l tune positions) | 97/151/248 | 6644 | tune-knob range spans roughly 100–250 Hz |
 | Rimshot | 0.013/0.024/0.044 (n=3) | 528/1238/2024 | 4691 | no panel tune control (§3); range reflects natural variation, not a knob |
 | Clap | 0.036 (n=1) | 1217 | 2614 | single sample only |

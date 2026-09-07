@@ -6,7 +6,9 @@ GO-golds charter (issue #6); every deviation from the dossier is stated here.
 
 ## Criteria, measured
 
-**Knob curves (the pack's unique contribution) — 6/6 pass:**
+**Knob curves (the pack's unique contribution) — 6/6 pass.**
+**Hardware column: reference figure unverified: needs re-derivation from
+the Audiorealism TR-909 pack.** The rebuild column is the model.
 
 | Knob | Hardware (measured) | Rebuild (measured) |
 |---|---|---|

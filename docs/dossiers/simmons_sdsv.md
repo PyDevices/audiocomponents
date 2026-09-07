@@ -286,7 +286,8 @@ best fit under the ceiling, not asserted as what the circuit does.
 
 **Measured this session** (`.reference-captures/simmons_sdsv/sfm_stats_raw.json`),
 tolerances following the family convention (±30% tau, ±25% pitch unless
-noted):
+noted). **reference figure unverified: needs re-derivation from Free
+Drums From Mars (Sim-suffixed files).**
 
 | Voice | tau (s) | pitch (Hz, f_late) | Tolerance | Basis |
 |---|---|---|---|---|
@@ -299,8 +300,8 @@ noted):
 
 | Voice | Criterion | Basis |
 |---|---|---|
-| Closed Hat | decay materially shorter than Open Hat's 0.173 s measured target | module's own hardcoded 0.05 s constant (`simmons_sdsv.py:182`), no capture to check it against |
-| Cymbal | decay/spectral profile as currently calibrated (`cymbal_decay` `logmap(0.2, 1.5)`, default 0.8 s) | no capture; carried forward, not verified |
+| Closed Hat | decay materially shorter than Open Hat's 0.173 s measured target | module's own hardcoded 0.05 s constant (`simmons_sdsv.py:182`), no capture to check it against. **Not a pack figure.** |
+| Cymbal | decay/spectral profile as currently calibrated (`cymbal_decay` `logmap(0.2, 1.5)`, default 0.8 s) | no capture; carried forward, not verified. **Not a pack figure.** |
 
 Plus one structural criterion: **12 resident notes, fixed-circuit, per
 §5** — a pass/fail on architecture, not a number.
