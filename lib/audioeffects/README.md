@@ -85,7 +85,7 @@ not.
 |---|---|
 | `ParametricEQ` | peaking bands `(freq, gain_db, q)` plus optional shelves |
 | `GraphicEQ` | ten fixed ISO bands |
-| `DynamicEQ` | notch+band split, band compressed, summed (the split is exact) |
+| `DynamicEQ` | one bell that does nothing until the sound *in that band* crosses a threshold, then cuts by the compressor law - and is a **wire** when it is idle, measured 0.0000 dB from 100 Hz to 12 kHz, because the notch and band-pass numerators sum to their shared denominator. `Mix` is also the Range knob (deepest move `-20 log10(1 - Mix)` dB) and `Mix` 0 is byte-identical to the source; `expand=True` is the same band gated the other way round. Latency 0 at every setting. **audioif tier**, eight nodes, 32% of one 48 kHz block on the desktop against the shipped class's 37%; **patches** |
 | `LowPass` `HighPass` `BandPass` `Notch` | single swept biquads |
 | `LadderFilter` | Moog-style 4-stage cascade, 24 dB/oct, resonant |
 | `CombFilter` | tuned short feedback delay |

@@ -42,7 +42,24 @@ EXTRA_ARGUMENTS = {
 }
 
 
-def source(frames=4096, level=11000):
+#: Frames the probe carries, and frames one patch is allowed to pull off it.
+#: The whole probe is one `audiocore.RawSample`, which hands its array back
+#: in a single `get_buffer` call, and `audioroute.Splitter`'s ring is 8192
+#: frames (`audioif/src/shared/audioif_splitter.h:20`) - so a longer probe
+#: would render *silence* through every unguarded Splitter class in the
+#: catalogue, which is the trap `MultibandCompressor` M5 records. 8000 is
+#: under that and 4096 was not enough: one instance is walked through all of
+#: its patches on one probe, and a class whose output block is the contract's
+#: own 256 frames (a 2048-byte stereo Mixer, `_component._pcm()`'s default)
+#: used the entire 4096-frame probe on its first two patches and then read as
+#: silent for the rest - a harness limit that looked exactly like a broken
+#: class. Capping the pull per patch keeps every class on the same budget,
+#: and 8000 / 1024 leaves room for seven patches.
+PROBE_FRAMES = 8000
+FRAMES_PER_PATCH = 1024
+
+
+def source(frames=PROBE_FRAMES, level=11000):
     values = array("h")
     for frame in range(frames):
         for channel in range(CHANNEL_COUNT):
@@ -52,10 +69,16 @@ def source(frames=4096, level=11000):
                                channel_count=CHANNEL_COUNT)
 
 
-def peak(sample, blocks=8):
+def peak(sample, blocks=8, frames=FRAMES_PER_PATCH):
+    """The loudest sample in the next few blocks - at most `blocks` of them
+    and at most `frames` frames, whichever comes first."""
     loudest = 0
+    pulled = 0
     for _ in range(blocks):
+        if pulled >= frames:
+            break
         data = bytes(audiocore.get_buffer(sample)[1])
+        pulled += len(data) // (2 * CHANNEL_COUNT)
         for index in range(0, len(data) - 1, 2):
             value = data[index] | (data[index + 1] << 8)
             if value >= 32768:

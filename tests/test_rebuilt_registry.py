@@ -37,13 +37,25 @@ class TheLookup(unittest.TestCase):
     def test_a_name_with_no_file_is_a_miss_not_an_error(self):
         self.assertIsNone(rebuilt.load("NoSuchEffectAnywhere"))
 
-    def test_every_one_of_the_46_is_a_miss_today(self):
-        # The fallback branch, over the real catalogue: nothing in Phase 2's
-        # families has been rebuilt yet, so every name must miss and every
-        # old class must still be the one the package exports.
+    def test_every_name_either_misses_or_is_what_the_package_exports(self):
+        # The fallback branch and the hit branch, over the real catalogue. A
+        # name with no file misses and the old class stands; a name with one
+        # resolves to a Component carrying that NAME, and that object is what
+        # `audioeffects.<Name>` is bound to. Neither branch may be empty for
+        # the whole catalogue, so this still says something once every family
+        # has been rebuilt.
+        misses = hits = 0
         for name in audioeffects.ALL:
             with self.subTest(name=name):
-                self.assertIsNone(rebuilt.load(name))
+                found = rebuilt.load(name)
+                if found is None:
+                    misses += 1
+                    continue
+                hits += 1
+                self.assertTrue(issubclass(found, _component.Component))
+                self.assertEqual(found.NAME, name)
+                self.assertIs(getattr(audioeffects, name), found)
+        self.assertEqual(misses + hits, len(audioeffects.ALL))
 
     def test_a_file_whose_class_does_not_match_is_an_error(self):
         # `examplestock.py` exists, but holds no class whose NAME is
@@ -55,8 +67,14 @@ class TheLookup(unittest.TestCase):
         self.assertIn("holds no Component", str(caught.exception))
 
     def test_known_lists_what_is_there(self):
-        self.assertEqual(sorted(rebuilt.known()),
-                         ["ExampleAudioif", "ExampleStock"])
+        # The two fixtures are always here; anything else listed is a rebuilt
+        # member of the 46, and nothing else may appear.
+        listed = sorted(rebuilt.known())
+        self.assertIn("ExampleAudioif", listed)
+        self.assertIn("ExampleStock", listed)
+        for name in listed:
+            if name not in ("ExampleAudioif", "ExampleStock"):
+                self.assertIn(name, audioeffects.ALL)
 
 
 class TheReplacement(unittest.TestCase):
@@ -104,8 +122,11 @@ class TheReplacement(unittest.TestCase):
 
 class TheCatalogueIsUnchanged(unittest.TestCase):
     def test_the_fixtures_are_not_among_the_46(self):
+        # The catalogue is 46 whatever has been rebuilt: a rebuild replaces a
+        # name, it never adds one. The two Example fixtures are the ones that
+        # must stay outside it.
         self.assertEqual(len(audioeffects.ALL), 46)
-        for name in rebuilt.known():
+        for name in ("ExampleStock", "ExampleAudioif"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
 
