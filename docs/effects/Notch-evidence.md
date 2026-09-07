@@ -126,8 +126,9 @@ was in hand. What it went after and what it changed:
 `cmods/bin/circuitpython-effects`.
 
 **How the `mp` and `cpy` columns are earned.** Every measurement below reads
-PCM. §3 shows the three interpreters rendering **byte-identical PCM** on 18
-probe/rate/channel/patch combinations, so a number computed from those bytes
+PCM. §3 shows the three interpreters rendering **byte-identical PCM** on
+eighteen combinations — twelve probe/rate/channel/patch renders and six
+Depth rows — so a number computed from those bytes
 on CPython is the number on all three. The columns say `= cp` for that reason
 and not because the analysis was re-run under MicroPython, which has no numpy
 and which the kit spec says never to ask for an FFT.
@@ -142,7 +143,7 @@ and which the kit spec says never to ask for an FFT.
 | `deinit()` releases every node and leaves the source rendering | STATE | pass — **0 of 3 nodes live** after `deinit()` | = cp | pass | = cp | pass | = cp |
 | `capabilities` names exactly what is honoured | STATE | pass, `()` | = cp | pass | = cp | pass | = cp |
 | Pulling `output` allocates nothing | STATE | pass — **601 bytes over 200 single-block pulls** (bar 8192), on a render whose digest is not silence | = cp | 361 bytes | = cp | 225 bytes | = cp |
-| Rate-honest: Hz spans clamp below Nyquist, never refuse | RESPONSE | pass — 100 kHz asked for lands at **19 200 Hz** (0.4·F_s) and the class still filters; no `ValueError` at any rate (`test_cpython_effects_notch.py::TheClassIsRateHonest`) | = cp | pass, 17 640 Hz | = cp | pass, **8 820 Hz** — the clamp that actually bites | = cp |
+| Rate-honest: Hz spans clamp below Nyquist, never refuse | RESPONSE | pass — 100 kHz asked for lands at **16 000 Hz**, the Frequency span's own top, and the class still filters; no `ValueError` at any rate (`test_cpython_effects_notch.py::TheClassIsRateHonest`) | = cp | pass, 16 000 Hz — the span's top again, still under 0.4·F_s (17 640) | = cp | pass, **8 820 Hz** — 0.4·F_s, the only rate where the class's own ceiling bites rather than the span | = cp |
 | Every invariant also holds at `channel_count` 1 | (all) | pass, all rows | = cp | pass | = cp | pass | = cp |
 
 **Mono.** The dossier's §4 says a mono source gets the same filter on one
@@ -179,7 +180,7 @@ FNV-1a over the PCM bytes (`effects_component_probe.py:15`), per probe, per
 rate, per channel count, per patch, at block 256. `sum(data)` is never the
 comparison.
 
-Command (one row; the other seventeen differ only in the flags):
+Command (one row; the other eleven in this table differ only in the flags):
 
 ```
 $ PYTHONPATH=lib .venv/bin/python tools/render_effect.py Notch chord OUT/cp \
