@@ -119,6 +119,11 @@ likely generous. Left as it stands rather than re-guessed (App. S).
 decay, and at and above k = 4 the class holds T3 instead of the silence
 invariant (App. I) and does not decay at all.
 
+**Measured at Station C:** latency **0 samples (integer) at 48, 44.1 and
+22.05 kHz**, budget met; the class's group delay at patch 0 is 2.119 / 2.017 /
+1.015 samples and is exported as group delay, not as latency. **The cost
+budget is still unmeasured on both boards** — `LadderFilter-evidence.md` §4.
+
 *(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
 
 ## 4. Modeling approach on the palette
@@ -266,10 +271,14 @@ One new question is filed rather than faked. *(The readings behind each answer:
    answered by stating the setting: **every Tier 2 trait is measured at
    `Poles = 4`**.
 4. **The sign of T5's peak-height move, and an absolute floor for h3 at
-   self-oscillation.** **Still open, and Station C's to close** — the seed's own
-   instruction: from its first measurement, "recorded as the trait's real
-   number, not back-fitted into the threshold". T5's ±3 dB bar does not move to
-   match what is measured.
+   self-oscillation.** **CLOSED at Station C, 2026-09-07.** The sign is
+   **DOWN**: the resonant peak *falls* as level rises, −3.857 dB across the
+   20 dB from −20 to 0 dBFS in, and it also walks down in frequency
+   (925 → 850 Hz). **h3 at self-oscillation is −63.35 dB re h1** (k = 4.2,
+   f_c = 1 kHz, 48 kHz). Both are recorded as the traits' real numbers and
+   **neither threshold was moved to match** — the seed's own instruction.
+   T4 still states no absolute h3 floor; this is the first number to fix one
+   from. `LadderFilter-evidence.md` §1.
 5. **A Moog service drawing with values.** **Still not reached, still not a
    blocker** (App. D; no URL fetched at this station). The traits are
    topological once ω_c is set. Note the node's tuning law is bilinear, not the

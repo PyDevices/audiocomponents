@@ -37,6 +37,14 @@ filter does not return to silence. At `Resonance` at or above k = 4 - macro
 position 0.952 and up - the class holds its self-oscillation trait *instead
 of* the silence-in-silence-out invariant. Everywhere below that the
 invariant holds exactly, and `reset()` stops the tone at any setting.
+Measured, at 48 kHz: a 0.29 ms tail at patch 0 and a **284.6 ms** tail at
+patch 4 (k 3.9), both reaching **exact zero**; at patch 2 (k 4.2) it never
+does.
+
+**Measured** - `docs/effects/LadderFilter-evidence.md`: -12.055 dB at the
+cutoff and -24.10 dB/octave; the passband 0.00 -> -13.90 dB across
+k = 0...4; self-oscillation at 999.82 Hz holding to +0.01 dB over two
+seconds, 0.068 % THD, every even harmonic below -131 dB re the first.
 """
 
 VENDOR = "PyDevices"

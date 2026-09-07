@@ -6,6 +6,25 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audioif's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Changed
+
+- `LadderFilter` rebuilt on the component contract, as
+  `lib/audioeffects/rebuilt/ladderfilter.py` — one `audioladder.Ladder`, so
+  the class is **audioif tier** (`REQUIRES = ("audioladder",)`) and does not
+  run on a stock CircuitPython board. It is a ladder now rather than four
+  low-passes in a row: the passband droops as `Resonance` rises, it
+  self-oscillates at the top of the knob at the cutoff, and `Drive` is the
+  only warmth control, all three of which the old class could not do. Seven
+  macros where it had none, seven patches where it had one, and
+  `latency_samples` 0 at every setting with no latency-adding option.
+  Evidence: `docs/effects/LadderFilter-evidence.md` — five traits
+  demonstrated, five Tier 1 invariants green on three interpreters at three
+  rates, nine planted faults all red, 48 renders byte-identical across
+  CPython, MicroPython and the patched CircuitPython. **Cost is unmeasured on
+  both boards.**
+
 ## v0.2.0 (2026-09-03)
 
 The first release from this repository. These packages continue a version
