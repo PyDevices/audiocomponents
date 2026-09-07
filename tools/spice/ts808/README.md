@@ -46,7 +46,9 @@ and G-taper respectively, so mid-rotation on the pedal is not `0.5` here.
   the swing to about ±1 V around the 4.5 V bias, so the clamp never engages.
 - **Input buffer** omitted: the drive stage is driven by an ideal source
   through C2/R5. The series resistor ElectroSmash draws as "RA" carries no
-  value on the drawing and is left out.
+  value on the drawing and is left out — and the transcription check of
+  2026-09-07 found the page's own BOM note reads "R A 0Ω", so omitting it is
+  exact rather than a simplification.
 - **Supply and bias** are ideal 9 V and 4.5 V sources (the real bias is a
   10K/10K divider with a 47 µF cap — AC ground either way).
 - **Diodes**: 1N4148 per the brief; the drawing says MA150. Both diodes are
@@ -88,12 +90,24 @@ C4 51 pF, D1/D2 MA150 (text: "MA150/1N4148/1N914"), U1 JRC4558, 9 V supply,
 1K, C7 1 µF, R12 1K (the drawing labels both 1K output resistors R11; the BOM
 lists R11 and R12 as 1K), P3 100K. Its stated figures we check against: gain
 12–118, high-pass corner 720 Hz, tone low-pass 723.4 Hz, treble corner
-3.2 kHz. Two places where the mirror's text and drawing disagree were
-resolved by the drawing plus the site's own arithmetic: the text summary
-gives the (−) input resistor as 1K, but 720 Hz and gain 118 both need 4K7
-(drawn as R4 4K7); the BOM swaps R8/R10 (220 Ω vs 1K) relative to the text,
-but the drawing puts 220 Ω on the wiper and 1K in the feedback, and the
-14.9 dB treble boost that PedalPCB (S5) also reports needs it that way.
+3.2 kHz.
+
+**Corrected 2026-09-07 by the netlist transcription check** (`audiocomponents/docs/effects/Overdrive.md`,
+Appendix I), which read every value in both decks back to this page: an
+earlier version of this paragraph said the article's text gives the (−) input
+resistor as 1K where the drawing says 4K7. **It does not.** The page names R4
+once, in its BOM, as "1 Resistor 4K7 (R4)", the drawing agrees, and a grep of
+the raw HTML finds no 1K claim about R4 anywhere — the netlist's 4.7 kΩ was
+never in doubt, only that account of a conflict. The conflict that *is* real
+is the second one: the BOM reads "4 Resistors 1K (R1, R8, R11, R12) / 1
+Resistor 220 (R10)" where the drawing and the prose both put 220 Ω on the
+tone wiper and 1K in the feedback. The arithmetic settles it — 220 Ω gives
+the 3288 Hz zero and the 14.9 dB boost this page itself states as "3.2KHz"
+and PedalPCB (S5) reports independently, while the BOM reading would give
+723 Hz and 6.0 dB, which nobody claims. Two further self-contradictions in
+the same page's designators, and the finding that all eighteen of the
+mirror's formula images resolve to one 81×16 GIF, are recorded in that
+Appendix.
 
 **S2. Nexperia, 1N4148 SPICE model**,
 <https://assets.nexperia.com/documents/spice-model/1N4148.prm>: IS 4.352E-9,
