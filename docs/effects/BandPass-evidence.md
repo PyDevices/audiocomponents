@@ -584,3 +584,47 @@ From the dossier's §7, and only from there.
   budget at the board run, the fix is a build-time option to drop the second
   section, not a patch — and that would take the Slope toggle off the live
   surface.
+
+---
+
+## Refutation record (2026-09-07)
+
+An independent refuter re-ran every **demonstrated** row on
+`.venv/bin/python` (Python 3.12.3, `PYTHONPATH=lib`, audioif at `2f6cbc3`),
+driving the class through this file's own harness — the helpers in
+`tests/test_cpython_effects_bandpass.py` (`render_through`, `sine`,
+`tone_gain_db`, `_edges`, `_closed_form_db`) over
+`tools/effect_measurements.py` — and varying the probe material, the level,
+the rate, the centre and the width **inside each row's own terms**. Baseline
+before the pass: `PYTHONPATH=lib .venv/bin/python -m unittest
+tests.test_cpython_effects_bandpass` → `Ran 36 tests in 7.772s` / `OK`, and
+the same command reruns `OK` after it (nothing here edits the class).
+
+The common shape of what broke: **§1 measured every Tier 2 row at one or two
+centres and, for T4, at one width, while the dossier's rows are quantified
+over the whole surface.** Four of the six demonstrated rows fail inside the
+span they claim.
+
+| # | Refuter's argument | Verdict |
+|---|---|---|
+| T1 | **Refuted, and this one is the build's.** §1 reads f₀ ∈ {100, 1 k, 4.8 k} only; the Frequency macro's own bottom stop is 20 Hz and the Width macro's own top stop is Q 32 (`set_macro(0,0); set_macro(1,127)` → `centre_hz 20.000`, `bandwidth_hz 0.6250` → Q 32.000). At that setting the settled gain at f₀ is **−0.4858 dB** — ten times the row's ±0.05 dB bar — and it is not a settling artefact: 20 s render read over the last 20 % gives −0.4858, 40 s read over the last 10 % gives −0.4820, 10 s/50 % −0.4801 (the pack's own `seconds` rule gives −0.5376). The neighbourhood: f₀ 20 Hz Q 16 **+0.0866**, f₀ 25 Hz Q 32 **−0.1721**, both over the bar; f₀ 30–60 Hz at Q 32 back inside it. RBJ's closed form at 48 kHz for f₀ 20 Hz Q 32 is **+0.00000 dB**, so unlike T4c the deviation is *not* the prototype. It is level-dependent — the same cell at −3 dBFS reads **+0.0952 dB** — which points at the recursion's own arithmetic, not at a coefficient error. Note also that the pack's worst reported cell (f₀ 100 Hz Q 32, 0.0217 dB) is mostly its own settling window: read over 20 s it is **−0.0014 dB**. Separately, T1's planted fault is a bare `audiobiquad.Biquad` in `PEAKING_EQ` mode built *outside* the class, so the red never passes through `BandPass` at all. **The class author must answer:** why the constant-0 dB numerator loses half a decibel at the surface's own bottom-left corner, whether it is float state in `audiobiquad` at w₀ = 0.0026 rad, and either fix it or carry f₀ ≤ 25 Hz at Q ≥ 16 into §11 as out of tolerance — a `Sub Window`-style patch is one turn of two knobs away from it. | **REFUTED** |
+| T2 | **Refuted at a centre the class ships a patch on.** The row's disconfirm clause is *"either predicted edge reading outside −3.0 ± 0.15 dB, for any Q in 0.5…16"* — no centre restriction; §1 measures f₀ = 1 kHz only. At f₀ = 4 kHz (patch 3 `Presence Window` sits at 4 072 Hz) the predicted edges read **Q 16: −3.209 / −3.222 dB**, **Q 0.5: −3.130 / −3.803 dB** — three of four outside the bar. Q 0.5 and Q 16 at f₀ 1 kHz, 100 Hz and 20 Hz all reproduce §1's result (−2.90 … −3.06). Cause, measured: the same points on RBJ's closed form at 48 kHz read **−3.209 / −3.222 / −3.130 / −3.803**, i.e. the class tracks the prototype to **≤ 0.0005 dB**, so this is T4c's bilinear warp again, in T2's clause this time. **The class author must answer:** restate T2 with the centre condition the warp imposes (as A12 did for T4's high skirt) and record the row as disconfirmed above ~2 kHz, exactly as T4c is — not as demonstrated. | **REFUTED** |
+| T3 | *"The zeros only hold at the centres and widths you chose."* Re-run with a 4 s held DC offset read in the last 0.1 s while the source still supplies frames, at (f₀, Q) = (20, 32), (20, 0.5), (25, 16), (60, 3.03), (1 k, 0.707), (16 k, 32): **0 LSB in all six**. `alt_fs` over 2 s, settled peak over the second half, at (1 k, 0.707), (20, 32), (16 k, 32), (16 k, 0.5), (4 k, 16): **0 LSB in all five**. The past-the-end objection is answered by construction as §1 says. One thing the row does not say and the pack does not measure: at `mix` 0.5 the held-DC window reads **8 192 LSB**, because the dry half of the blend passes DC — correct behaviour, but the row's "produce exactly zero" is a statement about the wet path only. | **survives** |
+| T4a | **Refuted at the widths the class ships.** The row's disconfirm clause is *"low skirt outside +(5.7…6.3) dB/oct at any f₀ ≤ 2 kHz"* — no width restriction; §1 fits at Q 0.707 only. Same 5-point fit over f₀/8…f₀/4 at Q 8: **+6.435 dB/oct** at f₀ 500 Hz; at Q 32: **+6.436** (f₀ 500) and **+6.431** (f₀ 2 k) — all outside the band. Patch 4 `Narrow Probe` is Q 23.8, so this is a shipped setting, not a corner. Cause, measured: the identical fit on the closed form gives **+6.435 / +6.439 / +6.437**, worst point-wise deviation **0.0082 dB** — the prototype's curvature, not the build. The row *does* extend further down than §1 went: at Q 0.707 the fit reads **+6.008 at f₀ 20 Hz** and **+6.006 at 50 Hz**, so the 20 Hz end §1 left unmeasured holds. **The class author must answer:** add the width condition to T4's low-skirt clause (it is a Q 0.707 statement) or record it disconfirmed at Q ≥ 8. | **REFUTED** |
+| T4b | **Refuted on the same axis.** The clause carries a centre condition (f₀ ≤ 600 Hz at 48 kHz) and no width condition; §1 fits at Q 0.707 only. At f₀ 500 Hz — inside the condition — the same 4f₀…8f₀ fit reads **−6.586 dB/oct at Q 8** and **−6.572 at Q 32**; f₀ 600 Hz Q 32 reads **−6.653**. Bar −6.0 ± 0.3. The closed form over the same grid gives **−6.585 / −6.589**, so again the prototype and not the build. What §1 claims *does* reproduce and extends: Q 0.707 at f₀ 20 Hz **−6.006**, 50 Hz **−6.007**, 600 Hz **−6.224** (inside), and f₀ 500 Hz Q 0.5 **−5.783** (inside, barely). **The class author must answer:** the same one T4a owes — the ±6 dB/oct clauses are Q 0.707 statements and the dossier does not say so. | **REFUTED** |
+| T5 | *"You folded at one width; the symmetry is a Q 0.707 result."* It is not. Folded pairs about the prewarped centre at **Q 8 and Q 32**, f₀ ∈ {100, 1 k, 4 800} Hz, r ∈ {2, 8}: worst \|upper − lower\| **0.0043 dB** over twelve pairs (bar 0.05), against §1's 0.00293 at Q 0.707 — the extra width costs nothing, and the readings sit 21–48 dB down where int16 has less to give. The pack's own "to the measurement's floor" wording is what these numbers support too. | **survives** |
+| T6 | *"Two centres, and nothing near the 0.45·F_s the row claims."* The gap is real — §1's highest probe is 2 kHz — and the row still holds when it is filled. Rendered gain against the closed form **at the running rate**, f₀ ∈ {100, 1 k, 4 k}, probes at 0.2 / 0.5 / 0.8 / 0.95 / 0.995 of 0.45·F_s, at 48 k / 44.1 k / 22.05 kHz — 45 cells, worst **0.065 dB** (bar 0.1) except two cells at f₀ 100 Hz where the wet tone is 65 dB down and the −12 dBFS probe puts it on the int16 floor: 21 492 Hz at 48 kHz read −0.304 dB and 19 745.8 Hz at 44.1 kHz read 0.136 dB. Both are the readout, not the filter — the same two cells at −6 dBFS read **0.049 / 0.044 dB** and at −1 dBFS **0.025 / −0.003 dB**. So T6 survives, and the pack's own probe level would have produced a false red had it looked here. | **survives** |
+
+**What the pass could not break:** T3 (eleven centre/width combinations, DC
+and Nyquist, all 0 LSB), T5 (symmetry at Q 8 and Q 32 as well as 0.707) and
+T6 (three centres × five probes up to 0.45·F_s at three rates).
+
+**What it broke, and the one line that says it:** T1 fails **as a property of
+this build** at the two knobs' own stops (−0.486 dB where the closed form
+says 0.000); T2, T4a and T4b fail as **statements of the prototype** whose
+conditions the dossier never wrote down — T2 above about 2 kHz, T4a and T4b
+above about Q 8. Three of those four are the *same* defect T4c already
+records, found in three more clauses: **the dossier corpus's filter rows are
+quantified over spans the bilinear warp does not survive**, and §11's note
+that `LowPass`, `HighPass` and `Notch` likely carry it too now has three
+further instances behind it rather than one.
