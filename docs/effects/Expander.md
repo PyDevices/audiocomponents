@@ -1,100 +1,82 @@
 # Effects Dossier — `Expander` (Drawmer DS201, with RaneNote 155 for the law)
 
-**Class:** `lib/audioeffects/dynamics.py` — the current implementation is
-read once, for §7, and not otherwise consulted.
-**Family / phase:** Dynamics, roadmap Phase 2
-**Standout:** Drawmer DS201 *(proposed, vision §4.2)* — **confirmed as the
-architecture referent and corrected on one point.** The DS201 is a gate: its
-manual gives Threshold, Attack, Hold, Decay, Range and a two-ended key filter,
-and **no ratio control anywhere on the panel** (S1), while a downward expander
-is defined by a ratio below threshold (S2). No swap is proposed; a second
-source is added beside it. The DS201 fixes the envelope, the key filter and
-the depth (E3–E6, shared with `NoiseGate`, which is the same box); RaneNote
-155 fixes the gain law and the detector (E1, E2).
-**Grade:** literature — the two sources that fix the traits describe
-behaviour, not a circuit. *(Audit correction: two Drawmer schematic sheets
-**were** reached in the audit run, as preview page images — S5, §2. The grade
-stays literature under vision §4.1 because no trait below is derived from them
-and no SPICE model or analytic derivation was made from them; revisiting the
-grade is the implementation session's call, with S5 in hand.)*
-**Portability tier:** needs audioif-own nodes (`audiodynamics`)
-**Status:** seed (Phase 0), written 2026-09-06
+**Class:** `lib/audioeffects/rebuilt/expander.py`. The old
+`dynamics.py:140` class is read once, for §7, and stands untouched beneath.
+**Family / phase:** Dynamics, roadmap Phase 2.
+**Standout:** Drawmer DS201 *(vision §4.2)*, **corrected on one point** — it
+is a gate and has no ratio control (S1), so it fixes E3–E6 and RaneNote 155
+is added beside it for E1 and E2 (App. R).
+**Grade:** literature; revisited at Station A with S5's schematic sheets in
+hand and **left there**, because no component value reaches a trait (App. R).
+**Portability tier:** **audioif** — `REQUIRES = ("audiodynamics",)`.
+**Status:** **the six trait statements are the seed's of 2026-09-06, word
+for word; this session changed none of them**, and the bench that settled
+§§4–8 (**App. B**) ran before any class code was written. Station A,
+2026-09-07.
 
 ## 1. The circuit, in one paragraph
 
-The DS201 is a dual-channel gate whose intelligence is all in the side-chain:
-the audio path is input, gain element, output, with a Bypass position that
-"routes the input signal to the output with no processing" (S1). Neither manual
-edition names the gain element, but Drawmer's own service documents do — the
-schematic sheet reached in the audit run is titled "DS 201 (Fig.1) Audio and
-VCA Circuits", and the service manual's setting-up procedure probes the "output
-of V.C.A. op. amp channel 1" and trims a "F.e.t. bias pre-set" (S5) — so **the
-gain element is a VCA, and that is now sourced**; no trait below rests on it. The control path takes the channel's own input or an external Key and passes
-it through two
-variable filters in series — a Low Frequency control **25 Hz to 4 kHz** that
-"works by severely attenuating frequencies below the cut-off", and a High
-Frequency control **250 Hz to 35 kHz** above it, so "it is the range between
-the two settings that is allowed to pass" — then compares the result with a
-Threshold settable **−54 dB to infinity** (S1; Drawmer's own current manual,
-S4, says "-50dBFs" — the editions differ, §2). Crossing it starts a one-shot
-envelope: Attack **10 µs to 1 s**, Hold **2 ms to 2 s** timed from the moment
-the key falls back below threshold, Decay **2 ms to 4 s**; the envelope is
-committed once triggered — "the envelope cycle will complete even if the Key
-source falls below the Threshold level before the Attack phase is completed"
-(S1). What the VCA settles to when shut is not zero but **Range**, "the amount
-of attenuation applied to the input signal when the gate is closed, variable
-from 0 dB to −80 dB" (S1's 2005 edition; S4's 2008 manual says "0dB - 90dB"),
-which the manual itself recommends setting near −15 dB
-when full closure is too obvious. Gate/Duck inverts the sense, Key Listen
-monitors the filtered side-chain, Stereo Link drives both envelopes from
-channel one. There is no ratio: below threshold the DS201 goes to Range, not
-down a slope. **An expander is the same box with the gain computer told to do
-something else** — RaneNote 155: "the topology for an expander looks just like
-a compressor … the expander reduces gain for signals below the threshold. The
+A gate whose intelligence is all in the side-chain: input, VCA, output, with
+a Bypass that passes the input "with no processing". The key path is **two
+variable filters in series** — Low 25 Hz–4 kHz, High 250 Hz–35 kHz, "it is the
+range between the two settings that is allowed to pass" — feeding a Threshold,
+a committed Attack/Hold/Decay envelope (10 µs–1 s, 2 ms–2 s, 2 ms–4 s) and a
+**Range** floor "variable from 0 dB to −80 dB" rather than silence (S1).
+
+**There is no ratio: below threshold it goes to Range, not down a slope. An
+expander is the same box with the gain computer told to do something else** —
+RaneNote 155: "the expander reduces gain for signals below the threshold. The
 ratio still defines output change verses [sic] input change", with an RMS
-detector, and "true rms detection is necessary for compressor and expander modes" where
-a gate needs peak (S2).
+detector, because "true rms detection is necessary for compressor and expander
+modes" where a gate needs peak (S2). Every range above, the editions'
+disagreements and the switches left out: **App. R**.
 
 ## 2. Sources and license calls
 
-All fetched 2026-09-06. Nothing from memory; no component value appears
-anywhere in this seed, because no schematic was reached.
+All fetched 2026-09-06; **no URL was fetched at Station A**, and nothing
+below moved. Nothing from memory. Each row's full reading — what it gave, and
+its licence line read on the page that carries it — is **App. S**; §2 keeps
+the id, the lead, the URL and the reached call, which are the gate conditions.
 
-| Source | What it gave | License as read | URL | Reached |
-|---|---|---|---|---|
-| **S1** Drawmer, *DS201 Dual Noise Gate Operator's Manual* … (App. S1) | Every control range in §1 … (App. S1) | The PDF carries no licence line … (App. S1) | <https://umlsrt.com/StudioDocuments/drawmer%20ds201%20manual.pdf> | yes — PDF fetched, text via `pypdf` |
-| **S2** Jeffs, Holden & Bohn, *Dynamics Processors*, RaneNote 155 | Expander law and block diagram (Figs. 16a/b) … (App. S2) | PDF line "© 2005 Rane Corporation" … (App. S2) | <https://www.ranecommercial.com/legacy/pdf/ranenotes/Dynamics_Processors.pdf> | yes — PDF fetched, text via `pypdf` |
-| **S3** Drawmer, DS201 product page | Feature list and audio spec table … (App. S3) | Footer: "Copyright © 2026 All rights … (App. S3) | <https://www.drawmer.com/products/pro-series/ds201.php> | yes — HTML; this host answers WebFetch with HTTP 429, so the audit fetched it directly (HTTP 200) |
-| **S4** Drawmer, *DS201 Operator's Manual* … (App. S4) | The same control descriptions … (App. S4) | "This manual is copyrighted © 2008 by Drawmer … (App. S4) | <https://www.drawmer.com/uploads/manuals/ds201_operators_manual.pdf> | yes — PDF fetched (HTTP 200, 14 pp.), text via `pypdf`; **added by the audit run**, where the first run had recorded this URL as unreachable |
-| **S5** Drawmer, *DS201 Service Information* (7 pp.) and *DS201 Comp … (App. S5) | Two legible hand-drawn Drawmer sheets with component … (App. S5) | The drawings are Drawmer's … (App. S5) | <https://elektrotanya.com/drawmer_ds201_comp_sch.pdf/download.html> (preview images under `/PREVIEWS/63463243/23432455/drawmer/`) | yes — preview images fetched (HTTP 200) and read; the full PDFs were **not** obtained. Added by the audit run |
-| **Local** `audioif/src/shared/audioif_dynamics.{c,h}`, `audioif/docs/upstream-diff.md`, the probes in the Appendix | What the palette's expander actually does | MIT (audioif) | — | yes |
+| Source | Lead | URL | Reached |
+|---|---|---|---|
+| **S1** | Drawmer, *DS201 Operator's Manual*, 2005 capture, 7 pp. — every control range in §1 | <https://umlsrt.com/StudioDocuments/drawmer%20ds201%20manual.pdf> | yes, PDF |
+| **S2** | Jeffs, Holden & Bohn, *Dynamics Processors*, RaneNote 155 — the law, the ratio, the RMS detector | <https://www.ranecommercial.com/legacy/pdf/ranenotes/Dynamics_Processors.pdf> | yes, PDF |
+| **S3** | Drawmer, DS201 product page — spec table, the external key | <https://www.drawmer.com/products/pro-series/ds201.php> | yes, HTML |
+| **S4** | Drawmer, *DS201 Operator's Manual*, 2008 edition, 14 pp. — two ranges that differ from S1's | <https://www.drawmer.com/uploads/manuals/ds201_operators_manual.pdf> | yes, PDF |
+| **S5** | Drawmer service sheets, as the host's preview images — one fact only, that the gain element is a VCA | <https://elektrotanya.com/drawmer_ds201_comp_sch.pdf/download.html> | previews only; full PDFs **not** obtained |
+| **Local** | `audioif/src/shared/audioif_dynamics.c`, `src/audiodynamics/Dynamics.c`, `docs/upstream-diff.md:969-1098`, and App. B | — | yes |
 
-*Second-pass result: licence calls S1–S4 stand as written; S5 added; the "no
-schematic" and "VCA unsourced" findings overturned; one flag on E5.*
-
-*(More of §2 is in **App. R** — moved under the length rule, nothing deleted.)*
+*Every licence is **verified all-rights-reserved** or personal-use-only
+(App. S). Nothing is reproduced; no component value reaches a trait.*
 
 ## 3. Traits — fixed before measurement
 
 ### Tier 1 — invariants (the standard block, verbatim from vision §3)
 
-The standard block, verbatim from vision §3, is in **App. I** — moved there under the length rule; any class-specific note on it moved with it.
+The standard block, verbatim from vision §3, is in **App. I** — moved there
+under the length rule, with this class's mono, rate and `capabilities` notes.
 
 ### Tier 2 — circuit traits
 
-Kit: **LAW** = 1 kHz steady-sine staircase, 1 dB steps −80 to −10 dBFS,
-output RMS over the settled half of each render; **XF** = the same with a sine
-and a square of equal RMS; **KEY** = swept sine, gain-reduction trace per
-block; **ENV** = burst-then-silence, gain trace per block.
+Kit names, resolved to the kit spec's twenty: **LAW** → CURVE, **XF** →
+CURVE, **KEY** → RESPONSE (the swept-detector exception §5 grants E3 by name),
+**ENV** → GAINTRACE. The seed's own definitions are in **App. R**.
+
+**Frozen.** Every trait statement, disconfirmation and measurement below is
+the seed's of 2026-09-06, unedited. The three bracketed notes were added at
+Station A, after the bench and after the class was written, and record what a
+statement was found to *imply* — never what it says. The evidence pack grades
+the statements, not the notes.
 
 | # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Meas. |
 |---|---|---|---|---|---|
-| E1 | Below threshold the output falls `ratio` dB per 1 dB of input drop: over the 30 dB below threshold, at ratios 1.5, 2, 4 and 8, the least-squares slope of output-dB against input-dB is within 5 % of the set ratio **and** no point on the staircase is more than 0.5 dB from that fitted line; above threshold the gain is 0.00 ± 0.05 dB | S2, Fig. 16b ("for every 10 dB of reduction … (App. E1) | high | A fitted slope more than 5 % off the set ratio at any of the four ratios; a point more than 0.5 dB off the line; a slope that changes by more than 5 % when the whole staircase is moved 20 dB up or down with the threshold moved with it | LAW |
-| E2 | The detector is **RMS**: a sine and a square of equal RMS, both 15 dB below threshold, get the same gain within 0.5 dB | S2 ("true rms detection is necessary for … (App. E2) | high | A difference near 3.0 dB × (ratio−1), which is what a peak detector gives | XF |
-| E3 | The key path is a **band**: low cut settable 25 Hz–4 kHz, high cut 250 Hz–35 kHz (clamped below Nyquist), and with the band set to 500 Hz–2 kHz a tone an octave outside either end, swept from −60 dBFS to 0 dBFS, moves the gain less than 1 dB from its floor at every level | S1 | high | An out-of-band tone at any level up to full scale moving the gain more than 1 dB off the floor; a gain that opens fully as an out-of-band tone is raised. *(Two clauses of the first draft are struck as unsourced: "a skirt shallower than 12 dB/oct at either end" — neither source states the key filters' order, which is a design choice, §5 — and "at any level", which is unbounded and therefore unfalsifiable; the level span the kit actually drives is named instead. **Critic pass, 2026-09-06.**)* | KEY |
-| E4 | **Depth is a control:** with the input 30 dB below threshold at −6 dBFS, the settled attenuation equals the Depth setting within 0.5 dB at 0, −20, −40 and −60 dB, and the control's full span reaches at least −80 dB | S1 (Range: "0dB to -80dB" in the 2005 … (App. E4) | high | A settled attenuation more than 0.5 dB from the setting at any of the four; a floor that does not move with the control; a span that stops short of −80 dB | LAW at four Depth settings |
-| E5 | **The envelope is one-shot:** once threshold is crossed the attack completes to full open even if the key falls back first, and Hold (2 ms–2 s) times from that fall | S1, verbatim ("the envelope cycle will … (App. E5) | medium — unambiguous … (App. E5) | A 1 ms key burst under a 200 ms attack that never reaches full open | ENV |
-| E6 | Attack spans 10 µs–1 s and release 2 ms–4 s: at settings 1, 10, 100 and 1000 ms of attack and 10, 100, 1000 and 4000 ms of release the measured 10–90 % transition is within 15 % of the setting, and settings below one sample period (20.8 µs at 48 kHz) are held only to "one sample or less" | S1 | medium — panel … (App. E6) | A measured transition more than 15 % from the setting at any of the eight; a setting past which the measured time stops changing; a fastest attack longer than one sample | ENV |
+| E1 | Below threshold the output falls `ratio` dB per 1 dB of input drop: over the 30 dB below threshold, at ratios 1.5, 2, 4 and 8, the least-squares slope of output-dB against input-dB is within 5 % of the set ratio **and** no point on the staircase is more than 0.5 dB from that fitted line; above threshold the gain is 0.00 ± 0.05 dB *[the 30 dB clause asks for 30·(ratio−1) dB of output range below the threshold, which at ratio 8 is 210 dB and cannot exist in a 16-bit path — App. B1]* | S2 (App. E1) | high | A fitted slope more than 5 % off the set ratio at any of the four ratios; a point more than 0.5 dB off the line; a slope that changes by more than 5 % when the whole staircase is moved 20 dB up or down with the threshold moved with it | LAW |
+| E2 | The detector is **RMS**: a sine and a square of equal RMS, both 15 dB below threshold, get the same gain within 0.5 dB | S2 (App. E2) | high | A difference near 3.0 dB × (ratio−1), which is what a peak detector gives | XF |
+| E3 | The key path is a **band**: low cut settable 25 Hz–4 kHz, high cut 250 Hz–35 kHz (clamped below Nyquist), and with the band set to 500 Hz–2 kHz a tone an octave outside either end, swept from −60 dBFS to 0 dBFS, moves the gain less than 1 dB from its floor at every level *[holding the floor to 0 dBFS asks for more than 40 dB of stopband rejection one octave out — an eighth-order key filter. Neither source states an order, and the ask the palette answered specified 12 dB/octave — App. B3]* | S1 | high | An out-of-band tone at any level up to full scale moving the gain more than 1 dB off the floor; a gain that opens fully as an out-of-band tone is raised. *(two clauses struck by the critic pass — App. R)* | KEY |
+| E4 | **Depth is a control:** with the input 30 dB below threshold at −6 dBFS, the settled attenuation equals the Depth setting within 0.5 dB at 0, −20, −40 and −60 dB, and the control's full span reaches at least −80 dB | S1, S2 (App. E4) | high | A settled attenuation more than 0.5 dB from the setting at any of the four; a floor that does not move with the control; a span that stops short of −80 dB | LAW at four Depth settings |
+| E5 | **The envelope is one-shot:** once threshold is crossed the attack completes to full open even if the key falls back first, and Hold (2 ms–2 s) times from that fall *[the node's one-shot machine exists but is gated on `DYN_GATE` and replaces the ratio law; an expander cannot have both — App. B5]* | S1, verbatim (App. E5) | medium (App. E5) | A 1 ms key burst under a 200 ms attack that never reaches full open | ENV |
+| E6 | Attack spans 10 µs–1 s and release 2 ms–4 s: at settings 1, 10, 100 and 1000 ms of attack and 10, 100, 1000 and 4000 ms of release the measured 10–90 % transition is within 15 % of the setting, and settings below one sample period (20.8 µs at 48 kHz) are held only to "one sample or less" *[`attack_ms`/`release_ms` are one-pole time constants, and the 10–90 % time of a gain-in-dB trace is a function of the level step as well as the setting — App. B6]* | S1 | medium (App. E6) | A measured transition more than 15 % from the setting at any of the eight; a setting past which the measured time stops changing; a fastest attack longer than one sample | ENV |
 
 No characters. E1 and E2 make this class an expander rather than a gate;
 E3–E6 are shared with `NoiseGate` and are demonstrated separately in each
@@ -102,47 +84,68 @@ class's own evidence pack.
 
 ### Tier 3 — cost and latency
 
-Budget as a fraction of one stereo block's real-time deadline: ESP32-P4
-**6 %**, ESP32-S3 **12 %**. Lean patch expected: **no** — one detector, one
-gain per frame, at most four side-chain biquads.
+Budget, as a fraction of one stereo block's real-time deadline: ESP32-P4
+**6 %**, ESP32-S3 **12 %**. Lean patch expected: **no** — one node, one
+detector, one gain per frame, a two-pole key band at each end.
 
-*(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
+**Latency budget: 0 samples at every setting; no option may add any.** No
+source shows a delay element in the DS201's audio path, and RaneNote 155 puts
+look-ahead in the *gate*'s diagram, not the expander's (S2, Figs. 16a/17a), so
+the class ships **no look-ahead option at all** — there is no latency-adding
+option to name a millisecond figure for. The one delay worth naming is *not*
+latency and is never reported in `latency_samples` (App. R).
+
+*(More of §3 is in **App. R** — nothing deleted.)*
 
 ## 4. Modeling approach on the palette
 
-Compose first. `audiodynamics.Dynamics(DYN_EXPAND)` already carries the shape:
-a per-sample envelope follower with settable attack and release, a gain
-computer silent above threshold and applying `over × (ratio − 1)` below it
-(`audioif_dynamics.c:184`), and a per-sample VCA. **E1 is reachable today** —
-at 2:1 the fitted slope is 1.02 dB of extra attenuation per dB, at 4:1 it is
-3.4 (A2) — so most of the rebuild is surface work: `ratio`, `threshold_db`,
-`attack_ms` and `release_ms` all move live through `Dynamics.set()`. Four
-parts of the set are not reachable, each shown by measurement:
+**One node.** `audiodynamics.Dynamics(DYN_EXPAND)` with the Phase 1 options
+carries five of the six traits; the four asks (§5) all landed on the pin
+(`upstream-diff.md:969`). One trait, one option, verified at **App. B**:
 
-- **E2** — the detector is a peak follower, `fabsf(detector[channel])` at …  *(argument in full: App. R)*
-- **E3** — `sidechain_hz` is one pole and one end: a single coefficient …  *(argument in full: App. R)*
-- **E4** — the floor is the literal `cut < -60.0f ? -60.0f` at `:185`;
-  measured, the law stops there and then quantises to exact zero (A2).
-- **E5** — the follower is a plain one-pole with no trigger state (`:302-307`), …  *(argument in full: App. R)*
+| Trait | What carries it | Bench |
+|---|---|---|
+| E1 | the mode's gain computer, `over × (ratio − 1)` (`audioif_dynamics.c:371-381`) | slope within **1.9 %** of the ratio at 1.5, 2, 4, 8; above threshold **−0.002 dB** — B1 |
+| E2 | **`detector="rms"`**, 10 ms window unset | equal-RMS sine/square gap **0.05 dB** against E2's 0.5; peak gives **2.43 dB** — B2 |
+| E3 | **`sidechain_hz`** + **`sidechain_lp_hz`** at **`sidechain_poles=2`** | both ends move; rejection two octaves out **25 dB**, not the ≥40 dB an octave out E3's floor clause implies — B3 |
+| E4 | **`depth_db`** | floor tracks the setting to **0.00 / 0.00 / −0.05 / −0.06 dB** at 0, −20, −40, −60 and reaches −80 — B4 |
+| E5 | **nothing** — `hold_ms` is inert in this mode | identical traces with and without `hold_ms=20`; the same burst in `DYN_GATE` opens to −1.96 dB — B5 |
+| E6 | **`attack_ms`** / **`release_ms`** | monotone and proportional across the span; measured 10–90 % over setting is 0.25 on attack, 2.54 on release — B6 |
 
-*(More of §4 is in **App. R** — moved under the length rule, nothing deleted.)*
+**Composition was weighed and rejected on the seed's own numbers** (App. R):
+V-E4's `Splitter`-and-two-`Mixer`s Depth reached −60 dB with 0.32 dB of error
+and a 32 KB ring where `depth_db` is one float reaching −80; and a steeper key
+band from `audiobiquad.Biquad` into `Dynamics.key()` needs four sections per
+end to change E3's verdict, where the ask asked for 12 dB/octave. **The class
+builds one node and no others.** `key(sample)` is a constructor option, not a
+macro — the DS201's external Key (S1, S3) — borrowed like `source`: never
+owned, reset or deinited.
 
-## 5. Node asks
+**Portability tier: audioif.** `audiodynamics` is audioif's own module, not a
+CircuitPython port (`upstream-diff.md:661`), so the module carries the guarded
+import and `_require_modules()` raises `ImportError` on a stock board. Python
+computes nothing per sample: each macro is one `Dynamics.set()`.
 
-All are additive options on `audiodynamics`, audioif's own module (D1), each
-defaulting to today's behaviour so `dynamics_probe.py`'s hash is unchanged —
-the discipline `upstream-diff.md:837` records for this node's last two options.
+## 5. Node asks — all four delivered on the pin
 
-- **N-EXP-1 — RMS detection (unblocks E2).** An RMS detector option for …  *(argument in full: App. R)*
-- **N-EXP-2 — a two-ended key band and an external key (unblocks E3).** …  *(argument in full: App. R)*
-- **N-EXP-3 — a settable depth (unblocks E4).** `depth_db`, defaulting to …  *(argument in full: App. R)*
-- **N-EXP-4 — a one-shot envelope with `hold_ms` (unblocks E5, E6's hold).** …  *(argument in full: App. R)*
+Filed on `audiodynamics` as additive, default-off options
+([audioif#38](https://github.com/PyDevices/audioif/issues/38)); all four on
+the pin. The refutation behind each: **App. R**.
 
-*(More of §5 is in **App. R** — moved under the length rule, nothing deleted.)*
+- **N-EXP-1, RMS detection (E2)** → `detector="rms"` + `rms_ms`.
+- **N-EXP-2, two-ended key band and external key (E3)** → `sidechain_lp_hz`,
+  `sidechain_poles`, `key(sample)`, `key_listen`.
+- **N-EXP-3, settable depth (E4)** → `depth_db`.
+- **N-EXP-4, one-shot envelope with `hold_ms` (E5) — for `DYN_GATE` only.**
+  `audioif_dynamics.c:452-453` gates the machine on the mode and `:679-724`
+  replaces the gain computer with a binary open/floor. **Not a shortfall**: a
+  ratio law and a binary trigger cannot be one computer. E5 is `NoiseGate`'s.
+  **No new ask.**
 
-## 6. Proposed surface
+## 6. Surface, frozen
 
-Ten macros; all UNIPOLAR except the two toggles.
+**Nine macros**, all UNIPOLAR except the two toggles. Engineering spans are
+private (`_MACRO_RANGES`); the panel sees 0–127.
 
 | # | Macro | Mode | Range | Generalizes |
 |---|---|---|---|---|
@@ -150,50 +153,60 @@ Ten macros; all UNIPOLAR except the two toggles.
 | 1 | Ratio | UNIPOLAR | 1.0 … 8.0, log | RaneNote 155's ratio |
 | 2 | Depth | UNIPOLAR | 0 … −80 dB | DS201 Range |
 | 3 | Attack | UNIPOLAR | 0.01 … 1000 ms, log | DS201 Attack |
-| 4 | Hold | UNIPOLAR | 2 … 2000 ms, log | DS201 Hold |
-| 5 | Release | UNIPOLAR | 2 … 4000 ms, log | DS201 Decay |
-| 6 | Key Low | UNIPOLAR | 25 … 4000 Hz, log | DS201 L.F. |
-| 7 | Key High | UNIPOLAR | 250 Hz … Nyquist, log | DS201 H.F. |
-| 8 | Key Listen | TOGGLE | off / on | DS201 Key Listen |
-| 9 | Detector | TOGGLE | RMS / peak | RaneNote 155's rms-for-expanders |
+| 4 | Release | UNIPOLAR | 2 … 4000 ms, log | DS201 Decay |
+| 5 | Key Low | UNIPOLAR | 25 … 4000 Hz, log | DS201 L.F. |
+| 6 | Key High | UNIPOLAR | 250 … 35000 Hz, log, clamped below Nyquist | DS201 H.F. |
+| 7 | Key Listen | TOGGLE | off / on | DS201 Key Listen |
+| 8 | Detector | TOGGLE | peak / RMS | RaneNote 155's rms-for-expanders |
 
-Characters: none. Patches, named for what they do: **Gentle Lift**, **Noise
-Floor Trim**, **Snare Tighten**, **Guitar Amp Hum**, **Room Reduction**,
-**Hard Downward**. Key Listen is a diagnostic and is off in every patch.
+**The seed proposed ten; Hold is dropped**, because `hold_ms` does nothing in
+`DYN_EXPAND` (B5) and a knob that does nothing is worse than an absent one —
+said in the class docstring, not only here. `rms_ms` is **not** exposed
+(§8.2). Characters: none. **Patches**, 0 being the constructor's defaults on
+the 0–127 grid: **Gentle Lift**, **Noise Floor Trim**, **Snare Tighten**,
+**Guitar Amp Hum**, **Room Reduction**, **Hard Downward**. Key Listen is a
+diagnostic and is off in every one.
+
+**`capabilities` = `()`** — nothing in an expander's law refers to tempo and
+neither source's unit has a tempo input, so `self._transport()` is never read.
 
 ## 7. Defects in the current class the rebuild must not repeat
 
-- **No surface.** `MACRO_LABELS = ()` (`dynamics.py:147`) and
-  `PATCHES = {0: ("Default", ())}` (`:149`): nothing for a host to turn, and a
-  placeholder patch. Threshold, ratio, attack and release (`:151-152`) are
-  construction-only and can never move again.
-- **The floor is invisible.** The class exposes `ratio` but not the −60 dB
-  clamp underneath it (`audioif_dynamics.c:185`), so 8:1 stops obeying the
-  ratio 7.5 dB below threshold and nothing says so.
-- **The detector type is undocumented.** The docstring (`dynamics.py:141`)
-  says only "below the threshold, quiet gets quieter", so a user setting a
-  threshold from an RMS meter is 3 dB out on a sine and further on anything
-  peakier.
-- **No hold, no key filter, no depth** — and nothing states the omissions, so
+- **No surface.** `MACRO_LABELS = ()` (`dynamics.py:147`), `PATCHES = {0:
+  ("Default", ())}` (`:149`); threshold, ratio, attack and release
+  (`:151-152`) are construction-only and can never move again.
+- **The floor is invisible** — `ratio` is exposed but not the −60 dB clamp
+  under it (`audioif_dynamics.c:185`), so 8:1 stops obeying the ratio 7.5 dB
+  below threshold and nothing says so.
+- **The detector type is undocumented** (`dynamics.py:141`), so a threshold
+  set from an RMS meter is 3 dB out on a sine and further on anything peakier.
+- **No hold, no key filter, no depth**, and nothing states the omissions, so
   they read as design.
 
-## 8. Open questions
+## 8. Open questions — settled at Station A
 
-1. **Is `Expander` a distinct implementation from `NoiseGate`** once both have
-   Depth and Ratio? They differ only in slope-versus-floor, and the DS201 is
-   one box. The 46 names are frozen (roadmap §3), so "merge" is not available;
-   the question is one implementation with two defaults. *Implementation
-   session, Phase 2.*
-2. **Does N-EXP-1's RMS detector need a settable averaging window** or is a
-   fixed one enough for E2? *Phase 1 node design, from this seed and
-   `Compressor`'s.*
-3. **E5's confidence.** The completion sentence is the manual's and no
-   waveform corroborates it; a DS201 schematic would move it to high or strike
-   it. *Phase 0 if a drawing turns up; otherwise it ships at medium, quoted.*
-4. **The DS201 schematic** exists on elektrotanya and was not obtained.
-   Nothing in the trait set depends on a component value, so this is a
-   one-line note for the survey, not a blocker. *Arthur.*
+1. **Distinct from `NoiseGate`? Yes — the palette decides it, not taste.**
+   The one-shot machine is gated on `mode == AUDIOIF_DYNAMICS_GATE`
+   (`audioif_dynamics.c:452-453`) and replaces the gain computer with a binary
+   open/floor (`:679-724`): one node cannot be both a ratio law and a trigger.
+   `Expander` is `DYN_EXPAND` with Ratio and Depth and no Hold; `NoiseGate` is
+   `DYN_GATE` with Hold and Hysteresis and no Ratio. **Not** one
+   implementation with two defaults.
+2. **A settable RMS window? No.** At the unset 10 ms window the gap is
+   **0.05 dB** against E2's 0.5 (B2). What the window costs is named instead,
+   in the class docstring: it floors Attack (t63 **0.75 ms** at
+   `attack_ms=0.01`, B6), and the peak position removes it.
+3. **E5's confidence.** Moot here — E5 is not demonstrable by this class at
+   all (B5) — and **left at medium** for `NoiseGate`, which measures it and
+   picks between S1's two disagreeing Hold statements (App. R).
+4. **The DS201 schematic** was not obtained. No trait depends on a component
+   value and Station A left the grade at literature with S5 in hand: a
+   one-line note for the survey, **not a blocker, not this class's to chase**.
+   *Arthur.*
 
+**Nothing in §8 is left open.** Where a question could not be answered from
+this class's evidence it is named above as `NoiseGate`'s or Arthur's, with the
+reason, rather than carried as an open item this rebuild is waiting on.
 
 ## Appendix
 
@@ -306,6 +319,149 @@ branch attenuated by √d through a second `Mixer` before the sum.
 off came back at frame **128** in every case; `DYN_LIMIT` with
 `lookahead_ms=5.0` came back at frame **368**, 240 frames = 5.00 ms. A5
 reproduced.
+
+### App. B — Station A bench, 2026-09-07
+
+Every number §§3–8 cite as B1–B7 is printed by one committed file and by
+nothing else, against the CPython build of audioif in `audiocomponents/.venv`
+at the pin `2f6cbc3`, 48 kHz, stereo, 16-bit. It drives
+`audiodynamics.Dynamics` directly, not the class: its subject is what the
+*palette* does.
+
+```
+$ PYTHONPATH=lib .venv/bin/python tools/phase0_probes/expander_station_a.py
+B1  E1, the law - threshold -20 dBFS, RMS detector, depth -90 dB.
+    The span per ratio is bounded by the int16 floor, not by the
+    node: E1's 30 dB clause asks for 30*(ratio-1) dB of output
+    range, which is 210 dB at ratio 8.
+    ratio 1.5  span 30.0 dB  slope 1.5068 (+0.45%)  max residual 0.080 dB
+    ratio 2.0  span 30.0 dB  slope 2.0299 (+1.49%)  max residual 0.459 dB
+    ratio 4.0  span 15.0 dB  slope 4.0702 (+1.76%)  max residual 0.411 dB
+    ratio 8.0  span  7.5 dB  slope 8.1522 (+1.90%)  max residual 0.488 dB
+    above threshold at -15 dBFS: -0.002 dB
+    above threshold at -10 dBFS: -0.002 dB
+    above threshold at -6 dBFS: -0.002 dB
+
+B2  E2, the detector - threshold -20 dBFS, ratio 2, attack 5 ms,
+    release 150 ms; sine and square at equal RMS -35 dBFS.
+    detector=peak sine -47.63  square -50.05  gap 2.43 dB
+    detector=rms  sine -50.00  square -50.05  gap 0.05 dB
+
+B3  E3, the key band - 500-2000 Hz, threshold -40 dBFS, ratio 4,
+    depth -60 dB (so the floor is -60), RMS detector.
+    poles=1     250 Hz  -60 dBFS/-60.0 dB  -40 dBFS/-21.8 dB  -20 dBFS/0.0 dB  +0 dBFS/0.0 dB
+    poles=1    1000 Hz  -60 dBFS/-60.0 dB  -40 dBFS/-6.6 dB  -20 dBFS/0.0 dB  +0 dBFS/0.0 dB
+    poles=1    4000 Hz  -60 dBFS/-60.0 dB  -40 dBFS/-21.7 dB  -20 dBFS/0.0 dB  +0 dBFS/0.0 dB
+    poles=2     250 Hz  -60 dBFS/-60.0 dB  -40 dBFS/-43.8 dB  -20 dBFS/0.0 dB  +0 dBFS/0.0 dB
+    poles=2    1000 Hz  -60 dBFS/-60.0 dB  -40 dBFS/-13.2 dB  -20 dBFS/0.0 dB  +0 dBFS/0.0 dB
+    poles=2    4000 Hz  -60 dBFS/-60.0 dB  -40 dBFS/-43.4 dB  -20 dBFS/0.0 dB  +0 dBFS/0.0 dB
+    rejection, poles=2, a -20 dBFS tone per frequency:
+         125 Hz  gain   -15.12 dB  implied detector   -45.04 dBFS
+         250 Hz  gain     0.00 dB  implied detector     0.00 dBFS
+         500 Hz  gain     0.00 dB  implied detector     0.00 dBFS
+        1000 Hz  gain     0.00 dB  implied detector     0.00 dBFS
+        2000 Hz  gain     0.00 dB  implied detector     0.00 dBFS
+        4000 Hz  gain     0.00 dB  implied detector     0.00 dBFS
+        8000 Hz  gain   -13.24 dB  implied detector   -44.41 dBFS
+
+B4  E4, depth - input -6 dBFS, threshold 30 dB above it (+24 dB),
+    ratio 8, RMS detector; the settled attenuation against the
+    setting.
+    depth   +0.0 dB ->    -0.00 dB  (error -0.00)
+    depth  -20.0 dB ->   -20.00 dB  (error -0.00)
+    depth  -40.0 dB ->   -40.02 dB  (error -0.02)
+    depth  -60.0 dB ->   -60.15 dB  (error -0.15)
+    depth  -80.0 dB ->   -81.68 dB  (error -1.68)
+
+B5  E5, the one-shot - a 1 ms full-scale burst then silence, under
+    a 200 ms attack. Gain read once per 256-frame block.
+    EXPAND hold_ms=None best gain    0.00 dB   first six blocks -43.4 -7.6 0.0 0.0 0.0 0.0
+    EXPAND hold_ms=20.0 best gain    0.00 dB   first six blocks -43.4 -7.6 0.0 0.0 0.0 0.0
+    GATE   hold_ms=None best gain  -80.00 dB   first six blocks -80.0 -80.0 -80.0 -80.0 -80.0 -80.0
+    GATE   hold_ms=20.0 best gain   -1.96 dB   first six blocks -31.6 -25.7 -22.3 -19.9 -18.1 -16.6
+
+B6  E6, the times - a 20 dB level step, threshold -20 dBFS,
+    ratio 2, depth -20 dB, RMS detector. attack_ms and release_ms
+    are one-pole time constants, so 10-90 %% of the gain-in-dB
+    trace is a function of the step size too.
+    attack      0.01 ms  t63     0.750 ms  10-90     0.500 ms  10-90/set 50.00   (-10.0 -> 0.0 dB)
+    attack      1.00 ms  t63     1.250 ms  10-90     1.000 ms  10-90/set  1.00   (-10.0 -> 0.0 dB)
+    attack     10.00 ms  t63     4.250 ms  10-90     5.000 ms  10-90/set  0.50   (-10.0 -> 0.0 dB)
+    attack    100.00 ms  t63    18.750 ms  10-90    25.500 ms  10-90/set  0.26   (-10.5 -> 0.0 dB)
+    attack   1000.00 ms  t63   125.750 ms  10-90   249.000 ms  10-90/set  0.25   (-20.0 -> 0.0 dB)
+    release     2.00 ms  t63    45.250 ms  10-90    33.000 ms  10-90/set 16.50   (0.0 -> -10.0 dB)
+    release    10.00 ms  t63    57.750 ms  10-90    37.000 ms  10-90/set  3.70   (0.0 -> -10.0 dB)
+    release   100.00 ms  t63   297.250 ms  10-90   251.000 ms  10-90/set  2.51   (0.0 -> -9.8 dB)
+    release  1000.00 ms  t63  2812.250 ms  10-90  2536.500 ms  10-90/set  2.54   (0.0 -> -9.8 dB)
+    release  4000.00 ms  t63 11263.750 ms  10-90 10140.500 ms  10-90/set  2.54   (0.0 -> -9.8 dB)
+    the fastest attack, with the RMS window taken out of it:
+      attack_ms=0.01, detector=rms   t63 0.750 ms (36.0 samples at 48 kHz)
+      attack_ms=0.01, detector=peak  t63 0.250 ms (12.0 samples at 48 kHz)
+
+B7  latency, the wire states and the tail.
+    impulse in at frame 128, out at frame 128
+    ratio 1.0   byte-identical to the source: True  (worst 0 LSB)
+    depth 0 dB  byte-identical to the source: True  (worst 0 LSB)
+    key_listen=0: last non-zero frame after the burst ends: -1
+    key_listen=1: last non-zero frame after the burst ends: 2905
+```
+
+**What the seven say, in one line each.**
+
+- **B1 — E1's law holds; E1's *span* does not fit in 16 bits.** The fitted
+  slope is within **1.90 %** of the set ratio at 1.5, 2, 4 and 8 and the worst
+  residual is **0.488 dB** against E1's 0.5; above threshold the gain is
+  **−0.002 dB** against E1's ±0.05. But the span each ratio was measured over
+  is 30, 30, 15 and 7.5 dB, not 30 dB throughout: E1 asks for 30 dB below
+  threshold, which at ratio 8 is 210 dB of output range below a threshold that
+  is itself below full scale. The measurement stops where the int16 output
+  quantises to exact zero. *The law is the node's; the 30 dB clause is the
+  statement's own arithmetic.*
+- **B2 — E2 is reached, and it is the option that reaches it.** The equal-RMS
+  sine/square gap is **0.05 dB** with `detector="rms"` against E2's 0.5 dB
+  allowance, and **2.43 dB** with the peak detector. The seed measured 0.90 dB
+  as the best a mean-absolute follower could do (V-E1); the RMS detector beats
+  that by a factor of eighteen.
+- **B3 — the band is real and E3's floor clause is not reachable.** Both ends
+  move and both reject: at two poles a −20 dBFS tone two octaves outside the
+  500–2000 Hz band reads **−45.04 dBFS** at the detector, 25 dB of rejection.
+  But a −20 dBFS out-of-band tone already opens the gain to **0.0 dB** against
+  a −40 dBFS threshold, and E3 asks the gain to stay at its floor to 0 dBFS —
+  better than 40 dB an octave out, an eighth-order key filter. No source states
+  an order and the node ask specified 12 dB/octave.
+- **B4 — E4 is met.** The settled attenuation tracks the setting to
+  **−0.00 / −0.00 / −0.02 / −0.15 dB** at 0, −20, −40 and −60 dB, against E4's
+  0.5 dB, and the span reaches **−81.68 dB** at the −80 setting, so "at least
+  −80 dB" is met. (The seed's composed route reached −60 dB with 0.32 dB of
+  error and stopped there; `depth_db` halves that error and goes 20 dB further,
+  for one float instead of a 32 KB ring.)
+- **B5 — E5 is not reachable in this mode, and the palette says why.** A 1 ms
+  burst under a 200 ms attack renders the *same* `DYN_EXPAND` trace with and
+  without `hold_ms=20` — `−43.4, −7.6, 0.0, 0.0 …` in both — while the same
+  burst in `DYN_GATE` goes from never opening (`−80.00` for every block) to
+  **−1.96 dB**. `hold_ms` is silently inert in `DYN_EXPAND`
+  (`audioif_dynamics.c:452-453`), and the machine it drives replaces the ratio
+  law rather than sitting under it (`:679-724`).
+- **B6 — the times track, but not by E6's clock.** `attack_ms` and
+  `release_ms` are one-pole time constants. Measured 10-90 % over the setting
+  is **0.25** at the long attacks and **2.54** at the long releases, both
+  stable across a decade — a fixed factor, not drift — and both a function of
+  the 20 dB step as much as of the setting. E6's "within 15 % of the setting"
+  is a claim about a 10-90 % time being the same number as a time constant,
+  which it is not. On the fastest setting, `attack_ms=0.01`, the RMS window
+  puts t63 at **0.75 ms** and the peak detector at **0.25 ms** — 12 samples,
+  which is this trace's own resolution (the 1 kHz sine's peaks are 12 and 36
+  samples apart), so E6's "one sample or less" is met as far as this
+  measurement can see and is not resolved further here.
+- **B7 — latency zero, two wire states, and the one path with memory.** An
+  impulse at frame 128 comes back at frame **128**. Both wire states are
+  **byte-identical to the source, worst 0 LSB**: Ratio at 1.0, and Depth at
+  0 dB. After a 200 ms burst the audio output's last non-zero frame is the
+  burst's own — a multiplicative VCA has no tail. `key_listen=1` is the
+  exception, **2905 frames (60.5 ms at 48 kHz)**, because the output is then
+  the side-chain's signal and the 25 Hz high-pass has memory; that is a
+  diagnostic state, off in every patch, and it is recorded rather than folded
+  into `TAIL_SAMPLES`.
 
 ### App. I — Tier 1 invariants, the standard block
 
@@ -545,3 +701,74 @@ follower, gain computer and VCA per sample.
   (`NoiseGate.md` V-G1) — but nothing to trigger it from: the contract gives a
   component no per-block hook (`docs/audio-component-api.md:231-233`). Ask
   stands. *Filed under `NoiseGate`; cited here.*
+
+
+*(from §1, the full paragraph, moved at Station A 2026-09-07 under the length rule)*
+
+The DS201 is a dual-channel gate whose intelligence is all in the side-chain:
+the audio path is input, gain element, output, with a Bypass position that
+"routes the input signal to the output with no processing" (S1). **The gain
+element is a VCA**, sourced from Drawmer's own service documents (S5); no
+trait below rests on it (App. R). The control path takes the channel's own
+input or an external Key and passes it through two variable filters in
+series — a Low Frequency control **25 Hz to 4 kHz** that "works by severely
+attenuating frequencies below the cut-off", and a High Frequency control
+**250 Hz to 35 kHz** above it, so "it is the range between the two settings
+that is allowed to pass" — then compares the result with a Threshold settable
+**−54 dB to infinity** (S1; Drawmer's own current manual, S4, says "-50dBFs" —
+the editions differ, §2).
+
+Crossing it starts a one-shot envelope: Attack **10 µs to 1 s**, Hold **2 ms
+to 2 s**, Decay **2 ms to 4 s**, committed once triggered (S1, quoted at E5).
+What the VCA settles to when shut is not zero but **Range**, "the amount of
+attenuation applied to the input signal when the gate is closed, variable from
+0 dB to −80 dB" (S1's 2005 edition; S4's 2008 manual says "0dB - 90dB").
+Gate/Duck, Key Listen and Stereo Link are the remaining switches (App. R).
+**There is no ratio: below threshold the DS201 goes to Range, not down a
+slope. An expander is the same box with the gain computer told to do
+something else** — RaneNote 155: "the topology for an expander looks just
+like a compressor … the expander reduces gain for signals below the
+threshold. The ratio still defines output change verses [sic] input change",
+with an RMS detector, and "true rms detection is necessary for compressor and
+expander modes" where a gate needs peak (S2).
+
+*(from §4, the prose the length rule shortened, moved at Station A 2026-09-07 under the length rule)*
+
+**Composition was weighed and rejected**, on the seed's own numbers: V-E4's
+`Splitter`-plus-two-`Mixer`s Depth reached −60 dB with 0.32 dB of error and a
+32 KB ring, where `depth_db` is one float and reaches −80; and a steeper key
+band out of `audiobiquad.Biquad` sections fed to `Dynamics.key()` needs four
+sections per end to change E3's verdict, where the ask itself asked for
+12 dB/octave. **The class builds one node and no others**, so the Tier 3
+budget is a budget for one node.
+
+**`key(sample)` is a constructor option, not a macro** — the DS201's external
+Key input (S1, S3), borrowed like `source`: never owned, reset or deinited.
+
+**Portability tier: audioif.** `audiodynamics` is audioif's own module, not a
+CircuitPython port (`audioif/docs/upstream-diff.md:661`), so the class carries
+the guarded import and `_require_modules()` raises a clear `ImportError` on a
+stock board. Python computes nothing per sample: each macro is one
+`Dynamics.set()`, and C runs the detector, the gain computer and the VCA.
+
+*(The seed's pre-Phase-1 palette argument, and what each ask was refuted
+against, are in **App. R** — nothing deleted.)*
+
+*(from §1, the second précis the length rule shortened, moved at Station A 2026-09-07 under the length rule)*
+
+The DS201 is a dual-channel gate whose intelligence is all in the side-chain:
+input, VCA, output, with a Bypass that "routes the input signal to the output
+with no processing" (S1). The key path is **two variable filters in series** —
+Low Frequency 25 Hz–4 kHz, High Frequency 250 Hz–35 kHz, "it is the range
+between the two settings that is allowed to pass" — feeding a Threshold, an
+Attack (10 µs–1 s) / Hold (2 ms–2 s) / Decay (2 ms–4 s) envelope that is
+committed once triggered, and a **Range** floor "variable from 0 dB to −80 dB"
+rather than silence.
+
+**There is no ratio: below threshold the DS201 goes to Range, not down a
+slope. An expander is the same box with the gain computer told to do something
+else** — RaneNote 155: "the expander reduces gain for signals below the
+threshold. The ratio still defines output change verses [sic] input change",
+with an RMS detector, and "true rms detection is necessary for compressor and
+expander modes" where a gate needs peak (S2). Every quoted range above, its
+edition disagreements and the switches this précis leaves out are in **App. R**.
