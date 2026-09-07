@@ -63,14 +63,24 @@ class DynamicsAndEQTest(unittest.TestCase):
     def test_a_cut_and_a_boost_cost_the_same(self):
         # The old ParametricEQ synthesized boosts from Splitter branches and
         # capped them at three; cuts were notch sections. Now both are one
-        # biquad in one cascade, so ten boosts build as readily as ten cuts.
-        # Read on `ParametricEQ` since `GraphicEQ` was rebuilt: the claim is
-        # about the cascade, and that is the class that still carries it.
-        boosts = audioeffects.ParametricEQ(
-            source(), bands=[(31.25 * 2 ** n, 6.0, 1.4) for n in range(10)])
-        self.assertEqual(len(boosts.biquads), 10)
-        self.assertFalse(hasattr(boosts, "splitter"))
-        self.assertGreater(peak(boosts.output, 8), 0.001)
+        # biquad in one cascade, so a bank of boosts builds as readily as a
+        # bank of cuts.
+        #
+        # Read on `ParametricEQ`, since `GraphicEQ` was rebuilt and the claim
+        # is about the cascade -- and read through the rebuilt
+        # `ParametricEQ`'s own surface, since its rebuild landed in this same
+        # integration: `bands=`/`.biquads` are the old signature, the eight
+        # named sections are the new one.
+        for tag, settings in (
+                ("boost", dict(low_boost=6.0, bell1_db=6.0, bell2_db=6.0,
+                               bell3_db=6.0, high_boost=6.0)),
+                ("cut", dict(low_atten=6.0, bell1_db=-6.0, bell2_db=-6.0,
+                             bell3_db=-6.0, high_atten=6.0))):
+            with self.subTest(direction=tag):
+                built = audioeffects.ParametricEQ(source(), **settings)
+                self.assertEqual(len(built._nodes), 8)
+                self.assertFalse(hasattr(built, "splitter"))
+                self.assertGreater(peak(built.output, 8), 0.001)
 
     def test_a_filter_above_nyquist_is_refused(self):
         # Silently folded coefficients used to be unreachable because every
@@ -133,12 +143,14 @@ class DynamicsAndEQTest(unittest.TestCase):
         # are the M-108's octave doublings, not the ISO series, and its Q
         # moves with gain -- both of which this assertion would have to be
         # rewritten around, and both of which its own tests now cover.
+        # Read through the rebuilt `ParametricEQ`'s middle bell, whose
+        # centre is a macro: same claim, same +6 dB, same 0.25 dB bar.
         for band in audioeffects.eq.ISO_BANDS:
             with self.subTest(band=band):
                 self.assertAlmostEqual(
                     tone_gain_db(band, lambda s, hz=band:
                                  audioeffects.ParametricEQ(
-                                     s, bands=[(hz, 6.0, 1.4)]).output),
+                                     s, bell2_hz=hz, bell2_db=6.0).output),
                     6.0, delta=0.25)
 
     def test_the_compressor_actually_compresses(self):
