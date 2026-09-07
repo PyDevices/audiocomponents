@@ -58,7 +58,7 @@ class TheLookup(unittest.TestCase):
     #: roll call catches a module that never registered, the derived form
     #: catches one registered under a name nobody listed.
     REBUILT = ("Compressor", "Limiter", "Expander", "NoiseGate", "DeEsser",
-               "TransientShaper", "MultibandCompressor")
+               "TransientShaper", "MultibandCompressor", "ParametricEQ")
 
     def test_a_rebuilt_name_hits_and_every_other_one_misses(self):
         # Both branches over the real catalogue. When this file was written
@@ -267,6 +267,40 @@ class TheLookup(unittest.TestCase):
             if name not in ("ExampleAudioif", "ExampleStock"):
                 self.assertIn(name, audioeffects.ALL)
 
+    def test_each_of_the_46_either_misses_or_resolves_to_its_own_name(self):
+        # Written as "every one of the 46 is a miss today" when nothing had
+        # been rebuilt; generalized on 2026-09-07, in the commit that rebuilt
+        # the first of them, so it keeps holding what it was for. A name
+        # either misses -- the old class stands, which is the fallback branch
+        # -- or resolves to a `Component` carrying that same NAME. What it
+        # may never do is resolve to something else.
+        misses = []
+        for name in audioeffects.ALL:
+            with self.subTest(name=name):
+                found = rebuilt.load(name)
+                if found is None:
+                    misses.append(name)
+                    continue
+                self.assertTrue(issubclass(found, _component.Component))
+                self.assertEqual(found.NAME, name)
+                self.assertIs(getattr(audioeffects, name), found)
+        # And the fallback branch is still exercised by the real catalogue,
+        # not only by the fixtures. When the last of the 46 is rebuilt this
+        # assertion is the one that has to go, deliberately (Phase 6).
+        self.assertTrue(misses, "no name in ALL misses any more; the "
+                                "fallback branch is now untested here")
+
+    def test_known_lists_what_is_there__peq(self):
+        # The two fixtures are always there; rebuilt classes join them as
+        # each family phase lands one, so this is a subset check plus the
+        # honesty check that everything listed actually resolves.
+        listed = sorted(rebuilt.known())
+        self.assertIn("ExampleAudioif", listed)
+        self.assertIn("ExampleStock", listed)
+        for name in listed:
+            with self.subTest(name=name):
+                self.assertEqual(rebuilt.load(name).NAME, name)
+
 
 class TheReplacement(unittest.TestCase):
     """`_adopt` is what the package runs over its own globals at import.
@@ -369,6 +403,20 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         for name in ("ExampleStock", "ExampleAudioif"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
+
+    def test_the_fixtures_are_not_among_the_46__peq(self):
+        self.assertEqual(len(audioeffects.ALL), 46)
+        for name in self.FIXTURES:
+            self.assertIsNotNone(rebuilt.load(name))
+            self.assertNotIn(name, audioeffects.ALL)
+            self.assertNotIn(name, audioeffects.__all__)
+        # The catalogue does not grow when a class is rebuilt: everything
+        # else under `rebuilt/` must already be one of the 46.
+        for name in rebuilt.known():
+            if name in self.FIXTURES:
+                continue
+            self.assertIn(name, audioeffects.ALL)
+            self.assertIn(name, audioeffects.__all__)
 
 
 class TheMetadataValidatorCoversBothBases(unittest.TestCase):

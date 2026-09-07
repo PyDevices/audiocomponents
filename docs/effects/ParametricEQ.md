@@ -1,30 +1,29 @@
 # Effects Dossier — `ParametricEQ` (Pultec EQP-1A shelves, API 550 proportional-Q bells)
 
-**Class:** `lib/audioeffects/eq.py` — the current implementation is
-read once, for §7, and not otherwise consulted.
+**Class:** `lib/audioeffects/rebuilt/parametriceq.py`. The old
+`lib/audioeffects/eq.py:ParametricEQ` is left untouched beneath, read once for §7.
 **Family / phase:** EQ, roadmap Phase 2
 **Standout:** EQP-1A for the shelves and the HF bandwidth control, API 550A's
 proportional-Q for the bells — vision §4.2, **confirmed**, control laws only.
 No new filter math; RBJ biquads carry all of it.
-**Grade:** **literature.** S1 states the factory schematics are not public.
-What was reached: a peer-reviewed white-box model validated against LTspice and
-a lab measurement of the 2019 reissue (S1, S2), a JAES paper defining the Q laws
-(S3), two panel sources (S6, S7). *Audit corrections, 2026-09-06:* **two**
-hobbyist redraws **with component values** were reached and read — **S9**
-(`jbb.ru`, over http, this seed having recorded it as not reached on an https
-certificate error) and, in the second audit pass, **S8**'s linked drawing
-(Gyraf's own reverse-engineering, which this seed had written off as "nothing
-usable" without opening it; S1 cites it as one of its four references). They
-agree on all four pot resistances and on the two-capacitor-bank low section, and
-disagree on the selector lists (§1). Neither is attributed to a factory drawing
-and neither carries a SPICE model or an analytic derivation of the traits, so the
-grade stays **literature** under vision §4.1 — and the named path to a circuit
-grade is now a netlist written from the parts S8 and S9 agree on, simulated the
-way `tools/spice/ts808/` already does.
-**Portability tier:** **stock** — `synthio.Biquad` in one `audiofilters.Filter`,
-nothing else. Moves to **audioif** only if Gate 0 answers audioif#23 with a
-float biquad node (§5).
-**Status:** seed (Phase 0)
+**Grade:** **literature.** The factory schematics are not public (S1). Reached:
+a white-box model validated against LTspice, a lab measurement of the 2019
+reissue (S1, S2), a JAES paper defining the Q laws (S3), two panel sources
+(S6, S7) and two hobbyist redraws with values (S8, S9) — but no SPICE model
+and no drawing attributed to the factory, so **literature** stands (vision
+§4.1). The path to a circuit grade is a netlist from the parts S8 and S9
+agree on, simulated the way `tools/spice/ts808/` already does.
+**Portability tier:** **audioif** — `REQUIRES = ("audiobiquad",)`, eight
+sections, nothing else (§5, §8 Q1).
+**Status:** Station A closed; **trait table frozen 2026-09-07** on
+`effects/p2-parametriceq`, before a line of the rebuild was written.
+
+**The frozen facts, in one screen.** Tier **audioif**, `REQUIRES =
+("audiobiquad",)`. **Sixteen macros** (§6), **seven patches** 0–6 with patch 0
+a wire. **`capabilities = ()`**. **`latency_samples` 0** at every setting and
+rate, and no option adds latency; `tail_samples` measured, not assumed.
+**Tier 3 budget: P4 26 %, S3 43 %** of one stereo block, for the eight sections
+this class always builds. Five Tier 2 traits, T1–T5, frozen.
 
 ## 1. The circuit, in one paragraph
 
@@ -35,175 +34,226 @@ selectable corner (20/30/60/100 Hz) up to 16 dB; a *low cut* shelf up to 20 dB
 sharing that selector but **not** the same corner behaviour; a *high boost*
 that is a **resonant RLC section — a bell, not a shelf** — on its own selector
 (3/4/5/8/10/12/16 kHz) with a **bandwidth** control setting its Q; and a *high
-cut* shelf on a third selector (5/10/20 kHz) up to 20 dB (the three selector
-lists corroborated by S6, S7 and — added by the audit — by **S8's drawing**, whose
-LO FREQ selector carries exactly four positions, 20/30/60/100 Hz, and whose HI-CUT
-carries exactly three, 5/10/20 kHz; S9's redraw carries six low-frequency and six
-high-cut positions instead, so it is the variant drawing, now two independent
-sources against it. S8 in turn places its HF-boost sixth position at 6 kHz where
-S6, S7 and S9 all give 8 kHz — every hobbyist redraw of this unit disagrees with
-the others somewhere, which is why the selector lists here are stated from the
-panel descriptions rather than from any one drawing.
-The maximum-gain figures do **not** agree across sources — S1 gives 16/20/20 dB
-where S6 gives 13.5/17.5/16 dB and S9 marks every pot ±16 dB — and this seed
-does not resolve it). Two consequences make the sound. Low boost and low cut
-are separate networks whose curves "affect slightly different frequency bands"
-(S1 §1.3) — S9's drawing shows the mechanism, one ganged selector switching two
-different capacitor banks (C12–C17 for cut, C18–C23 for boost) — so running
-both does not cancel: SOS's measurement of the 2019 reissue reads *"a gentle
-+3dB bass shelf combined with a mid-band cut of −2dB"* with both at 2.5 (S2).
-And bandwidth is not a constant-gain Q knob: at full
-boost *"the maximum gain is 9dB greater when the bandwidth is set to narrow"*
-(S2). The **bells** are the other standout: an API 550A is three switched bands,
-five frequencies each, with *Proportional Q* — the skirt stays put and the curve
-narrows as boost rises, a 2 dB boost at 200 Hz reaching 0.1×f₀ to 10×f₀ (S5).
-Bohn's JAES paper names this the *conventional* law against constant-Q and gives
-the topology it falls out of: boost `1 + k·BP`, cut `1/(1 + k·BP)`, so **cut is
-the exact reciprocal of boost** (S3 §3.1).
+cut* shelf on a third selector (5/10/20 kHz) up to 20 dB. Two consequences make
+the sound. Low boost and low cut are separate networks whose curves "affect
+slightly different frequency bands" (S1 §1.3) — S9's drawing shows one ganged
+selector switching two different capacitor banks (C12–C17 cut, C18–C23 boost) —
+so running both does not cancel: SOS's measurement of the reissue reads *"a
+gentle +3dB bass shelf combined with a mid-band cut of −2dB"* with both at 2.5
+(S2). And bandwidth is not a constant-gain Q knob: at full boost *"the maximum
+gain is 9dB greater when the bandwidth is set to narrow"* (S2). The **bells**
+are the other standout: an API 550A is three switched bands with *Proportional
+Q* — the skirt stays put and the curve narrows as boost rises (S5) — and Bohn
+gives the topology that law falls out of, boost `1 + k·BP` against cut
+`1/(1 + k·BP)`, so **cut is the exact reciprocal of boost** (S3 §3.1).
+
+*(S5's own figures, the selector lists' disagreements and the maximum-gain
+dispute are in **App. R**.)*
 
 ## 2. Sources and license calls
 
-All reached 2026-09-06 in this run; nothing from memory.
+All reached 2026-09-06; nothing from memory. What each gave, its licence text
+and its chain-of-quotation caveat: **App. S**. Not reached: **App. D**.
+Excerpts: **App. E**.
 
-| Source | What it gave | License as read | URL | Reached |
-|---|---|---|---|---|
-| **S1** Barrera, Lizarraga-Seijas & Font … (App. S1) | the four filter blocks and their kinds … (App. S1) | **CC BY 3.0** (p. 445) … (App. S1) | https://smcnetwork.org/smc2024/papers/SMC2024_paper_id132.pdf | fetched; read via `pypdf` (the fetch tool could not) |
-| **S2** Robjohns, *Pulse Techniques EQP-1A*, Sound On Sound, Feb 2019 | lab measurements of the 2019 reissue: the 9 dB … (App. S2) | © SOS Publications 1985–2026 … (App. S2) | https://www.soundonsound.com/reviews/pulse-techniques-eqp-1a | read |
-| **S3** Bohn, *Constant-Q Graphic Equalizers*, JAES **34**(9), Sept 1986 | **conventional** vs constant Q (§2 … (App. S3) | **No copyright or licence line in the PDF** … (App. S3) | https://www.ranecommercial.com/legacy/pdf/constanq.pdf | fetched and read via `pypdf` in the audit run |
-| **S4** Bohn, RaneNote 101/117 ("written 1982 & 1987 … (App. S4) | the Q/bandwidth definitions used here (Q = f₀ ÷ … (App. S4) | "© 2005 Rane" on the page … (App. S4) | https://www.ranecommercial.com/legacy/note101.html | re-read in the audit run |
-| **S5** Sutton, *API 550 Equalizers* (31 Jan 2023) | 550A: three bands, five frequencies each … (App. S5) | "© 2026 Matthew Sutton" (Privacy Policy only … (App. S5) | https://ms-tas.com/api-550-equalizers/ | re-read in the audit run |
-| **S6** ABSounds/EQP-WDF-1A front page | panel ranges: LF 20/30/60/100 Hz, 13.5/17.5 dB … (App. S6) | **GPL-3.0 — copyleft.** Front page read as a … (App. S6) | https://github.com/ABSounds/EQP-WDF-1A | read |
-| **S7** Ultimate Preset, *Pultec Equalizer Guide* | corroborates all three selector lists verbatim: LF … (App. S7) | "© 2026 Ultimate Preset. **All rights … (App. S7) | https://www.ultimatepreset.com/pultec-equalizer-guide/ | re-read in the audit run |
-| **S8** Gyraf Audio, *The G-Pultec* … (App. S8) | **Audit correction: this row read "nothing usable … … (App. S8) | **No licence and no copyright line on the … (App. S8) | https://www.gyraf.dk/gy_pd/pultec/pultec.htm (drawing at `/gy_pd/pultec/pultech.gif`, 1024 × 617) | page and drawing both **reached and read in the audit run** |
-| **S9** *Schematic Pultec EQP-1A … (App. S9) | a full passive-section drawing **with values**: the HF … (App. S9) | **No licence and no copyright line on the … (App. S9) | http://jbb.ru/schematics/1a-shem-p.htm (drawing at `/schematics/1a-shem-p.gif`) | **reached over http and read in both audit runs**; https fails on a certificate name mismatch. The GIF is 3662 × 2579 and legible once decoded |
-
-What was **not** reached, and what was looked for and not found: Appendix D.
-
-*(More of §2 is in **App. R** — moved under the length rule, nothing deleted.)*
+| Source | Licence | URL | Reached |
+|---|---|---|---|
+| **S1** Barrera et al., *Modeling the Pultec EQP-1A with WDF*, SMC 2024 | **CC BY 3.0** | https://smcnetwork.org/smc2024/papers/SMC2024_paper_id132.pdf | via `pypdf` |
+| **S2** Robjohns, *Pulse Techniques EQP-1A*, SOS, Feb 2019 | © SOS, ARR | https://www.soundonsound.com/reviews/pulse-techniques-eqp-1a | read |
+| **S3** Bohn, *Constant-Q Graphic Equalizers*, JAES 34(9), 1986 | unverified, treated copyleft | https://www.ranecommercial.com/legacy/pdf/constanq.pdf | via `pypdf` |
+| **S4** Bohn, RaneNote 101/117 | © 2005 Rane, ARR | https://www.ranecommercial.com/legacy/note101.html | read |
+| **S5** Sutton, *API 550 Equalizers* | © 2026 M. Sutton | https://ms-tas.com/api-550-equalizers/ | read |
+| **S6** ABSounds/EQP-WDF-1A front page | **GPL-3.0** | https://github.com/ABSounds/EQP-WDF-1A | read |
+| **S7** Ultimate Preset, *Pultec Equalizer Guide* | © 2026, ARR | https://www.ultimatepreset.com/pultec-equalizer-guide/ | read |
+| **S8** Gyraf, *The G-Pultec* + `pultech.gif` | none stated | https://www.gyraf.dk/gy_pd/pultec/pultec.htm | page + drawing read |
+| **S9** jbb.ru redraw + `1a-shem-p.gif` | none stated | http://jbb.ru/schematics/1a-shem-p.htm | read over http |
 
 ## 3. Traits — fixed before measurement
 
+**Frozen 2026-09-07**, before the rebuild began: five Tier 2 rows, none added,
+dropped or reworded since.
+
 ### Tier 1 — invariants (the standard block, verbatim from vision §3)
 
-The standard block, verbatim from vision §3, is in **App. I** — moved there under the length rule; any class-specific note on it moved with it.
+The block and this class's notes on it are **App. I**. The one that matters
+here: **silence-to-zero is the invariant this family is known to fail** on the
+ported node — §5 records what the rebuild does about it.
 
 ### Tier 2 — circuit traits
 
-| # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Measurement (kit) |
-|---|---|---|---|---|---|
-| **T1** | Low boost and low cut are two shelves with **different corners**, so both at once is not cancellation. `Low Freq` 60 Hz, both at ¼ travel ⇒ ≥ +2.0 dB at 30 Hz, a local minimum ≤ −1.0 dB in 100–400 Hz, flat within 0.5 dB above 1 kHz. | S1 §1.3 + fig. 2 (two networks … (App. T1) | **high** for the … (App. T1) | **any of the three missed.** In particular: the two curves cancelling to within 1 dB everywhere from 20 Hz to 1 kHz (one shared corner — a single reciprocal shelf pair, which is what the current class builds); or the minimum landing **below** 60 Hz instead of above it | swept-sine 20 Hz–2 kHz at 48 and … (App. T1) |
-| **T2** | High boost is a **bell**, high cut a **shelf**, on independent selectors. Boost full at 10 kHz *and* cut full at 5 kHz ⇒ a local maximum within ±⅓ oct of 10 kHz **and** a monotonic fall 3→5 kHz. | S1 §1.3; S6, S7 (three selectors) | high | **either half missed.** No local maximum within ±⅓ oct of 10 kHz (the HF boost is a shelf, not a bell); or the 3→5 kHz fall not monotonic (the HF cut is a bell, not a shelf); or moving the HF-cut selector also moving the boost's peak (one shared selector) | swept-sine 1–20 kHz … (App. T2) |
-| **T3** | Bandwidth changes **peak gain**, not just width: at full boost, sharp minus broad is **+6…+12 dB** and the −3 dB width at sharp is ≤ half that at broad. | S2 (the 9 dB figure, quoted in §1) | **medium** for the … (App. T3) | **either half missed.** Sharp-minus-broad peak gain outside **6–12 dB** — in particular under 3 dB, which is a width-only control and the shape every constant-gain Q knob has; or the sharp setting's −3 dB width more than **half** the broad setting's | swept-sine at both bandwidth … (App. T3) |
-| **T4** | The bells are **proportional-Q**: one bell at 1 kHz at +2/+6/+12 dB has its first +1 dB crossing the same **within 5 %**, while mid-gain bandwidth falls **≥ 3×** across that range. | S5; S3 §2 and S4 for the definitions … (App. T4) | medium — no measured … (App. T4) | **either half missed.** The +1 dB crossing moving > 5 % between the three boosts; or the mid-gain bandwidth ratio from +2 to +12 dB under **3×** — the law of Appendix A predicts **3.39×** at the anchor `Q(12 dB) = 2`, so 3× is a floor with margin rather than the prediction itself, and a ratio near 1 is constant-Q outright | swept-sine at three boosts … (App. T4) |
-| **T5** | Cut is the **exact reciprocal** of boost: for one bell at 1 kHz at **G = 6, 12 and 16 dB**, the product of the +G and −G responses is unity within **0.1 dB**, 20 Hz–20 kHz, at every one of the three. | S3 §3.1 | high | the product deviating > 0.1 dB anywhere in band at any of the three gains — in particular a `Q` law that reads **signed** gain rather than its magnitude, which gives the cut a different width from the boost and breaks the product at the skirts while leaving the peak looking right | swept-sine at +G and −G for each … (App. T5) |
+Full source readings and confidence reasoning per row: **App. T**.
 
-T5 is stated for the **bells only**. The Pultec's low boost and low cut are
-*not* reciprocal — that is T1 — so a rebuild that makes them reciprocal fails
-T1 while passing T5. The tension is deliberate. No characters; the `Q Law` macro
-is an option and the table is stated at its default (proportional).
+| # | Trait (falsifiable as stated) | Src · conf. | Disconfirmed by | Measurement (kit) |
+|---|---|---|---|---|
+| **T1** | Low boost and low cut are two shelves with **different corners**, so both at once is not cancellation. `Low Freq` 60 Hz, both at ¼ travel ⇒ ≥ +2.0 dB at 30 Hz, a local minimum ≤ −1.0 dB in 100–400 Hz, flat within 0.5 dB above 1 kHz. | S1, S2 · **high** for the mechanism, thresholds **ours** (App. T1) | **any of the three missed** — chiefly a shared corner, which cancels to within 1 dB across 20 Hz–1 kHz and is what the current class builds (App. T1) | swept-sine 20 Hz–2 kHz at 48 and 44.1 kHz; report the level at 30 Hz, the frequency and level of the minimum, and the maximum deviation above 1 kHz |
+| **T2** | High boost is a **bell**, high cut a **shelf**, on independent selectors. Boost full at 10 kHz *and* cut full at 5 kHz ⇒ a local maximum within ±⅓ oct of 10 kHz **and** a monotonic fall 3→5 kHz. | S1, S6, S7 · high | **either half missed** — no maximum near 10 kHz (the boost is a shelf), a non-monotonic 3→5 kHz fall (the cut is a bell), or the cut selector moving the boost's peak (App. T2) | swept-sine 1–20 kHz, both engaged; report peak frequency, the 3→5 kHz monotonicity, and the boost peak's frequency at both extremes of the cut selector |
+| **T3** | Bandwidth changes **peak gain**, not just width: at full boost, sharp minus broad is **+6…+12 dB** and the −3 dB width at sharp is ≤ half that at broad. | S2 · medium (gain), **low and ours** (width) | **either half missed** — sharp-minus-broad outside **6–12 dB**, chiefly under 3 dB, the shape every constant-gain Q knob has; or the sharp width over **half** the broad one (App. T3) | swept-sine at both bandwidth extremes, boost max; report peak dB and −3 dB octave width at each |
+| **T4** | The bells are **proportional-Q**: one bell at 1 kHz at +2/+6/+12 dB has its first +1 dB crossing the same **within 5 %**, while mid-gain bandwidth falls **≥ 3×** across that range. | S5, S3 §2, S4; law App. A · medium | **either half missed** — the crossing moving > 5 %, or the ratio under **3×** (App. A predicts 3.39×, so 3× is a floor with margin; near 1 is constant-Q outright) | swept-sine at three boosts; report the +1 dB crossings and half-gain bandwidth in octaves |
+| **T5** | Cut is the **exact reciprocal** of boost: for one bell at 1 kHz at **G = 6, 12 and 16 dB**, the product of the +G and −G responses is unity within **0.1 dB**, 20 Hz–20 kHz, at every one of the three. | S3 §3.1 · high | the product deviating > 0.1 dB anywhere in band at any of the three — chiefly a `Q` law reading **signed** gain rather than its magnitude, which breaks the skirts while the peak still looks right (App. T5) | swept-sine at +G and −G for each of the three; multiply, report max deviation from 0 dB and the frequency it occurs at |
 
-*(What the trait-critic pass changed in this table, and why: Appendix F.)*
+T5 is stated for the **bells only** — the Pultec's low pair is *not* reciprocal,
+which is T1, so a rebuild that makes them reciprocal fails T1 while passing T5.
+The tension is deliberate. No characters; the table is stated at the defaults
+`Q Law` = proportional and `Bandwidth` = 5. *(App. F: the trait-critic pass.)*
 
 ### Tier 3 — cost and latency
 
-*(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
+**Budget**, as a fraction of one stereo block's deadline (256 frames, 5.33 ms at
+48 kHz): **P4 26 %, S3 43 %** — App. C's eight-section pair, and eight is what
+this class always builds (§4). Lean patch expected: **no**; a patch cannot
+change how many nodes exist.
+
+**What that budget does not cover.** App. C counts the **fixed-point** kernel
+(76 instructions/sample on Cortex-M4/M7, `audioif/docs/upstream-diff.md:1172`).
+This class runs the **float** kernel, for which no count exists on either port,
+and its eight sections are eight nodes with eight block pulls where the
+arithmetic assumed one `Filter` holding a cascade. The board run measures it;
+the pair above is the ceiling, not a prediction.
+
+**Latency: zero samples** at every setting and rate — every section is a
+recursive biquad reading no sample it has not been given, and there is no
+lookahead, partition or window anywhere in the class, so **there is no
+latency-adding option to default off**. `tail_samples` is measured, not
+assumed: the float kernel writes any state word under 1e-20 as exact zero
+(`AUDIOIF_FILTER_F32_FLUSH`), so the tail is finite and the evidence pack
+reports the longest one this class's span reaches.
 
 ## 4. Modeling approach on the palette
 
-**One `audiofilters.Filter`, one `synthio.Biquad` per section, Python computing
-the coefficients' *arguments* on a macro move.** Structurally that is what the
-class already is, and it is right; the rewrite sits above the nodes.
+**One `audiobiquad.Biquad` per section, eight in a chain, Python computing the
+coefficients' *arguments* on a macro move.** `mode`, `frequency`, `Q`,
+`gain_db` and `mix` are block slots, so a macro retunes a running section
+rather than rebuilding it. Citations and probes: **App. G**, **App. R**.
 
-- All seven RBJ modes are there (`src/synthio/Biquad.h:21-23`), and …  *(argument in full: App. R)*
-- Coefficients build in `double` with a per-filter fractional format …  *(argument in full: App. R)*
-- **Flat sections are dropped, not built** — a band at 0 dB must be
-  byte-identical to that band absent, and each stage costs a pass and 16 bits
-  of headroom.
-- **Clamping below Nyquist is a stability requirement, not a politeness.** A …  *(argument in full: App. R)*
-- **Python computes, per macro move and not per block:** a bell's `Q` from its …  *(argument in full: App. R)*
-- **The `Output` macro is a section, not a level.** No palette node gives gain …  *(argument in full: App. R)*
-- **Cascaded sections have a headroom rule.** Each biquad clamps its own state …  *(argument in full: App. R)*
-- **Mono:** the same curve, one channel. A stereo `Filter` keeps per-channel …  *(argument in full: App. R)*
-
-*(More of §4 is in **App. R** — moved under the length rule, nothing deleted.)*
+- **`audiobiquad`, not `synthio.Biquad` in an `audiofilters.Filter`.** The
+  ported kernel's Q12 memory has fixed points and this class's useful settings
+  park on them — a 20 Hz/+10 dB shelf on ±32 LSB, a 31.25 Hz bell on +7 LSB,
+  held for three seconds (App. B). The float kernel decays and flushes, so the
+  Tier 1 tail invariant is reachable at all.
+- **Eight sections, cutting sections first:** Low Atten · High Atten · Bell 1 ·
+  Bell 2 · Bell 3 · Low Boost · High Boost · Output. Each writes int16 and clips
+  there (`audioif_filter_f32.c:43-51`), so the chain is **not** linear and order
+  matters — +12 dB ahead of −12 dB measured 67 % THD at input peak 12000 where
+  the reverse measured 0.14 % (App. G(iii)). Headroom is stated, not hidden: at
+  full low boost a full-scale source clips in the Low Boost section, as it would
+  in the passive unit's make-up amplifier.
+- **A flat section is a wire, not a dropped node.** `mix = 0` makes the kernel
+  write `to_s16(x0)`, the input sample unchanged (`:239`), so a band at 0 dB is
+  byte-identical to that band absent — **at runtime**, which dropping cannot be:
+  `output` is an object the host holds, so a section a macro can bring back has
+  to already be in the graph. The cost half of the seed's "flat sections are
+  dropped" rule is therefore **not** met; Tier 3 carries it. The floor is
+  0.2 dB, because a BIPOLAR macro has no exact centre on the 0–127 grid.
+- **Clamping below Nyquist is stability, not politeness.** `self._hz()` clamps
+  to 0.98·Nyquist and never raises; `High Freq` and `Atten Freq` both reach
+  above Nyquist at 22.05 kHz. **`Output` is a section, not a level** — no
+  palette node gives gain above unity, so it is a `HIGH_SHELF` at 5 Hz:
+  +12.00 dB from 100 Hz to 10 kHz at all three rates, +11.89 dB at 20 Hz.
+  **Mono** gets the same curve on one channel; each node keeps per-channel
+  state, so channels do not leak.
 
 ## 5. Node asks
 
-**None from this class's Tier 2 traits.** T1–T5 are reachable on stock biquads.
+**None.** T1–T5 are reachable on the Phase 1 palette as it stands, and the one
+Tier 1 matter this dossier inherited is answered.
 
-**Refutation record — two palette compositions tried and refuted**
-(palette-verifier pass, 2026-09-06; traces in Appendix G(iv)):
+ audioif#23 — the
+fixed-point biquad's held DC — is a Tier 1 failure for this class at its own
+useful settings: a 20 Hz/+10 dB shelf holds **−32 LSB**, the +16 dB edge of its
+span **−45 LSB**, a 31.25 Hz bell **+7 LSB**, for three seconds of silence.
+*(Struck here as App. B's audit asked: this section read −56 LSB for the
++10 dB shelf; −56 is the **+20 dB** figure, outside §6's ±16 dB span. Three
+probes reproduced −32/−45/−56 at +10/+16/+20 dB; the magnitude repeats, the
+sign does not.)*
 
-- **Append a stock `HIGH_PASS`.** The obvious compose-first move, and it makes …  *(argument in full: App. R)*
-- **Gate with `audiodynamics.Dynamics` in `DYN_GATE`.** Mechanically it works — …  *(argument in full: App. R)*
+**Gate 0 answered with the float node, not the tail gate.** `audiobiquad`
+landed in Phase 1 and the pin moved to `2f6cbc3` (`AUDIOIF_PIN`, 2026-09-07):
+float state, anything under 1e-20 written as exact zero, so a decaying tail
+arrives rather than parks. The seed said what would follow — *"this class's
+tier moves to **audioif** and §4's node list changes; nothing else does"* —
+and that is what happened. The two compositions it refuted stay refuted and
+are not needed (App. G(iv)).
 
-Neither touches the recommended answer, which gates in **Python at block rate**
-on the class's own silence count, not on a node's detector.
+## 6. Surface — macros, patches, units
 
-*(More of §5 is in **App. R** — moved under the length rule, nothing deleted.)*
-
-## 6. Proposed surface
-
-Sixteen macros, at the ceiling. Ranges are engineering spans; the host sees 0–127.
+Sixteen macros, at the ceiling. **The unit is the panel's own:** the EQP-1A's
+four gain pots and its bandwidth pot are dials marked 0–10, so those five read a
+dial; the API 550A's band gains are switch positions marked in dB, so the bells
+read dB. That removes an assumption the seed had to make — T1's "¼ travel" is
+now literally S2's "2.5" on the dial.
 
 | # | Label | Mode | Range | Generalizes |
 |---|---|---|---|---|
 | 0 | Low Freq | UNIPOLAR | 20–200 Hz log | LOW FREQUENCY selector |
-| 1 | Low Boost | UNIPOLAR | 0…+16 dB | BOOST |
-| 2 | Low Atten | UNIPOLAR | 0…−20 dB | ATTEN |
+| 1 | Low Boost | UNIPOLAR | dial 0–10 → 0…+16 dB as `16·√(d/10)` | BOOST |
+| 2 | Low Atten | UNIPOLAR | dial 0–10 → 0…−20 dB, linear | ATTEN |
 | 3,5,7 | Bell 1–3 Freq | UNIPOLAR | 20 Hz–20 kHz log | 550A band frequency switches |
 | 4,6,8 | Bell 1–3 Gain | BIPOLAR | ±16 dB | 550A band gains |
-| 9 | Bandwidth | UNIPOLAR | broad…sharp | BANDWIDTH — sets the HF bell's Q *and* its peak gain (T3) |
+| 9 | Bandwidth | UNIPOLAR | dial 0–10, broad→sharp | BANDWIDTH — sets the HF bell's Q *and* its peak gain (T3) |
 | 10 | High Freq | UNIPOLAR | 3–16 kHz log | HIGH FREQUENCY selector |
-| 11 | High Boost | UNIPOLAR | 0…+18 dB | HF BOOST |
-| 12 | Atten Freq | UNIPOLAR | 5/10/20 kHz stepped | ATTEN SEL |
-| 13 | High Atten | UNIPOLAR | 0…−20 dB | HF ATTEN |
-| 14 | Q Law | TOGGLE | proportional \| constant | none — the S3/S5 axis, default proportional |
+| 11 | High Boost | UNIPOLAR | dial 0–10 → 0…+9 dB broad, 0…+18 dB sharp | HF BOOST |
+| 12 | Atten Freq | UNIPOLAR | 5–20 kHz log, stepped to 5/10/20 kHz | ATTEN SEL |
+| 13 | High Atten | UNIPOLAR | dial 0–10 → 0…−20 dB, linear | HF ATTEN |
+| 14 | Q Law | TOGGLE | proportional \| constant (one octave, Q 1.414) | none — the S3/S5 axis, default proportional |
 | 15 | Output | BIPOLAR | ±12 dB | the make-up amplifier |
 
-**Characters:** none. **Patches:** `0 Flat` · `1 Low Lift And Clear` (T1's boost
-and cut together) · `2 Air Above Ten` · `3 Broad Warm Tilt` · `4 Sharp Presence
-Bell` · `5 Rumble Trim And Top Trim` · `6 Wide Gentle Smile`. Constructor
-options stay as expressive as today so local code can build an arbitrary
-section list; the sixteen are the host-facing surface.
+**The two low tapers are ours**, chosen so dial 2.5 on both reproduces S2's
+reading rather than cancelling: +8.0 dB against −5.0 dB. A **linear pair cannot
+reach T1 at any corner ratio or shelf Q** — searched over 5 ratios × 6 boost Qs
+× 7 cut Qs, zero pass. Sourced: that the two pots cannot share a law (S9's 10 k
+against 100 k). Not sourced: the exponents (App. R).
+
+**Characters:** none. **Patches:** `0 Flat` · `1 Low Lift And Clear` (T1's pair,
+dial 2.5/2.5) · `2 Air Above Ten` · `3 Broad Warm Tilt` · `4 Sharp Presence
+Bell` · `5 Rumble Trim And Top Trim` · `6 Wide Gentle Smile`. Patch 0 is the
+constructor's defaults on the 0–127 grid, every section of it under the 0.2 dB
+floor, so patch 0 is a wire. **`capabilities = ()`:** an equaliser has no
+tempo-dependent behaviour and the class never reads `self._transport()`.
 
 ## 7. Defects in the current class the rebuild must not repeat
 
-One read of `lib/audioeffects/eq.py`.
+One read of `lib/audioeffects/eq.py`. Full wording of 2, 3, 5 and 6: **App. R**.
 
-1. **No surface at all** — `MACRO_LABELS = ()` (`eq.py:40`),
-   `PATCHES = {0: ("Default", ())}` (`:42`).
-2. **Both shelves forced to Q 0.707** (`eq.py:54`), and low boost and low cut …  *(argument in full: App. R)*
-3. **`check_hz()` refuses instead of clamping** (`eq.py:48`, `:54`; the raise at …  *(argument in full: App. R)*
-4. **Q is an argument, not a law** (`eq.py:47-49`) — unrelated to gain, so the
-   class is constant-Q by omission and T4 is not expressible.
-5. **The empty-EQ passthrough returns the source itself** (`eq.py:59-60`), and …  *(argument in full: App. R)*
-6. **Constructing an effect mutates module-wide state**: `Effect.__new__` calls …  *(argument in full: App. R)*
+1. **No surface at all** — `MACRO_LABELS = ()` (`eq.py:40`), one unnamed patch (`:42`).
+2. **Both shelves forced to Q 0.707** (`:54`), both low sections from one
+   `low_shelf` argument at one frequency — T1 and T3 are unrepresentable in the
+   constructor's shape, not merely unimplemented.
+3. **`check_hz()` refuses instead of clamping** (`:48`, `:54`;
+   `_core.py:471-474`), against Tier 1's "never refused".
+4. **Q is an argument, not a law** (`:47-49`) — constant-Q by omission, so T4 is
+   not expressible.
+5. **The empty-EQ passthrough returns the source itself** (`:59-60`), and both
+   `deinit()` and `reset()` skip when `output is self._source`.
+6. **Constructing an effect mutates module-wide state** — `Effect.__new__` calls
+   `configure()` (`_core.py:149-152`), so one EQ built at 44.1 kHz re-points
+   every class built afterwards.
 
-*(More of §7 is in **App. R** — moved under the length rule, nothing deleted.)*
+## 8. Open questions — three settled, one still open
 
-## 8. Open questions
-
-1. **audioif#23's one answer** — tail gate, float node, or recorded
-   disconfirmation. *Gate 0*, once, for the whole EQ family and the Phaser; §5
-   states this seed's recommendation.
-2. **The proportional-Q skirt level**, the law's one design constant
-   (Appendix A): 0.1 dB reproduces API's prose most closely, 1 dB behaves better
-   when three bells overlap. *Implementation session, Phase 2*, decided against
-   T4's threshold rather than argued.
-3. **Whether `Bandwidth` drives the bells too or only the HF bell.** One knob is
-   cheaper and less honest. *Implementation session.*
-4. **Two sources exist and could not be read here** (Appendix D) — the manual
-   scan needs OCR, the API PDF a working certificate chain. T3 and T4 carry
-   medium confidence because of it, and after the trait-critic pass **T3's
-   width half carries low confidence and is marked ours**: no source reached
-   here states the EQP-1A's bandwidth range in octaves at either extreme of the
-   control, so that half of T3 is a design target this seed set rather than a
-   fact about the pedal. Either of the two unread sources would settle it. Not
-   a blocker.
+1. **audioif#23's one answer. Settled.** Gate 0 took the float node:
+   `audiobiquad` is on the pin (`2f6cbc3`) and this class is built on it, so the
+   tier moves from **stock** to **audioif**, exactly as §5 said it would.
+2. **The proportional-Q skirt level. Settled at 1 dB, against T4's own
+   threshold**, which is how the seed asked for it to be decided. On the node's
+   own coefficients at 48 kHz, bell at 1 kHz, +2/+6/+12 dB: at a **0.1 dB**
+   skirt the first +1 dB crossing moves **18.0 %** and T4's 5 % bar is missed
+   outright; at **0.5 dB**, **11.6 %**, also a miss; at **1 dB** it does not
+   move at all (**0.000 %**, 2.2992 × f₀ at all three) while mid-gain bandwidth
+   still falls **3.384×**, against T4's floor of 3×. The 0.1 dB skirt reproduces
+   S5's prose most closely and cannot pass this class's own trait.
+3. **Whether `Bandwidth` drives the bells too. Settled: the HF bell only.**
+   S8's drawing puts the `HI BOOST Q` 2K2A pot *inside* the resonant HF-boost
+   network (App. E), across that section's own inductor, where it reaches
+   nothing else. The seed's words for the alternative were "one knob is cheaper
+   and less honest"; the drawing agrees with the honest reading.
+4. **Two sources could not be read here** (App. D) — the manual scan needs OCR,
+   the API PDF a working certificate chain. **Still open, not a blocker.** T3
+   and T4 keep medium confidence because of it, and **T3's width half stays low
+   and marked ours**: no source reached here states the EQP-1A's bandwidth in
+   octaves at either extreme, so that half is a design target this dossier set,
+   not a fact about the pedal.
 
 ---
-
 
 ## Appendix
 
@@ -815,3 +865,91 @@ tier moves to **audioif** and §4's node list changes; nothing else does.
 6. **Constructing an effect mutates module-wide state**: `Effect.__new__` calls
    `configure(source_rate, source_channels)` (`_core.py:149-152`), so building
    one EQ at 44.1 kHz re-points every class built afterwards.
+
+*(from the header, replaced 2026-09-07 — the seed's grade paragraph, verbatim)*
+
+**Grade:** **literature.** S1 states the factory schematics are not public.
+What was reached: a peer-reviewed white-box model validated against LTspice and
+a lab measurement of the 2019 reissue (S1, S2), a JAES paper defining the Q laws
+(S3), two panel sources (S6, S7). *Audit corrections, 2026-09-06:* **two**
+hobbyist redraws **with component values** were reached and read — **S9**
+(`jbb.ru`, over http, this seed having recorded it as not reached on an https
+certificate error) and, in the second audit pass, **S8**'s linked drawing
+(Gyraf's own reverse-engineering, which this seed had written off as "nothing
+usable" without opening it; S1 cites it as one of its four references). They
+agree on all four pot resistances and on the two-capacitor-bank low section, and
+disagree on the selector lists (§1). Neither is attributed to a factory drawing
+and neither carries a SPICE model or an analytic derivation of the traits, so
+the grade stays **literature** under vision §4.1 — and the named path to a
+circuit grade is now a netlist written from the parts S8 and S9 agree on,
+simulated the way `tools/spice/ts808/` already does.
+
+*(from §1, moved 2026-09-07 — the selector-list and maximum-gain disputes)*
+
+The three selector lists are corroborated by S6, S7 and — added by the audit —
+by **S8's drawing**, whose LO FREQ selector carries exactly four positions,
+20/30/60/100 Hz, and whose HI-CUT carries exactly three, 5/10/20 kHz; S9's
+redraw carries six low-frequency and six high-cut positions instead, so it is
+the variant drawing, now two independent sources against it. S8 in turn places
+its HF-boost sixth position at 6 kHz where S6, S7 and S9 all give 8 kHz — every
+hobbyist redraw of this unit disagrees with the others somewhere, which is why
+the selector lists in §1 are stated from the panel descriptions rather than from
+any one drawing. The maximum-gain figures do **not** agree across sources
+either — S1 gives 16/20/20 dB where S6 gives 13.5/17.5/16 dB and S9 marks every
+pot ±16 dB — and this dossier does not resolve it.
+
+*(from §1, moved 2026-09-07 — S5's own proportional-Q figures)*
+
+S5's reading of the API 550A: three switched bands, five frequencies each; "a
+2 dB boost at 200 Hz reaching 0.1×f₀ to 10×f₀". Bohn's word for the law is
+*conventional*, not *proportional*; the latter is S5's and API's (App. S).
+
+*(from §2, moved 2026-09-07)*
+
+The §2 table's "what it gave" column now lives only in **App. S**, where it was
+already carried in full. §2 keeps every source id, its licence call, its URL and
+its reached / not-reached call — the gate conditions.
+
+*(from §6, replaced 2026-09-07 — the seed's proposed surface, verbatim)*
+
+Sixteen macros, at the ceiling. Ranges are engineering spans; the host sees
+0–127. 0 `Low Freq` UNIPOLAR 20–200 Hz log (LOW FREQUENCY selector) · 1 `Low
+Boost` UNIPOLAR 0…+16 dB (BOOST) · 2 `Low Atten` UNIPOLAR 0…−20 dB (ATTEN) ·
+3,5,7 `Bell 1–3 Freq` UNIPOLAR 20 Hz–20 kHz log · 4,6,8 `Bell 1–3 Gain` BIPOLAR
+±16 dB · 9 `Bandwidth` UNIPOLAR broad…sharp · 10 `High Freq` UNIPOLAR 3–16 kHz
+log · 11 `High Boost` UNIPOLAR 0…+18 dB · 12 `Atten Freq` UNIPOLAR 5/10/20 kHz
+stepped · 13 `High Atten` UNIPOLAR 0…−20 dB · 14 `Q Law` TOGGLE proportional |
+constant · 15 `Output` BIPOLAR ±12 dB. "Constructor options stay as expressive
+as today so local code can build an arbitrary section list; the sixteen are the
+host-facing surface." The rebuild kept every index, mode and generalization and
+changed only the **unit** of macros 1, 2, 9, 11 and 13 — from a decibel span to
+the panel's own 0–10 dial — and stated the taper behind each (§6).
+
+*(from §6, moved 2026-09-07 — the taper's arithmetic)*
+
+`16·√(2.5/10)` = 8.0 dB against `20·(2.5/10)` = 5.0 dB, which measures
++2.48 dB at 30 Hz, a −4.47 dB minimum at 144.4 Hz and 0.042 dB of deviation
+above 1 kHz — T1's three thresholds, at all three rates. The linear search that
+found no passing alternative was over corner ratios 3/4/5/6/8, boost shelf Qs
+0.5/0.707/0.9/1.2/1.6/2.0 and cut shelf Qs 0.4/0.5/0.707/0.9/1.2/1.6/2.0 at
++4/−5 dB (dial 2.5 on a linear pair): zero of the 210 combinations reach
+≥ +2.0 dB at 30 Hz with a ≤ −1.0 dB minimum inside 100–400 Hz.
+
+*(from §8, replaced 2026-09-07 — the seed's four open questions, verbatim)*
+
+1. **audioif#23's one answer** — tail gate, float node, or recorded
+   disconfirmation. *Gate 0*, once, for the whole EQ family and the Phaser; §5
+   states this seed's recommendation.
+2. **The proportional-Q skirt level**, the law's one design constant
+   (Appendix A): 0.1 dB reproduces API's prose most closely, 1 dB behaves better
+   when three bells overlap. *Implementation session, Phase 2*, decided against
+   T4's threshold rather than argued.
+3. **Whether `Bandwidth` drives the bells too or only the HF bell.** One knob is
+   cheaper and less honest. *Implementation session.*
+4. **Two sources exist and could not be read here** (Appendix D) — the manual
+   scan needs OCR, the API PDF a working certificate chain. T3 and T4 carry
+   medium confidence because of it, and after the trait-critic pass **T3's width
+   half carries low confidence and is marked ours**. Either of the two unread
+   sources would settle it. Not a blocker.
+
+Questions 1, 2 and 3 are settled in §8; question 4 is still open.
