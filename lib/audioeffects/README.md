@@ -316,11 +316,17 @@ the measurements and the one-line coefficient fix.
 
 ## Testing
 
-`tests/test_cpython_effects_library.py` builds and renders every class and
-measures what it does, under CPython. `tests/parity/effects_library_smoke.py`
-is the coarse half of that in portable Python, so MicroPython and patched
-CircuitPython can walk the same catalogue - every class, and every patch of
-every patchable class. micropython-vst3's `tools/test-effects-lib.py`
+`tests/test_cpython_effects_library.py` holds every class in
+`audioeffects.ALL` to the contract - exports and metadata, the factory,
+building and rendering, chaining, the patch surface - under CPython. What
+each class *sounds* like is measured beside it, one module per family:
+`test_cpython_effects_dynamics_eq.py`, `..._modulation.py`, `..._drive.py`,
+`..._time.py`, `..._pitch.py` and `..._racks.py`, with
+`test_cpython_convolve_node.py` for the audioconvolve node underneath the
+convolvers. `tests/parity/effects_library_smoke.py` is the coarse half of
+all that in portable Python, so MicroPython and patched CircuitPython can
+walk the same catalogue - every class through `create()`, and every patch it
+declares through `program_change()`. micropython-vst3's `tools/test-effects-lib.py`
 additionally runs them inside a real VST3 host, feeding a quiet-then-loud sine and asserting
 per-class behaviour: compressors and limiters squeeze the loud half,
 gates and expanders mute the quiet one, everything else passes signal.
