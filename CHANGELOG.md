@@ -6,6 +6,42 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audioif's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Changed
+
+- **`audioeffects.MultibandCompressor` rebuilt** on `_component.Component`,
+  one of the effects program's Phase 2 classes. The old class had **no macros
+  and one empty patch**: crossovers, thresholds and ratios were
+  constructor-only, attack and release were hardcoded, and there was no
+  make-up, no output gain and no mix. It has **fourteen macros and five
+  patches** now, and `Mix` at 0 is a **true bypass** — byte-identical to the
+  source, which the summed bands can never be, because a Linkwitz-Riley
+  network at unity is an all-pass and not a wire.
+  Three changes under the surface. The crossover moved to
+  **`audiobiquad.Biquad`**: on the ported `synthio.Biquad` cascade the old
+  class held **2 LSB of DC for ever at a 100 Hz corner and 8 LSB at 40 Hz**,
+  which is audioif#23 sitting in the one node a multiband cannot do without.
+  The Splitter is fed through a **block-sized guard**, so a source that hands
+  back more than 8192 frames in one call no longer loses the head of every
+  buffer — the old class rendered **exact silence** from 16384-, 20000- and
+  32768-frame sources on burst material. And the detectors are **RMS**, which
+  is what RaneNote 155's Fig. 7 draws and what the node grew this cycle.
+  Two bands or three is `bands=`, a **constructor option** rather than a knob:
+  the Mixer pulls a voice at level 0 exactly as hard as one at unity, so a
+  muted band is not a cheaper build. `bands=2` is four biquads and two
+  detectors against three bands' eight and three.
+  Measured: the bands sum flat to **+0.001 / −0.119 dB** from 30 Hz to 20 kHz
+  at three bands and **±0.000 dB** at two; each crossover is **−6.06 dB at its
+  corner on a 23.7 dB/octave skirt**; driving any band to 12 dB of reduction
+  moves the others by **0.00 dB**; latency is **0 samples** at every setting.
+  One dossier claim did not survive: the **low** band's own reduction tilts
+  **0.73 dB across 30–100 Hz** against a 0.5 dB bar, which is its LR4 skirt
+  near its corner plus the RMS detector's 10 ms window, and the class
+  docstring carries the arithmetic. Its dossier is
+  `docs/effects/MultibandCompressor.md` and its evidence pack is
+  `docs/effects/MultibandCompressor-evidence.md`.
+
 ## v0.2.0 (2026-09-03)
 
 The first release from this repository. These packages continue a version
