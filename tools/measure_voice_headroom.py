@@ -1,6 +1,6 @@
 """How many voices can this board actually render in real time?
 
-    mpremote run tools/measure_voice_headroom.py
+    mpftp run -d COM4 tools/measure_voice_headroom.py --follow
 
 Runs on the device. Prints a table and one verdict line.
 
