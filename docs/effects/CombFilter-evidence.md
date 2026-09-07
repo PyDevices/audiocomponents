@@ -20,7 +20,7 @@ it, and the committed reproduction is named beside it.
 | Standout | none — the naked textbook feedback comb, `y(n) = x(n) + g·y(n−M)` |
 | Grade | design |
 | Portability tier | **audioif** (`REQUIRES = ("audioecho", "audiobiquad")`) |
-| Landed in commit | `69c5fe4` — the class, its tests, the README row and the CHANGELOG line together; this file lands in the Station C commit that follows it |
+| Landed in commit | `69c5fe4` — the class, its tests, the README row and the CHANGELOG line together. This file, and the tail correction it forced in all four of those, landed in `cd27a4b`. |
 | audioif pin | `AUDIOIF_PIN` = `2f6cbc3`. The `audioif/` tree here sits two commits ahead at `98ae4bf`, and `git diff --stat 2f6cbc3..98ae4bf` is `.flake8` and `apply_cp_patches.sh` only — no DSP, no binding. `delay_slew`, the one option this class needs from the Phase 1 palette work, is present **at the pin** (`git show 2f6cbc3:src/shared/audioif_feedback_delay.h:80`, `src/cpython/audioecho.py:98`). |
 | Interpreters | `audiocomponents/.venv/bin/python` — Python 3.12.3 [GCC 13.3.0]; `cmods/bin/micropython` — MicroPython v1.28.0-dirty on 2026-09-07; `cmods/bin/circuitpython-effects` — CircuitPython 10.2.1-dirty on 2026-09-07 |
 | Boards | **not run.** ESP32-P4 and ESP32-S3 columns are left for the board run — §4 and §11. |
