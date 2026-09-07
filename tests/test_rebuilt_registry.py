@@ -39,7 +39,7 @@ FIXTURES = ("ExampleAudioif", "ExampleStock")
 REBUILT = ("Compressor", "Limiter", "Expander", "NoiseGate", "DeEsser",
            "TransientShaper", "MultibandCompressor", "ParametricEQ",
            "GraphicEQ", "LowPass", "HighPass", "BandPass", "Notch",
-           "LadderFilter")
+           "LadderFilter", "CombFilter")
 
 
 def source(channels=2, rate=48000):
@@ -490,6 +490,20 @@ class TheLookup(unittest.TestCase):
         self.assertEqual(sorted(rebuilt.known()),
                          sorted(FIXTURES + REBUILT))
 
+    def test_known_lists_what_is_there__cf(self):
+        # The two fixtures are always here; a rebuilt class joins them, and
+        # `known()` must list every module in the directory rather than a
+        # list this file keeps. So the assertion is set equality against
+        # what the directory actually holds.
+        import os
+        here = os.path.dirname(rebuilt.__file__)
+        modules = set(entry[:-3] for entry in os.listdir(here)
+                      if entry.endswith(".py") and not entry.startswith("_"))
+        self.assertEqual(set(name.lower() for name in rebuilt.known()),
+                         modules)
+        self.assertIn("ExampleStock", rebuilt.known())
+        self.assertIn("ExampleAudioif", rebuilt.known())
+
 
 class TheReplacement(unittest.TestCase):
     """`_adopt` is what the package runs over its own globals at import.
@@ -664,6 +678,16 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
             self.assertIn(name, audioeffects.ALL)
             self.assertIn(name, audioeffects.__all__)
         self.assertEqual(sorted(rebuilt.known()), sorted(FIXTURES + REBUILT))
+
+    def test_the_fixtures_are_not_among_the_46__cf(self):
+        # The catalogue stays 46 whichever half of the library serves a
+        # name. The two fixtures are the ones that must never enter it; a
+        # rebuilt class is *expected* in it, under the name it replaced.
+        self.assertEqual(len(audioeffects.ALL), 46)
+        for name in ("ExampleStock", "ExampleAudioif"):
+            self.assertIn(name, rebuilt.known())
+            self.assertNotIn(name, audioeffects.ALL)
+            self.assertNotIn(name, audioeffects.__all__)
 
 
 class TheMetadataValidatorCoversBothBases(unittest.TestCase):
