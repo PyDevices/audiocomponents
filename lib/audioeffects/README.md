@@ -88,7 +88,7 @@ not.
 | `DynamicEQ` | notch+band split, band compressed, summed (the split is exact) |
 | `LowPass` `HighPass` `BandPass` `Notch` | single swept biquads |
 | `LadderFilter` | Moog-style 4-stage cascade, 24 dB/oct, resonant |
-| `CombFilter` | tuned short feedback delay |
+| `CombFilter` | **rebuilt.** A delay line short enough to be a pitch, fed back on itself: tune it and noise grows resonances on the harmonic series of that note, so a chord turns metallic and a click rings. Feedback is how hard they stand - a ripple at 0.3, a comb at 0.7, seconds of ring at 0.95; Tone darkens each pass the way a real resonator's losses do; Glide is the tuning knob's own portamento, so turning Frequency *bends* the comb instead of clicking. Six macros, six patches, zero latency. Trim is **input** headroom and runs to -18 dB, because a comb's peak gain is `1/(1-Feedback)`. **Portability tier: audioif** (`audioecho`, `audiobiquad`) - the stock `audiodelays.Echo` floors its line at the buffer length, which turns every frequency from 47 to 880 Hz into the same 46.9 Hz comb. Two things it does not do: the *negative* comb (peaks on the odd half-multiples - reachable, but seven nodes against a budget for one), and an exactly-zero tail above Feedback 0.5, where the int16 loop parks on at most 10 LSB, -70 dBFS. Budgeted at 2 % of a P4 stereo block and 7 % of an S3's. Dossier `docs/effects/CombFilter.md` |
 
 ### Time and space - `reverb.py`, `delay.py`
 | Class | Notes |

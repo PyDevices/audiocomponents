@@ -6,6 +6,39 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audioif's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Changed
+
+- `CombFilter` is rebuilt from scratch on `_component.Component` for the
+  effects program's Phase 2 (`lib/audioeffects/rebuilt/combfilter.py`;
+  dossier `docs/effects/CombFilter.md`, evidence
+  `docs/effects/CombFilter-evidence.md`). **The old class did not tune.** It
+  sat on `audiodelays.Echo`, which floors its line at the node's own buffer
+  length, so every frequency from 47 to 880 Hz came out as the same 46.88 Hz
+  comb - the frequency argument did nothing over almost the whole of its
+  range. The rebuild sits on `audioecho.FeedbackDelay`, which reads its line
+  with per-sample interpolation and tunes to 0.002 cents, and adds the
+  surface the old class had none of: six macros - Frequency, Feedback, Mix,
+  Tone, Trim, Glide - six patches, `capabilities = ()`, and zero latency at
+  every setting and every rate. **Its portability tier is `audioif`**
+  (`audioecho`, `audiobiquad`); there is no honest stock fallback, because
+  even a 512-byte buffer floors the comb at 187.5 Hz.
+  - Trim is **input** headroom, not make-up, and it runs to -18 dB: a comb's
+    peak gain is `1/(1-Feedback)`, +26 dB at the top of the knob, and a trim
+    behind the comb attenuates a signal that has already hit the rail.
+  - Two things stated rather than hidden. The **negative comb** - peaks on
+    the odd half-multiples, the hollow one - is not built: it composes out of
+    nodes that exist, but only at seven nodes, three delay lines and a
+    tuning-dependent 2M pre-delay, about four times the class's cost budget.
+    And the **tail does not reach zero above Feedback 0.5**: the node's line
+    is int16 and `to_s16` rounds, so the loop parks on a limit cycle bounded
+    by `floor(0.5/(1-g))` - at most 10 LSB, -70.3 dBFS, at Feedback 0.95.
+    `TAIL_SAMPLES` is `None` and `reset()` clears it.
+  The old class stays in `eq.py`, untouched, beneath the registry; it had no
+  macro surface and so no old-surface trait tests to retire, and
+  `tests/test_cpython_effects_combfilter.py` is new.
+
 ## v0.2.0 (2026-09-03)
 
 The first release from this repository. These packages continue a version
