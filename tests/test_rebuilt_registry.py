@@ -9,6 +9,15 @@ whole point of the rule and the thing these tests hold it to.
 `ExampleStock` and `ExampleAudioif` are the subjects: fixtures under
 `rebuilt/`, deliberately absent from `audioeffects.__all__` so that neither
 enters `audioeffects.ALL` and no host can reach them (audiocomponents#37).
+
+**Nothing here is written against a count of what has been rebuilt.** The
+first version of this file asserted that every one of the 46 missed and that
+`known()` held exactly the two fixtures, which was true on the day the
+foundation landed and false the moment any class was rebuilt -- and would
+have made every one of the sixteen parallel worktrees edit this file, which
+is precisely the conflict the registry rule exists to avoid. The assertions
+below are derived from `rebuilt.known()` instead, so a rebuilt class still
+adds exactly one file.
 """
 
 import array
@@ -37,13 +46,22 @@ class TheLookup(unittest.TestCase):
     def test_a_name_with_no_file_is_a_miss_not_an_error(self):
         self.assertIsNone(rebuilt.load("NoSuchEffectAnywhere"))
 
-    def test_every_one_of_the_46_is_a_miss_today(self):
-        # The fallback branch, over the real catalogue: nothing in Phase 2's
-        # families has been rebuilt yet, so every name must miss and every
-        # old class must still be the one the package exports.
+    def test_a_name_resolves_only_when_its_file_is_there(self):
+        # The fallback branch, over the real catalogue. A name with a module
+        # under `rebuilt/` resolves to the class in it; every other name
+        # misses, and the old class in the family module stands.
+        rebuilt_names = set(rebuilt.known())
         for name in audioeffects.ALL:
             with self.subTest(name=name):
-                self.assertIsNone(rebuilt.load(name))
+                found = rebuilt.load(name)
+                if name in rebuilt_names:
+                    self.assertIsNotNone(found)
+                    self.assertEqual(found.NAME, name)
+                    self.assertTrue(issubclass(found, _component.Component))
+                    self.assertEqual(found.__module__,
+                                     "audioeffects.rebuilt." + name.lower())
+                else:
+                    self.assertIsNone(found)
 
     def test_a_file_whose_class_does_not_match_is_an_error(self):
         # `examplestock.py` exists, but holds no class whose NAME is
@@ -55,8 +73,15 @@ class TheLookup(unittest.TestCase):
         self.assertIn("holds no Component", str(caught.exception))
 
     def test_known_lists_what_is_there(self):
-        self.assertEqual(sorted(rebuilt.known()),
-                         ["ExampleAudioif", "ExampleStock"])
+        known = sorted(rebuilt.known())
+        # The two fixtures are always there; everything else `known()`
+        # reports is one of the 46, never a stray module.
+        self.assertIn("ExampleAudioif", known)
+        self.assertIn("ExampleStock", known)
+        self.assertEqual(len(known), len(set(known)))
+        for name in known:
+            if name not in ("ExampleAudioif", "ExampleStock"):
+                self.assertIn(name, audioeffects.ALL)
 
 
 class TheReplacement(unittest.TestCase):
@@ -104,8 +129,11 @@ class TheReplacement(unittest.TestCase):
 
 class TheCatalogueIsUnchanged(unittest.TestCase):
     def test_the_fixtures_are_not_among_the_46(self):
+        # The catalogue stays 46 whatever has been rebuilt: a rebuilt class
+        # replaces one of them by NAME, and the two fixtures are reachable
+        # from neither `ALL` nor `__all__`.
         self.assertEqual(len(audioeffects.ALL), 46)
-        for name in rebuilt.known():
+        for name in ("ExampleStock", "ExampleAudioif"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
 
