@@ -138,8 +138,11 @@ defaults to within one step of the grid (Q 0.7071 lands on 13/127 = 0.713).
 **`tail_samples` = 204 800** (4.27 s at 48 kHz) — a ceiling over the whole
 span, because the contract reads it off the class. Measured worst case:
 20 Hz at Resonance 16 and 24 dB/oct, full-scale burst, **203 731** samples
-after the source goes silent (A15). Per setting, the class has
-`ringing_samples()`.
+after the source goes silent (A15). There is no per-setting number: the
+contract reads `tail_samples` off the class, so the seed's
+`ceil(4·Q·F_s/f₀)`, recomputed on every macro move, is not expressible and
+the declaration is the measured ceiling instead. It is loose by design at
+every setting but the worst one — patch 0's own tail is 0.20 s.
 
 ## 7. Defects in the current class the rebuild must not repeat
 

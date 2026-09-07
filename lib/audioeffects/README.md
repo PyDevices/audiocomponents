@@ -86,7 +86,8 @@ not.
 | `ParametricEQ` | peaking bands `(freq, gain_db, q)` plus optional shelves |
 | `GraphicEQ` | ten fixed ISO bands |
 | `DynamicEQ` | notch+band split, band compressed, summed (the split is exact) |
-| `LowPass` `HighPass` `BandPass` `Notch` | single swept biquads |
+| `LowPass` | **rebuilt.** The two-pole analog prototype: one knob slides the whole curve, one decides how loud the corner stands - 3 dB down at Resonance 0.707, 24 dB up at 16, where a click rings for seconds. A console's 12/24 dB/oct slope switch, a dry/wet Mix whose zero is a byte-exact wire, and a make-up Trim. Five macros, six patches, zero latency. **Portability tier: audioif** (`audiobiquad`) - three float biquads, so the tail reaches exact zero where the ported node parks on DC. Budgeted at 5 % of an S3 stereo block at 12 dB/oct and 9 % at 24, 1.5 % / 2.5 % on the P4. Dossier `docs/effects/LowPass.md` |
+| `HighPass` `BandPass` `Notch` | single swept biquads |
 | `LadderFilter` | Moog-style 4-stage cascade, 24 dB/oct, resonant |
 | `CombFilter` | tuned short feedback delay |
 

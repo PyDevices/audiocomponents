@@ -6,6 +6,28 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audioif's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Changed
+
+- `LowPass` is rebuilt from scratch on `_component.Component` for the effects
+  program's Phase 2 (`lib/audioeffects/rebuilt/lowpass.py`; dossier
+  `docs/effects/LowPass.md`, evidence `docs/effects/LowPass-evidence.md`).
+  Where the old class had no macros at all, a frozen `q`, a hidden `mix` and
+  a `set_frequency` that raised above Nyquist, this one has five macros -
+  Frequency, Resonance, Slope, Mix, Trim - six patches, `capabilities = ()`,
+  zero latency at every setting and rate, and a declared `tail_samples`.
+  **Its portability tier is `audioif`** - three `audiobiquad.Biquad`
+  sections, whose float state lets a decaying tail reach exact zero where the
+  ported `synthio.Biquad` parks on 1 to 4 LSB of DC at exactly the corners a
+  low-pass is for (audioif#23). The old class stays in `eq.py`, untouched,
+  beneath the registry; its two old-surface trait tests in
+  `tests/test_cpython_effects_dynamics_eq.py` are retired in the same commit
+  and replaced by `tests/test_cpython_effects_lowpass.py`.
+- `AirSpace` drives its tone filter's Frequency macro instead of calling
+  `LowPass.set_frequency()`, which the rebuilt class does not have: hertz
+  reach a component through its macro grid, which is what the contract has.
+
 ## v0.2.0 (2026-09-03)
 
 The first release from this repository. These packages continue a version

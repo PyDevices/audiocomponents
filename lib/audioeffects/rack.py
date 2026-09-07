@@ -24,6 +24,7 @@ used by other racks: a `chain` entry may itself be a `("Rack", {...})`.
 VENDOR = "PyDevices"
 
 from . import _core
+from ._component import macro_position as _macro_position
 
 
 def _child(name, tail, options):
@@ -206,4 +207,14 @@ class AirSpace(Rack):
         elif index == 1:
             self.tape.set_mix(self.macro(1))
         else:
-            self.tone.set_frequency(self.macro(2))
+            # `LowPass`'s own Frequency macro, on its own span. The rebuilt
+            # class has no `set_frequency`: its dossier's section 7 names
+            # that method as off-contract - it raised above Nyquist instead
+            # of clamping - and hertz reach a component through its macro
+            # grid, which is what the contract has. `set_macro` takes a
+            # float, so nothing is quantized on the way through.
+            labels = type(self.tone).MACRO_LABELS
+            index = labels.index("Frequency")
+            span = type(self.tone)._MACRO_RANGES[index]
+            self.tone.set_macro(index,
+                                _macro_position(span, self.macro(2)) * 127.0)
