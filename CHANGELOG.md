@@ -31,10 +31,13 @@ there, and are recorded in its changelog.
     the odd half-multiples, the hollow one - is not built: it composes out of
     nodes that exist, but only at seven nodes, three delay lines and a
     tuning-dependent 2M pre-delay, about four times the class's cost budget.
-    And the **tail does not reach zero above Feedback 0.5**: the node's line
-    is int16 and `to_s16` rounds, so the loop parks on a limit cycle bounded
-    by `floor(0.5/(1-g))` - at most 10 LSB, -70.3 dBFS, at Feedback 0.95.
-    `TAIL_SAMPLES` is `None` and `reset()` clears it.
+    And **above Feedback 0.5 the tail may never reach zero**: the node's line
+    is int16 and `to_s16` rounds, so the loop can park on a limit cycle
+    bounded by `floor(0.5/(1-g))`. Whether it does is decided by the tuning -
+    at 1 kHz, where 48 000/f is a whole 48 frames, it parks on exactly that
+    bound (10 LSB, -70.3 dBFS, at Feedback 0.95); at 438.3 Hz, half a sample
+    off the grid, it reaches exact zero at every setting. `TAIL_SAMPLES` is
+    `None` and `reset()` clears it.
   The old class stays in `eq.py`, untouched, beneath the registry; it had no
   macro surface and so no old-surface trait tests to retire, and
   `tests/test_cpython_effects_combfilter.py` is new.

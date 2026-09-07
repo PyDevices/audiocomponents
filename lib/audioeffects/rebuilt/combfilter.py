@@ -63,13 +63,19 @@ first sound then arrives one line-length late - 0.25 ms at 4 kHz, 50 ms at
 20 Hz. That is the comb, not latency; it is the delay you asked for by
 tuning it.
 
-**The tail does not reach zero above Feedback 0.5, and here is the number.**
-The node's line is int16 and `to_s16` rounds, so `to_s16(g*c) == c` for every
-`|c| <= 0.5/(1-g)`: the loop has fixed points, and after the music stops it
-parks on one - a low square-ish ring at the tuned pitch. Measured, worst over
-20 Hz..4 kHz, still there 30 s after a 0.1 s burst: exact zero below 0.5,
-1 LSB at 0.7, 2 at 0.8, 5 at 0.9 and **10 LSB, -70.3 dBFS, at this class's
-maximum 0.95**. Nothing on this palette removes it - `cut_hz` is a DC blocker
+**Above Feedback 0.5 the tail may never reach zero, and the tuning decides
+whether it does.** The node's line is int16 and `to_s16` rounds, so
+`to_s16(g*c) == c` for every `|c| <= 0.5/(1-g)`: the loop has fixed points,
+and after the music stops it can park on one - a low ring at the tuned pitch,
+for as long as the graph runs. Whether it parks depends on the *fractional
+part* of `sample_rate / Frequency`. Measured on ten-second renders after a
+0.2 s burst, at 48 kHz: tuned to **1000 Hz, where 48 000/f is a whole 48
+frames, it parks on 10 LSB at Feedback 0.95** - `floor(0.5/(1-g))`, the bound,
+hit exactly - and on 8 LSB at 440 Hz and 6 at 220; tuned to **438.3 Hz, half
+a sample off the grid, it reaches exact zero at every Feedback this class
+offers**, because the interpolator averages the last LSB with a zero
+neighbour and rounds it away. Below Feedback 0.5 it always reaches zero.
+Nothing on this palette removes the parked case - `cut_hz` is a DC blocker
 and this is not DC - so `TAIL_SAMPLES` is `None`, `reset()` clears it, and
 this paragraph is the honest version of a tail figure.
 
@@ -156,8 +162,9 @@ class CombFilter(_component.Component):
     LATENCY_SAMPLES = 0
 
     #: Not finitely bounded, and not because nobody measured it: above
-    #: Feedback 0.5 the int16 loop has fixed points and never reaches zero.
-    #: The module docstring carries the measured residue per feedback value.
+    #: Feedback 0.5 the int16 loop has fixed points, and at the tunings that
+    #: land near a whole number of samples it parks on one and never reaches
+    #: zero. The module docstring carries both ends of the measurement.
     TAIL_SAMPLES = None
 
     MACRO_LABELS = ("Frequency", "Feedback", "Mix", "Tone", "Trim", "Glide")

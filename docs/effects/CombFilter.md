@@ -91,11 +91,17 @@ there is no dry path and the first sound arrives one line-length late; still
 the comb, not latency, and the docstring says so in milliseconds.
 
 **Tail: not finitely bounded — `TAIL_SAMPLES = None`.** Below Feedback 0.5
-the line reaches exact zero; at and above it `to_s16`'s rounding parks the
-loop on a limit cycle at the tuned pitch, bounded by `floor(0.5/(1−g))` and
-measured at that bound exactly: **1 LSB at 0.7, 2 at 0.8, 5 at 0.9, 10 LSB
-(−70.3 dBFS) at the class's maximum 0.95**, still there 30 s after a 0.1 s
-burst (A13, §8 Q3). `reset()` clears it.
+the line always reaches exact zero. Above it, whether it does **depends on
+the tuning, not on the feedback alone**: `to_s16` rounds, so every
+|c| ≤ 0.5/(1−g) is a fixed point of the loop, and whether the loop can sit on
+one depends on the fractional part of `F_s/f`. Measured (A13 §3): a comb at
+**1000 Hz (48 000/f = 48.000 frames, no fraction) parks on 10 LSB at
+Feedback 0.95** — the closed-form bound, exactly — and 440 Hz (frac 0.09) on
+8, 220 Hz (0.18) on 6; while **438.3 Hz (frac 0.51) reaches exact zero at
+every feedback the class offers**, because a half-sample tap averages a lone
+LSB with its neighbour and rounds it away. The declared figure is therefore
+the bound, not a typical value, and both ends are measured. `reset()` clears
+it either way.
 
 **Cost budget: ESP32-P4 ≤ 2 %, ESP32-S3 ≤ 7 %** of one stereo block's real-time deadline — the seed's figures, set for a one-node build; the rebuild is two nodes. Desktop anchor re-taken at Station A, net of the source pump: **98.8 ns/frame = 0.47 %** of the 20 833 ns a stereo frame has at 48 kHz (A13). Lean patch expected: **no**. RAM is the line: 60 ms stereo is 11.5 KB at 48 kHz, allocated once.
 
@@ -146,7 +152,7 @@ declines it.
 GRANTED, LANDED, AND ON THIS PIN — the ask is closed.** `delay_slew` walks
 the read head toward a new `delay_ms` instead of jumping to it, in
 delay-seconds per second, so it is the same number at every rate
-(`audioif_feedback_delay.c:196-203` clamps it to 0..64, `:396-413` walks it
+(`audioif_feedback_delay.c:195-203` clamps it to 0..64, `:397-416` walks it
 per sample; the binding is
 `.venv/lib/python3.12/site-packages/audioecho.py`'s `_OPTIONS["delay_slew"]`,
 slot 10). It defaults to 0 — the jump this node always made — so nothing the seed measured moved. A13 measures what it buys (T6, and App. R): at 0 the worst block boundary reads **−10.0 dBFS** against the same render's off-boundary floor of −15.5; at 0.001, 0.01 and 0.05 the boundary reads the floor itself. The class carries it as the **Glide** macro, default 0.05.
@@ -221,13 +227,18 @@ Each answer is one line here; the run behind it, and the reasoning, are in
    at 55/110/440 Hz **and at 1000/2000/3000/4000 Hz**, −0.07 at 880, −0.23
    at 1760, −1.02 at 3520, −2.06 at 5000. A ceiling would cost an octave and
    a half of wanted sound to hide a number that belongs in the docstring.
-3. **int16 or float line?** **SETTLED, and it is worse than "noise": above
-   Feedback 0.5 the int16 line never reaches zero.** `to_s16` rounds, so any
-   |c| ≤ 0.5/(1−g) is a fixed point and the loop parks on a limit cycle at
-   the tuned pitch — measured 0 LSB below 0.5, 1 at 0.7, 2 at 0.8, 5 at 0.9,
-   **10 LSB (−70.3 dBFS) at 0.95**, still there 30 s later. Both fixes are
-   node changes on a frozen pin, so the class **states** it: `TAIL_SAMPLES =
-   None`, the number in the docstring, and `reset()` clears it.
+3. **int16 or float line?** **SETTLED, and the answer is sharper than
+   "noise": above Feedback 0.5 the int16 line can stop decaying, and whether
+   it does is decided by the tuning.** `to_s16` rounds, so any
+   |c| ≤ 0.5/(1−g) is a fixed point. Measured (A13 §3): exact zero at every
+   tuning below Feedback 0.5; at 0.95, **10 LSB (−70.3 dBFS) at 1 kHz, where
+   48 000/f is a whole 48 frames**, 8 at 440 Hz, 6 at 220 — and **exact zero
+   at 438.3 Hz**, where the tap sits half a sample out and the interpolator
+   averages the last LSB away. So the fractional part that costs T2 its
+   0.2 dB above 2 kHz is the same one that buys the tail its exact zero.
+   Both fixes are node changes on a frozen pin, so the class **states** it:
+   `TAIL_SAMPLES = None`, the bound in the docstring, and `reset()` clears
+   it.
 
 *(Nothing else is open. Each answer above came from a run, not an argument.)*
 
@@ -637,6 +648,38 @@ frame of every render, i.e. it never stops:
   f0=  110.0  residue  3 LSB    f0= 3520.0  residue 10 LSB
                                 f0= 4000.0  residue 10 LSB
 ```
+
+**Re-measured at Station C, through the class, and the first reading was too
+broad.** Whether the loop parks is decided by the *fractional part of
+`F_s/f`*, not by the feedback alone. Ten-second renders, a 0.2 s burst, the
+largest |y| in the last second, and the last non-zero frame (480 000 means
+"still running at the end"):
+
+```
+  tuned    burst    g      residue   last non-zero frame
+   440.0    440.0  0.70      1 LSB   479999      frac 0.09
+   440.0   1000.0  0.70      1 LSB   479999
+   440.0    440.0  0.95      8 LSB   479999
+   440.0   1000.0  0.95      8 LSB   479999
+   438.3   1000.0  0.70      0 LSB    17881      frac 0.51
+   438.3    438.3  0.70      0 LSB    19904
+   438.3   1000.0  0.95      0 LSB    29380
+   438.3    438.3  0.95      0 LSB    34360
+   220.0    220.0  0.95      6 LSB   479999      frac 0.18
+   110.0    110.0  0.70      0 LSB   114465      frac 0.36
+   110.0    110.0  0.95      3 LSB   479999
+  1000.0   1000.0  0.70      1 LSB   479999      frac 0.00
+  1000.0   1000.0  0.95     10 LSB   479999
+  3520.0   3520.0  0.70      0 LSB    12078      frac 0.64
+  3520.0   3520.0  0.95      3 LSB   479999
+```
+
+The burst's frequency does not matter; the *tuning's* does. Where the tap
+sits near a whole sample the read is nearly exact and a lone LSB survives its
+own round trip; where it sits near half a sample the interpolator averages it
+with a zero neighbour and it rounds away. `floor(0.5/(1−g))` is hit exactly
+at 1 kHz — 48 000/1000 is 48.000 frames — and is an upper bound everywhere
+else.
 
 The residue is a square-ish oscillation at the tuned pitch, not DC: at
 110 Hz, g 0.95, the last forty samples run `-3 × 29, -2, -1, 0, 1, 2, 3 × 6`.

@@ -519,12 +519,22 @@ class ResetEmptiesTheLine(unittest.TestCase):
 
 
 class TheTailIsBoundedRatherThanZero(unittest.TestCase):
-    """The one Tier 1 invariant this class does not meet, held to the number
-    it does meet. `to_s16` rounds, so every |c| <= 0.5/(1-g) is a fixed
-    point of the loop; the class declares `TAIL_SAMPLES = None` and states
-    the residue."""
+    """The one Tier 1 invariant this class does not always meet, held to
+    both ends of what it does. `to_s16` rounds, so every |c| <= 0.5/(1-g) is
+    a fixed point of the loop -- but whether the loop can sit on one is
+    decided by the *fractional part* of `sample_rate / Frequency`, not by the
+    feedback alone. 440 Hz is 109.09 frames: the read is nearly exact and a
+    lone LSB survives its round trip. 438.3 Hz is 109.51: the interpolator
+    averages it with a zero neighbour and rounds it away. Both are asserted,
+    because the first alone would read as "this class never settles" and the
+    second alone as "it always does"."""
 
-    def residue(self, feedback, seconds=4):
+    #: 48 000 / 440 = 109.09 frames -- 0.09 of a sample off the grid.
+    PARKS_HZ = 440.0
+    #: 48 000 / 438.3 = 109.51 frames -- half a sample off it.
+    DRAINS_HZ = 438.3
+
+    def residue(self, feedback, seconds=4, tuned=None):
         values = array.array("h")
         for frame in range(SAMPLE_RATE * seconds):
             value = 0
@@ -536,20 +546,29 @@ class TheTailIsBoundedRatherThanZero(unittest.TestCase):
         effect = combfilter.CombFilter(
             audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
                                 channel_count=CHANNELS),
-            frequency=440.0, feedback=feedback, mix=2.0, glide=0.0)
+            frequency=self.PARKS_HZ if tuned is None else tuned,
+            feedback=feedback, mix=2.0, glide=0.0)
         y = pull(effect.output, SAMPLE_RATE * seconds)
         return max(abs(v) for v in y[-SAMPLE_RATE:])
 
     def test_below_half_the_line_reaches_exact_zero(self):
         self.assertEqual(self.residue(0.45), 0)
 
-    def test_above_half_it_parks_on_the_closed_form_bound(self):
+    def test_a_whole_sample_tuning_parks_inside_the_closed_form_bound(self):
         for feedback in (0.7, 0.8, 0.9):
             with self.subTest(feedback=feedback):
                 bound = math.floor(0.5 / (1.0 - feedback))
                 measured = self.residue(feedback)
                 self.assertGreater(measured, 0)
                 self.assertLessEqual(measured, bound)
+
+    def test_a_half_sample_tuning_still_reaches_exact_zero(self):
+        # The other end, and the reason the docstring's number is a bound
+        # rather than a typical value.
+        for feedback in (0.7, 0.9):
+            with self.subTest(feedback=feedback):
+                self.assertEqual(self.residue(feedback,
+                                              tuned=self.DRAINS_HZ), 0)
 
 
 class TheClassIsRateHonest(unittest.TestCase):
