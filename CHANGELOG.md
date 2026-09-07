@@ -39,6 +39,18 @@ there, and are recorded in its changelog.
   default moves to 149 ms so the class's own THD bound is met. Its dossier is
   `docs/effects/Limiter.md` and its evidence pack is
   `docs/effects/Limiter-evidence.md`.
+- **`Expander` rebuilt** on the effects program's construction module, as
+  `lib/audioeffects/rebuilt/expander.py`; the old class stands untouched in
+  `dynamics.py` until Phase 6 retires `_core`. It had no macros and no patch
+  at all; it has nine macros and six patches now — Threshold, Ratio, Depth,
+  Attack, Release, Key Low, Key High, Key Listen, Detector — a true-RMS
+  detector, a two-ended 12 dB/octave key band, an external key input, and a
+  Depth floor that reaches −80 dB where the old class was stuck at the node's
+  −60 dB literal without saying so. Portability tier **audioif**
+  (`audiodynamics`); `latency_samples` 0 with no look-ahead option at all.
+  The dossier's Hold macro is deliberately absent: `hold_ms` does nothing in
+  `DYN_EXPAND` and the reason is measured, not assumed
+  (`docs/effects/Expander.md` §8.1, `docs/effects/Expander-evidence.md`).
 
 ## v0.2.0 (2026-09-03)
 
