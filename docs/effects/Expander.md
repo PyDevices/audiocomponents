@@ -197,7 +197,7 @@ neither source's unit has a tempo input, so `self._transport()` is never read.
    in the class docstring: it floors Attack (t63 **0.75 ms** at
    `attack_ms=0.01`, B6), and the peak position removes it.
 3. **E5's confidence.** Moot here — E5 is not demonstrable by this class at
-   all (B5) — and **left at medium** for `NoiseGate`, which measures it and
+   all (B5) — and **left at medium** for `NoiseGate`, which is the class that
    picks between S1's two disagreeing Hold statements (App. R).
 4. **The DS201 schematic** was not obtained. No trait depends on a component
    value and Station A left the grade at literature with S5 in hand: a

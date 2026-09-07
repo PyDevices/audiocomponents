@@ -28,12 +28,13 @@ own manual warns about. That is a detector effect and is never reported in
 
 **The tail is zero, with one named exception.** The gain is a per-sample
 multiply on the audio, so silence in is exactly zero out in the same frame
-however the envelope stands - measured, the last non-zero frame after a burst
-is the burst's own. Key Listen is the exception: it puts the *side chain's*
-signal on the output instead of the audio, and the key high-pass has memory,
-measured at 2905 frames (60.5 ms) at 48 kHz with Key Low at its minimum. That
-is a diagnostic state, off in every patch, and it is recorded rather than
-folded into `tail_samples`.
+however the envelope stands - measured on the kit's `burst_silence` probe,
+there is no non-zero sample after the burst at all, at any of the three
+rates. Key Listen is the exception: it puts the *side chain's* signal on the
+output instead of the audio, and the key high-pass has memory, measured on
+that probe at 2373 / 2180 / 1089 frames at 48 / 44.1 / 22.05 kHz with Key Low
+at its minimum. That is a diagnostic state, off in every patch, and it is
+recorded rather than folded into `tail_samples`.
 
 **Two wire states, both byte-identical to the source:** Ratio at 1.0, where
 the gain computer's `over x (ratio - 1)` is zero, and Depth at 0 dB, where the
@@ -50,7 +51,7 @@ measured rather than assumed, each with its number in the evidence pack:
   exist in one node. `hold_ms` in `DYN_EXPAND` is silently inert -
   measured, a 1 ms burst under a 200 ms attack renders the same trace with
   and without it. An expander is the continuous law; `NoiseGate` is the
-  box with the trigger, and E5 is demonstrated there.
+  box with the trigger, and E5 is that class's to demonstrate.
 * **The key band is 12 dB/octave, not a brick wall** (dossier E3). Two
   poles at each end reject about 25 dB two octaves outside the band, so a
   loud out-of-band tone *will* open the expander. E3 as the dossier states
