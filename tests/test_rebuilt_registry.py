@@ -59,7 +59,7 @@ class TheLookup(unittest.TestCase):
     #: catches one registered under a name nobody listed.
     REBUILT = ("Compressor", "Limiter", "Expander", "NoiseGate", "DeEsser",
                "TransientShaper", "MultibandCompressor", "ParametricEQ",
-               "GraphicEQ", "LowPass", "HighPass")
+               "GraphicEQ", "LowPass", "HighPass", "BandPass")
 
     def test_a_rebuilt_name_hits_and_every_other_one_misses(self):
         # Both branches over the real catalogue. When this file was written
@@ -395,6 +395,34 @@ class TheLookup(unittest.TestCase):
             if name not in FIXTURES:
                 self.assertIn(name, audioeffects.ALL)
 
+    def test_a_name_resolves_only_when_its_file_is_there(self):
+        # The fallback branch, over the real catalogue. A name with a module
+        # under `rebuilt/` resolves to the class in it; every other name
+        # misses, and the old class in the family module stands.
+        rebuilt_names = set(rebuilt.known())
+        for name in audioeffects.ALL:
+            with self.subTest(name=name):
+                found = rebuilt.load(name)
+                if name in rebuilt_names:
+                    self.assertIsNotNone(found)
+                    self.assertEqual(found.NAME, name)
+                    self.assertTrue(issubclass(found, _component.Component))
+                    self.assertEqual(found.__module__,
+                                     "audioeffects.rebuilt." + name.lower())
+                else:
+                    self.assertIsNone(found)
+
+    def test_known_lists_what_is_there__bp(self):
+        known = sorted(rebuilt.known())
+        # The two fixtures are always there; everything else `known()`
+        # reports is one of the 46, never a stray module.
+        self.assertIn("ExampleAudioif", known)
+        self.assertIn("ExampleStock", known)
+        self.assertEqual(len(known), len(set(known)))
+        for name in known:
+            if name not in ("ExampleAudioif", "ExampleStock"):
+                self.assertIn(name, audioeffects.ALL)
+
 
 class TheReplacement(unittest.TestCase):
     """`_adopt` is what the package runs over its own globals at import.
@@ -536,6 +564,15 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
     def test_the_fixtures_are_not_among_the_46__hp(self):
         self.assertEqual(len(audioeffects.ALL), 46)
         for name in FIXTURES:
+            self.assertNotIn(name, audioeffects.ALL)
+            self.assertNotIn(name, audioeffects.__all__)
+
+    def test_the_fixtures_are_not_among_the_46__bp(self):
+        # The catalogue stays 46 whatever has been rebuilt: a rebuilt class
+        # replaces one of them by NAME, and the two fixtures are reachable
+        # from neither `ALL` nor `__all__`.
+        self.assertEqual(len(audioeffects.ALL), 46)
+        for name in ("ExampleStock", "ExampleAudioif"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
 
