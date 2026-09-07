@@ -21,10 +21,10 @@ this class says so on construction rather than sounding different there.
 
 **Cost**, in a musician's terms: two float biquad sections and no tables, no
 lookahead and no buffers - the cheapest thing in the effects library after a
-gain stage. Desktop anchor 61 ns per stereo frame for one section and 90 ns
-for two, against 20 833 ns of real time; the P4 and S3 budgets are the
-dossier's Tier 3 (2.5 % / 8 % at one section, 4 % / 13 % at two) and are
-**not yet measured on either board**.
+gain stage. Both sections are always built, so the cost is the same whichever
+way `Slope` sits: 91.2 ns per stereo frame at patch 0 and 95.5 at patch 1 on
+the desktop, against 20 833 ns of real time. The dossier's Tier 3 budget is
+P4 <= 4 %, S3 <= 13 %, and is **not yet measured on either board**.
 
 **Latency: zero, at every rate and every setting.** No option this class
 offers adds any - there is nothing here that looks ahead, so no option needs
@@ -43,6 +43,18 @@ Two things about the surface that the algebra, not the taste, decided:
   `sqrt(sqrt(2) - 1)` - so that two cascaded sections keep the -3 dB width
   the `Width` knob asks for. Without it the cascade's width would be 41 % of
   the number on the panel.
+
+**One trait of the dossier's is disconfirmed here, and it is the
+prototype's, not this build's.** T4 says the gain a hundredth of an octave
+below the centre - `|H(f0/100)|` at Q 0.707 - is `-37.0 +- 0.1 dB` **at every
+f0**. It is not: measured 2026-09-07, `-36.994` at f0 500 Hz, `-37.001` at
+1 kHz, `-37.037` at 2 kHz, then `-37.279` at 4.8 kHz, `-37.837` at 8 kHz and
+`-41.350` at 16 kHz. RBJ's own closed form at the running rate reads
+`-36.991 / -37.001 / -37.038 / -37.281 / -37.837 / -41.359` at the same
+points, so this class tracks the prototype to 0.009 dB the whole way and the
+clause's `+- 0.1 dB` band simply does not survive the bilinear warp above
+about 2 kHz - the same defect the dossier's trait-critic pass fixed for T4's
+high skirt and left standing in this clause.
 
 **One thing to know before automating it.** The biquad's coefficients step
 at the block boundary - they are deliberately not interpolated, because

@@ -90,10 +90,15 @@ setting — Q 32 at 20 Hz, 48 kHz — is 307 200 samples, 6.4 s, and that is the
 class-level `TAIL_SAMPLES` upper bound; the instance property narrows it to
 the settings in force.
 
-**Tier 3 budget** (fraction of one stereo block's real-time deadline):
-P4 ≤ 2.5 % / S3 ≤ 8 % at Slope = 1, P4 ≤ 4 % / S3 ≤ 13 % at Slope = 2. Lean
-patch expected: **no** — patch 0 *is* the lean path. Basis and its
-arithmetic: App. R. **Desktop-derived; neither board has been measured.**
+**Tier 3 budget: P4 ≤ 4 %, S3 ≤ 13 %, at every setting** (fraction of one
+stereo block's real-time deadline). One number, not two, because **both
+sections are always built** — a TOGGLE macro has to be able to switch the
+second one on later, so Slope off bypasses it rather than removing it, and
+the class pays for two sections whichever way the toggle sits: measured 91.2
+ns per stereo frame at patch 0 against 95.5 at patch 1 (A14). Lean patch
+expected: **no**, and there is no lean path to add — a `" - lean"` patch
+would cost what patch 0 costs. Basis and its arithmetic: App. R.
+**Desktop-derived; neither board has been measured.**
 
 *(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
 
@@ -178,7 +183,9 @@ Patches, on the 0-127 grid, `(Frequency, Width, Slope, Mix)`:
 | 4 | Narrow Probe | (74, 118, 0, 127) | 983 Hz, Q 23.8 — a resonant probe (the seed's −6 dB trim goes with the dropped macro) |
 | 5 | Sub Window | (21, 55, 127, 127) | 60 Hz, Q 3.03, 2 sections — the sub band, steep-sided |
 
-**Latency budget 0 samples; Tier 3 budget in §3.**
+**Latency budget 0 samples. Tier 3 budget: P4 ≤ 4 %, S3 ≤ 13 %, at every
+setting** (§3 — both sections are always built, so the toggle does not change
+the cost).
 
 ## 7. Defects in the current class the rebuild must not repeat
 
@@ -578,6 +585,20 @@ different machine state — which is why the stock build was re-measured here
 beside the new one. The ratio, 1.69× and 2.49× over the stock single section,
 is what §3's Tier 3 budget scales the seed's figures by.
 
+**4b. The class's own desktop cost**, measured the same way as the node rows
+above, two seconds of audio per row through `audioeffects.create("BandPass",
+...)`:
+
+```
+patch 0, one section        91.2 ns/stereo frame  0.44 % of 20833 ns
+patch 1, two sections       95.5 ns/stereo frame  0.46 % of 20833 ns
+```
+
+The two are within 5 % of each other because the class always builds both
+sections — a TOGGLE macro has to be able to switch the second one on later —
+so Slope off bypasses a section rather than removing it. That is why §3's
+Tier 3 budget is one number and not two.
+
 **5. The seed's Q compensation is a reciprocal out.** −3 dB edges located by
 bisection on S1's closed form, `k = √(√2 − 1) = 0.643594`, `1/k = 1.553774`:
 
@@ -753,9 +774,13 @@ exceeds the declared one, never when it undershoots.
 P4 ≤ 1.5 % / S3 ≤ 5 % for one section and P4 ≤ 2.5 % / S3 ≤ 9 % for two. A14
 measured, on one machine in one run, 36.2 ns per stereo frame for the stock
 build, 61.0 ns for one `audiobiquad` section and 90.0 ns for two — 1.69× and
-2.49× the stock single section. Applying those ratios to the seed's
-single-section cells gives P4 ≤ 2.5 % / S3 ≤ 8.5 % and P4 ≤ 3.7 % /
-S3 ≤ 12.4 %, rounded in §3 to ≤ 2.5 % / ≤ 8 % and ≤ 4 % / ≤ 13 %. A desktop
+2.49× the stock single section. **The class is the two-section figure at
+every setting**, because the second section is always built and bypassed
+rather than removed: 91.2 ns per stereo frame at patch 0, 95.5 at patch 1
+(A14). So the budget is the seed's two-section cells scaled by 2.49/1.0
+against its single-section basis — P4 ≤ 3.7 %, S3 ≤ 12.4 %, rounded in §3 to
+≤ 4 % and ≤ 13 %. An earlier draft of §3 carried two rows, one per slope
+setting; the measurement says there is one path and one number. A desktop
 ratio is not a board measurement and the budget is not a result: the P4 and
 S3 columns of the evidence pack are empty until the board run fills them.
 

@@ -6,6 +6,25 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audioif's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Changed
+
+- Phase 2 of the effects program: **`BandPass` rebuilt from scratch** on the
+  component contract (`lib/audioeffects/rebuilt/bandpass.py`). It gains a
+  four-macro surface where it had none — Frequency, Width, Slope and Mix —
+  six patches, and a `tail_samples` computed from the build rather than left
+  `None`, which for a resonator is 301 ms at the Sub Window patch and 3 ms at
+  the default. Its portability tier moves from stock to **audioif**
+  (`REQUIRES = ("audiobiquad",)`): on the ported Q15 biquad a low centre
+  holds DC for ever (audioif#23), and on audioif's float-state node every
+  setting the surface reaches settles to bit-exact zero. The old class stays
+  in `eq.py` untouched; the registry adopts the rebuild by `NAME`. Dossier
+  `docs/effects/BandPass.md`, evidence `docs/effects/BandPass-evidence.md` —
+  the board leg is not taken and one trait, T4's `|H(f0/100)|` clause, is
+  disconfirmed above about 2.5 kHz for a reason that is RBJ's closed form and
+  not this class.
+
 ## v0.2.0 (2026-09-03)
 
 The first release from this repository. These packages continue a version
