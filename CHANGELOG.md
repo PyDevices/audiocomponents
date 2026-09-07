@@ -6,6 +6,26 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audioif's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Changed
+
+- `NoiseGate` is rebuilt from scratch on the construction module, after the
+  Drawmer DS201 (effects program, Phase 2). It gains the eight controls the
+  DS201 has and the shipped class had none of: Threshold, Attack, **Hold**,
+  Release, **Range**, a two-ended **key band** and **Key Listen**, with six
+  named patches. Its closed state is now the Range you set - -15 dB, say,
+  where the old class could only slam to -80 - and its law is a depth rather
+  than the 8 dB-per-dB slope it inherited from the node's memoryless gain
+  computer. `duck=True` builds the ducking version for voice-overs;
+  `lookahead_ms` is off by default and is the class's only latency. The old
+  class stands untouched in `lib/audioeffects/dynamics.py` beneath the
+  registry.
+  Evidence: `docs/effects/NoiseGate-evidence.md`.
+- `tools/render_effect.py` takes `--option name=value`, so a render can
+  reach a class's construction options - a duck graph and a look-ahead are
+  build choices, not knobs.
+
 ## v0.2.0 (2026-09-03)
 
 The first release from this repository. These packages continue a version

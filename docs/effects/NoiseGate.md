@@ -6,8 +6,9 @@
 claim in S1 ("the worldwide 'industry standard' noise gate"); every trait
 below is on its own panel. **Grade:** literature — two Drawmer schematic
 sheets were reached (S5) but no trait derives from them (vision §4.1).
-**Tier:** **audioif**, `REQUIRES = ("audiodynamics",)`, plus `audioroute` and
-`audiomath` when built with `duck=True`. **Status: traits frozen
+**Tier:** **audioif**, `REQUIRES = ("audiodynamics", "audioroute",
+"audiomath")` — the first is the whole default build, the other two are
+built only by `duck=True`. **Status: traits frozen
 2026-09-07**, before a line of the rebuild was written (worktree
 `ac-wt-noisegate`, branch `effects/p2-noisegate`); seeded 2026-09-06, audited
 twice, §§1–8 shortened and settled here.

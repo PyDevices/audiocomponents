@@ -17,3 +17,13 @@ at Station C.
 
 Nothing in a dossier refers to the previous implementation except in §7,
 where a defect the rebuild must not repeat is named. There is no baseline.
+
+## Rebuilt classes
+
+One row per class the effects program has rebuilt, in a musician's terms.
+The cost column is the Tier 3 figure from the class's evidence pack, and is
+empty until the board run takes it.
+
+| Class | Standout | What it does for you | Tier | Cost (P4 / S3) |
+|---|---|---|---|---|
+| [`NoiseGate`](NoiseGate.md) | Drawmer DS201 | Shuts the noise floor down by as much as you ask rather than always slamming it to nothing, holds the gate open long enough to make a gated-reverb snare, and listens through its own key band so a tom's gate can ignore the hi-hat above it. `duck=True` inverts it for voice-overs. One equal-peak clause is disconfirmed and the pack says why. | audioif (`audiodynamics`, plus `audioroute` and `audiomath` when ducking) | *(board run)* |
