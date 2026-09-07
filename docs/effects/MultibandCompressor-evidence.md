@@ -629,3 +629,50 @@ From the dossier's §7, and only from there.
 - **No listen.** Nobody has heard this class. Phase 2 is a mechanical gate by
   Brad's direction, so that is by design and not an omission — but it is worth
   writing down that the evidence above is entirely measurement.
+
+---
+
+## Refutation record (2026-09-07)
+
+Written by a refuter who did not build the class, against §1 as it stands.
+Every trait marked **demonstrated** was re-run here at settings, rates, block
+sizes and tone positions §1 did not use, all inside the trait's own words;
+each planted fault was re-checked for firing. One command:
+
+```
+$ PYTHONPATH=lib .venv/bin/python tools/phase2_probes/multiband_refute.py
+```
+
+(`tools/phase2_probes/multiband_refute.py` is this pass, added by the
+refuter; the class was not touched.) The baseline `multiband_traits.py` run
+was reproduced first, last line **`1 failing rows`** — `low: evenness`, as §1
+says.
+
+| # | Verdict | The argument, and the numbers behind it |
+|---|---|---|
+| M1 | **not refuted** | The claim is universal over settings, and §1 measures six. I added four *exactly* 8:1 pairs at 48 kHz (40/320 **−0.029**, 100/800 **−0.190**, 400/3200 **−0.184**, 800/6400 **−0.168** dB), five more two-band splits spanning the whole 40–800 macro (60/120/300/500/650, worst **−0.002**), the same settings at 44.1 kHz (**−0.117 / −0.164 / −0.001**) and at 22.05 kHz, where the grid is 51 tones to 9676 Hz (**−0.112 / −0.094 / −0.002**), and the 200/2000 case on material 20 dB quieter, in case flatness was riding on 16-bit headroom (**−0.117**, unchanged). Nothing crossed ±0.25 dB. What the gate should see anyway: the **margin at the clamp is 0.06 dB** — the worst legal setting found is 100/800 at −0.190 against a 0.25 dB bar, so M1 passes by a quarter of its bar at exactly the ratio §6 permits. |
+| M2 | **not refuted** | The row names 200/2000 but no rate. At 44.1 kHz: corners **−6.06 / −6.05 dB**, skirts **23.7 dB/octave**, sum **−0.088 dB** at both. At 22.05 kHz, where bilinear warping is worst: **−6.06 / −6.07**, **23.8 dB/octave**, sum **−0.084 / −0.085**. A pair the class was never measured at, 100/4000 at 48 kHz: **−5.85 / −5.67 dB**, **23.7 / 23.8 dB/octave**, sum **−0.005**. The `LinkwitzRiley2` fault is a real cut — it changes `_band_modes` only — and it lands on the Butterworth number. |
+| M3 | **REFUTED — the "demonstrated" half of the row** | §1 marks depth and evenness demonstrated for the mid and high bands and disconfirms evenness for the low band only. Both survive on a **tone window chosen at measurement time**: `BAND_TONES` sits no closer than an octave to either corner, which is 400–1000 Hz out of the mid band's 200–2000 — **1.3 of its 3.3 octaves**. Widen it to 283 and 1414 Hz, still inside the band's own corners and only **1.75 dB** below its own peak, and, **soloed, at the evidence's own 200/2000 setting**: mid band `283:−10.61 400:−11.64 700:−11.89 1000:−11.62 1414:−10.58`, **mean −11.27 dB (depth bar ±0.5 → RED), tilt 1.31 dB (bar 0.5 → RED)**; high band `2828:−10.58 … 16000:−12.01`, tilt **1.42 dB → RED**; low band with 141 Hz added, tilt **1.82 dB**, not 0.73. The shortfall is §1a's cause 1 and nothing else — measured against it tone by tone, `B − C` runs **+0.05 to +0.13 dB** across 200–2000 Hz — so the low band is not a special case: **every band tilts, by its own skirt, and only the window hides it.** (One control the other way: at 40/8000 the mid band is wide enough that a one-octave-inside window still spans 80–4000 Hz, and there the tilt really is **0.37 dB**, green.) |
+| M3 (isolation) | **not refuted, but read the bar it is measured against** | I tried to break the isolation clause on the harder read — the **summed output**, no solo, at tones the trait's own "more than half an octave from a crossover" admits — and it held: worst idle-band movement **0.30 dB** (141 Hz while the mid band is driven) and **0.29 dB** (283 Hz while the low band is driven), both inside 0.5. That is a real result and it is stronger than §1's. The soloed read §1 uses, though, is not a small number: it is a **byte-identical compare** — with the low band driven to 12 dB, the soloed mid band at 700 Hz renders `9083457d` and the idle build renders `9083457d`, the same bytes. So "0.00 dB on every idle band" is not evidence of acoustic isolation; it is evidence that a band's chain has no path to another band's macros, and the only defect it can catch is the routing defect `SharedDetector` plants. |
+| M4 | **not refuted** | Thirteen configurations §1 did not run, all **reported 0, measured [0.0, 0.0]**: 22.05 kHz at three and at two bands; the closest legal crossover pair (800/6400); two bands at 800; `mix` 0.5 and 0.0; the fastest, deepest dynamics the surface allows (attack 0.1 ms, release 5 ms, ratio 20, threshold −60 on every band); and all five patches. There is no delay line in the graph to find, which is why this row is cheap to hold — but it is not unfalsifiable: `LookaheadLatency` cuts one seam and reads 128. |
+| M5 | **not refuted, and it survives a harder run than §1's** | §1's tone ladder digests only the first **8192** frames (`multiband_traits.py:m5`, `render(effect, min(frames, 8192), …)`) and its burst ladder checks a non-zero **count**, not a digest. I removed both limits and added blocks §1 did not use: seven sizes — 256, 8193, 12000, 16384, 32768, 65536, **100000** — over the whole 36000-frame tone give **`0c5b0385` seven times** at three bands and **`53511519`** seven times at two, and the burst material gives **`a82e5695` seven times**, digest-identical rather than merely non-silent. The same seven on the `NoGuard` fault: **seven different digests, and 0 non-zero samples at 65536 and 100000** — the erasure §1 describes, worse than §1 shows it. |
+
+**What the class author must answer (M3 only).**
+
+1. M3's frozen words are "*that* band's passband", and the dossier's Meas.
+   column says only "ISO, per band". `BAND_TONES`' one-octave-inside window
+   is a reading of "passband" that was settled after the measurement and that
+   covers under half of the mid band. Either the window belongs in the trait
+   — which is a change to a frozen row, and the gate's business — or the
+   verdict changes.
+2. On the trait as frozen, **evenness is disconfirmed for all three bands**,
+   not one: 1.82 / 1.31 / 1.42 dB of tilt, and **depth is disconfirmed for
+   the mid band** at **−11.27 dB**. The class docstring's "The driven band
+   itself lands within 0.25 dB of the number asked for in the mid and high
+   bands" and the README row are written from the narrow window and would
+   need the same correction.
+3. §1a's account is right and should be generalised: the tilt is the band's
+   own LR4 skirt against a fixed threshold, `B − C` inside ±0.13 dB across
+   the whole mid band. It is arithmetic, not a bug — but it is arithmetic
+   that applies to **every** band, and the low band is only where the
+   evidence's window happened to be narrow enough to expose it.
