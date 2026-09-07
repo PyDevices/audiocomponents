@@ -84,35 +84,43 @@ class DynamicsAndEQTest(unittest.TestCase):
 
     def test_a_filter_above_nyquist_is_handled_rather_than_folded(self):
         # Silently folded coefficients used to be unreachable because every
-        # frequency was halved on the way in. The two halves of the library
-        # answer differently and both are covered here. `HighPass` is still
-        # the old `_core` class and raises, which is what it has always
-        # done. The rebuilt `LowPass` *clamps*: the rate-honesty invariant
-        # asks a Hz-valued span to clamp at the running rate rather than
-        # refuse (its dossier's section 7 names the raise as a defect), so
-        # the assertion is that the corner lands under Nyquist and the
-        # filter still filters.
-        with self.assertRaises(ValueError):
-            audioeffects.HighPass(source(), frequency=SAMPLE_RATE * 0.75)
-
-        clamped = audioeffects.LowPass(source(),
-                                       frequency=SAMPLE_RATE * 0.75)
-        self.assertLess(clamped.macro(0), SAMPLE_RATE * 0.5)
-        self.assertGreater(peak(clamped.output, 8), 0.001)
+        # frequency was halved on the way in, and the old `_core` classes
+        # answered an out-of-range corner by raising. Both classes are
+        # rebuilt now and both *clamp*: the rate-honesty invariant asks a
+        # Hz-valued span to clamp at the running rate rather than refuse
+        # (each dossier's section 7 names the raise as a defect), so the
+        # assertion is that the corner lands under Nyquist and the filter
+        # still filters.
+        #
+        # This read the raise for `HighPass` between its rebuild's branch
+        # point and this integration, because `LowPass` was rebuilt first
+        # and wrote the pair while the other half was still `_core`.
+        for name in ("LowPass", "HighPass"):
+            with self.subTest(filter=name):
+                clamped = getattr(audioeffects, name)(
+                    source(), frequency=SAMPLE_RATE * 0.75)
+                self.assertLess(clamped.macro(0), SAMPLE_RATE * 0.5)
+                self.assertGreater(peak(clamped.output, 8), 0.001)
 
     def test_a_filter_sits_at_its_corner_across_the_whole_band(self):
         # Nothing pinned this, which is how the biquads got away with being
         # unusable at both ends of the band for as long as they were. Q 0.707
         # is -3.01 dB at the corner by definition, so the assertion needs no
         # reference implementation to compare against.
-        # 22 kHz is a `HighPass` row only: the rebuilt `LowPass`'s
-        # Frequency macro spans 20 Hz to 20 kHz (its dossier's section 6),
-        # so a corner above that is not a setting it offers and asking for
-        # one measures the clamp rather than the coefficients.
+        # 22 kHz is dropped from both rows on 2026-09-07, each in the commit
+        # that rebuilt its class: the rebuilt `LowPass`'s Frequency macro
+        # spans 20 Hz to 20 kHz and the rebuilt `HighPass`'s 10 Hz to 20 kHz
+        # (each dossier's section 6, D2 for `HighPass`), so a corner above
+        # that is not a setting either offers, and asking for one measures
+        # the span's own ceiling rather than the coefficients. Everything
+        # from 50 Hz to 18 kHz still runs here, and each rebuilt class has
+        # its own corner sweep over its whole span, at both slopes and three
+        # rates: `test_cpython_effects_lowpass.py` and
+        # `test_cpython_effects_highpass.py::CornerTest`.
         for hz in (50.0, 100.0, 200.0, 400.0, 1000.0, 4000.0, 12000.0,
                    18000.0, 22000.0):
             for name in ("LowPass", "HighPass"):
-                if name == "LowPass" and hz > 20000.0:
+                if hz > 20000.0:
                     continue
                 with self.subTest(filter=name, hz=hz):
                     at_corner = tone_gain_db(
