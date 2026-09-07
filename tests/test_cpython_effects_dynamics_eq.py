@@ -13,17 +13,16 @@ suite moves. Until then the contract-level tests over `audioeffects.ALL` in
 `test_cpython_effects_library.py` hold the catalogue, and these hold the
 character.
 
-Covers `ParametricEQ`, `GraphicEQ`, `LowPass`, `HighPass`, `Compressor`,
-`MultibandCompressor` and `Limiter`.
+Covers `ParametricEQ`, `GraphicEQ`, `LowPass`, `HighPass`, `Compressor` and
+`MultibandCompressor`. `Limiter` has been rebuilt: its trait tests were
+retired from the foot of this file on 2026-09-07 and live in
+`test_cpython_effects_limiter.py`.
 """
 
-import math
 import os
 import sys
 import unittest
-from array import array
 
-import audiocore
 import audioeffects
 import audiofilters
 import synthio
@@ -156,57 +155,31 @@ class DynamicsAndEQTest(unittest.TestCase):
         self.assertLess(peak(working.output, 8, skip=4),
                         peak(idle.output, 8, skip=4) * 0.75)
 
-    def test_lookahead_stops_a_limiter_overshooting_the_transient(self):
-        # Without it the gain only starts coming down once the peak has
-        # already been through, so the first cycle of every transient goes
-        # over the ceiling. With it the detector is ahead of the audio.
-        def peak_over(lookahead_ms):
-            values = array("h")
-            for frame in range(24000):
-                loud = 1200 <= frame < 6000
-                value = 32000 if loud and frame % 2 else (
-                    -32000 if loud else 0)
-                values.append(value)
-                values.append(value)
-            source = audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
-                                         channel_count=2)
-            limiter = audioeffects.Limiter(source, ceiling_db=-12.0,
-                                           release_ms=60.0,
-                                           lookahead_ms=lookahead_ms)
-            return peak(limiter.output, 60)
 
-        ceiling = 10.0 ** (-12.0 / 20.0)
-        self.assertGreater(peak_over(0.0), ceiling * 1.5)
-        self.assertLess(peak_over(5.0), ceiling * 1.2)
-
-    def test_true_peak_sees_the_level_between_the_samples(self):
-        # A quarter-rate sine offset by 45 degrees puts every sample at
-        # -3 dBFS and every actual peak, halfway between two of them, at 0.
-        # A sample-peak detector cannot see that at all.
-        def reduction(true_peak):
-            values = array("h")
-            for frame in range(12000):
-                value = int(32767.0 * math.sin(
-                    math.pi * frame / 2.0 + math.pi / 4.0))
-                values.append(value)
-                values.append(value)
-            source = audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
-                                         channel_count=2)
-            limiter = audioeffects.Limiter(source, ceiling_db=-2.0,
-                                           true_peak=true_peak)
-            for _ in range(20):
-                audiocore.get_buffer(limiter.output)
-            return limiter.node.gain_reduction_db()
-
-        self.assertEqual(reduction(False), 0.0)
-        self.assertLess(reduction(True), -0.3)
-
-    def test_the_new_dynamics_options_are_off_by_default(self):
-        # Everything built before this phase has to render exactly as it did,
-        # which is why both are opt-in rather than sensible defaults.
-        plain = audioeffects.Limiter(source())
-        self.assertEqual(plain.macro(2), 0.0)
-        self.assertLess(plain.macro(3), 0.5)
+# `Limiter`'s three trait tests retired here, 2026-09-07, with the rebuild
+# (effects roadmap, "The class gate": a class's old-surface trait tests are
+# retired in the commit that lands the rebuild). They asserted things about a
+# surface and a node that no longer exist, and two of the three asserted
+# behaviour the dossier records as defects:
+#
+#   test_lookahead_stops_a_limiter_overshooting_the_transient - it asserted
+#     that the lone node overshoots by more than 50 % without lookahead and
+#     comes back inside 20 % with it. That is defect 2 of `Limiter.md` section
+#     7 written as a pass: measured, lookahead on one node makes the overshoot
+#     *worse*, and the old class only read green because its hardcoded
+#     0.05 ms attack made the no-lookahead case bad enough to beat. The
+#     rebuilt class overshoots at no setting; L2 and L3 in
+#     `test_cpython_effects_limiter.py` are the replacement, and they are
+#     bounds against the ceiling rather than a ratio between two builds.
+#   test_true_peak_sees_the_level_between_the_samples - it read
+#     `limiter.node.gain_reduction_db()`, a private attribute of a one-node
+#     build. L1 replaces it, and measures the output's true peak rather than
+#     the detector's opinion of it.
+#   test_the_new_dynamics_options_are_off_by_default - macro 3 is Release on
+#     the rebuilt surface, not True Peak. L5 replaces it.
+#
+# Nothing else in this module refers to `Limiter`; the rest still covers the
+# classes phase 2 has not reached.
 
 
 if __name__ == "__main__":

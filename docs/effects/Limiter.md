@@ -15,48 +15,33 @@ stated so a measurement can fail them, with a standards document and a
 peer-reviewed paper behind them rather than a schematic.
 **Portability tier:** needs audioif-own nodes (`audiodynamics`), which is not a
 CircuitPython port (`audioif/docs/upstream-diff.md:661`).
-**Status:** seed (Phase 0), written 2026-09-06; audited the same day by an
-independent licence and citation pass that re-fetched both sources itself
-(Appendix D); then attacked on 2026-09-06/07 by an independent **trait-critic**
-pass that re-reached both sources from their own bytes (Appendix E). No earlier
-draft existed; both sources were reached in every run and both licence calls
-stand unchanged. The trait-critic pass changed no number and added no source
-claim: it tightened four rows' wording and gave L1 the probe-material
-requirement without which the row could pass on evidence that cannot express an
-inter-sample peak (E.3).
+**Status:** seeded 2026-09-06 (Phase 0), audited twice for licences and
+citations (Appendices A, D) and attacked once by a trait critic (Appendix E);
+both sources were reached in every run and both licence calls stand unchanged.
+**Frozen for the rebuild on 2026-09-07** by the class builder, which settled
+five of §8's six opens, re-ran every palette claim on the pin for itself, and
+found three of them stale. The trait table below is the one the class is built
+and measured against; **Appendix G** is the run record. *(The three passes'
+own accounts of themselves: App. R.)*
 
 ## 1. The circuit, in one paragraph
 
-There is no circuit; there is a signal flow, and it has four parts that a
-compressor does not. **(a) A delay on the audio path** so the detector can see a
+There is no circuit; there is a signal flow, and it has four parts a
+compressor does not. **(a) A delay on the audio path**, so the detector sees a
 peak before the audio carrying it reaches the output — the *lookahead*, and the
-only latency this class ever has. **(b) A running maximum over that delay
-window** before the level detector, so that once a peak has been seen the gain
-stays down until the peak has physically left the delay line; without it the
-detector starts releasing while the peak is still in flight, and the peak
-escapes. This is S2's central result: a delay alone "is not a foolproof cure for
-clipping", because "the output peaks above the threshold when the limiter goes
-to release mode", and "clipping will generally also happen if a peak is shorter
-than N samples", so the fix is "a max filter (running max selection) and a
-clipping control block to the limiter side-chain before the level detection",
-`x_max(n) = max[c(n−N), …, c(n)]` with the filter order N equal to the delay
-length. **(c) A gain computer with infinite ratio and no knee above the
-ceiling**, so the output cannot exceed it, together with a *smoothed* gain — S2
-opens by noting the goal is "to control the time-varying gain smoothly enough to
-avoid frequency artifacts", and the tension it resolves is that smoothing alone
+only latency this class ever has. **(b) A running maximum over that window**
+before the detector, so the gain stays down until the peak has physically left
+the delay line; S2's central result is that a delay alone "is not a foolproof
+cure for clipping". **(c) A gain computer with infinite ratio and no knee above
+the ceiling**, with the gain *smoothed* — S2's tension is that smoothing alone
 "causes overshoots and leads to either clipped output or non-maximal signal
 levels". **(d) A true-peak detector**, because the ceiling is a promise about
-the reconstructed waveform, not about the samples: S1's Annex 2 defines the
-measurement as 12.04 dB of attenuation, **4× oversampling to 192 kHz** through
-an "order 48, 4-phase, FIR interpolating" filter, absolute value, and
-conversion to **dB TP**, and its Attachment gives the worst-case under-read of a
-peak-sample reading as `20·log(cos(π·f_norm/n))` for oversampling ratio *n* —
-0.554 dB at 4× for f_norm 0.45, and — the same formula at *n* = 1 — 3.01 dB for
-a sample-peak meter at a quarter of the sampling frequency, which S1 itself
-states rounded ("it is easy to demonstrate, for example, a 3 dB under-read for
-an unfortunately-phased tone at a quarter of the sampling frequency"). Panel-wise
-there is a Ceiling, a Release, a Lookahead, a gain into the ceiling, and a
-true-peak switch; everything else is a consequence.
+the reconstructed waveform and not about the samples: S1's Annex 2 fixes 4×
+oversampling and gives 3 dB as the sample-peak meter's under-read at f_s/4.
+Panel-wise there is a Ceiling, a Release, a Lookahead, a gain into the ceiling
+and a true-peak switch; everything else is a consequence.
+
+*(The full derivation, with both sources quoted at length, is in **App. R**.)*
 
 ## 2. Sources and license calls
 
@@ -65,34 +50,17 @@ true-peak switch; everything else is a consequence.
 | S1 | ITU-R, *Recommendation BS.1770-5* (11/2023) … (App. S1) | The true-peak algorithm (attenuate 12.04 dB → 4× … (App. S1) | "© ITU 2023. All rights reserved. No part of … (App. S1) | https://www.itu.int/dms_pubrec/itu-r/rec/bs/R-REC-BS.1770-5-202311-I!!PDF-E.pdf | 2026-09-06 — PDF fetched; unreadable to the fetch tool, text extracted locally with `pypdf` |
 | S2 | Perttu Hämäläinen, "Smoothing of the Control Signal without Clipped … (App. S2) | Why a delay alone does not prevent clipping … (App. S2) | No copyright or licence line is printed … (App. S2) | https://www.dafx.de/paper-archive/2002/DAFX02_Hamalainen_smoothing_peak_limiters.pdf | 2026-09-06 — PDF fetched, text extracted locally with `pypdf` |
 
-**Looked for and not found this run.** *Giannoulis, Massberg & Reiss, "Digital
-Dynamic Range Compressor Design—A Tutorial and Analysis"* (JAES 60(6), 2012) —
-the standard tutorial for gain-computer and detector topology — was identified
-and is **still not reached**, and the earlier two accounts of why were both
-wrong. What the second audit pass actually observed on 2026-09-06, probing the
-host directly: `http://eecs.qmul.ac.uk/~josh/…` answers **302** to the same URL
-over https, and that https host then **resets the connection**;
-`http://www.eecs.qmul.ac.uk/~josh/…` answers **301 to
-`https://webspace.eecs.qmul.ac.uk/josh`** — not to `qmul.ac.uk/eecs/`;
-`https://www.eecs.qmul.ac.uk/…` fails certificate verification ("unable to get
-local issuer certificate"); and the author's webspace page, which does resolve
-(HTTP 200), reads "The owner of this web page hasn't added any content, yet."
-The Semantic Scholar landing page returned no content. Nothing from it is
-cited. A hardware brickwall limiter with a
-published service manual was not hunted, deliberately: the class is a design
-grade and adding a unit would make it a fifth `Compressor` character, not a
-limiter (see the Standout note above).
-FabFilter's Pro-L help page appeared in search results with a lookahead figure;
-it was **not fetched** and is not cited.
+**Looked for and not found.** *Giannoulis, Massberg & Reiss, "Digital Dynamic
+Range Compressor Design—A Tutorial and Analysis"* (JAES 60(6), 2012) — the
+standard tutorial for gain-computer and detector topology — is **still not
+reached**, and nothing from it is cited. FabFilter's Pro-L help page was not
+fetched and is not cited. A hardware brickwall was not hunted, deliberately
+(the Standout note above). *(The host probing behind the first claim: App. R.)*
 
 Copyleft sources are measured or read as papers, never read for code structure
 (vision §5). Neither source here is code; S2 carries no licence at all and is
 treated as copyleft, S1 is read under an explicit all-rights-reserved notice.
-
-The licence and citation audit's record is Appendices A and D: A is the first
-pass (five corrections and one licence question for Gate 0), D the independent
-re-fetch of 2026-09-06 that audited A's own work. Where the two disagree, D is
-the later reading and wins.
+The audit record is Appendices A and D; where they disagree, D wins.
 
 ## 3. Traits — fixed before measurement
 
@@ -103,17 +71,20 @@ The standard block, verbatim from vision §3, is in **App. I** — moved there u
 ### Tier 2 — the textbook properties, stated so they can fail
 
 A design grade "may state the textbook property as its traits" (vision §4.1).
-These are those properties, each with the number that fails it.
+These are those properties, each with the number that fails it. **The trait and
+the number that disconfirms it are here in full — they are what the gate
+checks; the source reading, the confidence and the measurement recipe are in
+App. T**, one cell-level reference per row.
 
-| # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Measurement (kit) |
-|---|---|---|---|---|---|
-| L1 | **The ceiling is a true-peak promise.** With Lookahead and True Peak on, the output's true-peak level measured by S1's Annex 2 method (12.04 dB attenuation, 4× oversampling to 192 kHz, the order-48 4-phase FIR, absolute value, dB TP) exceeds the Ceiling macro by no more than **0.5 dB *(own, anchored on S1's 0.554 dB worst case at 4×)*** on every probe, at 48 kHz and 44.1 kHz. **The probe set must contain a worst-phase tone at f_s/4** — the case S1 singles out — because material with no inter-sample peak in it cannot express the thing being measured, and a pack of such material would read green on a limiter with no true-peak detection at all | S1: the five processing stages and the … (App. L1) | high | Any probe reading more than +0.5 dB TP above the ceiling; **or an evidence pack whose probe set contains no f_s/4 worst-phase tone** | BS.1770 4× true-peak reading of … (App. L1) |
-| L2 | **Lookahead never creates overshoot.** Sweeping the Lookahead macro 0 → maximum in 1 ms steps, the output's *sample* peak **exceeds the ceiling by no more than 0.1 dB *(own)*** at every setting, **and does not grow with lookahead** — the peak at any setting is no higher than the peak at 0 ms plus the measurement's own repeat spread. The two clauses are separate failures: a build could sit under the ceiling everywhere and still show the S2 pathology as a rising trend | S2 §3.1 verbatim: a delay "is not a foolproof … (App. L2) | high | A sample peak more than 0.1 dB above the ceiling at any setting, or a peak that rises with lookahead | 1 ms burst at 0 dBFS into a −12 … (App. L2) |
-| L3 | **A peak shorter than the lookahead is still caught — at every setting, not just the longest.** A single-sample impulse at 0 dBFS into a −12 dBFS ceiling leaves the output no more than **0.1 dB *(own)*** above the ceiling at **every non-zero lookahead setting**. The short-peak case is the one S2 says a plain delay always loses, and it loses it worst at the settings between the ends | S2 §3.1 verbatim: "Clipping will generally … (App. L3) | high | The impulse passing more than 0.1 dB over the ceiling at any non-zero lookahead setting | Impulse probe at 0.5, 1, 2 … (App. L3) |
-| L4 | **Reported latency equals the lookahead, exactly.** `latency_samples == round(lookahead_ms × fs / 1000)` at 48 kHz, 44.1 kHz and 22.05 kHz, for every patch and every position of the Lookahead macro, and the click measurement agrees with the report **to the sample** | Vision §9a ("reported in `latency_samples` … (App. L4) | high | Any patch or macro position where the reported number and the measured click offset differ by one sample or more | Click through the class against … (App. L4) |
-| L5 | **Zero by default.** Constructed with no options, and on the default patch, `latency_samples` is 0, Lookahead is 0 ms and True Peak is off | Vision §9a ("every latency-adding option … (App. L5) | high | A non-zero default for either option, or a non-zero `latency_samples` on patch 0 | Construct and read … (App. L5) |
-| L6 | **Infinite ratio, hard knee.** Above the ceiling the static I/O curve's slope is ≤ **0.02 dB/dB *(own)*** over 24 dB of input, and at Knee-macro zero the fitted knee width is ≤ **0.5 dB *(own)*** — a brickwall, not a high-ratio compressor | The definition of the thing … (App. L6) | high | A slope above 0.02 dB/dB anywhere in the 24 dB span, **or** a fitted knee wider than 0.5 dB at Knee zero | Static I/O curve … (App. L6) |
-| L7 | **Smoothing is a documented trade, not an accident.** At the default patch a 60 Hz sine driven 12 dB into the ceiling shows THD ≤ **1 % *(own)***; the Release macro's fastest setting is documented in the docstring as a distortion setting, and the measured THD there is recorded in the evidence pack rather than bounded | S2 §1–2 verbatim: the gain must be controlled … (App. L7) | high | THD above 1 % at the default patch, or a docstring that does not name the trade | Harmonic spectrum of a 60 Hz sine … (App. L7) |
+| # | Trait (falsifiable as stated) | Disconfirmed by |
+|---|---|---|
+| L1 | **The ceiling is a true-peak promise.** With Lookahead and True Peak on, the output's true-peak level by S1's Annex 2 method exceeds the Ceiling macro by no more than **0.5 dB *(own, anchored on S1's 0.554 dB worst case at 4×)*** on every probe, at 48 kHz and 44.1 kHz. **The probe set must contain a worst-phase tone at f_s/4** — material with no inter-sample peak in it cannot express what is being measured | Any probe reading more than +0.5 dB TP above the ceiling; **or an evidence pack whose probe set contains no f_s/4 worst-phase tone** |
+| L2 | **Lookahead never creates overshoot.** Sweeping Lookahead 0 → maximum in 1 ms steps, the output's *sample* peak exceeds the ceiling by no more than **0.1 dB *(own)*** at every setting, **and does not grow with lookahead**. Two separate failures: a build could sit under the ceiling everywhere and still show S2's pathology as a rising trend | A sample peak more than 0.1 dB above the ceiling at any setting, **or** a peak that rises with lookahead |
+| L3 | **A peak shorter than the lookahead is still caught — at every setting, not just the longest.** A single-sample impulse at 0 dBFS into a −12 dBFS ceiling leaves the output no more than **0.1 dB *(own)*** above the ceiling at **every non-zero lookahead setting** | The impulse passing more than 0.1 dB over the ceiling at any non-zero lookahead setting |
+| L4 | **Reported latency equals the lookahead, exactly.** `latency_samples == floor(lookahead_ms × fs / 1000)` at 48 kHz, 44.1 kHz and 22.05 kHz, for every patch and every position of the Lookahead macro, and the click agrees **to the sample**. *(The seed said `round`; the node truncates, `audioif_dynamics.c:126-127` — G.3.)* | Any patch or macro position where the reported number and the measured click offset differ by one sample or more |
+| L5 | **Zero by default.** Constructed with no options, and on the default patch, `latency_samples` is 0, Lookahead is 0 ms and True Peak is off | A non-zero default for either option, or a non-zero `latency_samples` on patch 0 |
+| L6 | **Infinite ratio, hard knee.** Above the ceiling the static I/O curve's slope is ≤ **0.02 dB/dB *(own)*** over 24 dB of input, and at Knee zero the fitted knee width is ≤ **0.5 dB *(own)***. The 24 dB span is measured at a **−24 dBFS ceiling**: int16 has no headroom above 0 dBFS to put the other 24 dB in | A slope above 0.02 dB/dB anywhere in the 24 dB span, **or** a fitted knee wider than 0.5 dB at Knee zero |
+| L7 | **Smoothing is a documented trade, not an accident.** At the default patch a 60 Hz sine driven 12 dB into the ceiling shows THD ≤ **1 % *(own)***; the Release macro's fastest setting is named in the docstring as a distortion setting, and its measured THD is recorded rather than bounded | THD above 1 % at the default patch, **or** a docstring that does not name the trade |
 
 ### Tier 3 — cost and latency
 
@@ -121,9 +92,15 @@ Options that add latency, each with its default:
 
 | Option | Adds | Default |
 |---|---|---|
-| `lookahead_ms` (macro 2) | `round(ms × fs/1000)` samples, up to 480 at 10 ms / 48 kHz | **0 — off** |
-| `hold_ms` (macro 3) | none — the max filter reads backwards over the existing delay | tracks the lookahead |
-| `true_peak` (macro 4) | none today (the node's estimator is causal over a 3-sample history, `audioif_dynamics.c:167-171`); **≈6 samples, 0.12 ms** if the BS.1770-grade detector of N-L2 lands — the group delay of the 12-tap-per-phase FIR, which the lookahead delay absorbs at no extra cost whenever lookahead is on | **off** |
+| `lookahead_ms` (macro 2) | `floor(ms × fs/1000)` samples — the node truncates, it does not round (`audioif_dynamics.c:126-127`) — up to 480 at 10 ms / 48 kHz | **0 — off** |
+| `true_peak` (macro 4) | **none.** The 4× detector runs on the detector signal only; its group delay never reaches the audio path, and the measured click delay with True Peak on and Lookahead at 0 is 0 samples (G.4) | **off** |
+
+`hold_ms` is gone from this table: N-L1 was refuted by the palette (§5) and the
+macro it would have driven is not on the surface. The module does carry a
+`hold_ms` option, but it drives the *gate* machine only — `gate_machine =
+config->hold_frames != 0u && config->mode == AUDIOIF_DYNAMICS_GATE`
+(`audioif_dynamics.c:452-453`) — so it is not reachable from `DYN_LIMIT` or
+`DYN_COMPRESS` (G.6).
 
 Reported `latency_samples` is verified by the click measurement at the class
 gate (L4). For the stompbox case (vision §9a): the default patch puts **zero**
@@ -136,51 +113,95 @@ transport.
 
 ## 4. Modeling approach on the palette
 
-**Nodes:** one `audiodynamics.Dynamics` in `DYN_LIMIT`. Portability tier
-**audioif** (`audioif/docs/upstream-diff.md:661`). A mono source is limited on
-one channel, not summed: the kernel selects mono or stereo at
-`audioif_dynamics.c:235` and the cross-channel max (`:263-269`) collapses. A
-stereo source is **always channel-linked** — the detector takes the maximum
-across channels — which is the right default for a limiter and is not
-switchable; the docstring says so and the kit measures it.
+**Nodes: two `audiodynamics.Dynamics` in series**, and the second is the one
+that makes the promise. Portability tier **audioif**
+(`audioif/docs/upstream-diff.md:661`), `REQUIRES = ("audiodynamics",)`.
 
-*(More of §4 is in **App. R** — moved under the length rule, nothing deleted.)*
+1. **shape** — `DYN_COMPRESS` at `ratio=1e6`, carrying the Knee, the Lookahead
+   and the true-peak detector. A compressor node because `DYN_LIMIT`'s gain
+   computer has no knee term at all (`audioif_dynamics.c:369-370`), measured
+   (G.5); at `ratio=1e6` and Knee 0 its slope above the threshold measures
+   **0.0000 dB/dB**, which is L6's brickwall.
+2. **catch** — `DYN_LIMIT` at the ceiling, `attack_ms=0`, no lookahead. This is
+   the whole answer to L2 and L3: F.1's composition, reproduced on the pin
+   (G.1).
+
+Three Python-side choices carry the rest, each measured rather than argued, and
+each derived in **App. R**: **the Gain macro costs no node** (`threshold =
+ceiling − gain` with `makeup_db = gain` is algebraically gain-then-limit);
+**the wire endpoint is Ceiling 0 dB with Gain 0**, byte-exact once the class
+adds **+0.0002 dB** to every threshold to cancel the node's own detector
+epsilon (`audioif_dynamics.c:749`, G.8); and **the lookahead is set to the
+midpoint of the node's truncation bin**, so the reported `latency_samples`
+cannot land one sample out (G.3).
+
+A mono source is limited on one channel, not summed: the kernel selects mono or
+stereo at `audioif_dynamics.c:470` and the cross-channel max (`:556-560`)
+collapses. A stereo source is **always channel-linked** and it is not
+switchable; the docstring says so and the kit measures it. *(The seed and the
+palette verification both cited `:235` and `:263-269` for those two lines; at
+the pin those are envelope and gate-state resets. The file wins.)*
+
+*(More of §4 is in **App. R**, including the seed's "L1 is the one that is
+genuinely not reachable" — which is **stale**, see §5 and G.2.)*
 
 ## 5. Node asks
 
 Both are additive options on `audiodynamics`, audioif's own module (D1); neither
 touches a CircuitPython-ported node.
 
-- **N-L1 — a hold window on the detector.** Unblocks **L2 and L3**. …  *(argument in full: App. R)*
-- **N-L2 — a BS.1770-grade true-peak detector.** Unblocks **L1**. …  *(argument in full: App. R)*
+**Neither ask stands. No issue is owed.**
 
-*(More of §5 is in **App. R** — moved under the length rule, nothing deleted.)*
+- **N-L1 — a hold window on the detector. REFUTED BY PALETTE** (2026-09-07;
+  reproduced G.1): two `Dynamics` in series hold −12.00 dBFS against a
+  −12.00 dBFS ceiling at every lookahead setting, on both probes L2 and L3
+  name.
+- **N-L2 — a BS.1770-grade true-peak detector. LANDED** (class builder,
+  2026-09-07): the node on the pin has three true-peak states, and
+  `true_peak=2` is a four-phase twelve-tap polyphase FIR (taps
+  `audioif_dynamics.c:310-345`, applied at `:576-589`). Measured **+0.17 dB TP**
+  over a −6 dBFS ceiling at f_s/4 worst phase, where L1 allows 0.5 dB (G.2).
+
+*(Both asks as the seed wrote them, and the refutation that failed at the time,
+are in **App. R** — superseded by the two lines above.)*
 
 ## 6. Proposed surface
 
-**Macros — 8 of the 16 allowed.** A limiter with fourteen knobs is a compressor.
+**Macros — 6 of the 16 allowed** (the seed proposed 8). A limiter with fourteen
+knobs is a compressor, and two of the seed's eight had no node behind them.
 
 | # | Label | Mode | Range | Generalizes |
 |---|---|---|---|---|
-| 0 | Ceiling | UNIPOLAR | −24…0 dB | the output ceiling every mastering limiter has |
-| 1 | Gain | UNIPOLAR | 0…24 dB | drive into the ceiling — the "loudness" knob; applied *before* the limiter, not as makeup (§4) |
+| 0 | Ceiling | UNIPOLAR | −24…0 dB | the output ceiling every mastering limiter has; at 0 dB the class is a wire (§4) |
+| 1 | Gain | UNIPOLAR | 0…24 dB | drive into the ceiling — the "loudness" knob; folded into `threshold` + `makeup_db`, so it is *before* the limiter and costs no node (§4) |
 | 2 | Lookahead | UNIPOLAR | 0…10 ms | how far ahead the detector reads; **0 by default**, and the class's only latency |
-| 3 | Hold | UNIPOLAR | 0…20 ms | how long the gain stays down after a peak; defaults to the lookahead (N-L1) |
-| 4 | Release | UNIPOLAR | 5 ms…2 s log | recovery after the peak has passed |
-| 5 | True Peak | TOGGLE | off / on | inter-sample peaks (S1); **off by default** |
-| 6 | Knee | UNIPOLAR | 0…12 dB | 0 is the brickwall of L6; above zero it becomes a soft limiter |
-| 7 | Mix | UNIPOLAR | 0…1 | parallel limiting, and Tier 1's wire invariant |
+| 3 | Release | UNIPOLAR | 5 ms…2 s log | recovery after the peak has passed; **this is where L7's trade lives** |
+| 4 | True Peak | TOGGLE | off / on | inter-sample peaks (S1); off → `true_peak=0`, on → `true_peak=2`, the 4× detector. **Off by default** |
+| 5 | Knee | UNIPOLAR | 0…12 dB | 0 is the brickwall of L6; above zero it becomes a soft limiter |
 
-**Patches** (names describe settings, never products):
+**Dropped: Hold** (N-L1 refuted, and `hold_ms` reaches neither `DYN_LIMIT` nor
+`DYN_COMPRESS` — G.6) **and Mix** (a parallel dry path walks peaks straight past
+the ceiling, which is the one promise this class makes; Tier 1's wire endpoint
+does not need it). `true_peak=1`, the half-band estimate, is not exposed
+either: it reads +1.07 dB where L1 allows 0.5 (G.2). Each reason in full in
+**App. R**.
 
-| # | Name | Shape |
-|---|---|---|
-| 0 | Safety Ceiling | −1 dB, no lookahead, no true peak, 100 ms release — zero latency, the default |
-| 1 | Catch The Peaks | −1 dB, 1.5 ms lookahead and hold, true peak on, 60 ms release |
-| 2 | Loud | −0.3 dB, 12 dB of gain, 3 ms lookahead, 30 ms release, true peak on |
-| 3 | Soft Ceiling | −2 dB, knee 9 dB, 200 ms release, no lookahead |
-| 4 | Delivery Ceiling | −1 dB, true peak on, 2 ms lookahead, 150 ms release, no gain |
-| 5 | Safety Ceiling - lean | patch 0 with true peak explicitly off and the hold window at 0 — the S3 escape valve (vision §7.2) |
+**Patches** (names describe settings, never products). Patch 0 is the
+constructor's defaults on the 0–127 grid.
+
+| # | Name | Values | Shape |
+|---|---|---|---|
+| 0 | Safety Ceiling | `(122, 0, 0, 72, 0, 0)` | −0.94 dB, no gain, no lookahead, no true peak, 149 ms release — zero latency, the default, and the cheapest state the class has |
+| 1 | Catch The Peaks | `(122, 0, 19, 53, 127, 0)` | −0.94 dB, 1.50 ms lookahead, true peak on, 61 ms release |
+| 2 | Loud | `(125, 64, 38, 38, 127, 0)` | −0.38 dB, 12.1 dB of gain, 2.99 ms lookahead, 30 ms release, true peak on |
+| 3 | Soft Ceiling | `(116, 0, 0, 78, 0, 95)` | −2.08 dB, knee 8.98 dB, 198 ms release, no lookahead |
+| 4 | Delivery Ceiling | `(122, 0, 25, 72, 127, 0)` | −0.94 dB, true peak on, 1.97 ms lookahead, 149 ms release, no gain |
+
+The seed's sixth patch, `"Safety Ceiling - lean"`, is **not shipped**: patch 0
+already has True Peak off and Lookahead at 0, so it would have been patch 0
+under a second name. The seed's 100 ms release default is raised to **149 ms**
+(macro 72): at 100 ms the 60 Hz THD probe reads **1.05 %** against L7's 1 % bar
+(G.4). Both, in full, in **App. R**.
 
 ## 7. Defects in the current class the rebuild must not repeat
 
@@ -190,7 +211,11 @@ From one read of `lib/audioeffects/dynamics.py` and `_core.py`.
 2. **The lookahead makes the overshoot worse, and the docstring says the …  *(argument in full: App. R)*
 3. **The true-peak docstring is stronger than the code.** `dynamics.py:88-91` …  *(argument in full: App. R)*
 4. **Attack is hardcoded and not a brickwall.** `dynamics.py:122` passes …  *(argument in full: App. R)*
-5. **`reset()` silently reverts the surface.** `_core.Effect.reset()` ends with …  *(argument in full: App. R)*
+5. **`reset()` silently reverts the surface.** **Not a defect — the contract
+   requires it.** `docs/audio-component-api.md:201-202`: "`reset()` releases all
+   instrument notes, clears component DSP history, and restores patch `0`."
+   `_component.Component.reset()` does the same on purpose. The rebuild does
+   not "fix" this and must not. *(the seed's argument, in full: App. R)*
 6. **The node takes the module's rate, not the source's.** `dynamics.py:123` …  *(argument in full: App. R)*
 7. **No gain into the ceiling.** The surface (`dynamics.py:99`) has Ceiling, …  *(argument in full: App. R)*
 
@@ -198,43 +223,38 @@ From one read of `lib/audioeffects/dynamics.py` and `_core.py`.
 
 ## 8. Open questions
 
-1. **What is the smallest useful lookahead?** Tier 3 proposes 1.5 ms as the
-   default when the macro is turned on, from S2's argument that the delay length
-   and the smoothing quality trade against each other — but S2 gives no
-   millisecond figure and none was sourced. **The implementation session**
-   settles it at Station C, by sweeping the lookahead against L2, L3 and L7 on
-   the probe material and taking the shortest window that passes all three; the
-   number and the sweep go in the evidence pack.
-2. **Is separate gain smoothing composable?** Two `Dynamics` in series, the
-   first fast and the second slow, may reach L7 without a node change. Untried.
-   **Phase 0 or the implementation session**, before any third ask is filed.
-3. **How is the perceptible-monitoring-delay figure (vision §10.8) reached?**
-   This dossier states the class's latency honestly but cannot say whether
-   1.5 ms of lookahead is affordable in a stage chain, because the acceptable
-   round trip is not yet a sourced number. **Phase 0's survey** owes it; nothing
-   in this seed depends on the answer except the Lookahead macro's default.
-4. **Does the ceiling need to be true-peak-aware in the gain computer, or only
-   in the detector?** N-L2 puts the 4× reconstruction in the detector. A limiter
-   that also *shapes* the reconstructed waveform (oversampling the whole gain
-   path) is a bigger and more expensive thing and is deliberately not proposed.
-   **Arthur, at Gate 0**, on the node list.
-5. **Does L1's probe set exist yet?** The trait-critic pass made L1 require a
-   worst-phase tone at f_s/4 in the probe material, because "on every probe" is
-   only a bar if the material can carry an inter-sample peak — otherwise the
-   row passes on evidence that cannot express what it measures. The kit spec
-   (roadmap Phase 0) lists "an impulse, sines at three levels, a swept sine, a
-   burst then silence, and one held instrument chord" and **none of those is
-   phased against f_s/4**. **Phase 0's kit spec** owes the probe; until it is in
-   `tools/effect_probes/`, L1 cannot be closed, and a green L1 without it should be
-   read as unmeasured rather than met.
-6. **Stereo linking is fixed on.** The node maxes across channels
-   (`audioif_dynamics.c:263-269`) with no option, so an unlinked or partly
-   linked limiter is not on this palette. No trait here needs it, so it is not
-   an ask — but if a future dossier does need it, it is the same file.
-   **Recorded, not asked.**
+Six were open in the seed. **Five are settled here; one is not this class's to
+settle.** Each settlement's argument is in **App. R**; the run behind it is in
+**App. G**.
 
----
+1. **The smallest useful lookahead — SETTLED: there is no minimum.** On the
+   two-node build L2 and L3 pass at *every* setting including 0 ms (G.1), and
+   L7 is a function of Release, not Lookahead (G.4). The default stays 0, which
+   is also what L5 requires.
+2. **Is separate gain smoothing composable? — SETTLED: no.** Two `Dynamics` in
+   series measure the same THD as one at every release (F.3, reproduced G.4).
+   **The Release default is where the trade lives**, and §6 sets it from the
+   measurement.
+3. **The perceptible-monitoring-delay figure (vision §10.8) — STILL OPEN**, and
+   Phase 0's survey owes it. Nothing in the rebuild depends on it: the default
+   patch reports **0 samples**, and the docstring names the milliseconds when a
+   musician turns Lookahead on.
+4. **True-peak in the gain computer or only the detector? — SETTLED: only the
+   detector.** The 4× detector alone holds the worst-phase f_s/4 tone to
+   **+0.17 dB TP** over a −6 dBFS ceiling (G.2), inside L1's 0.5 dB.
+5. **Does L1's probe set exist? — SETTLED: yes.** `tone_fs4` is in the kit at
+   48 kHz and 44.1 kHz, levelled so its sample peak lands on −6.00 dBFS and its
+   true peak on −2.99 dB TP (`docs/effects-kit-spec.md:152`).
+6. **Stereo linking is fixed on. — Recorded, not asked.** Unchanged.
 
+**Three of the seed's palette claims are stale, and the rebuild is built on the
+corrections** — each re-read from the C and re-measured on the pin (App. G),
+not inferred: `true_peak` is a **level, not a flag**, and `true_peak=2` is the
+4× detector N-L2 asked for, so **L1 is reachable and no issue is owed** (G.2);
+`DYN_LIMIT` **ignores `knee_db`**, so the Knee macro rides `DYN_COMPRESS` at
+`ratio=1e6` (G.5); and the node **truncates** the lookahead in float32, so L4's
+`round` becomes `floor` and a naive double-precision restatement disagrees with
+the node in 22 of 489 cases at 44.1 kHz (G.3).
 
 ## Appendix
 
@@ -612,6 +632,139 @@ window, not the node.) A lookahead-plus-catch build measures 1.14 % at 60 ms
 against the lone node's 1.69 %, so the catch stage does not make L7 worse
 either.
 
+### G. The class builder's palette runs, 2026-09-07
+
+Everything §§3–8 moved comes from one run of
+`tools/phase2_probes/limiter_palette.py`, committed beside this file. It probes
+the **node**, never the class; the class's own numbers are
+`docs/effects/Limiter-evidence.md`. Command and output, verbatim:
+
+```
+$ PYTHONPATH=lib .venv/bin/python tools/phase2_probes/limiter_palette.py
+Limiter palette probes, audioif at the pin, CPython
+========================================================================
+
+G.1  the catch stage, reproduced on the pin (seed Appendix F.1)
+     ceiling -12 dBFS, release 60 ms; sample peak of the output
+     probe          lookahead   lone shape node    + catch stage
+     1 ms burst         0.00 ms     -12.00 dBFS        -12.00 dBFS
+     1 ms burst         0.50 ms     -11.93 dBFS        -12.00 dBFS
+     1 ms burst         1.00 ms     -11.86 dBFS        -12.00 dBFS
+     1 ms burst         2.00 ms     -11.71 dBFS        -12.00 dBFS
+     1 ms burst         5.00 ms     -11.28 dBFS        -12.00 dBFS
+     1 ms burst        10.00 ms     -10.55 dBFS        -12.00 dBFS
+     1-sample impulse   0.00 ms     -12.00 dBFS        -12.00 dBFS
+     1-sample impulse   0.50 ms     -11.93 dBFS        -12.00 dBFS
+     1-sample impulse   1.00 ms     -11.86 dBFS        -12.00 dBFS
+     1-sample impulse   2.00 ms     -11.71 dBFS        -12.00 dBFS
+     1-sample impulse   5.00 ms     -11.28 dBFS        -12.00 dBFS
+     1-sample impulse  10.00 ms     -10.55 dBFS        -12.00 dBFS
+
+G.2  true_peak is a level, not a flag: the 4x detector N-L2 asked
+     for is on the pin. Worst-phase f_s/4 tone, sample peak
+     -0.50 dBFS, ceiling -6 dBFS, release 60 ms, catch stage on.
+     true_peak  lookahead   sample peak    true peak   over ceiling
+             0    0.00 ms      -6.00 dBFS      -2.99 dBTP    +3.01 dB
+             0    1.50 ms      -6.00 dBFS      -2.99 dBTP    +3.01 dB
+             0    5.00 ms      -6.00 dBFS      -2.99 dBTP    +3.01 dB
+             1    0.00 ms      -7.94 dBFS      -4.93 dBTP    +1.07 dB
+             1    1.50 ms      -7.94 dBFS      -4.93 dBTP    +1.07 dB
+             1    5.00 ms      -7.94 dBFS      -4.93 dBTP    +1.07 dB
+             2    0.00 ms      -8.84 dBFS      -5.83 dBTP    +0.17 dB
+             2    1.50 ms      -8.84 dBFS      -5.83 dBTP    +0.17 dB
+             2    5.00 ms      -8.84 dBFS      -5.83 dBTP    +0.17 dB
+     L1 allows +0.50 dB. Only true_peak=2 is inside it.
+
+G.3  the node truncates the lookahead in float32, and a naive
+     double-precision restatement disagrees with it.
+     `lookahead_frames = (uint32_t)(ms * fs / 1000.0f)`, audioif_dynamics.c:127-128
+     naive: 44100 Hz, 0.294784580 ms -> wanted 12 samples, got 13
+     naive: 44100 Hz, 0.566893424 ms -> wanted 25 samples, got 24
+     naive: 44100 Hz, 0.589569161 ms -> wanted 25 samples, got 26
+     naive: 44100 Hz, 0.657596372 ms -> wanted 29 samples, got 28
+     489 cases: naive form wrong 22 times, bin-midpoint form wrong 0 times.
+     The class sets the node to the midpoint of the truncation bin and reports floor().
+
+G.4  L7 lives on the Release default. 60 Hz sine at 0 dBFS into a
+     -12 dBFS ceiling; THD h2..h10 over 0.5 s of steady state.
+     release    lone shape   + catch    catch + 1.5 ms lookahead
+        1.0 ms     25.78 %     25.78 %      17.37 %
+       10.0 ms      7.53 %      7.53 %       5.44 %
+       30.0 ms      3.13 %      3.13 %       2.41 %
+       60.0 ms      1.69 %      1.69 %       1.34 %
+      100.0 ms      1.05 %      1.05 %       0.85 %
+      150.0 ms      0.71 %      0.71 %       0.59 %
+      200.0 ms      0.54 %      0.54 %       0.45 %
+      300.0 ms      0.36 %      0.36 %       0.30 %
+     L7's bar is 1 %. 100 ms reads 1.05 %; the patch uses 149 ms.
+
+     True Peak on, Lookahead 0: click delay, 48 kHz
+       0 samples - the 4x detector's group delay never reaches the audio path.
+
+G.5  DYN_LIMIT ignores knee_db; DYN_COMPRESS at ratio 1e6 is the
+     brickwall. 1 kHz sine, threshold -12 dBFS, steady state.
+     in dBFS           -13.0     -12.0      -6.0      -0.1
+     LIMIT knee 0    -13.000   -12.001   -12.001   -12.001
+     LIMIT knee 12   -13.000   -12.001   -12.001   -12.001
+     COMP 1e6 kn 0   -13.000   -12.001   -12.001   -12.001
+     COMP 1e6 kn12   -14.043   -13.501   -12.001   -12.001
+     The two LIMIT rows are identical: knee_db is not in that gain
+     computer at all (audioif_dynamics.c:368-370).
+
+G.6  hold_ms exists on the module and does nothing here.
+     `gate_machine = hold_frames != 0 && mode == DYN_GATE`, audioif_dynamics.c:452-453
+     hold_ms=  0.0 on DYN_COMPRESS, 5 ms lookahead -> peak   -11.28 dBFS
+     hold_ms= 20.0 on DYN_COMPRESS, 5 ms lookahead -> peak   -11.28 dBFS
+
+G7  audiomixer cannot be the Gain stage: voice level is clamped
+    to 0..1 (audioif/src/cpython/audiomixer.py:143).
+    level set to 4.0, reads back 4.0; in -20.00 dBFS -> out -20.00 dBFS
+
+G.8  the wire endpoint, and the detector epsilon that spoils it.
+     `gain_to_db(state->envelope + 1e-6f)`, audioif_dynamics.c:749
+     threshold offset  +0.00000 dB ->    28 of 16384 samples differ
+     threshold offset  +0.00005 dB ->     0 of 16384 samples differ
+     threshold offset  +0.00020 dB ->     0 of 16384 samples differ
+     threshold offset  +0.00100 dB ->     0 of 16384 samples differ
+     and the offset does not move the ceiling:
+     offset +0.00000 dB, ceiling  -24.00 dB -> out peak  -24.0022 dBFS
+     offset +0.00000 dB, ceiling  -12.00 dB -> out peak  -12.0010 dBFS
+     offset +0.00000 dB, ceiling   -1.00 dB -> out peak   -1.0002 dBFS
+     offset +0.00020 dB, ceiling  -24.00 dB -> out peak  -24.0022 dBFS
+     offset +0.00020 dB, ceiling  -12.00 dB -> out peak  -11.9999 dBFS
+     offset +0.00020 dB, ceiling   -1.00 dB -> out peak   -0.9999 dBFS
+
+G.9  gain into a high ceiling clips inside the shape node, and the
+     catch stage still lands the ceiling exactly.
+     ceiling -0.3 dBFS, 1 ms burst 12 dB under it
+     gain  0.0 dB, lookahead  0.0 ms -> shape node  -12.000 dBFS (0 samples clipped), final  -12.000 dBFS
+     gain 12.0 dB, lookahead  0.0 ms -> shape node   -0.300 dBFS (0 samples clipped), final   -0.300 dBFS
+     gain 12.0 dB, lookahead  3.0 ms -> shape node   -0.000 dBFS (90 samples clipped), final   -0.300 dBFS
+     gain 12.0 dB, lookahead 10.0 ms -> shape node   -0.000 dBFS (96 samples clipped), final   -0.300 dBFS
+```
+
+**What this run changed, and what it only confirmed.**
+
+*Confirmed, unchanged:* G.1 reproduces Appendix F.1 to the hundredth of a dB on
+both probes; G.4's lone-node column reproduces B.7 and F.3 (25.78 / 7.53 /
+1.69 / 0.36 % against 25.79 / 7.53 / 1.69 / 0.36); G.5's `DYN_LIMIT` rows
+confirm the gain computer is the one-line law B.10 and L6 both read off the C.
+
+*Changed:* G.2 (N-L2 has landed, L1 is reachable), G.3 (L4's `round` is
+`floor`), G.5 (the Knee macro needs `DYN_COMPRESS`), G.6 (`hold_ms` exists but
+not for this mode), G.7 (`audiomixer` cannot be the Gain stage), G.8 (the wire
+endpoint needs a +0.0002 dB threshold offset), and §6's Release default
+(100 ms reads 1.05 %, over L7's 1 % bar).
+
+*Recorded, and not a trait:* G.9. With 12 dB of Gain into a −0.3 dBFS ceiling
+and lookahead on, the shape node's own output clamps at full scale for about
+90 samples of a 1 ms burst. The final output still lands on −0.300 dBFS exactly,
+because the catch stage would have pulled that region down in any case; what
+differs is that the overshoot region is flattened rather than scaled. No trait
+bounds it, and buying it back would cost an internal headroom stage — which
+would in turn cost the byte-exact wire endpoint of G.8, since a −3 dB / +3 dB
+round trip through int16 is not the identity. It is left as it is, on purpose.
+
 ### App. I — Tier 1 invariants, the standard block
 
 Verbatim from vision §3, moved out of §3 under the length rule. It is the
@@ -942,3 +1095,342 @@ default is where the trade lives" rather than "file a node".
    ceiling, so the class cannot do the one thing a limiter is usually reached
    for. `makeup_db` would be the wrong fix (it is applied after the gain,
    `audioif_dynamics.c:310-311`).
+
+*(from §1, moved 2026-09-07 under the length rule by the class builder; the section above is the compressed reading, this is what it was compressed from)*
+
+
+There is no circuit; there is a signal flow, and it has four parts that a
+compressor does not. **(a) A delay on the audio path** so the detector can see a
+peak before the audio carrying it reaches the output — the *lookahead*, and the
+only latency this class ever has. **(b) A running maximum over that delay
+window** before the level detector, so that once a peak has been seen the gain
+stays down until the peak has physically left the delay line; without it the
+detector starts releasing while the peak is still in flight, and the peak
+escapes. This is S2's central result: a delay alone "is not a foolproof cure for
+clipping", because "the output peaks above the threshold when the limiter goes
+to release mode", and "clipping will generally also happen if a peak is shorter
+than N samples", so the fix is "a max filter (running max selection) and a
+clipping control block to the limiter side-chain before the level detection",
+`x_max(n) = max[c(n−N), …, c(n)]` with the filter order N equal to the delay
+length. **(c) A gain computer with infinite ratio and no knee above the
+ceiling**, so the output cannot exceed it, together with a *smoothed* gain — S2
+opens by noting the goal is "to control the time-varying gain smoothly enough to
+avoid frequency artifacts", and the tension it resolves is that smoothing alone
+"causes overshoots and leads to either clipped output or non-maximal signal
+levels". **(d) A true-peak detector**, because the ceiling is a promise about
+the reconstructed waveform, not about the samples: S1's Annex 2 defines the
+measurement as 12.04 dB of attenuation, **4× oversampling to 192 kHz** through
+an "order 48, 4-phase, FIR interpolating" filter, absolute value, and
+conversion to **dB TP**, and its Attachment gives the worst-case under-read of a
+peak-sample reading as `20·log(cos(π·f_norm/n))` for oversampling ratio *n* —
+0.554 dB at 4× for f_norm 0.45, and — the same formula at *n* = 1 — 3.01 dB for
+a sample-peak meter at a quarter of the sampling frequency, which S1 itself
+states rounded ("it is easy to demonstrate, for example, a 3 dB under-read for
+an unfortunately-phased tone at a quarter of the sampling frequency"). Panel-wise
+there is a Ceiling, a Release, a Lookahead, a gain into the ceiling, and a
+true-peak switch; everything else is a consequence.
+
+
+*(from §2, moved 2026-09-07 under the length rule by the class builder; the section above is the compressed reading, this is what it was compressed from)*
+
+
+| # | Source | What it gave | License as read | URL | Reached |
+|---|---|---|---|---|---|
+| S1 | ITU-R, *Recommendation BS.1770-5* (11/2023) … (App. S1) | The true-peak algorithm (attenuate 12.04 dB → 4× … (App. S1) | "© ITU 2023. All rights reserved. No part of … (App. S1) | https://www.itu.int/dms_pubrec/itu-r/rec/bs/R-REC-BS.1770-5-202311-I!!PDF-E.pdf | 2026-09-06 — PDF fetched; unreadable to the fetch tool, text extracted locally with `pypdf` |
+| S2 | Perttu Hämäläinen, "Smoothing of the Control Signal without Clipped … (App. S2) | Why a delay alone does not prevent clipping … (App. S2) | No copyright or licence line is printed … (App. S2) | https://www.dafx.de/paper-archive/2002/DAFX02_Hamalainen_smoothing_peak_limiters.pdf | 2026-09-06 — PDF fetched, text extracted locally with `pypdf` |
+
+**Looked for and not found this run.** *Giannoulis, Massberg & Reiss, "Digital
+Dynamic Range Compressor Design—A Tutorial and Analysis"* (JAES 60(6), 2012) —
+the standard tutorial for gain-computer and detector topology — was identified
+and is **still not reached**, and the earlier two accounts of why were both
+wrong. What the second audit pass actually observed on 2026-09-06, probing the
+host directly: `http://eecs.qmul.ac.uk/~josh/…` answers **302** to the same URL
+over https, and that https host then **resets the connection**;
+`http://www.eecs.qmul.ac.uk/~josh/…` answers **301 to
+`https://webspace.eecs.qmul.ac.uk/josh`** — not to `qmul.ac.uk/eecs/`;
+`https://www.eecs.qmul.ac.uk/…` fails certificate verification ("unable to get
+local issuer certificate"); and the author's webspace page, which does resolve
+(HTTP 200), reads "The owner of this web page hasn't added any content, yet."
+The Semantic Scholar landing page returned no content. Nothing from it is
+cited. A hardware brickwall limiter with a
+published service manual was not hunted, deliberately: the class is a design
+grade and adding a unit would make it a fifth `Compressor` character, not a
+limiter (see the Standout note above).
+FabFilter's Pro-L help page appeared in search results with a lookahead figure;
+it was **not fetched** and is not cited.
+
+Copyleft sources are measured or read as papers, never read for code structure
+(vision §5). Neither source here is code; S2 carries no licence at all and is
+treated as copyleft, S1 is read under an explicit all-rights-reserved notice.
+
+The licence and citation audit's record is Appendices A and D: A is the first
+pass (five corrections and one licence question for Gate 0), D the independent
+re-fetch of 2026-09-06 that audited A's own work. Where the two disagree, D is
+the later reading and wins.
+
+
+*(from §3, moved 2026-09-07 under the length rule by the class builder; the section above is the compressed reading, this is what it was compressed from)*
+
+
+### Tier 1 — invariants (the standard block, verbatim from vision §3)
+
+The standard block, verbatim from vision §3, is in **App. I** — moved there under the length rule; any class-specific note on it moved with it.
+
+### Tier 2 — the textbook properties, stated so they can fail
+
+A design grade "may state the textbook property as its traits" (vision §4.1).
+These are those properties, each with the number that fails it.
+
+| # | Trait (falsifiable as stated) | Source | Conf. | Disconfirmed by | Measurement (kit) |
+|---|---|---|---|---|---|
+| L1 | **The ceiling is a true-peak promise.** With Lookahead and True Peak on, the output's true-peak level measured by S1's Annex 2 method (12.04 dB attenuation, 4× oversampling to 192 kHz, the order-48 4-phase FIR, absolute value, dB TP) exceeds the Ceiling macro by no more than **0.5 dB *(own, anchored on S1's 0.554 dB worst case at 4×)*** on every probe, at 48 kHz and 44.1 kHz. **The probe set must contain a worst-phase tone at f_s/4** — the case S1 singles out — because material with no inter-sample peak in it cannot express the thing being measured, and a pack of such material would read green on a limiter with no true-peak detection at all | S1: the five processing stages and the … (App. L1) | high | Any probe reading more than +0.5 dB TP above the ceiling; **or an evidence pack whose probe set contains no f_s/4 worst-phase tone** | BS.1770 4× true-peak reading of … (App. L1) |
+| L2 | **Lookahead never creates overshoot.** Sweeping the Lookahead macro 0 → maximum in 1 ms steps, the output's *sample* peak **exceeds the ceiling by no more than 0.1 dB *(own)*** at every setting, **and does not grow with lookahead** — the peak at any setting is no higher than the peak at 0 ms plus the measurement's own repeat spread. The two clauses are separate failures: a build could sit under the ceiling everywhere and still show the S2 pathology as a rising trend | S2 §3.1 verbatim: a delay "is not a foolproof … (App. L2) | high | A sample peak more than 0.1 dB above the ceiling at any setting, or a peak that rises with lookahead | 1 ms burst at 0 dBFS into a −12 … (App. L2) |
+| L3 | **A peak shorter than the lookahead is still caught — at every setting, not just the longest.** A single-sample impulse at 0 dBFS into a −12 dBFS ceiling leaves the output no more than **0.1 dB *(own)*** above the ceiling at **every non-zero lookahead setting**. The short-peak case is the one S2 says a plain delay always loses, and it loses it worst at the settings between the ends | S2 §3.1 verbatim: "Clipping will generally … (App. L3) | high | The impulse passing more than 0.1 dB over the ceiling at any non-zero lookahead setting | Impulse probe at 0.5, 1, 2 … (App. L3) |
+| L4 | **Reported latency equals the lookahead, exactly.** `latency_samples == floor(lookahead_ms × fs / 1000)` at 48 kHz, 44.1 kHz and 22.05 kHz, for every patch and every position of the Lookahead macro, and the click measurement agrees with the report **to the sample**. *(The seed said `round`; the node truncates, `audioif_dynamics.c:126-127`, and the class builder measured the difference — G.3.)* | Vision §9a ("reported in `latency_samples` … (App. L4) | high | Any patch or macro position where the reported number and the measured click offset differ by one sample or more | Click through the class against … (App. L4) |
+| L5 | **Zero by default.** Constructed with no options, and on the default patch, `latency_samples` is 0, Lookahead is 0 ms and True Peak is off | Vision §9a ("every latency-adding option … (App. L5) | high | A non-zero default for either option, or a non-zero `latency_samples` on patch 0 | Construct and read … (App. L5) |
+| L6 | **Infinite ratio, hard knee.** Above the ceiling the static I/O curve's slope is ≤ **0.02 dB/dB *(own)*** over 24 dB of input, and at Knee-macro zero the fitted knee width is ≤ **0.5 dB *(own)*** — a brickwall, not a high-ratio compressor. The 24 dB span is measured at a **−24 dBFS ceiling**, because int16 has no headroom above 0 dBFS to put the other 24 dB in | The definition of the thing … (App. L6) | high | A slope above 0.02 dB/dB anywhere in the 24 dB span, **or** a fitted knee wider than 0.5 dB at Knee zero | Static I/O curve … (App. L6) |
+| L7 | **Smoothing is a documented trade, not an accident.** At the default patch a 60 Hz sine driven 12 dB into the ceiling shows THD ≤ **1 % *(own)***; the Release macro's fastest setting is documented in the docstring as a distortion setting, and the measured THD there is recorded in the evidence pack rather than bounded | S2 §1–2 verbatim: the gain must be controlled … (App. L7) | high | THD above 1 % at the default patch, or a docstring that does not name the trade | Harmonic spectrum of a 60 Hz sine … (App. L7) |
+
+### Tier 3 — cost and latency
+
+Options that add latency, each with its default:
+
+| Option | Adds | Default |
+|---|---|---|
+| `lookahead_ms` (macro 2) | `floor(ms × fs/1000)` samples — the node truncates, it does not round (`audioif_dynamics.c:126-127`) — up to 480 at 10 ms / 48 kHz | **0 — off** |
+| `true_peak` (macro 4) | **none.** The 4× detector runs on the detector signal only; its group delay never reaches the audio path, and the measured click delay with True Peak on and Lookahead at 0 is 0 samples (G.4) | **off** |
+
+`hold_ms` is gone from this table: N-L1 was refuted by the palette (§5) and the
+macro it would have driven is not on the surface. The module does carry a
+`hold_ms` option, but it drives the *gate* machine only — `gate_machine =
+config->hold_frames != 0u && config->mode == AUDIOIF_DYNAMICS_GATE`
+(`audioif_dynamics.c:452-453`) — so it is not reachable from `DYN_LIMIT` or
+`DYN_COMPRESS` (G.6).
+
+Reported `latency_samples` is verified by the click measurement at the class
+gate (L4). For the stompbox case (vision §9a): the default patch puts **zero**
+in the effect and the whole round-trip budget in the platform's buffers.
+
+`capabilities` = `()`. A ceiling has no tempo; the class does not read the
+transport.
+
+*(More of §3 is in **App. R** — moved under the length rule, nothing deleted.)*
+
+
+*(from §4, moved 2026-09-07 under the length rule by the class builder; the section above is the compressed reading, this is what it was compressed from)*
+
+
+**Nodes: two `audiodynamics.Dynamics` in series**, and the second is the one
+that makes the promise. Portability tier **audioif**
+(`audioif/docs/upstream-diff.md:661`), `REQUIRES = ("audiodynamics",)`.
+
+1. **shape** — `DYN_COMPRESS` at `ratio=1e6`, carrying the Knee, the Lookahead
+   and the true-peak detector. It is a compressor node because `DYN_LIMIT`'s
+   gain computer has no knee term at all (`over > 0 ? -over : 0`,
+   `audioif_dynamics.c:369-370`), so a Knee macro on `DYN_LIMIT` would move
+   nothing — measured, the static curve is identical at Knee 0 and Knee 12
+   (G.5). At `ratio=1e6` and Knee 0 the compress computer measures a slope of
+   **0.0000 dB/dB** above the threshold (G.5), which is L6's brickwall.
+2. **catch** — `DYN_LIMIT` at the ceiling, `attack_ms=0`, no lookahead. This is
+   the whole answer to L2 and L3: F.1's composition, reproduced exactly on the
+   pin by the class builder (G.1).
+
+**Gain into the ceiling costs no node.** `threshold = ceiling − gain` with
+`makeup_db = gain` is algebraically identical to gain-then-limit — below the
+threshold the output is `L + G`, above it the output is `T + G = ceiling` — so
+§7.7's defect is fixed inside the node the class already builds. The seed's
+worry that `makeup_gain` is applied *after* the gain computer
+(`audioif_dynamics.c:679`) is exactly what the threshold shift compensates.
+Measured across the Gain macro's whole span in the evidence pack, not argued.
+`audiomixer.Mixer` could not have done it in any case: its voice level is
+clamped to 0..1 (`audioif/src/cpython/audiomixer.py:143`), measured (G.7).
+
+**The wire endpoint is Ceiling at 0 dB with Gain at 0** — there is no Mix macro
+(§6). It is byte-exact only once the class cancels the node's own detector
+epsilon: `gain_to_db(envelope + 1e-6)` (`audioif_dynamics.c:749`) reads a
+full-scale sample as very slightly over 0 dBFS, so 42 of 16384 ramp samples
+came back 1 LSB down. The class adds **+0.0002 dB** to the threshold it hands
+each node, which takes that to 0 of 16384 and moves the measured ceiling by at
+most 0.0003 dB — four orders of magnitude under one LSB (G.8).
+
+A mono source is limited on one channel, not summed: the kernel selects mono or
+stereo at `audioif_dynamics.c:470` and the cross-channel max (`:556-560`)
+collapses. *(The seed and the palette verification both cited `:235` and
+`:263-269` for these two; at the pin those lines are envelope and gate-state
+resets. The file wins: every citation in this section was re-read by
+`grep -n` on 2026-09-07 and the wrong ones are corrected here rather than
+carried.)* A stereo source is **always channel-linked** — the detector takes
+the maximum across channels — which is the right default for a limiter and is
+not switchable; the docstring says so and the kit measures it.
+
+*(More of §4 is in **App. R** — moved under the length rule, nothing deleted.
+The seed's "L1 is the one that is genuinely not reachable" is there, and it is
+**stale**: see §5 and G.2.)*
+
+
+*(from §6, moved 2026-09-07 under the length rule by the class builder; the section above is the compressed reading, this is what it was compressed from)*
+
+
+**Macros — 6 of the 16 allowed** (the seed proposed 8). A limiter with
+fourteen knobs is a compressor, and two of the seed's eight had no node behind
+them.
+
+| # | Label | Mode | Range | Generalizes |
+|---|---|---|---|---|
+| 0 | Ceiling | UNIPOLAR | −24…0 dB | the output ceiling every mastering limiter has; at 0 dB the class is a wire (§4) |
+| 1 | Gain | UNIPOLAR | 0…24 dB | drive into the ceiling — the "loudness" knob; folded into `threshold` + `makeup_db`, so it is *before* the limiter and costs no node (§4) |
+| 2 | Lookahead | UNIPOLAR | 0…10 ms | how far ahead the detector reads; **0 by default**, and the class's only latency |
+| 3 | Release | UNIPOLAR | 5 ms…2 s log | recovery after the peak has passed; **this is where L7's trade lives** |
+| 4 | True Peak | TOGGLE | off / on | inter-sample peaks (S1); off → `true_peak=0`, on → `true_peak=2`, the 4× detector. **Off by default** |
+| 5 | Knee | UNIPOLAR | 0…12 dB | 0 is the brickwall of L6; above zero it becomes a soft limiter |
+
+**Dropped from the seed's eight, each with its reason.**
+
+- **Hold** — N-L1 is refuted (§5) and `hold_ms` reaches neither `DYN_LIMIT` nor
+  `DYN_COMPRESS` (Tier 3, G.6). A knob with no node behind it is a lie on a
+  panel.
+- **Mix** — a parallel dry path walks peaks straight past the ceiling, which is
+  the one promise this class makes; every Tier 2 row would have had to be
+  restated "at Mix = 1". Tier 1's wire endpoint does not need it: Ceiling at
+  0 dB with Gain at 0 is byte-identical to the source (§4, G.8). `true_peak=1`,
+  the half-band estimate, is not exposed either — it reads +1.07 dB where L1
+  allows 0.5 (G.2), so a "True Peak" switch that selected it would not keep the
+  promise its label makes.
+
+**Patches** (names describe settings, never products). Patch 0 is the
+constructor's defaults on the 0–127 grid.
+
+| # | Name | Values | Shape |
+|---|---|---|---|
+| 0 | Safety Ceiling | `(122, 0, 0, 72, 0, 0)` | −0.94 dB, no gain, no lookahead, no true peak, 149 ms release — zero latency, the default, and the cheapest state the class has |
+| 1 | Catch The Peaks | `(122, 0, 19, 53, 127, 0)` | −0.94 dB, 1.50 ms lookahead, true peak on, 61 ms release |
+| 2 | Loud | `(125, 64, 38, 38, 127, 0)` | −0.38 dB, 12.1 dB of gain, 2.99 ms lookahead, 30 ms release, true peak on |
+| 3 | Soft Ceiling | `(116, 0, 0, 78, 0, 95)` | −2.08 dB, knee 8.98 dB, 198 ms release, no lookahead |
+| 4 | Delivery Ceiling | `(122, 0, 25, 72, 127, 0)` | −0.94 dB, true peak on, 1.97 ms lookahead, 149 ms release, no gain |
+
+The seed's sixth patch, `"Safety Ceiling - lean"`, is **not shipped**: patch 0
+already has True Peak off and Lookahead at 0, so the lean patch would have been
+patch 0 under a second name. Every macro that costs anything is already at zero
+there. If the board run puts patch 0 over the S3 budget, the remedy is a
+construction option that drops the catch stage, not a patch — and that would
+cost L2 and L3, so it is a decision for the gate, not for this session.
+
+The seed's release default of 100 ms is raised to **149 ms** (macro 72): at
+100 ms the 60 Hz THD probe measures **1.05 %** and L7's bar is 1 % (G.4). The
+seed proposed a number; the measurement moved it.
+
+
+*(from §8, moved 2026-09-07 under the length rule by the class builder; the section above is the compressed reading, this is what it was compressed from)*
+
+
+Six were open in the seed. **Five are settled here; one is not this class's to
+settle.** Each settlement names the run in Appendix G or the seed evidence it
+was read from.
+
+1. **What is the smallest useful lookahead? — SETTLED: there is no minimum, and
+   there is no "default when on".** The seed proposed 1.5 ms from S2's
+   delay-vs-smoothing trade, with no sourced figure. On the two-node build, L2
+   and L3 pass at **every** setting including 0 ms (G.1), and L7 is a function
+   of Release and not of Lookahead — at a 60 ms release the THD is 1.69 % with
+   no lookahead and 1.34 % with 1.5 ms of it (G.4), so lookahead only helps.
+   The shortest window that passes all three is therefore 0 ms, which is also
+   L5's required default, and the macro simply stays where the musician puts
+   it. The patches that turn it on use 1.5 ms (patch 1), 1.97 ms (patch 4) and
+   2.99 ms (patch 2), which are settings, not thresholds.
+2. **Is separate gain smoothing composable? — SETTLED: no.** F.3 measured two
+   `Dynamics` in series at the same ceiling as identical in THD to one, to two
+   decimals, at every release; the class builder reproduced it (G.4: 25.78 /
+   7.53 / 1.69 / 0.36 % against F.3's 25.79 / 7.53 / 1.69 / 0.36). The second
+   node's detector sees an already-limited signal and computes no gain. **The
+   Release default is where the trade lives**, and it is set from the
+   measurement (149 ms, §6).
+3. **How is the perceptible-monitoring-delay figure (vision §10.8) reached? —
+   STILL OPEN, and not this class's to close.** Phase 0's survey owes it.
+   Nothing in the rebuild depends on the answer: the default patch reports
+   **0 samples** of latency, so the class contributes nothing to a stage
+   chain's round trip until a musician turns Lookahead on, and the docstring
+   names the milliseconds when they do.
+4. **Does the ceiling need to be true-peak-aware in the gain computer, or only
+   in the detector? — SETTLED: only in the detector.** The 4× reconstruction in
+   the detector alone holds the worst-phase f_s/4 tone to **+0.17 dB TP** over
+   a −6 dBFS ceiling (G.2), inside L1's 0.5 dB. Oversampling the whole gain
+   path would buy 0.17 dB for four times the arithmetic; it is not proposed and
+   is not needed.
+5. **Does L1's probe set exist yet? — SETTLED: yes.** `tone_fs4` is in the kit,
+   at 48 kHz and 44.1 kHz, levelled so its *sample* peak lands on −6.00 dBFS
+   and its true peak on −2.99 dB TP (`docs/effects-kit-spec.md:152`,
+   `tools/effect_probes/README.md`, and the manifest). L1's disconfirmation
+   clause is satisfiable, and the evidence pack uses that probe.
+6. **Stereo linking is fixed on. — Recorded, not asked.** Unchanged: the node
+   maxes across channels with no option, no trait here needs an unlinked
+   limiter, and it is not an ask.
+
+**Three things the seed said about the palette are stale, and the rebuild is
+built on the corrections** — each re-read from the C and re-measured on the pin
+(Appendix G), not inferred:
+
+- `true_peak` is a **level, not a flag**, and `true_peak=2` is the 4× detector
+  N-L2 asked for. §4's "L1 is the one that is genuinely not reachable" and §5's
+  "ASK STANDS" were both written against the older node (G.2).
+- `DYN_LIMIT` **ignores `knee_db`** entirely, so the Knee macro rides a
+  `DYN_COMPRESS` node at `ratio=1e6` instead (G.5).
+- The node **truncates** the lookahead to whole samples in float32, so L4's
+  `round` becomes `floor`, and a naive double-precision restatement of the same
+  arithmetic disagrees with the node in 22 of 533 cases at 44.1 kHz (G.3).
+
+---
+
+*(the header's Status paragraph, moved 2026-09-07 under the length rule; the version above is what it was compressed to)*
+
+**Status:** seed (Phase 0), written 2026-09-06; audited the same day by an
+independent licence and citation pass that re-fetched both sources itself
+(Appendix D); then attacked on 2026-09-06/07 by an independent **trait-critic**
+pass that re-reached both sources from their own bytes (Appendix E). No earlier
+draft existed; both sources were reached in every run and both licence calls
+stand unchanged. The trait-critic pass changed no number and added no source
+claim: it tightened four rows' wording and gave L1 the probe-material
+requirement without which the row could pass on evidence that cannot express an
+inter-sample peak (E.3). **Frozen for the rebuild on 2026-09-07** by the class
+builder, which settled §8's six opens, re-ran every palette claim on the pin
+for itself, and found three of them stale — the trait table below is the one
+the class is built and measured against, and Appendix G is the run record.
+
+*(§2's not-found account, moved 2026-09-07 under the length rule; the version above is what it was compressed to)*
+
+**Looked for and not found this run.** *Giannoulis, Massberg & Reiss, "Digital
+Dynamic Range Compressor Design—A Tutorial and Analysis"* (JAES 60(6), 2012) —
+the standard tutorial for gain-computer and detector topology — was identified
+and is **still not reached**. Nothing from it is cited. The three earlier
+accounts of *why* are in **App. R**; the second audit's probe of the host is
+the one that stands. A hardware brickwall with a published service manual was
+not hunted, deliberately (see the Standout note above). FabFilter's Pro-L help
+page appeared in search results with a lookahead figure; it was **not fetched**
+and is not cited.
+
+Copyleft sources are measured or read as papers, never read for code structure
+(vision §5). Neither source here is code; S2 carries no licence at all and is
+treated as copyleft, S1 is read under an explicit all-rights-reserved notice.
+The licence and citation audit's record is Appendices A and D; where they
+disagree, D is the later reading and wins.
+
+*(§5's two ask entries, moved 2026-09-07 under the length rule; the version above is what it was compressed to)*
+
+- **N-L1 — a hold window on the detector.** **REFUTED BY PALETTE**
+  (palette verification, 2026-09-07; reproduced by the class builder, G.1).
+  Two `Dynamics` in series hold −12.00 dBFS against a −12.00 dBFS ceiling at
+  every lookahead setting, on both probes L2 and L3 name. *(argument in full:
+  App. R)*
+- **N-L2 — a BS.1770-grade true-peak detector.** **LANDED — no longer an ask**
+  (class builder, 2026-09-07). The ask was written against a node that had one
+  midpoint estimate; the node on the pin has three true-peak states, and
+  `true_peak=2` selects a four-phase twelve-tap polyphase FIR
+  (taps `audioif_dynamics.c:310-345`, read by `oversampled_peak` at `:349`, applied at `:576-589`) — BS.1770 Annex 2's
+  shape, though not its coefficients. Measured on the worst-phase f_s/4 tone
+  into a −6 dBFS ceiling: **+0.17 dB TP** at `true_peak=2`, against +1.07 dB at
+  `true_peak=1` and +3.01 dB with it off, where L1 allows 0.5 dB (G.2).
+  **L1 is reachable on the palette and no issue is owed.** *(the ask as
+  written, and the refutation that failed at the time: App. R)*
+
+*(More of §5 is in **App. R** — moved under the length rule, nothing deleted.
+Both entries there are the seed's own wording and are superseded by the two
+lines above.)*

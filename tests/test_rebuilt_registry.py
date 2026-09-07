@@ -40,7 +40,7 @@ class TheLookup(unittest.TestCase):
     #: Names that have been rebuilt. A rebuild adds its own name here in
     #: the same commit as its module; every other name of the 46 must still
     #: miss, which is the fallback branch this battery exists for.
-    REBUILT = ("Compressor",)
+    REBUILT = ("Compressor", "Limiter")
 
     def test_a_rebuilt_name_hits_and_every_other_one_misses(self):
         # Both branches over the real catalogue. When this file was written
@@ -56,6 +56,32 @@ class TheLookup(unittest.TestCase):
                     self.assertTrue(issubclass(found, _component.Component))
                 else:
                     self.assertIsNone(found)
+    def test_every_name_either_misses_or_is_what_the_package_exports(self):
+        # The fallback branch and the hit branch, over the real catalogue. A
+        # name with no file misses, and the old class stands; a name with one
+        # resolves to a Component that carries that NAME, and that is the
+        # object `audioeffects.<Name>` is bound to. Neither branch is allowed
+        # to be empty for the whole catalogue, so this test still says
+        # something once every family has been rebuilt.
+        misses = hits = 0
+        for name in audioeffects.ALL:
+            with self.subTest(name=name):
+                found = rebuilt.load(name)
+                if found is None:
+                    misses += 1
+                    continue
+                hits += 1
+                self.assertTrue(issubclass(found, _component.Component))
+                self.assertEqual(found.NAME, name)
+                self.assertIs(getattr(audioeffects, name), found)
+        self.assertEqual(misses + hits, len(audioeffects.ALL))
+
+    def test_the_rebuilt_classes_are_what_the_registry_reports(self):
+        # `known()` walks the directory; `load()` walks one name. They must
+        # agree, or a file that never took effect could hide behind either.
+        for name in rebuilt.known():
+            with self.subTest(name=name):
+                self.assertIs(rebuilt.load(name).NAME, name)
 
     def test_a_file_whose_class_does_not_match_is_an_error(self):
         # `examplestock.py` exists, but holds no class whose NAME is
@@ -70,6 +96,14 @@ class TheLookup(unittest.TestCase):
         self.assertEqual(sorted(rebuilt.known()),
                          sorted(["ExampleAudioif", "ExampleStock"]
                                 + list(self.REBUILT)))
+        # The two fixtures are always there; anything else in the list is a
+        # rebuilt member of the 46, and nothing else may appear.
+        listed = sorted(rebuilt.known())
+        self.assertIn("ExampleAudioif", listed)
+        self.assertIn("ExampleStock", listed)
+        for name in listed:
+            if name not in ("ExampleAudioif", "ExampleStock"):
+                self.assertIn(name, audioeffects.ALL)
 
 
 class TheReplacement(unittest.TestCase):
@@ -129,6 +163,13 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
                 else:
                     self.assertNotIn(name, audioeffects.ALL)
                     self.assertNotIn(name, audioeffects.__all__)
+        # The catalogue is 46 whatever has been rebuilt: a rebuild replaces a
+        # name, it never adds one. The two Example fixtures are the ones that
+        # must stay outside it.
+        self.assertEqual(len(audioeffects.ALL), 46)
+        for name in ("ExampleStock", "ExampleAudioif"):
+            self.assertNotIn(name, audioeffects.ALL)
+            self.assertNotIn(name, audioeffects.__all__)
 
     def test_create_still_refuses_a_name_it_does_not_have(self):
         with self.assertRaises(ImportError):

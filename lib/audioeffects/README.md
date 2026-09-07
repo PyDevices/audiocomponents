@@ -73,7 +73,7 @@ not.
 | Class | Notes |
 |---|---|
 | `Compressor` | four characters that differ in *law*, not in three numbers: `fet` (peak detector, both time knobs live and faster clockwise, threshold rising with ratio, dirty when you push it), `optical` — the default — (**no time knobs at all**: ten milliseconds of attack, half the recovery in sixty and the rest over a couple of seconds, slower after a long passage), `vca` (true-RMS, so a square and a sine of the same RMS get the same gain) and `varimu` (no ratio to speak of — the slope climbs with level; the six factory time constants are patches 8–13). Zero latency at every setting. Needs `audiodynamics` and `audioroute`, so it does not run on a stock CircuitPython board; **14 macros, 14 patches** |
-| `Limiter` | brickwall, with optional lookahead and true-peak detection; **patches** |
+| `Limiter` | brickwall against a ceiling, with a gain into it, a knee, lookahead (**0 ms by default**, up to 10 ms, reported in `latency_samples`) and a 4x true-peak detector; two `audiodynamics` nodes, **audioif tier**; **patches**. Release is the distortion knob and its docstring says so |
 | `Expander` | downward: below threshold, quiet gets quieter |
 | `NoiseGate` | mutes below threshold |
 | `DeEsser` | detector high-passed at `frequency`, so only sibilance ducks the signal |

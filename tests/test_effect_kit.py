@@ -193,7 +193,9 @@ class ClickTest(unittest.TestCase):
 
     def test_reporting_256_samples_short_is_red_at_both_rates(self):
         for rate in (48000, 44100):
-            expected = int(round(20.0 * rate / 1000.0))   # 20 ms lookahead
+            # 10 ms of lookahead: the rebuilt `Limiter`'s Lookahead macro
+            # tops out there, and the node truncates rather than rounds.
+            expected = int(10.0 * rate / 1000.0)
             probe = probes.click_stereo(16384, offset=256)
             dry = render_source(probe, 16384, rate=rate,
                                 probe_name="click_stereo")
@@ -204,7 +206,7 @@ class ClickTest(unittest.TestCase):
                 wet, effect = render_through(cls, probe, 16384, rate=rate,
                                              probe_name="click_stereo",
                                              ceiling_db=-1.0,
-                                             lookahead_ms=20.0)
+                                             lookahead_ms=10.0)
                 result = kit.click(wet, dry, effect.latency_samples)
                 digests.append(wet.digest)
                 self.assertEqual(result["passed"], must_pass,
