@@ -87,7 +87,7 @@ def create(sample_rate, channel_count=2, transport=None):
     accent_level = 0.5
 
     # BD params (macro ranges retuned to the Audiorealism known-settings
-    # grids - see docs/dossiers/tr909.md section 6)
+    # grids - see workspace docs/effects-internal/dossiers/instruments/tr909.md section 6)
     bd_tune = 50.0
     bd_attack = 0.5
     bd_decay = 0.15

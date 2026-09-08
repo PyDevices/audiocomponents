@@ -283,6 +283,16 @@ def _splitter_two_taps(probe):
     return split.tap(0), (second,), (split, second)
 
 
+def _splitter_four_taps(probe):
+    """A four-tap splitter with ALL four taps consumed per block. DeEsser
+    and MultibandCompressor both instantiate this graph; the 1-tap and
+    2-tap rows do not cover it."""
+    import audioroute
+    split = audioroute.Splitter(probe.output, taps=4)
+    extras = (split.tap(1), split.tap(2), split.tap(3))
+    return split.tap(0), extras, (split,) + extras
+
+
 def _convolver(taps):
     def build(probe):
         import audioconvolve
@@ -547,6 +557,7 @@ NODES = {
     "audiomath.Multiply": _multiply,
     "audioroute.Splitter": _splitter,
     "audioroute.Splitter+tap": _splitter_two_taps,
+    "audioroute.Splitter+4": _splitter_four_taps,
     "audioconvolve.Convolver@1024": _convolver(1024),
     "audioconvolve.Convolver@48000": _convolver(48000),
     "audiofilters.Filter": _filter,
@@ -576,11 +587,74 @@ NODES = {
 }
 
 
+def _split_patch(name):
+    """`<Name>` or `<Name>@<patch>` -> (name, patch or None).
+
+    A cost figure at construction defaults is not a class's cost unless the
+    defaults are the state the cost is about: four of Phase 2's sixteen
+    board figures were the bare probe's, because the runner applies no
+    patch (`docs/effects-phase2-pattern-revision.md` section 1.4).
+    """
+    if "@" not in name:
+        return name, None
+    name, _, tail = name.partition("@")
+    return name, int(tail)
+
+
 def _effect(name):
+    """`Name`, `Name@rebuilt`, `Name#<patch>`, and `Name@<patch>`.
+
+    `rebuilt:` prefix (see `_rebuilt`) and `@rebuilt` / `#<patch>` suffixes
+    are the two branch forms for the same two facts: a parked class is not
+    what `create()` returns, and a default-bypass class is not a cost.
+    """
+    patch = None
+    rebuilt = False
+    if "#" in name:
+        name, _, tail = name.partition("#")
+        patch = int(tail)
+    if name.endswith("@rebuilt"):
+        rebuilt = True
+        name = name[:-len("@rebuilt")]
+    if not rebuilt and patch is None:
+        name, patch = _split_patch(name)
+
     def build(probe):
         import audioeffects
         audioeffects.configure(SAMPLE_RATE, CHANNELS)
-        effect = audioeffects.create(name, probe.output, SAMPLE_RATE)
+        if rebuilt:
+            from audioeffects import rebuilt as _rebuilt_mod
+            cls = _rebuilt_mod.module_class(name)
+            if cls is None:
+                raise ValueError("no rebuilt module for %s" % name)
+            effect = cls.create(probe.output, SAMPLE_RATE)
+        else:
+            effect = audioeffects.create(name, probe.output, SAMPLE_RATE)
+        if patch is not None:
+            effect.program_change(patch)
+        return effect.output, (), (effect,)
+    return build
+
+
+def _rebuilt(name):
+    """The **rebuilt** class of that name, whether or not it is adopted.
+
+    `audioeffects.create()` reads the registry, and a Phase 2 class that is
+    parked rather than adopted (`rebuilt.ADOPTED`) resolves there to the old
+    family class - so `effect:Compressor` measures the class the rebuild
+    replaces. `rebuilt:Compressor` names the rebuilt one, and
+    `rebuilt:Compressor@3` puts it on patch 3.
+    """
+    name, patch = _split_patch(name)
+
+    def build(probe):
+        from audioeffects import rebuilt
+        cls = rebuilt.module_class(name)
+        if cls is None:
+            raise ValueError("no rebuilt module for %s" % name)
+        effect = cls.create(probe.output, SAMPLE_RATE)
+        if patch is not None:
+            effect.program_change(patch)
         return effect.output, (), (effect,)
     return build
 
@@ -588,8 +662,11 @@ def _effect(name):
 def resolve(target):
     """`target` -> a builder, or raise with something readable.
 
-    Accepts `source`, `node:<key>`, `effect:<Name>`, and a bare name, which
-    is treated as a node key if one matches and an effect otherwise. The
+    Accepts `source`, `node:<key>`, `effect:<Name>`, `rebuilt:<Name>`, and a
+    bare name, which is treated as a node key if one matches and an effect
+    otherwise. An effect or rebuilt target may carry `@<patch>` or
+    `#<patch>`; `effect:<Name>@rebuilt` is the expander-branch form of
+    `rebuilt:<Name>`. The
     prefixes exist so a typo in an effect name fails as a missing effect
     rather than being silently measured as something else.
     """
@@ -602,6 +679,8 @@ def resolve(target):
         return NODES[key]
     if target.startswith("effect:"):
         return _effect(target[7:])
+    if target.startswith("rebuilt:"):
+        return _rebuilt(target[8:])
     if target in NODES:
         return NODES[target]
     return _effect(target)
@@ -849,6 +928,27 @@ def main(target=None):
           % (BLOCK_SECONDS * 1000.0,
              100.0 * measured["ms_per_block"] / (BLOCK_SECONDS * 1000.0)))
     print("digest (%d blocks): %s" % (DIGEST_BLOCKS, measured["digest"]))
+    # The bare probe's own digest, rendered here rather than remembered, so
+    # a target that handed the probe back says so on its own row. The runner
+    # already refuses a silent render; a BYPASS is the other way a figure can
+    # be a graph idling rather than a class working.
+    if target != "source" and not target.startswith("node:"):
+        probe = Probe()
+        output, extras, keep = _source(probe)
+        bare, _s, _f, _p = _warm(output, extras, True)
+        del keep, probe, output, extras
+        gc.collect()
+        if bare == measured["digest"]:
+            print("BYPASS: identical to the bare probe's digest (%s) - this "
+                  "target handed the probe back and the figure above is a "
+                  "graph idling, not this class working" % bare)
+            raise RuntimeError(
+                "BYPASS: %s rendered the bare probe's own digest (%s), so this "
+                "run measures a graph idling and not the class. Name a patch "
+                "that processes - `%s@<patch>` - and run it again."
+                % (target, measured["digest"], target.partition("@")[0]))
+        else:
+            print("not a bypass: the bare probe's digest is %s" % bare)
     print("timed:  %d frames in %.3f s over %d pulls"
           % (measured["frames"], measured["seconds"], measured["pulls"]))
 

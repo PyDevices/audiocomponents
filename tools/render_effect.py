@@ -4,10 +4,18 @@ compares.
 
     render_effect.py <Class> <probe> <outdir> [--rate 48000] [--channels 2]
                      [--block 256] [--macro n=v ...] [--patch n]
+                     [--option name=value ...]
                      [--events events.json] [--transport tempo.json]
                      [--selftest]
 
-`docs/effects-kit-spec.md` section 4. Deliberately dual-runtime, in
+`docs/effects-kit-spec.md` section 4. `--option` is the one addition to
+that signature, made for `NoiseGate` in Phase 2 and general to every class:
+the contract's construction boundary is ``create(source, rate, **options)``
+and some classes take a build choice there rather than on a knob - a duck
+graph is different wiring, and a look-ahead is latency the whole chain pays,
+so neither can be a macro. Values parse as int, float, ``true``/``false``/
+``none``, else string, and every one of them goes into the render's filename
+because a build option changes the render. Deliberately dual-runtime, in
 `tools/render_component.py`'s shape: stdlib-free of numpy, argparse,
 pathlib and `wave` on purpose, streaming straight to disk and hashing
 incrementally, so one file runs under all three of
@@ -344,10 +352,13 @@ def block_adapter(source, rate, channels, block):
 
 #: Arguments a class cannot be built without, or that would make a probe run
 #: absurd. Same table and same reasons as
-#: `tests/parity/effects_library_smoke.py`: GraphicEQ has no default gains,
-#: and ConvolutionReverb's default second of stereo impulse is 1.5 MB.
+#: `tests/parity/effects_library_smoke.py`: ConvolutionReverb's default
+#: second of stereo impulse is 1.5 MB.
+#: `GraphicEQ`'s entry is gone with its rebuild: the old class had no
+#: default curve, the rebuilt one is flat by default and flat is a
+#: wire, and handing it a curve here made patch 0 stop matching the
+#: constructor's own defaults.
 EXTRA_ARGUMENTS = {
-    "GraphicEQ": {"gains_db": (3.0, -2.0, 4.0, -1.0, 2.0)},
     "ConvolutionReverb": {"seconds": 0.25},
 }
 
@@ -558,14 +569,15 @@ def selftest(probe_path, rate, channels, block):
 USAGE = ("render_effect.py <Class> <probe> <outdir> [--rate 48000] "
          "[--channels 2]\n"
          "                 [--block 256] [--macro n=v ...] [--patch n]\n"
+         "                 [--option name=value ...]\n"
          "                 [--events events.json] [--transport tempo.json]\n"
-         "                 [--selftest]")
+         "                 [--selftest] [--rebuilt]")
 
 
 def parse_args(argv):
     options = {"rate": 48000, "channels": 2, "block": 256, "macros": [],
                "patch": None, "events": None, "transport": None,
-               "selftest": False}
+               "selftest": False, "options": [], "rebuilt": False}
     positional = []
     index = 0
     while index < len(argv):
@@ -584,9 +596,14 @@ def parse_args(argv):
             options["transport"] = argv[index + 1]; index += 2
         elif token == "--selftest":
             options["selftest"] = True; index += 1
+        elif token == "--rebuilt":
+            options["rebuilt"] = True; index += 1
         elif token == "--macro":
             name, _, value = argv[index + 1].partition("=")
             options["macros"].append((int(name), float(value))); index += 2
+        elif token == "--option":
+            name, _, value = argv[index + 1].partition("=")
+            options["options"].append((name, parse_value(value))); index += 2
         elif token.startswith("--"):
             raise SystemExit("unknown option %r\n%s" % (token, USAGE))
         else:
@@ -595,6 +612,25 @@ def parse_args(argv):
         raise SystemExit(USAGE)
     options["cls"], options["probe"], options["outdir"] = positional
     return options
+
+
+def parse_value(text):
+    """A construction option off the command line, in the narrowest type it
+    fits. Deliberately not `eval`: this runs under three interpreters and
+    two of them are on a board's terms."""
+    lowered = text.lower()
+    if lowered in ("true", "false"):
+        return lowered == "true"
+    if lowered == "none":
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        return float(text)
+    except ValueError:
+        return text
 
 
 def _tag(path):
@@ -682,9 +718,27 @@ def main(argv):
 
     transport = (load_transport(options["transport"], rate)
                  if options["transport"] else None)
-    arguments = dict(EXTRA_ARGUMENTS.get(options["cls"], {}))
-    effect = audioeffects.create(options["cls"], adapter, rate,
-                                 transport=transport, **arguments)
+    arguments = dict(EXTRA_ARGUMENTS.get(
+        options["cls"].split(":")[-1], {}))
+    for name, value in options["options"]:
+        arguments[name] = value
+    # `rebuilt:<Name>` reaches a class that is built but **not adopted**
+    # (`audioeffects.rebuilt.ADOPTED`): for a parked name `create()` serves
+    # the old class in the family module, so a digest taken for a parked
+    # rebuild has to say which class it is a digest of. Phase 2 parked
+    # fifteen of sixteen, so every one of their §3 tables needs this.
+    if options["cls"].startswith("rebuilt:") or options["rebuilt"]:
+        from audioeffects import rebuilt as _rebuilt
+        name = (options["cls"][8:] if options["cls"].startswith("rebuilt:")
+                else options["cls"])
+        cls = _rebuilt.module_class(name)
+        if cls is None:
+            raise SystemExit("no rebuilt module for %s" % name)
+        effect = cls.create(
+            adapter, rate, transport=transport, **arguments)
+    else:
+        effect = audioeffects.create(options["cls"], adapter, rate,
+                                     transport=transport, **arguments)
 
     # A patch replaces every macro, so on the command line it is applied
     # first and the --macro flags override it. That is the opposite of
@@ -703,6 +757,8 @@ def main(argv):
                                         rate, channels, block)
     if options["patch"] is not None:
         stem += "__p%d" % options["patch"]
+    for name, value in options["options"]:
+        stem += "__o%s-%s" % (name, value)
     for index, value in options["macros"]:
         stem += "__m%d-%g" % (index, value)
     # A timeline and a transport change the render, so they have to change
@@ -734,6 +790,7 @@ def main(argv):
         "block_delivered": delivered,
         "effect_block_frames": None,
         "macros": [[index, value] for index, value in options["macros"]],
+        "options": [[name, value] for name, value in options["options"]],
         "patch": options["patch"],
         "events": options["events"],
         "event_count": len(events),

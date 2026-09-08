@@ -26,9 +26,27 @@ import math
 import numpy as np
 
 import audioeffects
+from audioeffects.combfilter import CombFilter  # noqa: F401
+from audioeffects.limiter import Limiter
+from audioeffects.lowpass import LowPass
+
+#: The Phase 2 classes these faults subclass have come home; name them
+#: from their own modules so a planted fault is a subclass of the class
+#: the traits are about, not of a family leftover.
+
+#: `ShiftedCornerLowPass` subclasses a rebuilt class, and `_component`
+#: reads `VENDOR` off the module a class is *defined* in, not off the module
+#: its base came from. Without this the metadata check refuses the fault
+#: before it can be measured.
+VENDOR = "PyDevices"
 import audiofilters
 import synthio
 from audioeffects import _core
+
+#: `_component` reads VENDOR off the module a class is defined in, and the
+#: CLICK fault below is a subclass of a rebuilt class. Without this the fault
+#: would refuse to construct, which is a fault that cannot fail.
+VENDOR = "PyDevices"
 
 
 class _Node:
@@ -206,9 +224,19 @@ def under_reporting_limiter(samples):
     The DSP is untouched in both - the two renders must be byte-identical -
     so a latency check that only fires when the sound also changes stays
     silent here, which is precisely what CLICK is for.
+
+    `Limiter`'s latency is a macro, so the rebuilt class reports it from a
+    property rather than from `LATENCY_SAMPLES`; overriding the class
+    attribute alone would leave the fault inert, which is a fault that cannot
+    fail. Both are overridden here.
     """
-    return type("LimiterReporting%d" % samples, (audioeffects.Limiter,),
-                {"LATENCY_SAMPLES": int(samples)})
+    def reported(self):
+        self._check_live()
+        return int(samples)
+
+    return type("LimiterReporting%d" % samples, (Limiter,),
+                {"LATENCY_SAMPLES": int(samples),
+                 "latency_samples": property(reported)})
 
 
 class NoResetDelay(audioeffects.DigitalDelay):
@@ -240,20 +268,54 @@ class LiveIntermediateDelay(audioeffects.DigitalDelay):
         audioeffects.DigitalDelay.__init__(self, self.pre, **options)
 
 
-class ShiftedCornerLowPass(audioeffects.LowPass):
+class ShiftedCornerLowPass(LowPass):
     """RESPONSE's fault: one coefficient moved so the corner shifts 15 %.
 
     The class is asked for the same frequency as the control; the biquad it
     builds is 15 % away from it. The fitted corner must go red while the
     passband gain stays green.
+
+    Every other keyword is passed through untouched - `sample_rate` and
+    `transport` among them, which `create()` supplies - so this shifts the
+    corner and changes nothing else about how the class is constructed.
     """
 
     SHIFT = 1.15
 
-    def __init__(self, source, frequency=1000.0, q=0.707, mix=1.0):
-        audioeffects.LowPass.__init__(self, source,
-                                      frequency=frequency * self.SHIFT,
-                                      q=q, mix=mix)
+    def __init__(self, source, frequency=1000.0, **options):
+        options["frequency"] = frequency * self.SHIFT
+        LowPass.__init__(self, source, **options)
+
+
+class UnderLookaheadNoiseGate(audioeffects.NoiseGate):
+    """The reachability check's control: a shipped class faulted at a
+    construction option **no macro and no patch reaches**.
+
+    `lookahead_ms` is per-instance, not a knob (`noisegate.py:168`,
+    `MACRO_LABELS` has eight entries and none of them is look-ahead), so
+    10 ms of it is a state the surface cannot dial. That is what a planted
+    fault has to be.
+    """
+
+    def _build(self, **options):
+        options["lookahead_ms"] = 10.0
+        audioeffects.NoiseGate._build(self, **options)
+
+
+class TrimOffLowPass(LowPass):
+    """An **inert** fault, in `Compressor` O1's own shape: it forces a state
+    the clean class is already in at its own defaults.
+
+    `LowPass._refresh` sets the trim section's `mix` to 0 unless the Trim
+    knob is off centre, and Trim defaults to 0 dB - so forcing it to 0 here
+    changes nothing at all, exactly as `compressor.py:331-333` forces
+    `memory = OPTICAL_MEMORY` and never reads macro 6. Whatever this fault
+    turns red was not turned red by it.
+    """
+
+    def _refresh(self):
+        LowPass._refresh(self)
+        self._trim.mix = 0.0
 
 
 def corrupt_one_block(pcm, block_frames=256, channels=2):
@@ -283,3 +345,211 @@ def corrupt_one_block(pcm, block_frames=256, channels=2):
         raise ValueError("no pair in the first block can carry the +256/-1 "
                          "perturbation without a carry or a borrow")
     return bytes(data), raised, lowered
+
+
+# --------------------------------------------------------------------------
+# The two checks the pattern revision asks the fault runner for
+#
+# `docs/effects-phase2-pattern-revision.md` sections 1.2 and 1.3. Eleven of
+# Phase 2's forty-five broken clauses read green on a build that did nothing,
+# and three "planted faults" were positions of the class's own surface. Both
+# are kit functions here rather than habits, for the reason the revision
+# gives: every one of the eleven was written by a session that believed it
+# had already applied the rule.
+# --------------------------------------------------------------------------
+
+class NullBuildGreen(AssertionError):
+    """A measurement read green on a class built as a wire.
+
+    `ParametricEQ` T2 (all three clauses green on a byte-flat wire),
+    `HighPass` T3's Nyquist leg (+0.0000 dB with both poles wired out),
+    `Limiter` L6 (-0.00000 dB/dB at ratio 1.0). The class may well do the
+    thing; this measurement cannot tell.
+    """
+
+
+class ControlRed(AssertionError):
+    """The same measurement went red on the real class, so the null build's
+    red says nothing. A battery without a control that must pass only proves
+    the checker always fails (`docs/effects-kit-spec.md` section 6)."""
+
+
+class FaultReachable(AssertionError):
+    """A planted fault is a position of the class's own macro grid or one of
+    its shipped patches - a disconfirmation waiting to be written down, not
+    a fault (`CombFilter`'s `NoGlideCombFilter` and macro 5 `Glide` at grid
+    position 0 are the same build; `Compressor` filed Release macro 127
+    twice)."""
+
+
+class FaultInert(AssertionError):
+    """The faulted build reads the same as the clean one, so nothing it
+    turns red was turned red by it (`Compressor` O1: `compressor.py:331-333`
+    forces `memory = OPTICAL_MEMORY` and never reads macro 6)."""
+
+
+def wire_build(cls, name=None):
+    """`cls` rebuilt as a wire: the real constructor runs, every macro and
+    patch still answers, and `output` **is** the source.
+
+    This is the null build of the revision's section 1.2 - the class at
+    `mix` 0 without depending on the class having a Mix knob, and without
+    trusting that its own bypass is byte-exact, which is a separate trait.
+    The nodes are still built and still owned, so `deinit()` releases them;
+    they are simply never in the path.
+    """
+    def _build(self, *arguments, **keywords):
+        cls._build(self, *arguments, **keywords)
+        self._output = self._source
+
+    return type(name or ("Wire" + cls.__name__), (cls,),
+                {"_build": _build,
+                 "__doc__": "%s built as a wire: output is the source."
+                            % cls.__name__})
+
+
+def null_build_red(cls, measure_with, *, control=True, label=None):
+    """**The NULL-BUILD RED check.** Run `measure_with` against `cls` built
+    as a wire and require the measurement to go red.
+
+    `measure_with(subject)` is the caller's closure: it takes a *class*,
+    builds it, renders it and returns a kit measurement result (anything
+    with `passed`, or a bare truthy verdict). It is called twice - once with
+    the wire, once with `cls` itself - so the red on the null build is
+    reported beside a control that must pass.
+
+    Returns `{"null": <result on the wire>, "control": <result on the
+    class>, "subject": <the wire class>}`. Raises `NullBuildGreen` when the
+    wire reads green, and `ControlRed` when the real class does not.
+    """
+    what = label or getattr(cls, "NAME", cls.__name__)
+    wire = wire_build(cls)
+    null = measure_with(wire)
+    if _passed(null):
+        raise NullBuildGreen(
+            "%s: the measurement is GREEN on %s built as a wire (output is "
+            "the source). It cannot fail, so nothing it reports about %s "
+            "has been demonstrated - pattern revision section 1.2."
+            % (what, what, what))
+    checked = None
+    if control:
+        checked = measure_with(cls)
+        if not _passed(checked):
+            raise ControlRed(
+                "%s: the null build is red, but so is the control on the "
+                "real class (%s). A red that fires on everything is not a "
+                "measurement." % (what, _why(checked)))
+    return {"null": null, "control": checked, "subject": wire}
+
+
+def fault_reachability(clean, faulted, reading, build, *, grid=None,
+                       patches=True, tolerance=0.0, label=None):
+    """**The FAULT-REACHABILITY check.** Reject a planted fault the class's
+    own surface can dial, and an inert one.
+
+    `clean`    the shipped class.
+    `faulted`  the fault: a class, which is built and read with `reading`,
+               or the state the fault forces given directly - which is what
+               a write-only node needs (`CombFilter`'s `delay_slew` can be
+               `set` and never read, so its fault's state is the number
+               `0.0`).
+    `reading`  what to read off a built instance: the state the fault
+               forces, in terms the class's own surface can be asked about.
+               `CombFilter`'s is `lambda e: e.macro(5)`, which is the
+               auditor's own check.
+    `build`    `build(subject_class)` -> a live instance. The caller owns
+               construction, because arguments differ per class.
+    `grid`     the MIDI positions to walk each macro over; the 0-127 grid in
+               steps of 8, plus 127, by default.
+    `patches`  also walk every shipped patch, which is where `DynamicEQ`
+               and `BandPass` broke.
+
+    Returns `{"target": ..., "clean": ..., "checked": <positions walked>}`.
+    Raises `FaultInert` when the clean class at its own defaults already
+    reads the faulted state, and `FaultReachable` when any macro position or
+    shipped patch reaches it.
+    """
+    what = label or getattr(clean, "NAME", clean.__name__)
+    if isinstance(faulted, type):
+        subject = build(faulted)
+        try:
+            target = reading(subject)
+        finally:
+            _release(subject)
+    else:
+        target = faulted
+
+    positions = (tuple(range(0, 128, 8)) + (127,) if grid is None
+                 else tuple(grid))
+    instance = build(clean)
+    checked = 0
+    try:
+        default = reading(instance)
+        if _same(default, target, tolerance):
+            raise FaultInert(
+                "%s: the fault reads %r and the clean class at its own "
+                "defaults reads %r. Nothing this fault turned red was turned "
+                "red by it - pattern revision section 1.3."
+                % (what, target, default))
+        labels = tuple(getattr(clean, "MACRO_LABELS", ()))
+        for index in range(len(labels)):
+            before = instance.get_macro(index)
+            try:
+                for position in positions:
+                    instance.set_macro(index, position)
+                    checked += 1
+                    if _same(reading(instance), target, tolerance):
+                        raise FaultReachable(
+                            "%s: macro %d %r at grid position %d reads %r - "
+                            "the state the 'fault' forces. A fault the "
+                            "surface can dial is a disconfirmation waiting "
+                            "to be written down, not a fault (pattern "
+                            "revision section 1.3)."
+                            % (what, index, labels[index], position,
+                               instance.macro(index)))
+            finally:
+                instance.set_macro(index, before)
+        if patches:
+            for patch in sorted(getattr(clean, "PATCHES", {})):
+                instance.program_change(patch)
+                checked += 1
+                if _same(reading(instance), target, tolerance):
+                    raise FaultReachable(
+                        "%s: shipped patch %d %r reads the state the 'fault' "
+                        "forces. A trait the class misses at a patch its own "
+                        "author published is not a corner case, it is the "
+                        "product."
+                        % (what, patch, clean.PATCHES[patch][0]))
+            instance.program_change(0)
+    finally:
+        _release(instance)
+    return {"target": target, "clean": default, "checked": checked}
+
+
+def _passed(result):
+    if isinstance(result, dict) and "passed" in result:
+        return bool(result["passed"])
+    return bool(result)
+
+
+def _why(result):
+    if isinstance(result, dict) and result.get("red"):
+        return "; ".join(str(entry) for entry in result["red"])
+    return repr(result)
+
+
+def _same(one, other, tolerance):
+    if isinstance(one, (list, tuple)) and isinstance(other, (list, tuple)):
+        return (len(one) == len(other)
+                and all(_same(a, b, tolerance) for a, b in zip(one, other)))
+    if isinstance(one, bool) or isinstance(other, bool):
+        return one == other
+    if isinstance(one, (int, float)) and isinstance(other, (int, float)):
+        return abs(float(one) - float(other)) <= tolerance
+    return one == other
+
+
+def _release(effect):
+    deinit = getattr(effect, "deinit", None)
+    if deinit is not None:
+        deinit()

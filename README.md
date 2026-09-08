@@ -95,6 +95,18 @@ python tests/parity/effects_library_smoke.py
 python -m flake8
 ```
 
+Most work does not need that full suite. `tools/scoped_tests.py` picks the files a change can break:
+
+| Work | Scope |
+|---|---|
+| One class | `tools/scoped_tests.py class:DeEsser` (that class's tests plus the contract) |
+| Kit, `__init__`, `_core`, or `_component` | `tools/scoped_tests.py auto` (widens from `git diff`) |
+| Every effect, no instruments | `tools/scoped_tests.py effects` |
+| Shared promises only | `tools/scoped_tests.py contract` |
+| Gate, integration, audit, release | `tools/scoped_tests.py full` |
+
+`--list` prints the choice and runs nothing. Instrument tests (`test_cpython_instruments`, `test_cpython_piano_polyphony`) run only when `lib/audioinstruments/` or `AUDIOIF_PIN` moved, or when `full` is named.
+
 The instrument parity gate is workspace-local by design. It renders each
 component under every interpreter it can find and holds it to a hash captured
 from the original micropython-vst3 script, read out of that repository's git

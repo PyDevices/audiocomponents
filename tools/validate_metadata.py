@@ -245,17 +245,25 @@ def validate_instruments(package=None):
 
 
 def validate_effects(package=None):
-    """Validate every public concrete effect class."""
+    """Validate every public concrete effect class.
+
+    Two bases, because the effects program rebuilds the library one family
+    at a time: `_core.Effect` for the families it has not reached and
+    `_component.Component` for the ones it has.  The count check at the end
+    is what stops a base this function has not been taught about from being
+    skipped in silence -- an unvalidated class would otherwise read exactly
+    like a valid one.
+    """
     if package is None:
         import audioeffects as package
-    from audioeffects import _core
+    from audioeffects import _component, _core
+    bases = (_core.Effect, _component.Component)
 
     names = set()
     for exported in package.__all__:
         owner = getattr(package, exported, None)
-        if (not isinstance(owner, type)
-                or not issubclass(owner, _core.Effect)
-                or owner is _core.Effect):
+        if (not isinstance(owner, type) or owner in bases
+                or not issubclass(owner, bases)):
             continue
         module = __import__(owner.__module__, fromlist=["*"])
         validate_component(owner, kind="effect", expected_name=owner.__name__,
@@ -263,6 +271,11 @@ def validate_effects(package=None):
         if owner.NAME in names:
             raise MetadataError("duplicate effect NAME %r" % owner.NAME)
         names.add(owner.NAME)
+    missed = set(package.ALL) - names
+    if missed:
+        raise MetadataError(
+            "validated %d of %d effects; %r were skipped"
+            % (len(names), len(package.ALL), sorted(missed)))
     return tuple(sorted(names))
 
 

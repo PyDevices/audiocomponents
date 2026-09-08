@@ -26,3 +26,27 @@ dist/
 # rows, all regenerable by tools/alias_floor/. The published numbers live in
 # docs/effects-alias-floor.json.
 tools/alias_floor/work/
+
+# Internal program material — the effects program's working record lives in the
+# private workspace repo (PyDevices/workspace, docs/effects-internal/), not here.
+# Dossiers, evidence packs, gate audits, survey and cost documents, and the probe
+# rigs that print them are how the work was proved; the library, its tests and its
+# README are what we publish.
+docs/effects/
+docs/dossiers/
+docs/effects-*.md
+docs/effects-*.json
+docs/accuracy-survey*
+docs/phase1-closeout.md
+docs/phase2-listening-guide.md
+tools/phase0_probes/
+tools/phase2_probes/
+!tools/phase2_probes/parametriceq_traits.py
+tools/alias_floor/
+tools/*_evidence.py
+# ...except the two the shipped test suite imports at runtime; they are
+# measurement code the public suite needs, not audit trail.
+!tools/compressor_evidence.py
+tools/*_state_probe.py
+tools/compressor_probes.py
+tools/compressor_deinit_use.py

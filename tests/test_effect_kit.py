@@ -193,7 +193,9 @@ class ClickTest(unittest.TestCase):
 
     def test_reporting_256_samples_short_is_red_at_both_rates(self):
         for rate in (48000, 44100):
-            expected = int(round(20.0 * rate / 1000.0))   # 20 ms lookahead
+            # 10 ms of lookahead: the rebuilt `Limiter`'s Lookahead macro
+            # tops out there, and the node truncates rather than rounds.
+            expected = int(10.0 * rate / 1000.0)
             probe = probes.click_stereo(16384, offset=256)
             dry = render_source(probe, 16384, rate=rate,
                                 probe_name="click_stereo")
@@ -204,7 +206,7 @@ class ClickTest(unittest.TestCase):
                 wet, effect = render_through(cls, probe, 16384, rate=rate,
                                              probe_name="click_stereo",
                                              ceiling_db=-1.0,
-                                             lookahead_ms=20.0)
+                                             lookahead_ms=10.0)
                 result = kit.click(wet, dry, effect.latency_samples)
                 digests.append(wet.digest)
                 self.assertEqual(result["passed"], must_pass,
@@ -299,6 +301,10 @@ class ResponseTest(unittest.TestCase):
     TONES = (200.0, 400.0, 700.0, 900.0, 1000.0, 1100.0, 1150.0, 1300.0,
              1600.0, 2000.0, 4000.0)
 
+    #: The control and the fault must be the same class, and
+    #: `ShiftedCornerLowPass` is a subclass of the *rebuilt* `LowPass` -
+    #: which is parked, so `faults.LowPass` is the old one
+    #: (`kit_faults.LowPass` names the rebuilt class).
     def _curve(self, cls):
         wet, dry = {}, {}
         for hz in self.TONES:
@@ -312,7 +318,7 @@ class ResponseTest(unittest.TestCase):
                                       "passband_db": (0.0, 0.2)})
 
     def test_a_corner_moved_fifteen_percent_is_red(self):
-        control = self._curve(audioeffects.LowPass)
+        control = self._curve(faults.LowPass)
         self.assertTrue(control["passed"], control["red"])
         self.assertAlmostEqual(control["values"]["corner_hz"], 1000.0,
                                delta=10.0)
@@ -368,11 +374,16 @@ class CurveTest(unittest.TestCase):
         renders = {}
         for level in self.LEVELS:
             probe = probes.sine(1000.0, 0.5, level)
+            # `character="fet"` because CURVE's subject is the textbook
+            # single-stage law, and the Phase 2 rebuild's default character
+            # is the LA-2A: two stages, its own fixed times, and a memory.
+            # Naming the character here pins the fixture; it does not move
+            # a bar.
             renders[level], _ = render_through(
                 "Compressor", probe, 24000,
-                probe_name="sine_1k_%d" % level, threshold_db=-24.0,
-                ratio=4.0, attack_ms=1.0, release_ms=50.0, knee_db=knee_db,
-                makeup_db=0.0)
+                probe_name="sine_1k_%d" % level, character="fet",
+                threshold_db=-24.0, ratio=4.0, attack_ms=1.0,
+                release_ms=50.0, knee_db=knee_db, makeup_db=0.0)
         return kit.curve(renders, detector="peak", expected=self.EXPECTED)
 
     def test_a_hard_knee_at_the_same_threshold_and_ratio_is_red(self):
@@ -471,6 +482,7 @@ class ReadoutsTest(unittest.TestCase):
             probe = probes.sine(1000.0, 0.2, -12.0)
             render, _ = render_through("Compressor", probe, 9600,
                                        probe_name="sine_1k_-12",
+                                       character="fet",
                                        threshold_db=-24.0, ratio=4.0,
                                        knee_db=knee_db, makeup_db=0.0)
             return render
@@ -637,6 +649,138 @@ class RendererIntegrationTest(unittest.TestCase):
                                      frequency=2000.0)
         result = kit.digest({"first": one, "second": two})
         self.assertTrue(result["passed"], result["red"])
+
+
+class NullBuildTest(unittest.TestCase):
+    """The NULL-BUILD RED check (`kit_faults.null_build_red`).
+
+    Pattern revision section 1.2: eleven of Phase 2's forty-five broken
+    clauses read green on a build that did nothing, and every one of them
+    was written by a session that believed it had already applied the
+    workspace's "prove a checker can fail" rule. So it is a kit function
+    with a battery, in the shape of every other fault here - the red beside
+    a control that must pass, and a demonstration of the check itself going
+    off on a deliberately wrong input.
+    """
+
+    TONES = ResponseTest.TONES
+
+    def _response(self, cls):
+        wet, dry = {}, {}
+        for hz in self.TONES:
+            probe = probes.sine(hz, 0.3, -12.0)
+            wet[hz], _ = render_through(cls, probe, 14400,
+                                        probe_name="tones_step",
+                                        frequency=1000.0, q=0.707)
+            dry[hz] = render_source(probe, 14400, probe_name="tones_step")
+        return kit.response(wet, dry, reference_hz=200.0,
+                            expected={"corner_hz": (1000.0, 5.0),
+                                      "passband_db": (0.0, 0.2)})
+
+    def _level(self, cls):
+        probe = probes.sine(1000.0, 0.5, -26.0)
+        dry = render_source(probe, 24000, probe_name="sine_1k_-26")
+        wet, _ = render_through(cls, probe, 24000, probe_name="sine_1k_-26",
+                                frequency=1000.0, q=0.707)
+        return kit.level(wet, dry, tolerance_db=0.05)
+
+    def test_response_goes_red_on_the_class_built_as_a_wire(self):
+        checked = faults.null_build_red(faults.LowPass, self._response)
+        self.assertFalse(checked["null"]["passed"])
+        # It is red for the right reason: a wire has no -3 dB crossing at
+        # all, so the corner the trait is about does not exist.
+        self.assertIn("no -3.0 dB crossing", checked["null"]["red"][0])
+        self.assertIsNone(checked["null"]["values"]["corner_hz"])
+        # And the control on the real class passes, so the red is the null
+        # build's and not the measurement's.
+        self.assertTrue(checked["control"]["passed"],
+                        checked["control"]["red"])
+        self.assertAlmostEqual(checked["control"]["values"]["corner_hz"],
+                               1000.0, delta=10.0)
+
+    def test_the_wire_build_really_is_a_wire(self):
+        probe = probes.sine(1000.0, 0.2, -12.0)
+        dry = render_source(probe, 9600, probe_name="sine_1k_-12")
+        wet, _ = render_through(faults.wire_build(faults.LowPass),
+                                probe, 9600, probe_name="sine_1k_-12",
+                                frequency=1000.0, q=0.707)
+        # Byte-identical to the source, which is what "output == source"
+        # means and what makes the check above worth anything.
+        self.assertEqual(wet.digest, dry.digest)
+
+    def test_the_check_fires_on_a_measurement_that_cannot_fail(self):
+        # The deliberately wrong input. LEVEL reads the wet:dry ratio, and a
+        # wire's ratio is exactly 0.00 dB - so LEVEL is green on a build
+        # that does nothing, and may not stand behind a Tier 2 trait on its
+        # own. This is `ParametricEQ` T2's defect in one line.
+        with self.assertRaises(faults.NullBuildGreen) as caught:
+            faults.null_build_red(faults.LowPass, self._level)
+        self.assertIn("built as a wire", str(caught.exception))
+        # And the reading that makes it fire, stated as a number.
+        self.assertEqual(self._level(faults.wire_build(faults.LowPass))
+                         ["values"]["rms_db"], [0.0, 0.0])
+
+    def test_the_check_fires_when_the_control_is_red_too(self):
+        # The second wrong input: a measurement that reddens everything.
+        # The null build's red says nothing if the real class fails the same
+        # bar, which is the "a battery without a control" half of section 6.
+        def always_red(cls):
+            return {"passed": False, "red": ["a bar nothing can meet"]}
+
+        with self.assertRaises(faults.ControlRed) as caught:
+            faults.null_build_red(faults.LowPass, always_red)
+        self.assertIn("a red that fires on everything",
+                      str(caught.exception).lower())
+
+
+class FaultReachabilityTest(unittest.TestCase):
+    """The FAULT-REACHABILITY check (`kit_faults.fault_reachability`).
+
+    Pattern revision section 1.3: three of Phase 2's planted faults were
+    positions of the class's own surface, and one was inert. A fault the
+    macro grid can dial is a disconfirmation waiting to be written down.
+    """
+
+    def build(self, cls):
+        probe = probes.sine(1000.0, 0.2, -20.0)
+        return build(cls, probes.ArraySource(probe, rate=RATE), RATE)
+
+    def test_a_fault_no_knob_reaches_passes(self):
+        # The control. `lookahead_ms` is a construction option with no macro
+        # behind it, so 10 ms of look-ahead is a state the surface cannot
+        # dial, and `latency_samples` reads it back.
+        checked = faults.fault_reachability(
+            audioeffects.NoiseGate, faults.UnderLookaheadNoiseGate,
+            lambda effect: effect.latency_samples, self.build)
+        self.assertEqual(checked["target"], int(0.010 * RATE))
+        self.assertEqual(checked["clean"], 0)
+        # Every macro position and every shipped patch was actually walked.
+        self.assertEqual(checked["checked"],
+                         len(audioeffects.NoiseGate.MACRO_LABELS) * 17
+                         + len(audioeffects.NoiseGate.PATCHES))
+
+    def test_the_check_fires_on_a_fault_the_macro_grid_can_dial(self):
+        # The deliberately wrong input, and the real one: `CombFilter`'s
+        # `NoGlideCombFilter` forces `delay_slew = 0`, and macro 5 `Glide`
+        # spans 0...1 with grid position 0 sitting exactly there.
+        combfilter = faults.CombFilter
+        with self.assertRaises(faults.FaultReachable) as caught:
+            faults.fault_reachability(combfilter, 0.0,
+                                      lambda effect: effect.macro(5),
+                                      self.build)
+        self.assertIn("macro 5 'Glide' at grid position 0",
+                      str(caught.exception))
+
+    def test_the_check_fires_on_an_inert_fault(self):
+        # The second wrong input: a fault that forces a state the clean
+        # class is already in. `TrimOffLowPass` sets the trim section's mix
+        # to 0, which is where `LowPass` leaves it at Trim 0 dB.
+        with self.assertRaises(faults.FaultInert) as caught:
+            faults.fault_reachability(
+                faults.LowPass, faults.TrimOffLowPass,
+                lambda effect: effect._trim.mix, self.build)
+        self.assertIn("clean class at its own defaults reads",
+                      str(caught.exception))
 
 
 class _Tail:

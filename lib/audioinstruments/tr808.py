@@ -94,7 +94,7 @@ METAL_HZ = 20.5
 # fundamentals the hi-hat then discards, and nothing downstream can give the
 # 14 dB back. Normalizing after the band is what the hardware's post-filter
 # output stage does. Butterworth magnitudes, orders chosen against the
-# reference pack's own hat band (docs/dossiers/tr808.md section 5).
+# reference pack's own hat band (workspace docs/effects-internal/dossiers/instruments/tr808.md section 5).
 _METAL_HP_HZ, _METAL_HP_ORDER = 5000.0, 4
 _METAL_LP_HZ, _METAL_LP_ORDER = 13000.0, 2
 

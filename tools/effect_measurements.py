@@ -2460,3 +2460,270 @@ def roundtrip(emitted, captured, *, block_frames, correlation_floor=0.3,
                    "this setting starves" % int(starvation_count))
     values["failed_readouts"] = failed
     return _result("ROUNDTRIP", "ms", values, emitted.axes(), criteria, red)
+
+
+# --------------------------------------------------------------------------
+# The sweep driver - the kit's answer to Phase 2's largest finding
+#
+# `docs/effects-phase2-pattern-revision.md` section 1.1: 28 of the 45 clauses
+# an independent refutation pass broke across sixteen classes broke for one
+# reason - the row was quantified over a span ("every probe", "any Q in
+# 0.5...16", "both slopes") and was measured at ONE point in it, with the
+# point chosen after the trait was frozen. Nothing above reads a class's own
+# macro grid; every measurement takes the setting its caller names.
+#
+# `macro_sweep` is the one entry point that takes a measurement, the class,
+# and a span in the class's OWN macro units, runs the measurement across that
+# span's grid - the stops first, because `BandPass` T1 and `LowPass` T1 both
+# miss their bar at a macro's end position - and reports the WORST cell with
+# the point it occurred at, in the units the panel reads.
+#
+# The evidence template's "Quantified over" column is what feeds `spans`
+# (`docs/effects/TEMPLATE.md`, Tier 2).
+# --------------------------------------------------------------------------
+
+class MacroSpan:
+    """One axis of a sweep: a macro of the class under test, and the stretch
+    of its 0-127 travel the trait quantifies over.
+
+    `macro` is the macro's index or its `MACRO_LABELS` name. `low` and `high`
+    are MIDI positions, so a row that quantifies over a knob's full travel is
+    `MacroSpan(0)` and one that claims only the top half is
+    `MacroSpan(0, 64, 127)`. `midpoints` is how many interior points to add
+    between the stops; the stops themselves are always run, and always first.
+
+    A span with `low == high` is a point, not a span, and `macro_sweep`
+    refuses it: that is exactly the defect this driver exists to catch.
+    """
+
+    def __init__(self, macro, low=0, high=127, *, midpoints=1, label=None):
+        self.macro = macro
+        self.low = float(low)
+        self.high = float(high)
+        self.midpoints = int(midpoints)
+        self.label = label
+        self.index = None               # filled in by `macro_sweep`
+
+    def positions(self):
+        """The MIDI positions this span is run at: both stops, then the
+        interior points, evenly spaced between them."""
+        stops = [self.low, self.high]
+        interior = []
+        for step in range(1, self.midpoints + 1):
+            fraction = step / float(self.midpoints + 1)
+            interior.append(self.low + (self.high - self.low) * fraction)
+        return [round(value, 6) for value in stops + interior]
+
+    def __repr__(self):
+        return ("MacroSpan(%r, %g, %g, midpoints=%d)"
+                % (self.macro, self.low, self.high, self.midpoints))
+
+
+def _as_span(span):
+    if isinstance(span, MacroSpan):
+        return span
+    if isinstance(span, dict):
+        return MacroSpan(**span)
+    if isinstance(span, (tuple, list)):
+        return MacroSpan(*span)
+    return MacroSpan(span)
+
+
+def _macro_index(subject, macro):
+    labels = tuple(getattr(subject, "MACRO_LABELS", ()))
+    if isinstance(macro, str):
+        if macro not in labels:
+            raise ValueError("%s has no macro named %r; it has %r"
+                             % (type(subject).__name__, macro, labels))
+        return labels.index(macro)
+    index = int(macro)
+    if not 0 <= index < len(labels):
+        raise ValueError("%s has %d macros; no index %d"
+                         % (type(subject).__name__, len(labels), index))
+    return index
+
+
+def _figure_of(result, figure):
+    """The number a sweep compares cells on."""
+    if callable(figure):
+        return float(figure(result))
+    if isinstance(result, dict) and "values" in result:
+        values = result["values"]
+        if figure is None:
+            raise MeasurementRefused(
+                "SWEEP: a measurement result carries several readouts (%s); "
+                "name the one the trait's bar is on with `figure=`"
+                % ", ".join(sorted(str(key) for key in values)))
+        if figure not in values:
+            raise MeasurementRefused(
+                "SWEEP: the measurement has no readout %r; it has %s"
+                % (figure, ", ".join(sorted(str(key) for key in values))))
+        return float(values[figure])
+    if figure is not None and isinstance(result, dict):
+        return float(result[figure])
+    return float(result)
+
+
+_WORST = {
+    "max": lambda values: max(range(len(values)), key=lambda i: values[i]),
+    "min": lambda values: min(range(len(values)), key=lambda i: values[i]),
+    "abs": lambda values: max(range(len(values)), key=lambda i: abs(values[i])),
+}
+
+
+def macro_sweep(subject, spans, measure_at, *, figure=None, worst="abs",
+                bar=None, unit=None, name="SWEEP", max_cells=256,
+                restore=True):
+    """Run one trait measurement across the span the trait quantifies over,
+    and report the worst cell and the point it occurred at.
+
+    `subject`   a live instance of the class under test, or a zero-argument
+                factory returning one. It is driven, never rendered: the
+                driver moves its macros and reads them back with `macro()`,
+                so every cell is reported in the class's own units as well as
+                on the 0-127 grid. Reading the settings back off the instance
+                is the discipline of the pattern revision's section 3.
+    `spans`     one `MacroSpan` per axis, or anything `MacroSpan` accepts
+                (`0`, `"Threshold"`, `(0, 64, 127)`). This is the evidence
+                template's **Quantified over** column, in macro units.
+    `measure_at`  the caller's closure: takes `{macro_index: midi_value}`,
+                renders the class at those settings and returns a kit
+                measurement result (or a bare number).
+    `figure`    which readout of that result the trait's bar is on: a key
+                into `result["values"]`, or a callable taking the result.
+    `worst`     `"abs"` (default - the largest deviation either way),
+                `"max"`, `"min"`, or a callable taking the list of figures
+                and returning the index of the worst.
+    `bar`       the trait's bar. When given, the sweep is RED if the worst
+                cell exceeds it - which is the point: a row measured at one
+                setting inside its own span is a demonstration *at that
+                point*, and the point belongs in the verdict.
+
+    Refuses, rather than returning a plausible number, when a span is a
+    single point (`low == high`), when there are no spans at all, or when the
+    grid is larger than `max_cells`.
+    """
+    if callable(subject) and not hasattr(subject, "MACRO_LABELS"):
+        subject = subject()
+    spans = [_as_span(span) for span in (spans or ())]
+    if not spans:
+        raise MeasurementRefused(
+            "SWEEP: no span. A trait that quantifies over nothing is a trait "
+            "measured at a point, which is the defect this driver exists to "
+            "catch (pattern revision section 1.1).")
+    for span in spans:
+        span.index = _macro_index(subject, span.macro)
+        if span.low == span.high:
+            raise MeasurementRefused(
+                "SWEEP: macro %d (%s) is swept from %g to %g - that is a "
+                "point, not a span. Measuring a span at one point is what "
+                "broke 28 of Phase 2's 45 clauses; state the span the row "
+                "quantifies over, or say in the verdict that the row holds "
+                "at this point only."
+                % (span.index, subject.MACRO_LABELS[span.index],
+                   span.low, span.high))
+
+    grids = [span.positions() for span in spans]
+    total = 1
+    for grid in grids:
+        total *= len(grid)
+    if total > max_cells:
+        raise MeasurementRefused(
+            "SWEEP: %d cells over %d spans, past the %d-cell ceiling. Narrow "
+            "the span or lower `midpoints` - and say in the verdict which "
+            "part of the span was run." % (total, len(spans), max_cells))
+
+    before = {}
+    if restore:
+        for span in spans:
+            before[span.index] = subject.get_macro(span.index)
+
+    cells, figures, measured = [], [], None
+    try:
+        for combination in _grid(grids):
+            settings, units = {}, {}
+            for span, position in zip(spans, combination):
+                settings[span.index] = position
+                subject.set_macro(span.index, position)
+            for span in spans:
+                label = (span.label
+                         or subject.MACRO_LABELS[span.index])
+                units[label] = round(float(subject.macro(span.index)), 6)
+            result = measure_at(dict(settings))
+            if measured is None and isinstance(result, dict):
+                measured = result.get("measurement")
+            value = _figure_of(result, figure)
+            cells.append({"settings": dict(settings), "units": dict(units),
+                          "figure": value,
+                          "at_a_stop": all(
+                              position in (span.low, span.high)
+                              for span, position in zip(spans, combination))})
+            figures.append(value)
+    finally:
+        if restore:
+            for index, position in before.items():
+                subject.set_macro(index, position)
+
+    chooser = worst if callable(worst) else _WORST.get(worst)
+    if chooser is None:
+        raise ValueError("worst must be 'abs', 'max', 'min' or a callable")
+    index = int(chooser(figures))
+    worst_cell = cells[index]
+
+    values = {
+        "worst": worst_cell["figure"],
+        "at": dict(worst_cell["settings"]),
+        "at_units": dict(worst_cell["units"]),
+        "at_a_stop": worst_cell["at_a_stop"],
+        "points": len(cells),
+        "spread": round(max(figures) - min(figures), 6),
+        "spans": [{"macro": span.index,
+                   "label": subject.MACRO_LABELS[span.index],
+                   "midi": [span.low, span.high],
+                   "units": [round(float(_unit_at(subject, span.index, edge)),
+                                   6) for edge in (span.low, span.high)]}
+                  for span in spans],
+        "cells": cells,
+        "measurement": measured,
+    }
+    criteria = {"worst": worst if isinstance(worst, str) else "callable",
+                "bar": bar, "figure": figure if not callable(figure)
+                else getattr(figure, "__name__", "callable")}
+    red = []
+    if bar is not None and abs(worst_cell["figure"]) > abs(float(bar)):
+        red.append("worst %s: %.6f at %s, against a bar of %.6f"
+                   % (figure or "figure", worst_cell["figure"],
+                      worst_cell["units"], float(bar)))
+    axes = {"subject": type(subject).__name__,
+            "sample_rate": getattr(subject, "sample_rate", None)}
+    return _result(name, unit, values, axes, criteria, red)
+
+
+def _unit_at(subject, index, midi):
+    """What macro `index` stands for at MIDI position `midi`, read back off
+    the instance and restored afterwards."""
+    before = subject.get_macro(index)
+    try:
+        subject.set_macro(index, midi)
+        return subject.macro(index)
+    finally:
+        subject.set_macro(index, before)
+
+
+def _grid(grids):
+    """The cartesian product of the per-span position lists, stops first."""
+    if not grids:
+        return
+    combination = [0] * len(grids)
+    while True:
+        yield tuple(grids[axis][combination[axis]]
+                    for axis in range(len(grids)))
+        axis = len(grids) - 1
+        while axis >= 0:
+            combination[axis] += 1
+            if combination[axis] < len(grids[axis]):
+                break
+            combination[axis] = 0
+            axis -= 1
+        if axis < 0:
+            return
