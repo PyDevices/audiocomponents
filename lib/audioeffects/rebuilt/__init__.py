@@ -64,7 +64,9 @@ def _present():
         try:
             import os
             _PRESENT = set(
-                entry[:-3] for entry in os.listdir(here.rsplit("/", 1)[0])
+                entry[:-3]
+                for entry in os.listdir(
+                    here.replace("\\", "/").rsplit("/", 1)[0])
                 if entry.endswith(".py") and not entry.startswith("_"))
         except (ImportError, OSError):
             _PRESENT = None
