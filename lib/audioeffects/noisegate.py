@@ -185,9 +185,13 @@ class NoiseGate(_component.Component):
         self._duck = bool(duck)
 
         if self._duck:
+            # See the note in `compressor.py`: `reset=False` because a
+            # ring cannot be rewound, but the Splitter can be released
+            # (audioif#58) and `getattr` skips the call on an audioif that
+            # has none.
             self._split = self._own(
                 audioroute.Splitter(source=self._source, taps=2),
-                reset=False, deinit=False)
+                reset=False)
             gate_input = self._own(self._split.tap(0))
             dry = self._own(self._split.tap(1))
         else:

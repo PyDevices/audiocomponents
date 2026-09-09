@@ -366,9 +366,10 @@ class DeEsser(_component.Component):
         for node in (highs[1], highs[0], lows[1], lows[0]):
             self._own(node, reset=False)
         for splitter in (band, raw, top):
-            # No `reset_buffer`, no `deinit`, no `clear`: there is nothing to
-            # hand it. `_reset_chain()` is what clears these.
-            self._own(splitter, reset=False, deinit=False)
+            # No `reset_buffer` and no `clear`, so `_reset_chain()` is what
+            # clears these. `deinit()` it does have, since audioif#58, and
+            # asking for one an older audioif lacks is skipped by `getattr`.
+            self._own(splitter, reset=False)
         self._own(adapter, reset=False)
         # The eight taps and the silent filler are nodes this class built
         # too, and they belong on the list for the reason the paragraph

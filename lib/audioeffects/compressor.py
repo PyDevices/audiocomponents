@@ -272,16 +272,20 @@ class Compressor(_component.Component):
                                 % (name,))
             values[slot] = float(value)
 
-        # `audioroute.Splitter` exposes neither `reset` nor `deinit` (its
-        # Python surface is `tap` alone), and a tap's `reset_buffer` is a
-        # documented no-op - "the cursors belong to the Splitter and the
+        # `reset=False` and nothing else: a `Splitter`'s ring cannot be
+        # rewound - its Python surface is `tap()`, and a tap's `reset_buffer`
+        # is a documented no-op, "the cursors belong to the Splitter and the
         # other taps are still reading from them"
-        # (`audioif/src/audioroute/SplitterTap.c:47-55`). So the splitter is
-        # enumerated but neither walk names it, and the two taps carry the
-        # deinit. That is a palette gap, not a choice: see the evidence
-        # pack's §11.
+        # (`audioif/src/audioroute/SplitterTap.c`). It **can** be released:
+        # `deinit()` landed in audioif#58, and it releases the taps with it.
+        # This used to read `deinit=False`, which was honest while the palette
+        # had nothing to call but left the Tier 1 row unmeasurable. Asking for
+        # a release the node may not have is safe either way -
+        # `_component.deinit()` looks the method up with `getattr` and skips
+        # what is not there - so this is correct against the pinned audioif as
+        # well as the current one.
         split = self._own(audioroute.Splitter(self._source, taps=2),
-                          reset=False, deinit=False)
+                          reset=False)
         self._wet_tap = self._own(split.tap(0), reset=False)
         self._dry_tap = self._own(split.tap(1), reset=False)
         self._fast = self._own(audiodynamics.Dynamics(

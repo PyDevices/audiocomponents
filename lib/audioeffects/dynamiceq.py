@@ -313,9 +313,19 @@ class DynamicEQ(_component.Component):
             # registers them for `deinit()` and the reset is a no-op that is
             # still visible in the walk rather than an omission.
             self._own(tap)
-        # `audioroute.Splitter` is a container, not an audiosample: it has
-        # neither `reset_buffer` nor `deinit` on any build here.
-        self._own(split, reset=False, deinit=False)
+        # `reset=False` and nothing else: a `Splitter`'s ring cannot be
+        # rewound - its Python surface is `tap()`, and a tap's `reset_buffer`
+        # is a documented no-op, "the cursors belong to the Splitter and the
+        # other taps are still reading from them"
+        # (`audioif/src/audioroute/SplitterTap.c`). It **can** be released:
+        # `deinit()` landed in audioif#58, and it releases the taps with it.
+        # This used to read `deinit=False`, which was honest while the palette
+        # had nothing to call but left the Tier 1 row unmeasurable. Asking for
+        # a release the node may not have is safe either way -
+        # `_component.deinit()` looks the method up with `getattr` and skips
+        # what is not there - so this is correct against the pinned audioif as
+        # well as the current one.
+        self._own(split, reset=False)
         self._own(cell)
         self._own(band)
         self._own(notch)

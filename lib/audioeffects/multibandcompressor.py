@@ -296,13 +296,14 @@ class MultibandCompressor(_component.Component):
         head = self._build_input()
 
         taps = bands + 1
-        #: `reset=False, deinit=False`: `audioroute.Splitter` is a container,
-        #: not an `audiosample` - it has neither `reset_buffer` nor `deinit`
-        #: on any build in this workspace. Its taps have both and are owned
-        #: below. After a reset every cursor is still at `write_pos`, so the
-        #: audio left in the ring is behind every reader and is never heard.
+        #: `reset=False`: `audioroute.Splitter` is a container, not an
+        #: `audiosample`, and has no `reset_buffer`. After a reset every
+        #: cursor is still at `write_pos`, so the audio left in the ring is
+        #: behind every reader and is never heard. It does have `deinit()`
+        #: since audioif#58, and releasing it releases the taps owned below;
+        #: on an audioif without one, `getattr` skips the call.
         self._split = self._own(audioroute.Splitter(head, taps=taps),
-                                reset=False, deinit=False)
+                                reset=False)
         self._taps = [self._own(self._split.tap(index))
                       for index in range(taps)]
 
