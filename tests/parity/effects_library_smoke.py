@@ -166,9 +166,20 @@ for label_name, name, served in subjects:
 
 print("\n%d classes, %d patches, %d failures"
       % (classes, patches, len(failures)))
-print("%d parked, %d patches; adopted and served: %s"
-      % (parked_classes, parked_patches,
-         ", ".join(rebuilt.ADOPTED) if rebuilt.ADOPTED else "nothing yet"))
+# Count what the package actually serves from its own module, not what is
+# sitting in rebuilt.ADOPTED. ADOPTED is a STAGING list: a class enters it when
+# the auditor adopts the rebuild and leaves it again when the class is promoted
+# to its own file. So an empty ADOPTED means "nothing is mid-adoption", which is
+# the healthy end state - and this line used to print that as "nothing yet",
+# the opposite reading, with twenty-two classes adopted and serving.
+_served = sorted(
+    name for name in audioeffects.ALL
+    if getattr(audioeffects, name, None) is not None
+    and getattr(audioeffects, name).__module__ == "audioeffects." + name.lower()
+)
+_staged = ", ".join(rebuilt.ADOPTED) if rebuilt.ADOPTED else "none"
+print("%d parked, %d patches; %d served from their own module; staged for adoption: %s"
+      % (parked_classes, parked_patches, len(_served), _staged))
 for line in failures:
     print("  %s" % line)
 sys.exit(1 if failures else 0)
