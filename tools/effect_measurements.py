@@ -357,8 +357,12 @@ def onset(x, *, threshold_ratio=1e-3, floor_lsb=2.0):
     return first, float(k + delta)
 
 
-def enumerate_nodes(effect):
-    """Every audio node the class hung off itself, by name.
+#: The register's own bookkeeping, which holds no nodes to be named after.
+_REGISTER_ATTRIBUTES = ("_nodes", "_resets", "_deinits")
+
+
+def _scan_for_nodes(effect, include_private=False):
+    """Nodes reachable through the instance's attributes, by attribute name.
 
     A node is an attribute implementing the audiocore sample protocol - the
     same duck type `audiocore.get_buffer` accepts - reached directly or
@@ -375,7 +379,8 @@ def enumerate_nodes(effect):
 
     for name, value in vars(effect).items():
         if name.startswith("_"):
-            continue
+            if not include_private or name in _REGISTER_ATTRIBUTES:
+                continue
         if looks_like_a_node(value):
             found.append((name, value))
         elif isinstance(value, (list, tuple)):
@@ -391,14 +396,75 @@ def enumerate_nodes(effect):
     return found
 
 
-def _is_deinited(node):
+def enumerate_nodes(effect):
+    """Every audio node the class built, by name.
+
+    A `_component.Component` keeps its **own** register - `self._nodes`,
+    filled by every `self._own()` call - and that register, not an attribute
+    scan, is what `reset()` and `deinit()` walk. So the register is the
+    authority here. An attribute scan is not: it can only see public
+    attributes, and a Component hangs every node it builds off a private one
+    (`self._pole_one`, `self._bands[...]`), so scanning found the output node
+    and nothing else - one node of three on `LowPass`, one of eight on
+    `ParametricEQ`, one of twelve on `GraphicEQ` and on `DeEsser`. A STATE
+    fault planted in any other node read green (audiocomponents#53).
+
+    A node the class built and never registered escapes `reset()` and
+    `deinit()` both, so the private attributes are scanned as well and
+    anything found outside the register is returned too, named
+    `... (unregistered)`. That is a fault, not a naming quirk: the class
+    holds a node neither of its own walks will reach.
+
+    Classes that are not Components - the `_core.Effect` family - keep no
+    register and hold their nodes publicly, and take the scan unchanged.
+    """
+    register = getattr(effect, "_nodes", None)
+    if register is None:
+        return _scan_for_nodes(effect)
+
+    reachable = _scan_for_nodes(effect, include_private=True)
+    names = {}
+    for name, node in reachable:
+        names.setdefault(id(node), name)
+
+    found = [(names.get(id(node), "_nodes[%d]" % position), node)
+             for position, node in enumerate(register)]
+
+    registered = set(id(node) for node in register)
+    for name, node in reachable:
+        if id(node) not in registered:
+            found.append(("%s (unregistered)" % name, node))
+    return found
+
+
+def _reads_channel_count(node):
+    """Whether the node answers `channel_count` at all, right now.
+
+    This is the liveness tell that works on all three interpreters. The
+    CPython shim marks a released node with `_deinited`; the native builds
+    keep no such attribute and instead put `audiosample_check_for_deinit()`
+    on every guarded getter, so a released node is one whose `channel_count`
+    raises. Asked before and after `deinit()`, the pair separates "released"
+    from "never had that property" - `audioroute.Splitter` has no
+    `channel_count` while perfectly alive.
+    """
+    try:
+        node.channel_count
+    except Exception:
+        return False
+    return True
+
+
+def _is_deinited(node, was_guarded=False):
     if getattr(node, "_deinited", False):
         return True
     try:
         namespace = object.__getattribute__(node, "__dict__")
     except AttributeError:
-        return False
-    return bool(namespace.get("_deinited", False))
+        namespace = None
+    if namespace is not None and namespace.get("_deinited", False):
+        return True
+    return bool(was_guarded) and not _reads_channel_count(node)
 
 
 # --------------------------------------------------------------------------
@@ -733,15 +799,35 @@ def state(effect, *, pull, swap, probe_source, silent_source, blocks=64,
 
     found = enumerate_nodes(effect) if nodes is None else list(nodes)
     values["nodes"] = [name for name, _ in found]
+    # How each node answers while it is alive, so that the same question
+    # after deinit() separates "released" from "never had that property".
+    guarded = dict((id(node), _reads_channel_count(node))
+                   for _, node in found)
     effect.deinit()
-    live = [name for name, node in found if not _is_deinited(node)]
-    values["live_nodes_after_deinit"] = live
-    if live:
-        red.append("deinit() left %s live" % (live,))
+    live = [(name, node) for name, node in found
+            if not _is_deinited(node, guarded.get(id(node), False))]
+    # A node still live after deinit() splits by cause, and only one of the
+    # two causes is the class's. A node whose type HAS a deinit() on this
+    # interpreter and was not released is a leak the class could have
+    # prevented - that is red. A node whose type has none cannot be released
+    # by anybody here: it is audioif's palette gap (audioif#58, #60, #63),
+    # which the class carries rather than causes. Reporting them as one
+    # number made every audioif-tier class read the same as a real leak, and
+    # ruling the whole row `partial` hid genuine leaks behind the gap.
+    leaked = [name for name, node in live
+              if getattr(node, "deinit", None) is not None]
+    gaps = ["%s [%s]" % (name, type(node).__name__) for name, node in live
+            if getattr(node, "deinit", None) is None]
+    values["live_nodes_after_deinit"] = [name for name, _ in live]
+    values["leaked_nodes_after_deinit"] = leaked
+    values["nodes_without_deinit"] = gaps
+    if leaked:
+        red.append("deinit() left %s live, and every one of them has a "
+                   "deinit() this interpreter could have called" % (leaked,))
 
     criteria = {"reset_residual_lsb_max": int(reset_tolerance_lsb),
                 "alloc_growth_bytes_max": int(alloc_tolerance_bytes),
-                "live_nodes_after_deinit_max": 0}
+                "leaked_nodes_after_deinit_max": 0}
     return _result("STATE", "LSB, bytes, nodes", values, first.axes(),
                    criteria, red)
 

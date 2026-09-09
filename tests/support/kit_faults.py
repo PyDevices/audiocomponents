@@ -268,6 +268,47 @@ class LiveIntermediateDelay(audioeffects.DigitalDelay):
         audioeffects.DigitalDelay.__init__(self, self.pre, **options)
 
 
+class UnreleasableSectionLowPass(LowPass):
+    """STATE's third fault: a node the class declines to release.
+
+    `LowPass` builds three biquad sections and registers all three for
+    release. This subclass declares the first one unreleasable - the shape
+    `self._own(node, deinit=False)` produces - so `deinit()` walks past a
+    node that has a `deinit()` of its own to call.
+
+    The fault is planted on the register rather than in `_build`, because
+    the register is precisely what the measurement reads: `_deinits` is the
+    per-node disposition `_component.deinit()` consults.
+    """
+
+    def _build(self, *args, **options):
+        LowPass._build(self, *args, **options)
+        assert self._deinits[0] is True, "the fault has nothing to turn off"
+        self._deinits[0] = False
+
+
+class UnregisteredSectionLowPass(LowPass):
+    """STATE's fourth fault: a node built and never registered.
+
+    A node missing from `self._nodes` escapes `reset()` and `deinit()` both,
+    and it is the fault the kit was blind to for the whole of Phase 2: the
+    node is still hanging off a private attribute, and an attribute scan
+    that skips private names cannot see it either
+    (audiocomponents#53).
+
+    `_pole_two` is dropped from the register and left on the instance, which
+    is what forgetting one `self._own()` call looks like from the outside.
+    """
+
+    def _build(self, *args, **options):
+        LowPass._build(self, *args, **options)
+        position = self._nodes.index(self._pole_two)
+        del self._nodes[position]
+        del self._resets[position]
+        del self._deinits[position]
+        assert self._pole_two not in self._nodes, "the fault did not land"
+
+
 class ShiftedCornerLowPass(LowPass):
     """RESPONSE's fault: one coefficient moved so the corner shifts 15 %.
 

@@ -262,6 +262,61 @@ class StateTest(unittest.TestCase):
         self.assertEqual(result["values"]["reset_residual_lsb"], 0)
         self.assertEqual(len(result["red"]), 1)
 
+    # -- the register, and the two faults that used to read green ---------
+    #
+    # STATE walks `enumerate_nodes()`, and until audiocomponents#53 that was
+    # an attribute scan skipping private names. Every node a
+    # `_component.Component` builds hangs off a private one, so the walk
+    # found the output node alone - one of three on `LowPass`, one of eight
+    # on `ParametricEQ`, one of twelve on `GraphicEQ` and on `DeEsser` - and
+    # a fault in any other node was invisible. Both tests below assert the
+    # count as well as the verdict, because a red for the wrong reason on a
+    # one-node walk would look the same as a red on the whole register.
+
+    def test_the_walk_covers_the_register_and_not_one_attribute(self):
+        result = self._run(audioeffects.LowPass, frequency=2000.0)
+        self.assertTrue(result["passed"], result["red"])
+        self.assertEqual(len(result["values"]["nodes"]), 3)
+        self.assertEqual(result["values"]["leaked_nodes_after_deinit"], [])
+        self.assertEqual(result["values"]["nodes_without_deinit"], [])
+
+    def test_a_section_the_class_declines_to_release_is_red(self):
+        result = self._run(faults.UnreleasableSectionLowPass,
+                           frequency=2000.0)
+        self.assertFalse(result["passed"])
+        self.assertEqual(len(result["values"]["nodes"]), 3)
+        self.assertEqual(result["values"]["leaked_nodes_after_deinit"],
+                         ["_pole_one"])
+        # The fault fires on the deinit readout and nowhere else.
+        self.assertEqual(result["values"]["reset_residual_lsb"], 0)
+        self.assertEqual(len(result["red"]), 1)
+
+    def test_a_section_built_and_never_registered_is_red(self):
+        result = self._run(faults.UnregisteredSectionLowPass,
+                           frequency=2000.0)
+        self.assertFalse(result["passed"])
+        # Reported by the attribute it still hangs off, and named for what
+        # is wrong with it: nothing the class walks will ever reach it.
+        self.assertEqual(result["values"]["leaked_nodes_after_deinit"],
+                         ["_pole_two (unregistered)"])
+        self.assertEqual(result["values"]["reset_residual_lsb"], 0)
+        self.assertEqual(len(result["red"]), 1)
+
+    def test_a_node_with_no_deinit_is_recorded_and_is_not_a_leak(self):
+        """The other half of the split, and the reason there is one.
+
+        `audioroute.Splitter` has no `deinit()` on any of the three
+        interpreters (audioif#58), so a class that fans a source out cannot
+        release it and is not at fault for that. Reported as one number with
+        real leaks, it made every audioif-tier class read like a leak, and
+        ruling the whole row `partial` hid genuine leaks behind the gap.
+        """
+        result = self._run(audioeffects.Compressor)
+        self.assertEqual(result["values"]["leaked_nodes_after_deinit"], [])
+        gaps = result["values"]["nodes_without_deinit"]
+        self.assertEqual(len(gaps), 1)
+        self.assertIn("Splitter", gaps[0])
+
 
 class DigestTest(unittest.TestCase):
     """DIGEST - FNV-1a over the PCM bytes, and the statistic it replaces."""

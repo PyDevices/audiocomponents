@@ -370,6 +370,17 @@ class DeEsser(_component.Component):
             # hand it. `_reset_chain()` is what clears these.
             self._own(splitter, reset=False, deinit=False)
         self._own(adapter, reset=False)
+        # The eight taps and the silent filler are nodes this class built
+        # too, and they belong on the list for the reason the paragraph
+        # above gives: `deinit()` walks it, and a node missing from it is a
+        # node nothing releases. Both decline their own reset - a tap's
+        # `reset_buffer` is deliberately nothing and `_reset_chain()` empties
+        # the rings by pulling them, and the filler holds no state to clear.
+        # `Splitter.tap(n)` returns the same object each call, so these are
+        # the same eight taps `self._voices` plays.
+        for tap in self._taps:
+            self._own(tap, reset=False)
+        self._own(self._silence, reset=False)
 
         self._output = tail
         self._init_macros((frequency, range_db, sensitivity_db,
