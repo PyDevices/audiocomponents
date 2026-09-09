@@ -45,7 +45,8 @@ from .phaser import Phaser
 from .tremolo import Tremolo
 from .autopan import AutoPan
 from .vibrato import Vibrato
-from .modulation import Flanger, RingMod
+from .ringmod import RingMod
+from .modulation import Flanger
 from .drive import (Overdrive, Distortion, Fuzz, Saturation, Bitcrusher,
                     Exciter, CabinetSim)
 from .pitch import PitchShifter, Harmonizer, Octaver, StereoWidener
@@ -106,10 +107,10 @@ def _adopt(namespace, names):
     keep their meaning at every phase boundary, whichever half of the
     library a given name is served by.
 
-    Phase 2's sixteen and Phase 3's five THROUGH classes (AutoPan, Chorus,
-    Phaser, Tremolo, Vibrato) have come home as one file per effect beside
-    this module, so they are imported above rather than substituted. The
-    machinery stays for Flanger, RingMod and the phases still to come:
+    Phase 2's sixteen and Phase 3's THROUGH classes plus RingMod (AutoPan,
+    Chorus, Phaser, Tremolo, Vibrato, RingMod) have come home as one file
+    per effect beside this module, so they are imported above rather than
+    substituted. The machinery stays for Flanger and the phases still to come:
     `rebuilt.load()` answers `None` for a parked name (or a name with no
     file), and `rebuilt.module_class()` is how a tool or a class's own
     tests reach a rebuild that has not come home yet.

@@ -51,7 +51,7 @@ REBUILT = ("Compressor", "Limiter", "Expander", "NoiseGate", "DeEsser",
            "TransientShaper", "MultibandCompressor", "ParametricEQ",
            "GraphicEQ", "LowPass", "HighPass", "BandPass", "Notch",
            "LadderFilter", "CombFilter", "DynamicEQ",
-           "AutoPan", "Chorus", "Phaser", "Tremolo", "Vibrato")
+           "AutoPan", "Chorus", "Phaser", "Tremolo", "Vibrato", "RingMod")
 
 
 def source(channels=2, rate=48000):
@@ -850,7 +850,7 @@ class TheAdoptionGate(unittest.TestCase):
     def test_phase2_names_have_left_adopted(self):
         # Home classes must not reappear in ADOPTED.
         self.assertTrue(set(REBUILT).isdisjoint(rebuilt.ADOPTED))
-        # Phase 3 THROUGH names have come home. Flanger and RingMod stay
+        # Phase 3 THROUGH names and RingMod have come home. Flanger stays
         # parked, so ADOPTED is empty and the substitution machinery stays.
         self.assertEqual(rebuilt.ADOPTED, ())
         self.assertEqual(rebuilt.adopted(), ())
@@ -862,7 +862,7 @@ class TheAdoptionGate(unittest.TestCase):
         self.assertTrue(parked - set(FIXTURES) <= set(audioeffects.ALL))
         self.assertTrue(known - set(FIXTURES) <= set(audioeffects.ALL))
         self.assertIn("Flanger", parked)
-        self.assertIn("RingMod", parked)
+        self.assertNotIn("RingMod", parked)
         self.assertNotIn("AutoPan", parked)
         self.assertNotIn("Chorus", parked)
         self.assertNotIn("Phaser", parked)

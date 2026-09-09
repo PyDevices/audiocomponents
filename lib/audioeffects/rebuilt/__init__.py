@@ -16,10 +16,11 @@ A rebuilt module declares `VENDOR` at module level and holds exactly one
 is named after. Anything else in the file is private helpers.
 
 **Coming home is a separate step from adoption.** Phase 2's sixteen classes
-have come home, and so have Phase 3's five THROUGH classes (`autopan.py`,
-`chorus.py`, `phaser.py`, `tremolo.py`, `vibrato.py`). This directory keeps
-the substitution machinery, the two `Example` fixtures, and the parked
-Phase 3 rebuilds (`flanger.py`, `ringmod.py`). `ADOPTED` below no longer
+have come home, and so have Phase 3's THROUGH classes plus RingMod
+(`autopan.py`, `chorus.py`, `phaser.py`, `tremolo.py`, `vibrato.py`,
+`ringmod.py`). This directory keeps the substitution machinery, the two
+`Example` fixtures, and the parked Phase 3 rebuild (`flanger.py`). `ADOPTED`
+below no longer
 names the classes that have come home -- there is nothing left here for it
 to arbitrate for them -- and it will name later phases' classes until those
 too come home.
@@ -76,7 +77,7 @@ def _present():
 #: is parked - still importable, still measurable, not shipped.
 #:
 #: Phase 2's sixteen and Phase 3's five THROUGH classes have come home, so
-#: they are not listed. Flanger and RingMod stay parked under this directory.
+#: they are not listed. Flanger stays parked under this directory.
 ADOPTED = ()
 
 

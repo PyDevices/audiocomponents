@@ -165,14 +165,14 @@ within that allocation, which is why it is a proportion rather than a time.
 Both convolution classes trail their input by `audioconvolve.FRAMES` (5.3 ms
 at 48 kHz) once an impulse is loaded, and by nothing at all before one is.
 
-### Modulation - five at home, two still in `rebuilt/`
+### Modulation - six at home, one still in `rebuilt/`
 
 Phase 3's THROUGH classes (`AutoPan`, `Chorus`, `Phaser`, `Tremolo`,
-`Vibrato`) have come home as one file per effect beside this README.
-`Flanger` and `RingMod` stay parked under `rebuilt/`; the package still
-serves `modulation.Flanger` and `modulation.RingMod`. `modulation.py`
-cannot be deleted while those two remain. Every one of them is **audioif**
-tier - none runs on a stock CircuitPython board.
+`Vibrato`) and `RingMod` have come home as one file per effect beside this
+README. `Flanger` stays parked under `rebuilt/`; the package still serves
+`modulation.Flanger`. `modulation.py` cannot be deleted while Flanger
+remains. Every one of them is **audioif** tier - none runs on a stock
+CircuitPython board.
 
 **Cost** is the class's own share of one 256-frame stereo block at 48 kHz
 where the board stage has run, else the dossier palette budget. A
@@ -186,7 +186,7 @@ where the board stage has run, else the dossier palette budget. A
 | `Tremolo` | audioif (`audiomath`) | 9 | 0 samples; Lag is table shape, not a delay | Palette **7 % P4 / 9 % S3** (Multiply 0.028 / 0.047 + extra synthio 0.317 / 0.408 + glue 0.0). 1024-point board ROW **2.4 % / 4.9 %** (P4 marg 0.128 / ctrl 0.346, rt 11.23; S3 marg 0.265 / ctrl 0.532, rt 6.69). Prior 256-point ROW **2.3 / 4.9** is a shorter waveform. No lean patch | Fender Princeton 6G2 bias-vary and AB763 optical. **What the default surrenders:** Default is bias, Depth 0.5, Rate 5 Hz — not the optical standout and not L1's Depth 1. Wet peak at the default is −1.341 dB vs a 16000-LSB tone, not the ~6 dB `synthio` `>>16` ceiling; Depth 0 is still a wire. At 22.05 kHz the default's L1 bar is measured at the constructor, not assumed. Optical L1/L2 are disconfirmed; O1–O4 unmeasured at the constructor. L1 holds on sine at every rate, and misses by 0.16 dB on SQUARE material at 44.1 kHz only (−79.844 against −80; 48 kHz holds at −82.01). |
 | `Vibrato` | audioif (`audioecho`) | 8 | **mean Delay**; default **192 samples / 4.0 ms at 48 kHz** (wet alone); constructor and `program_change(0)` stay on that whole-sample bin | Palette **9 % P4 / 15 % S3** (`FeedbackDelay` +options, Mixer optioned off at Level 0 dB). Prior Mixer-in-path ROW **9.5 / 15.3 %** is stale. Board ROW of the Delay-only graph **unmeasured**. No lean patch | BBD clock-law vibrato (VB-2). Level 0 dB leaves the Mixer out of the pull. **What the default surrenders:** T1's any-2 kHz-window no-dry clause (Tone −3 dB at 17 kHz). At 22.05 kHz a 2 kHz window can tilt past 1 dB. The 17 kHz −3 dB band is at 48 kHz with a whole-sample Delay. T4 and T7 magnitude are Published defaults only. T7 quadrature is disconfirmed |
 | `AutoPan` | audioif (`audiomath`) | 7 | 0 samples | Palette **6 % P4 / 10 % S3** (`Multiply` 0.028 / 0.047 + extra synthio 1500 0.263 / 0.472 + glue 0.0). The old **1 % / 1 %** bar counted Multiply only: the palette could not price a `synthio` source. Quoted ROW **2.5 % / 4.5 %**. No lean patch | none (grade *design*). **What the default surrenders:** Rate starts at 2 Hz, not a slow 0.05 Hz wander — a 256-frame hold at 0.05 Hz reads under −80 dB, so A3's plant cannot fire on the old floor. The oscillator is two `synthio.Note`s, which top out at half scale (P12): hard-over is −6 dB vs the source. A mono source is a wire. |
-| `RingMod` | audioif (`audiomath`) | 12 | 0 samples | Palette **7 % / 9 %** at Clean Ring (Multiply 0.028 / 0.047 + extra synthio 0.317 / 0.408 + glue 0.0). The old **3 % / 5 %** bar used a 256-frame RawSample stand-in: the palette could not price a `synthio` source. The **18 % / 52 %** bar counted a 1964-frame looping RawSample. Quoted ROW **4.4 % / 4.8 %**. Not adopted; `modulation.RingMod` still ships | Bode four-diode ring (Moog 6401). **What the default surrenders:** Default is the multiplier at Frequency 220 Hz, Depth 1, Mix 1 — not the switching standout and not W1's Shape 1. At that default, 3·f₂+f₁ sits at **−92.2 dB** (1 s rect, 48 kHz), not in W1's −9.5±3 dB window, so W1 is disconfirmed at the constructor default. Wet RMS is **−9.03 dB** vs the program (M2 disconfirmed): Q15 product −3.01 dB plus the `synthio` voice sum. Squelch, Threshold and Release do not move the audio (M5 disconfirmed). Shape is a byte no-op until Character is flipped. Switching products at Character 1 Shape 1 are not a demonstrated row. |
+| `RingMod` | audioif (`audiomath`) | 12 | 0 samples | Palette **7 % / 9 %** at Clean Ring (Multiply 0.028 / 0.047 + extra synthio 0.317 / 0.408 + glue 0.0). The old **3 % / 5 %** bar used a 256-frame RawSample stand-in: the palette could not price a `synthio` source. The **18 % / 52 %** bar counted a 1964-frame looping RawSample. Quoted ROW **4.4 % / 4.8 %**. Demonstrated traits are **M1** and **M3** only. | Bode four-diode ring (Moog 6401). **What the default surrenders:** Default is the multiplier at Frequency 220 Hz, Depth 1, Mix 1 — not the switching standout and not W1's Shape 1. At that default, 3·f₂+f₁ sits at **−92.2 dB** (1 s rect, 48 kHz), not in W1's −9.5±3 dB window, so W1 is disconfirmed at the constructor default. Wet RMS is **−9.03 dB** vs the program (M2 disconfirmed): Q15 product −3.01 dB plus the `synthio` voice sum. Squelch, Threshold and Release do not move the audio (M5 disconfirmed). Shape is a byte no-op until Character is flipped. Switching products at Character 1 Shape 1 are not a demonstrated row. Carrier Low's 5 Hz HPF is **not a demonstrated claim** (M4 disconfirmed): a same-kind plant moves **0.0022 dB** at Frequency 220 and **8.6 dB** only at 2 Hz. |
 
 ### Drive - `drive.py`
 | Class | Notes |
@@ -306,7 +306,7 @@ Some classes carry **patches**: named settings on the same 0-127 MIDI grid
 knobs without knowing what any particular effect's arguments mean.
 
 ```python
-mod = audioeffects.RingMod(source, patch=1)   # "Dalek"
+mod = audioeffects.RingMod(source, patch=1)   # "Textbook AM"
 mod.set_macro(0, 96)                          # Frequency, MIDI scale
 name, values = audioeffects.RingMod.PATCHES[2]
 ```

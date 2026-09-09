@@ -14,6 +14,12 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **Phase 3 RingMod come-home.** `RingMod` is served from
+  `audioeffects.ringmod`. `modulation.py` keeps `Flanger` only.
+  `rebuilt.ADOPTED` stays empty. Demonstrated traits are M1 and M3;
+  M4 stays **disconfirmed** (0.0022 dB at Frequency 220; 8.6 dB at
+  2 Hz). Class DSP unchanged.
+
 - **Phase 3 promotion.** AutoPan, Chorus, Phaser, Tremolo and Vibrato
   come home as one file per effect. `rebuilt.ADOPTED` is empty.
   `modulation.py` still serves parked `Flanger` and `RingMod`.
@@ -52,6 +58,12 @@ there, and are recorded in its changelog.
 
 ### Changed
 
+- **`RingMod` (Phase 3, M4 claim dropped).** M4 is **disconfirmed**,
+  not a shipped claim: the same-kind plant is inert at constructor
+  Frequency 220 (**0.0022 dB**) and moves **8.6 dB** only at 2 Hz.
+  DSP, defaults, macros and patches unchanged. W1, M2 and M5 stay
+  disconfirmed as before. Not adopted; `modulation.RingMod` still
+  ships.
 - **Phase 3 gate re-rule (`Tremolo`).** 1024-point board ROW now
   measured (P4 marg **0.128** / ctrl 0.346, rt **11.23**, **2.4 %**;
   S3 marg **0.265** / ctrl 0.532, rt **6.69**, **4.9 %**) against

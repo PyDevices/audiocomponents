@@ -17,9 +17,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import audiocore                                            # noqa: E402
 import kit_faults                                           # noqa: E402
-from audioeffects import _component                         # noqa: E402
 from audioeffects import ringmod as rebuilt                 # noqa: E402
-from audioeffects.ringmod import BAL, CHAR, FREQ, PBAL, SHAPE  # noqa: E402
+from audioeffects.ringmod import BAL, FREQ, PBAL              # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 
 VENDOR = "PyDevices"
