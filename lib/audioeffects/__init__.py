@@ -1,4 +1,4 @@
-"""Forty-six effect classes built out of audioif's audio nodes.
+"""Forty-five effect classes built out of audioif's audio nodes.
 
 Every class wires itself from an audio source - a synthesizer, an
 instrument's `output`, a host input, or a previous effect's `output` - and
@@ -40,8 +40,12 @@ from .dynamiceq import DynamicEQ
 from .reverb import Reverb, ConvolutionReverb
 from .delay import (DigitalDelay, SlapbackDelay, TapeDelay, AnalogDelay,
                     PingPongDelay, MultiTapDelay)
-from .modulation import (Chorus, Flanger, Phaser, Tremolo, AutoPan,
-                         Vibrato, Rotary, RingMod)
+from .chorus import Chorus
+from .phaser import Phaser
+from .tremolo import Tremolo
+from .autopan import AutoPan
+from .vibrato import Vibrato
+from .modulation import Flanger, RingMod
 from .drive import (Overdrive, Distortion, Fuzz, Saturation, Bitcrusher,
                     Exciter, CabinetSim)
 from .pitch import PitchShifter, Harmonizer, Octaver, StereoWidener
@@ -64,7 +68,7 @@ __all__ = [
     "DigitalDelay", "SlapbackDelay", "TapeDelay", "AnalogDelay",
     "PingPongDelay", "MultiTapDelay",
     # modulation
-    "Chorus", "Flanger", "Phaser", "Tremolo", "AutoPan", "Vibrato", "Rotary",
+    "Chorus", "Flanger", "Phaser", "Tremolo", "AutoPan", "Vibrato",
     "RingMod",
     # drive
     "Overdrive", "Distortion", "Fuzz", "Saturation", "Bitcrusher", "Exciter",
@@ -102,12 +106,13 @@ def _adopt(namespace, names):
     keep their meaning at every phase boundary, whichever half of the
     library a given name is served by.
 
-    Phase 2's sixteen have come home as one file per effect beside this
-    module, so they are imported above rather than substituted. The
-    machinery stays for the phases still to come: `rebuilt.load()` answers
-    `None` for a parked name (or a name with no file), and
-    `rebuilt.module_class()` is how a tool or a class's own tests reach a
-    rebuild that has not come home yet.
+    Phase 2's sixteen and Phase 3's five THROUGH classes (AutoPan, Chorus,
+    Phaser, Tremolo, Vibrato) have come home as one file per effect beside
+    this module, so they are imported above rather than substituted. The
+    machinery stays for Flanger, RingMod and the phases still to come:
+    `rebuilt.load()` answers `None` for a parked name (or a name with no
+    file), and `rebuilt.module_class()` is how a tool or a class's own
+    tests reach a rebuild that has not come home yet.
     """
     for exported in names:
         current = namespace.get(exported)

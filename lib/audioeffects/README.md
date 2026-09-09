@@ -1,6 +1,6 @@
 # audioeffects
 
-Forty-six effect classes built out of audioif's audio nodes, for any host
+Forty-five effect classes built out of audioif's audio nodes, for any host
 that can pull an audiosample:
 
 ```python
@@ -129,7 +129,6 @@ marginal share of one block on each board at construction defaults.
 | `Notch` | audioif (`audiobiquad`) | 5 | 0 samples | 5.6 % P4 / 9.6 % S3 of a block, **over** its 1.5 % / 5 % budget; a `" - lean"` patch is still owed and none was invented | none (the Twin-T was weighed and dropped on scope) - a band-stop whose `Width` is a bandwidth and not a depth, with a Harmonics toggle for mains hum. A `float` coefficient set cannot put the zeros exactly on the unit circle, so at 60 Hz it is a hum *reducer*, not an eliminator |
 | `LadderFilter` | audioif (`audioladder`) | 7 | 0 samples | 16.2 % P4 / 26.7 % S3 of a block at patch 4 against the palette-derived 17 % / 28 %; lean patch 6 is 8.6 % / 14.7 %. T5 and T1's stopband slope stay disconfirmed | the Moog transistor ladder - four one-pole stages round one global feedback loop with an odd saturator **inside** it, so the passband sinks as `Resonance` rises. That droop is the circuit |
 | `CombFilter` | audioif (`audioecho`, `audiobiquad`) | 6 | 0 samples | 7.4 % P4 / 12.2 % S3 of a block at patch 0 against the palette-derived 8 % / 13 %. Above Feedback 0.5 the parked ring's period is the nearest whole number of samples to F_s/Frequency, not the fractional delay the comb was asked for: +17.4 cents at 1760 Hz / Feedback 0.8 (27 samples at 48 kHz) and at most a half-sample — about 70 cents — near 4 kHz. The first-repeat tap still lands within 0.01 cents. Below Feedback 0.5, and at half-sample tunings, the tail reaches exact zero. T2/T5 miss at fractional tunings | none - the naked textbook feedback comb `y(n) = x(n) + g·y(n−M)`: a delay short enough to be a pitch, fed back, so noise grows resonances on that note's harmonic series |
-
 ### Time and space - `reverb.py`, `delay.py`
 | Class | Notes |
 |---|---|
@@ -166,17 +165,28 @@ within that allocation, which is why it is a proportion rather than a time.
 Both convolution classes trail their input by `audioconvolve.FRAMES` (5.3 ms
 at 48 kHz) once an impulse is loaded, and by nothing at all before one is.
 
-### Modulation - `modulation.py`
-| Class | Notes |
-|---|---|
-| `Chorus` | multi-voice with LFO-animated delay |
-| `Flanger` | short modulated delay with feedback and doppler - the real swept comb |
-| `Phaser` | all-pass stages with swept center |
-| `Tremolo` | amplitude LFO |
-| `Vibrato` | pitch LFO through the pitch shifter |
-| `AutoPan` | panning LFO |
-| `Rotary` | vibrato + tremolo + auto-pan at a shared slow/fast speed |
-| `RingMod` | audio-rate multiply against a sine carrier; **patches** |
+### Modulation - five at home, two still in `rebuilt/`
+
+Phase 3's THROUGH classes (`AutoPan`, `Chorus`, `Phaser`, `Tremolo`,
+`Vibrato`) have come home as one file per effect beside this README.
+`Flanger` and `RingMod` stay parked under `rebuilt/`; the package still
+serves `modulation.Flanger` and `modulation.RingMod`. `modulation.py`
+cannot be deleted while those two remain. Every one of them is **audioif**
+tier - none runs on a stock CircuitPython board.
+
+**Cost** is the class's own share of one 256-frame stereo block at 48 kHz
+where the board stage has run, else the dossier palette budget. A
+`" - lean"` patch is named only where one exists.
+
+| Class | Tier | Macros | Latency | Cost | Standout |
+|---|---|---|---|---|---|
+| `Chorus` | audioif (`audioecho`) | 5 | 0 samples; wet Delay 3–20 ms is the effect, not lookahead | **8.1 % P4 / 9.8 % S3** at patch 0 (ROW marg 0.431 / 0.524 ms), inside palette **P4 ≤ 9 % / S3 ≤ 15 %**; no lean patch | Electro-Harmonix Small Clone - one BBD voice, clock-law triangle, Mix 0 a wire. **What the default surrenders:** the within-half pitch-offset ratio is 1.98, not (d_max/d_min)² = 3.60 (T2). Tone 12 kHz is 2.4 dB down at 10 kHz, not ≥10 dB (T3). The constructor Tone 3 kHz still meets T3 |
+| `Flanger` | audioif (`audioecho`; `audioroute` only when Through Zero is on) | 12 | 0 samples at defaults; Through Zero off by default, **10 ms / 480 samples at Range max / 48 kHz** when on | **0.672 ms/block P4 (rt 7.94) / 1.081 ms S3 (rt 4.93)** at patch 0, inside palette **9 % / 15 %** (FeedbackDelay +options; no extra looping RawSample); no lean patch | Electro-Harmonix Electric Mistress - BBD swept comb, Filter Matrix, Mix 0–2. **What the default gives up:** Color 0.55 / Matrix off is about −22 dB and 0.1 s, not the Color-0 −37 dB null or the 2 s Color-max ring; Color 0→0.9 holds +15 dB at 48 / 44.1 / 22.05 kHz on noise (held 3 ms, Matrix on). Color max (0.99, 3 ms, Matrix on) is the 2 s ring on a 200–440 Hz burst; the default is not, and a click is not that bar. |
+| `Phaser` | audioif (`audiobiquad`, `audioshaper`) | 10 | 0 samples at every setting | Palette **15 % P4 / 24 % S3** (AllPass-6 0.248 / 0.423 + Waveshaper ×1 0.223 / 0.410 + extra synthio 0.317 / 0.408 + glue 0.0). The old **9 % / 16 %** bar omitted the LFO: the palette could not price a `synthio` source. Quoted ROW **8.5 % / 15.6 %**. Patch 8 `Phaser - lean` (Drive 0) is AllPass alone → **5/8 %**. | MXR Phase 90 — four first-order all-pass stages, JFET as the variable resistor. **What the default surrenders:** Drive 0.3 is on at construction. Feedback's inter-notch peak then misses the 5 dB bar (600–1800 Hz rise −0.633 dB at 48 kHz) and the notch floor is not monotone (0.5→0.7 −1.204 dB). Both hold at Drive 0. The floor's 0.5→0.7 step also deepens at 22.05 kHz with Drive 0 (−1.286 dB). |
+| `Tremolo` | audioif (`audiomath`) | 9 | 0 samples; Lag is table shape, not a delay | Palette **7 % P4 / 9 % S3** (Multiply 0.028 / 0.047 + extra synthio 0.317 / 0.408 + glue 0.0). 1024-point board ROW **2.4 % / 4.9 %** (P4 marg 0.128 / ctrl 0.346, rt 11.23; S3 marg 0.265 / ctrl 0.532, rt 6.69). Prior 256-point ROW **2.3 / 4.9** is a shorter waveform. No lean patch | Fender Princeton 6G2 bias-vary and AB763 optical. **What the default surrenders:** Default is bias, Depth 0.5, Rate 5 Hz — not the optical standout and not L1's Depth 1. Wet peak at the default is −1.341 dB vs a 16000-LSB tone, not the ~6 dB `synthio` `>>16` ceiling; Depth 0 is still a wire. At 22.05 kHz the default's L1 bar is measured at the constructor, not assumed. Optical L1/L2 are disconfirmed; O1–O4 unmeasured at the constructor. L1 holds on sine at every rate, and misses by 0.16 dB on SQUARE material at 44.1 kHz only (−79.844 against −80; 48 kHz holds at −82.01). |
+| `Vibrato` | audioif (`audioecho`) | 8 | **mean Delay**; default **192 samples / 4.0 ms at 48 kHz** (wet alone); constructor and `program_change(0)` stay on that whole-sample bin | Palette **9 % P4 / 15 % S3** (`FeedbackDelay` +options, Mixer optioned off at Level 0 dB). Prior Mixer-in-path ROW **9.5 / 15.3 %** is stale. Board ROW of the Delay-only graph **unmeasured**. No lean patch | BBD clock-law vibrato (VB-2). Level 0 dB leaves the Mixer out of the pull. **What the default surrenders:** T1's any-2 kHz-window no-dry clause (Tone −3 dB at 17 kHz). At 22.05 kHz a 2 kHz window can tilt past 1 dB. The 17 kHz −3 dB band is at 48 kHz with a whole-sample Delay. T4 and T7 magnitude are Published defaults only. T7 quadrature is disconfirmed |
+| `AutoPan` | audioif (`audiomath`) | 7 | 0 samples | Palette **6 % P4 / 10 % S3** (`Multiply` 0.028 / 0.047 + extra synthio 1500 0.263 / 0.472 + glue 0.0). The old **1 % / 1 %** bar counted Multiply only: the palette could not price a `synthio` source. Quoted ROW **2.5 % / 4.5 %**. No lean patch | none (grade *design*). **What the default surrenders:** Rate starts at 2 Hz, not a slow 0.05 Hz wander — a 256-frame hold at 0.05 Hz reads under −80 dB, so A3's plant cannot fire on the old floor. The oscillator is two `synthio.Note`s, which top out at half scale (P12): hard-over is −6 dB vs the source. A mono source is a wire. |
+| `RingMod` | audioif (`audiomath`) | 12 | 0 samples | Palette **7 % / 9 %** at Clean Ring (Multiply 0.028 / 0.047 + extra synthio 0.317 / 0.408 + glue 0.0). The old **3 % / 5 %** bar used a 256-frame RawSample stand-in: the palette could not price a `synthio` source. The **18 % / 52 %** bar counted a 1964-frame looping RawSample. Quoted ROW **4.4 % / 4.8 %**. Not adopted; `modulation.RingMod` still ships | Bode four-diode ring (Moog 6401). **What the default surrenders:** Default is the multiplier at Frequency 220 Hz, Depth 1, Mix 1 — not the switching standout and not W1's Shape 1. At that default, 3·f₂+f₁ sits at **−92.2 dB** (1 s rect, 48 kHz), not in W1's −9.5±3 dB window, so W1 is disconfirmed at the constructor default. Wet RMS is **−9.03 dB** vs the program (M2 disconfirmed): Q15 product −3.01 dB plus the `synthio` voice sum. Squelch, Threshold and Release do not move the audio (M5 disconfirmed). Shape is a byte no-op until Character is flipped. Switching products at Character 1 Shape 1 are not a demonstrated row. |
 
 ### Drive - `drive.py`
 | Class | Notes |

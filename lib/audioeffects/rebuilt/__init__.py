@@ -1,5 +1,6 @@
 """One module per rebuilt effect class, named after the class's `NAME` in
-lower case: `rebuilt/chorus.py` will hold `Chorus` when Phase 3 rebuilds it.
+lower case: `rebuilt/flanger.py` holds parked `Flanger` until that program
+comes home.
 
 **Nothing in this file lists the classes.** A rebuild adds exactly one file
 and edits nothing else -- not this module, not the family module it
@@ -15,14 +16,12 @@ A rebuilt module declares `VENDOR` at module level and holds exactly one
 is named after. Anything else in the file is private helpers.
 
 **Coming home is a separate step from adoption.** Phase 2's sixteen classes
-have come home: they live as one file per effect beside this package
-(`compressor.py`, `limiter.py`, `expander.py`, `noisegate.py`, `deesser.py`,
-`transientshaper.py`, `multibandcompressor.py`, `parametriceq.py`,
-`graphiceq.py`, `lowpass.py`, `highpass.py`, `bandpass.py`, `notch.py`,
-`ladderfilter.py`, `combfilter.py`, `dynamiceq.py`). This directory keeps
-the substitution machinery and the two `Example` fixtures. `ADOPTED` below
-no longer names those sixteen -- there is nothing left here for it to
-arbitrate for them -- and it will name later phases' classes until those
+have come home, and so have Phase 3's five THROUGH classes (`autopan.py`,
+`chorus.py`, `phaser.py`, `tremolo.py`, `vibrato.py`). This directory keeps
+the substitution machinery, the two `Example` fixtures, and the parked
+Phase 3 rebuilds (`flanger.py`, `ringmod.py`). `ADOPTED` below no longer
+names the classes that have come home -- there is nothing left here for it
+to arbitrate for them -- and it will name later phases' classes until those
 too come home.
 
 Resolution is by name, never by a list this file keeps. Where the package
@@ -76,10 +75,8 @@ def _present():
 #: `create()` resolve to; a module under `rebuilt/` whose name is NOT here
 #: is parked - still importable, still measurable, not shipped.
 #:
-#: Phase 2's sixteen have come home, so they are not listed. What remains
-#: under this directory is the two `Example` fixtures, which are parked --
-#: they are not among the 46. Later phases add names here until they too
-#: come home.
+#: Phase 2's sixteen and Phase 3's five THROUGH classes have come home, so
+#: they are not listed. Flanger and RingMod stay parked under this directory.
 ADOPTED = ()
 
 

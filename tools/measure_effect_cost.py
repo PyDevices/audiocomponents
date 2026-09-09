@@ -402,6 +402,34 @@ def _mixer(probe):
     return node, (), (node,)
 
 
+#: RingMod's default carrier at 48 kHz stereo: frequency=220, TARGET_FRAMES=2048
+#: → cycles=9, length=1964 frames. Tremolo's default Rate 5 Hz is 9600 frames
+#: (fs/rate). dtype array("h"), stereo interleaved, RawSample single_buffer
+#: (the whole table every get_buffer, which is how it loops).
+RINGMOD_CARRIER_FRAMES = 1964
+TREMOLO_LFO_FRAMES = 9600
+
+
+def _extra_rawsample(frames):
+    """A second looping RawSample pulled every block, no processing node.
+
+    The probe source is already one pull. The builder adds only a table
+    returned as an extra so the timed loop pulls it once per block.
+    Marginal over the control is the extra source pull; Multiply is not
+    in this graph.
+    """
+    def build(probe):
+        values = array("h")
+        for frame in range(frames):
+            value = _tri(frame, frames, 32000)
+            values.append(value)
+            values.append(value)
+        extra = audiocore.RawSample(
+            values, sample_rate=SAMPLE_RATE, channel_count=CHANNELS)
+        return probe.output, (extra,), (extra,)
+    return build
+
+
 # --- the Phase 1 nodes -----------------------------------------------------
 #
 # Eight additions landed in the firmware of 2026-09-07. Their settings below
@@ -570,6 +598,9 @@ NODES = {
     "audiodelays.PitchShift": _pitch_shift,
     "audiofreeverb.Freeverb": _freeverb,
     "audiomixer.Mixer": _mixer,
+    "audiocore.RawSample+extra": _extra_rawsample(RINGMOD_CARRIER_FRAMES),
+    "audiocore.RawSample+extra@256": _extra_rawsample(BLOCK_FRAMES),
+    "audiocore.RawSample+extra@9600": _extra_rawsample(TREMOLO_LFO_FRAMES),
     # The Phase 1 nodes, firmware of 2026-09-07.
     "audiobiquad.Biquad": _biquad,
     "audiobiquad.AllPass": _allpass,

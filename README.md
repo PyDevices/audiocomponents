@@ -2,7 +2,7 @@
 
 The PyDevices audio component tier: **`audioinstruments`** — 53 classic
 synthesizers, electromechanical keyboards and drum machines — and
-**`audioeffects`** — 46 effect classes, effect racks included. Both are pure
+**`audioeffects`** — 45 effect classes, effect racks included. Both are pure
 Python built on [audioif](https://github.com/PyDevices/audioif)'s audio nodes,
 and both run unchanged on CPython, MicroPython and CircuitPython.
 

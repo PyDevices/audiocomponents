@@ -1,6 +1,6 @@
 # AGENTS.md — audiocomponents
 
-`audioinstruments` (53 instruments) and `audioeffects` (46 effect classes,
+`audioinstruments` (53 instruments) and `audioeffects` (45 effect classes,
 racks included): the pure-Python audio component tier that PyDevices owns,
 built on [audioif](https://github.com/PyDevices/audioif)'s nodes. **This
 repository publishes both** — `pydevices-audioinstruments` and

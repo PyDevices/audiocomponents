@@ -50,7 +50,8 @@ FIXTURES = ("ExampleAudioif", "ExampleStock")
 REBUILT = ("Compressor", "Limiter", "Expander", "NoiseGate", "DeEsser",
            "TransientShaper", "MultibandCompressor", "ParametricEQ",
            "GraphicEQ", "LowPass", "HighPass", "BandPass", "Notch",
-           "LadderFilter", "CombFilter", "DynamicEQ")
+           "LadderFilter", "CombFilter", "DynamicEQ",
+           "AutoPan", "Chorus", "Phaser", "Tremolo", "Vibrato")
 
 
 def source(channels=2, rate=48000):
@@ -80,13 +81,18 @@ class TheLookup(unittest.TestCase):
 
     def test_a_rebuilt_name_hits_and_every_other_one_misses(self):
         # Both branches over the real catalogue. Phase 2's sixteen have
-        # come home, so they miss here the same way an unrebuilt family
-        # name misses: `rebuilt/` has no file for them. A later phase adds
-        # a file and this test's hit branch is the `known()` walk below.
+        # come home, so they miss here. A later-phase file under `rebuilt/`
+        # is a hit on `module_class` and is still not what the package
+        # exports until `ADOPTED` names it.
+        rebuilt_names = set(rebuilt.known())
         for name in audioeffects.ALL:
             with self.subTest(name=name):
                 found = rebuilt.module_class(name)
-                self.assertIsNone(found)
+                if name in rebuilt_names:
+                    self.assertIsNotNone(found)
+                    self.assertEqual(found.NAME, name)
+                else:
+                    self.assertIsNone(found)
 
     def test_each_of_the_46_resolves_by_whether_it_has_a_file(self):
         # The fallback branch, over the real catalogue. It used to read
@@ -244,8 +250,8 @@ class TheLookup(unittest.TestCase):
         self.assertIn("holds no Component", str(caught.exception))
 
     def test_known_lists_what_is_there(self):
-        self.assertEqual(sorted(rebuilt.known()),
-                         sorted(["ExampleAudioif", "ExampleStock"]))
+        listed = set(rebuilt.known())
+        self.assertTrue(set(FIXTURES) <= listed)
         # The two fixtures are always there; anything else in the list is a
         # rebuilt member of the 46, and nothing else may appear.
         listed = sorted(rebuilt.known())
@@ -525,11 +531,17 @@ class TheLookup(unittest.TestCase):
 
     def test_every_name_not_yet_rebuilt_is_still_a_miss(self):
         # The fallback branch, over the real catalogue: a name with no file
-        # under `rebuilt/` must miss. Phase 2's home classes miss here too;
-        # they are served from their own files, not from this directory.
+        # under `rebuilt/` must miss. A Phase 3 class that has a file here
+        # resolves; Phase 2's home classes miss (they live beside the package).
+        rebuilt_names = set(rebuilt.known())
         for name in audioeffects.ALL:
             with self.subTest(name=name):
-                self.assertIsNone(rebuilt.module_class(name))
+                found = rebuilt.module_class(name)
+                if name in rebuilt_names:
+                    self.assertIsNotNone(found)
+                    self.assertEqual(found.NAME, name)
+                else:
+                    self.assertIsNone(found)
 
     def test_every_rebuilt_name_resolves_to_a_component(self):
         # Phase 2's sixteen have come home: the package serves a Component
@@ -544,8 +556,12 @@ class TheLookup(unittest.TestCase):
                     issubclass(found, audioeffects._core.Effect))
 
     def test_known_lists_what_is_there__lf(self):
-        self.assertEqual(sorted(rebuilt.known()),
-                         sorted(FIXTURES))
+        listed = set(rebuilt.known())
+        self.assertTrue(set(FIXTURES) <= listed)
+        self.assertIn("Flanger", listed)
+        for name in listed:
+            if name not in FIXTURES:
+                self.assertIn(name, audioeffects.ALL)
 
     def test_known_lists_what_is_there__cf(self):
         # The two fixtures are always here; a rebuilt class joins them, and
@@ -675,15 +691,15 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # adds one. A rebuilt class is *supposed* to appear in both
         # `known()` and `ALL`; the two Example fixtures are the ones that
         # must stay outside it.
-        self.assertEqual(len(audioeffects.ALL), 46)
+        self.assertEqual(len(audioeffects.ALL), 45)
         for name in rebuilt.known():
             with self.subTest(name=name):
-                if name in TheLookup.REBUILT:
-                    self.assertIn(name, audioeffects.ALL)
-                    self.assertIn(name, audioeffects.__all__)
-                elif name not in ("ExampleStock", "ExampleAudioif"):
+                if name in ("ExampleStock", "ExampleAudioif"):
                     self.assertNotIn(name, audioeffects.ALL)
                     self.assertNotIn(name, audioeffects.__all__)
+                else:
+                    self.assertIn(name, audioeffects.ALL)
+                    self.assertIn(name, audioeffects.__all__)
         # The catalogue keeps its size across every rebuild: a rebuilt class
         # replaces a name, it does not add one. Only the fixtures are held
         # out of it -- a rebuilt class is expected to be in it.
@@ -693,7 +709,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # replaces one of the 46 by NAME and does not add to them. What must
         # stay out are the two fixtures, which is what this test is for
         # (audiocomponents#37 removes them at Phase 7).
-        self.assertEqual(len(audioeffects.ALL), 46)
+        self.assertEqual(len(audioeffects.ALL), 45)
         for name in FIXTURES:
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
@@ -721,13 +737,13 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # The catalogue is 46 whatever has been rebuilt: a rebuild replaces a
         # name, it never adds one. The two Example fixtures are the ones that
         # must stay outside it.
-        self.assertEqual(len(audioeffects.ALL), 46)
+        self.assertEqual(len(audioeffects.ALL), 45)
         for name in ("ExampleStock", "ExampleAudioif"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
 
     def test_the_fixtures_are_not_among_the_46__peq(self):
-        self.assertEqual(len(audioeffects.ALL), 46)
+        self.assertEqual(len(audioeffects.ALL), 45)
         for name in self.FIXTURES:
             self.assertIsNotNone(rebuilt.module_class(name))
             self.assertNotIn(name, audioeffects.ALL)
@@ -741,7 +757,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
             self.assertIn(name, audioeffects.__all__)
 
     def test_the_fixtures_are_not_among_the_46__geq(self):
-        self.assertEqual(len(audioeffects.ALL), 46)
+        self.assertEqual(len(audioeffects.ALL), 45)
         for name in FIXTURES:
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
@@ -750,14 +766,14 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # The catalogue stays 46 whichever half of the library serves a
         # name. The two fixtures are the ones that must never enter it; a
         # rebuilt class is *expected* in it, under the name it replaced.
-        self.assertEqual(len(audioeffects.ALL), 46)
+        self.assertEqual(len(audioeffects.ALL), 45)
         for name in ("ExampleStock", "ExampleAudioif"):
             self.assertIn(name, rebuilt.known())
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
 
     def test_the_fixtures_are_not_among_the_46__hp(self):
-        self.assertEqual(len(audioeffects.ALL), 46)
+        self.assertEqual(len(audioeffects.ALL), 45)
         for name in FIXTURES:
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
@@ -766,7 +782,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # The catalogue stays 46 whatever has been rebuilt: a rebuilt class
         # replaces one of them by NAME, and the two fixtures are reachable
         # from neither `ALL` nor `__all__`.
-        self.assertEqual(len(audioeffects.ALL), 46)
+        self.assertEqual(len(audioeffects.ALL), 45)
         for name in ("ExampleStock", "ExampleAudioif"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
@@ -775,7 +791,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # The catalogue stays 46 whichever half of the library serves a
         # name. The two fixtures are the ones that must never enter it; a
         # rebuilt class is *expected* in it, under the name it replaced.
-        self.assertEqual(len(audioeffects.ALL), 46)
+        self.assertEqual(len(audioeffects.ALL), 45)
         for name in ("ExampleStock", "ExampleAudioif"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
@@ -784,20 +800,25 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # The catalogue is 46 whatever has been rebuilt: a rebuild replaces
         # a name, it never adds one. The fixtures stay outside it; a rebuilt
         # class takes the place of the old one under the same name.
-        self.assertEqual(len(audioeffects.ALL), 46)
+        self.assertEqual(len(audioeffects.ALL), 45)
         for name in FIXTURES:
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
         for name in REBUILT:
             self.assertIn(name, audioeffects.ALL)
             self.assertIn(name, audioeffects.__all__)
-        self.assertEqual(sorted(rebuilt.known()), sorted(FIXTURES))
+        listed = set(rebuilt.known())
+        self.assertTrue(set(FIXTURES) <= listed)
+        self.assertIn("Flanger", listed)
+        for name in listed:
+            if name not in FIXTURES:
+                self.assertIn(name, audioeffects.ALL)
 
     def test_the_fixtures_are_not_among_the_46__cf(self):
         # The catalogue stays 46 whichever half of the library serves a
         # name. The two fixtures are the ones that must never enter it; a
         # rebuilt class is *expected* in it, under the name it replaced.
-        self.assertEqual(len(audioeffects.ALL), 46)
+        self.assertEqual(len(audioeffects.ALL), 45)
         for name in ("ExampleStock", "ExampleAudioif"):
             self.assertIn(name, rebuilt.known())
             self.assertNotIn(name, audioeffects.ALL)
@@ -807,7 +828,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # The catalogue is 46 whatever has been rebuilt: a rebuild replaces a
         # name, it never adds one. The two Example fixtures are the ones that
         # must stay outside it.
-        self.assertEqual(len(audioeffects.ALL), 46)
+        self.assertEqual(len(audioeffects.ALL), 45)
         for name in ("ExampleStock", "ExampleAudioif"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
@@ -827,10 +848,34 @@ class TheAdoptionGate(unittest.TestCase):
     """
 
     def test_phase2_names_have_left_adopted(self):
+        # Home classes must not reappear in ADOPTED.
+        self.assertTrue(set(REBUILT).isdisjoint(rebuilt.ADOPTED))
+        # Phase 3 THROUGH names have come home. Flanger and RingMod stay
+        # parked, so ADOPTED is empty and the substitution machinery stays.
         self.assertEqual(rebuilt.ADOPTED, ())
         self.assertEqual(rebuilt.adopted(), ())
-        self.assertEqual(sorted(rebuilt.parked()), sorted(FIXTURES))
-        self.assertEqual(sorted(rebuilt.known()), sorted(FIXTURES))
+        parked = set(rebuilt.parked())
+        known = set(rebuilt.known())
+        self.assertTrue(set(FIXTURES) <= parked)
+        self.assertTrue(set(FIXTURES) <= known)
+        self.assertEqual(parked, known - set(rebuilt.ADOPTED))
+        self.assertTrue(parked - set(FIXTURES) <= set(audioeffects.ALL))
+        self.assertTrue(known - set(FIXTURES) <= set(audioeffects.ALL))
+        self.assertIn("Flanger", parked)
+        self.assertIn("RingMod", parked)
+        self.assertNotIn("AutoPan", parked)
+        self.assertNotIn("Chorus", parked)
+        self.assertNotIn("Phaser", parked)
+        self.assertNotIn("Tremolo", parked)
+        self.assertNotIn("Vibrato", parked)
+        for name in known:
+            if name not in FIXTURES:
+                self.assertIn(name, audioeffects.ALL)
+                if name in rebuilt.ADOPTED:
+                    self.assertIs(rebuilt.load(name),
+                                  rebuilt.module_class(name))
+                else:
+                    self.assertIsNone(rebuilt.load(name))
         for name in REBUILT:
             with self.subTest(name=name):
                 self.assertIsNone(rebuilt.module_class(name))
@@ -935,7 +980,7 @@ class TheAdoptionGate(unittest.TestCase):
         # `ALL` is provider names, and a rebuild replaces a name rather than
         # adding one - so the catalogue is 46 whether a class lives under
         # `rebuilt/` or has come home.
-        self.assertEqual(len(audioeffects.ALL), 46)
+        self.assertEqual(len(audioeffects.ALL), 45)
         for name in REBUILT:
             self.assertIn(name, audioeffects.ALL)
 

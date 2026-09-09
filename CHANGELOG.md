@@ -8,8 +8,201 @@ there, and are recorded in its changelog.
 
 ## Unreleased
 
+### Removed
+
+- **`Rotary` is removed.** The Leslie-style rotating-speaker effect is no longer in `audioeffects`; nothing replaces it yet.
+
+### Added
+
+- **Phase 3 promotion.** AutoPan, Chorus, Phaser, Tremolo and Vibrato
+  come home as one file per effect. `rebuilt.ADOPTED` is empty.
+  `modulation.py` still serves parked `Flanger` and `RingMod`.
+  `_MixerMod` died with the old Tremolo and AutoPan.
+
+- **Phase 3 gate audit.** Chorus and Phaser through G1–G10 and named
+  in `rebuilt.ADOPTED`. Flanger, Tremolo, AutoPan, Vibrato, Rotary,
+  RingMod stay parked (#55, #57–#61). Phase 3's all-eight bar is not
+  met.
+
+- **Phase 3 modulation integration.** Eight rebuilds on
+  `effects/p3-integration`: Chorus, Flanger, Phaser, Tremolo, AutoPan,
+  Vibrato, Rotary, RingMod. Catalogue rows name tier, macro count,
+  latency, measured board cost where the board stage ran (else palette
+  budget) and the named lean patches.
+
+- **`Rotary` Phase 3 fix round 3.** T2 Speed-span: Drum Fast / Drum Slow
+  cannot outrun the paired horn (`_targets` clamps drum ≤ horn). DEFAULT
+  32 s windowed horn **0.7944 Hz**; tremolo 3 s windowed **6.7635 Hz**
+  (1.40 %); Horn Fast min + Drum Fast max writes **5.000 / 5.000**.
+  `HalfHornRotary` at DEFAULT 8 s **0.4000 vs 0.8000**. Clean
+  horn≥drum **56 / 56**. §7.2 not invoked. Package still serves
+  `modulation.Rotary`.
+- **`Rotary` Phase 3 fix round.** Trait bars at constructor chorale:
+  T2 32 s FFT **0.7974 Hz** (inside ±2.5 % of 0.80); T7 90±10 at
+  48 / 44.1 / 22.05 kHz; T6 first-s **1.053 Hz** vs `StepRateRotary`
+  **6.394 Hz**; T10 chorale-AM ratio **4.56** vs mute **0**. Those five
+  bars are `null_build_red`. `reset()` held LSB 0 on 18 cells. Catalogue
+  and docstring name the default's surrenders and the measured
+  **43.7 % / 74.7 %** board cost. Package still serves `modulation.Rotary`.
+- **`Rotary` rebuild (Phase 3, parked).** Leslie 122–informed two-rotor
+  graph on `FeedbackDelay` + `Biquad` + `Splitter`/`Mixer`. Mix 0 is a
+  delayed wire (`latency_samples` follows Horn Radius; 29 samples at
+  48 kHz default). Drive is inert. Horn AM does not grow with frequency
+  (T5(a) disconfirmed). Package still serves `modulation.Rotary`.
+
 ### Changed
 
+- **Phase 3 gate re-rule (`Tremolo`).** 1024-point board ROW now
+  measured (P4 marg **0.128** / ctrl 0.346, rt **11.23**, **2.4 %**;
+  S3 marg **0.265** / ctrl 0.532, rt **6.69**, **4.9 %**) against
+  palette **7 / 9**. `Tremolo` through G1–G10 and named in
+  `rebuilt.ADOPTED`. `AutoPan` stays THROUGH; `RingMod` stays parked
+  on G3 (M4 plant inert at Frequency 220). L1 remains demonstrated
+  with the square-at-44.1 exception.
+
+- **Phase 3 gate re-rule (`AutoPan`, `RingMod`, `Tremolo`).** G6 judged
+  on the synthio source-pull bars (AutoPan **6 / 10**, RingMod **7 / 9**).
+  `AutoPan` through G1–G10 and named in `rebuilt.ADOPTED`. `RingMod`
+  stays parked on G3 (M4 plant `delta_db=0.0022` at Frequency 220).
+  `Tremolo` stays parked on G6 (1024-point board ROW unmeasured). L1 is
+  demonstrated with the square-at-44.1 exception, written in the same
+  words in the docstring, the catalogue row and the pack.
+
+- **Palette `synthio` source row (2026-09-08).** Cost-table §9 prices a
+  `synthio` pull (256-point 0.317 / 0.408 ms; 1500-point 0.263 / 0.472).
+  Catalogue bars restated from that row: Tremolo **7 / 9** (unchanged
+  arithmetic), AutoPan **6 / 10** (was Multiply-only 1 / 1), Phaser
+  **15 / 24** (was 9 / 16), RingMod **7 / 9** (was RawSample-stand-in
+  3 / 5). Old bars kept visible: the palette could not price a `synthio`
+  source. `ADOPTED` untouched.
+- **`Tremolo` L1 exception (roadmap §8a).** Same sentence in the module
+  docstring, the class docstring, and the catalogue row: L1 holds on sine
+  at every rate, and misses by 0.16 dB on SQUARE material at 44.1 kHz
+  only (−79.844 against −80; 48 kHz holds at −82.01).
+- **`RingMod` M4 DISCONFIRMED as a G3 row.** Same-kind `FlatCarrier`
+  plant reads 0.0022 dB at constructor Frequency 220 at 48000 / 44100 /
+  22050. `carrier_gain(220, 5)=0.99974`. No same-kind fault goes red at
+  the default. The 2-vs-200 bar still holds when Frequency is moved.
+- **`Flanger` Phase 3 fix round.** Color 0.9 feedback is lifted by 0.03
+  so F3's +15 dB four-stop rise holds at 48 / 44.1 / 22.05 kHz on noise.
+  Loop `cut_hz` follows Color (20 Hz at 0, 0.4 Hz at 0.99) so Color-max
+  audio t60 clears 2 s on 200–440 Hz bursts. F6's t90 readout stays
+  **unmeasured** (vacuous; NoSlew silent at the constructor default).
+  Same default-surrender sentence in the docstring and catalogue: Color
+  0.55 / Matrix off is about −22 dB and 0.1 s, not the Color-0 null or
+  the 2 s Color-max ring; a click is not the F8 bar. Budget from the
+  +options row (no extra looping `RawSample`). Tests:
+  `tests/test_cpython_effects_flanger.py`.
+- **`RingMod` (Phase 3 fix, oscillator).** Carrier is a 256-point
+  `synthio.Note` at `frequency=Frequency`, not a looping `RawSample`
+  (was 1964 frames at the default, capped at 24000 for M4). Same
+  macros and patches. Cheaper implementation of the same effect
+  (brief shape b1), not a §7.2 redefinition. Palette bar **3 % / 5 %**
+  (Multiply + 256-frame extra); the **18 % / 52 %** bar counted the
+  1964-frame pull. W1 stays disconfirmed at the constructor default.
+  Not adopted; `modulation.RingMod` still ships.
+- **`RingMod` (Phase 3 fix).** Carrier table is hard-capped at 24000
+  frames (one cycle at M4's 2 Hz / 48 kHz) so Frequency midi 0 cannot
+  bake 480000 frames. W1 is **disconfirmed at the constructor default**
+  (not demonstrated at Character 1). Catalogue and docstring use the
+  same surrender sentence. Palette bar is **18 % / 52 %** (Multiply +
+  extra looping RawSample). Not adopted; `modulation.RingMod` still
+  ships.
+- **`Vibrato` pulls `FeedbackDelay` alone at Level 0 dB.** The Mixer is
+  optioned for the trim; every shipped patch leaves it out of the path.
+  T1's "any 2 kHz window < 1 dB" clause is disconfirmed at the default
+  (Tone's −3 dB at 17 kHz). Same words in the class docstring and the
+  catalogue row.
+- **`AutoPan` oscillator is a short `synthio` period**, not a
+  24000-frame looping `RawSample`. Rate is the notes' frequency; the
+  waveform is 1500 frames. Palette sum is `Multiply` 0.028 / 0.047 +
+  glue 0.0 → **1 / 1 %** (a synthio waveform is not an extra
+  `RawSample`). What the default surrenders: Rate starts at 2 Hz, not a
+  slow 0.05 Hz wander — a 256-frame hold at 0.05 Hz reads under −80 dB,
+  so A3's plant cannot fire on the old floor. The oscillator is two
+  `synthio.Note`s, which top out at half scale (P12): hard-over is −6 dB
+  vs the source. A mono source is a wire. MIDI 64 on Centre/Phase snaps
+  to exact 0 so patch 0 matches the constructor. `rebuilt.ADOPTED`
+  untouched.
+- **`Tremolo` Phase 3 fix round.** Oscillator is a 1024-point `synthio`
+  Note, not a `fs/rate` RawSample and not the 256-point table that failed
+  L1 on square (−78.967) and Rate 0.73 / 1.46 Hz staircase images. Same-kind
+  L4 plant (`RATE_PERIOD_SCALE`) fires at constructor defaults. B5's
+  optical-tracker plant ignores Lag. Palette bar **7 % / 9 %** (Multiply
+  + extra synthio 0.317 / 0.408). 1024-point board ROW unmeasured.
+  **What the default surrenders:** Default is bias, Depth 0.5, Rate 5 Hz —
+  not the optical standout and not L1's Depth 1. Wet peak at the default
+  is −1.341 dB vs a 16000-LSB tone, not the ~6 dB `synthio` `>>16` ceiling;
+  Depth 0 is still a wire. At 22.05 kHz the default's L1 bar is measured
+  at the constructor, not assumed. Optical L1/L2 are disconfirmed; O1–O4
+  unmeasured at the constructor. Not adopted.
+- **`Phaser` (Phase 3 fix, G6).** Default sweep is `synthio.LFO`'s built-in
+  triangle, not a 256-frame custom table. The extra `RawSample` addend
+  that produced 11/20 was the wrong graph; the frozen bar is AllPass-6 +
+  Waveshaper ×1 + glue 0.0 → **9/16**. Patch 8 `Phaser - lean` (Drive 0)
+  drops the shaper from the pull. P7 at constructor Drive 0.3 still
+  demonstrated (`null_build_red` null rise −33.990, control 42.782).
+  Surrender sentence unchanged. `ADOPTED` unchanged.
+- **`RingMod` (Phase 3 fix).** MIDI 64 is the bipolar null (patch 0 no
+  longer leaves Balance at 0.007874). W1 is claimed at Character 1
+  Shape 1 only; the constructor default is the multiplier. Catalogue and
+  docstring use the same surrender sentence. Palette bar is **18 % /
+  52 %** (Multiply + extra looping RawSample). Not adopted;
+  `modulation.RingMod` still ships.
+- **`Rotary` Phase 3 fix round.** `reset()` plays silence through the
+  graph before Mixer refetch (held LSB 0 on CPython, MicroPython and
+  circuitpython-effects at 48 / 44.1 / 22.05 kHz, stereo and mono).
+  `StepRateRotary` is already tremolo at constructor chorale; `MuteBrakeRotary`
+  mutes with Brake off. Mic Angle 0° shares one horn line. Catalogue and
+  docstring name the default's surrenders and the measured **43.7 % / 74.7 %**
+  board cost. Package still serves `modulation.Rotary`.
+- **`Vibrato` T6 holds at `program_change(0)`.** The 7-bit Delay grid sat
+  on a half-sample and ate 17 kHz; whole-sample snap plus the published
+  4 ms bin keeps constructor and patch 0 at 192 samples. HalfRate at
+  5 Hz stayed inside 1.8–16 Hz, so the T3 plant is now 1 Hz.
+- **`AutoPan` Rate floor is 2 Hz**, not 0.05 Hz. The period table is one
+  LFO cycle at the running rate; 0.05 Hz at 48 kHz was 192000 frames and
+  could not construct on the unix 2 MiB heap or finish a board `prime()`.
+  What the default surrenders: Rate starts at 2 Hz, not a slow 0.05 Hz
+  wander — one LFO period is a looping table, and 0.05 Hz at 48 kHz is
+  192000 frames, which cannot construct on the unix 2 MiB heap or finish
+  a board prime. A mono source is a wire. MIDI 64 on Centre/Phase snaps
+  to exact 0 so patch 0 matches the constructor. `rebuilt.ADOPTED`
+  untouched.
+- **`Tremolo` Phase 3 fix round.** Same-kind L4 plant (`RATE_PERIOD_SCALE`)
+  fires at constructor defaults (ENV 10 Hz vs Rate 5). B5's optical-tracker
+  plant ignores Lag so Lag min and Helicopter stay red. In-place period
+  tables so unix MicroPython can construct every shipped patch. Budget
+  restated from the 2026-09-08 extra `RawSample` palette row: **18 % /
+  52 %**; measured **0.9 % / 5.0 %**. **What the default surrenders:**
+  Default is bias, Depth 0.5, Rate 5 Hz — not the optical standout and not
+  L1's Depth 1. At 22.05 kHz that default sits above −80 dB in L1's
+  block-product bands. Optical L1/L2 are disconfirmed; O1–O4 unmeasured
+  at the constructor. Not adopted.
+- **`Phaser` (Phase 3 fix).** Parked rebuild (`rebuilt:Phaser`, #56):
+  Tier 1 STATE/RESPONSE now run on all three interpreters at 48 / 44.1 /
+  22.05 kHz, stereo and mono. P5 and P8 are disconfirmed at the shipped
+  Drive 0.3; P7's plant still fires there. Catalogue and docstring use
+  the same surrender sentence. Palette budget recomputed with the
+  256-frame LFO table (11 % / 20 %); measured 10.7 % / 16.1 % fits.
+  `ADOPTED` unchanged.
+- **`Flanger` Phase 3 rebuild**, parked as `lib/audioeffects/rebuilt/flanger.py`.
+  One `audioecho.FeedbackDelay` with a hyperbola `wow_shape`; Filter Matrix,
+  Mix 0–2, Through Zero off (10 ms at Range max / 48 kHz when on). The old
+  class in `modulation.py` is unchanged and is still what `audioeffects.Flanger`
+  serves. Palette budget P4 ≤ 9 % / S3 ≤ 15 % from the FeedbackDelay +options
+  row. Tests: `tests/test_cpython_effects_flanger.py`.
+- **`Chorus` T5 plant is 16 Hz at every surface position**, not ×2 on
+  Rate. ×2 at the constructor's 0.8 Hz stayed inside T5's 0.3–12 Hz bar.
+  Sixteen hertz is above 12 at the default; 92 macro and patch positions
+  cannot restore a Rate-law LFO. hop-1024 aliases 16 Hz to 5.43 Hz at
+  22050 (inside the bar); the suite now measures that plant at hop-512
+  (**16.025 Hz**, outside 0.3–12). T1/T4/T5/T6 `null_build_red` is red on
+  the wire. **What the default surrenders:** the within-half pitch-offset
+  ratio is 1.98, not (d_max/d_min)² = 3.60 (T2). Tone 12 kHz is 2.4 dB
+  down at 10 kHz, not ≥10 dB (T3). The constructor Tone 3 kHz still meets
+  T3. Same words in the docstring and the catalogue row. Cost at patch 0
+  is the measured **8.1 % P4 / 9.8 % S3**.
 - **Phase 2 round-5 gate audit.** All sixteen classes through and in
   `rebuilt.ADOPTED`. `Limiter` clears G3 (`SlowAttack` at Lookahead 0)
   and G9 (3.01 dB surrender in the same words; +2.22 labelled True Peak

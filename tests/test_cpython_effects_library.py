@@ -64,7 +64,7 @@ class EffectsLibraryTest(unittest.TestCase):
             audioeffects.configure(original)
 
     def test_the_catalogue_is_all_there(self):
-        self.assertEqual(len(CLASSES), 46, CLASSES)
+        self.assertEqual(len(CLASSES), 45, CLASSES)
 
     def test_every_effect_builds_and_renders(self):
         for name in CLASSES:
