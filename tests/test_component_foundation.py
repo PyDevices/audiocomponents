@@ -11,6 +11,7 @@ classes are exercising the metadata rule, not exempt from it.
 
 import array
 import gc
+import sys
 import tracemalloc
 import unittest
 
@@ -372,7 +373,20 @@ class TheLiveSurface(unittest.TestCase):
         # Two windows, not one: the first carries tracemalloc's own 56 bytes
         # of bookkeeping for the frame it starts in, which is not the
         # subject. The marginal cost of 200 more reads is the subject.
-        self.assertEqual(third - second, 0)
+        #
+        # The rule is that WE allocate nothing per read, and on 3.11+ that is
+        # exactly measurable: the marginal cost is zero. Python 3.10 still
+        # heap-allocates a frame object for each Python-to-Python call (3.11
+        # inlined them), so `output` -> `_check_live` charges the interpreter's
+        # own bookkeeping to this window -- 73 bytes across 200 reads when this
+        # first appeared. That is not ours to remove, short of deleting the
+        # liveness check the property exists to perform, so 3.10 gets the same
+        # small tolerance the first window already uses. 3.11+ stays exact, and
+        # would still catch a real per-read allocation.
+        if sys.version_info >= (3, 11):
+            self.assertEqual(third - second, 0)
+        else:
+            self.assertLess(third - second, 200)
         self.assertLess(second - first, 200)
 
 
