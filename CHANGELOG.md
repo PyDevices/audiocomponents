@@ -8,6 +8,23 @@ there, and are recorded in its changelog.
 
 ## Unreleased
 
+### Changed
+
+- **Drum machines answer their own factory MIDI charts.** Where a machine
+  shipped with MIDI, its note numbers are now the manufacturer's initial
+  setting rather than a house convention: the **TR-707**'s toms move to
+  41/43 low, 45/47 mid, 48/50 hi (they were 45/47/50, so a hardware pattern
+  played the wrong tom), and **DrumTraks** moves Tom 1 to 41/43, Tom 2 to
+  45/47 and the cabasa to 58. DrumTraks no longer answers 48/50 or 69/70,
+  which its chart does not list. TR-909 already matched its chart and is
+  unchanged. For the machines that never had MIDI - CR-78, TR-808, TR-606,
+  LinnDrum, DMX, Simmons SDSV - and for the SP-1200, whose chart maps keys
+  to play buttons rather than to named drums, General MIDI decides; the one
+  correction there is the **CR-78**'s guiro, from 58 (GM's vibraslap) to 73.
+  Where a factory chart gives one voice two numbers the lower is published
+  in `NOTE_MAP` and both sound, since the second number existed for accent
+  on machines with no velocity.
+
 ### Removed
 
 - **`Rotary` is removed.** The Leslie-style rotating-speaker effect is no longer in `audioeffects`; nothing replaces it yet.

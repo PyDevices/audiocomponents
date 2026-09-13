@@ -113,6 +113,15 @@ NOTE_MAP = (
 ```
 
 It is a tuple of unique MIDI note numbers and unique, non-empty voice labels.
+
+Which numbers: if the machine shipped with MIDI, its own factory chart, and
+nothing else. Most of these drum machines predate MIDI and speak trigger
+pulses, so there is no chart to inherit and General MIDI's percussion key
+numbers decide instead. Where a factory chart gives one voice two numbers -
+Roland and Sequential did, because the hardware had no velocity and the second
+key was the accented hit - `NOTE_MAP` publishes the lower one and the
+instrument answers both.
+
 The presence of a valid `NOTE_MAP` is the sole percussion discriminator;
 melodic instruments omit it. `CATEGORIES` may contain `"percussion"`, but
 that value is descriptive and does not determine classification.

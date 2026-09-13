@@ -39,6 +39,10 @@ PATCHES = {
                  102, 102, 78)),
 }
 
+# The CR-78 is from 1978 and speaks nothing but trigger pulses, so there is
+# no factory chart to follow and General MIDI decides instead - including
+# guiro at 73, which is where GM puts it. Metal Beat is the one voice GM has
+# no slot for; it keeps 55.
 NOTE_MAP = (
     (36, "Bass Drum"),
     (38, "Snare"),
@@ -49,7 +53,7 @@ NOTE_MAP = (
     (54, "Tambourine"),
     (55, "Metal Beat"),
     (56, "Cowbell"),
-    (58, "Guiro"),
+    (73, "Guiro"),
     (60, "Bongo Hi"),
     (61, "Bongo Lo"),
     (70, "Maracas"),
@@ -145,7 +149,7 @@ def create(sample_rate, channel_count=2, transport=None):
     PITCH_CIRCUIT = {
         35: "bd", 36: "bd", 38: "sd", 40: "sd", 37: "rim",
         42: "hat", 44: "hat", 46: "hat", 49: "cym",
-        54: "tamb", 55: "metal", 56: "cb", 58: "guiro",
+        54: "tamb", 55: "metal", 56: "cb", 73: "guiro",
         60: "bongo_hi", 61: "bongo_lo", 70: "maracas", 75: "claves",
     }
 

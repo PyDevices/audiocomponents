@@ -26,17 +26,20 @@ PATCHES = {
 }
 
 # The hardware's full 15-sound catalogue on its 10 playback channels -
-# the module used to cover 8 of them. Note numbers follow the sibling
-# modules' conventions (rim 37, clap 39, cowbell 56, ride 51) and GM for
-# the tambourine (54).
+# the module used to cover 8 of them. Note numbers are the machine's own
+# initial setting from the owner's manual ("Key Number", section c): the
+# two bass drums and two snares are separate voices on 35/36 and 38/40,
+# and each tom answers a pair - low 41/43, mid 45/47, hi 48/50 - as does
+# the closed hat on 42/44. The pair exists because the hardware had no
+# velocity; we publish the lower of each pair and answer both.
 NOTE_MAP = (
     (36, "Kick 1"),
     (35, "Kick 2"),
     (38, "Snare 1"),
     (40, "Snare 2"),
-    (45, "Low Tom"),
-    (47, "Mid Tom"),
-    (50, "Hi Tom"),
+    (41, "Low Tom"),
+    (45, "Mid Tom"),
+    (48, "Hi Tom"),
     (37, "Rimshot"),
     (56, "Cowbell"),
     (39, "Clap"),
@@ -107,7 +110,8 @@ def create(sample_rate, channel_count=2, transport=None):
 
     PITCH_CIRCUIT = {
         36: "kick", 35: "kick", 38: "sd", 40: "sd",
-        45: "tom1", 47: "tom2", 50: "tom3",
+        41: "tom1", 43: "tom1", 45: "tom2", 47: "tom2",
+        48: "tom3", 50: "tom3",
         37: "rimcb", 56: "rimcb", 39: "claptamb", 54: "claptamb",
         42: "hat", 44: "hat", 46: "hat", 49: "crash", 51: "ride",
     }
@@ -147,12 +151,13 @@ def create(sample_rate, channel_count=2, transport=None):
                 synth.press(body)
                 synth.press(snare)
 
-            # Toms (45, 47, 50) - long ROM toms with a slow settle
-            elif pitch in (45, 47, 50):
+            # Toms (41/43 low, 45/47 mid, 48/50 hi) - long ROM toms with
+            # a slow settle
+            elif pitch in (41, 43, 45, 47, 48, 50):
                 name, tune, decay = {
-                    45: ("tom1", 128.0, 0.55),
-                    47: ("tom2", 150.0, 0.45),
-                    50: ("tom3", 193.0, 0.30),
+                    41: ("tom1", 128.0, 0.55), 43: ("tom1", 128.0, 0.55),
+                    45: ("tom2", 150.0, 0.45), 47: ("tom2", 150.0, 0.45),
+                    48: ("tom3", 193.0, 0.30), 50: ("tom3", 193.0, 0.30),
                 }[pitch]
                 (note,) = circuit(name, (TOMWAVE,))
                 note.frequency = tune * master_tune

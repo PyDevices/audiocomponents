@@ -21,8 +21,10 @@ PATCHES = {
 
 # The hardware's eight playback channels (service manual Fig. 2: eight
 # parallel Demux -> S/H -> Filter -> Mix paths; channels 7 and 8 are
-# direct outs, the rest filtered). Note numbers follow the sibling
-# conventions (rim 37, clap 39, cowbell 56; tom 41 as tr808/tr909).
+# direct outs, the rest filtered). The hardware's own MIDI chart maps
+# keyboard keys to its 32 play buttons, not to named drums - it is a
+# sampler, and the kit is whatever you loaded - so there is no factory
+# assignment to inherit and General MIDI decides instead.
 NOTE_MAP = (
     (36, "Kick"),
     (38, "Snare"),
