@@ -30,11 +30,12 @@ PATCHES = {
                  102, 64, 64, 64)),
 }
 
-# The hardware's 13 named sounds on a 12-voice architecture. Note numbers
-# are the machine's own: bass 35/36, rim 37, snare 38/40, claps 39, tom 1
-# 41/43, closed hat 42/44, tom 2 45/47, open hat 46, crash 49, ride 51,
-# tambourine 54, cowbell 56, cabasa 58. Where the chart gives a voice two
-# numbers we publish the lower and answer both.
+# The hardware's 13 named sounds on a 12-voice architecture, on General
+# MIDI's note numbers - including cabasa at 69, where GM puts it, rather
+# than the 58 of this machine's own chart (GM calls 58 a vibraslap). The
+# factory chart's second key number per voice was the accent hit on
+# hardware with no velocity; velocity is that channel here, so those
+# numbers are not answered.
 NOTE_MAP = (
     (36, "Kick"),
     (38, "Snare"),
@@ -48,7 +49,7 @@ NOTE_MAP = (
     (51, "Ride"),
     (54, "Tambourine"),
     (56, "Cowbell"),
-    (58, "Cabasa"),
+    (69, "Cabasa"),
 )
 
 import array
@@ -111,11 +112,11 @@ def create(sample_rate, channel_count=2, transport=None):
         return notes
 
     PITCH_CIRCUIT = {
-        35: "kick", 36: "kick", 38: "sd", 40: "sd", 37: "rim",
-        41: "tom1", 43: "tom1", 45: "tom2", 47: "tom2",
-        42: "hat", 44: "hat", 46: "hat",
+        36: "kick", 38: "sd", 37: "rim",
+        41: "tom1", 45: "tom2",
+        42: "hat", 46: "hat",
         49: "crash", 51: "ride", 39: "clap", 54: "tamb",
-        56: "cb", 58: "cabasa",
+        56: "cb", 69: "cabasa",
     }
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):

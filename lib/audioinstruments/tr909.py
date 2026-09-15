@@ -135,10 +135,9 @@ def create(sample_rate, channel_count=2, transport=None):
         return notes
 
     PITCH_CIRCUIT = {
-        35: "bd", 36: "bd", 38: "sd", 40: "sd",
-        41: "tom_lo", 43: "tom_lo", 45: "tom_mid", 47: "tom_mid",
-        48: "tom_hi", 50: "tom_hi",
-        42: "hat", 44: "hat", 46: "hat",
+        36: "bd", 38: "sd",
+        41: "tom_lo", 45: "tom_mid", 48: "tom_hi",
+        42: "hat", 46: "hat",
         49: "cym", 51: "cym",
         39: "clap", 37: "rim",
     }
@@ -161,7 +160,7 @@ def create(sample_rate, channel_count=2, transport=None):
             # sweep is the correct shape, and the measured drop ratio
             # grows with the tune setting (1.5x at the bottom of the
             # knob, 2.0x at the top), so the sweep depth follows bd_tune.
-            if pitch in (35, 36):
+            if pitch == 36:
                 body, click = circuit("bd", (SINE, NOISE))
                 body.frequency = bd_tune
                 body.envelope = synthio.Envelope(attack_time=0.004, decay_time=bd_decay, release_time=0.05, attack_level=1.0, sustain_level=0.0)
@@ -185,7 +184,7 @@ def create(sample_rate, channel_count=2, transport=None):
             # SD (38, 40) - tone body plus a noise path whose high-pass
             # cutoff is the Tone knob's real target (block diagram: CV
             # Gen IC35 sets the noise HP; Snappy blends the noise in)
-            elif pitch in (38, 40):
+            elif pitch == 38:
                 body, snare = circuit("sd", (SINE, NOISE))
                 body.frequency = sd_tune
                 body.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.12, release_time=0.05, attack_level=1.0, sustain_level=0.0)
@@ -203,15 +202,15 @@ def create(sample_rate, channel_count=2, transport=None):
                 synth.press(body)
                 synth.press(snare)
 
-            # Toms (41/43, 45/47, 48/50) - pure VCO+VCA+ENV per the block
+            # Toms (41, 45, 48) - pure VCO+VCA+ENV per the block
             # diagram: NO noise layer (the old per-tom noise click had no
             # schematic counterpart and is gone). One shared Decay pot,
             # as on the panel. Tune ranges retuned to the measured 11x11
             # grids.
-            elif pitch in (41, 43, 45, 47, 48, 50):
-                if pitch in (41, 43):
+            elif pitch in (41, 45, 48):
+                if pitch == 41:
                     name, tune = "tom_lo", lt_tune
-                elif pitch in (45, 47):
+                elif pitch == 45:
                     name, tune = "tom_mid", mt_tune
                 else:
                     name, tune = "tom_hi", ht_tune
@@ -228,10 +227,10 @@ def create(sample_rate, channel_count=2, transport=None):
                 synth.press(note)
                 synth.press(click)
 
-            # Hats (42, 44, 46) - one PCM engine on hardware (one Memory/
+            # Hats (42, 46) - one PCM engine on hardware (one Memory/
             # D-A/VCA chain, one Multi Out jack): open and closed share
             # the circuit and choke by retrigger.
-            elif pitch in (42, 44, 46):
+            elif pitch in (42, 46):
                 is_open = pitch == 46
                 (note,) = circuit("hat", (NOISE,))
                 note.frequency = NOISE_HZ

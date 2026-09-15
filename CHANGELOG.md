@@ -10,28 +10,24 @@ there, and are recorded in its changelog.
 
 ### Changed
 
-- **Drum machines answer their own factory MIDI charts.** Where a machine
-  shipped with MIDI, its note numbers are now the manufacturer's initial
-  setting rather than a house convention: the **TR-707**'s toms move to
-  41/43 low, 45/47 mid, 48/50 hi (they were 45/47/50, so a hardware pattern
-  played the wrong tom), and **DrumTraks** moves Tom 1 to 41/43, Tom 2 to
-  45/47 and the cabasa to 58. DrumTraks no longer answers 48/50 or 69/70,
-  which its chart does not list. TR-909 already matched its chart and is
-  unchanged. For the machines that never had MIDI - CR-78, TR-808, TR-606,
-  LinnDrum, DMX, Simmons SDSV - and for the SP-1200, whose chart maps keys
-  to play buttons rather than to named drums, General MIDI decides; the one
-  correction there is the **CR-78**'s guiro, from 58 (GM's vibraslap) to 73.
-  Where a factory chart gives one voice two numbers the lower is published
-  in `NOTE_MAP` and both sound, since the second number existed for accent
-  on machines with no velocity.
+- **Every drum machine speaks General MIDI.** One MIDI track now plays on any
+  of the ten kits: every kick hit sounds where the kit has a kick, and a hit
+  it has no voice for is silent. The **TR-707**'s toms move to GM's 41/45/48
+  (they were 45/47/50, so a tom line played the wrong drum), **DrumTraks**'s
+  tom 1 and tom 2 to 41 and 45 and its cabasa from 58 (GM's vibraslap) to
+  GM's cabasa at 69,
+  and the second key number several machines gave a voice — the accent hit,
+  on hardware with no velocity — is no longer answered, since velocity is
+  that channel here. The TR-707 keeps two kicks and two snares on 36/35 and
+  38/40: they are separate sounds and GM has a slot for each. The CR-78's
+  guiro moves from 58 (GM's vibraslap) to 73.
 
 - **A note a machine does not have makes no sound.** `sp1200`, `tr707`,
   `tr808` and `tr909` answered *any* MIDI note with a generic noise burst
   borrowed from another voice's circuit, and the other six answered General
   MIDI's neighbouring slots — a second crash on 57, a pedal hat on 44, the
   nearest tom for every tom number a kit does not have. Each machine now
-  sounds exactly the notes in its `NOTE_MAP`, plus — on the three that
-  shipped with MIDI — the alternate key numbers its own factory chart lists.
+  sounds exactly the notes in its `NOTE_MAP`, and nothing else.
 
 ### Removed
 

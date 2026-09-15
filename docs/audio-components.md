@@ -114,13 +114,18 @@ NOTE_MAP = (
 
 It is a tuple of unique MIDI note numbers and unique, non-empty voice labels.
 
-Which numbers: if the machine shipped with MIDI, its own factory chart, and
-nothing else. Most of these drum machines predate MIDI and speak trigger
-pulses, so there is no chart to inherit and General MIDI's percussion key
-numbers decide instead. Where a factory chart gives one voice two numbers -
-Roland and Sequential did, because the hardware had no velocity and the second
-key was the accented hit - `NOTE_MAP` publishes the lower one and the
-instrument answers both.
+Which numbers: General MIDI's percussion key numbers, on every machine. One
+MIDI track then plays on any kit — every kick lands where the kit has a kick,
+and a hit the kit has no voice for makes no sound at all. Nothing substitutes
+a near neighbour.
+
+Six of these drum machines predate MIDI and speak trigger pulses, so they had
+no numbers of their own to keep. The four that shipped with MIDI turn out to
+have put their voices on GM's slots anyway, bar one — the DrumTraks cabasa,
+which its chart puts on 58, where GM has a vibraslap; it is on 69 here. Those
+charts also gave several voices a second key number, the accented hit on
+hardware with no velocity. Velocity is that channel now, so the second numbers
+are not answered.
 
 The presence of a valid `NOTE_MAP` is the sole percussion discriminator;
 melodic instruments omit it. `CATEGORIES` may contain `"percussion"`, but
