@@ -11,6 +11,7 @@ import audioinstruments
 #: The kits, in the order the README lists them, with the column heading each
 #: gets. Short headings: twelve columns is already a wide table.
 KITS = (
+    ("acoustickit", "Acoustic"),
     ("cr78", "CR-78"),
     ("dmx", "DMX"),
     ("drumtraks", "DrumTraks"),

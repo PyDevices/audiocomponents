@@ -27,7 +27,7 @@ _PKG = __name__
 
 #: Every instrument module in this package.
 ALL = (
-    "cr78", "dmx", "drumkits", "drumtraks", "linndrum", "simmons_sdsv",
+    "acoustickit", "cr78", "dmx", "drumkits", "drumtraks", "linndrum", "simmons_sdsv",
     "sp1200", "tr606", "tr707", "tr808", "tr909", "andromeda", "arp2600", "b3",
     "clavinet", "cp70", "cs80", "cz101", "d50", "dx7", "emulator2",
     "fairlight", "farfisa", "fs1r", "jp8000", "juno106", "jupiter8",
