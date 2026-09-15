@@ -36,7 +36,12 @@ MACRO_LABELS = (
     "Snare Snap", "Snare Level", "Tom Tune", "Tom Decay", "Tom Level",
     "Hat Tone", "CH Decay", "OH Decay", "Cymbal Decay", "Perc Level",
 )
-MACRO_MODES = {index: "UNIPOLAR" for index in range(len(MACRO_LABELS))}
+MACRO_MODES = {
+    0: "UNIPOLAR", 1: "UNIPOLAR", 2: "UNIPOLAR", 3: "UNIPOLAR",
+    4: "UNIPOLAR", 5: "UNIPOLAR", 6: "UNIPOLAR", 7: "UNIPOLAR",
+    8: "UNIPOLAR", 9: "UNIPOLAR", 10: "UNIPOLAR", 11: "UNIPOLAR",
+    12: "UNIPOLAR", 13: "UNIPOLAR", 14: "UNIPOLAR", 15: "UNIPOLAR",
+}
 
 #: The kits, in program order. Program 1 in a DAW is index 0.
 KITS = (
@@ -76,6 +81,71 @@ MACRO_MAP = {
                      None, 13, None, None, 15, None),
 }
 
+#: Every note any kit answers, under General MIDI's name for it - the union,
+#: not the intersection: a kit with no conga is silent on the conga notes
+#: rather than the notes being missing from the instrument. What a sequencer
+#: needs from this list is "which keys are worth writing", and that is the
+#: union. Written out rather than computed because the scanner, the project
+#: generators and the catalog all read these declarations as text;
+#: `test_cpython_drumkits.py` holds the table to the kits themselves and to
+#: `_gm.PERCUSSION`, so it cannot drift from them.
+NOTE_MAP = (
+    (35, "Acoustic Bass Drum"),
+    (36, "Bass Drum 1"),
+    (37, "Side Stick"),
+    (38, "Acoustic Snare"),
+    (39, "Hand Clap"),
+    (40, "Electric Snare"),
+    (41, "Low Floor Tom"),
+    (42, "Closed Hi-Hat"),
+    (45, "Low Tom"),
+    (46, "Open Hi-Hat"),
+    (48, "Hi-Mid Tom"),
+    (49, "Crash Cymbal 1"),
+    (51, "Ride Cymbal 1"),
+    (54, "Tambourine"),
+    (55, "Splash Cymbal"),
+    (56, "Cowbell"),
+    (60, "Hi Bongo"),
+    (61, "Low Bongo"),
+    (62, "Mute Hi Conga"),
+    (63, "Open Hi Conga"),
+    (64, "Low Conga"),
+    (69, "Cabasa"),
+    (70, "Maracas"),
+    (73, "Short Guiro"),
+    (75, "Claves"),
+)
+
+#: One patch per kit, carrying that kit's own defaults in our slots, because
+#: selecting a kit is selecting its sound: the patch restores what a fresh one
+#: of those machines plays. A slot the kit has no control for sits at 64 - it
+#: changes nothing there, and a host showing it a value should show a neutral
+#: one. Same reason as NOTE_MAP for writing it out, same test holding it to
+#: each machine's own patch 0.
+PATCHES = {
+    0: ("TR-808", (102, 64, 51, 59, 64, 56, 64, 64, 48, 64,
+                   64, 64, 58, 85, 76, 64)),
+    1: ("TR-909", (102, 64, 51, 76, 64, 56, 64, 64, 71, 85,
+                   64, 64, 100, 64, 64, 64)),
+    2: ("TR-707", (102, 64, 64, 64, 102, 64, 64, 102, 64, 64,
+                   102, 64, 64, 64, 64, 102)),
+    3: ("TR-606", (102, 64, 64, 61, 98, 70, 76, 98, 65, 64,
+                   90, 64, 58, 78, 69, 64)),
+    4: ("CR-78", (102, 64, 76, 49, 64, 61, 51, 64, 64, 64,
+                  64, 78, 64, 64, 64, 102)),
+    5: ("LinnDrum", (102, 64, 64, 64, 102, 62, 64, 102, 64, 64,
+                     102, 64, 83, 88, 64, 102)),
+    6: ("DMX", (102, 64, 64, 67, 64, 56, 76, 64, 97, 64,
+                64, 64, 58, 78, 64, 102)),
+    7: ("Drumtraks", (102, 64, 64, 64, 102, 64, 64, 102, 64, 64,
+                      102, 64, 64, 64, 64, 102)),
+    8: ("SP-1200", (102, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+                    64, 64, 64, 64, 64, 64)),
+    9: ("Simmons SDS-V", (102, 64, 66, 76, 64, 68, 64, 64, 74, 89,
+                          64, 67, 64, 64, 87, 64)),
+}
+
 #: Bytes of PCM the mixer holds. It is the whole reason this instrument has
 #: any latency at all: one buffer, 256 stereo frames, 5.3 ms at 48 kHz.
 _MIXER_BYTES = 1024
@@ -83,11 +153,6 @@ _MIXER_BYTES = 1024
 import audiomixer  # noqa: E402
 
 from audioinstruments import load  # noqa: E402
-# Not `from audioinstruments import _gm`: MicroPython's import machinery
-# asks the package's __getattr__ for that name, which this package defines
-# for DRUM_MACHINES/MELODIC, and the submodule never gets imported. The
-# dotted form is what every other module here uses for _support.
-from audioinstruments._gm import PERCUSSION  # noqa: E402
 from audioinstruments._support import (  # noqa: E402
     EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, EVENT_PITCH_BEND,
     EVENT_CONTROL_CHANGE, EVENT_CHANNEL_PRESSURE, EVENT_POLY_PRESSURE,
@@ -95,48 +160,7 @@ from audioinstruments._support import (  # noqa: E402
 from audioinstruments._support import Instrument  # noqa: E402
 
 
-def _kit_modules():
-    return [load(name) for name in KITS]
 
-
-def _note_map():
-    """Every note any kit answers, under General MIDI's name for it.
-
-    The union, not the intersection: a kit that has no conga is silent on the
-    conga notes rather than the notes being missing from the instrument. What
-    a sequencer needs from this list is "which keys are worth writing", and
-    that is the union.
-    """
-    notes = set()
-    for module in _kit_modules():
-        notes.update(note for note, _label in module.NOTE_MAP)
-    return tuple((note, PERCUSSION.get(note, "Note %d" % note))
-                 for note in sorted(notes))
-
-
-def _patches():
-    """One patch per kit, carrying that kit's own defaults in our slots.
-
-    Selecting a kit is selecting its sound, so the patch restores what a
-    fresh one of those machines plays. A slot the kit has no control for
-    resolves to the middle of the range: it changes nothing, and a host that
-    shows it a value should show a neutral one.
-    """
-    built = {}
-    for index, name in enumerate(KITS):
-        module = load(name)
-        defaults = module.PATCHES[0][1]
-        targets = MACRO_MAP[name]
-        built[index] = (
-            module.DISPLAY_NAME,
-            tuple(64 if target is None else int(defaults[target])
-                  for target in targets),
-        )
-    return built
-
-
-NOTE_MAP = _note_map()
-PATCHES = _patches()
 
 
 class DrumKits(Instrument):

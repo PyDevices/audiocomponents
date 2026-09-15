@@ -16,6 +16,7 @@ import unittest
 import audiocore
 import audioinstruments
 from audioinstruments import drumkits  # noqa: E402 - CPython test host
+from audioinstruments import _gm
 
 SAMPLE_RATE = 48000
 
@@ -151,12 +152,19 @@ class DrumKitsTest(unittest.TestCase):
                            "the outgoing kit's cymbal was cut off")
 
     def test_the_note_map_is_the_union_of_the_kits(self):
+        # The table is written out in the module so every text reader - the
+        # plug-in scanner, the project generators - can have it without
+        # importing synthio. This is what stops it drifting from the kits.
         union = set()
         for kit in drumkits.KITS:
             union.update(note for note, _label
                          in audioinstruments.load(kit).NOTE_MAP)
         self.assertEqual(sorted(union),
                          [note for note, _label in drumkits.NOTE_MAP])
+
+    def test_every_voice_is_labelled_the_way_general_midi_labels_it(self):
+        for note, label in drumkits.NOTE_MAP:
+            self.assertEqual(_gm.PERCUSSION[note], label)
 
     def test_each_patch_is_a_kit_and_carries_that_kit_s_defaults(self):
         for index, kit in enumerate(drumkits.KITS):
