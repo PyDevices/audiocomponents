@@ -1,6 +1,10 @@
+import pathlib
 import unittest
 from types import SimpleNamespace
 
+import audioinstruments
+
+from support import note_table
 from tools.validate_metadata import MetadataError, validate_component
 
 
@@ -60,3 +64,38 @@ class MetadataContractTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DrumNoteTableTest(unittest.TestCase):
+    """The README's kit/hit table has to stay the modules' own answer.
+
+    It is the page someone reads to decide whether their pattern will play on
+    a given kit, and a hand-kept grid of 25 notes across ten machines is the
+    kind of thing that is true the day it is written and wrong a month later.
+    """
+
+    README = (pathlib.Path(__file__).resolve().parent.parent
+              / "lib" / "audioinstruments" / "README.md")
+
+    def test_the_readme_table_is_what_the_note_maps_say(self):
+        self.assertIn(note_table.render(),
+                      self.README.read_text(encoding="utf-8"))
+
+    def test_the_readme_voice_and_macro_counts_are_current(self):
+        text = self.README.read_text(encoding="utf-8")
+        for name, _heading in note_table.KITS:
+            module = audioinstruments.load(name)
+            self.assertIn(
+                "**`%s`**" % name, text, "%s is missing from the README" % name)
+            line = next(l for l in text.splitlines()
+                        if l.startswith("- **`%s`**" % name))
+            self.assertIn("%d voices" % len(module.NOTE_MAP), line)
+            self.assertIn("%d macros" % len(module.MACRO_LABELS), line)
+
+    def test_every_kit_answers_the_five_that_make_a_pattern_portable(self):
+        # The README promises this outright, so it is a test and not a note.
+        for name, _heading in note_table.KITS:
+            mapped = dict(audioinstruments.load(name).NOTE_MAP)
+            for note in (36, 38, 42, 46, 49):
+                self.assertIn(note, mapped,
+                              "%s does not answer %d" % (name, note))

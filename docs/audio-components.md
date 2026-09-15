@@ -127,6 +127,10 @@ charts also gave several voices a second key number, the accented hit on
 hardware with no velocity. Velocity is that channel now, so the second numbers
 are not answered.
 
+Which kit answers which hit is a table in
+[`lib/audioinstruments/README.md`](../lib/audioinstruments/README.md),
+rendered from the modules' own `NOTE_MAP`s by the tests.
+
 The presence of a valid `NOTE_MAP` is the sole percussion discriminator;
 melodic instruments omit it. `CATEGORIES` may contain `"percussion"`, but
 that value is descriptive and does not determine classification.

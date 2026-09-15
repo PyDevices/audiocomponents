@@ -99,19 +99,62 @@ instrument is tempo-synced (see the shipped-status note in
 
 - **`cr78`** - Roland CR-78 CompuRhythm. 14 voices, 16 macros.
 - **`dmx`** - Oberheim DMX. 13 voices, 16 macros.
-- **`drumtraks`** - Sequential Circuits Drumtraks. 7 voices, 8 macros.
-- **`linndrum`** - Linn LinnDrum. 16 voices, 16 macros.
+- **`drumtraks`** - Sequential Circuits Drumtraks. 13 voices, 16 macros.
+- **`linndrum`** - Linn LinnDrum. 17 voices, 16 macros.
 - **`simmons_sdsv`** - Simmons SDS-V. 8 voices, 16 macros.
-- **`sp1200`** - E-mu SP-1200. 4 voices, 8 macros.
+- **`sp1200`** - E-mu SP-1200. 8 voices, 8 macros.
 - **`tr606`** - Roland TR-606 Drumatix. 7 voices, 16 macros.
-- **`tr707`** - Roland TR-707 Rhythm Composer. 8 voices, 8 macros.
-- **`tr808`** - Roland TR-808 Rhythm Composer. 12 voices, 16 macros.
+- **`tr707`** - Roland TR-707 Rhythm Composer. 15 voices, 13 macros.
+- **`tr808`** - Roland TR-808 Rhythm Composer. 16 voices, 16 macros.
 - **`tr909`** - Roland TR-909 Rhythm Composer. 11 voices, 16 macros.
 
-Each maps its voices to the note numbers the hardware used, so a pattern
-written for one machine plays on another wherever the voices line up. Notes a
-machine does not map are answered by its own fallback, or by silence - both
-deliberate, and both pinned by the parity tests.
+### Which kit answers which hit
+
+Every machine here speaks General MIDI, so **one MIDI track plays on any of
+them**: the kick hit lands wherever the kit has a kick. A hit a kit has no
+voice for makes no sound — nothing is answered by a near neighbour, and there
+is no fallback noise. Six of these machines predate MIDI and never had numbers
+of their own; the four that shipped with it had put their voices on GM's slots
+anyway, bar the DrumTraks cabasa, which its chart gives 58 (GM's vibraslap)
+and which sits on 69 here.
+
+Kick (36), snare (38), closed hat (42), open hat (46) and crash (49) are the
+five every kit answers, so a pattern built from those alone is portable
+across all ten.
+
+| Note | General MIDI | CR-78 | DMX | DrumTraks | LinnDrum | SDS-V | SP-1200 | TR-606 | TR-707 | TR-808 | TR-909 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 35 | Acoustic Bass Drum |   |   |   |   |   |   |   | • |   |   |
+| 36 | Bass Drum 1 | • | • | • | • | • | • | • | • | • | • |
+| 37 | Side Stick | • | • | • | • |   |   |   | • | • | • |
+| 38 | Acoustic Snare | • | • | • | • | • | • | • | • | • | • |
+| 39 | Hand Clap |   | • | • | • |   | • |   | • | • | • |
+| 40 | Electric Snare |   |   |   |   |   |   |   | • |   |   |
+| 41 | Low Floor Tom |   | • | • | • | • | • | • | • | • | • |
+| 42 | Closed Hi-Hat | • | • | • | • | • | • | • | • | • | • |
+| 45 | Low Tom |   | • | • | • | • |   |   | • | • | • |
+| 46 | Open Hi-Hat | • | • | • | • | • | • | • | • | • | • |
+| 48 | Hi-Mid Tom |   | • |   | • | • |   | • | • | • | • |
+| 49 | Crash Cymbal 1 | • | • | • | • | • | • | • | • | • | • |
+| 51 | Ride Cymbal 1 |   |   | • | • |   |   |   | • |   | • |
+| 54 | Tambourine | • | • | • | • |   |   |   | • |   |   |
+| 55 | Splash Cymbal | • |   |   |   |   |   |   |   |   |   |
+| 56 | Cowbell | • | • | • | • |   | • |   | • | • |   |
+| 60 | Hi Bongo | • |   |   |   |   |   |   |   |   |   |
+| 61 | Low Bongo | • |   |   |   |   |   |   |   |   |   |
+| 62 | Mute Hi Conga |   |   |   | • |   |   |   |   | • |   |
+| 63 | Open Hi Conga |   |   |   | • |   |   |   |   | • |   |
+| 64 | Low Conga |   |   |   | • |   |   |   |   | • |   |
+| 69 | Cabasa |   |   | • | • |   |   |   |   |   |   |
+| 70 | Maracas | • | • |   |   |   |   |   |   | • |   |
+| 73 | Short Guiro | • |   |   |   |   |   |   |   |   |   |
+| 75 | Claves | • |   |   |   |   |   |   |   | • |   |
+
+The labels differ where the machines do — the TR-808's 49 is its cymbal, the
+LinnDrum's is a crash — and 55 is the CR-78's Metal Beat, the one voice in the
+library General MIDI has no slot for. `NOTE_MAP` on each module is the exact
+list, and this table is rendered from those maps by the tests, so it cannot
+drift from them.
 
 ## Synthesizers and keyboards
 
