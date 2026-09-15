@@ -8,6 +8,58 @@ there, and are recorded in its changelog.
 
 ## Unreleased
 
+### Added
+
+- **`acoustickit`: the kick and the snare are a hybrid now, because a bank
+  alone could not be either.** Brad listened and said the kick was not
+  convincing and the snare sounded like a tuned tom. Both were true and both
+  were structural: a resonator bank's modes sit where they are put, so the
+  kick's f0 measured 56.2 Hz at 5 ms, 60 ms and 150 ms alike - a pitch drop of
+  0.0%, where a real kick falls from about 100 Hz to 50 in the first tenth of a
+  second. And the snare's "wires" were two resonators, measuring a spectral
+  flatness of 0.001 in their band where white noise measures 0.542; they
+  carried 4% of the energy and were gone by 40 ms, leaving a pitched 325 Hz
+  body, which is a tom.
+
+  So a second `synthio` synthesizer now plays beside the banks rather than
+  through them, carrying the pitch-dropping fundamentals and the noise layers
+  - the same shape the ten drum machines here already use. Measured after: the
+  kick sweeps 107 Hz to 50 Hz, and the snare's wire band is 46-73% of its
+  energy with a flatness of 0.50-0.57 throughout. Three new traits (A10-A12)
+  encode "is a kick" and "is a snare" rather than only "is a drum", each with
+  the fault that reproduces what he heard. It is also cheaper: eight voices on
+  the P4 went from 28.9% of the block to 25.1%, because the layers replaced
+  more bank modes than they cost.
+
+- **`acoustickit` - an acoustic drum kit, and the first thing in this library
+  that is not modelling a box.** Every other drum here is a machine; this one
+  is what a struck head does, a bank of decaying inharmonic modes excited by a
+  short burst standing in for the stick. It runs on `audiomodal.Bank`, which
+  audioif carries for it. Fourteen GM notes across twelve voices, two banks -
+  the hi-hat has its own so that closing it chokes what was ringing - and one
+  shared excitation, because a resonator bank is linear and all the shaping
+  lives in the mode gains.
+
+  Still no samples: the mode tables are physics and published measurement. The
+  snare's six modes and their damping ratios are real, from Skrodzka, Hojan and
+  Proksza (2006), and everything else is the membrane scaling law placed where
+  that size of drum sits - marked MEASURED or NOT MEASURED in the source, one
+  drum at a time. The dossier in the workspace anchor carries the sourcing.
+
+  Striking harder makes a drum brighter rather than only louder: each mode's
+  amplitude follows `velocity ** (1 + tilt)` and the high modes tilt hardest,
+  so the kick's attack centroid spans 4.5x from soft to hard. Per-strike
+  jitter on frequency and decay is the round-robin a sample library needs
+  several captures to buy.
+
+  The cymbals are the weakest part of it, and that is known rather than
+  discovered: Skare and Abel (DAFx-19) put a convincing cymbal wash at
+  "hundreds or even thousands" of modes against this bank's 64, and name the
+  nonlinear "bloom" a linear bank cannot produce at any mode count.
+
+  Not added to `drumkits`: its sixteen macros are a kit's rather than a drum
+  machine's, and a program change cannot rename them.
+
 ### Changed
 
 - **Every drum machine speaks General MIDI.** One MIDI track now plays on any

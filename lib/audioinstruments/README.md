@@ -1,6 +1,6 @@
 # audioinstruments
 
-Fifty-three classic synthesizers, electromechanical keyboards and drum
+Fifty-four classic synthesizers, electromechanical keyboards and drum
 machines, each a self-contained `synthio` program. No samples: every voice is
 oscillators, envelopes and filters, so the whole library is a few hundred
 kilobytes of Python and runs anywhere audioif does.
@@ -97,6 +97,9 @@ instrument is tempo-synced (see the shipped-status note in
 
 ## Drum machines
 
+- **`acoustickit`** - Acoustic Kit. 14 voices, 16 macros. *Not a machine: a
+  modal-synthesis acoustic kit, and the only one here that is not modelling a
+  box. See its module docstring for what is measured and what is not.*
 - **`cr78`** - Roland CR-78 CompuRhythm. 14 voices, 16 macros.
 - **`dmx`** - Oberheim DMX. 13 voices, 16 macros.
 - **`drumtraks`** - Sequential Circuits Drumtraks. 13 voices, 16 macros.
@@ -110,7 +113,7 @@ instrument is tempo-synced (see the shipped-status note in
 
 ### Which kit answers which hit
 
-Every machine here speaks General MIDI, so **one MIDI track plays on any of
+Every kit here speaks General MIDI, so **one MIDI track plays on any of
 them**: the kick hit lands wherever the kit has a kick. A hit a kit has no
 voice for makes no sound — nothing is answered by a near neighbour, and there
 is no fallback noise. Six of these machines predate MIDI and never had numbers
@@ -120,39 +123,44 @@ and which sits on 69 here.
 
 Kick (36), snare (38), closed hat (42), open hat (46) and crash (49) are the
 five every kit answers, so a pattern built from those alone is portable
-across all ten.
+across all eleven.
 
-| Note | General MIDI | CR-78 | DMX | DrumTraks | LinnDrum | SDS-V | SP-1200 | TR-606 | TR-707 | TR-808 | TR-909 |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| 35 | Acoustic Bass Drum |   |   |   |   |   |   |   | • |   |   |
-| 36 | Bass Drum 1 | • | • | • | • | • | • | • | • | • | • |
-| 37 | Side Stick | • | • | • | • |   |   |   | • | • | • |
-| 38 | Acoustic Snare | • | • | • | • | • | • | • | • | • | • |
-| 39 | Hand Clap |   | • | • | • |   | • |   | • | • | • |
-| 40 | Electric Snare |   |   |   |   |   |   |   | • |   |   |
-| 41 | Low Floor Tom |   | • | • | • | • | • | • | • | • | • |
-| 42 | Closed Hi-Hat | • | • | • | • | • | • | • | • | • | • |
-| 45 | Low Tom |   | • | • | • | • |   |   | • | • | • |
-| 46 | Open Hi-Hat | • | • | • | • | • | • | • | • | • | • |
-| 48 | Hi-Mid Tom |   | • |   | • | • |   | • | • | • | • |
-| 49 | Crash Cymbal 1 | • | • | • | • | • | • | • | • | • | • |
-| 51 | Ride Cymbal 1 |   |   | • | • |   |   |   | • |   | • |
-| 54 | Tambourine | • | • | • | • |   |   |   | • |   |   |
-| 55 | Splash Cymbal | • |   |   |   |   |   |   |   |   |   |
-| 56 | Cowbell | • | • | • | • |   | • |   | • | • |   |
-| 60 | Hi Bongo | • |   |   |   |   |   |   |   |   |   |
-| 61 | Low Bongo | • |   |   |   |   |   |   |   |   |   |
-| 62 | Mute Hi Conga |   |   |   | • |   |   |   |   | • |   |
-| 63 | Open Hi Conga |   |   |   | • |   |   |   |   | • |   |
-| 64 | Low Conga |   |   |   | • |   |   |   |   | • |   |
-| 69 | Cabasa |   |   | • | • |   |   |   |   |   |   |
-| 70 | Maracas | • | • |   |   |   |   |   |   | • |   |
-| 73 | Short Guiro | • |   |   |   |   |   |   |   |   |   |
-| 75 | Claves | • |   |   |   |   |   |   |   | • |   |
+| Note | General MIDI | Acoustic | CR-78 | DMX | DrumTraks | LinnDrum | SDS-V | SP-1200 | TR-606 | TR-707 | TR-808 | TR-909 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 35 | Acoustic Bass Drum | • |   |   |   |   |   |   |   | • |   |   |
+| 36 | Bass Drum 1 | • | • | • | • | • | • | • | • | • | • | • |
+| 37 | Side Stick | • | • | • | • | • |   |   |   | • | • | • |
+| 38 | Acoustic Snare | • | • | • | • | • | • | • | • | • | • | • |
+| 39 | Hand Clap |   |   | • | • | • |   | • |   | • | • | • |
+| 40 | Electric Snare |   |   |   |   |   |   |   |   | • |   |   |
+| 41 | Low Floor Tom | • |   | • | • | • | • | • | • | • | • | • |
+| 42 | Closed Hi-Hat | • | • | • | • | • | • | • | • | • | • | • |
+| 44 | Pedal Hi-Hat | • |   |   |   |   |   |   |   |   |   |   |
+| 45 | Low Tom | • |   | • | • | • | • |   |   | • | • | • |
+| 46 | Open Hi-Hat | • | • | • | • | • | • | • | • | • | • | • |
+| 47 | Low-Mid Tom | • |   |   |   |   |   |   |   |   |   |   |
+| 48 | Hi-Mid Tom | • |   | • |   | • | • |   | • | • | • | • |
+| 49 | Crash Cymbal 1 | • | • | • | • | • | • | • | • | • | • | • |
+| 51 | Ride Cymbal 1 | • |   |   | • | • |   |   |   | • |   | • |
+| 53 | Ride Bell | • |   |   |   |   |   |   |   |   |   |   |
+| 54 | Tambourine |   | • | • | • | • |   |   |   | • |   |   |
+| 55 | Splash Cymbal |   | • |   |   |   |   |   |   |   |   |   |
+| 56 | Cowbell |   | • | • | • | • |   | • |   | • | • |   |
+| 60 | Hi Bongo |   | • |   |   |   |   |   |   |   |   |   |
+| 61 | Low Bongo |   | • |   |   |   |   |   |   |   |   |   |
+| 62 | Mute Hi Conga |   |   |   |   | • |   |   |   |   | • |   |
+| 63 | Open Hi Conga |   |   |   |   | • |   |   |   |   | • |   |
+| 64 | Low Conga |   |   |   |   | • |   |   |   |   | • |   |
+| 69 | Cabasa |   |   |   | • | • |   |   |   |   |   |   |
+| 70 | Maracas |   | • | • |   |   |   |   |   |   | • |   |
+| 73 | Short Guiro |   | • |   |   |   |   |   |   |   |   |   |
+| 75 | Claves |   | • |   |   |   |   |   |   |   | • |   |
 
 ### One instrument, ten kits
 
-**`drumkits`** is all ten under one program change: program 1 is the TR-808,
+**`drumkits`** is all ten *machines* under one program change - `acoustickit`
+is not among them, because its sixteen macros are a kit's rather than a drum
+machine's and a program change cannot rename them: program 1 is the TR-808,
 2 the TR-909, and so on. Load it once, write the part once, and change kit
 from the sequencer. Each program *is* that machine — the same samples of PCM
 it makes on its own — and the kit you leave keeps ringing out until the next
