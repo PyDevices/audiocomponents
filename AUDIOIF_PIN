@@ -45,5 +45,10 @@
 # instruments the ceiling moves at the gate's material are retired to
 # REBUILT with Brad's listen of 2026-09-06 as the blessing (audioif#31).
 #
+# Moved to cebb7ca on 2026-09-15, for audiomodal.Bank. `acoustickit` imports
+# it, so the floor had to carry it or the kit could not be built at all -- CI
+# installs audioif from this pin and nothing else. Still no release, for the
+# reason above: audioif is released once, at Phase 7.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-2f6cbc3791efd38dfbf0fb263052400a69b976ed 2f6cbc3791efd38dfbf0fb263052400a69b976ed
+cebb7cad20a9d5e26f53f78a6dd799b9b8281af7 cebb7cad20a9d5e26f53f78a6dd799b9b8281af7
