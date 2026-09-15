@@ -149,13 +149,11 @@ def create(sample_rate, channel_count=2, transport=None):
         return notes
 
     PITCH_CIRCUIT = {
-        35: "bd", 36: "bd", 38: "sd", 40: "sd",
-        41: "tomA", 43: "tomA", 45: "tomA", 47: "tomA",
-        48: "tomB", 50: "tomB",
-        42: "hat", 44: "hat", 46: "hat",
-        49: "cym", 51: "cym", 57: "cym", 59: "cym",
+        36: "bd", 38: "sd",
+        41: "tomA", 45: "tomA", 48: "tomB",
+        42: "hat", 46: "hat", 49: "cym",
         37: "percA", 54: "percA",
-        70: "percB", 82: "percB", 39: "percB", 56: "percB",
+        70: "percB", 39: "percB", 56: "percB",
     }
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
@@ -199,7 +197,7 @@ def create(sample_rate, channel_count=2, transport=None):
 
             # Toms - card A (Low+Mid choke) and card B (Hi)
             elif name in ("tomA", "tomB"):
-                tune = ht_pitch if name == "tomB" else (lt_pitch if pitch in (41, 43) else mt_pitch)
+                tune = ht_pitch if name == "tomB" else (lt_pitch if pitch == 41 else mt_pitch)
                 (note,) = circuit(name, (TRIANGLE,))
                 note.frequency = tune
                 note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.3, release_time=0.1, attack_level=1.0, sustain_level=0.0)

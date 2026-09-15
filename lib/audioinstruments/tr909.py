@@ -139,7 +139,7 @@ def create(sample_rate, channel_count=2, transport=None):
         41: "tom_lo", 43: "tom_lo", 45: "tom_mid", 47: "tom_mid",
         48: "tom_hi", 50: "tom_hi",
         42: "hat", 44: "hat", 46: "hat",
-        49: "cym", 51: "cym", 57: "cym", 59: "cym",
+        49: "cym", 51: "cym",
         39: "clap", 37: "rim",
     }
 
@@ -244,8 +244,8 @@ def create(sample_rate, channel_count=2, transport=None):
             # output taps on hardware; the Tune knob is the engine's
             # clock, so raising it shortens decay as it raises pitch -
             # the measured tune-linked-decay coupling, kept here.
-            elif pitch in (49, 51, 57, 59):
-                is_ride = pitch in (51, 59)
+            elif pitch in (49, 51):
+                is_ride = pitch == 51
                 (note,) = circuit("cym", (NOISE,))
                 note.frequency = NOISE_HZ
                 clock = 6000.0 / cym_tune
@@ -286,15 +286,6 @@ def create(sample_rate, channel_count=2, transport=None):
                 high.amplitude = amp * clap_rim_level * 0.08
                 synth.press(low)
                 synth.press(high)
-
-            # Fallback (other percussion) - rides the rimshot circuit
-            else:
-                low, _high = circuit("rim", (NOISE, NOISE))
-                low.frequency = NOISE_HZ
-                low.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.1, release_time=0.05, attack_level=1.0, sustain_level=0.0)
-                low.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 3000.0, Q=1.0)
-                low.amplitude = amp * 0.5
-                synth.press(low)
 
         elif event_type in (EVENT_NOTE_OFF, EVENT_NOTE_ON):
             name = PITCH_CIRCUIT.get(data0)

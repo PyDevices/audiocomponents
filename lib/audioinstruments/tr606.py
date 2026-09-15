@@ -117,9 +117,8 @@ def create(sample_rate, channel_count=2, transport=None):
         return notes
 
     PITCH_CIRCUIT = {
-        35: "bd", 36: "bd", 38: "sd", 40: "sd",
-        41: "tom", 43: "tom", 45: "tom", 47: "tom", 48: "tom", 50: "tom",
-        42: "hat", 44: "hat", 46: "hat", 49: "cym", 51: "cym",
+        36: "bd", 38: "sd", 41: "tom", 48: "tom",
+        42: "hat", 46: "hat", 49: "cym",
     }
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
@@ -135,7 +134,7 @@ def create(sample_rate, channel_count=2, transport=None):
             base_amp = master_level * (vel + accent_level * (1.0 if vel > 0.8 else 0.0))
 
             # BD (35, 36) - two oscillators summed
-            if pitch in (35, 36):
+            if pitch == 36:
                 amp = base_amp * bd_level
                 osc1, osc2 = circuit("bd", (SINE, SINE))
                 env = synthio.Envelope(attack_time=0.001, decay_time=bd_decay, release_time=0.05, attack_level=1.0, sustain_level=0.0)
@@ -154,7 +153,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 synth.press(osc2)
 
             # SD (38, 40) - tone + noise
-            elif pitch in (38, 40):
+            elif pitch == 38:
                 amp = base_amp * sd_level
                 body, snare = circuit("sd", (TRIANGLE, NOISE))
                 body.frequency = sd_pitch
@@ -168,10 +167,10 @@ def create(sample_rate, channel_count=2, transport=None):
                 synth.press(body)
                 synth.press(snare)
 
-            # Toms (41-50) - ONE shared circuit: the schematic's two
+            # Toms (41 low, 48 hi) - ONE shared circuit: the schematic's two
             # oscillators share ENV+LPF+VCA, so LT and HT choke each
             # other by retrigger, exactly as the hardware forced
-            elif pitch in (41, 43, 45, 47, 48, 50):
+            elif pitch in (41, 48):
                 amp = base_amp * tom_level
                 (note,) = circuit("tom", (SINE,))
                 note.frequency = lt_pitch if pitch < 48 else ht_pitch
@@ -180,11 +179,11 @@ def create(sample_rate, channel_count=2, transport=None):
                 note.amplitude = amp
                 synth.press(note)
 
-            # Hats (42, 44, 46) - one VCA+HPF; retrigger is the choke.
+            # Hats (42, 46) - one VCA+HPF; retrigger is the choke.
             # (On hardware the open decay follows the sequencer tempo;
             # oh_decay is the closest reachable approximation - stated
             # divergence.)
-            elif pitch in (42, 44, 46):
+            elif pitch in (42, 46):
                 amp = base_amp * hat_level
                 is_open = pitch == 46
                 (note,) = circuit("hat", (NOISE,))
@@ -194,8 +193,8 @@ def create(sample_rate, channel_count=2, transport=None):
                 note.amplitude = amp * 0.8
                 synth.press(note)
 
-            # Cymbal (49, 51) - two parallel fixed band chains
-            elif pitch in (49, 51):
+            # Cymbal (49) - two parallel fixed band chains
+            elif pitch == 49:
                 amp = base_amp * cym_level
                 hi, lo = circuit("cym", (NOISE, NOISE))
                 env = synthio.Envelope(attack_time=0.001, decay_time=cym_decay, release_time=0.2, attack_level=1.0, sustain_level=0.0)

@@ -25,6 +25,14 @@ there, and are recorded in its changelog.
   in `NOTE_MAP` and both sound, since the second number existed for accent
   on machines with no velocity.
 
+- **A note a machine does not have makes no sound.** `sp1200`, `tr707`,
+  `tr808` and `tr909` answered *any* MIDI note with a generic noise burst
+  borrowed from another voice's circuit, and the other six answered General
+  MIDI's neighbouring slots — a second crash on 57, a pedal hat on 44, the
+  nearest tom for every tom number a kit does not have. Each machine now
+  sounds exactly the notes in its `NOTE_MAP`, plus — on the three that
+  shipped with MIDI — the alternate key numbers its own factory chart lists.
+
 ### Removed
 
 - **`Rotary` is removed.** The Leslie-style rotating-speaker effect is no longer in `audioeffects`; nothing replaces it yet.

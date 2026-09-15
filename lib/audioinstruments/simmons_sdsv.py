@@ -118,10 +118,9 @@ def create(sample_rate, channel_count=2, transport=None):
         return notes
 
     PITCH_CIRCUIT = {
-        35: "bd", 36: "bd", 38: "sd", 40: "sd",
-        41: "tom_lo", 43: "tom_lo", 45: "tom_mid", 47: "tom_mid",
-        48: "tom_hi", 50: "tom_hi",
-        42: "hat", 44: "hat", 46: "hat", 49: "cym",
+        36: "bd", 38: "sd",
+        41: "tom_lo", 45: "tom_mid", 48: "tom_hi",
+        42: "hat", 46: "hat", 49: "cym",
     }
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
@@ -134,7 +133,7 @@ def create(sample_rate, channel_count=2, transport=None):
             amp = master_level * value0
 
             # BD (35, 36) - tone + noise + click, the uniform module trio
-            if pitch in (35, 36):
+            if pitch == 36:
                 body, noise, click = circuit("bd", (SINE, NOISE, NOISE))
                 body.frequency = bd_pitch
                 body.envelope = synthio.Envelope(attack_time=0.001, decay_time=bd_decay, release_time=0.05, attack_level=1.0, sustain_level=0.0)
@@ -153,7 +152,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 synth.press(click)
 
             # SD (38, 40) - the same trio
-            elif pitch in (38, 40):
+            elif pitch == 38:
                 body, noise, click = circuit("sd", (SINE, NOISE, NOISE))
                 body.frequency = sd_pitch
                 body.envelope = synthio.Envelope(attack_time=0.001, decay_time=sd_decay, release_time=0.05, attack_level=1.0, sustain_level=0.0)
@@ -171,13 +170,13 @@ def create(sample_rate, channel_count=2, transport=None):
                 synth.press(noise)
                 synth.press(click)
 
-            # Toms (41/43, 45/47, 48/50) - tone per tom, one shared
+            # Toms (41, 45, 48) - tone per tom, one shared
             # noise+click voice across the three (the dossier's flagged
             # budget trade)
-            elif pitch in (41, 43, 45, 47, 48, 50):
-                if pitch in (41, 43):
+            elif pitch in (41, 45, 48):
+                if pitch == 41:
                     name, tune = "tom_lo", lt_pitch
-                elif pitch in (45, 47):
+                elif pitch == 45:
                     name, tune = "tom_mid", mt_pitch
                 else:
                     name, tune = "tom_hi", ht_pitch
@@ -197,7 +196,7 @@ def create(sample_rate, channel_count=2, transport=None):
             # Hi-hat (42 closed, 44 pedal-closed, 46 open) - one physical
             # circuit, pedal-switched: the retrigger IS the choke. Open
             # decay retuned to the measured 0.173 s capture.
-            elif pitch in (42, 44, 46):
+            elif pitch in (42, 46):
                 is_open = pitch == 46
                 (note,) = circuit("hat", (NOISE,))
                 note.frequency = NOISE_HZ

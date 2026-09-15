@@ -286,14 +286,12 @@ def create(sample_rate, channel_count=2, transport=None):
     #: Which circuit a MIDI pitch drives - the note-off path releases by
     #: circuit, and the alternates on one line share that circuit.
     PITCH_CIRCUIT = {
-        35: "bd", 36: "bd", 38: "sd", 40: "sd",
+        36: "bd", 38: "sd",
         37: "rim", 75: "rim", 39: "cm", 70: "cm",
-        41: "tom_lo", 43: "tom_lo", 64: "tom_lo",
-        45: "tom_mid", 47: "tom_mid", 63: "tom_mid",
-        48: "tom_hi", 50: "tom_hi", 62: "tom_hi",
-        42: "hat", 44: "hat", 46: "hat",
-        49: "cym", 51: "cym", 57: "cym", 59: "cym",
-        56: "cb",
+        41: "tom_lo", 64: "tom_lo",
+        45: "tom_mid", 63: "tom_mid",
+        48: "tom_hi", 62: "tom_hi",
+        42: "hat", 46: "hat", 49: "cym", 56: "cb",
     }
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
@@ -307,7 +305,7 @@ def create(sample_rate, channel_count=2, transport=None):
             amp = master_level * (vel + accent_level * (1.0 if vel > 0.8 else 0.0))
 
             # BD (35, 36)
-            if pitch in (35, 36):
+            if pitch == 36:
                 body, click = circuit("bd", (SINE, NOISE))
                 body.frequency = bd_tune
                 body.envelope = synthio.Envelope(attack_time=0.001, decay_time=bd_decay, release_time=0.1, attack_level=1.0, sustain_level=0.0)
@@ -334,7 +332,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 synth.press(click)
 
             # SD (38, 40)
-            elif pitch in (38, 40):
+            elif pitch == 38:
                 body, snare = circuit("sd", (SINE, NOISE))
                 body.frequency = sd_tune
                 body.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.1, release_time=0.05, attack_level=1.0, sustain_level=0.0)
@@ -349,10 +347,10 @@ def create(sample_rate, channel_count=2, transport=None):
 
             # Toms and congas (one circuit per line; the hardware's
             # tom/conga switch selects which sound the line makes)
-            elif pitch in (41, 43, 64, 45, 47, 63, 48, 50, 62):
-                if pitch in (41, 43, 64):
+            elif pitch in (41, 64, 45, 63, 48, 62):
+                if pitch in (41, 64):
                     name, tom_tune, conga_tune = "tom_lo", lt_tune, lc_tune
-                elif pitch in (45, 47, 63):
+                elif pitch in (45, 63):
                     name, tom_tune, conga_tune = "tom_mid", mt_tune, mc_tune
                 else:
                     name, tom_tune, conga_tune = "tom_hi", ht_tune, hc_tune
@@ -371,9 +369,9 @@ def create(sample_rate, channel_count=2, transport=None):
                     note.amplitude = amp
                 synth.press(note)
 
-            # Hats (42, 44, 46) - one circuit; open and closed are the
+            # Hats (42, 46) - one circuit; open and closed are the
             # same voice with different decay, so retrigger IS the choke
-            elif pitch in (42, 44, 46):
+            elif pitch in (42, 46):
                 is_open = pitch == 46
                 (note,) = circuit("hat", (METAL,))
                 note.frequency = METAL_HZ
@@ -388,8 +386,8 @@ def create(sample_rate, channel_count=2, transport=None):
                 note.amplitude = amp * 0.8
                 synth.press(note)
 
-            # Cymbal (49, 51, 57, 59)
-            elif pitch in (49, 51, 57, 59):
+            # Cymbal (49)
+            elif pitch == 49:
                 (note,) = circuit("cym", (METAL_CYM,))
                 note.frequency = METAL_HZ
                 note.envelope = synthio.Envelope(attack_time=0.001, decay_time=cym_decay, release_time=0.2, attack_level=1.0, sustain_level=0.0)
@@ -492,15 +490,6 @@ def create(sample_rate, channel_count=2, transport=None):
                 note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 2500.0, Q=3.0)
                 note.amplitude = amp
                 synth.press(note)
-
-            # Fallback (other percussion) - rides the clap circuit
-            else:
-                burst1, _burst2 = circuit("cm", (NOISE, NOISE))
-                burst1.frequency = NOISE_HZ
-                burst1.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.1, release_time=0.05, attack_level=1.0, sustain_level=0.0)
-                burst1.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 3000.0, Q=1.0)
-                burst1.amplitude = amp * 0.5
-                synth.press(burst1)
 
         elif event_type in (EVENT_NOTE_OFF, EVENT_NOTE_ON):
             name = PITCH_CIRCUIT.get(data0)

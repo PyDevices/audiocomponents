@@ -222,15 +222,6 @@ def create(sample_rate, channel_count=2, transport=None):
                 note.amplitude = amp * 0.8
                 synth.press(note)
 
-            # Fallback - rides the clap channel
-            else:
-                (note,) = circuit("clap", (NOISE,))
-                note.frequency = NOISE_HZ
-                note.envelope = synthio.Envelope(attack_time=0.001, decay_time=0.08, release_time=0.04, attack_level=1.0, sustain_level=0.0)
-                note.filter = synthio.Biquad(synthio.FilterMode.BAND_PASS, 3000.0, Q=1.0)
-                note.amplitude = amp * 0.5
-                synth.press(note)
-
         elif event_type in (EVENT_NOTE_OFF, EVENT_NOTE_ON):
             name = PITCH_CIRCUIT.get(data0)
             if name is not None and name in circuits:

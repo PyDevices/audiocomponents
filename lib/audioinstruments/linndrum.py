@@ -108,11 +108,10 @@ def create(sample_rate, channel_count=2, transport=None):
 
     PITCH_CIRCUIT = {
         36: "bd", 38: "sd", 37: "rim", 39: "clap",
-        41: "tom_lo", 43: "tom_lo", 45: "tom_mid", 47: "tom_mid",
-        48: "tom_hi", 50: "tom_hi",
+        41: "tom_lo", 45: "tom_mid", 48: "tom_hi",
         62: "congas", 63: "congas", 64: "congas",
         69: "cabtamb", 54: "cabtamb",
-        56: "cb", 42: "hat", 44: "hat", 46: "hat",
+        56: "cb", 42: "hat", 46: "hat",
         49: "crash", 51: "ride",
     }
 

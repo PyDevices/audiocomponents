@@ -147,8 +147,8 @@ def create(sample_rate, channel_count=2, transport=None):
         return notes
 
     PITCH_CIRCUIT = {
-        35: "bd", 36: "bd", 38: "sd", 40: "sd", 37: "rim",
-        42: "hat", 44: "hat", 46: "hat", 49: "cym",
+        36: "bd", 38: "sd", 37: "rim",
+        42: "hat", 46: "hat", 49: "cym",
         54: "tamb", 55: "metal", 56: "cb", 73: "guiro",
         60: "bongo_hi", 61: "bongo_lo", 70: "maracas", 75: "claves",
     }
