@@ -485,6 +485,29 @@ def _biquad(probe):
     return node, (), (node,)
 
 
+def _modal(modes, ringing=True):
+    """A resonator bank of `modes` modes, all of them sounding.
+
+    `ringing` is the whole point of having two of these rows. A bank skips a
+    mode whose state has reached exact zero, so a bank of silent modes costs
+    one compare each and a bank that is actually ringing costs the recursion -
+    and a drum kit holds far more modes resident than it is sounding at once.
+    Measuring only the quiet case would flatter it by the ratio of the two.
+    """
+    def build(probe):
+        import audiomodal
+        node = audiomodal.Bank(modes=modes, sample_rate=SAMPLE_RATE,
+                               channel_count=CHANNELS)
+        for index in range(modes):
+            # Spread across the band, all with decays long enough that none of
+            # them finishes inside the measurement.
+            frequency = 60.0 + index * (6000.0 / max(modes - 1, 1))
+            node.set_mode(index, frequency, 8.0, 1.0 if ringing else 0.0)
+        node.play(probe.output)
+        return node, (), (node,)
+    return build
+
+
 def _allpass(probe):
     """The same six stages, frequency and feedback as the
     `audiofilters.Phaser` row - the comparison audioif#36 is about."""
@@ -603,6 +626,11 @@ NODES = {
     "audiocore.RawSample+extra@9600": _extra_rawsample(TREMOLO_LFO_FRAMES),
     # The Phase 1 nodes, firmware of 2026-09-07.
     "audiobiquad.Biquad": _biquad,
+    "audiomodal.Bank@8": _modal(8),
+    "audiomodal.Bank@16": _modal(16),
+    "audiomodal.Bank@32": _modal(32),
+    "audiomodal.Bank@64": _modal(64),
+    "audiomodal.Bank@64quiet": _modal(64, ringing=False),
     "audiobiquad.AllPass": _allpass,
     "audioladder.Ladder": _ladder(1),
     "audioladder.Ladder@os2": _ladder(2),

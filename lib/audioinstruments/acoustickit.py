@@ -245,23 +245,46 @@ _JITTER = 0.012
 _TARGET_PEAK = 14000.0
 
 #: MEASURED, here, not guessed: the peak each voice reaches at unit mode gains
-#: from one stick burst, 48 kHz mono, rendered at low gain and scaled up
-#: because the bank is linear. The first attempt normalised by the *sum* of a
-#: voice's mode gains instead, and it was wrong by 11 dB across the kit - the
-#: ride bell came out louder than the kick - because a sum says nothing about
-#: how the modes phase against each other. High modes align inside the
-#: excitation window and low ones do not.
+#: from one stick burst, rendered at low gain and scaled up because the bank is
+#: linear. The first attempt normalised by the *sum* of a voice's mode gains
+#: instead, and it was wrong by 11 dB across the kit - the ride bell came out
+#: louder than the kick - because a sum says nothing about how the modes phase
+#: against each other. High modes align inside the excitation window and low
+#: ones do not.
 #:
-#: These are 48 kHz figures. A graph at another rate excites the same noise
-#: table at a different step and lands a little differently; the error is
-#: small and uniform, and the level macros ride on top of it.
-_UNIT_PEAK = {
+#: TWO TABLES, because one is not enough and the first version of this said it
+#: was. A resonator's response to a burst depends on its bandwidth relative to
+#: the sample rate, so the same voice does not peak in the same place at 24 kHz
+#: as at 48 kHz - and not by a common factor either. Measured ratios across the
+#: kit run from 0.55 on the pedal hat to 1.56 on the ride, which on a board
+#: running at 24 kHz put the snare 4.3 dB under the kick where at 48 kHz they
+#: were level. Rates between the two interpolate; outside them, the nearer
+#: table is used unchanged.
+_UNIT_PEAK_48K = {
     "crash": 546200.0, "hat_closed": 228000.0, "hat_open": 381200.0,
     "hat_pedal": 321200.0, "kick": 112000.0, "ride": 198800.0,
     "ridebell": 382600.0, "sidestick": 141600.0, "snare": 234200.0,
     "tom_hi": 121000.0, "tom_himid": 128200.0, "tom_lo": 112200.0,
     "tom_lomid": 128400.0,
 }
+_UNIT_PEAK_24K = {
+    "crash": 476000.0, "hat_closed": 237400.0, "hat_open": 392800.0,
+    "hat_pedal": 176200.0, "kick": 121600.0, "ride": 311000.0,
+    "ridebell": 265000.0, "sidestick": 117200.0, "snare": 158200.0,
+    "tom_hi": 141800.0, "tom_himid": 145400.0, "tom_lo": 122800.0,
+    "tom_lomid": 130200.0,
+}
+
+
+def _unit_peak(voice, rate):
+    if rate <= 24000:
+        return _UNIT_PEAK_24K[voice]
+    if rate >= 48000:
+        return _UNIT_PEAK_48K[voice]
+    blend = (rate - 24000.0) / 24000.0
+    return (_UNIT_PEAK_24K[voice] * (1.0 - blend)
+            + _UNIT_PEAK_48K[voice] * blend)
+
 
 #: Where each voice sits in the kit once they are all the same loudness -
 #: taste rather than measurement, and separated from `_UNIT_PEAK` on purpose
@@ -275,14 +298,16 @@ _TRIM = {
     "ride": 0.50, "ridebell": 0.62, "crash": 0.80,
 }
 
-#: One multiply per mode at strike time instead of three.
-_NORM = {name: _TARGET_PEAK * _TRIM[name] / _UNIT_PEAK[name]
-         for name in _UNIT_PEAK}
+def _norms(rate):
+    """One multiply per mode at strike time instead of three."""
+    return {name: _TARGET_PEAK * _TRIM[name] / _unit_peak(name, rate)
+            for name in _TRIM}
 
 
 def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     NOISE_HZ = SR / 8192.0
+    NORM = _norms(SR)
     synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
 
     master_level = 0.8
@@ -414,7 +439,7 @@ def create(sample_rate, channel_count=2, transport=None):
             if voice == "snare" and frequency >= 1500.0:
                 snap = 0.4 + 1.2 * snare_snap
             scaled = (amplitude * (velocity ** (1.0 + tilt * bite))
-                      * gain * _NORM[voice])
+                      * gain * NORM[voice])
             bank.set_mode(start + index, frequency * tune * wobble(),
                           decay * stretch * wobble(), scaled * snap)
             snap = 1.0
