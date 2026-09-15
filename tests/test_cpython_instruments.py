@@ -65,15 +65,23 @@ class InstrumentLibraryTest(unittest.TestCase):
 
     def test_every_mapped_drum_voice_makes_sound(self):
         # A pad that renders silence is a pad a sequencer cannot use.
+        #
+        # "On some patch" rather than "on patch 0", because a multi-kit
+        # instrument maps the union of its kits' voices and any one kit is
+        # silent on the notes it has no drum for - that is the library's
+        # rule, not a fault. A voice no patch can sound is still a fault.
         for name in audioinstruments.DRUM_MACHINES:
             module = audioinstruments.load(name)
             for note, label in module.NOTE_MAP:
-                instrument = module.create(SAMPLE_RATE)
-                instrument.note_on(note)
-                level = peak(instrument.output, 6)
-                self.assertGreater(level, 0.001,
-                                   "%s %s (note %d) is silent"
-                                   % (name, label, note))
+                for patch in sorted(module.PATCHES):
+                    instrument = module.create(SAMPLE_RATE)
+                    instrument.program_change(patch)
+                    instrument.note_on(note)
+                    if peak(instrument.output, 6) > 0.001:
+                        break
+                else:
+                    self.fail("%s %s (note %d) is silent on every patch"
+                              % (name, label, note))
 
     def test_every_melodic_instrument_sounds_a_chord(self):
         # Enough blocks for the slow string and pad attacks to get going.

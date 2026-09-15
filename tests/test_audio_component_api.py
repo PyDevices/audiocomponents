@@ -38,7 +38,7 @@ class AudioComponentApiTests(unittest.TestCase):
                          tuple(dict.fromkeys(audioinstruments.ALL)))
         self.assertEqual(audioeffects.ALL,
                          tuple(sorted(audioeffects.ALL)))
-        self.assertEqual(len(audioinstruments.ALL), 53)
+        self.assertEqual(len(audioinstruments.ALL), 54)
         self.assertEqual(len(audioeffects.ALL), 45)
 
     def test_all_instruments_implement_live_surface(self):

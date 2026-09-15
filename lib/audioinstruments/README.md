@@ -150,6 +150,24 @@ across all ten.
 | 73 | Short Guiro | • |   |   |   |   |   |   |   |   |   |
 | 75 | Claves | • |   |   |   |   |   |   |   | • |   |
 
+### One instrument, ten kits
+
+**`drumkits`** is all ten under one program change: program 1 is the TR-808,
+2 the TR-909, and so on. Load it once, write the part once, and change kit
+from the sequencer. Each program *is* that machine — the same samples of PCM
+it makes on its own — and the kit you leave keeps ringing out until the next
+change, so a crash carries across. Its note map is the union below, so a hit
+a kit has no voice for is simply silent until you switch back to one that
+has it.
+
+Its sixteen macros are one fixed cross-kit set (Level, Accent, Kick Tune,
+Kick Decay, Kick Level, Snare Tune, Snare Snap, Snare Level, Tom Tune, Tom
+Decay, Tom Level, Hat Tone, CH Decay, OH Decay, Cymbal Decay, Perc Level),
+because a host cannot be told new parameter names on a program change. Each
+kit maps the ones it has and ignores the rest: the TR-707 is all levels, the
+SDS-V is all pitches and sweeps, and neither is given a label that lies about
+what it moves.
+
 The labels differ where the machines do — the TR-808's 49 is its cymbal, the
 LinnDrum's is a crash — and 55 is the CR-78's Metal Beat, the one voice in the
 library General MIDI has no slot for. `NOTE_MAP` on each module is the exact

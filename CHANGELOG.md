@@ -35,6 +35,15 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`drumkits`: ten drum machines under one program change.** Program 1 is
+  the TR-808, 2 the TR-909, down the list to the SDS-V. Every program is the
+  machine itself — byte-identical to the standalone instrument — and the kit
+  you switch away from rings out rather than being cut off. One fixed
+  cross-kit set of sixteen macros, each kit mapping the controls it has; the
+  note map is the union of all ten, so a hit a kit has no voice for is
+  silent. All ten stay resident: 21 ms to build, 87 kB of heap at rest on the
+  MicroPython sidecar, and only the kit playing is pulled for audio.
+
 - **Phase 3 RingMod come-home.** `RingMod` is served from
   `audioeffects.ringmod`. `modulation.py` keeps `Flanger` only.
   `rebuilt.ADOPTED` stays empty. Demonstrated traits are M1 and M3;
