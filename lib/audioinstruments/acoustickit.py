@@ -11,6 +11,30 @@ banks and one excitation: the hi-hat has its own so that closing it can choke
 what was ringing, and everything else shares one, because nothing else in a
 kit silences anything else.
 
+**But a bank is not the whole of a drum, and the first version of this file
+believed it was.** Brad listened to it and said the kick was not convincing
+and the snare sounded like a tuned tom. Both were true, and both were things
+a resonator bank structurally cannot do:
+
+- **A kick is a pitch envelope.** Its fundamental starts near 100 Hz and falls
+  to around 50 in the first tenth of a second, and that fall is most of what
+  makes it read as a kick rather than as a low tom. A bank's modes sit where
+  they were put: measured on the first version, the kick's f0 was 56.2 Hz at
+  5 ms, at 60 ms and at 150 ms alike - a drop of exactly 0.0%.
+- **Snare wires are noise.** Dozens of them rattle against the head, broadband
+  and untuned. The first version modelled them as two resonators at 1.9 and
+  3.3 kHz, which measured a spectral flatness of 0.001 in that band - white
+  noise measures 0.542 on the same scale and a single pure tone measures
+  0.000. They were two tones, they carried 4% of the energy, and they were
+  gone by 40 ms. What was left was a pitched 325 Hz body, which is a tom.
+
+So the kit is a hybrid now, and deliberately: the bank does pitched inharmonic
+bodies, which is what it is good at and what a tom *is*, and a second synth
+carries the pitch-dropping fundamentals and the noise layers beside it. That
+is the same shape the ten drum machines in this library already use - the
+TR-909's kick is a sine with a `FALL` bend and a low-passed noise click, and
+its snare is a tone plus band-passed noise - and the reason is the same.
+
 **The sound is not sampled and not pretending to be.** There are no captures
 here and could not be - the library ships no binary assets - so the mode
 tables are physics and published measurement. Read
@@ -101,7 +125,7 @@ import math
 
 import synthio
 
-from audioinstruments._support import noise_table
+from audioinstruments._support import FALL, make_table, noise_table
 from audioinstruments._support import Instrument
 
 import audiomixer
@@ -111,6 +135,12 @@ import audioroute
 #: ln(1000): a mode's decay is its 60 dB time, and a published modal damping
 #: ratio converts as T60 = ln(1000) / (zeta * 2 * pi * f).
 _LN1000 = 6.907755278982137
+
+SINE = make_table(((1, 1.0),))
+#: A touch of second and third: a real drum head's fundamental is not a
+#: bare sine, and a bare sine reads as a synth tom.
+BODY = make_table(((1, 1.0), (2, 0.18), (3, 0.06)))
+NOISE = noise_table(seed=515151)
 
 #: Ideal circular membrane, relative to the (0,1) mode. Real drums are pulled
 #: toward harmonic by air loading and shell coupling; where this file uses
@@ -165,19 +195,68 @@ _SNARE_BODY = _damped((
     (734.0, 0.77, 0.20, 1.05),
 ))
 
-# NOT MEASURED. No isolated academic source for snare wires reached; every
-# source treats them as inseparable from the shell and head, which is itself
-# the dossier's finding. Two short bright modes stand in for the buzz.
-_SNARE_WIRES = ((1900.0, 0.085, 0.34, 1.6), (3300.0, 0.060, 0.26, 1.9))
+#: What a bank cannot be: pitch-dropping fundamentals and noise.
+#:
+#: Each row is one `synthio` voice played beside the bank rather than through
+#: it, because neither of these is a resonance. The fields are
+#: `(waveform, frequency, filter mode, filter Hz, Q, attack, decay, amplitude,
+#: bend rate, bend octaves, tilt)` - `tilt` following velocity the same way a
+#: mode's does, so the layers brighten with a hard hit as the bank does.
+#:
+#: `frequency` is in hertz except for a NOISE row, where it is set to the rate
+#: that reads the table one sample per sample and the value here is ignored.
+_LOW, _BAND, _HIGH = 0, 2, 1
+
+LAYERS = {
+    # The kick, properly. A fundamental at 52 Hz bent up almost an octave at
+    # the strike and falling back over about 60 ms - which is the whole of why
+    # a kick reads as a kick - plus a low-passed beater knock. Both shapes are
+    # the TR-909's, whose own bass drum is a FALL-bent sine and a low-passed
+    # noise click, because the physics it was imitating is the physics here.
+    "kick": (
+        ("body", BODY, 50.0, _LOW, 230.0, 0.9, 0.002, 0.36, 1.00, 22.0, 1.20,
+         0.25),
+        # Low-passed at 2.4 kHz: a knock rather than a click. The TR-909's own
+        # bass drum note warns that a high-passed click smears over a kick's
+        # very dark spectrum, and that holds here - but 1.4 kHz was muffled
+        # enough that the drum lost most of its velocity brightness (the
+        # attack centroid spread only 2.7x across velocity against 4.1x at
+        # 2.4 kHz), while the whole hit's centroid moves only 287 -> 292 Hz
+        # between the two. Dark is kept; the knock is audible again.
+        ("beater", NOISE, None, _LOW, 2400.0, 1.0, 0.0008, 0.016, 0.38, 0.0,
+         0.0, 2.2),
+    ),
+    # The snare's wires: band-passed noise, low Q so it is broad, and lasting
+    # a fifth of a second rather than the 60 ms two resonators managed. This
+    # is the layer whose absence made the drum a tom.
+    "snare": (
+        ("wires", NOISE, None, _BAND, 3200.0, 0.55, 0.0006, 0.26, 0.80, 0.0,
+         0.0, 1.1),
+        ("stick", NOISE, None, _BAND, 5200.0, 0.9, 0.0004, 0.012, 0.45, 0.0,
+         0.0, 2.3),
+    ),
+    # The side stick is nearly all click; give it one.
+    "sidestick": (
+        ("click", NOISE, None, _BAND, 2600.0, 1.2, 0.0004, 0.010, 0.55, 0.0,
+         0.0, 2.0),
+    ),
+}
 
 #: `voice -> mode table`. Every frequency below except the snare's is an
 #: engineering number: the membrane law placed where that size of drum sits.
 VOICES = {
-    # NOT MEASURED. 22" kick, heavily damped, with the beater click on top.
-    "kick": _membrane(58.0, 0.55, decay_power=1.9)
-            + _attack((2200.0, 3400.0, 5200.0), 0.010, 0.30),
-    # MEASURED body (above), plus wires and a stick attack that are not.
-    "snare": _SNARE_BODY + _SNARE_WIRES + _attack((3100.0,), 0.007, 0.45),
+    # NOT MEASURED. 22" kick. The bank now carries only the shell's own
+    # inharmonic colour, briefly: the voice is the pitch-dropping fundamental
+    # in LAYERS below. The six long membrane modes that used to be here, at
+    # 92 to 169 Hz with decays of a quarter-second, were what made it a tom -
+    # a real kick is nearly all fundamental within 30 ms, and measured at
+    # 120 ms this one had 0.3% of its energy left between 80 and 250 Hz while
+    # sounding like it had far more.
+    "kick": ((92.0, 0.075, 0.30, 0.6), (137.0, 0.045, 0.18, 0.9)),
+    # MEASURED body (above). The wires are NOT modes and are not here any
+    # more - see LAYERS. The head is real and stays; what changed is that it
+    # is no longer the whole drum.
+    "snare": _SNARE_BODY,
     # NOT MEASURED. A stick on the rim: almost all click, almost no body.
     "sidestick": ((680.0, 0.045, 1.00, 1.2), (1950.0, 0.022, 0.70, 1.8),
                   (4200.0, 0.012, 0.45, 2.2)),
@@ -227,7 +306,6 @@ PITCH_VOICE = {
     42: "hat_closed", 44: "hat_pedal", 46: "hat_open",
 }
 
-NOISE = noise_table(seed=515151)
 
 #: How far one strike moves a mode from where the table put it, as a fraction.
 #: This is the round-robin, and it is free here: a sample library needs several
@@ -243,6 +321,15 @@ _JITTER = 0.012
 #: open hat together are three of these summing into one output, and the bank
 #: quantises once at the end where anything over the rail is simply lost.
 _TARGET_PEAK = 14000.0
+
+#: One scale over the whole kit, bank and layers alike, so the balance between
+#: them is set once and the headroom is set once somewhere else. It exists
+#: because the layers arrived after the bank was already levelled and pushed
+#: the kick and snare about 5 dB up, which is exactly the amount that made
+#: eight drums at full velocity clip. Scaling both paths together keeps the
+#: balance that was tuned by ear and by measurement; scaling only one would
+#: have quietly retuned it.
+_KIT_LEVEL = 0.58
 
 #: MEASURED, here, not guessed: the peak each voice reaches at unit mode gains
 #: from one stick burst, rendered at low gain and scaled up because the bank is
@@ -300,14 +387,17 @@ _TRIM = {
 
 def _norms(rate):
     """One multiply per mode at strike time instead of three."""
-    return {name: _TARGET_PEAK * _TRIM[name] / _unit_peak(name, rate)
-            for name in _TRIM}
+    return {name: _KIT_LEVEL * _TARGET_PEAK * _TRIM[name]
+            / _unit_peak(name, rate) for name in _TRIM}
 
 
 def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     NOISE_HZ = SR / 8192.0
     NORM = _norms(SR)
+    _FILTER_MODES = (synthio.FilterMode.LOW_PASS,
+                     synthio.FilterMode.HIGH_PASS,
+                     synthio.FilterMode.BAND_PASS)
     synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
 
     master_level = 0.8
@@ -346,13 +436,38 @@ def create(sample_rate, channel_count=2, transport=None):
     main_bank.play(split.tap(0))
     hat_bank.play(split.tap(1))
 
-    mixer = audiomixer.Mixer(voice_count=2, buffer_size=2048,
+    # A second synthesizer, played straight into the mixer rather than into a
+    # bank. It has to be a second one: the first is the banks' excitation, and
+    # anything pressed there would be resonated rather than heard.
+    direct = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
+
+    mixer = audiomixer.Mixer(voice_count=3, buffer_size=2048,
                              channel_count=channel_count, sample_rate=SR,
                              bits_per_sample=16, samples_signed=True)
     mixer.voice[0].play(main_bank, loop=True)
     mixer.voice[1].play(hat_bank, loop=True)
+    mixer.voice[2].play(direct, loop=True)
     mixer.voice[0].level = 1.0
     mixer.voice[1].level = 1.0
+    mixer.voice[2].level = 1.0
+
+    # Fixed circuits again: one permanent Note per layer, built once and
+    # retriggered in place, so a strike allocates nothing.
+    layer_notes = {}
+    for voice, rows in LAYERS.items():
+        notes = []
+        for (_name, waveform, frequency, mode, cutoff, q, attack, decay,
+             amplitude, bend_rate, bend_oct, tilt) in rows:
+            note = synthio.Note(
+                NOISE_HZ if frequency is None else frequency,
+                waveform=waveform, amplitude=0.0,
+                envelope=synthio.Envelope(
+                    attack_time=attack, decay_time=decay,
+                    release_time=decay * 0.5, attack_level=1.0,
+                    sustain_level=0.0))
+            note.filter = synthio.Biquad(_FILTER_MODES[mode], cutoff, Q=q)
+            notes.append(note)
+        layer_notes[voice] = tuple(notes)
 
     # The stick: four permanent Notes, used in rotation. Its envelope is about
     # four milliseconds long, which is short against every decay in the kit, so
@@ -472,6 +587,27 @@ def create(sample_rate, channel_count=2, transport=None):
             load(hat_bank, HAT_SLOTS, HAT_VOICES[voice], voice, velocity)
         else:
             load(main_bank, MAIN_SLOTS, VOICES[voice], voice, velocity)
+        rows = LAYERS.get(voice)
+        if rows is not None:
+            gain = level_for(voice)
+            bite = 0.25 + 1.5 * hardness
+            for row, note in zip(rows, layer_notes[voice]):
+                (_name, _wave, frequency, _mode, _cut, _q, _att, _dec,
+                 amplitude, bend_rate, bend_oct, tilt) = row
+                note.amplitude = (amplitude * gain * _KIT_LEVEL
+                                  * (velocity ** (1.0 + tilt * bite)))
+                if bend_oct:
+                    # A fresh one-shot LFO per strike: `once=True` means it
+                    # runs down and stays there, so a retrigger needs a new
+                    # one. This is the only allocation a strike makes, and it
+                    # is two small objects on the drums that have a bend.
+                    note.bend = synthio.LFO(
+                        waveform=FALL, once=True, rate=bend_rate,
+                        scale=bend_oct * (0.55 + 0.45 * velocity),
+                        interpolate=True)
+                direct.release(note)
+                direct.press(note)
+
         note = STICKS[stick_at[0]]
         stick_at[0] = (stick_at[0] + 1) % len(STICKS)
         synth.release(note)

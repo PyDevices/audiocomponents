@@ -10,6 +10,27 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`acoustickit`: the kick and the snare are a hybrid now, because a bank
+  alone could not be either.** Brad listened and said the kick was not
+  convincing and the snare sounded like a tuned tom. Both were true and both
+  were structural: a resonator bank's modes sit where they are put, so the
+  kick's f0 measured 56.2 Hz at 5 ms, 60 ms and 150 ms alike - a pitch drop of
+  0.0%, where a real kick falls from about 100 Hz to 50 in the first tenth of a
+  second. And the snare's "wires" were two resonators, measuring a spectral
+  flatness of 0.001 in their band where white noise measures 0.542; they
+  carried 4% of the energy and were gone by 40 ms, leaving a pitched 325 Hz
+  body, which is a tom.
+
+  So a second `synthio` synthesizer now plays beside the banks rather than
+  through them, carrying the pitch-dropping fundamentals and the noise layers
+  - the same shape the ten drum machines here already use. Measured after: the
+  kick sweeps 107 Hz to 50 Hz, and the snare's wire band is 46-73% of its
+  energy with a flatness of 0.50-0.57 throughout. Three new traits (A10-A12)
+  encode "is a kick" and "is a snare" rather than only "is a drum", each with
+  the fault that reproduces what he heard. It is also cheaper: eight voices on
+  the P4 went from 28.9% of the block to 25.1%, because the layers replaced
+  more bank modes than they cost.
+
 - **`acoustickit` - an acoustic drum kit, and the first thing in this library
   that is not modelling a box.** Every other drum here is a machine; this one
   is what a struck head does, a bank of decaying inharmonic modes excited by a

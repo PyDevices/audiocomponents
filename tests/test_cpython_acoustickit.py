@@ -18,6 +18,9 @@ instrument exists for, which no contract test would notice was missing.
 | A7 | A drum's decay outlives the strike that made it | >= 20 blocks |
 | A8 | Eight voices at once do not clip | no sample at the rail |
 | A9 | The snare's early peak is its second mode, not its first | 300-360 Hz |
+| A10 | The kick's pitch falls, which is most of what makes it a kick | >= 35% |
+| A11 | The snare's wires are noise, not tones | flatness >= 0.35 |
+| A12 | The wires carry the drum, and outlast the head | >= 35% of energy at 40 and 150 ms |
 
 A3 and A4 are one claim in two halves, and the second half is what makes the
 first honest: a drum that varied *without* a bound would be a broken drum
@@ -34,6 +37,21 @@ frequency" assumption would land this at 224 Hz and be wrong in a way nobody
 would catch by listening for a bug. See the dossier in the workspace anchor,
 `docs/effects-internal/dossiers/instruments/acoustickit.md`.
 
+**A10, A11 and A12 exist because Brad listened and every trait above passed.**
+He said the kick was not convincing and the snare sounded like a tuned tom, and
+he was right twice. Measured on the version he heard: the kick's f0 was 56.2 Hz
+at 5 ms, at 60 ms and at 150 ms alike, a pitch drop of exactly 0.0%; and the
+snare's "wires" - two resonators at 1.9 and 3.3 kHz - measured a spectral
+flatness of 0.001 in that band, where white noise measures 0.542 and a single
+pure tone measures 0.000. They were two tones carrying 4% of the energy and
+gone by 40 ms, leaving a pitched 325 Hz body, which is a tom.
+
+Nothing above could see either. A1 through A9 ask whether a drum is present,
+responsive and self-consistent; none of them asks whether it is *the drum it
+says it is*. That is the gap these three close, and the reason they are worth
+having is that a mechanical trait can encode "is a kick" once someone has said
+out loud what a kick is.
+
 ## The planted faults
 
 `docs/correctness-standard.md` in audioif: "a trait without a planted fault is
@@ -46,6 +64,8 @@ not a check; it is a hope." Each of these was made and reverted:
 | `_JITTER = 0.5` | A4 | snare wanders 40% of peak hit to hit, and detunes audibly |
 | `hat_bank.clear()` removed from `strike` | A5 | open hat rings under the closed one, 5944 peak where there should be silence |
 | hi-hat moved into the main bank | A5, A6 | choking the hat takes the kick and the crash with it |
+| the kick's `bend` removed | A10 | 0% drop - this is what Brad heard as "not convincing" |
+| snare wires back to two resonators | A11, A12 | flatness 0.001, wire band 4% and gone by 40 ms |
 """
 
 import sys
@@ -127,6 +147,67 @@ def dominant(samples, ms=120.0, low=60.0):
 
 def peak(samples):
     return float(np.max(np.abs(samples)))
+
+
+def low_passed(samples, fc=400.0):
+    """One pole, so a zero-crossing count sees the fundamental and not the
+    beater knock sitting on top of it."""
+    x = left(samples)
+    a = np.exp(-2.0 * np.pi * fc / SR)
+    y = np.empty_like(x)
+    acc = 0.0
+    for index in range(len(x)):
+        acc = (1.0 - a) * x[index] + a * acc
+        y[index] = acc
+    return y
+
+
+def zero_cross_hz(mono, start_ms, win_ms):
+    a = int(SR * start_ms / 1000.0)
+    seg = mono[a:a + int(SR * win_ms / 1000.0)]
+    if len(seg) < 16:
+        return 0.0
+    signs = np.sign(seg)
+    signs[signs == 0] = 1
+    crossings = np.nonzero(np.diff(signs))[0]
+    if len(crossings) < 3:
+        return 0.0
+    span = crossings[-1] - crossings[0]
+    return (len(crossings) - 1) * SR / (2.0 * span) if span else 0.0
+
+
+def flatness(samples, start_ms, win_ms, low, high):
+    """Geometric over arithmetic mean of the power spectrum in a band. About
+    0.54 for white noise on this window, 0.000 for a single tone."""
+    spectrum, freqs = _band(samples, start_ms, win_ms)
+    if spectrum is None:
+        return 0.0
+    band = spectrum[(freqs >= low) & (freqs < high)]
+    band = band[band > 0]
+    if len(band) < 8:
+        return 0.0
+    return float(np.exp(np.mean(np.log(band))) / np.mean(band))
+
+
+def band_share(samples, start_ms, win_ms, low, high):
+    spectrum, freqs = _band(samples, start_ms, win_ms)
+    if spectrum is None:
+        return 0.0
+    total = np.sum(spectrum)
+    if not total:
+        return 0.0
+    return float(np.sum(spectrum[(freqs >= low) & (freqs < high)]) / total)
+
+
+def _band(samples, start_ms, win_ms):
+    channel = left(samples)
+    a = int(SR * start_ms / 1000.0)
+    n = int(SR * win_ms / 1000.0)
+    seg = channel[a:a + n]
+    if len(seg) < n or not np.any(seg):
+        return None, None
+    return (np.abs(np.fft.rfft(seg * np.hanning(n))) ** 2,
+            np.fft.rfftfreq(n, 1.0 / SR))
 
 
 DRUMS = (("kick", 36), ("snare", 38), ("low floor tom", 41),
@@ -274,6 +355,44 @@ class AcousticKitTraits(unittest.TestCase):
         self.assertTrue(300.0 <= dominant(struck(38, 100)) <= 360.0,
                         "snare read %.1f Hz" % dominant(struck(38, 100)))
 
+
+    def test_a10_the_kicks_pitch_falls(self):
+        """A kick is a pitch envelope before it is anything else.
+
+        Measured by counting zero crossings of a low-passed copy rather than
+        by FFT: the sweep runs from about 105 Hz down to about 50, and a
+        window short enough to watch it move is far too short to resolve
+        those frequencies in a spectrum.
+        """
+        y = low_passed(struck(36, 120, blocks=120))
+        start = zero_cross_hz(y, 0, 30)
+        settled = zero_cross_hz(y, 120, 40)
+        self.assertGreater(start, 0.0)
+        drop = 1.0 - settled / start
+        self.assertGreaterEqual(
+            drop, 0.35,
+            "kick fell only %.0f%%: %.1f Hz -> %.1f Hz"
+            % (100 * drop, start, settled))
+
+    def test_a11_the_snares_wires_are_noise_not_tones(self):
+        y = struck(38, 110, blocks=120)
+        for at in (5, 40, 120):
+            with self.subTest(ms=at):
+                flat = flatness(y, at, 40, 1500, 8000)
+                self.assertGreaterEqual(
+                    flat, 0.35,
+                    "wire band at %d ms measured %.3f - a pure tone is 0.000 "
+                    "and white noise about 0.54" % (at, flat))
+
+    def test_a12_the_wires_carry_the_drum_and_outlast_the_head(self):
+        y = struck(38, 110, blocks=120)
+        for at in (40, 150):
+            with self.subTest(ms=at):
+                share = band_share(y, at, 40, 1500, 8000)
+                self.assertGreaterEqual(
+                    share, 0.35,
+                    "wire band was %.1f%% of the snare's energy at %d ms"
+                    % (100 * share, at))
 
 if __name__ == "__main__":
     unittest.main()
