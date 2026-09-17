@@ -272,14 +272,16 @@ class ResetAndDeinitWalkTheNodeList(unittest.TestCase):
         effect = TwoNodes.create(source(), RATE)
         delay = effect.delay
         effect.deinit()
-        with self.assertRaises(RuntimeError):
+        # A released audioif node raises ValueError on every target, as
+        # CircuitPython does (audioif e1f3704).
+        with self.assertRaises(ValueError):
             audiocore.get_buffer(delay)
 
     def test_planted_fault_an_intermediate_node_left_live(self):
         effect = KeepsTheDelayLive.create(source(), RATE)
         delay = effect.delay
         effect.deinit()
-        audiocore.get_buffer(delay)      # no RuntimeError: the fault
+        audiocore.get_buffer(delay)      # no ValueError: the fault
 
     def test_deinit_is_idempotent_and_spares_the_source(self):
         signal = source()

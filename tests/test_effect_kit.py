@@ -222,7 +222,7 @@ class ClickTest(unittest.TestCase):
 class StateTest(unittest.TestCase):
     """STATE - reset(), deinit(), capabilities, and the allocation rule."""
 
-    def _run(self, cls, **options):
+    def _run(self, cls, extra_nodes=(), **options):
         probe, _ = probes.burst_silence(hz=1000.0, on_ms=200.0, total_s=2.0)
         source = probes.ArraySource(probe, rate=RATE, block=256)
         quiet = probes.ArraySource(probes.silence(96000), rate=RATE,
@@ -236,9 +236,12 @@ class StateTest(unittest.TestCase):
                                  block=256, probe="burst_silence",
                                  class_name=name)
 
+        nodes = None
+        if extra_nodes:
+            nodes = kit.enumerate_nodes(effect) + list(extra_nodes)
         return kit.state(effect, pull=pull, swap=switch.swap,
                          probe_source=source, silent_source=quiet,
-                         blocks=64, alloc_pulls=100)
+                         blocks=64, alloc_pulls=100, nodes=nodes)
 
     def test_a_delay_line_left_full_after_reset_is_red(self):
         options = {"time_ms": 150.0, "feedback": 0.5, "mix": 0.5}
@@ -305,17 +308,25 @@ class StateTest(unittest.TestCase):
     def test_a_node_with_no_deinit_is_recorded_and_is_not_a_leak(self):
         """The other half of the split, and the reason there is one.
 
-        `audioroute.Splitter` has no `deinit()` on any of the three
-        interpreters (audioif#58), so a class that fans a source out cannot
-        release it and is not at fault for that. Reported as one number with
-        real leaks, it made every audioif-tier class read like a leak, and
-        ruling the whole row `partial` hid genuine leaks behind the gap.
+        A node type with no `deinit()` cannot be released by anybody, so a
+        class that builds one is not at fault for it. Reported as one number
+        with real leaks, it made every audioif-tier class read like a leak.
+        `audioroute.Splitter` was that node until audioif#58 gave it a
+        `deinit()`; Compressor now releases everything, and the gap half is
+        held to its behaviour with a planted node that has none.
         """
         result = self._run(audioeffects.Compressor)
         self.assertEqual(result["values"]["leaked_nodes_after_deinit"], [])
-        gaps = result["values"]["nodes_without_deinit"]
-        self.assertEqual(len(gaps), 1)
-        self.assertIn("Splitter", gaps[0])
+        self.assertEqual(result["values"]["nodes_without_deinit"], [])
+
+        class NoDeinit:
+            channel_count = 2
+
+        planted = self._run(audioeffects.Compressor,
+                            extra_nodes=[("planted", NoDeinit())])
+        self.assertEqual(planted["values"]["leaked_nodes_after_deinit"], [])
+        self.assertEqual(planted["values"]["nodes_without_deinit"],
+                         ["planted [NoDeinit]"])
 
 
 class DigestTest(unittest.TestCase):

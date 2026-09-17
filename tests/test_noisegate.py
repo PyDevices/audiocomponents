@@ -473,12 +473,11 @@ class Tier1Invariants(unittest.TestCase):
         material, not silence, and the readout is the first block after the
         reset.
 
-        The loud pass is at -20 dBFS rather than full scale for a reason
-        the next test measures: `audioif_dynamics_reset` keeps the
-        side-chain filter memory on purpose (`audioif_dynamics.c:281-288`),
-        and after a full-scale pass that stale state alone is loud enough
-        to reopen the gate - which would mask the fault instead of
-        exposing it.
+        The loud pass is at -20 dBFS: before audioif 1f33077 the node kept
+        its side-chain filter memory across reset, and after a full-scale
+        pass that stale state alone reopened the gate and masked the fault.
+        The node clears it now (see the next test); the level stays so the
+        planted fault's reading is unchanged.
         """
         loud = probes.sine(1000.0, 0.2, loud_dbfs)
         quiet = probes.sine(1000.0, 0.2, -60.0)
@@ -510,22 +509,18 @@ class Tier1Invariants(unittest.TestCase):
                          "a memoryless class's reset; see this class's own "
                          "reset test")
 
-    def test_reset_does_not_clear_the_key_filters_and_the_node_says_so(self):
-        """A measured Tier 1 miss, committed rather than described.
+    def test_reset_clears_the_key_filters_too(self):
+        """Once a measured Tier 1 miss, now closed by the node.
 
-        `audioif_dynamics_reset` keeps the side-chain filter memory on
-        purpose (`audioif_dynamics.c:281-288`), and the class has no way to
-        clear it: the state is private to the node and nothing in the
-        keyword table reaches it. So after a loud pass the detector reads a
-        stale high-pass state as signal for a few milliseconds and opens
-        the gate on material that should leave it shut - here, a -60 dBFS
-        tone under a -39.7 dB threshold, on a class whose reset walk did
-        everything it could. Committed so the number is in the record; if
-        audioif ever clears those filters this test goes red on purpose,
-        and the evidence pack's Tier 1 reset row is what should then
-        change.
+        `audioif_dynamics_reset` used to keep the side-chain filter memory,
+        so after a loud pass the detector read a stale high-pass state as
+        signal and opened the gate on a -60 dBFS tone under the threshold
+        (33 LSB). audioif 1f33077 clears the key filters on reset, as a
+        fresh build does, so the first block after a loud pass is exact
+        zero - from full scale as well as from -6 dBFS.
         """
-        self.assertGreater(self._after_reset(loud_dbfs=-6.0), 16)
+        self.assertEqual(self._after_reset(loud_dbfs=-6.0), 0)
+        self.assertEqual(self._after_reset(loud_dbfs=0.0), 0)
 
     def test_a_duck_build_still_renders_after_reset(self):
         """Upstream CircuitPython's `Mixer.reset_buffer` stops its voices
@@ -561,7 +556,12 @@ class Tier1Invariants(unittest.TestCase):
         for node in nodes:
             if not hasattr(node, "deinit"):
                 continue
-            with self.assertRaises(RuntimeError):
+            if not hasattr(node, "_get_buffer"):
+                # audioroute.Splitter releases (audioif#58) but is not a
+                # sample itself; its taps are, and they are in the list.
+                self.assertTrue(node._deinited)
+                continue
+            with self.assertRaises(ValueError):
                 audiocore.get_buffer(node)
         effect.deinit()          # idempotent
 
