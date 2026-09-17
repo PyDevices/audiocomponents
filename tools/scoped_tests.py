@@ -22,7 +22,33 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+
+
+def _find_root():
+    """The checkout whose tests to run: the one the caller is standing in.
+
+    A builder works in its own worktree and calls the main checkout's copy of
+    this script, as the phase briefs tell it to. Resolving the root from this
+    file's location then scanned the main checkout, where the builder's new
+    test file does not exist -- Phase 4's Distortion builder got "no test
+    file found" for a test it had just written, and other builders quoted
+    a green run that never included their class. So the root is the nearest
+    ancestor of the current directory that is an audiocomponents checkout,
+    and only when there is none the checkout this file lives in.
+    """
+    here = os.getcwd()
+    while True:
+        if os.path.isfile(os.path.join(here, "lib", "audioeffects",
+                                       "_component.py")) and \
+                os.path.isdir(os.path.join(here, "tests")):
+            return here
+        parent = os.path.dirname(here)
+        if parent == here:
+            return os.path.dirname(HERE)
+        here = parent
+
+
+ROOT = _find_root()
 TESTS = os.path.join(ROOT, "tests")
 LIB_EFFECTS = os.path.join(ROOT, "lib", "audioeffects")
 
@@ -209,6 +235,7 @@ def main(argv):
     modules = _modules()
     chosen, why = choose(scope, modules)
     print("scope %s: %s" % (scope, why))
+    print("root %s" % ROOT)
     print("running %d of %d test files" % (len(chosen), len(modules)))
     for module in chosen:
         print("  %s" % module)
