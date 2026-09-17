@@ -256,6 +256,35 @@ class ShortLatency(AutoPan):
     LATENCY_SAMPLES = 256
 
 
+class SwappedSides(AutoPan):
+    """The pre-10.3.0 note pairing: each gain table on the other column.
+
+    CircuitPython 10.3.0 reversed synthio's panning sign, so the pairing the
+    class shipped with put the left table on the right. Every sweep test is
+    symmetric and stayed green through it; only Centre shows which side is
+    which."""
+
+    NAME = 'AutoPan'
+
+    def _modulate_synth(self, rate_hz, wave_l, wave_r):
+        AutoPan._modulate_synth(self, rate_hz, wave_r, wave_l)
+
+
+def side_reading(cls=None, centre=-0.8):
+    """Output RMS per channel after the first block, at a Centre offset."""
+    data = sine(1000.0, 0.5, -6.0)
+    source = probes.ArraySource(data, rate=RATE, channels=2, block=256)
+    effect = (cls or AutoPan).create(source, RATE, rate=2.0, depth=0.1,
+                                     centre=centre)
+    try:
+        wet = probes.render(effect.output, 16000, rate=RATE, channels=2,
+                            block=256, class_name="AutoPan")
+    finally:
+        effect.deinit()
+    rms = np.sqrt((wet.float[2048:] ** 2).mean(axis=0))
+    return float(rms[0]), float(rms[1])
+
+
 def _surface_reading(effect):
     cls = type(effect)
     return (
@@ -342,6 +371,17 @@ class TierOne(unittest.TestCase):
 
 
 class TierTwo(unittest.TestCase):
+
+    def test_centre_left_sounds_left_and_right_sounds_right(self):
+        # The law puts pan -1 at theta 0: left gain 1, right gain 0.
+        left, right = side_reading(centre=-0.8)
+        self.assertGreater(left, 4.0 * right, (left, right))
+        left, right = side_reading(centre=0.8)
+        self.assertGreater(right, 4.0 * left, (left, right))
+
+    def test_swapped_sides_are_red(self):
+        left, right = side_reading(cls=SwappedSides, centre=-0.8)
+        self.assertGreater(right, 4.0 * left, (left, right))
 
     def test_a1_constant_power_at_defaults_rate(self):
         # Default Rate is 2 Hz; two periods is enough to see the sweep.
