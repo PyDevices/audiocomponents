@@ -207,6 +207,14 @@ def open_level_gates(node, voices, silence):
     the voices their real sources. Set the levels first: a level moved
     after this waits for a zero crossing, as it should.
 
+    `silence` must hold **at least two frames**. A one-frame mono sample is
+    two bytes, less than the packed word the native mixer consumes per
+    loop, and `get_buffer` never returns on MicroPython or CircuitPython
+    (audioif#85); the CPython twin returns, so the hang only shows on a
+    board or a native desktop build. Two Phase 4 classes lost their mono
+    renders to it. `bytes(2 * 2 * channels)` is the shape the classes here
+    use.
+
     `audiocore.get_buffer` is compiled out of CircuitPython's default board
     builds (CIRCUITPY_AUDIOCORE_DEBUG), so there this does nothing and the
     first block keeps upstream's behaviour.
