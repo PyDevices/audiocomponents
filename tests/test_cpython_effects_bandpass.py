@@ -559,12 +559,14 @@ class TierTwo(unittest.TestCase):
 
     # -- T1: 0 dB peak, at every Q ------------------------------------
     #
-    # DISCONFIRMED below 100 Hz once Q >= 4, and the cause is the kernel's
-    # float32 recursion, not this class (audioif#64; audiocomponents#39; the
-    # decomposition and the map are workspace docs/effects-internal/probes/phase2_probes/bandpass_lowcorner.py).
-    # The four tests below are the bound: where the row holds, where it does
-    # not, that the fault fires through the class, and that the measurement
-    # can fail at all.
+    # DISCONFIRMED at one cell. Until audioif#64 the kernel's float32
+    # direct-form I recursion missed the bar in 11 of 56 cells below 100 Hz
+    # at Q >= 4, worst -0.50 dB at the macro stops. Its transposed direct
+    # form II, at the cebb7ca floor, leaves 1 of 56: -0.091 dB at f0 31.5 Hz,
+    # Q 32 (workspace docs/effects-internal/probes/phase2_probes/
+    # bandpass_lowcorner.py, `map`; audiocomponents#66). The tests below are
+    # the bound: where the row holds, the one cell where it does not, that
+    # the fault fires through the class, and that the measurement can fail.
 
     #: Where T1 holds, measured rather than assumed: every width the surface
     #: reaches at f0 >= 100 Hz, and every centre it reaches at Q <= 2.
@@ -597,14 +599,11 @@ class TierTwo(unittest.TestCase):
                 measured = tone_gain_db(1000.0, 1000.0, q, sections=2)
                 self.assertLess(abs(measured), 0.05)
 
-    def test_t1_is_disconfirmed_at_the_two_macro_stops(self):
-        """The disconfirmation, kept as a test so it cannot come back green
-        without anyone noticing - and so that the day audioif#64 lands, this
-        is the test that says so.
-
-        The sweep is the kit's own driver over the spans T1 quantifies over,
-        in the class's macro units, and it is run at the stops first because
-        that is where the worst cell is.
+    def test_t1_holds_at_the_two_macro_stops(self):
+        """This test used to hold the disconfirmation at the stops - worst
+        -0.50 dB at Frequency 0 against Width 127 - and said it would be the
+        one to announce audioif#64. It did: at the cebb7ca floor the kit's
+        sweep over the spans T1 quantifies over passes, stops included.
         """
         effect = build(frequency=1000.0, q=0.707)
 
@@ -621,11 +620,15 @@ class TierTwo(unittest.TestCase):
                 measure_at, bar=0.05, unit="dB", name="T1")
         finally:
             effect.deinit()
-        self.assertFalse(swept["passed"], swept["values"])
-        self.assertTrue(swept["values"]["at_a_stop"])
-        self.assertEqual(swept["values"]["at_units"],
-                         {"Frequency": 20.0, "Width": 32.0})
-        self.assertLess(swept["values"]["worst"], -0.4)
+        self.assertTrue(swept["passed"], swept["values"])
+        self.assertLess(abs(swept["values"]["worst"]), 0.05)
+
+    def test_t1_is_still_disconfirmed_at_31_5_hz_and_q_32(self):
+        """The one cell of 56 the transposed kernel leaves outside the bar,
+        kept as a test so it cannot come back green unnoticed. Settled for
+        twenty seconds it still reads -0.08 dB, so it is not the probe's
+        settle rule; the pack's map reads -0.091 at -20 dBFS."""
+        self.assertLess(tone_gain_db(31.5, 31.5, 32.0), -0.05)
 
     def test_planted_fault_t1_a_numerator_that_is_not_the_constant_zero_db(
             self):

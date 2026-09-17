@@ -52,17 +52,17 @@ things.** One belongs to this build and bounds what the class promises; four
 belong to RBJ's prototype, which this class tracks to nine thousandths of a
 decibel wherever it was checked.
 
-**The build's one - the 0 dB peak is not held at a low centre with a narrow
-width.** T1 says the gain at f0 is 0.00 dB +- 0.05 at every width. Measured
-2026-09-07 over the whole `Frequency` x `Width` grid at four probe levels, it
-holds **at every width for f0 >= 100 Hz, and at every centre for Q <= 2**, and
-it does not hold in eleven of fifty-six cells below that - all of them f0
-<= 63 Hz with Q >= 4, worst **-0.50 dB at f0 20 Hz with Q 32**, which is the
-`Frequency` knob's bottom stop against the `Width` knob's top. Two knob turns
-from patch 5 `Sub Window`. What it sounds like: a sub-bass resonance up to
-half a decibel quieter than the same knob setting an octave higher, and the
-error changes sign with the signal level (+0.09 dB at -3 dBFS, -0.48 at -12,
-+0.44 at -20), so it is not a trim anyone can dial out.
+**The build's one - the 0 dB peak is not held at one low, narrow cell.** T1
+says the gain at f0 is 0.00 dB +- 0.05 at every width. Measured 2026-09-17 at
+the audioif cebb7ca floor over the whole `Frequency` x `Width` grid at four
+probe levels, it holds in fifty-five of fifty-six cells, both knob stops
+included, and misses in one: **-0.091 dB at f0 31.5 Hz with Q 32**. What it
+sounds like: nothing anyone will hear - a tenth of a decibel on the narrowest
+sub-bass band the knobs reach.
+
+It used to be eleven cells, all f0 <= 63 Hz with Q >= 4, worst -0.50 dB at
+the `Frequency` knob's bottom stop against the `Width` knob's top, with an
+error that changed sign with the signal level. The history of why follows.
 
 The cause is not this class and not the prototype. RBJ's closed form at that
 cell is `+0.00000 dB`, and `audiobiquad`'s own five coefficients, read off the
@@ -73,8 +73,9 @@ biquad with float state, and at `w0 = 0.0026 rad` its two feedback
 coefficients cancel to seven parts in a million, so the increment single
 precision has to carry is 2e-5 of the numbers being differenced. Filed as
 audioif#64 with the fix (a transposed direct form II costs nothing at run
-time); this class is parked on it as audiocomponents#39. The measurement, the
-map and the four-way decomposition are
+time), and the fix landed; the one cell left is what it did not reach
+(audiocomponents#66). The measurement, the map and the four-way
+decomposition are
 `workspace docs/effects-internal/probes/phase2_probes/bandpass_lowcorner.py`.
 
 **The prototype's four**, each measured against RBJ's closed form at the
@@ -130,10 +131,10 @@ from . import _component
 
 
 class BandPass(_component.Component):
-    """A resonant band-pass: 0 dB at the centre at every width above 100 Hz,
-    exact zeros at DC and Nyquist, +-6 dB/octave skirts (+-12 with `Slope`
-    on). Below 100 Hz at Q >= 4 the peak loses up to half a decibel - the
-    kernel's float32 recursion, audioif#64, module docstring."""
+    """A resonant band-pass: 0 dB at the centre at every width, exact zeros
+    at DC and Nyquist, +-6 dB/octave skirts (+-12 with `Slope` on). The one
+    exception is a tenth of a decibel at f0 31.5 Hz with Q 32 - module
+    docstring."""
 
     NAME = 'BandPass'
     DISPLAY_NAME = 'Band Pass'
