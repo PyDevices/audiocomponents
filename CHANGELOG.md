@@ -81,6 +81,24 @@ there, and are recorded in its changelog.
   nearest tom for every tom number a kit does not have. Each machine now
   sounds exactly the notes in its `NOTE_MAP`, and nothing else.
 
+### Fixed
+
+- **The effects catch up with the audioif floor at cebb7ca** (#66). Moving
+  `AUDIOIF_PIN` there for `acoustickit` brought five deliberate audioif
+  changes, and 27 tests went red. `AutoPan`'s Centre was mirrored, because
+  CircuitPython 10.3.0 reversed synthio's panning sign; its notes are paired
+  the other way now. A fresh mixer voice or synthio note now starts at level 0
+  and waits for a zero crossing, so the first block of `AutoPan`, `DeEsser`
+  and `MultibandCompressor` came out silent and then clicked in; each opens
+  its gates on one block of silence before it takes its source
+  (`_component.open_level_gates`). `Saturation`'s shelves moved to
+  `audiobiquad`, because `synthio.Biquad` is CircuitPython's Q15 arithmetic
+  again (audioif#77) and tape had lost its head bump. `BandPass` T1 now
+  holds in 55 of 56 cells, both stops included (audioif#64). The rest were
+  tests holding audioif's old behaviour: released nodes raise `ValueError`,
+  `Splitter` releases, `Dynamics.reset()` clears its key filters, and there
+  are 55 instruments.
+
 ### Removed
 
 - **`Rotary` is removed.** The Leslie-style rotating-speaker effect is no longer in `audioeffects`; nothing replaces it yet.

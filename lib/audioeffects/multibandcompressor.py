@@ -105,6 +105,8 @@ the three Mid macros are inert; the class says so in `macro_is_live()`.
 
 VENDOR = "PyDevices"
 
+from array import array
+
 from . import _component
 
 try:
@@ -320,6 +322,11 @@ class MultibandCompressor(_component.Component):
         #: filters that are already silent.
         self._mixer = self._own(audiomixer_mixer(rate, channels, taps),
                                 reset=self._reset_mixer)
+        #: The silence `_play_voices` opens the mixer's level gates on. It
+        #: holds no state, so it declines its own reset.
+        self._silence = self._own(audiocore.RawSample(
+            array("h", bytes(2 * 2 * channels)),
+            sample_rate=rate, channel_count=channels), reset=False)
         self._sections = []
         self._detectors = []
         for band in range(bands):
@@ -412,7 +419,18 @@ class MultibandCompressor(_component.Component):
         return node
 
     def _play_voices(self):
-        """Hand every voice its source. Also the second half of `reset()`."""
+        """Hand every voice its source. Also the second half of `reset()`.
+
+        The gates open first, on one block of silence, so the dry voice is
+        at unity from its first sample (`_component.open_level_gates`);
+        without it a Mix 0 bypass rendered its first 256 frames silent on a
+        ramp. This runs after the macros, so the levels it opens at are the
+        ones the class was built with.
+        """
+        _component.open_level_gates(
+            self._mixer,
+            [self._mixer.voice[index] for index in range(self._bands + 1)],
+            self._silence)
         self._mixer.play(self._taps[0], voice=0, loop=True)
         for band in range(self._bands):
             self._mixer.play(self._detectors[band], voice=band + 1,

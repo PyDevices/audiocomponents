@@ -280,8 +280,6 @@ class DeEsser(_component.Component):
         band_only = bool(hf_only) or bool(listen)
         pre.voice[0].level = 0.0 if band_only else 1.0
         pre.voice[1].level = 1.0 if band_only else 0.0
-        pre.voice[0].play(raw.tap(0))
-        pre.voice[1].play(band.tap(0))
 
         duck = audiodynamics.Dynamics(
             audiodynamics.DYN_LIMIT,
@@ -300,11 +298,10 @@ class DeEsser(_component.Component):
         # comparison needs the whole signal, so the key cannot be the band.
         duck.key(top.tap(0))
 
+        # Voice 0 plays the dry, broadband; 1 the low half, HF-only; 2 the
+        # dry high half, HF-only; 3 the ducked stream, both modes. They are
+        # handed their sources at the end of construction - see there.
         out = audiomixer.Mixer(voice_count=4, **self._pcm(1024))
-        out.voice[0].play(raw.tap(1))    # the dry, broadband
-        out.voice[1].play(lows[1])       # the low half, HF-only
-        out.voice[2].play(band.tap(1))   # the dry high half, HF-only
-        out.voice[3].play(duck)          # the ducked stream, both modes
 
         # The class does NOT end in a mixer, and that is not decoration.
         # On CircuitPython `audiomixer.Mixer.reset_buffer` *stops* every
@@ -387,6 +384,21 @@ class DeEsser(_component.Component):
         self._init_macros((frequency, range_db, sensitivity_db,
                            1.0 if hf_only else 0.0, release_ms, attack_ms,
                            1.0 if listen else 0.0), patch)
+
+        # The voices get their sources last, after the macros have set every
+        # level and corner. Since CircuitPython 10.3.0 a fresh mixer voice
+        # starts at level 0 and takes its level only when its signal crosses
+        # zero, so a Range 0 bypass rendered its first 256 frames silent on
+        # a ramp, and an impulse at frame 0 never came through at all. One
+        # block of silence opens every gate at the level just set
+        # (`_component.open_level_gates`); then each voice takes its source,
+        # `pre` before `out` because `out`'s voice 3 pulls through `pre`.
+        _component.open_level_gates(pre, [pre.voice[0], pre.voice[1]],
+                                    self._silence)
+        _component.open_level_gates(
+            out, [out.voice[index] for index in range(4)], self._silence)
+        for mixer, index, sample in self._voices:
+            mixer.voice[index].play(sample)
 
     # -- reset ---------------------------------------------------------
 

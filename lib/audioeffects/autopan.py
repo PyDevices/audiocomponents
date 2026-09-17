@@ -314,13 +314,30 @@ class AutoPan(_component.Component):
         if synth is None:
             synth = synthio.Synthesizer(
                 sample_rate=self._sample_rate, channel_count=2)
-            # CPython synthio pans +1 to the left column and -1 to the right
-            # (scaled panning in synthio.py). Native builds match that pair.
+            # Since CircuitPython 10.3.0, panning > 0 attenuates the LEFT
+            # channel, so -1 lands a note on the left column alone and +1 on
+            # the right, on every target (audioif 4ec5718). The pre-10.3.0
+            # pairing was the reverse and put each gain on the wrong side.
+            #
+            # A fresh note renders at level 0 until its output crosses zero
+            # (the same 10.3.0 change), and a gain table never does, so left
+            # alone the first block is silent and the gain then steps in -
+            # a click on whatever is already playing. The notes start on a
+            # silent waveform for one block, which opens the gate at its
+            # first sample (see `_component.open_level_gates`), and take
+            # their tables after it.
+            silent = array("h", bytes(2 * len(wave_l)))
             note_l = synthio.Note(
-                frequency=rate_hz, waveform=wave_l, panning=1.0)
+                frequency=rate_hz, waveform=silent, panning=-1.0)
             note_r = synthio.Note(
-                frequency=rate_hz, waveform=wave_r, panning=-1.0)
+                frequency=rate_hz, waveform=silent, panning=1.0)
             synth.press((note_l, note_r))
+            import audiocore
+            pull = getattr(audiocore, "get_buffer", None)
+            if pull is not None:
+                pull(synth)
+            note_l.waveform = wave_l
+            note_r.waveform = wave_r
             self._synth = synth
             self._note_l = note_l
             self._note_r = note_r

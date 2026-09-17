@@ -189,6 +189,38 @@ def macro_of(span, value):
 
 
 # --------------------------------------------------------------------------
+# Level gates
+
+
+def open_level_gates(node, voices, silence):
+    """Render one block of silence through `node` so every voice starts at
+    its level instead of at zero. Returns whether it could.
+
+    Since CircuitPython 10.3.0 a mixer voice or a synthio note does not take
+    a level, amplitude or pan change until its signal is at zero or changes
+    sign, and a fresh one starts at level 0 (audioif 4ec5718). So a class's
+    first block is gated: silent for material that does not cross zero in
+    it - a gain table, a ramp, an impulse at frame 0 - and then the level
+    steps in at the block boundary, which is a click. A zero sample opens
+    the gate at once, so each voice in `voices` plays `silence` (a looped
+    all-zero sample the node accepts) for one pull; the caller then hands
+    the voices their real sources. Set the levels first: a level moved
+    after this waits for a zero crossing, as it should.
+
+    `audiocore.get_buffer` is compiled out of CircuitPython's default board
+    builds (CIRCUITPY_AUDIOCORE_DEBUG), so there this does nothing and the
+    first block keeps upstream's behaviour.
+    """
+    pull = getattr(audiocore, "get_buffer", None)
+    if pull is None:
+        return False
+    for voice in voices:
+        voice.play(silence, loop=True)
+    pull(node)
+    return True
+
+
+# --------------------------------------------------------------------------
 # Metadata
 
 
