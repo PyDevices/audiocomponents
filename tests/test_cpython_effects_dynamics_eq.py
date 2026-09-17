@@ -53,8 +53,6 @@ HighPass = _highpass.HighPass
 LowPass = _lowpass.LowPass
 ParametricEQ = _parametriceq.ParametricEQ
 FILTERS = {"LowPass": LowPass, "HighPass": HighPass}
-import audiofilters
-import synthio
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 from effects_measure import (SAMPLE_RATE, peak, source,  # noqa: E402
@@ -163,14 +161,19 @@ class DynamicsAndEQTest(unittest.TestCase):
 
     def test_a_low_shelf_lifts_its_shelf_and_not_the_whole_band(self):
         # An 80 Hz LOW_SHELF asked for +1.5 dB used to lift everything below
-        # it by +13.4 - the coefficients had nowhere near enough resolution to
-        # describe a gentle shelf that low.
+        # it by +13.4 - Q15 coefficients have nowhere near enough resolution
+        # to describe a gentle shelf that low. audioif widened them, and since
+        # audioif#77 the widened kernel is audiobiquad's alone: synthio.Biquad
+        # runs CircuitPython's Q15 arithmetic on every target again (-7.65 dB
+        # here at the cebb7ca floor), so the claim is read where it lives, and
+        # `Saturation` builds its shelves there.
+        import audiobiquad
+
         def shelf(source_sample):
-            node = audiofilters.Filter(
-                filter=synthio.Biquad(
-                    synthio.FilterMode.LOW_SHELF, 80.0, Q=0.707,
-                    A=audioeffects._core.db_to_amplitude(1.5)),
-                **audioeffects._core.pcm())
+            node = audiobiquad.Biquad(
+                mode=audiobiquad.LOW_SHELF, frequency=80.0, Q=0.707,
+                gain_db=1.5, sample_rate=audioeffects._core.SAMPLE_RATE,
+                channel_count=audioeffects._core.CHANNEL_COUNT)
             node.play(source_sample)
             return node
 

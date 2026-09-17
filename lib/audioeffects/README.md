@@ -266,33 +266,34 @@ macros move their children's controls.
 
 ## A note on how low a filter can go
 
-Anywhere in the band, is the short answer - but it is worth knowing that
-this was not always true, because the failure was silent and you may still
-meet it on a stock CircuitPython board (below).
+Anywhere in the band on `audiobiquad`, which is what the rebuilt filters and
+EQs here are built on. On `synthio.Biquad` - and so `audiofilters.Filter` and
+a `Note.filter` chain - the low end is CircuitPython's, on every target, and
+it is worth knowing why.
 
-Every biquad in the engine used to keep its coefficients as Q15 integers,
-which is the right trade on a microcontroller and costs low frequencies.
-Below about 300 Hz they quantized into something that was no longer the
-filter you asked for: a `LowPass` at 100 Hz returned **silence**, a
-`HighPass` at 30 Hz returned **+21 dB of noise**, and a low shelf at 80 Hz
-lifted the whole band by 13.4 dB instead of its 1.5. A second, unrelated
-shortcut in the same file - one polynomial fitted to sine and cosine over
-[0, π/2], which is only 12 kHz at 48 kHz - broke the *top* of the band too,
-badly enough that a `HighPass` at 22 kHz passed its entire stopband.
+CircuitPython keeps a biquad's coefficients as Q15 integers, which is the
+right trade on a microcontroller and costs low frequencies. Below about
+300 Hz they quantize into something that is no longer the filter you asked
+for: a `LowPass` at 100 Hz returned **silence**, a `HighPass` at 30 Hz
+returned **+21 dB of noise**, and a low shelf at 80 Hz lifted the whole band
+by 13.4 dB instead of its 1.5. A low-pass fed a DC burst can also park at a
+fixed point for ever - half of full scale from a 40 Hz low-pass.
 
-Both are fixed. Coefficients now get as many fractional bits as each
-individual filter has room for, the recursion accumulates in 64 bits and
-keeps its feedback below the sample grid, and the trigonometry is a proper
-series. Measured against the closed-form response, every mode lands within
-**0.03 dB from 50 Hz to 22 kHz**. Ten octave bands all read +6.01 dB or
-better on a +6 dB request - the claim `GraphicEQ` used to carry, and read on
-`ParametricEQ` since both were rebuilt onto `audiobiquad`. The pre-rebuild
-`MultibandCompressor`'s three bands recombined flat to 0.23 dB from 30 Hz to
-8 kHz on those Q15 biquads; the rebuilt class is on `audiobiquad`'s float
-sections instead, for the tail rather than the shape, and sums to 0.12 dB
-from 30 Hz to 20 kHz. [audioif's `docs/upstream-diff.md`](https://github.com/PyDevices/audioif/blob/main/docs/upstream-diff.md),
-"The biquads were Q15, so they could not go low", has the arithmetic, the
-before-and-after table, and what it cost in instructions on an M0.
+audioif widened that arithmetic once for every biquad. Since audioif#77 the
+split is by ownership: `synthio.Biquad` is a node CircuitPython also has, so
+it runs CircuitPython's arithmetic everywhere (at the current floor that
+80 Hz shelf reads -7.65 dB), and the widened kernel belongs to
+`audiobiquad`, which is audioif's own. There, coefficients get as many
+fractional bits as each filter has room for, the recursion accumulates in
+64 bits and keeps its feedback below the sample grid, and the trigonometry
+is a proper series. Measured against the closed-form response, every mode
+lands within **0.03 dB from 50 Hz to 22 kHz**. Ten octave bands all read
++6.01 dB or better on a +6 dB request, read on `ParametricEQ`. The rebuilt
+`MultibandCompressor` sums to 0.12 dB from 30 Hz to 20 kHz on
+`audiobiquad`'s float sections. `Saturation` builds its shelves there too,
+and falls back to `synthio.Biquad` only where `audiobiquad` is missing.
+[audioif's `docs/upstream-diff.md`](https://github.com/PyDevices/audioif/blob/main/docs/upstream-diff.md),
+"The biquads were Q15, so they could not go low", has the arithmetic.
 
 Nothing refuses a low frequency and nothing ever did, because a
 `LadderFilter` sweeping down through 40 Hz is a legitimate thing to do.

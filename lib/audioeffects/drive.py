@@ -35,6 +35,15 @@ except ImportError:      # a stock CircuitPython board, or an old audioif
 _DM = audiofilters.DistortionMode
 _FM = synthio.FilterMode
 
+try:
+    import audiobiquad
+except ImportError:
+    audiobiquad = None
+    _SHELF_MODES = {}
+else:
+    _SHELF_MODES = {_FM.LOW_SHELF: audiobiquad.LOW_SHELF,
+                    _FM.HIGH_SHELF: audiobiquad.HIGH_SHELF}
+
 
 def _push(drive, unity):
     """A 0..1 drive knob as (pre_gain_db, post_gain_db).
@@ -127,12 +136,13 @@ class Fuzz(_core.Effect):
 #: gain. `shelves` is the tone shaping that comes with the medium, as
 #: (filter mode, frequency, gain at full amount).
 #:
-#: The low shelves here would have been meaningless a phase ago: the
-#: engine's biquads were Q15 and anything below roughly 300 Hz quantized
-#: into nonsense, so "tape" had a top octave and no head bump. They are
-#: accurate to a hundredth of a decibel now - see README, "A note on how
-#: low a filter can go" - which is what lets the two mediums differ at both
-#: ends rather than only above 10 kHz.
+#: The low shelves here need `audiobiquad`. `synthio.Biquad` runs
+#: CircuitPython's Q15 arithmetic on every target (audioif#77), and there
+#: an 80 Hz shelf asked for +1.5 dB reads -7.65 dB, so "tape" would have a
+#: top octave and no head bump. `audiobiquad` is accurate to a hundredth of
+#: a decibel down there - see README, "A note on how low a filter can go" -
+#: which is what lets the two mediums differ at both ends rather than only
+#: above 10 kHz. Where it is missing, the shelves fall back to synthio.
 _CHARACTERS = {
     # Asymmetric, so a 2nd harmonic level with the 3rd: the valve
     # signature. This is also the chain this class has always built, which
@@ -189,13 +199,45 @@ class Saturation(_core.Effect):
         if not shelves:
             self.tone = None
             return
-        self.tone = audiofilters.Filter(
-            filter=[synthio.Biquad(shelf_mode, _core.check_hz(hz), Q=0.707,
-                                   A=_core.db_to_amplitude(gain_db * amount))
+        if audiobiquad is None:
+            self.tone = audiofilters.Filter(
+                filter=[synthio.Biquad(
+                    shelf_mode, _core.check_hz(hz), Q=0.707,
+                    A=_core.db_to_amplitude(gain_db * amount))
                     for shelf_mode, hz, gain_db in shelves],
-            **_core.pcm())
-        self.tone.play(self.node)
-        self._output = self.tone
+                **_core.pcm())
+            self.tone.play(self.node)
+            self._output = self.tone
+            return
+        node = self.node
+        self.shelves = []
+        for shelf_mode, hz, gain_db in shelves:
+            shelf = audiobiquad.Biquad(
+                mode=_SHELF_MODES[shelf_mode], frequency=_core.check_hz(hz),
+                Q=0.707, gain_db=gain_db * amount,
+                sample_rate=_core.SAMPLE_RATE,
+                channel_count=_core.CHANNEL_COUNT)
+            shelf.play(node)
+            self.shelves.append(shelf)
+            node = shelf
+        self.tone = node
+        self._output = node
+
+    # The base class resets and releases only its output node, which was
+    # the whole tone stage when that was one Filter. The shelves are a
+    # chain now, so the ones behind the output are walked here.
+
+    def reset(self):
+        _core.Effect.reset(self)
+        import audiocore
+        for shelf in getattr(self, "shelves", ())[:-1]:
+            audiocore.reset_buffer(shelf)
+
+    def deinit(self):
+        _core.Effect.deinit(self)
+        for shelf in getattr(self, "shelves", ())[:-1]:
+            shelf.deinit()
+        self.shelves = []
 
 
 class Bitcrusher(_core.Effect):
