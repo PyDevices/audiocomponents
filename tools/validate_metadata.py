@@ -244,7 +244,8 @@ def _literal_fields(module, errors):
     if not path:
         return
     try:
-        tree = ast.parse(open(path).read(), path)
+        with open(path, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), path)
     except (OSError, SyntaxError) as exc:
         _error(errors, "source", "cannot be parsed: %s" % exc)
         return

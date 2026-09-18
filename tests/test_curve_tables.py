@@ -204,7 +204,7 @@ def tables_by_marker():
     """
     found = {}
     for name, path in modules():
-        with open(path) as handle:
+        with open(path, encoding="utf-8") as handle:
             text = handle.read()
         for block_name, source in blocks_in(text):
             namespace = {"array": array}
