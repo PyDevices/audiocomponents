@@ -29,9 +29,14 @@ against the dry input and a "how far may this band ever move" limit on the
 band branch are therefore the *same number*, and shipping both would be two
 knobs for one thing. So `Mix` at `m` caps the deepest cut at
 `-20*log10(1 - m)` dB: **6.0 dB at 0.5, 12.0 at 0.75, 20.0 at 0.9, and no
-limit at 1**, which is where it ships. `Mix` 0 is a real bypass - the dry
-tap at unity, every other voice at zero - so it is byte-identical to the
-source and not merely flat.
+limit at 1**, which is where it ships. `Mix` 0 is a real bypass, and it is
+byte-identical to the source rather than merely flat: there is **no mixer in
+the path** at all there, because a mixer voice at level 1.0 is not unity -
+upstream's Q15 level is `1.0 * 32768` and the kernel divides by 32767, so
+the dry tap at unity came out one LSB high at every sample from 32736 up
+(audioif#95, three of 16384 on a full-scale ramp). The mixer's voices take
+their sources the first time Mix leaves 0, with their level gates opened on
+one block of silence first.
 
 **`expand=True` is a build, not a knob.** `audiodynamics.Dynamics` fixes its
 mode at construction, and a class that carried both a compressor and an
@@ -63,9 +68,13 @@ identity `MidSide`, on a graph that runs in 256-frame blocks throughout.
 Measured on the desktop against the class this replaces, five interleaved
 repeats of each: **1.46-1.56 ms per 256-frame stereo block against
 1.10-1.15**, about **45 % more**. Three of those nodes are new - the guard,
-the dry tap and the tail - and each is there because the shipped class has a
-defect without it: a long source vanishing, `Mix` 0 not being a real bypass,
-and silence on CircuitPython. The single 256-frame block size keeps every
+the dry tap and the tail. Two of them still earn it: `Mix` 0 is not a real
+bypass without the dry tap, and CircuitPython renders silence without the
+tail. The guard's reason has expired - it was there because a long source
+vanished into the Splitter's ring, and audioif#87 removed that ring limit,
+so at `977ef26` the graph renders the same bytes without it. It is a node
+this class could drop, once a board is free to re-take the row. The single
+256-frame block size keeps every
 node doing the same work per pull; it is not a saving, and the first
 measurement in this session said it was only because the machine was loaded.
 Neither figure is a board figure.
@@ -93,6 +102,7 @@ are not dropped.
 VENDOR = "PyDevices"
 
 import math
+from array import array
 
 import audiocore
 import audiofilters
@@ -115,10 +125,10 @@ except ImportError:
 
 
 #: Frames the guard hands back in one call, and so the block size the whole
-#: graph runs in. Anything at or under the Splitter's 8192-frame ring works
-#: (`audioif/src/shared/audioif_splitter.c:34-39`, ring at
-#: `audioif_splitter.h:20`); 256 is what `audiobiquad` and `audiodynamics`
-#: hand out themselves, so nothing in the chain re-blocks anything else.
+#: graph runs in. 256 is what `audiobiquad` and `audiodynamics` hand out
+#: themselves, so nothing in the chain re-blocks anything else. It used to
+#: have to be at or under the Splitter's 8192-frame ring as well; audioif#87
+#: took that limit out, so the clause no longer binds.
 _GUARD_FRAMES = 256
 
 #: The highest fraction of the sample rate a corner may reach. Both branches
@@ -225,21 +235,31 @@ class DynamicEQ(_component.Component):
         self._expand = bool(expand)
         self._corner_hz = 0.0
 
-        # The guard. A Splitter writes whatever its immediate source hands
-        # back in one call into an 8192-frame ring and drags every cursor
-        # past the overflow, and `audiocore.RawSample.get_buffer()` hands
-        # back its whole array in one call - so an impulse inside a
-        # 40000-frame probe reaches this class as silence unless something
-        # blocks the source first. `audiofilters.Filter` with no filter is a
-        # copy, and it is the cheapest node on the palette that hands out its
-        # own block size. Its `reset_buffer` drops its pending bytes and does
-        # **not** reset its source (`audioif/src/audiofilters/Filter.c:133-149`),
-        # which is what keeps the borrowed source untouched by `reset()`.
+        # The guard, which no longer guards the head. A Splitter used to
+        # write whatever its immediate source handed back in one call into an
+        # 8192-frame ring and drag every cursor past the overflow, and
+        # `audiocore.RawSample.get_buffer()` hands back its whole array in one
+        # call - so an impulse inside a 40000-frame probe reached this class
+        # as silence unless something blocked the source first. audioif#87
+        # took the ring limit out: at `977ef26` the unguarded split passes
+        # that impulse at full height, measured in
+        # `test_the_block_ladder_no_longer_needs_the_guard`.
+        #
+        # What it still does is set the block size the whole graph runs in,
+        # and it is the node the class was costed with, so it stays until a
+        # board is available to re-take the row without it.
+        # `audiofilters.Filter` with no filter is a copy, and it is the
+        # cheapest node on the palette that hands out its own block size. Its
+        # `reset_buffer` drops its pending bytes and does **not** reset its
+        # source (`audioif/src/audiofilters/Filter.c:133-149`), which is what
+        # keeps the borrowed source untouched by `reset()`.
         guard = audiofilters.Filter(
             filter=None, mix=1, buffer_size=_GUARD_FRAMES * channels * 2,
             sample_rate=rate, channel_count=channels,
             bits_per_sample=16, samples_signed=True)
         guard.play(self._source, loop=False)
+        #: What the Splitter pulls from, and what Mix 0 hands back.
+        self._head = guard
 
         split = audioroute.Splitter(guard, taps=3)
         taps = [split.tap(index) for index in range(3)]
@@ -331,7 +351,17 @@ class DynamicEQ(_component.Component):
         self._own(notch)
         self._own(guard)
 
+        #: The silence the level gates open on. Two frames, because a
+        #: one-frame mono sample is smaller than the packed word the native
+        #: mixer consumes and `get_buffer` never returns on it (audioif#85).
+        #: It holds no state, so it declines its own reset.
+        self._silence = self._own(audiocore.RawSample(
+            array("h", bytes(2 * 2 * channels)),
+            sample_rate=rate, channel_count=channels), reset=False)
+        self._tail = tail
         self._output = tail
+        self._primed = False
+        self._ready = False
 
         self._init_macros((frequency, q, threshold_db, ratio, attack_ms,
                            release_ms, mix, 1.0 if listen else 0.0), patch)
@@ -343,12 +373,68 @@ class DynamicEQ(_component.Component):
         # still sitting at their construction frequency. That head is on
         # every render and no later macro move can reach it.
         self._play_voices()
+        self._ready = True
+        self._refresh_output()
 
     def _play_voices(self):
-        """Hand every voice its source. Also the second half of `reset()`."""
+        """Hand every voice its source. Also the second half of `reset()`.
+
+        The gates open first, on one block of silence. Since CircuitPython
+        10.3.0 a fresh voice starts at level 0 and takes its level only when
+        its signal reaches or crosses zero, so on material that offers none
+        the head of the render was a hole: measured, 8 frames of silence at
+        the top of a full-scale ramp at every Mix setting, and 256 at Mix 0.
+
+        **At Mix 0 the voices are left on that silence.** `_refresh_output`
+        hands the bypass back off `self._head`, and a voice playing tap 0
+        would drag a block of the head through the Splitter on `play()`
+        alone. Nothing behind this mixer is pulled while Mix is 0.
+        """
+        _component.open_level_gates(
+            self._mixer,
+            [self._mixer.voice[0], self._mixer.voice[1],
+             self._mixer.voice[2]],
+            self._silence)
+        if self.macro(self._MIX) <= 0.0 \
+                and self._macros[self._LISTEN] < 0.5:
+            self._primed = False
+            return
         self._mixer.play(self._taps[0], voice=0, loop=True)
         self._mixer.play(self._notch, voice=1, loop=True)
         self._mixer.play(self._cell, voice=2, loop=True)
+        self._primed = True
+
+    def _refresh_output(self):
+        """Mix 0 is the class's input, and there is no mixer in the path.
+
+        A mixer voice at level 1.0 is not unity: upstream's Q15 level is
+        `1.0 * 32768` and the kernel divides by 32767, so the dry tap at
+        unity came out one LSB high at every sample from 32736 up - three of
+        16384 on a full-scale ramp, all in the right channel, and both on a
+        mono mixer (audioif#95).
+
+        What is handed back is `self._head`, not `self._source`, and the
+        difference is one node wide: the guard is an `audiofilters.Filter`
+        and `Filter.play()` resets its source and fetches a block from it on
+        the spot, so by the end of construction the first 256 frames of the
+        source are inside the guard. Handing back the source would start the
+        bypass 256 frames in; the guard has those frames, and a `Filter`
+        with no filter is a copy - measured bit-exact against a full-scale
+        ramp. It is also the node the Splitter reads, so a Mix move off 0
+        picks the graph up on the sample the bypass stopped on.
+
+        Listen is not a bypass: it replaces the output with the detector's
+        own band, which is the mixer's third voice.
+        """
+        if not self._ready:
+            return
+        if self.macro(self._MIX) <= 0.0 \
+                and self._macros[self._LISTEN] < 0.5:
+            self._output = self._head
+            return
+        if not self._primed:
+            self._play_voices()
+        self._output = self._tail
 
     def _reset_mixer(self):
         """Clear the Mixer, then hand its voices back their sources.
@@ -480,7 +566,8 @@ class DynamicEQ(_component.Component):
             self._mixer.voice[0].level = 0.0
             self._mixer.voice[1].level = 0.0
             self._mixer.voice[2].level = 1.0
-            return
-        self._mixer.voice[0].level = 1.0 - mix
-        self._mixer.voice[1].level = mix
-        self._mixer.voice[2].level = mix
+        else:
+            self._mixer.voice[0].level = 1.0 - mix
+            self._mixer.voice[1].level = mix
+            self._mixer.voice[2].level = mix
+        self._refresh_output()

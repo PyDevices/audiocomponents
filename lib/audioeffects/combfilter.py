@@ -135,10 +135,10 @@ MAX_DELAY_MS = 60.0
 TONE_OFF_HZ = 24000.0
 
 #: A trim under this is built as a wire rather than a pass of arithmetic that
-#: must come back byte-identical. A BIPOLAR macro has no exact centre on the
-#: 0-127 grid - 64/127 of a +/-12 dB span is 0.094 dB - so without a floor a
-#: patch whose trim reads "0" would not be one. `LowPass` uses the same
-#: floor, for the same reason.
+#: must come back byte-identical. MIDI 64 is the exact centre of a BIPOLAR
+#: span since audiocomponents#87, so the detent itself is 0.000 dB; what this
+#: floor still covers is the codes either side of it, which a knob passes
+#: through. `LowPass` uses the same floor, for the same reason.
 FLAT_DB = 0.2
 
 #: The Mix macro snaps to exactly 1.0 inside this. Same grid, worse

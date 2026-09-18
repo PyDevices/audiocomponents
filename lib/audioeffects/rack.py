@@ -25,6 +25,7 @@ VENDOR = "PyDevices"
 
 from . import _core
 from ._component import macro_position as _macro_position
+from ._component import midi_of_position as _midi_of_position
 
 
 def _child(name, tail, options):
@@ -224,7 +225,8 @@ class AirSpace(Rack):
             if "Frequency" in labels:
                 index = labels.index("Frequency")
                 span = type(self.tone)._MACRO_RANGES[index]
-                self.tone.set_macro(
-                    index, _macro_position(span, self.macro(2)) * 127.0)
+                self.tone.set_macro(index, _midi_of_position(
+                    type(self.tone).MACRO_MODES.get(index, "UNIPOLAR"),
+                    _macro_position(span, self.macro(2))))
             else:
                 self.tone.set_frequency(self.macro(2))

@@ -260,13 +260,16 @@ class RingMod(_component.Component):
             deinit()
 
     def _value(self, index):
-        position = self._macros[index]
-        # BIPOLAR 0–127 puts the panel centre at midi 64, which is 64/127
-        # not 0.5. Without this snap, program_change(0) leaves Balance at
-        # 0.007874 and M1's residuals rise to −36 dB on the frozen material.
-        if index in (BAL, PBAL, PHASE) and abs(position * 127.0 - 64.0) < 0.51:
-            position = 0.5
-        return _component.macro_value(self._MACRO_RANGES[index], position)
+        # This used to snap a BIPOLAR position within half a MIDI step of
+        # 64 to 0.5, because the plain 0-127 law put the panel centre at
+        # 64/127 and `program_change(0)` left Balance at 0.007874, which
+        # raised M1's residuals to -36 dB on the frozen material. The base
+        # has the centre detent now (audiocomponents#87), so 64 *is* 0.5 and
+        # the snap is not only redundant but wrong: under the new law MIDI
+        # 65 lands 0.508 of a step from 64 and the snap ate it, so one real
+        # click of the knob did nothing.
+        return _component.macro_value(self._MACRO_RANGES[index],
+                                      self._macros[index])
 
     def _apply_macro(self, index, position):
         del position

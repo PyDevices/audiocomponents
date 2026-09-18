@@ -44,14 +44,17 @@ from tools.validate_metadata import MetadataError, validate_effects
 #: the shared file the registry rule exists to avoid.
 FIXTURES = ("ExampleAudioif", "ExampleStock")
 
-#: Every one of the 46 that Phase 2 rebuilt. They have come home, so
-#: `rebuilt.module_class` misses them and the package imports each from
-#: its own file. `TheLookup.REBUILT` is this same tuple.
+#: Every class of the 46 that has come home: Phase 2's sixteen, Phase 3's
+#: five THROUGH classes plus RingMod, and Phase 4's four adopted. Coming
+#: home is what puts a name here, so `rebuilt.module_class` misses each one
+#: and the package imports it from its own file. `TheLookup.REBUILT` is this
+#: same tuple.
 REBUILT = ("Compressor", "Limiter", "Expander", "NoiseGate", "DeEsser",
            "TransientShaper", "MultibandCompressor", "ParametricEQ",
            "GraphicEQ", "LowPass", "HighPass", "BandPass", "Notch",
            "LadderFilter", "CombFilter", "DynamicEQ",
-           "AutoPan", "Chorus", "Phaser", "Tremolo", "Vibrato", "RingMod")
+           "AutoPan", "Chorus", "Phaser", "Tremolo", "Vibrato", "RingMod",
+           "Overdrive", "Distortion", "Bitcrusher", "CabinetSim")
 
 
 def source(channels=2, rate=48000):
@@ -838,9 +841,11 @@ class TheAdoptionGate(unittest.TestCase):
     """A rebuilt class is served only once the auditor names it.
 
     `rebuilt.ADOPTED` is the one list this package keeps, and it is the
-    auditor's, not the builder's. Phase 2's sixteen have come home, so they
-    are not in `ADOPTED` and not under `rebuilt/`. What remains here is the
-    two Example fixtures, parked, and the machinery later phases will use.
+    auditor's, not the builder's. Every class that has come home is out of
+    `ADOPTED` and out of `rebuilt/` -- it is staging, not a roster. What
+    remains here is the two Example fixtures, the rebuilds a gate parked
+    (Flanger; Saturation, Fuzz and Exciter on board budget), and the
+    machinery later phases will use.
 
     A rebuild still adds exactly one file and edits nothing else. Adoption
     is a separate edit, made once, in a commit that cites the gate. Coming
@@ -850,10 +855,19 @@ class TheAdoptionGate(unittest.TestCase):
     def test_phase2_names_have_left_adopted(self):
         # Home classes must not reappear in ADOPTED.
         self.assertTrue(set(REBUILT).isdisjoint(rebuilt.ADOPTED))
-        # Phase 3 THROUGH names and RingMod have come home. Flanger stays
-        # parked, so ADOPTED is empty and the substitution machinery stays.
+        # Phase 3's THROUGH names and RingMod have come home; Flanger stays
+        # parked. Phase 4's four were adopted on the boards on 2026-09-18
+        # and promoted the same day, so they have left ADOPTED too and it
+        # is empty again. `Saturation` missed its palette budget on both
+        # boards and `Fuzz` and `Exciter` never reached them, so all three
+        # are parked under this directory, `drive.py` still serves the
+        # classes they replace, and the substitution machinery stays.
         self.assertEqual(rebuilt.ADOPTED, ())
-        self.assertEqual(rebuilt.adopted(), ())
+        self.assertEqual(rebuilt.adopted(), rebuilt.ADOPTED)
+        for name in ("Saturation", "Fuzz", "Exciter"):
+            self.assertNotIn(name, rebuilt.ADOPTED)
+            self.assertIsNotNone(rebuilt.module_class(name))
+            self.assertIsNone(rebuilt.load(name))
         parked = set(rebuilt.parked())
         known = set(rebuilt.known())
         self.assertTrue(set(FIXTURES) <= parked)
@@ -862,12 +876,16 @@ class TheAdoptionGate(unittest.TestCase):
         self.assertTrue(parked - set(FIXTURES) <= set(audioeffects.ALL))
         self.assertTrue(known - set(FIXTURES) <= set(audioeffects.ALL))
         self.assertIn("Flanger", parked)
+        for name in ("Saturation", "Fuzz", "Exciter"):
+            self.assertIn(name, parked)
         self.assertNotIn("RingMod", parked)
         self.assertNotIn("AutoPan", parked)
         self.assertNotIn("Chorus", parked)
         self.assertNotIn("Phaser", parked)
         self.assertNotIn("Tremolo", parked)
         self.assertNotIn("Vibrato", parked)
+        for name in ("Overdrive", "Distortion", "Bitcrusher", "CabinetSim"):
+            self.assertNotIn(name, parked)
         for name in known:
             if name not in FIXTURES:
                 self.assertIn(name, audioeffects.ALL)

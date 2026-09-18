@@ -23,13 +23,106 @@ player turns.
 import os
 import sys
 import unittest
+from array import array
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "tools"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), "lib"))
 
+import audiocore                                               # noqa: E402
 import kit_faults as faults                                    # noqa: E402
+import kit_probes as probes                                    # noqa: E402
 import compressor_evidence as ev                               # noqa: E402
+from tools import effect_measurements as kit                   # noqa: E402
+
+#: `_component` reads VENDOR off the module a class is *defined* in, and the
+#: planted fault below is defined here. Without it the fault would refuse to
+#: construct, which is a fault that cannot fail.
+VENDOR = "PyDevices"
+
+RATE = 48000
+MIX = 13
+
+
+class ThroughTheDryVoice(ev.Compressor):
+    """The wiring this class shipped with before audioif#95: Mix 0 routed
+    through the mixer's dry voice at level 1.0 instead of handing back the
+    borrowed source. Nothing else moves - the levels are the same numbers -
+    so the only difference in the render is the mixer's own `level / 32767`
+    multiply.
+    """
+
+    NAME = 'Compressor'
+
+    def _refresh_output(self):
+        if not self._ready:
+            return
+        if not self._primed:
+            self._prime()
+        self._output = self._mixer
+
+
+class MixZeroIsAWireTest(unittest.TestCase):
+    """WIRE, on the only probe that can see the fault it is about.
+
+    This class had no byte-compare row at all, and audioif#95 is why one is
+    needed: a mixer voice at level 1.0 is not unity - upstream's Q15 level
+    is `1.0 * 32768` and the kernel divides by 32767 - so the dry voice at
+    unity came out one LSB high at every sample from 32736 up. Three of
+    16384 on a full-scale ramp, all in the right channel, because a stereo
+    voice at pan 0 gets 32767 on the left and 32768 on the right. Nothing
+    peaking below -6.02 dBFS reaches the mechanism.
+    """
+
+    def _rendered(self, cls=None, channels=2, frames=8192):
+        values = probes.ramp_fs(frames, channels)
+        source = audiocore.RawSample(values, sample_rate=RATE,
+                                     channel_count=channels)
+        effect = (cls or ev.Compressor).create(source, RATE, mix=0.0)
+        try:
+            self.assertEqual(effect.latency_samples, 0)
+            wet = probes.render(effect.output, frames, rate=RATE,
+                                channels=channels, block=256)
+        finally:
+            effect.deinit()
+        dry = kit.Render(bytes(memoryview(values).cast("B")), RATE, channels)
+        return kit.wire(wet, dry, latency_samples=0)
+
+    def test_mix_zero_is_a_wire_at_both_channel_counts(self):
+        for channels in (1, 2):
+            with self.subTest(channels=channels):
+                result = self._rendered(channels=channels)
+                self.assertTrue(result["passed"], result["red"])
+                self.assertEqual(result["values"]["differing_samples"], 0)
+
+    def test_the_dry_voice_at_unity_is_the_fault_the_wire_catches(self):
+        result = self._rendered(ThroughTheDryVoice)
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["values"]["max_abs_difference_lsb"], 1)
+
+    def test_the_head_of_the_render_is_not_a_hole(self):
+        """The second defect the ramp found: this class opened no level
+        gates at all, so a voice waiting for a zero crossing that a ramp
+        never offers held its level at 0 - 128 frames of silence at the top
+        of every render, at every Mix setting including 1. `_prime` opens
+        them on one block of silence now.
+        """
+        values = probes.ramp_fs(8192)
+        source = audiocore.RawSample(values, sample_rate=RATE,
+                                     channel_count=2)
+        effect = ev.Compressor.create(source, RATE, mix=1.0)
+        try:
+            wet = probes.render(effect.output, 8192, rate=RATE, channels=2,
+                                block=256)
+        finally:
+            effect.deinit()
+        head = array("h")
+        head.frombytes(wet.pcm[:512])
+        self.assertNotEqual(int(head[0]), 0)
+        self.assertEqual([index for index in range(len(head))
+                          if head[index] == 0], [])
 
 
 class CompressorFaultsTest(unittest.TestCase):

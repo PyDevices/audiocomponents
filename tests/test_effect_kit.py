@@ -34,6 +34,7 @@ corpus and the renderer are section 3's and section 4's own deliverables.
 """
 
 import json
+import math
 import os
 import shutil
 import sys
@@ -426,6 +427,131 @@ class SpectrumTest(unittest.TestCase):
         self.assertIn("h2", result["red"][0])
         self.assertLess(result["values"]["alias_floor_db"],
                         self.BARS["alias_floor_db"])
+
+
+def _rounded_length(frames, rate, hz):
+    """`exact_bin_size` as it was until the fix below: the largest whole
+    number of periods that fits, with the product rounded to an integer.
+
+    It is here as SPECTRUM's eleventh planted fault. The rounding is a
+    fraction of a sample - 11976 instead of 4800 or 9600 at 1010 Hz /
+    48 kHz, a quarter of a sample short of whole periods - and a
+    rectangular transform charges tens of dB for it.
+    """
+    period = rate / float(hz)
+    periods = int(frames / period)
+    if periods < 1:
+        return None
+    return max(64, min(int(round(periods * period)), frames))
+
+
+class ExactBinSizeTest(unittest.TestCase):
+    """SPECTRUM's transform length, and the fault it used to be.
+
+    Every Phase 4 gate reads its alias floor through `spectrum()` with the
+    default length, so the length is the instrument and not a detail. A pure
+    16-bit sine has no alias products at all: the whole reading is the
+    quantisation floor, about -95 dB here, and anything above that is the
+    transform's own leakage being counted as the class's.
+
+    The fault and its control are the same render read twice. At 1010 Hz /
+    48 kHz over 12000 settled frames the old rounding's 11976 samples read
+    **-47.0 dB**, and the exact 9600 reads **-95.1 dB** - so a class whose
+    gate says "alias floor below -60 dB" failed on 48 dB of arithmetic. The
+    fault fires on the inharmonic readout and not on the harmonic one: THD
+    over the same two lengths moves from -88.9 dB to -117.4 dB, which is
+    wrong by less than a gate's margin and is why this went unnoticed.
+    """
+
+    #: Rate, fundamental, and the exact length `exact_bin_size` owes each
+    #: over 12000 settled frames. 3700 Hz at 48 kHz is the control the other
+    #: way round: 12000 frames is already 925 whole periods, so the old
+    #: rounding had nothing to round and both lengths agree.
+    CASES = ((48000, 1010.0, 9600), (44100, 1010.0, 8820),
+             (22050, 1010.0, 11025), (48000, 3700.0, 12000),
+             (44100, 3700.0, 11907), (22050, 3700.0, 11907))
+
+    def _tone(self, hz, rate, frames=24000, dbfs=-3.0):
+        """A pure tone as a `Render`, nothing rendered through anything.
+
+        `settled_ratio` defaults to 0.5, so a 24000-frame render is the
+        12000 settled frames the numbers above are quoted at.
+        """
+        pcm = probes.sine(hz, frames / float(rate), dbfs, rate=rate,
+                          channels=2)
+        return kit.Render.from_pcm(pcm, rate, 2)
+
+    def test_the_default_length_is_whole_periods_at_every_rate(self):
+        for rate, hz, expected in self.CASES:
+            settled = 12000
+            self.assertEqual(kit.exact_bin_size(settled, rate, hz), expected)
+            # Whole periods is the claim; this is the claim as arithmetic.
+            cycles = expected * hz / rate
+            self.assertEqual(cycles, round(cycles))
+
+    def test_a_pure_tone_reads_the_quantisation_floor_not_the_leakage(self):
+        for rate, hz, expected in self.CASES:
+            tone = self._tone(hz, rate)
+            result = kit.spectrum(tone, hz, harmonics=10)
+            values = result["values"]
+            # The floor first, because it is the reading a gate cites: put
+            # the old rounding back and this is the line that fires,
+            # -47.046 dB against a -90 dB bar at 1010 Hz / 48 kHz.
+            self.assertLess(values["alias_floor_db"], -90.0,
+                            "%g Hz at %d on %d samples: %s"
+                            % (hz, rate, values["transform_length"], values))
+            self.assertEqual(values["transform_length"], expected)
+
+    def test_the_old_rounding_reads_the_same_render_tens_of_dB_high(self):
+        """The planted fault, one line of it: the same render, the same
+        measurement, the old length passed in by hand."""
+        for rate, hz, expected in self.CASES:
+            tone = self._tone(hz, rate)
+            old = _rounded_length(12000, rate, hz)
+            faulted = kit.spectrum(tone, hz, harmonics=10, size=old)
+            floor = faulted["values"]["alias_floor_db"]
+            if old == expected:
+                # 3700 Hz at 48 kHz - the rounding had nothing to round.
+                self.assertLess(floor, -90.0)
+                continue
+            self.assertGreater(floor, -60.0, "%g Hz at %d read %.1f dB on "
+                               "%d samples - the fault has stopped firing"
+                               % (hz, rate, floor, old))
+            self.assertGreater(
+                floor - kit.spectrum(tone, hz,
+                                     harmonics=10)["values"]["alias_floor_db"],
+                25.0)
+
+    def test_the_fallback_returns_a_sane_length_and_still_reads_low(self):
+        """1000.3 Hz is commensurable - 10003/10 - but its exact length is
+        480000 samples, ten seconds, so nothing that fits is exact. A
+        frequency with no rational behind it at all (1000 * sqrt 2) reaches
+        the same branch. Both fall back to rounding, and the fallback owes
+        the caller the *least wrong* period count rather than the largest:
+        139 periods of 1000.3 Hz is 0.0002 samples short, where the old
+        rule's 250 was 0.4 short and read -42.6 dB.
+        """
+        for hz in (1000.3, 1000.0 * math.sqrt(2.0)):
+            size = kit.exact_bin_size(12000, 48000, hz)
+            self.assertIsNotNone(size)
+            self.assertGreaterEqual(size, 64)
+            self.assertLessEqual(size, 12000)
+            # Shorter than the render, and honestly so: the whole point is
+            # that it is closer to whole periods than any longer count.
+            period = 48000 / hz
+            self.assertLess(abs(size / period - round(size / period)), 0.01)
+            floor = kit.spectrum(self._tone(hz, 48000), hz,
+                                 harmonics=10)["values"]["alias_floor_db"]
+            self.assertLess(floor, -90.0, "%g Hz on %d samples" % (hz, size))
+
+    def test_less_than_one_period_has_no_length_to_offer(self):
+        # 1000 Hz at 48 kHz is 48 samples a period; 47 frames cannot hold
+        # one, and the answer is None rather than a length nobody can use.
+        self.assertIsNone(kit.exact_bin_size(47, 48000, 1000.0))
+        # One period fits, and the 64-sample floor beats it - the one case
+        # where the length is padded rather than periodic, unchanged from
+        # before the fix and far below any render a gate measures.
+        self.assertEqual(kit.exact_bin_size(48, 48000, 1000.0), 64)
 
 
 class CurveTest(unittest.TestCase):

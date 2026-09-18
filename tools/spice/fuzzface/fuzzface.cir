@@ -1,0 +1,31 @@
+* Dallas Arbiter Fuzz Face, values from the Fuzz dossier (S1).
+* AC128 Ebers-Moll parameters from S9 (Holmes/Holters/van Walstijn DAFx-17)
+* cited as facts about the part; this netlist is our transcription.
+* Positive ground: node 0 is +9 V relative to Vee.
+
+.param fuzz=500
+Vee Vee 0 DC -9
+Vin in 0 DC 0 AC 1 SIN(0 0.2 1k)
+
+Cin in b1 2.2u
+Rc1 c1 Vee 33k
+Q1 c1 b1 0 AC128
+Rfb e2 b1 100k
+Rjoin c1 b2 1
+Q2 c2 b2 e2 AC128
+Rc2 c2 mid 8.2k
+Re2 mid Vee 470
+Rfuzz e2 0 {fuzz}
+Cem e2 0 20u
+Cout c2 vol 0.01u
+Rvol vol 0 500k
+
+.model AC128 PNP(IS=23.75U BF=44.90 BR=4.568 NF=1.168 NR=1.171
++ VAF=19.68 VAR=88.28 IKF=0.463 IKR=0.2415)
+
+.control
+tran 1u 30m
+linearize
+wrdata out/tran_fuzz500.csv v(vol) v(in)
+.endc
+.end

@@ -40,9 +40,12 @@ RATE = 48000
 CHANNELS = 2
 BANDS = 10
 
-#: Every band macro at 64 is the detent. `_component` maps 64/127 onto
-#: +0.094 dB, which is inside the class's 0.1 dB dead band and is why patch 0
-#: is a wire rather than nearly one.
+#: Every band macro at 64 is the detent. Since audiocomponents#87 a BIPOLAR
+#: macro's MIDI 64 is the exact centre of its span, so 64 is **0.000 dB** and
+#: not the +0.094 the plain 64/127 law used to put there. It is still inside
+#: the class's 0.1 dB dead band, and patch 0 is still a wire - but it is now
+#: a wire because the gain is zero, not because a small gain is ignored,
+#: which is what killed T4's planted fault (see below).
 DETENT = 64
 
 
@@ -314,25 +317,46 @@ class TheDetentIsAWire(unittest.TestCase):
         without = run(data, 24000, macros=other)
         self.assertEqual(with_flat.digest, without.digest)
 
-    def test_planted_fault_the_detent_branch_deleted_fires_on_every_band(self):
-        # The fault of the same kind: the class fails to take a detented
-        # band OUT of the circuit, so the section runs at the gain the macro
-        # actually stands for -- +0.0945 dB at code 64, which is what the
-        # 0-127 grid puts there. It is audible in int16 at every centre,
-        # which is the whole point: the fault this replaced forced `mix = 1`
-        # on a section whose `gain_db` was still 0, and a flat biquad is
-        # bit-transparent from 250 Hz up (the test below), so six of T4's
-        # ten bands were being counted as evidence on a check that could not
-        # fail there (gate audit section 3, G3).
+    def test_the_detent_branch_fault_is_inert_since_the_centre_detent(self):
+        """T4 has no planted fault any more, and this is the record of why.
+
+        The fault was: the class fails to take a detented band OUT of the
+        circuit, so the section runs at the gain the macro actually stands
+        for. That was **+0.0945 dB at code 64**, because the plain 64/127
+        MIDI law could not reach the centre of a bipolar span, and +0.0945
+        dB is audible in int16 at every centre - so the fault fired at all
+        ten bands and T4 had a guard.
+
+        audiocomponents#87 gave a BIPOLAR macro a centre detent, so code 64
+        is now **exactly 0.000 dB**. A 0 dB section forced to `mix = 1` is
+        byte-identical to a section at `mix = 0` on audiobiquad's transposed
+        direct form II (audioif#64, at the cebb7ca floor) - which is exactly
+        why the *previous* fault was retired, one test down. So this one is
+        inert at all ten bands too, and asserting it fires would be
+        asserting a fiction.
+
+        **T4's claim is therefore undemonstrated, not disconfirmed.** It is
+        also nearly a tautology as written: "a band at the detent is the
+        chain built without it" is now true because 0 dB is 0 dB, whoever
+        computes it. What the detent branch still buys is the biquad's work
+        and `_wake`'s state hygiene, neither of which a render digest can
+        see. Restating T4 around those, with a fault that bites, is
+        `GraphicEQ`'s own trait work and is filed as audiocomponents#88.
+        """
         data = noise(24000)
+        fired = []
         for band in range(BANDS):
             macros = _rails(band)
             control = run(data, 24000, macros=macros)
             faulted = _run_faulted(NoDetentGraphicEQ, data, 24000, macros)
-            self.assertNotEqual(
-                faulted.digest, control.digest,
-                "band %d: the detent-branch fault did not change the render, "
-                "so T4 proves nothing at that band" % band)
+            if faulted.digest != control.digest:
+                fired.append(band)
+        self.assertEqual(
+            fired, [],
+            "the detent-branch fault moved a render again at %r - if the "
+            "centre detent or the biquad form changed back, T4 can have its "
+            "guard again and this test should become an assertion that it "
+            "fires" % fired)
 
     def test_the_fault_it_replaced_is_green_on_every_band(self):
         # Kept as the record of why it was replaced, not as evidence. The
@@ -364,13 +388,15 @@ class TheDetentIsAWire(unittest.TestCase):
     def test_the_fault_is_not_one_the_surface_can_dial(self):
         # `kit_faults.fault_reachability`: a fault a player can reach is a
         # disconfirmation waiting to be written down, not a fault. No macro
-        # position and no shipped patch leaves a band reading +0.0945 dB
-        # with its section engaged.
+        # position and no shipped patch leaves a band engaged at the detent.
+        # The gain it reads there is 0.0 dB since the centre detent landed
+        # (audiocomponents#87); what separates the fault from the class is
+        # the `mix`, which is why this check outlived the render one above.
         out = kit_faults.fault_reachability(
             graphiceq.GraphicEQ, NoDetentGraphicEQ, _reading, _make_at_detent,
             label="GraphicEQ T4")
-        self.assertEqual(out["target"], (0.0945, 1.0))
-        self.assertEqual(out["clean"], (0.0945, 0.0))
+        self.assertEqual(out["target"], (0.0, 1.0))
+        self.assertEqual(out["clean"], (0.0, 0.0))
         self.assertGreater(out["checked"], 200)
 
     def test_the_reachability_check_can_fail(self):
@@ -745,7 +771,10 @@ class TheQLaw(unittest.TestCase):
         out = kit_faults.fault_reachability(
             graphiceq.GraphicEQ, InvertedQGraphicEQ, _t2_reading, _t2_make,
             label="GraphicEQ T2")
-        self.assertEqual(out["target"][0], 2.9291)
+        # +3 dB asked for is code 79, which the centre detent reads as
+        # +2.8571 rather than the +2.9291 the plain 64/127 law gave
+        # (audiocomponents#87). The Q beside it is what T2 is about.
+        self.assertEqual(out["target"][0], 2.8571)
         self.assertGreater(out["target"][1], 5.0)
         self.assertLess(out["clean"][1], 1.0)
         self.assertGreater(out["checked"], 200)

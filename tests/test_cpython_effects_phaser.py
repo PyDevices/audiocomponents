@@ -124,6 +124,44 @@ class FeedbackStuck(Phaser):
         self._refresh_drive()
 
 
+#: Drive's curve as the class shipped it before audiocomponents#77: the
+#: cubic straight into Q15, peaking at 2/3 of the range.
+OLD_CUBIC_CURVE = array.array("h")
+for _index in range(phaser_module.CURVE_POINTS):
+    _x = -1.0 + 2.0 * _index / float(phaser_module.CURVE_POINTS - 1)
+    OLD_CUBIC_CURVE.append(max(-32768, min(32767,
+                                           int(round((_x - _x ** 3 / 3.0)
+                                                     * 32767.0)))))
+
+
+class OldDriveTable(Phaser):
+    """The control for the normalisation: the 66.7 % table and `post_gain`
+    back at 1.0, which is the arithmetic this class shipped.
+
+    `set(curve=...)` and not `node.curve = ...`: `Waveshaper` has no `curve`
+    property, so the assignment would bind a stray Python attribute, leave
+    the loaded table alone, and read as a 3.5 dB level move that is the
+    normalisation rather than the class.
+    """
+
+    NAME = 'Phaser'
+
+    def _build(self, *arguments, **keywords):
+        Phaser._build(self, *arguments, **keywords)
+        self._shaper.set(curve=OLD_CUBIC_CURVE, post_gain=1.0)
+
+
+class NoPostGain(Phaser):
+    """The fault the normalisation could have introduced: the filled table
+    with the scale not carried back out."""
+
+    NAME = 'Phaser'
+
+    def _build(self, *arguments, **keywords):
+        Phaser._build(self, *arguments, **keywords)
+        self._shaper.set(post_gain=1.0)
+
+
 class ShortLatency(Phaser):
     NAME = 'Phaser'
     LATENCY_SAMPLES = 256
@@ -235,6 +273,111 @@ class TestPhaserInvariants(unittest.TestCase):
         still = pcm(leftover, 256)
         self.assertGreater(max(abs(int(v)) for v in memoryview(still).cast("h")),
                            0)
+
+
+class TestPhaserCurveFillsTheRange(unittest.TestCase):
+    """The drive table reaches the rails, and the generator will not emit
+    one that does not ([audiocomponents#77]).
+
+    `CUBIC_CURVE` used to hold `y = x - x**3/3` straight in Q15, and that
+    curve peaks at 2/3 by construction, so the table used **66.7 %** of
+    int16 and threw away half a bit of the only resolution a lookup table
+    has. It is normalised to its own extreme now and `CURVE_SCALE` carries
+    the 2/3 back out in the shaper's `post_gain`, so the level does not
+    move.
+    """
+
+    def _generator(self):
+        from tools.curves import phaser_curve
+        return phaser_curve
+
+    def _quiet_check(self, gen):
+        """`--check` with its report swallowed; returns the exit code."""
+        import io
+        import contextlib
+        sink = io.StringIO()
+        with contextlib.redirect_stdout(sink), \
+                contextlib.redirect_stderr(sink):
+            return gen.main(["--check"])
+
+    def test_shipped_table_reaches_both_rails(self):
+        self.assertEqual((min(phaser_module.CUBIC_CURVE),
+                          max(phaser_module.CUBIC_CURVE)),
+                         (-32767, 32767))
+
+    def _held_level(self, cls=None, dbfs=-14.0, frames=24000):
+        """Output RMS and peak of a held Phaser over a 1 kHz tone.
+
+        Held, because a swept notch is not a stationary level: the reading
+        would be about where the LFO happened to be.
+        """
+        values = array.array("h")
+        amplitude = (10.0 ** (dbfs / 20.0)) * 32767.0
+        for index in range(frames):
+            sample = int(round(amplitude * math.sin(2.0 * math.pi * 1000.0
+                                                    * index / RATE)))
+            values.append(max(-32768, min(32767, sample)))
+            values.append(max(-32768, min(32767, sample)))
+        source = audiocore.RawSample(values, sample_rate=RATE,
+                                     channel_count=2)
+        effect = (cls or Phaser).create(source, RATE, rate=0.0, depth=0.0)
+        try:
+            data = np.frombuffer(pcm(effect.output, frames),
+                                 dtype=np.int16).astype(np.float64)
+        finally:
+            effect.deinit()
+        settled = data[4800 * 2:]
+        return (20.0 * math.log10(math.sqrt(float(np.mean(settled ** 2)))
+                                  / 32767.0),
+                float(np.max(np.abs(settled))))
+
+    def test_carrying_the_scale_in_post_gain_does_not_move_the_level(self):
+        """The whole point of the normalisation: finer table, same sound.
+
+        The control is the class with the **pre-fix** table and `post_gain`
+        back at 1.0, which is the arithmetic the class shipped. It has to
+        land on the same level, and the fault below shows the row can fail:
+        the normalised table with `post_gain` left at 1.0 is 3.5 dB loud.
+        """
+        for dbfs in (-26.0, -14.0, -6.0):
+            with self.subTest(dbfs=dbfs):
+                before = self._held_level(OldDriveTable, dbfs)
+                after = self._held_level(Phaser, dbfs)
+                self.assertLess(abs(after[0] - before[0]), 0.01,
+                                "RMS %.6f against %.6f" % (after[0],
+                                                           before[0]))
+                self.assertEqual(after[1], before[1])
+
+    def test_without_the_post_gain_the_level_moves(self):
+        """The planted fault, and it is the mistake this change could have
+        made: normalise the table and forget to carry the scale out."""
+        before = self._held_level(OldDriveTable)
+        loud = self._held_level(NoPostGain)
+        self.assertGreater(loud[0] - before[0], 1.0)
+
+    def test_module_holds_what_the_generator_writes(self):
+        self.assertEqual(self._quiet_check(self._generator()), 0)
+
+    def test_generator_refuses_a_table_that_leaves_the_range_empty(self):
+        """Planted: the pre-fix normalisation, the cubic straight into
+        Q15."""
+        gen = self._generator()
+        keep = gen.curve_scale
+        try:
+            gen.curve_scale = lambda: 1.0
+            self.assertLess(gen.fill(gen.table_words()), 0.95)
+            self.assertNotEqual(self._quiet_check(gen), 0)
+        finally:
+            gen.curve_scale = keep
+        self.assertEqual(self._quiet_check(gen), 0)
+
+    def test_the_table_is_odd_so_it_writes_no_even_harmonics(self):
+        """An asymmetric table would put even harmonics into a stage that
+        has none. The grid is symmetric and the curve is odd, so every pair
+        has to cancel exactly."""
+        points = list(phaser_module.CUBIC_CURVE)
+        for index in range(len(points) // 2):
+            self.assertEqual(points[index], -points[len(points) - 1 - index])
 
 
 class TestPhaserTraits(unittest.TestCase):

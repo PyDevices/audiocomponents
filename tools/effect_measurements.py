@@ -66,6 +66,7 @@ the tau -> T60 least-squares log-envelope fit and the WAV loader are
 because that file's `spectrum()` hardcodes its bin width.
 """
 
+import fractions
 import gc
 import math
 import wave
@@ -304,23 +305,79 @@ def magnitude_spectrum(x, rate, size=None, window=None):
 
 
 
-def exact_bin_size(frames, rate, hz):
-    """Transform length that lands `hz` on (as close as arithmetic allows
-    to) an exact bin, so no window is needed.
-
-    A power-of-two length is the wrong default here and was the first thing
-    this measurement got wrong in testing: at 48 kHz a 16384-point rectangular
-    transform puts a 1 kHz tone at bin 341.33, and the leakage skirt of that
-    third of a bin reads -55 dB at the second harmonic - a wire's THD
-    reported as a class's. Choosing a whole number of periods instead drops
-    the same reading below -90 dB.
-    """
-    period = rate / float(hz)
-    periods = int(frames / period)
-    if periods < 1:
+def _rational(value):
+    """`value` as an exact Fraction when it is one a caller could mean, else
+    None. An integer is itself; a float is accepted only if a denominator of
+    at most 1000 reproduces it to 1e-9 relative, so 1010, 3700.0 and 1000.5
+    come back exact and 1000 * sqrt(2) does not."""
+    try:
+        exact = fractions.Fraction(value)
+    except (TypeError, ValueError, OverflowError):
+        return None                                 # nan, inf, a string
+    if exact <= 0:
         return None
-    size = int(round(periods * period))
-    return max(64, min(size, frames))
+    near = exact.limit_denominator(1000)
+    if abs(float(near) - float(exact)) > 1e-9 * abs(float(exact)):
+        return None
+    return near
+
+
+def exact_bin_size(frames, rate, hz):
+    """Transform length that puts `hz` on an exact bin, so no window is
+    needed - and, when arithmetic cannot, the length that misses by least.
+
+    When `rate` and `hz` are commensurable (both rationals a caller could
+    mean), a length is exactly periodic if and only if it is a multiple of
+    `L = denominator(hz / rate)` samples - `rate / gcd(rate, hz)` for whole
+    numbers, with a fractional `hz`'s denominator folded in. 1010 Hz needs
+    4800 samples at 48 kHz (101 periods), 4410 at 44.1 k and 2205 at
+    22.05 k; 3700 Hz needs 480 at 48 kHz and 441 at both 44.1 k and 22.05 k.
+    This returns the largest multiple of `L` that fits in `frames`, floored
+    at 64 samples - so it uses all the render it can, exactly.
+
+    Only when no multiple of `L` fits, or the ratio is not commensurable,
+    does it fall back to rounding a whole number of periods to an integer
+    length - and then it returns the period count whose fractional-period
+    error is smallest, not simply the largest count that fits. The caller
+    gets a length that is off by a fraction of a sample, and a rectangular
+    transform's leakage skirt with it; a window is the right instrument
+    there.
+
+    `None` when less than one period fits in `frames`.
+
+    Two lengths this must not be. A power-of-two length is the wrong default
+    and was the first thing this measurement got wrong in testing: at 48 kHz
+    a 16384-point rectangular transform puts a 1 kHz tone at bin 341.33, and
+    the leakage skirt of that third of a bin reads -55 dB at the second
+    harmonic - a wire's THD reported as a class's. Choosing a whole number of
+    periods instead drops the same reading below -90 dB. Rounding that whole
+    number of periods to an integer length is the same mistake one order
+    smaller, and was this function's own: at 1010 Hz / 48 kHz over 12000
+    frames it returned 11976, a quarter of a sample short of whole, which
+    reads the alias floor about 48 dB high - a pessimistic floor that fails a
+    working class or buys oversampling nobody needed. Which committed numbers
+    that reached, and which it did not, is `docs/dev/exact-bin-size.md`.
+    """
+    frames = int(frames)
+    period = rate / float(hz)
+    max_periods = int(frames / period)
+    if max_periods < 1:
+        return None
+
+    hz_ratio, rate_ratio = _rational(hz), _rational(rate)
+    if hz_ratio is not None and rate_ratio is not None:
+        step = (hz_ratio / rate_ratio).denominator
+        if step <= frames:
+            return max(64, (frames // step) * step)
+
+    # No exact length fits. Pick the period count that misses by least,
+    # preferring the longest of equal-error counts for the bin width.
+    counts = np.arange(1, max_periods + 1)
+    lengths = counts * period
+    error = np.abs(lengths - np.round(lengths))
+    best = error <= error.min() + 1e-12
+    periods = int(counts[best][-1])
+    return max(64, min(int(round(periods * period)), frames))
 
 
 def onset(x, *, threshold_ratio=1e-3, floor_lsb=2.0):
@@ -2813,3 +2870,418 @@ def _grid(grids):
             axis -= 1
         if axis < 0:
             return
+
+
+# --------------------------------------------------------------------------
+# Reading a branch INSIDE the graph (audiocomponents#78)
+# --------------------------------------------------------------------------
+#
+# Several rebuilt drive classes split their input and sum a wet branch under
+# the dry:
+#
+#     source -> Splitter -> tap 0 -> Mixer voice 0              (dry)
+#                        -> tap 1 -> ... -> Mixer voice 1       (wet)
+#
+# To read what the wet branch alone does, build packs and refutation probes
+# subclassed the class and pointed `_output` at a node inside the graph, so
+# the Mixer - and with it tap 0 - was never pulled. audiocomponents#78 read
+# 70 dB of measurement floor off an instrument like that and blamed the
+# unread tap.
+#
+# THE UNREAD TAP IS NOT WHAT COSTS THE 70 dB. At audioif `3388df4`, which
+# carries audioif#87, a tap nobody reads cannot corrupt the tap somebody
+# does: a counting ramp through a `Splitter` with one tap pulled comes back
+# seamless at every source block size from 256 frames to 40000 - nearly five
+# rings - on CPython, MicroPython and CircuitPython alike, and draining the
+# dry tap in lockstep with a direct wet read gives a byte-identical render.
+# `Splitter._pull` only runs when the tap being read is starved, so that
+# tap's own cursor is at the write head when the write begins, and one
+# write is capped at one ring.
+#
+# What costs the 70 dB is that the two instruments SIT AT DIFFERENT PLACES
+# IN THE STREAM. A `Mixer` hands back its first block before it has pulled
+# anything, so a render taken through the mixer lags the same render taken
+# off an inner node by one mixer block - 256 frames on `Exciter`. Both ask
+# for the same number of frames, so the instrument that is ahead runs off
+# the end of its probe and reads the class's own decay into silence. A
+# rectangular transform reads that step as broadband low-frequency energy:
+# at 1010 Hz, Tune 600, Harmonics 1.0, Mix 0.7, bins 1-6 re the fundamental
+# read -33.5 dB with a probe exactly as long as the render and -112.9 dB
+# with a probe 256 frames longer. Nothing about the Splitter changed
+# between those two numbers.
+#
+# So the unsupported way is wrong twice and only one of them is the ring.
+# Both are guarded here. `unread_taps` refuses an instrument that pulls one
+# side of a split and not the other - not because the ring will corrupt it,
+# but because it is not the class's output and its stream offset is not the
+# one anything else was measured at. `require_live` refuses a render that
+# outlived its probe, which is the reading that actually moved.
+#
+# The supported way to read a wet branch is `mute_dry` below: the class's
+# own output, with the dry voice at zero. Every tap stays pulled, the
+# offset is the class's own, and neither Mix nor Output can dilute an alias
+# or a harmonic into looking healthy.
+#
+# **These walks read private attributes of the CPython twins.** The native
+# builds' nodes hold their sources in C, so the walk finds nothing there
+# and `unread_taps` returns an empty list rather than a wrong one. That is
+# the honest degradation: the kit's analysis half is CPython (spec section
+# 1), and every pack reading taken this way was taken on CPython.
+
+
+class StarvedTapError(MeasurementRefused):
+    """A render was taken through a graph that pulls one tap of a Splitter
+    and leaves another unpulled - the wet branch read off an inner node,
+    with the dry side of the split read by nobody.
+
+    Refused rather than reported: the instrument is not the class's output,
+    so its stream offset is not the offset anything it is compared against
+    was measured at.
+    """
+
+
+class ExhaustedProbeError(MeasurementRefused):
+    """A render outlived its probe: its tail is silence, so a measurement
+    over it is reading the class's decay and not the class."""
+
+
+def _node_like(value):
+    return value is not None and hasattr(value, "_get_buffer")
+
+
+def _upstream(node):
+    """The nodes one pull on `node` pulls in turn.
+
+    **Every node-like attribute, not a list of names.** A node type names its
+    source whatever it likes - `audiospeed.SpeedChanger` calls it `source`
+    where `audiobiquad` calls it `_source` - and a walk that misses one edge
+    reports the whole branch behind it as unread. That cost the Phase 4
+    integration branch twenty red tests the day this landed. Reaching too
+    far is the safe direction here: an edge that is not really pulled only
+    makes the check quieter.
+
+    Two shapes are not a plain attribute. A `SplitterTap` is followed to its
+    Splitter's source and **not** to its sibling taps, because a sibling is
+    not on this pull path and that is the whole question being asked. A
+    `Mixer` is followed through its voices, and a voice that is not playing
+    is not pulled.
+    """
+    out = []
+    owner = getattr(node, "_owner", None)
+    if owner is not None and hasattr(owner, "_taps"):
+        source = getattr(owner, "_source", None)
+        if _node_like(source):
+            out.append(source)
+        return out
+    voices = getattr(node, "voice", None)
+    if isinstance(voices, (list, tuple)):
+        for voice in voices:
+            if not getattr(voice, "playing", True):
+                continue
+            sample = getattr(voice, "_sample", None)
+            if _node_like(sample):
+                out.append(sample)
+    try:
+        held = vars(node)
+    except TypeError:                       # a native node keeps no __dict__
+        held = {}
+    for name, value in held.items():
+        if name == "voice":
+            continue
+        if _node_like(value) and value is not node:
+            out.append(value)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                if _node_like(item) and item is not node:
+                    out.append(item)
+    return out
+
+
+def reachable_nodes(node, *, limit=4096):
+    """Every node a pull on `node` reaches, `node` included.
+
+    Identity, not equality: two taps of the same Splitter are different
+    objects holding the same ring.
+    """
+    seen = []
+    pending = [node] if _node_like(node) else []
+    while pending and len(seen) < limit:
+        current = pending.pop()
+        if any(current is known for known in seen):
+            continue
+        seen.append(current)
+        pending.extend(_upstream(current))
+    return seen
+
+
+def splitters(effect):
+    """`(name, splitter)` for every `audioroute.Splitter` the class holds.
+
+    Off `enumerate_nodes`' register, which is the authority on what a class
+    built (audiocomponents#53), plus a scan of the private attributes for
+    one it never registered. A Splitter is not itself a sample - it hands
+    out taps - so it is recognised by holding `tap()` and `_taps`.
+    """
+    found = []
+
+    def remember(name, value):
+        if (value is not None and hasattr(value, "tap")
+                and hasattr(value, "_taps")
+                and not any(value is known for _, known in found)):
+            found.append((name, value))
+
+    for name, node in enumerate_nodes(effect):
+        remember(name, node)
+    for name, value in vars(effect).items():
+        remember(name, value)
+        if isinstance(value, (list, tuple)):
+            for index, item in enumerate(value):
+                remember("%s[%d]" % (name, index), item)
+    return found
+
+
+def unread_taps(node, effect=None):
+    """The Splitter taps a render of `node` would leave unpulled.
+
+    Returns `[(splitter_name, tap_index, read_indices), ...]`, one row per
+    Splitter that this pull path reads **unevenly** - some taps on it, some
+    not.
+
+    **`effect` is optional on purpose.** Every Splitter that matters is
+    found from the pull path itself: a tap on the path knows its own
+    Splitter, and that Splitter knows its other taps. So a probe that
+    renders a bare node - which is every probe written before
+    audiocomponents#78 - is checked without being rewritten, and naming the
+    effect only improves the name in the message.
+
+    A Splitter none of whose taps are reached is not a row: that is a
+    section the class has routed round, which every one of these classes
+    does at Mix 0, where the output is the borrowed source and the whole
+    split is bypassed. An uneven split is the audiocomponents#78 shape.
+    """
+    reached = reachable_nodes(node)
+    named = dict((id(splitter), name)
+                 for name, splitter in (splitters(effect)
+                                        if effect is not None else ()))
+    found = []
+    for seen in reached:
+        owner = getattr(seen, "_owner", None)
+        if (owner is not None and hasattr(owner, "_taps")
+                and not any(owner is known for known in found)):
+            found.append(owner)
+    if effect is not None:
+        for _, splitter in splitters(effect):
+            if not any(splitter is known for known in found):
+                found.append(splitter)
+    rows = []
+    for splitter in found:
+        taps = getattr(splitter, "_taps", ())
+        read = [index for index, tap in enumerate(taps)
+                if any(tap is seen for seen in reached)]
+        if not read or len(read) == len(taps):
+            continue
+        name = named.get(id(splitter), "a Splitter")
+        for index, tap in enumerate(taps):
+            if index not in read:
+                rows.append((name, index, tuple(read)))
+    return rows
+
+
+def require_whole_graph(node, effect=None, *, what="render"):
+    """Refuse a pull path that reads one side of a split and not the other.
+
+    Raises `StarvedTapError` naming the Splitter, the tap left out and the
+    taps taken. Returns `node`, so it reads as a guard at the top of a
+    render.
+
+    A guard that cannot read the graph says nothing. Refusing a render
+    because the walk tripped would be a checker failing on its own
+    introspection, which is worse than not checking.
+    """
+    try:
+        rows = unread_taps(node, effect)
+    except Exception:                       # pragma: no cover - fail open
+        return node
+    if rows:
+        where = "; ".join(
+            "%s tap %d unread (taps read: %s)"
+            % (name, index, ", ".join(str(i) for i in read) or "none")
+            for name, index, read in rows)
+        raise StarvedTapError(
+            "%s pulls one side of a split and not the other - %s. That is "
+            "not the class's output: it sits one mixer block earlier in the "
+            "stream than every reading it would be compared against, and "
+            "audiocomponents#78 cost 70 dB of floor to exactly that. Read "
+            "the wet branch with `mute_dry(effect)` - the class's own "
+            "output with the dry voice at zero, which keeps every tap "
+            "pulled - or say `allow_starved_taps=True` if the point of the "
+            "render is the defect itself." % (what, where))
+    return node
+
+
+def silent_tail_frames(render, *, floor_lsb=2.0, channel=None):
+    """How many frames of silence a render ends on.
+
+    The floor is in LSB because a class that has run out of material decays
+    to zero and stays there; anything still dithering is not silence.
+    """
+    data = render.data if channel is None else render.data[:, channel:channel + 1]
+    if data.size == 0:
+        return 0
+    live = np.nonzero(np.abs(data).max(axis=1) >= floor_lsb)[0]
+    if not len(live):
+        return int(render.frames)
+    return int(render.frames - 1 - live[-1])
+
+
+def require_live(render, *, what="render", allow_frames=0, floor_lsb=2.0):
+    """Refuse a render that outlived its probe.
+
+    `allow_frames` is how much silence the tail is *expected* to hold - zero
+    for a continuous probe, and the length of the silent half for a burst.
+
+    This is the guard audiocomponents#78 needed and did not have. A class
+    whose source has run dry keeps handing back silence rather than an empty
+    buffer, so the render loop never notices, the render is the length that
+    was asked for, and the only tell is that the last frames are zeros. A
+    settled-half transform over such a render reads the step down to silence
+    as a low-frequency floor tens of dB above the class's own.
+    """
+    silent = silent_tail_frames(render, floor_lsb=floor_lsb)
+    if silent > allow_frames:
+        raise ExhaustedProbeError(
+            "%s %s ends on %d silent frames of %d, against %d expected: the "
+            "render outlived its probe and a measurement over it is reading "
+            "the class's decay. Give the probe more frames than the render "
+            "asks for (audiocomponents#78)."
+            % (what, render.label or "", silent, render.frames, allow_frames))
+    return render
+
+
+class _MacroMute:
+    """A macro wearing a mixer's clothes, so a caller's restore loop -
+    `target.voice[index].level = level` - puts a Mix macro back without
+    knowing it was one."""
+
+    def __init__(self, effect):
+        self.voice = _MacroVoices(effect)
+
+
+class _MacroVoices:
+    def __init__(self, effect):
+        self._effect = effect
+
+    def __getitem__(self, index):
+        return _MacroVoice(self._effect, index)
+
+
+class _MacroVoice:
+    def __init__(self, effect, index):
+        self._effect = effect
+        self._index = index
+
+    @property
+    def level(self):
+        return self._effect.get_macro(self._index)
+
+    @level.setter
+    def level(self, value):
+        self._effect.set_macro(self._index, int(round(value)))
+
+
+def mute_dry(effect, *, voices=None):
+    """Read a class's WET branch without leaving a Splitter tap unpulled.
+
+    The supported instrument for a wet-path trait: the class's own output,
+    with every DRY mixer voice at zero level. A dry voice is one playing a
+    bare `Splitter` tap - the copy of the input that goes under the wet
+    branch - and a Mixer pulls every voice it is playing whatever its level,
+    so the split stays even and the stream offset stays the class's own.
+
+    It is a stricter reading than the mixed output as well: with the dry
+    voice out, neither Mix nor Output can dilute an alias or a harmonic into
+    looking healthy.
+
+    **Every Mixer a pull on the output reaches is searched, not the output
+    mixer alone.** A class that sums its dry copy on an *inner* mixer - a
+    tone stack after the sum, which is where a Tube Screamer's is - was
+    refused when this looked at `effect._output.voice` and nowhere else,
+    and the pack then read the mixed output and called it a wet floor.
+    `Overdrive` is the worked example: its dry tap is `_circuit.voice[0]`
+    and `_output` is the Level mixer behind the tone low-pass, and every
+    alias floor its pack published was 5.6 to 6.6 dB optimistic
+    (audiocomponents#68, moved here from the tests-side wrapper by #81).
+
+    **A dry leg that is not a mixer voice at all.** `audioshaper.Waveshaper`
+    blends inside the node - `out = (1-mix)*source + mix*post_gain*shaped`
+    (`audioif/src/shared/audioif_shaper.c:253`) - and the node is
+    write-only, so there is no voice to mute and nothing to read back.
+    `Fuzz`'s germanium graph is that shape: its dry copy never reaches a
+    `Mixer`. For a class like that the dry is muted through the class's own
+    surface, by pushing the macro labelled `Mix` to full and putting it back
+    afterwards, which is the same muting done one layer up. It is the last
+    reach tried, so a class with a real dry voice is unaffected, and it is
+    not tried at all on a pull path that starves a tap - there the class is
+    being read at an inner node, and a Mix push would turn a refusal into a
+    wet-branch reading of the probe itself.
+
+    `voices` names voice indices on the output mixer to mute instead of
+    finding them, for a class whose dry copy is not a bare tap.
+
+    Returns `[(mixer, voice_index, level_before), ...]`, so a caller can put
+    the levels back. Raises `MeasurementRefused` when no dry voice is found
+    anywhere - a wet instrument that mutes nothing is a mixed reading
+    wearing the wrong name.
+    """
+    name = getattr(effect, "NAME", type(effect).__name__)
+    output = getattr(effect, "output", None)
+    if output is None:
+        output = getattr(effect, "_output", None)
+    if voices is not None:
+        mixer_voices = getattr(output, "voice", None)
+        if not isinstance(mixer_voices, (list, tuple)):
+            raise MeasurementRefused(
+                "mute_dry: %s's output is %r, not a Mixer, so the voices "
+                "named cannot be muted." % (name, output))
+        muted = []
+        for index in voices:
+            muted.append((output, index, mixer_voices[index].level))
+            mixer_voices[index].level = 0.0
+        return muted
+
+    taps = []
+    for _, splitter in splitters(effect):
+        taps.extend(getattr(splitter, "_taps", ()))
+    muted = []
+    for node in reachable_nodes(output):
+        mixer_voices = getattr(node, "voice", None)
+        if not isinstance(mixer_voices, (list, tuple)):
+            continue
+        for index, voice in enumerate(mixer_voices):
+            sample = getattr(voice, "_sample", None)
+            if any(sample is tap for tap in taps):
+                muted.append((node, index, voice.level))
+                voice.level = 0.0
+    if muted:
+        return muted
+
+    labels = tuple(getattr(effect, "MACRO_LABELS", ()))
+    # Only when there is a whole graph to mute. A class built as a wire -
+    # and a class sitting at Mix 0, which is the same thing - hands back
+    # the borrowed source as its output; a class read at an inner node
+    # leaves the other side of its split unpulled. Pushing a Mix macro in
+    # either case would turn a refusal into a wet-branch reading of the
+    # probe itself, which is how a null build goes green on a measurement
+    # that cannot fail.
+    if "Mix" in labels and getattr(effect, "_source", None) is not output:
+        require_whole_graph(output, effect, what="mute_dry of %s" % name)
+        index = labels.index("Mix")
+        before = effect.get_macro(index)
+        effect.set_macro(index, 127)
+        return [(_MacroMute(effect), index, before)]
+
+    raise MeasurementRefused(
+        "mute_dry: no mixer a pull on %s's output reaches plays a bare "
+        "Splitter tap, and it has no Mix macro to push, so no dry leg was "
+        "found. Name the voices with `voices=(...)` if the class carries "
+        "its dry copy some other way." % (name,))

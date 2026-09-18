@@ -97,6 +97,7 @@ tempo-dependent, and nothing here reads the transport.
 VENDOR = "PyDevices"
 
 import math
+from array import array
 
 from . import _component
 
@@ -110,6 +111,7 @@ try:
 except ImportError:      # ditto
     audioroute = None
 
+import audiocore
 import audiomixer
 
 
@@ -309,16 +311,68 @@ class Compressor(_component.Component):
         # of its own to clear, and the two Dynamics nodes below it do.
         mixer = self._own(audiomixer.Mixer(voice_count=2, **self._pcm(1024)),
                           reset=False)
-        mixer.voice[0].play(self._slow)
-        mixer.voice[1].play(self._dry_tap)
         self._mixer = mixer
         self._wet = mixer.voice[0]
         self._dry = mixer.voice[1]
         self._output = mixer
+        #: Two frames, because a one-frame mono sample is smaller than the
+        #: packed word the native mixer consumes and `get_buffer` never
+        #: returns on it (audioif#85).
+        self._silence = self._own(audiocore.RawSample(
+            array("h", bytes(2 * 2 * self._channel_count)),
+            sample_rate=self._sample_rate,
+            channel_count=self._channel_count), reset=False)
+        #: Whether the voices are on their sources. They are not at Mix 0:
+        #: see `_refresh_output`.
+        self._primed = False
+        self._ready = False
 
         self._character = index
         self._routed_lean = False
         self._init_macros(tuple(values), patch)
+        self._ready = True
+        self._refresh_output()
+
+    def _prime(self):
+        """Open the mixer's level gates, then hand its voices their sources.
+
+        Since CircuitPython 10.3.0 a fresh voice starts at level 0 and takes
+        its level only at a zero crossing, so one block of silence puts both
+        voices at the levels the macros have already set
+        (`_component.open_level_gates`). `MixerVoice.play` fetches from its
+        source on the spot, which is why this is the moment the class first
+        pulls anything: at Mix 0 it never happens.
+        """
+        _component.open_level_gates(self._mixer, [self._wet, self._dry],
+                                    self._silence)
+        self._wet.play(self._fast if self._lean() else self._slow)
+        self._dry.play(self._dry_tap)
+        self._primed = True
+
+    def _refresh_output(self):
+        """Mix 0 is the borrowed source itself, with no mixer in the path.
+
+        A mixer voice at level 1.0 is not unity: upstream's Q15 level is
+        `1.0 * 32768` and the kernel divides by 32767, so the dry voice at
+        unity came out one LSB high at every sample from 32736 up - three of
+        16384 on a full-scale ramp, all in the right channel, and on a mono
+        mixer it would be both (audioif#95). Nothing rounds on the way out
+        of the source, so handing it back is exact by construction.
+
+        It works because nothing here touches the source until `_prime`
+        does: the `Splitter` takes its source in the constructor without
+        fetching, `Dynamics.play` does not fetch, and only `MixerVoice.play`
+        pulls. So a class built at Mix 0 hands back a source still at frame
+        0, and a Mix move off 0 picks it up where the bypass left it.
+        """
+        if not self._ready:
+            return
+        if self.macro(13) <= 0.0:
+            self._output = self._source
+            return
+        if not self._primed:
+            self._prime()
+        self._output = self._mixer
 
     # -- the macro surface --------------------------------------------
 
@@ -348,6 +402,7 @@ class Compressor(_component.Component):
         else:
             self._wet.level = value
             self._dry.level = 1.0 - value
+            self._refresh_output()
 
     def _push_gain_computer(self):
         """Threshold, ratio and knee together, because on the `fet`
@@ -435,16 +490,20 @@ class Compressor(_component.Component):
         if lean == self._routed_lean:
             return
         if lean:
-            self._wet.play(self._fast)
+            if self._primed:
+                self._wet.play(self._fast)
             self._fast.set(makeup_db=self.macro(12))
             self._slow.set(makeup_db=0.0)
         else:
-            self._wet.play(self._slow)
+            if self._primed:
+                self._wet.play(self._slow)
             self._fast.set(makeup_db=0.0)
             self._slow.set(makeup_db=self.macro(12))
         self._routed_lean = lean
-        if self._output is not self._source:
-            self._output = self._mixer
+        # Unprimed, `_prime` reads `_lean()` and plays the right stage; the
+        # `play()` above would pull a block of the source at Mix 0, where
+        # nothing of this class's may touch it.
+        self._refresh_output()
 
     # -- what the meters read -----------------------------------------
 

@@ -146,12 +146,13 @@ def render(node, frames, rate, channels=2, **axes):
                              interpreter="cpython", **axes)
 
 
-def build(rate=48000, channels=2, values=None, frames=None, **options):
+def build(rate=48000, channels=2, values=None, frames=None, cls=None,
+          **options):
     """A DeEsser over `values`, through the contract's own boundary."""
     if values is None:
         values = tone(1000, 12000, frames or 8192, rate, channels)
     holder = source(values, rate, channels)
-    effect = deesser.DeEsser.create(holder, rate, **options)
+    effect = (cls or deesser.DeEsser).create(holder, rate, **options)
     return effect, holder
 
 
@@ -251,6 +252,54 @@ def settled_change(values, wet, frames, hz, rate):
 
 # --------------------------------------------------------------------------
 # The two faults that live in the class rather than in a live instance
+
+
+class ThroughTheDryVoice(deesser.DeEsser):
+    """The wiring this class shipped with before audioif#95: Range 0 routed
+    through the output mixer's dry voice at level 1.0 instead of handing the
+    borrowed source back. Nothing else moves - the levels are the same
+    numbers - so the only difference in the render is the mixer's own
+    `level / 32767` multiply.
+    """
+
+    NAME = 'DeEsser'
+
+    def _prime(self):
+        _component.open_level_gates(
+            self._pre, [self._pre.voice[0], self._pre.voice[1]],
+            self._silence)
+        _component.open_level_gates(
+            self._out, [self._out.voice[index] for index in range(4)],
+            self._silence)
+        for mixer, index, sample in self._voices:
+            mixer.voice[index].play(sample)
+        self._primed = True
+
+    def _refresh_output(self):
+        if not self._ready:
+            return
+        if not self._primed:
+            self._prime()
+        self._output = self._tail
+
+
+def fine_ramp_fs(frames, channels=2):
+    """A monotone full-scale ramp, one step of 65535/(frames-1) per frame.
+
+    **Not** `tools/effect_probes/*/ramp_fs.wav`, which is a 1024-frame
+    sawtooth climbing 64 counts a frame: the only samples it ever puts at or
+    above 32736 are the rails themselves, and a one-LSB *lift* clamps there.
+    That probe can see a dry path a hair light (32767/32768) and cannot see
+    one a hair heavy (32768/32767), which is what audioif#95 is.
+    """
+    values = array.array("h")
+    last = float(frames - 1)
+    for index in range(frames):
+        value = max(-32768, min(32767,
+                                int(round(-32768 + 65535.0 * index / last))))
+        for _ in range(channels):
+            values.append(value)
+    return values
 
 
 class FrozenCrossover(deesser.DeEsser):
@@ -1147,9 +1196,11 @@ class PlantedFaults(unittest.TestCase):
         dry = M.Render.from_pcm(values.tobytes()[:len(clean.pcm)], rate, 2)
         self.assertEqual(M.wire(clean, dry)["red"], [], "the control failed")
         # The fault: the dry voice a hair under unity - the 32767/32768 the
-        # kit spec names, which `ramp_fs` was built to expose.
+        # kit spec names, which `ramp_fs` was built to expose. It has to put
+        # the mixer back in the path to be planted at all, because Range 0
+        # no longer runs through one (audioif#95).
         effect2, _holder2 = build(rate=rate, values=probe("ramp_fs", rate),
-                                  range_db=0.0)
+                                  cls=ThroughTheDryVoice, range_db=0.0)
         effect2._out.voice[0].level = 32767.0 / 32768.0
         faulted = render(effect2.output, frames, rate)
         result = M.wire(faulted, dry)
@@ -1157,6 +1208,34 @@ class PlantedFaults(unittest.TestCase):
         self.assertNotEqual(result["red"], [])
         effect.deinit()
         effect2.deinit()
+
+    def test_wire_goes_red_on_a_dry_voice_at_unity(self):
+        """audioif#95's fault, and the probe the row above cannot use.
+
+        A mixer voice at level 1.0 is not unity - upstream's Q15 level is
+        `1.0 * 32768` and the kernel divides by 32767 - so the dry voice at
+        unity came out one LSB high at every sample from 32736 up. The
+        committed `ramp_fs` probe never puts a sample strictly inside that
+        window, so the fault was invisible to it and to this whole file
+        (see `fine_ramp_fs`). On a monotone full-scale ramp it is 7 of
+        16384, all in the right channel, and the class is exact.
+        """
+        rate = 48000
+        values = fine_ramp_fs(8192)
+        dry = M.Render.from_pcm(values.tobytes(), rate, 2)
+
+        effect, _holder = build(rate=rate, values=values, range_db=0.0)
+        clean = M.wire(render(effect.output, 8192, rate), dry)
+        effect.deinit()
+        self.assertEqual(clean["red"], [], clean["values"])
+
+        effect2, _holder2 = build(rate=rate, values=fine_ramp_fs(8192),
+                                  cls=ThroughTheDryVoice, range_db=0.0)
+        result = M.wire(render(effect2.output, 8192, rate), dry)
+        effect2.deinit()
+        print("\n  WIRE unity fault: %s" % result["values"])
+        self.assertNotEqual(result["red"], [])
+        self.assertEqual(result["values"]["max_abs_difference_lsb"], 1)
 
     def test_tail_goes_red_on_a_held_dc_state(self):
         rate = 48000

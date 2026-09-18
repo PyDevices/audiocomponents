@@ -181,11 +181,57 @@ def macro_position(span, value):
     return min(1.0, max(0.0, position))
 
 
-def macro_of(span, value):
+def position_of_midi(mode, midi):
+    """The 0-127 MIDI grid -> a macro's 0..1 position, by the macro's mode.
+
+    UNIPOLAR and TOGGLE are the plain linear law: 0 is one end, 127 the
+    other. **BIPOLAR gets a centre detent.** The grid has an even number of
+    steps and therefore no middle -- 64/127 is 0.50394 -- so the plain law
+    cannot express the centre of a span at all, and a bipolar macro's centre
+    is the setting that means "none of this". `Overdrive`'s Symmetry at MIDI
+    64 was +0.007874 rather than 0, which is a bias the shaper turns into DC
+    that never decays, so every shipped patch held +56 to +85 LSB forever and
+    `TAIL_SAMPLES` was false at all of them; `Fuzz`'s patch 0 banged 329 LSB
+    out of digital silence for the same reason (audiocomponents#87).
+
+    So for BIPOLAR the two halves get their own slopes and meet at 64:
+
+        m >= 64:  0.5 + (m - 64) / 126      64 -> 0.5, 127 -> 1.0
+        m <  64:  0.5 - (64 - m) / 128      64 -> 0.5,   0 -> 0.0
+
+    `macro_value` stays linear over the span, so a symmetric span reads
+    exactly 0.0 at MIDI 64 and the ends still reach both limits. The law is
+    continuous at 64 and takes floats, so a host with finer resolution than
+    7 bits still lands where its knob says.
+    """
+    midi = min(127.0, max(0.0, float(midi)))
+    if mode != "BIPOLAR":
+        return midi / 127.0
+    if midi >= 64.0:
+        return 0.5 + (midi - 64.0) / 126.0
+    return 0.5 - (64.0 - midi) / 128.0
+
+
+def midi_of_position(mode, position):
+    """The inverse of `position_of_midi`, unquantized. What `get_macro`
+    reports and what patch authoring rounds onto the grid."""
+    position = min(1.0, max(0.0, float(position)))
+    if mode != "BIPOLAR":
+        return position * 127.0
+    if position >= 0.5:
+        return 64.0 + (position - 0.5) * 126.0
+    return 64.0 - (0.5 - position) * 128.0
+
+
+def macro_of(span, value, mode="UNIPOLAR"):
     """`value` as the nearest integer on the 0-127 MIDI grid. Patch authoring
     and the tests that hold patch 0 to the constructor's defaults need this;
-    nothing on the audio path calls it."""
-    return int(round(macro_position(span, value) * 127))
+    nothing on the audio path calls it.
+
+    `mode` is the macro's own `MACRO_MODES` entry, because BIPOLAR uses a
+    different MIDI law -- pass it or a bipolar patch lands beside its value
+    rather than on it."""
+    return int(round(midi_of_position(mode, macro_position(span, value))))
 
 
 # --------------------------------------------------------------------------
@@ -450,8 +496,25 @@ class Component:
         self._macros = []
         self._patch_index = 0
         self._deinited = False
+        #: True only while `_build` is running.
+        #:
+        #: `_init_macros` applies a constructor `patch=` from inside
+        #: `_build`, so `_apply_macro` can be handed a graph `_build` has
+        #: not finished priming yet. A class that rewires or re-primes from
+        #: a macro then primes twice, and a priming `play()` on a mixer
+        #: voice pulls a block of the borrowed source there and then: the
+        #: first pull's block is dropped when the second one replaces it,
+        #: and the class's output starts 5.3 ms into the material.
+        #: `Distortion` did that at every scoop patch, where the Character
+        #: macro crosses 0.5 and the graph is rebuilt (audiocomponents#82).
+        #: `Saturation` and `Overdrive` each grew a private flag for the
+        #: same hazard; this is the one every class can read.
+        self._constructing = True
 
-        self._build(*options, **keywords)
+        try:
+            self._build(*options, **keywords)
+        finally:
+            self._constructing = False
 
         if self._output is None:
             raise TypeError("%s._build() set no output" % cls.NAME)
@@ -563,6 +626,13 @@ class Component:
         return macro_value(type(self)._MACRO_RANGES[index],
                            self._macros[index])
 
+    def _mode(self, index):
+        """Macro `index`'s public mode. Every crossing between the 0-127 grid
+        and a 0..1 position goes through this and `position_of_midi`, so the
+        constructor, `set_macro`, `program_change` and `get_macro` cannot
+        disagree about where a bipolar macro's centre is."""
+        return type(self).MACRO_MODES.get(index, "UNIPOLAR")
+
     # -- the live surface ---------------------------------------------
 
     def _check_live(self):
@@ -633,14 +703,14 @@ class Component:
         _sample_position(sample_position)
         self._check_live()
         self._macro_index(index)
-        self._macros[index] = min(1.0, max(0.0, float(value) / 127.0))
+        self._macros[index] = position_of_midi(self._mode(index), value)
         self._patch_index = None
         self._apply_macro(index, self._macros[index])
 
     def get_macro(self, index):
         self._check_live()
         self._macro_index(index)
-        return self._macros[index] * 127.0
+        return midi_of_position(self._mode(index), self._macros[index])
 
     def _macro_index(self, index):
         if isinstance(index, bool) or not isinstance(index, int):
@@ -667,8 +737,8 @@ class Component:
         if patch is None:
             return
         for macro in range(len(patch[1])):
-            self._macros[macro] = min(1.0, max(0.0,
-                                               float(patch[1][macro]) / 127.0))
+            self._macros[macro] = position_of_midi(self._mode(macro),
+                                                   patch[1][macro])
             self._apply_macro(macro, self._macros[macro])
         self._patch_index = index
 

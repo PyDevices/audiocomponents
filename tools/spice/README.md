@@ -10,3 +10,4 @@ verbatim from a real run. Generated output is never committed; the README's
 numbers are the record, and the run reproduces them in seconds.
 
 The first, `ts808/`, is Phase 0's proof that the workflow works end to end.
+`rat/` and `ds1/` are Distortion's circuit-grade decks (Phase 4).

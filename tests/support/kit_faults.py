@@ -438,13 +438,26 @@ def wire_build(cls, name=None):
     trusting that its own bypass is byte-exact, which is a separate trait.
     The nodes are still built and still owned, so `deinit()` releases them;
     they are simply never in the path.
+
+    `output` is overridden as a **property**, not only assigned in `_build`.
+    A class that re-points `self._output` after construction - every class
+    that hands back its source at Mix 0 and the mixer above it otherwise -
+    would otherwise take the wire back on the first `set_macro` or
+    `program_change`, and the null build would read green because it had
+    stopped being a null build. That is the failure this fixture exists to
+    catch, so it may not be the fixture's own.
     """
     def _build(self, *arguments, **keywords):
         cls._build(self, *arguments, **keywords)
         self._output = self._source
 
+    def output(self):
+        self._check_live()
+        return self._source
+
     return type(name or ("Wire" + cls.__name__), (cls,),
                 {"_build": _build,
+                 "output": property(output),
                  "__doc__": "%s built as a wire: output is the source."
                             % cls.__name__})
 

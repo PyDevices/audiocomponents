@@ -91,9 +91,10 @@ from . import _component
 #: the kernel write `to_s16(x0)`, which is the input sample unchanged
 #: (`audioif/src/shared/audioif_filter_f32.c:239`). Two reasons for the
 #: number. A quarter of a decibel is inaudible and a section still costs a
-#: pass. And a BIPOLAR macro has no exact centre on the 0-127 grid - 64/127
-#: puts a +/-16 dB bell at 0.126 dB and a +/-12 dB output at 0.094 dB - so
-#: without a floor a "flat" patch would not be a wire.
+#: pass. And a knob passes through the codes either side of a BIPOLAR
+#: macro's centre detent: 65 puts a +/-16 dB bell at 0.127 dB. (The detent
+#: itself is exact since audiocomponents#87; before it, 64 was 0.126 dB and
+#: a "flat" patch was not a wire at all.)
 FLAT_DB = 0.2
 
 #: The proportional-Q law of the dossier's appendix A. Holding a bell's

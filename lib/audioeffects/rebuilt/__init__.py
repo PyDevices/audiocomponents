@@ -18,8 +18,11 @@ is named after. Anything else in the file is private helpers.
 **Coming home is a separate step from adoption.** Phase 2's sixteen classes
 have come home, and so have Phase 3's THROUGH classes plus RingMod
 (`autopan.py`, `chorus.py`, `phaser.py`, `tremolo.py`, `vibrato.py`,
-`ringmod.py`). This directory keeps the substitution machinery, the two
-`Example` fixtures, and the parked Phase 3 rebuild (`flanger.py`). `ADOPTED`
+`ringmod.py`) and Phase 4's four adopted classes (`overdrive.py`,
+`distortion.py`, `bitcrusher.py`, `cabinetsim.py`). This directory keeps the
+substitution machinery, the two `Example` fixtures, the parked Phase 3
+rebuild (`flanger.py`) and Phase 4's three board-parked rebuilds
+(`saturation.py`, `fuzz.py`, `exciter.py`). `ADOPTED`
 below no longer
 names the classes that have come home -- there is nothing left here for it
 to arbitrate for them -- and it will name later phases' classes until those
@@ -78,8 +81,18 @@ def _present():
 #: `create()` resolve to; a module under `rebuilt/` whose name is NOT here
 #: is parked - still importable, still measurable, not shipped.
 #:
-#: Phase 2's sixteen and Phase 3's five THROUGH classes have come home, so
-#: they are not listed. Flanger stays parked under this directory.
+#: Phase 2's sixteen, Phase 3's five THROUGH classes and RingMod have come
+#: home, so they are not listed. Nor are Phase 4's four - `Overdrive`,
+#: `Distortion`, `Bitcrusher` and `CabinetSim` were adopted by the board
+#: runner on 2026-09-18 and promoted the same day, so there is nothing left
+#: here to arbitrate for them either.
+#:
+#: What stays parked under this directory: Phase 3's `Flanger`, and Phase 4's
+#: `Saturation`, `Fuzz` and `Exciter`, which are board-parked on budget -
+#: `Saturation` is over its palette budget on both boards at its full
+#: position and at its own `Saturation - lean` patch (audiocomponents#70),
+#: and `Fuzz` and `Exciter` were priced but never reached the boards. Their
+#: family module `drive.py` still serves the classes they replace.
 ADOPTED = ()
 
 

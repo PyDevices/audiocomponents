@@ -50,5 +50,38 @@
 # installs audioif from this pin and nothing else. Still no release, for the
 # reason above: audioif is released once, at Phase 7.
 #
+# Moved to 3388df4 on 2026-09-17, in the effects program's Phase 4 fix round,
+# on Brad's ruling of the same day: a toolkit defect is fixed the moment it is
+# found and the phase pins to the merge commit, the version to be named later.
+# That commit is audioif PR #86: the CPython mixer twin scales a voice in
+# float32 as the kernel does (audioif#84 - CPython and the native builds now
+# agree at fractional voice levels, where a sparse +-1 LSB separated them); no
+# shared kernel fuses a multiply-add (audioif#79 - proven on hardware the same
+# day: the P4 and the S3 render identical digests on all fifteen float nodes,
+# where six biquad rows split at cebb7ca); a looping sample shorter than one
+# packed word is refused at play() instead of hanging the native mixer
+# (audioif#85); and a Splitter takes a block bigger than its ring in pieces
+# instead of writing over itself (audioif#87). What still separates a board
+# from a desktop is audiocomponents#75: a filter setting a class derives in
+# Python float, which is single precision on an ESP32.
+#
+# Moved to 977ef26 the same evening, under the same ruling: audioif PR #93
+# fixes two upstream CircuitPython 10.3.0 defects in audiospeed.SpeedChanger on
+# the MicroPython and CPython targets as documented deviations - the rate
+# rounds to its Q16 step instead of truncating (audioif#92) and the phase
+# carries across a source buffer instead of restarting (audioif#91) - found by
+# Bitcrusher's fix round, the only class that uses the node; PR #90 adds the
+# CircuitPython copy-manifest lines audiomodal needed. Proven on both boards:
+# the hold probe matches the CPython twin on all fifty lines on the P4, the S3
+# and desktop MicroPython, and nothing else moved from 3388df4.
+#
+# Moved to e3b95e7 on 2026-09-17 late evening, same ruling: audioif PR #98
+# adds audioshaper.SampleHold (audioif#97), an exact sample-and-hold of
+# audioif's own, because a SpeedChanger down-then-up pair can never be made
+# reciprocal at Q16 rate resolution - the Phase 4 gate audit traced
+# Bitcrusher's slow flange (one sample per ~190k frames) to the node. Nothing
+# that existed changed: every verify_dsp row is byte-identical, audiospeed is
+# untouched. Board proof of the new node is owed by Phase 4's board run.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-cebb7cad20a9d5e26f53f78a6dd799b9b8281af7 cebb7cad20a9d5e26f53f78a6dd799b9b8281af7
+e3b95e7eeee1f0d3711ae0ec1440930ae5df2573 e3b95e7eeee1f0d3711ae0ec1440930ae5df2573

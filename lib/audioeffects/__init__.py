@@ -47,8 +47,11 @@ from .autopan import AutoPan
 from .vibrato import Vibrato
 from .ringmod import RingMod
 from .modulation import Flanger
-from .drive import (Overdrive, Distortion, Fuzz, Saturation, Bitcrusher,
-                    Exciter, CabinetSim)
+from .overdrive import Overdrive
+from .distortion import Distortion
+from .bitcrusher import Bitcrusher
+from .cabinetsim import CabinetSim
+from .drive import Fuzz, Saturation, Exciter
 from .pitch import PitchShifter, Harmonizer, Octaver, StereoWidener
 from .rack import Rack, ShimmerHall, AirSpace
 
@@ -107,13 +110,15 @@ def _adopt(namespace, names):
     keep their meaning at every phase boundary, whichever half of the
     library a given name is served by.
 
-    Phase 2's sixteen and Phase 3's THROUGH classes plus RingMod (AutoPan,
-    Chorus, Phaser, Tremolo, Vibrato, RingMod) have come home as one file
-    per effect beside this module, so they are imported above rather than
-    substituted. The machinery stays for Flanger and the phases still to come:
-    `rebuilt.load()` answers `None` for a parked name (or a name with no
-    file), and `rebuilt.module_class()` is how a tool or a class's own
-    tests reach a rebuild that has not come home yet.
+    Phase 2's sixteen, Phase 3's THROUGH classes plus RingMod (AutoPan,
+    Chorus, Phaser, Tremolo, Vibrato, RingMod) and Phase 4's four adopted
+    classes (Overdrive, Distortion, Bitcrusher, CabinetSim) have come home
+    as one file per effect beside this module, so they are imported above
+    rather than substituted. The machinery stays for Flanger, for Phase 4's
+    three board-parked rebuilds (Fuzz, Saturation, Exciter) and for the
+    phases still to come: `rebuilt.load()` answers `None` for a parked name
+    (or a name with no file), and `rebuilt.module_class()` is how a tool or
+    a class's own tests reach a rebuild that has not come home yet.
     """
     for exported in names:
         current = namespace.get(exported)

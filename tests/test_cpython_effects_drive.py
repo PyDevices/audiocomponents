@@ -1,18 +1,25 @@
-"""What the drive classes do to a signal today.
+"""What the drive classes `drive.py` still serves do to a signal today.
 
-The three saturation characters as curves rather than presets, the
-overdrive knob buying harmonics and not volume, the bit depth, and the
-cabinet's tilt and headroom.
+The three saturation characters as curves rather than presets.
 
 Retired by the effects program's **phase 4 - drive**. Every assertion here
-is written against a surface that phase replaces, so when its classes have
-been rebuilt - each carrying its own invariant and planted-fault tests -
-this module is deleted whole and nothing else in the suite moves. Until
-then the contract-level tests over `audioeffects.ALL` in
-`test_cpython_effects_library.py` hold the catalogue, and these hold the
-character.
+is written against a surface that phase replaces, so as its classes come
+home - each carrying its own invariant and planted-fault tests - the
+assertions about them leave this file, and the file goes when the last one
+does. `Overdrive`, `Bitcrusher` and `CabinetSim` went on 2026-09-18, to
+`test_cpython_effects_overdrive.py`, `..._bitcrusher.py` and
+`..._cabinetsim.py`; the knob law, the bit depth and the cabinet's tilt and
+headroom are read there, against the classes the package actually serves.
+They could not be read here any more: `audioeffects.Overdrive` has been the
+rebuild since the board runner adopted it, and the old class's knob and the
+old class's `bits` attribute are not on it.
 
-Covers `Saturation`, `Overdrive`, `Bitcrusher` and `CabinetSim`.
+Until `Saturation` comes home the contract-level tests over
+`audioeffects.ALL` in `test_cpython_effects_library.py` hold the catalogue,
+and these hold its character.
+
+Covers `Saturation`. `Fuzz` and `Exciter` are `drive.py`'s too and have no
+character test here; they never had one.
 """
 
 import os
@@ -22,7 +29,7 @@ import unittest
 import audioeffects
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
-from effects_measure import (harmonic_db, peak, source, tilt_db,  # noqa: E402
+from effects_measure import (harmonic_db, source, tilt_db,  # noqa: E402
                              tone_gain_db)
 
 
@@ -89,52 +96,6 @@ class DriveTest(unittest.TestCase):
     def test_an_unknown_character_is_refused(self):
         with self.assertRaises(ValueError):
             audioeffects.Saturation(source(), character="transistor")
-
-    def test_the_overdrive_knob_actually_drives(self):
-        # OVERDRIVE mode ignores the engine node's own `drive` argument -
-        # its curve is a fixed shape - so passing the knob straight through
-        # left it inert. It is pre-gain into the curve now, with the level
-        # put back after, so turning it up buys harmonics and not volume.
-        harmonics = []
-        for drive in (0.1, 0.4, 0.9):
-            second, third = harmonic_db(
-                lambda s, d=drive: audioeffects.Overdrive(
-                    s, drive=d, mix=1.0).output)
-            harmonics.append(second)
-        self.assertEqual(harmonics, sorted(harmonics), harmonics)
-        self.assertGreater(harmonics[-1], harmonics[0] + 6.0, harmonics)
-        levels = [tone_gain_db(1000.0, lambda s, d=d: audioeffects.Overdrive(
-            s, drive=d, mix=1.0).output) for d in (0.1, 0.4, 0.9)]
-        self.assertLess(max(levels) - min(levels), 2.0, levels)
-
-    def test_a_bitcrusher_can_be_asked_for_a_bit_depth(self):
-        for bits in (4, 8, 12):
-            self.assertEqual(audioeffects.Bitcrusher(source(),
-                                                     bits=bits).bits, bits)
-        # Fewer bits is a coarser quantizer, so a louder error against the
-        # signal it came from - which is what "crushed" means.
-        eight = peak(audioeffects.Bitcrusher(source(), bits=8).output, 8)
-        four = peak(audioeffects.Bitcrusher(source(), bits=4).output, 8)
-        self.assertNotAlmostEqual(eight, four, places=3)
-        with self.assertRaises(ValueError):
-            audioeffects.Bitcrusher(source(), bits=20)
-
-    def test_a_cabinet_rolls_the_top_off_and_keeps_the_body(self):
-        cabinet = lambda s: audioeffects.CabinetSim(s, patch=1).output
-        body = tone_gain_db(100.0, cabinet)
-        middle = tone_gain_db(1000.0, cabinet)
-        top = tone_gain_db(10000.0, cabinet)
-        # The bump is real, and the roll-off above the cone's limit is steep.
-        self.assertGreater(body, middle + 2.0)
-        self.assertLess(top, middle - 20.0)
-
-    def test_a_cabinet_does_not_amplify(self):
-        # It is normalized by what it does to a signal, not by its tallest
-        # tap: three filter sections with two peaking boosts have a peak gain
-        # of several, and a cabinet that multiplies by several clips.
-        for index in sorted(audioeffects.CabinetSim.PATCHES):
-            cabinet = audioeffects.CabinetSim(source(), patch=index)
-            self.assertLess(peak(cabinet.output, 8, skip=2), 0.95, index)
 
 
 if __name__ == "__main__":

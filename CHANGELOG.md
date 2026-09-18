@@ -10,6 +10,338 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **Phase 4 promotion.** `Overdrive`, `Distortion`, `Bitcrusher` and
+  `CabinetSim` come home as one file per effect --
+  `audioeffects.overdrive`, `.distortion`, `.bitcrusher`, `.cabinetsim` --
+  and out of `rebuilt/`. `rebuilt.ADOPTED` is empty again: it is staging,
+  not a roster. `drive.py` still serves `Fuzz`, `Saturation` and `Exciter`,
+  whose rebuilds stay parked under `rebuilt/` on board budget, so it cannot
+  be deleted yet; the four old classes it held are gone with their promoted
+  replacements, and `audioconvolve`, `array` and `math` left the module with
+  the old `CabinetSim`. Every shared helper that survives -- `_push`,
+  `_CHARACTERS`, `_SHELF_MODES` -- is used only by a class still in
+  `drive.py`, so nothing moved to a private module. `ALL` is still 45 names.
+  A refactor and nothing else: **65 digest cells per interpreter, byte for
+  byte identical** before and after on CPython, MicroPython and
+  CircuitPython (three probes -- 1 kHz tone, full-scale ramp, deterministic
+  noise -- at the constructor default and every shipped patch of all seven
+  classes), and the smoke's 267 lines identical but for the one line that
+  counts what is served from its own module: **24 -> 28**, staged for
+  adoption `none`.
+
+  `test_cpython_effects_drive.py` gives up its `Overdrive`, `Bitcrusher` and
+  `CabinetSim` assertions, which is the retirement its own docstring
+  describes: those three have come home and each has its own far larger test
+  file. Two of them had been **red since adoption** -- `audioeffects.Overdrive`
+  and `audioeffects.Bitcrusher` became the rebuilds then, and this file reads
+  the old classes' surface (`.bits`, the old knob law) through the public
+  name. Its `Saturation` tests stay; `drive.Saturation` is still what ships.
+
+- **`Exciter` hands back the palette's own 256-frame block, and the
+  `Dynamics` row it was said to owe is not what was wrong** (Phase 4, fifth
+  fix round, 2026-09-18). The board asked for a palette row at this class's
+  own transient gains, because the palette builds
+  `audiodynamics.Dynamics@transient` with both gains at 0 dB where it
+  applies unity. Taken on desktop MicroPython, order-balanced, 8000 blocks a
+  run: this class's +6 / −12 dB measures **1.034× and 1.062×** the 0 dB
+  build — a few per cent, not the 27 % the S3 is missing. What the S3 is
+  missing is that the node cost the class **1.234 ms against a 0.985 row**
+  (0.537 against 0.495 on the P4), and the suspect is the block: the class
+  built its blend `Mixer` at `buffer_size=1024`, so it rendered **128 stereo
+  frames** and everything behind it was pulled twice per 256-frame block —
+  including a `Dynamics`, whose own output block is 256 frames by
+  construction (`audioif_dynamics.h:56`). It hands back the palette's own
+  block now, which **moves no byte** (`59f2e64ed63c1362` at patch 0,
+  `56b7966ed074ab8b` at patch 1, either length, three interpreters). The
+  budget is re-derived at the 2026-09-18 palette — **29 % / 54 %** on
+  `classic` and **39 % / 73 %** on `transient`, on **two** `Biquad` and not
+  three, `_chain` being an alias of `_hp` or `_dyn`. Unproven on a board:
+  desktop MicroPython cannot see the block saving either way
+  (audiocomponents#72).
+
+- **`Fuzz`'s `cascade` character ships at `oversample=2`, and a test holds
+  it** (Phase 4, fifth fix round, 2026-09-18). `create()` defaulted to ×8
+  for both characters, and at ×8 the boards measured cascade at **4.782 ms
+  on the P4 and 8.580 on the T-Embed S3 — 90 % and 161 % of a 5.333 ms
+  block, real-time factor 1.00 and 0.56**: the shipped surface reached a
+  graph that cannot keep up at 48 kHz, with only a docstring in the way.
+  `shipped_oversample(character)` picks it now — ×8 on `germanium`, ×2 on
+  `cascade` — and `oversample=` still takes 1, 2, 4 or 8. ×2 rather than the
+  ×4 the docstring offered a P4, because ×4 is **112 % of an S3 block** and
+  because cascade's floor barely moves above ×2: measured for the first time
+  this round, ×8 buys cascade **12.3 / 12.7 dB** over ×1 where it buys
+  `germanium` 20.9 / 18.7, the second clipper folding harmonics the first
+  already put above the output Nyquist. **What ×2 gives up is 2.9 dB at
+  1010 Hz and 5.3 dB at 3700 Hz of alias floor at the default Fuzz, and
+  5.6 / 5.6 dB at maximum Fuzz**, and `cascade` is outside A4's span at
+  every factor — A4 is a `germanium` row. At ×2 cascade is **inside its
+  budget on both boards** (40.6 % / 73.2 % against 42 % / 78 %, rt 1.97 /
+  1.10). Its three-voice tone mixer also hands back the palette's own
+  256-frame block now, which moves no byte. `germanium` is still 2.3 / 2.2
+  points over its re-derived 42 % / 75 % and the cause is **not located**
+  (audiocomponents#74).
+
+- **`Saturation` hands back the palette's own 256-frame block, and its
+  budget is re-derived** (Phase 4, fifth fix round, 2026-09-18). The class
+  built its output `Mixer` at `buffer_size=1024`, and `Mixer._render_size`
+  is `buffer_size // 2 // 4 * 4` bytes — so it rendered **128 stereo
+  frames** and every node behind it, including a `Splitter` whose own chunk
+  is 256 frames, was pulled **twice** per 256-frame block. That is the
+  palette's block, and one extra Python-level pull is worth **0.178 ms on
+  the P4 and 0.109 ms on the S3** by the board's own rows (`Splitter+3 −
+  Splitter+tap` against `Mixer@3active − Mixer@2active`): 3.3 and 2.0
+  points of a 5.333 ms block, which is the whole of the class's P4 budget
+  miss. The trim **moves no byte** — `ffb5e07e33e2732d` at patch 0 and
+  `58444f96ff950621` at patch 8, at either block length, on CPython,
+  MicroPython and CircuitPython. The budget is re-derived at the palette
+  both boards took on 2026-09-18 and is **31 % / 58 %** at patch 0 and
+  **21 % / 41 %** at patch 8, on **three** `Biquad` sections and not four:
+  `_after` *is* `_couple`, so the board's attribute census counted one node
+  under two names. The class is still over by 3.4 / 4.6 points as measured,
+  and **that miss is not the node count** — every node the class drops
+  leaves the sum by exactly its palette row. The board ROW of the
+  256-frame graph is unmeasured (audiocomponents#70).
+
+- **`CabinetSim`'s tail carries a user impulse, and its ceiling is read
+  in combination** (Phase 4, third fix round, 2026-09-18). The class
+  overrode `latency_samples` and not `tail_samples`, so it returned the
+  eight-section constant whatever `impulse=` held: an 8 192-tap impulse
+  measures **8 447** samples of tail and a 48 000-tap room **48 255**,
+  against a declared 6 144, and a host that trusted it truncated the tail
+  it had handed in. And the ceiling every disclosure site published was
+  read through a `macro_surface()` that moves **one macro at a time**, so
+  Low Cut 55 with Body +6 — shipped patch 6's own settings — was never
+  swept: in combination the analytic peak there is **+13.148 dB** against
+  a published +10.91 and the ceiling is **−13 dBFS** against −11, wrong
+  in the safe direction. The class states −14 and −6 dBFS as
+  no-railed-sample ceilings. **T4 is a 40.00 Hz row**: the pack's tone
+  snapped to the render's bin grid and read 41.0156 Hz, worth 1.28 dB on
+  a six-pole rolloff.
+
+- **`Exciter` gets a capacitor behind its diode, and an input ceiling**
+  (Phase 4, third fix round, 2026-09-18). The diode is asymmetric on
+  purpose and the only high-pass was **upstream** of it, so the rectified
+  offset walked out on any in-band tone — −122 to −1601 LSB on the shipped
+  patches, **−4310 LSB at Harmonics 1.0 / Mix max / −1 dBFS** — where a
+  silence test could never see it. `DC_BLOCK_HZ` is 30 Hz, far below
+  Tune's own floor; the same cells read −1.8 and −0.1 LSB, and
+  `tail_samples` went 512 → **4096** for the pole's ring. The class also
+  states an **input ceiling of −3 dBFS** for the first time (it only
+  attenuates: `Output` is −24…0 dB and the dry leg is unity), and T7 says
+  what it holds over — **48 and 44.1 kHz, up to that ceiling**, and
+  **disconfirmed at 22.05 kHz**, where 6 of 12 readable Tune stops are
+  over the bar against a published "the whole column is green". A fifth
+  clause says what the ×4 is worth against ×1 wherever Tune is high
+  enough to fold, which is the clause `BaseRate` cannot be healthy under.
+
+- **`Bitcrusher` gates its dither on the input** (Phase 4, third fix
+  round, 2026-09-18). Two rectangular tables loop for ever, so shipped
+  patch 5 put ±16 counts out into digital silence **to the last frame** —
+  8 345 of 16 384 frames nonzero, at every rate. The sum that reaches the
+  quantiser goes through a gate 6 dB above the dither's own level now, so
+  silence in is silence out at every patch, at the cost of an 8 192-sample
+  tail wherever the dither is on and an `audiodynamics` node in
+  `REQUIRES`. `latency_samples` carries the **band limit's own delay**:
+  patch 3 measured 2 to 8 samples over 120 offsets against a declared 6.
+  T1, T2 and T6 got back the precondition the rebuild dropped — the probe
+  must span **at least 16 steps** of the depth in force *and* sweep the
+  codes, because a sine's mean wanders with the phase at every level. T4's
+  one excluded stop and the **four-sample** events that vanish at patch 6
+  (60 of 120 at 48 kHz) are in the rows now.
+
+- **`Saturation`'s Output delivers what it says, and its tube table stops
+  inverting** (Phase 4, third fix round, 2026-09-18). The level the node
+  gave up at `NODE_CEILING` went onto the wet mixer voice as `level > 1.0`,
+  and **a mixer voice clamps at 1.0**: Output +12 delivered **+7.866 dB**,
+  and the test that should have caught it multiplied two numbers in Python
+  and never rendered. A 10 Hz `HIGH_SHELF` carries the excess now and +3 /
+  +6 / +9 / +12 land within 0.002 dB, rendered, on both builds. The tube
+  table carried the triode's inversion, which put the wet leg 180° out of
+  phase with the dry one and made **Mix a notch** (−33.580 dBFS at Mix 0.75
+  against −23.125 at Mix 1); the sign moved into the generator, where every
+  unit this models has an even number of gain stages. The plate coupling
+  pole is **charged before the first block**, so patches 4 and 6 emit 1 LSB
+  into digital silence where they banged 8 489 and 7 044.
+  `latency_samples` is the **measured integer onset** per character and
+  factor, so all 18 build × rate cells read within the kit's bar where 10
+  were red. A4 is a −6 to 0 dBFS row, TU2 a 0 dBFS row that holds **Tilt**
+  fixed, TU1's guard is graded against **17** readable positions and not
+  49, and the class states its **insertion loss** — 8.1 / 13.4 / 33.5 dB —
+  because Mix 1 is not unity.
+
+- **`Fuzz` charges its output capacitor before the first block** (Phase 4,
+  third fix round, 2026-09-18). S1's third coupling section is behind the
+  shaper and it started cold, so shipped patch 2 - a starved bias, on
+  purpose - put **21 971 LSB, −3.5 dBFS**, out of digital silence and took
+  0.2 s to bleed. It emits **11 LSB** now, which is the ±1 LSB input
+  wander through a 36 dB gain stage and is a stated, bounded, tested
+  residual rather than an exemption. `TAIL_SAMPLES` is **24 576**: 16 384
+  was measured at 1 kHz and a 40 Hz burst rings 18 750 frames at patch 5.
+  Three rows got the spans they were missing - A4's worst cell is the
+  **joint** Fuzz × Tilt one (−35.407 dB, a **0.4 dB** margin, against a
+  published −38.154), the rail claim holds **between 100 Hz and 3700 Hz**
+  and not below it, and G1 says it is **level-free over −46 … −20 dBFS**.
+  `cascade` with Bias off centre stands 15 771 LSB of DC for ever; that is
+  measured, filed as
+  [#89](https://github.com/PyDevices/audiocomponents/issues/89) and not
+  fixed here, because the one section that removes it disconfirms C1, C3
+  and C4.
+
+- **`Distortion`'s Asymmetry is a second table, not a bias** (Phase 4,
+  third fix round, 2026-09-18). `STOCK_ASYMMETRY * macro` was a **3.5 V
+  offset** into a table whose diodes clip at 0.62 V: it parked the
+  operating point at 0.97 of full scale, so a silent input came out at
+  −6.8 dBFS of DC, the DS-1's output coupling capacitor had to hold it
+  back, and the step from silence to a note was 0.45 of full scale and
+  took 86 ms to bleed. The DS-1's asymmetric clipping section is one
+  1N4148 one way and two in series the other, so `_CURVE_DS1_ASYM` joins
+  the pair table and Asymmetry blends the two — **both answer zero with
+  zero**. Silence in is silence out at every shipped patch, the tail
+  settles inside its declaration, and the four scoop patches read their
+  own latency where a click could not be measured on them at all. It
+  costs 1.8–2.3 dB of level on those patches and **improves** their alias
+  floors by 3 to 15 dB. Also: the **Filter macro works over its whole
+  travel on `scoop`** (it was one section from MIDI 8 up and ran backwards
+  below it), `wet_ceiling()` says where **Volume and Mix stop** at a high
+  Ceiling instead of leaving 43 dead positions undisclosed, and **A1's
+  −60 dB bar carries its level span** — −22 to −16 dBFS, against −46.5 dB
+  at playing level.
+
+- **`Overdrive` has an output capacitor** (Phase 4, third fix round,
+  2026-09-18). A Tube Screamer is DC-coupled inside and AC-coupled at the
+  jack; this class had the first half only, so Symmetry's operating-point
+  offset walked out of the shaper and stood on the output for ever -
+  **+4461 LSB at shipped patch 6, into digital silence**, at every rate.
+  `DC_BLOCK_HZ` is a 30 Hz pole on the clip branch behind the shaper, and
+  it is charged before the first block, so silence in is silence out at
+  every shipped patch with a **peak of 0** rather than a decaying thump.
+  It costs a fourth `Biquad` (30 % / 52 % → **32 % / 55 %** of the block),
+  3.4 dB of alias floor at the default at 48 kHz, one block of input on a
+  live macro move that shifts the offset, and a longer tail:
+  `tail_samples` is **4096** over a worst measured ring of 2692 frames,
+  where it was 512 over 222. The class also states an **input ceiling**
+  for the first time — −1 dBFS at the shipped patches, −6 dBFS anywhere on
+  the macro surface — T7 gains a fifth bar saying what the oversampling is
+  worth (`ALIAS_OVERSAMPLE_COST_DB`, at least 20 dB wherever the clip
+  stage is in circuit), and its §7.2 redefinition now names its rates:
+  the old −60 dB target is **kept at 44.1 kHz**, where the shipped build
+  meets it, and [audioif#104](https://github.com/PyDevices/audioif/issues/104)
+  is the node ask 22.05 kHz needs.
+
+- **Phase 4's fix round, 2026-09-17.** Every drive class went back through
+  its own gate at the new audioif floor (`977ef26`) and six of the seven
+  landed. What changed across the round, beyond each class's own entry:
+
+  **Five of seven graphs got smaller, so five budgets came down.** `Fuzz`
+  lost four of eight nodes (46 % / 81 % → **40 % / 70 %**, and patch 8
+  `Fuzz - lean` is **16 % / 28 %**), `Exciter` stopped charging `classic`
+  for a Dynamics wire it does not use (33 % / 59 % → **26 % / 45 %**),
+  `Overdrive` lost a `Splitter` and a `Mixer` (36 % / 63 % → **30 % / 52 %**),
+  `Distortion` lost three nodes (43 % / 78 % → **35 % / 63 %**) and
+  `Saturation` dropped its `MidSide` tail (43 % / 75 % → **42 % / 75 %**,
+  with patch 8 `Saturation - lean` at **27 % / 48 %** — the S3's shipped
+  position, because the boards read the older graph at 41.0 % / **77.5 %**).
+  `Bitcrusher`'s **9 % / 20 %** is the first sum that prices its two
+  `SpeedChanger` nodes rather than leaving them out. `CabinetSim` is the
+  only Phase 4 class with a board row - **17.1 % / 27.7 %**, measured
+  2026-09-17 - and the gap to its 15 % / 26 % palette is the palette's:
+  the `Biquad` row prices one node fed by the harness, and the eighth
+  section of a serial chain costs more than the first.
+
+  **Curve tables are gated now** (`tests/test_curve_tables.py`). Two
+  defects in one week - `Saturation`'s tube curve with 337 adjacent steps
+  over 2000 counts, `Overdrive`'s filling 35 % of int16 - are the kind a
+  trait test cannot see, because a trait test reads a handful of levels and
+  a table is wrong between them. Every int16 table of 256 points or more in
+  the library is now held to monotone, no adjacent step over 2000 counts,
+  and at least 95 % of int16 on its larger side. It found a third on its
+  first run: `Phaser`'s `CUBIC_CURVE` was `y = x - x³/3`, which peaks at
+  two-thirds of full scale by construction. All three tables are fixed and
+  the gate is green.
+
+  **A mixer voice at level 1.0 is not a wire** (audioif#95). Upstream's Q15
+  level for 1.0 is 32768 and the kernel divides by 32767, so a dry path
+  through a voice at unity lifts every sample at or above 32736 by one LSB.
+  Nothing under −6.02 dBFS can reach it, which is why only the classes
+  probed with a full-scale ramp went red. `Saturation`, `MultibandCompressor`,
+  `Compressor`, `DynamicEQ` and `DeEsser` now keep the mixer out of the path
+  at Mix 0 entirely: `Saturation` hands back the borrowed source object
+  itself, so the invariant is exact by construction rather than by luck.
+
+- **Phase 4 drive rebuilds, parked under `rebuilt/`:** `Overdrive`,
+  `Distortion`, `Fuzz`, `Saturation`, `Bitcrusher`, `Exciter`, `CabinetSim`.
+  `audioeffects.create()` still serves `drive.py` until the auditor adopts
+  them. Catalogue rows name tier, macro count, latency, and the palette
+  budget; board cost is unmeasured.
+
+- **`Overdrive` (rebuilt, Phase 4):** Tube Screamer-shaped dry-plus-clip on
+  `audioshaper.Waveshaper`, curve from `tools/curves/overdrive_curve.py`.
+  Lives in `lib/audioeffects/rebuilt/overdrive.py` until the auditor adopts
+  it. Mix 0 is the wire; Drive never is.
+
+  **Second fix round, 2026-09-17: T7's alias floor is restated, and it is
+  read on the wet branch.** The kit's `mute_dry` searches a class's output
+  mixer only, and this class sums its dry copy on the *circuit* mixer, one
+  stage earlier — a Tube Screamer's tone stack is after the sum. So it
+  refused, the pack read the mixed output instead, and every floor it
+  published was **5.6 to 6.6 dB optimistic**
+  ([#68](https://github.com/PyDevices/audiocomponents/issues/68)).
+  `tests/support/kit_probes.mute_dry` now reaches an inner mixer, every
+  floor is re-taken with the dry voice muted, and the numbers moved.
+
+  On that reading the old −60 dB bar is **unreachable on this palette**,
+  so T7 is restated under vision §7.2 as three numbers at 1010 Hz /
+  −6 dBFS: **−70 dB at the constructor default** (−81.3 / −80.5 / −75.9 at
+  48 / 44.1 / 22.05 kHz), **−50 dB at every shipped patch as shipped**
+  (worst patch 3, −56.1 / −71.6 / −54.4), **−40 dB anywhere on the macro
+  surface** (worst −47.7 / −61.1 / −46.6) and **−40 dB at that corner at
+  every input level up to full scale** (worst −42.0 / −52.1 / −41.3 —
+  1.3 dB of margin, the thinnest the class has anywhere, and stated rather
+  than left to be found). ×8 is where the node
+  stops and 22.05 kHz reads −46.6 dB there; ×8 at 48 kHz would cost
+  +1.408 ms a block on the S3 and project it to a real-time factor of
+  1.00. −40 dB is the model's own static-approximation error, which is
+  what the −60 dB bar was a 20 dB cushion for. The claim it replaces —
+  "the narrowest cell anywhere is −60.2 dB" — was false by 13 dB at Drive
+  max with Body at the bottom of its travel, a corner no shipped patch
+  visits and the suite never measured.
+
+  The oversampling rule is stated as it behaves: **×8 at every rate below
+  48 kHz, ×4 at 48 kHz and above**, and every rate under 24 kHz leaves the
+  internal rate under the 192 kHz target. T7's guard is the naive-clip
+  build, and its knee is now the hardest a 1025-point table can express,
+  because at the diode's own 0.3 V threshold it went healthy at 9 of 52
+  surface positions under the restated bars. The docstring, the catalogue
+  row and the pack also now carry T1's sawtooth reversal, T2's h4, and
+  T3's level law outside its stated pair.
+
+  **First fix round, 2026-09-17.** The oversampling factor is derived from
+  the sample rate instead of being the constant a 48 kHz bench chose. At a
+  fixed ×4 the alias floor missed by 10 dB at 22.05 kHz and on three
+  shipped patches. The 48 kHz cost is unchanged, which is the rate the
+  budget is taken at.
+
+  The graph lost two nodes. Mix rides the clipped voltage rather than
+  crossfading against a second dry leg, and Level is a one-voice output
+  stage, so the second `Splitter` and the second summing `Mixer` are gone
+  along with a ±0.4 dB 80 Hz shelf that served a disconfirmed trait. The
+  palette budget goes from 36 % / 63 % to **30 % / 52 %** of a stereo block
+  and RAM falls about 40 %. **Mix 0 is still the wire**, but one step above
+  zero the tone stack is now in circuit on the dry note as well, so
+  stepping off zero is a tone change rather than a fade — which is what a
+  true-bypass footswitch does. At Mix 1, Level 0 is silence.
+
+  **The clip table fills Q15** ([#77](https://github.com/PyDevices/audiocomponents/issues/77)).
+  It held diode volts directly, so it peaked at ±11381 — 35 % of int16 —
+  and threw away nine of the only decibels a table has. It is normalised to
+  the curve's own extreme now, `CURVE_VOLTS` carries the scale out in the
+  shaper's `post_gain`, and the level does not move: 1 kHz at −6 dBFS still
+  peaks 0.1235 dB over the dry. The even-harmonic floor at the constructor
+  default drops from **−97.6 to −106.7 dBc** and h5 at −40 dBFS from −72.6
+  to −76.3; everything else reads where it read. Same 1025 points, same
+  2050 bytes, same nodes. The generator now refuses a table that uses less
+  than 95 % of the range, so the next one cannot repeat it.
+
 - **`acoustickit`: the kick and the snare are a hybrid now, because a bank
   alone could not be either.** Brad listened and said the kick was not
   convincing and the snare sounded like a tuned tom. Both were true and both
@@ -82,6 +414,76 @@ there, and are recorded in its changelog.
   sounds exactly the notes in its `NOTE_MAP`, and nothing else.
 
 ### Fixed
+
+- **A bipolar macro's centre is MIDI 64 now, and it is exact** (#87). The
+  0-127 grid has an even number of steps and so no middle of its own —
+  64/127 is 0.50394 — so until now no patch could ask for the centre of a
+  bipolar span, which is the setting that means "none of this".
+  `Overdrive`'s Symmetry at MIDI 64 was `+0.007874`, a bias the shaper
+  turned into DC that never decayed: all eight shipped patches held +56 to
+  +85 LSB forever (patch 6, +4469, −17.3 dBFS), `TAIL_SAMPLES = 512` was
+  false at every one of them, and a `program_change` out of digital silence
+  made sound. `Fuzz`'s patch 0, whose name is "Bias centred", banged 329
+  LSB; `Saturation`'s patch 4 thumped 9067. The constructor default — the
+  one state whose bipolar macro really was 0 — is where every Tier 1 silence
+  row had been read.
+
+  The law lives once, in `_component.position_of_midi`, and every crossing
+  between the grid and a 0..1 position goes through it: `set_macro`,
+  `program_change`, `get_macro` and `macro_of` patch authoring. For BIPOLAR
+  the two halves get their own slopes and meet at 64 — `0.5 + (m − 64)/126`
+  above it, `0.5 − (64 − m)/128` below — so 64 is the centre and 0 and 127
+  still reach both ends. UNIPOLAR and TOGGLE are unchanged, and no class
+  needed a change of its own. Fifteen classes have a bipolar macro; at
+  48 kHz the drive seven's silence rows go from 24 red patches to 8, and the
+  8 that stay are patches that ask for an offset on purpose.
+
+  Two classes were working around the old law and stopped. `RingMod`
+  snapped a bipolar position within half a step of 64 to the centre, which
+  under the new law ate MIDI 65 — one real click of the knob did nothing.
+  `Fuzz` and `Saturation` author their patch tables from engineering units,
+  so `macro_of()` takes the macro's mode now.
+
+  One thing the fix took away: `GraphicEQ`'s T4 planted fault fired on the
+  +0.0945 dB that code 64 used to stand for, and code 64 is 0.000 dB now, so
+  it is inert at all ten bands. That row has no guard until T4 is restated
+  (#88). The test says so where an auditor reads it.
+
+- **`Distortion` started 5.3 ms late at its four scoop patches** (#82).
+  Building with `patch=6`, `7`, `8` or `9` pushes Character past 0.5, and
+  the class rebuilds its graph from inside `_apply_macro` — which runs
+  while `_build` is still going, because `_init_macros` applies a
+  constructor patch there. The rebuild primed the new graph, `_build`
+  primed it again when it returned, and the first pull's block of the
+  borrowed source went in the bin: a click at frame 1024 came out at 774.
+  A class can now see that it is still being constructed
+  (`Component._constructing`) and leave the priming to `_build`; the same
+  click comes out at 1030. Nothing else moved — the whole seven-class
+  digest table is byte-identical except those four patches.
+
+  The issue reported this as three or four blocks lost on `Saturation` and
+  `Overdrive`, and it is not: those two take exactly as much of their
+  source with a patch as without one, and their click never moves. What
+  moves is the *onset* the issue read, because a bias macro cannot land on
+  the centre of its span — 63.5 is not on the 0-127 grid — so a patch that
+  means "no bias" leaves a small offset, and the class opens on a DC
+  settling prologue out of silence instead of on digital zero. The
+  threshold fires on the prologue. The Tier 1 row added with this fix
+  counts the frames a class takes from its source instead, which no
+  prologue can fool: `AConstructorPatchCostsTheSourceNothing` in
+  `tests/test_audio_component_api.py`, over every class and every shipped
+  patch, with the double priming planted to prove it can fail.
+
+- **`mute_dry` reaches an inner mixer, for every probe and not only the
+  ones that went through the tests** (#81). The walk the `Overdrive` round
+  gave `tests/support/kit_probes.mute_dry` — every `Mixer` a pull on the
+  output reaches, and the `Mix`-macro fallback for a dry leg that lives
+  inside a `Waveshaper` — now lives in `tools/effect_measurements.mute_dry`,
+  and the tests-side name forwards to it. It returns
+  `(mixer, index, level_before)` so a caller can put back a voice that was
+  never on the output mixer. The fallback refuses a pull path that starves
+  a tap rather than pushing a macro, so a class read at an inner node still
+  gets a refusal and not a wet-branch reading of the probe.
 
 - **The effects catch up with the audioif floor at cebb7ca** (#66). Moving
   `AUDIOIF_PIN` there for `acoustickit` brought five deliberate audioif

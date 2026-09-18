@@ -1,0 +1,19 @@
+* models.lib -- 1N4148 pair (Nexperia parameter values) and a behavioural
+* op-amp whose GBW is a parameter. Numbers only from Distortion.md S8;
+* Nexperia's comment text is not reproduced.
+.subckt 1N4148 1 2
+Rrev 1 2 5.827E+9
+D1   1 2 D1N4148_nexperia
+.model D1N4148_nexperia D
++ IS=4.352E-9 N=1.906 BV=110 IBV=0.0001 RS=0.6458
++ CJO=7.048E-13 VJ=0.869 M=0.03 FC=0.5 TT=3.48E-9
+.ends
+
+.param pi=3.14159265358979
+.param aol=1e5 gbw=3.2e5 vsat=0.5
+.subckt opgbw inp inn out vcc vee
+G1 0 n1 inp inn 1m
+R1 n1 0 {aol/1m}
+C1 n1 0 {1m/(2*pi*gbw)}
+B1 out 0 V = max(min(V(n1), V(vcc)-vsat), V(vee)+vsat)
+.ends

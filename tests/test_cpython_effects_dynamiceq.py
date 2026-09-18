@@ -27,6 +27,11 @@ from audioeffects import dynamiceq as module
 #: tests still import the home module so a planted-fault subclass is
 #: measured against this file, not only `create()`.
 
+#: `_component` reads VENDOR off the module a class is defined in, and the
+#: planted-fault subclasses below are defined here. Without this they would
+#: refuse to construct - a fault that cannot fail.
+VENDOR = "PyDevices"
+
 RATE = 48000
 CHANNELS = 2
 FULL_SCALE = 32767.0
@@ -71,6 +76,37 @@ def impulse(amplitude, at, total_frames, channels=CHANNELS):
     return data
 
 
+class _OldRingSource:
+    """The `Splitter` as it was before audioif#87, written out in Python.
+
+    A call bigger than the 8192-frame ring kept only its tail, so the head
+    of a whole-buffer source never reached the graph. The node does not do
+    that any more, and the guard's planted fault needs something that does
+    or the block ladder is a measurement that cannot fail.
+    """
+
+    RING_FRAMES = 8192
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.sample_rate = inner.sample_rate
+        self.channel_count = inner.channel_count
+        self.bits_per_sample = getattr(inner, "bits_per_sample", 16)
+        self.samples_signed = getattr(inner, "samples_signed", True)
+
+    def _reset_buffer(self, *args, **kwargs):
+        return self._inner._reset_buffer(*args, **kwargs)
+
+    def _get_buffer(self, *args, **kwargs):
+        state, data = self._inner._get_buffer(*args, **kwargs)
+        raw = bytes(data)
+        stride = 2 * self.channel_count
+        frames = len(raw) // stride
+        if frames > self.RING_FRAMES:
+            raw = raw[(frames - self.RING_FRAMES) * stride:]
+        return state, memoryview(bytearray(raw))
+
+
 #: T1's sweep. The two skirt frequencies are not decoration: at f0 itself
 #: the notch is exactly zero and the band-pass is exactly unity whatever Q
 #: is, so a mistuned branch is invisible there and visible on the skirt -
@@ -78,10 +114,53 @@ def impulse(amplitude, at, total_frames, channels=CHANNELS):
 T1_SWEEP = (100.0, 500.0, 1500.0, 2500.0, 3000.0, 3600.0, 6000.0, 12000.0)
 
 
-def build(data, rate=RATE, channels=CHANNELS, **options):
+class ThroughTheDryVoice(module.DynamicEQ):
+    """The wiring this class shipped with before audioif#95: Mix 0 routed
+    through the Mixer's dry voice at level 1.0 instead of handing back the
+    class's input. Nothing else moves - the levels are the same numbers - so
+    the only difference in the render is the mixer's own `level / 32767`
+    multiply.
+    """
+
+    NAME = 'DynamicEQ'
+
+    def _play_voices(self):
+        _component.open_level_gates(
+            self._mixer,
+            [self._mixer.voice[0], self._mixer.voice[1],
+             self._mixer.voice[2]],
+            self._silence)
+        self._mixer.play(self._taps[0], voice=0, loop=True)
+        self._mixer.play(self._notch, voice=1, loop=True)
+        self._mixer.play(self._cell, voice=2, loop=True)
+        self._primed = True
+
+    def _refresh_output(self):
+        if not self._ready:
+            return
+        if not self._primed:
+            self._play_voices()
+        self._output = self._tail
+
+
+def ramp_fs(frames, channels=CHANNELS):
+    """Full-scale ramp. The only probe that reaches audioif#95's mechanism:
+    it starts at |value| 32736, which nothing peaking under -6.02 dBFS has.
+    """
+    values = array.array('h')
+    last = float(frames - 1)
+    for index in range(frames):
+        value = max(-32768, min(32767,
+                                int(round(-32768 + 65535.0 * index / last))))
+        for _ in range(channels):
+            values.append(value)
+    return values
+
+
+def build(data, cls=None, rate=RATE, channels=CHANNELS, **options):
     source = audiocore.RawSample(data, sample_rate=rate,
                                  channel_count=channels)
-    return module.DynamicEQ.create(source, rate, **options), source
+    return (cls or module.DynamicEQ).create(source, rate, **options), source
 
 
 def render(node, frames, channels=CHANNELS):
@@ -222,6 +301,22 @@ class Tier1(unittest.TestCase):
         out = render(effect.output, 8192)
         self.assertEqual(effect.latency_samples, 0)
         self.assertEqual(bytes(out), bytes(data))
+
+    def test_wire_at_mix_zero_holds_at_full_scale(self):
+        """The same row on the probe that can see audioif#95.
+
+        A tone at -4.4 dBFS peaks at 19700 and the mixer's `level / 32767`
+        lift starts at 32736, so the row above could not have caught a dry
+        voice at unity. This one is a full-scale ramp, and the fault is
+        planted below.
+        """
+        for rate in (22050, 44100, 48000):
+            with self.subTest(rate=rate):
+                data = ramp_fs(8192)
+                effect, _ = build(data, rate=rate, mix=0.0)
+                out = render(effect.output, 8192)
+                effect.deinit()
+                self.assertEqual(bytes(out), bytes(data))
 
     def test_level_is_honest_below_threshold(self):
         """LEVEL. Nothing is added anywhere: a tone 10 dB under the threshold
@@ -474,8 +569,10 @@ class Surface(unittest.TestCase):
         """Held to the spans rather than to a hand-copied list."""
         defaults = (3000.0, 2.0, -30.0, 4.0, 2.0, 80.0, 1.0, 0.0)
         spans = module.DynamicEQ._MACRO_RANGES
-        expected = tuple(_component.macro_of(spans[index], value)
-                         for index, value in enumerate(defaults))
+        expected = tuple(
+            _component.macro_of(spans[index], value,
+                                module.DynamicEQ.MACRO_MODES[index])
+            for index, value in enumerate(defaults))
         self.assertEqual(module.DynamicEQ.PATCHES[0][1], expected)
 
     def test_patch_index_follows_the_contract(self):
@@ -685,9 +782,14 @@ class PlantedFaults(unittest.TestCase):
 
     def test_wire_goes_red_on_a_one_lsb_dry_path(self):
         """WIRE's fault: 32767/32768 on the dry voice. Inaudible, and the byte
-        compare must still refuse it."""
+        compare must still refuse it.
+
+        The fault has to put the mixer back in the path to plant it at all,
+        because Mix 0 no longer runs through one - which is the point of the
+        row above it.
+        """
         data = sine(1000.0, amp(-4.4), 8192)
-        effect, _ = build(data, mix=0.0)
+        effect, _ = build(data, ThroughTheDryVoice, mix=0.0)
         effect._mixer.voice[0].level = 32767.0 / 32768.0
         out = render(effect.output, 8192)
         first = None
@@ -697,6 +799,29 @@ class PlantedFaults(unittest.TestCase):
                 break
         print("\n  WIRE fault: first differing sample %r" % (first,))
         self.assertIsNotNone(first)
+
+    def test_wire_goes_red_on_a_dry_voice_at_unity(self):
+        """audioif#95's fault, which is the wiring this class shipped with.
+
+        A mixer voice at level 1.0 is not unity - upstream's Q15 level is
+        `1.0 * 32768` and the kernel divides by 32767 - so the dry tap at
+        unity came out one LSB high at every sample from 32736 up. Three of
+        16384 on a full-scale ramp, all in the right channel, because a
+        stereo voice at pan 0 gets 32767 on the left and 32768 on the right.
+        Nothing below -6.02 dBFS can reach it, which is why the row is a
+        ramp and this fault was invisible to a -4.4 dBFS tone for a year.
+        """
+        data = ramp_fs(8192)
+        effect, _ = build(data, ThroughTheDryVoice, mix=0.0)
+        out = render(effect.output, 8192)
+        differ = [index for index in range(min(len(out), len(data)))
+                  if out[index] != data[index]]
+        print("\n  WIRE unity fault: %d differing, first %r"
+              % (len(differ), differ[0] if differ else None))
+        self.assertTrue(differ)
+        self.assertTrue(all(abs(out[index] - data[index]) == 1
+                            for index in differ))
+        self.assertTrue(all(abs(data[index]) >= 32736 for index in differ))
 
     def test_tail_goes_red_on_a_held_dc_state(self):
         """TAIL's fault: the audioif#23 shape, a state that never arrives.
@@ -740,12 +865,23 @@ class PlantedFaults(unittest.TestCase):
               % (at - 50, effect.latency_samples))
         self.assertNotEqual(at - 50, effect.latency_samples)
 
-    def test_the_block_ladder_goes_red_without_the_guard(self):
-        """The guard's fault, and it is `MultibandCompressor` M5's shape: a
-        `Splitter` fed straight off a whole-buffer source loses everything
-        past its 8192-frame ring. Built here rather than mutated, because the
-        Splitter's source is fixed at construction - the control is the class
-        and the fault is the same graph with the guard taken out."""
+    def test_the_block_ladder_no_longer_needs_the_guard(self):
+        """The guard's row, rewritten at audioif `977ef26`.
+
+        It used to read: a `Splitter` fed straight off a whole-buffer source
+        loses everything past its 8192-frame ring, so an impulse 200 frames
+        into a 40000-frame `RawSample` arrives as silence. audioif#87 ended
+        that - the Splitter takes a call bigger than its ring in pieces - and
+        the unguarded split now passes the impulse at full height.
+
+        So the guard is no longer what saves the head, and this is the
+        regression test that says so. The fault of the same kind moved to
+        `test_a_source_that_keeps_only_its_ring_still_loses_the_head`, which
+        is the old Splitter written out in Python, because the node will not
+        do it any more.
+
+        Built here rather than mutated, because the Splitter's source is
+        fixed at construction."""
         import audiobiquad
         import audiodynamics
         import audioroute
@@ -760,6 +896,9 @@ class PlantedFaults(unittest.TestCase):
             data = impulse(20000, 200, 40000)
             source = audiocore.RawSample(data, sample_rate=RATE,
                                          channel_count=2)
+            if guarded == "old ring":
+                source = _OldRingSource(source)
+                guarded = False
             if guarded:
                 import audiofilters
                 head = audiofilters.Filter(
@@ -793,12 +932,16 @@ class PlantedFaults(unittest.TestCase):
             return max(abs(v) for v in render(mixer, 3000))
 
         clean = sum_of_a_split(True)
-        faulted = sum_of_a_split(False)
-        print("\n  GUARD fault: impulse at frame 200 of a 40000-frame"
-              " RawSample, guarded peak %d, unguarded peak %d"
-              % (clean, faulted))
+        unguarded = sum_of_a_split(False)
+        old_ring = sum_of_a_split("old ring")
+        print("\n  GUARD row at audioif 977ef26: impulse at frame 200 of a"
+              " 40000-frame RawSample, guarded peak %d, unguarded peak %d,"
+              " old-ring peak %d" % (clean, unguarded, old_ring))
         self.assertGreater(clean, 1000)
-        self.assertEqual(faulted, 0)
+        # audioif#87: the head survives without the guard now.
+        self.assertEqual(unguarded, clean)
+        # And the fault of the same kind still fires.
+        self.assertEqual(old_ring, 0)
 
     def test_state_goes_red_when_a_node_is_left_out_of_the_walk(self):
         """STATE's fault: a class whose reset reaches the tail only, which is

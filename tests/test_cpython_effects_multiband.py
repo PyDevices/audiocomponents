@@ -58,15 +58,103 @@ UNITY = {"low_ratio": 1.0, "mid_ratio": 1.0, "high_ratio": 1.0, "mix": 1.0}
 
 
 class NoGuard(CLASS):
-    """M5's fault: the Splitter fed straight off the source.
+    """The Splitter fed straight off the source.
 
-    The shipped class's topology (`dynamics.py:239`), and the defect the
-    dossier's section 7 leads with.
+    This *was* M5's fault. It is not one any more: at audioif `977ef26` a
+    `Splitter` takes a call bigger than its ring in pieces instead of
+    keeping only the tail (audioif#87), so the head it used to drop is
+    delivered and the guard has nothing left to guard. Measured on this
+    floor, `NoGuard` and the shipped class render the same bytes at every
+    source block in the ladder - digest 3824975193 at 256, 8192, 16384,
+    20000 and 32768 frames - and burst material survives unguarded.
+
+    The fixture stays because that equality is worth asserting: it is the
+    regression test for audioif#87, and it is what says the guard may now
+    be dropped. M5's live fault moved to `OldRingSource` below.
     """
 
     def _build_input(self):
         self._guard = None
         return self._source
+
+
+class ThroughTheDryVoice(CLASS):
+    """The wiring this class shipped with before audioif#95: Mix 0 routed
+    through the Mixer's dry voice at level 1.0 rather than handing back the
+    head.
+
+    Nothing else changes - the levels are the same numbers - so the only
+    difference in the render is the mixer's own `level / 32767` multiply,
+    which is what the WIRE row above is about.
+    """
+
+    def _refresh_output(self):
+        if not self._ready:
+            return
+        if not self._primed:
+            self._mix, mix = 1.0, self._mix
+            try:
+                self._play_voices()
+            finally:
+                self._mix = mix
+        self._output = self._mixer
+
+
+class NoLevelGates(CLASS):
+    """The click fault: the voices take their sources on a Mix move off 0,
+    but nothing opens their level gates first.
+
+    Since CircuitPython 10.3.0 a freshly played voice starts at level 0 and
+    takes its level only when its signal reaches or crosses zero, so on
+    material that does nothing of the sort the render starts on silence.
+    """
+
+    def _play_voices(self):
+        if self._mix <= 0.0:
+            self._primed = False
+            return
+        self._mixer.play(self._taps[0], voice=0, loop=True)
+        for band in range(self._bands):
+            self._mixer.play(self._detectors[band], voice=band + 1,
+                             loop=True)
+        self._primed = True
+
+
+class OldRingSource:
+    """M5's fault at this floor: a source that keeps only its last ring.
+
+    The `Splitter` before audioif#87, in Python, because the node no longer
+    does it. A call bigger than 8192 frames arrives with its head gone, so
+    the block ladder reads a different render at every block size and burst
+    material that ends inside the dropped head disappears entirely.
+
+    It sits at the source, ahead of the guard, which is the point: the
+    guard never protected the class from a source that drops frames, only
+    from the Splitter's own ring. Both the shipped class and `NoGuard` go
+    red on it, and that is what keeps the ladder from being a measurement
+    that cannot fail.
+    """
+
+    RING_FRAMES = 8192
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.sample_rate = inner.sample_rate
+        self.channel_count = inner.channel_count
+        self.bits_per_sample = getattr(inner, "bits_per_sample", 16)
+        self.samples_signed = getattr(inner, "samples_signed", True)
+
+    def _reset_buffer(self, *args, **kwargs):
+        return self._inner._reset_buffer(*args, **kwargs)
+
+    def _get_buffer(self, *args, **kwargs):
+        state, data = self._inner._get_buffer(*args, **kwargs)
+        raw = bytes(data)
+        stride = 2 * self.channel_count
+        frames = len(raw) // stride
+        if frames > self.RING_FRAMES:
+            raw = raw[(frames - self.RING_FRAMES) * stride:]
+        return state, memoryview(bytearray(raw))
 
 
 class LinkwitzRiley2(CLASS):
@@ -228,11 +316,14 @@ def sum_db(hz, cls=None, seconds=0.35, rate=RATE, **options):
 class Surface(unittest.TestCase):
 
     def test_patch_zero_is_the_constructor_defaults_on_the_grid(self):
-        # Held to the spans, not to a hand-copied list: a BIPOLAR 0 dB sits
-        # at 63.5 and the grid's nearest point is 64.
-        expected = tuple(_component.macro_of(span, value)
-                         for span, value in zip(CLASS._MACRO_RANGES,
-                                                DEFAULTS))
+        # Held to the spans, not to a hand-copied list. The mode goes in
+        # with the span because a BIPOLAR macro's MIDI law has a centre
+        # detent and a UNIPOLAR one does not (audiocomponents#87); a BIPOLAR
+        # 0 dB is MIDI 64 exactly, where it used to sit at 63.5.
+        expected = tuple(
+            _component.macro_of(span, value, CLASS.MACRO_MODES[index])
+            for index, (span, value) in enumerate(
+                zip(CLASS._MACRO_RANGES, DEFAULTS)))
         self.assertEqual(CLASS.PATCHES[0][1], expected)
         effect = build()
         try:
@@ -321,6 +412,102 @@ class TierOne(unittest.TestCase):
         dry = kit.Render(bytes(memoryview(values).cast("B")), RATE, 2)
         result = kit.wire(wet, dry, latency_samples=0)
         self.assertTrue(result["passed"], result["red"])
+
+    def test_mix_zero_is_a_wire_at_every_rate_and_channel_count(self):
+        """WIRE on a full-scale ramp, which is the only probe that can see
+        the fault it is about.
+
+        A mixer voice at level 1.0 scales by 32768/32767 (audioif#95), so
+        the dry tap at unity lifted every sample from 32736 up by one LSB -
+        15 of 32768 here, all in the right channel, because a stereo voice
+        at pan 0 gets 32767 on the left and 32768 on the right. Mono gets
+        the lifted multiplier on both. Nothing below -6.02 dBFS can reach
+        the mechanism, which is why this is a ramp and not a tone.
+        """
+        for rate in (22050, 44100, 48000):
+            for channels in (1, 2):
+                with self.subTest(rate=rate, channels=channels):
+                    values = probes.ramp_fs(8192, channels=channels)
+                    effect = build(rate=rate, channels=channels,
+                                   probe=values, mix=0.0)
+                    try:
+                        wet = render(effect, 8192, rate=rate,
+                                     channels=channels)
+                    finally:
+                        effect.deinit()
+                    dry = kit.Render(bytes(memoryview(values).cast("B")),
+                                     rate, channels)
+                    result = kit.wire(wet, dry, latency_samples=0)
+                    self.assertTrue(result["passed"], result["red"])
+                    self.assertEqual(
+                        result["values"]["differing_samples"], 0)
+
+    def test_the_dry_voice_at_unity_is_the_fault_the_wire_catches(self):
+        """The planted fault, and it is the wiring this class used to have:
+        Mix 0 routed through the mixer's dry voice at level 1.0.
+
+        Without this the row above is a measurement nobody has shown able to
+        fail - and the difference is one LSB on 15 samples of 32768, which
+        no summarising statistic would have found either.
+        """
+        values = probes.ramp_fs(16384)
+        effect = build(ThroughTheDryVoice, probe=values, mix=0.0)
+        try:
+            wet = render(effect, 16384)
+        finally:
+            effect.deinit()
+        dry = kit.Render(bytes(memoryview(values).cast("B")), RATE, 2)
+        result = kit.wire(wet, dry, latency_samples=0)
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["values"]["max_abs_difference_lsb"], 1)
+        self.assertGreater(result["values"]["differing_samples"], 0)
+
+    def _move_off_zero(self, cls=None):
+        """Bypass a full-scale ramp for 2048 frames, then ask for Mix 1.
+
+        The ramp is the material this has to be measured on. At frame 2048
+        it sits around -24580 and does not reach zero again for four
+        thousand frames, so a voice waiting for a zero crossing waits - on a
+        220 Hz sine the gate opens by itself within a few samples and the
+        fault below cannot fire at all.
+        """
+        effect = build(cls, probe=probes.ramp_fs(16384), mix=0.0,
+                       low_ratio=1.0, mid_ratio=1.0, high_ratio=1.0)
+        try:
+            before = render(effect, 2048)
+            effect.set_macro(MIX, 127)
+            after = render(effect, 2048)
+        finally:
+            effect.deinit()
+        return before, after
+
+    def test_a_mix_move_off_zero_does_not_click(self):
+        """Leaving Mix 0 hands the voices their sources *and* opens their
+        level gates, in that order, and the render is live from its first
+        sample.
+
+        What is asserted is the gate, not the bands: the eight biquads are
+        cold at the moment of the move and their start-up is audible for a
+        few hundred frames, which is what fading a filter bank in at Mix 1
+        does and not a defect. The gate's own signature is a *hole* - a
+        voice that starts at level 0 and waits for a zero crossing that this
+        material does not offer - so the row is the count of zero samples
+        where the source has none.
+        """
+        before, after = self._move_off_zero()
+        self.assertLess(int(before.data[-1][0]), -20000)
+        self.assertEqual(int((after.data[:256] == 0).sum()), 0)
+        self.assertTrue(after.data.any())
+
+    def test_without_the_gates_the_move_off_zero_starts_on_silence(self):
+        """The planted fault: the same move with the level gates skipped.
+
+        Two frames of nothing, on both channels, before the level steps in -
+        which is a click, and it is exactly what `open_level_gates` is for.
+        """
+        _before, after = self._move_off_zero(NoLevelGates)
+        self.assertGreater(int((after.data[:256] == 0).sum()), 0)
+        self.assertEqual(int(after.data[0][0]), 0)
 
     def test_the_tail_reaches_exact_zero(self):
         values, held = probes.dc_step(level=0.6, hold_s=0.2, total_s=1.6)
@@ -591,30 +778,75 @@ class Traits(unittest.TestCase):
             digests.add(wet.digest)
         self.assertEqual(len(digests), 1)
 
-    def test_m5_without_the_guard_the_long_blocks_are_a_different_render(self):
+    def _ladder(self, cls, blocks=(256, 16384, 32768), old_ring=False):
         digests = set()
-        for block in (256, 16384, 32768):
-            effect = build(NoGuard, probe=tone(220.0, 0.75, dbfs=-6.0),
-                           block=block, **UNITY)
+        for block in blocks:
+            source = probes.ArraySource(tone(220.0, 0.75, dbfs=-6.0),
+                                        rate=RATE, block=block, channels=2)
+            if old_ring:
+                source = OldRingSource(source)
+            effect = cls.create(source, RATE, **UNITY)
             try:
                 digests.add(render(effect, 8192).digest)
             finally:
                 effect.deinit()
-        self.assertGreater(len(digests), 1)
+        return digests
 
-    def test_m5_without_the_guard_burst_material_renders_silence(self):
-        # The dossier's A-M5: the dropped head is the whole signal.
-        counts = []
-        for block in (256, 16384):
+    def test_m5_goes_red_on_a_source_that_keeps_only_its_ring(self):
+        """M5's fault, rebuilt for audioif `977ef26`.
+
+        The old fault was `NoGuard`, and it cannot fire any more: the
+        Splitter takes an oversized call in pieces (audioif#87), so the
+        class renders the same bytes with the guard and without it. The
+        fault that still fires is a source that does what the Splitter used
+        to - hand back only its last 8192 frames.
+        """
+        self.assertGreater(len(self._ladder(CLASS, old_ring=True)), 1)
+        self.assertGreater(len(self._ladder(NoGuard, old_ring=True)), 1)
+
+    def test_m5_the_guard_no_longer_changes_the_render(self):
+        """The regression test for audioif#87, and what says the guard may go.
+
+        `_build_input`'s `Filter` was there to stop the Splitter dropping
+        the head of an oversized block. At this floor it is a copy that
+        changes nothing: the ladder is one digest with it and the same one
+        digest without it.
+        """
+        blocks = (256, 8192, 16384, 20000, 32768)
+        guarded = self._ladder(CLASS, blocks)
+        unguarded = self._ladder(NoGuard, blocks)
+        self.assertEqual(len(guarded), 1)
+        self.assertEqual(guarded, unguarded)
+
+    def test_m5_burst_material_survives_an_oversized_block(self):
+        """The dossier's A-M5, the other way up.
+
+        It used to read: without the guard, the dropped head is the whole
+        signal, so a 40 ms burst at the top of a long block renders
+        silence. At this floor nothing is dropped, so the burst is there at
+        every block size, guarded or not - and it disappears only on the
+        old ring.
+        """
+        def nonzero(cls, block, old_ring=False):
             burst, _on = probes.burst_silence(hz=440.0, on_ms=40.0,
                                               total_s=0.6)
-            effect = build(NoGuard, probe=burst, block=block, **UNITY)
+            source = probes.ArraySource(burst, rate=RATE, block=block,
+                                        channels=2)
+            if old_ring:
+                source = OldRingSource(source)
+            effect = cls.create(source, RATE, **UNITY)
             try:
-                counts.append(int((render(effect, 8192).data != 0).sum()))
+                return int((render(effect, 8192).data != 0).sum())
             finally:
                 effect.deinit()
-        self.assertGreater(counts[0], 0)
-        self.assertEqual(counts[1], 0)
+
+        short = nonzero(CLASS, 256)
+        self.assertGreater(short, 0)
+        for cls in (CLASS, NoGuard):
+            for block in (256, 16384):
+                self.assertEqual(nonzero(cls, block), short)
+        # The same material on the old ring is the silence A-M5 described.
+        self.assertEqual(nonzero(CLASS, 16384, old_ring=True), 0)
 
 
 if __name__ == "__main__":

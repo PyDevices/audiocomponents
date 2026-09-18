@@ -228,6 +228,40 @@ def validate_component(owner, *, kind, expected_name=None, vendor_owner=None):
     return percussion
 
 
+#: The declarations a host reads from an instrument's SOURCE without
+#: importing it. mpvst's loader shims carry them through `ast.literal_eval`
+#: so a plug-in can label its controls and fill its patch list before
+#: `synthio` exists; a comprehension there is a `ValueError` in every
+#: consumer (audiocomponents#83).
+LITERAL_FIELDS = ("NAME", "DISPLAY_NAME", "MACRO_LABELS", "MACRO_MODES",
+                  "PATCHES")
+
+
+def _literal_fields(module, errors):
+    """Each of `LITERAL_FIELDS` must be a literal in the module's source."""
+    import ast
+    path = getattr(module, "__file__", None)
+    if not path:
+        return
+    try:
+        tree = ast.parse(open(path).read(), path)
+    except (OSError, SyntaxError) as exc:
+        _error(errors, "source", "cannot be parsed: %s" % exc)
+        return
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            name = getattr(target, "id", None)
+            if name in LITERAL_FIELDS:
+                try:
+                    ast.literal_eval(node.value)
+                except ValueError:
+                    _error(errors, name,
+                           "must be written out as a literal in the source "
+                           "(a host reads it with ast.literal_eval)")
+
+
 def validate_instruments(package=None):
     """Validate every instrument module and return percussion module names."""
     if package is None:
@@ -238,6 +272,10 @@ def validate_instruments(package=None):
         module = package.load(name)
         if validate_component(module, kind="instrument", expected_name=name):
             percussion.append(name)
+        errors = []
+        _literal_fields(module, errors)
+        if errors:
+            raise MetadataError("%s: %s" % (name, "; ".join(errors)))
         if module.NAME in names:
             raise MetadataError("duplicate instrument NAME %r" % module.NAME)
         names.add(module.NAME)

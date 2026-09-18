@@ -381,24 +381,88 @@ class DeEsser(_component.Component):
         self._own(self._silence, reset=False)
 
         self._output = tail
+        self._primed = False
+        self._ready = False
         self._init_macros((frequency, range_db, sensitivity_db,
                            1.0 if hf_only else 0.0, release_ms, attack_ms,
                            1.0 if listen else 0.0), patch)
+        self._prime()
+        self._ready = True
+        self._refresh_output()
 
-        # The voices get their sources last, after the macros have set every
-        # level and corner. Since CircuitPython 10.3.0 a fresh mixer voice
-        # starts at level 0 and takes its level only when its signal crosses
-        # zero, so a Range 0 bypass rendered its first 256 frames silent on
-        # a ramp, and an impulse at frame 0 never came through at all. One
-        # block of silence opens every gate at the level just set
-        # (`_component.open_level_gates`); then each voice takes its source,
-        # `pre` before `out` because `out`'s voice 3 pulls through `pre`.
-        _component.open_level_gates(pre, [pre.voice[0], pre.voice[1]],
+    def _is_wire(self):
+        """Whether the class is claiming to be a wire right now.
+
+        Range 0, broadband, not listening: the output mixer's dry voice is
+        at unity and every other voice at zero. HF-only at Range 0 is the
+        two band halves summed, which is flat and is not a byte compare, and
+        Listen replaces the output with the detector's band.
+        """
+        spans = self._MACRO_RANGES
+        range_db = _component.macro_value(spans[self._RANGE],
+                                          self._macros[self._RANGE])
+        return (range_db <= 0.0
+                and self._macros[self._MODE] < 0.5
+                and self._macros[self._LISTEN] < 0.5)
+
+    def _prime(self):
+        """Open both mixers' level gates, then hand the voices their sources.
+
+        The voices get their sources last, after the macros have set every
+        level and corner. Since CircuitPython 10.3.0 a fresh mixer voice
+        starts at level 0 and takes its level only when its signal crosses
+        zero, so a Range 0 bypass rendered its first 256 frames silent on a
+        ramp, and an impulse at frame 0 never came through at all. One block
+        of silence opens every gate at the level just set
+        (`_component.open_level_gates`); then each voice takes its source,
+        `pre` before `out` because `out`'s voice 3 pulls through `pre`.
+
+        **At Range 0 the voices are left on that silence.**
+        `_refresh_output` hands the bypass back off the borrowed source, and
+        `MixerVoice.play()` fetches from its source on the spot - which
+        would drag a block of that source through the adapter and start the
+        bypass one block in.
+        """
+        _component.open_level_gates(self._pre,
+                                    [self._pre.voice[0], self._pre.voice[1]],
                                     self._silence)
         _component.open_level_gates(
-            out, [out.voice[index] for index in range(4)], self._silence)
+            self._out, [self._out.voice[index] for index in range(4)],
+            self._silence)
+        if self._is_wire():
+            self._primed = False
+            return
         for mixer, index, sample in self._voices:
             mixer.voice[index].play(sample)
+        self._primed = True
+
+    def _refresh_output(self):
+        """Range 0 is the borrowed source itself, with no mixer in the path.
+
+        A mixer voice at level 1.0 is not unity: upstream's Q15 level is
+        `1.0 * 32768` and the kernel divides by 32767, so the dry voice at
+        unity came out one LSB high at every sample from 32736 up - 7 of
+        16384 on a full-scale ramp, all in the right channel, and both on a
+        mono mixer (audioif#95). The `MidSide` tail used to round the pair
+        back together and stopped doing so when the pin moved. Nothing
+        rounds on the way out of the source, so handing it back is exact by
+        construction rather than by luck.
+
+        Nothing here touches the source until `_prime` does:
+        `audioroute.MidSide.play()` sets its source without fetching, the
+        `Splitter`s take theirs in the constructor, and only
+        `MixerVoice.play` pulls. So a class built at Range 0 hands back a
+        source still at frame 0, and a Range move off 0 picks it up where
+        the bypass left it.
+        """
+        if not self._ready:
+            return
+        if self._is_wire():
+            self._output = self._source
+            return
+        if not self._primed:
+            self._prime()
+        self._output = self._tail
 
     # -- reset ---------------------------------------------------------
 
@@ -433,8 +497,12 @@ class DeEsser(_component.Component):
         # resets the voice's own source and refills the voice, which is
         # exactly a rewind. It runs while the silent sample is still on the
         # adapter, so what the voices refill with is silence.
-        for mixer, index, sample in self._voices:
-            mixer.voice[index].play(sample)
+        # At Range 0 the voices have never left `self._silence`, so there is
+        # nothing stale in them and re-playing would only prime a graph the
+        # bypass does not use.
+        if self._primed:
+            for mixer, index, sample in self._voices:
+                mixer.voice[index].play(sample)
         self._adapter.play(self._source)
         audiocore.reset_buffer(self._adapter)
         audiocore.reset_buffer(self._tail)
@@ -500,11 +568,14 @@ class DeEsser(_component.Component):
             self._out.voice[3].level = alpha
         else:
             # (1 - alpha) * source + alpha * duck(source); at Range 0 that is
-            # the source itself, byte for byte.
+            # the source itself, byte for byte - and `_refresh_output` then
+            # hands the source back rather than running it through a voice
+            # at level 1.0, which is not unity (audioif#95).
             self._out.voice[0].level = 1.0 - alpha
             self._out.voice[1].level = 0.0
             self._out.voice[2].level = 0.0
             self._out.voice[3].level = alpha
+        self._refresh_output()
 
     # -- a meter, for a host that wants one ----------------------------
 

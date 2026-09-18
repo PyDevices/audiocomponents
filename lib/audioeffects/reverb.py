@@ -82,7 +82,9 @@ class ConvolutionReverb(_core.Effect):
     partitions: about 1.2 MB, and on the order of 150 MFLOPS to run in real
     time. That is a desktop or a render, not a microcontroller. The MCU-scale
     use of convolution on this palette is a *short* impulse -- see
-    `drive.CabinetSim`, which is 1024 taps and about 3 MFLOPS.
+    `cabinetsim.CabinetSim`'s `impulse=` option, which convolves a cabinet
+    IR a partition at a time. Its own default is a designed biquad cascade
+    and convolves nothing at all.
 
     The output trails the input by `audioconvolve.FRAMES` (5.3 ms at 48 kHz);
     see the audioconvolve docstring for why that is inherent here.

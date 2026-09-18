@@ -168,6 +168,14 @@ class Effect:
     MACRO_LABELS = ()
 
     #: One of UNIPOLAR, BIPOLAR, or TOGGLE for every macro index.
+    #:
+    #: This pre-contract base still crosses the 0-127 grid with the plain
+    #: linear law, which has no centre (64/127 = 0.50394) and so cannot put
+    #: a bipolar macro at 0 from a patch - the defect audiocomponents#87
+    #: fixes in `_component.position_of_midi`. No class left on this base
+    #: declares BIPOLAR, and `test_audio_component_api` holds that: a family
+    #: that needs one is rebuilt onto `_component` first rather than having
+    #: the detent copied here for Phase 6 to delete again.
     MACRO_MODES = {}
 
     #: Private engineering spans; never part of the provider metadata.

@@ -328,18 +328,20 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(len(tuned), 6)
 
     def test_patch_zero_is_the_constructors_defaults_on_the_grid(self):
-        # On the grid, not in the units: a BIPOLAR macro has no exact centre
-        # on 0-127, so patch 0's Trim is 64 and reads +0.14 dB. The class
-        # treats anything under 0.2 dB as a wire, which is what makes that
-        # honest -- the check is that the patch is `macro_of()` of the
-        # constructor's own default.
+        # On the grid, not in the units. Patch 0's Trim is 64, which since
+        # audiocomponents#87 is the exact centre of the BIPOLAR span and
+        # reads 0.00 dB -- it read +0.14 while the grid had no centre, and
+        # the class's 0.2 dB wire floor is what made that honest. The check
+        # is that the patch is `macro_of()` of the constructor's own
+        # default, at that macro's own mode.
         cls = combfilter.CombFilter
         effect = combfilter.CombFilter.create(tone(220.0, 4096),
                                      SAMPLE_RATE)
         defaults = [effect.macro(index) for index in range(6)]
         self.assertEqual(
             cls.PATCHES[0][1],
-            tuple(_component.macro_of(cls._MACRO_RANGES[index], value)
+            tuple(_component.macro_of(cls._MACRO_RANGES[index], value,
+                                      cls.MACRO_MODES[index])
                   for index, value in enumerate(defaults)))
 
 

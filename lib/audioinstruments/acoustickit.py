@@ -82,7 +82,24 @@ MACRO_LABELS = (
     "Tom Level", "Hat Decay", "Hat Level", "Ride Decay", "Crash Decay",
     "Cymbal Level",
 )
-MACRO_MODES = {index: "UNIPOLAR" for index in range(16)}
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "UNIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "UNIPOLAR",
+    6: "UNIPOLAR",
+    7: "UNIPOLAR",
+    8: "UNIPOLAR",
+    9: "UNIPOLAR",
+    10: "UNIPOLAR",
+    11: "UNIPOLAR",
+    12: "UNIPOLAR",
+    13: "UNIPOLAR",
+    14: "UNIPOLAR",
+    15: "UNIPOLAR",
+}
 
 #: GM percussion, and only the notes this kit actually has a voice for. A hit
 #: it has no voice for makes no sound, which is the library's rule: a pattern

@@ -21,6 +21,14 @@ which did not exist when this battery was written. It keeps that file's
 stated contract - pull on block boundaries, stream the PCM, hash it with
 FNV-1a, record the axes - and nothing else; when the renderer lands, this
 function becomes a call into it and the tests do not change.
+
+It has one thing of its own: handed the **effect** rather than a bare node
+it checks the graph before pulling it, and refuses a pull path that reads
+one tap of a `Splitter` and leaves another unread. `wet_render()` beside it
+is the supported way to read a class's wet branch - the class's own output
+with the dry voice muted, refusing a render that outlived its probe. Both
+are audiocomponents#78; the reasoning is in `effect_measurements.py`'s last
+section.
 """
 
 import math
@@ -31,6 +39,7 @@ from array import array
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import audiocore  # noqa: E402
+from tools import effect_measurements as kit  # noqa: E402
 from tools.effect_measurements import Render  # noqa: E402
 
 try:  # pragma: no cover - the renderer part A is writing
@@ -234,7 +243,8 @@ def silence(frames=48000, channels=2):
 
 def render(node, frames, *, rate=48000, channels=2, block=256, label=None,
            probe=None, class_name=None, class_version=None,
-           latency_samples=None, path=None):
+           latency_samples=None, path=None, effect=None,
+           allow_starved_taps=False):
     """Pull `frames` frames from `node` and return them as a `Render`.
 
     The contract is section 4's: pulls are whole blocks, the PCM is hashed
@@ -243,7 +253,27 @@ def render(node, frames, *, rate=48000, channels=2, block=256, label=None,
     with silence to the length asked for rather than being reported short,
     so a measurement reading a tail is reading the class's zeros and not the
     end of the array.
+
+    **The graph is checked before it is pulled.** A pull path that reads one
+    tap of a `Splitter` and leaves another unread - the wet branch taken off
+    a node inside the graph, with the dry side read by nobody - is
+    **refused**. That instrument is not the class's output: it sits one
+    mixer block earlier in the stream, and audiocomponents#78 cost 70 dB of
+    measurement floor to exactly that. The check needs no cooperation from
+    the caller, because a tap on the path names its own Splitter;
+    `render(effect, frames)` is accepted as well as `render(effect.output,
+    frames)` and only improves the wording of the refusal.
+
+    `mute_dry(effect)` is the supported way to read a wet branch, and
+    `allow_starved_taps=True` is for a render whose point is the defect.
     """
+    if effect is None and hasattr(node, "output") and not hasattr(node, "_get_buffer"):
+        effect, node = node, node.output
+    if not allow_starved_taps:
+        kit.require_whole_graph(node, effect,
+                                what="the render of %s"
+                                     % (label or class_name
+                                        or getattr(effect, "NAME", "the class")))
     want = frames * channels * 2
     pcm = bytearray()
     while len(pcm) < want:
@@ -260,6 +290,42 @@ def render(node, frames, *, rate=48000, channels=2, block=256, label=None,
                   interpreter="cpython", label=label, probe=probe,
                   class_name=class_name, class_version=class_version,
                   latency_samples=latency_samples, path=path)
+
+
+def wet_render(effect, frames, *, allow_tail_frames=0, **axes):
+    """Render a class's WET branch, the supported way.
+
+    Mutes the dry mixer voice, renders the class's **own** output so every
+    Splitter tap stays pulled, puts the levels back, and refuses a render
+    that outlived its probe - the two halves of audiocomponents#78, in one
+    call. `allow_tail_frames` is how much silence the probe itself ends on.
+
+    The dry voice is found wherever it sits - see `mute_dry` below, which
+    reaches an inner mixer that `kit.mute_dry` refuses.
+    """
+    restore = mute_dry(effect)
+    try:
+        rendered = render(effect.output, frames, effect=effect, **axes)
+    finally:
+        for mixer, index, level in restore:
+            mixer.voice[index].level = level
+    kit.require_live(rendered, allow_frames=allow_tail_frames,
+                     what="the wet-branch render of %s"
+                          % getattr(effect, "NAME", type(effect).__name__))
+    return rendered
+
+
+def mute_dry(effect):
+    """`kit.mute_dry`, under the name the probes and the packs import.
+
+    The reach this used to carry - every Mixer a pull on the output
+    reaches, and the Mix-macro fallback for a dry leg that lives inside a
+    `Waveshaper` - moved into `tools/effect_measurements.mute_dry`, so
+    every probe gets it and not only the ones that come through here
+    (audiocomponents#81). Read that docstring for what it does; this is a
+    forwarder and nothing else.
+    """
+    return kit.mute_dry(effect)
 
 
 def _write_wav(path, pcm, rate, channels):

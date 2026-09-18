@@ -134,9 +134,12 @@ class SurfaceTests(unittest.TestCase):
         self.assertIsNone(effect.patch_index)
         effect.program_change(0)
         self.assertEqual(effect.patch_index, 0)
-        # Patch 0 is the grid's nearest point to the defaults, not the
-        # defaults themselves - the evidence pack's section 6.
-        self.assertAlmostEqual(effect.macro(0), 0.118, delta=0.005)
+        # Patch 0 is the grid's nearest point to the defaults, and for a
+        # BIPOLAR macro the nearest point is now the defaults themselves:
+        # MIDI 64 is the centre detent (audiocomponents#87), so Attack comes
+        # back at exactly 0 dB rather than the +0.118 the evidence pack's
+        # section 6 recorded when 64 meant 64/127 of the span.
+        self.assertEqual(effect.macro(0), 0.0)
         effect.deinit()
 
 

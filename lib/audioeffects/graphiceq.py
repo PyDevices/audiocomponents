@@ -348,8 +348,13 @@ class GraphicEQ(_component.Component):
         node = self._sections[band]
         if abs(gain_db) < _DETENT_DB:
             # `mix = 0` makes the kernel compute `1.0f * x + 0.0f * y`, which
-            # is the input sample exactly. A `gain_db = 0` section is *not*
-            # that: at 31.25 Hz it drifts up to 5 LSB over 24000 frames.
+            # is the input sample exactly. A `gain_db = 0` section used to
+            # drift up to 5 LSB at 31.25 Hz over 24000 frames and no longer
+            # does -- audiobiquad's transposed direct form II (audioif#64) is
+            # bit-transparent at 0 dB at all ten centres, measured in
+            # `tests/test_cpython_effects_graphiceq.py`. So what this branch
+            # buys now is the section's work and `_wake`'s state hygiene, not
+            # a different output. See audiocomponents#88.
             node.mix = 0.0
             return
         self._wake(node)

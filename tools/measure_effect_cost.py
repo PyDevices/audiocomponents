@@ -582,6 +582,53 @@ def _feedback_delay_options(probe):
     return node, (), (node, shape)
 
 
+# --- the rate path the drive family prices from ----------------------------
+#
+# Phase 4 added these. `Bitcrusher` holds two `audiospeed.SpeedChanger` nodes
+# in series and the palette table had no row for either, so its dossier budget
+# says "plus two unpriced SpeedChanger nodes" - an argument with no number in
+# it. The settings are the class's own (`bitcrusher.py`
+# `STAND_RATE_HZ` 26040.0): at 48 kHz the down leg runs at
+# 48000/26040 = 1.8433 and the up leg at its reciprocal.
+
+#: `Bitcrusher.STAND_RATE_HZ`. Kept here rather than imported so a node row
+#: costs nothing from `audioeffects`.
+STAND_RATE_HZ = 26040.0
+
+
+def _speed_changer(rate):
+    def build(probe):
+        import audiospeed
+        node = audiospeed.SpeedChanger(probe.output, rate=rate)
+        return node, (), (node,)
+    return build
+
+
+def _sample_hold(probe):
+    """`audioshaper.SampleHold` at Bitcrusher's default hold: 48000/26040
+    reduces to 400/217. Since audioif e3b95e7 (audioif#97) the class holds
+    with this one node instead of a SpeedChanger pair, so this row is what
+    its budget is priced from; the pair's two rows stay for the record."""
+    import audioshaper
+    node = audioshaper.SampleHold(probe.output, 48000, int(STAND_RATE_HZ))
+    return node, (), (node,)
+
+
+def _resampler(probe):
+    """`Resampler` at the only ratio this harness can reach: 1.0.
+
+    The ratio is not the caller's to set - it is bound by whatever plays the
+    node, from the source's rate over the destination's
+    (`audiospeed/Resampler.c:11-26`), and nothing here is a destination. Every
+    rate in this file is 48 kHz, so even a bound one would be 1.0. The row is
+    therefore the node's per-block machinery at identity ratio, and it is a
+    floor for a resampling one, not a measurement of it.
+    """
+    import audiospeed
+    node = audiospeed.Resampler(probe.output)
+    return node, (), (node,)
+
+
 def _dynamics_options(probe):
     """The `audiodynamics.Dynamics` row's settings with the expensive half
     of the new options on: the RMS detector, the feedback tap, the 4x
@@ -595,6 +642,200 @@ def _dynamics_options(probe):
              detector="rms", rms_ms=10.0, feedback_detector=True,
              true_peak=2, sidechain_hz=120.0, sidechain_lp_hz=2500.0,
              sidechain_poles=2)
+    node.play(probe.output)
+    return node, (), (node,)
+
+
+# --- the same nodes, at the settings the drive classes ship ----------------
+#
+# Added 2026-09-17 by the board-digest cause pass. Every node row above is
+# measured at the settings ITS phase cared about, and a digest is only a
+# statement about the settings it was rendered at: a class whose digest
+# splits between two boards cannot be attributed to a node row taken at a
+# different curve, frequency or level. These rows repeat six nodes at the
+# settings `overdrive.py` and `rebuilt/exciter.py` construct them
+# with, so a per-node answer is about the arithmetic the class runs.
+
+#: `Overdrive._refresh()`'s `pre_gain` at patch 0 - `(r2/R1)/UMAX` with
+#: `r2 = (12*9**(64/127) - 1) * R1` - written here as a literal so every leg
+#: feeds the node the SAME number. The class computes it in Python floats,
+#: which are double on CPython and on the unix build and single on a board;
+#: that difference belongs to the class row and would otherwise be measured
+#: here as if it were the node's.
+OD_PRE_GAIN = 11.7709228
+
+#: `Overdrive`'s blend mixer at patch 0: Mix 127 and Level 100 give
+#: `voice[0].level = 0.0` and `voice[1].level = mix * level = 100/127`.
+OD_BLEND_LEVEL = 0.7874015748031497
+
+
+#: The same drive row with a `pre_gain` every leg holds to the bit.
+#:
+#: `OD_PRE_GAIN` above is a decimal that is not exactly representable, and a
+#: board rounds it ONCE, in single (`mp_float_t`), where a desktop rounds it
+#: in double and the node rounds that to single - so the two legs feed the
+#: node `413c55b4` and `413c55b3`, one ULP apart, and the row that was
+#: written to be identical on every leg is not. 11.75 is `413c0000` exactly,
+#: on any interpreter. The row exists to separate "the node computes
+#: differently on a board" from "the node was handed a different number".
+OD_PRE_GAIN_EXACT = 11.75
+
+
+def _waveshaper_drive(factor, pre_gain=None):
+    """The waveshaper with a real drive curve instead of the synthetic one.
+
+    The `@x1`..`@x8` rows above shape against `q15_curve()`, an odd cubic
+    generated with integer arithmetic. `Overdrive`'s shipped `CURVE` is a
+    diode table: asymmetric in the large, far steeper near zero, and it
+    puts the oversampled path's half-band filters on entirely different
+    numbers. These are the only node rows that import `audioeffects`, and
+    the import is for the table only - the class is not built.
+    """
+    def build(probe):
+        import audioshaper
+        from audioeffects.overdrive import CURVE
+        node = audioshaper.Waveshaper(sample_rate=SAMPLE_RATE,
+                                      channel_count=CHANNELS,
+                                      oversample=factor, curve=CURVE,
+                                      mix=1.0,
+                                      pre_gain=(OD_PRE_GAIN
+                                                if pre_gain is None
+                                                else pre_gain),
+                                      post_gain=1.0, bias=0.0,
+                                      hysteresis=0.0)
+        node.play(probe.output)
+        return node, (), (node, CURVE)
+    return build
+
+
+
+def _waveshaper_bitcrusher(probe):
+    """The shaper at `Bitcrusher`'s own table: 8193 points, 16 KB.
+
+    Every `@x*` and `@drive*` row above shapes through a 1024- or
+    1025-point curve, and this file's own note says the cost "does not
+    depend on what is in the table - only on how long it is". `Bitcrusher`
+    runs eight times that length, set by the 12-bit span, and its pack
+    (§12.4) names this row as the one the board owes: a 16 KB table and a
+    2 KB table are not the same memory story on an S3. Settings are the
+    class's own - unity everywhere, no oversampling.
+    """
+    import audioshaper
+    from audioeffects.bitcrusher import CURVE
+    node = audioshaper.Waveshaper(sample_rate=SAMPLE_RATE,
+                                  channel_count=CHANNELS,
+                                  oversample=1, curve=CURVE, mix=1.0,
+                                  pre_gain=1.0, post_gain=1.0, bias=0.0,
+                                  hysteresis=0.0)
+    node.play(probe.output)
+    return node, (), (node, CURVE)
+
+
+def _biquad_at(mode, frequency, q, gain_db=None):
+    """One `audiobiquad.Biquad` at a named mode, frequency and Q.
+
+    `mode` is the attribute name rather than the constant, because the
+    module is imported inside the builder like every other node here.
+    """
+    def build(probe):
+        import audiobiquad
+        extra = {} if gain_db is None else {"gain_db": gain_db}
+        node = audiobiquad.Biquad(mode=getattr(audiobiquad, mode),
+                                  frequency=frequency, Q=q, mix=1.0,
+                                  sample_rate=SAMPLE_RATE,
+                                  channel_count=CHANNELS, **extra)
+        node.play(probe.output)
+        return node, (), (node,)
+    return build
+
+
+def _midside_unity(probe):
+    """`audioroute.MidSide` at width 1.0 - the identity width.
+
+    `Overdrive` opens and closes on one of these, at width 1.0, where the
+    node is arithmetically a wire. Whether it is a wire in the samples is
+    the question the row exists to answer.
+    """
+    import audioroute
+    node = audioroute.MidSide(probe.output, width=1.0,
+                              sample_rate=SAMPLE_RATE,
+                              channel_count=CHANNELS)
+    return node, (), (node,)
+
+
+def _mixer_at(levels, voice):
+    """A two-voice `Mixer` with the probe on `voice`, at `levels`.
+
+    The `audiomixer.Mixer` row above is 1.0 / 0.0 with the probe on voice 0,
+    which is a voice at unity and a voice that is off: the one case where
+    the scale is exact on any interpreter. `Overdrive` runs two of these
+    stages, and only the first is at unity - its blend is 0.0 / 100/127,
+    a fractional level, which is where audioif#84 lives.
+    """
+    def build(probe):
+        node = audiomixer.Mixer(voice_count=2, **pcm(2 * BLOCK_BYTES))
+        node.voice[voice].play(probe.output)
+        for index, level in enumerate(levels):
+            node.voice[index].level = level
+        return node, (), (node,)
+    return build
+
+
+def _splitter_taps(taps):
+    """An `n`-tap splitter with EVERY tap consumed per block.
+
+    The `+tap` and `+4` rows above are the two counts Phase 1 and Phase 2
+    needed. Phase 4's mixer rows want a 3-tap one to sit beside
+    `audiomixer.Mixer@3active`, because a three-voice mixer fed from a
+    splitter costs the splitter as well and the two have to be separable.
+    """
+    def build(probe):
+        import audioroute
+        split = audioroute.Splitter(probe.output, taps=taps)
+        extras = tuple(split.tap(index) for index in range(1, taps))
+        return split.tap(0), extras, (split,) + extras
+    return build
+
+
+def _mixer_active(voices):
+    """A `Mixer` with `voices` voices ALL PLAYING, at level 1.0.
+
+    The `audiomixer.Mixer` row above plays one voice and leaves the other
+    at level 0.0 with no source, so it prices a mixing point with one
+    reader. Every Phase 4 class sums two - a dry tap and a wet tap off the
+    same `Splitter` - and `Overdrive` and `Distortion` run two such stages.
+    Whether a second and a third active voice cost what the first did is a
+    board question, and this is the row that answers it.
+
+    The sources are splitter taps rather than independent `RawSample`s on
+    purpose: that is the graph the classes build, and it keeps the extra
+    source pull out of the figure. The comparison point is therefore
+    `audioroute.Splitter+tap` (2) or `audioroute.Splitter+3` (3), not the
+    bare control - subtract that row to get the mixer's own increment.
+    """
+    def build(probe):
+        import audioroute
+        split = audioroute.Splitter(probe.output, taps=voices)
+        node = audiomixer.Mixer(voice_count=voices, **pcm(2 * BLOCK_BYTES))
+        taps = []
+        for index in range(voices):
+            tap = split.tap(index)
+            taps.append(tap)
+            node.voice[index].play(tap)
+            node.voice[index].level = 1.0
+        return node, (), (node, split) + tuple(taps)
+    return build
+
+
+def _dynamics_transient(probe):
+    """`audiodynamics.Dynamics` as `Exciter` constructs it: the transient
+    shaper with both gains at 0 dB, which is what its patch 0 (Character
+    off) leaves it at. The detector runs; the gain it applies is unity."""
+    import audiodynamics
+    node = audiodynamics.Dynamics(audiodynamics.DYN_TRANSIENT,
+                                  sample_rate=SAMPLE_RATE,
+                                  channel_count=CHANNELS,
+                                  attack_gain_db=0.0, sustain_gain_db=0.0)
     node.play(probe.output)
     return node, (), (node,)
 
@@ -643,6 +884,48 @@ NODES = {
     "audioshaper.Waveshaper@x8": _waveshaper(8),
     "audioecho.FeedbackDelay@options": _feedback_delay_options,
     "audiodynamics.Dynamics@options": _dynamics_options,
+    # The rate path, Phase 4. Both legs of Bitcrusher's pair, at its rates.
+    "audiospeed.SpeedChanger": _speed_changer(48000.0 / STAND_RATE_HZ),
+    "audiospeed.SpeedChanger@up": _speed_changer(STAND_RATE_HZ / 48000.0),
+    "audioshaper.SampleHold": _sample_hold,
+    "audiospeed.Resampler": _resampler,
+    # The drive classes' own settings, Phase 4's digest-cause pass.
+    "audioshaper.Waveshaper@drive1": _waveshaper_drive(1),
+    "audioshaper.Waveshaper@drive2": _waveshaper_drive(2),
+    "audioshaper.Waveshaper@drive4": _waveshaper_drive(4),
+    "audioshaper.Waveshaper@drive8": _waveshaper_drive(8),
+    "audioshaper.Waveshaper@drive4exact": _waveshaper_drive(
+        4, pre_gain=OD_PRE_GAIN_EXACT),
+    "audioshaper.Waveshaper@drive1exact": _waveshaper_drive(
+        1, pre_gain=OD_PRE_GAIN_EXACT),
+    # Phase 4's palette: a 3-tap splitter, and the mixer with two and three
+    # voices actually playing.
+    "audioshaper.Waveshaper@bits12": _waveshaper_bitcrusher,
+    "audioroute.Splitter+3": _splitter_taps(3),
+    "audiomixer.Mixer@2active": _mixer_active(2),
+    "audiomixer.Mixer@3active": _mixer_active(3),
+    "audiobiquad.Biquad@hp720": _biquad_at("HIGH_PASS", 720.0, 0.15),
+    "audiobiquad.Biquad@lp6000": _biquad_at("LOW_PASS", 6000.0, 0.15),
+    "audiobiquad.Biquad@shelf3000": _biquad_at("HIGH_SHELF", 3000.0, 0.5,
+                                               gain_db=6.0),
+    # The four filters `Overdrive` runs at patch 0 and the one `Exciter`
+    # does, at the values their `_refresh()` computes rather than the ones
+    # their constructors take - read off the built classes and written here
+    # as literals, so every leg configures the node from the same decimal.
+    "audiobiquad.Biquad@od-hp": _biquad_at("HIGH_PASS", 723.9403965759934,
+                                           0.25),
+    "audiobiquad.Biquad@od-c4": _biquad_at("LOW_PASS", 21029.49403593439,
+                                           0.4968844520277081),
+    "audiobiquad.Biquad@od-lp": _biquad_at("LOW_PASS", 6960.3072719046795,
+                                           0.27210198787316137),
+    "audiobiquad.Biquad@od-shelf": _biquad_at("LOW_SHELF", 80.0, 0.5,
+                                              gain_db=0.0031496062992125706),
+    "audiobiquad.Biquad@ex-hp": _biquad_at("HIGH_PASS", 4026.4555023450857,
+                                           0.7071),
+    "audioroute.MidSide@1": _midside_unity,
+    "audiomixer.Mixer@unity": _mixer_at((1.0, 1.0), 0),
+    "audiomixer.Mixer@blend": _mixer_at((0.0, OD_BLEND_LEVEL), 1),
+    "audiodynamics.Dynamics@transient": _dynamics_transient,
 }
 
 
@@ -703,7 +986,40 @@ def _rebuilt(name):
     family class - so `effect:Compressor` measures the class the rebuild
     replaces. `rebuilt:Compressor` names the rebuilt one, and
     `rebuilt:Compressor@3` puts it on patch 3.
+
+    `rebuilt:Fuzz@os2` is the third form, and it is a construction option
+    rather than a patch: the two Phase 4 classes that have a lean position at
+    all reach it with `oversample=2` at `create()`, not with a
+    `program_change` (`rebuilt/fuzz.py`, `rebuilt/saturation.py`; the other
+    five say "no lean patch" in their own docstrings). Without it a lean cost
+    is unmeasurable through this tool, which is how Phase 2 ended with no lean
+    row anywhere.
+
+    `rebuilt:Fuzz@ch-cascade@4` is the fourth form and it exists for the same
+    reason. `Fuzz`'s second character is a CONSTRUCTOR option too, not a
+    macro, so `rebuilt:Fuzz@4` - the patch whose name is "Cascade scoop
+    centred" - builds the germanium graph and applies cascade's macro
+    positions to it. Its pack prices cascade at two `Waveshaper` nodes
+    against germanium's one, and without this form the board would measure
+    the cheap graph and report it as the expensive one. The suffixes may be
+    combined in any order: `@ch-cascade@os2@4`.
     """
+    options = {}
+    while True:
+        if "@os" in name:
+            head, _, tail = name.rpartition("@os")
+            digits = tail.split("@")[0]
+            if digits.isdigit():
+                options["oversample"] = int(digits)
+                name = head + tail[len(digits):]
+                continue
+        if "@ch-" in name:
+            head, _, tail = name.rpartition("@ch-")
+            value = tail.split("@")[0]
+            options["character"] = value
+            name = head + tail[len(value):]
+            continue
+        break
     name, patch = _split_patch(name)
 
     def build(probe):
@@ -711,7 +1027,7 @@ def _rebuilt(name):
         cls = rebuilt.module_class(name)
         if cls is None:
             raise ValueError("no rebuilt module for %s" % name)
-        effect = cls.create(probe.output, SAMPLE_RATE)
+        effect = cls.create(probe.output, SAMPLE_RATE, **options)
         if patch is not None:
             effect.program_change(patch)
         return effect.output, (), (effect,)
@@ -927,11 +1243,24 @@ def run(build, want_digest):
 
 
 def identity():
-    """The board this ran on, in the two forms that identify a firmware."""
+    """The board this ran on, in the two forms that identify a firmware.
+
+    `os.uname` is not everywhere: the unix MicroPython build does not carry
+    it, so the one leg that this file exists to hold a board against used to
+    lose the whole run to an `AttributeError` here. Fall back to
+    `sys.implementation`, which every interpreter in this workspace has.
+    """
     import os
     import sys
-    name = os.uname()
     build = getattr(sys.implementation, "_build", "?")
+    uname = getattr(os, "uname", None)
+    if uname is None:
+        return ("%s %s / %s / %s"
+                % (sys.implementation.name,
+                   ".".join(str(part) for part in sys.implementation.version),
+                   getattr(sys.implementation, "_machine", sys.platform),
+                   build))
+    name = uname()
     return ("%s %s / %s / %s"
             % (name.sysname, name.release, name.version, build))
 
@@ -948,6 +1277,47 @@ def catalogue():
     except ImportError as exc:
         print("  effect:<name> - audioeffects is not importable here: %s"
               % exc)
+
+
+def digests(*targets):
+    """The digest of each target, several targets in ONE VM, no timing.
+
+    `main()` is the method for a cost: one target per run, a fresh VM, a
+    control beside it, and a table row that is a price. This is the other
+    half of the same file and it is deliberately not that. When the question
+    is which legs rendered the same bytes - a cause pass, not a cost pass -
+    the timed passes are 90% of the wall clock and none of the answer, and
+    four legs times a dozen nodes at three minutes apiece is a day.
+
+    What it does NOT change is the digest: the chain is built fresh, from
+    the same `Probe`, and hashed over the same first `DIGEST_BLOCKS` blocks
+    by the same `_warm`. It costs no `prime()` because nothing here is a
+    number that a first import could land in the middle of. A digest from
+    this function and a digest from `main()` are the same 683 ms, and a
+    run that quotes one against the other should say so.
+
+    Each line is printed in two halves - the target before the render, the
+    digest after it - so a host following the run sees a target start rather
+    than a board going quiet, and a target that never returns leaves its own
+    name on the last, unfinished line. A target that raises finishes its line
+    with the error and the sweep carries on, because a missing node on one leg
+    is a finding rather than a reason to lose the eleven that worked.
+    """
+    print("board:  %s" % identity())
+    for target in targets:
+        print("DIGEST\t%s\t" % target, end="")
+        try:
+            build = resolve(target)
+            probe = Probe()
+            output, extras, keep = build(probe)
+            digest, _spent, _frames, _pulls = _warm(output, extras, True)
+            del keep, probe, output, extras
+            gc.collect()
+        except Exception as exc:                       # noqa: BLE001
+            print("ERROR %s: %s" % (type(exc).__name__, exc))
+            continue
+        print(digest)
+    print("DIGESTS DONE")
 
 
 def main(target=None):

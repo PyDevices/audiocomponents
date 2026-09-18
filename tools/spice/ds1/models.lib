@@ -1,0 +1,8 @@
+* models.lib -- same 1N4148 numbers as tools/spice/rat/models.lib (S8).
+.subckt 1N4148 1 2
+Rrev 1 2 5.827E+9
+D1   1 2 D1N4148_nexperia
+.model D1N4148_nexperia D
++ IS=4.352E-9 N=1.906 BV=110 IBV=0.0001 RS=0.6458
++ CJO=7.048E-13 VJ=0.869 M=0.03 FC=0.5 TT=3.48E-9
+.ends

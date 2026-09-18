@@ -1,0 +1,27 @@
+* ds1_clip.cir -- Boss DS-1 diodes to ground under C10 (R14 2.2K, 0.01 uF)
+*
+* Topology from Distortion.md S2 / S5 Fig. 8. The booster and tone stack
+* are omitted: this is the clipper the second waveshaper table is from.
+.include models.lib
+.param amp=1.0
+Vin in 0 sin(0 {amp} 1k)
+R14 in out 2.2k
+C10 out 0 0.01u
+XD4 out 0 1N4148
+XD5 0 out 1N4148
+
+.control
+set wr_vecnames
+set wr_singlescale
+set fe = ".csv"
+foreach a 0.35 1.0 3.5
+  set fn = "out/clip_tran_amp$a"
+  alterparam amp = $a
+  reset
+  tran 1u 20m 0 1u
+  linearize v(out) v(in)
+  wrdata $fn$fe v(out) v(in)
+end
+quit
+.endc
+.end

@@ -38,9 +38,12 @@ that LR-2 and LR-6 need an inversion and LR-4 and LR-8 do not.
 
 * **The sum is flat but it is not a wire.** A Linkwitz-Riley network
   "behaves like an all-pass": unity magnitude, rotating phase. So `Mix` at
-  zero is a **real bypass** - the dry tap at unity and every band voice at
-  zero - and not "the bands, summed, which ought to be the same thing". It
-  is not the same thing, and the byte compare would say so.
+  zero is a **real bypass** and not "the bands, summed, which ought to be
+  the same thing". It is not the same thing, and the byte compare would say
+  so. Nor is the dry tap at unity enough: a mixer voice at level 1.0 scales
+  by 32768/32767 on every target (audioif#95), so `_refresh_output` hands
+  back the borrowed source itself and puts no node of this class's in the
+  path at all.
 
 * **How close the two crossovers may get.** The three-way parallel split has
   a floor that is a function of the crossover *ratio*, not of the
@@ -145,9 +148,10 @@ MIN_CROSSOVER_RATIO = 8.0
 #: may never be short.
 _TAIL_PERIODS = 3.6
 
-#: Frames the guard hands back in one call. Anything at or under the
-#: Splitter's 8192-frame ring works; 256 is what every other node on the
-#: palette hands out, so the graph runs in one block size.
+#: Frames the guard hands back in one call. 256 is what every other node on
+#: the palette hands out, so the graph runs in one block size. It used to
+#: have to be at or under the Splitter's 8192-frame ring as well; since
+#: audioif#87 the Splitter takes any call in pieces and that clause is gone.
 _GUARD_FRAMES = 256
 
 
@@ -181,10 +185,17 @@ class MultibandCompressor(_component.Component):
     module docstring has the arithmetic. Dial the number you want in the
     middle of a band and expect about a decibel less at its edges.
 
-    **`Mix` at zero is a true bypass**, byte-identical to the source, because
-    a Linkwitz-Riley network at unity is an all-pass and not a wire. In
-    between, Mix is parallel compression: the dry tap and the summed bands,
-    crossfaded.
+    **`Mix` at zero is a true bypass**, byte-identical to the source,
+    because a Linkwitz-Riley network at unity is an all-pass and not a wire.
+    There is **no mixer in the path** there - `output` is the class's input
+    node, a `Filter` with no filter, which is a copy - because a mixer voice
+    at level 1.0 is not unity on any target: upstream's Q15 level is
+    `1.0 * 32768` and the kernel then divides by 32767, so every sample at
+    or above 32736 comes out one LSB larger (audioif#95). Through the dry
+    voice this class's Mix 0 differed from its source on 15 of 32768 samples
+    of a full-scale ramp; it is now exact at 22.05, 44.1 and 48 kHz, mono
+    and stereo, on all three interpreters. In between, Mix is parallel
+    compression: the dry tap and the summed bands, crossfaded.
 
     **Latency 0 at every setting**, and no option here can add any. The
     crossover is IIR; the detectors do not look ahead.
@@ -203,10 +214,11 @@ class MultibandCompressor(_component.Component):
 
     **There is no lean patch and there cannot be one.** Every macro
     position and every shipped patch was walked - 243 of them - and the
-    graph is the same 18 nodes and 72 pulls at all of them; the class
-    **fully bypassed at Mix 0 costs 102 % of what it costs working**,
-    because the Mixer pulls a voice at level 0 exactly as hard as one at
-    unity. Only the constructor can make this class cheaper.
+    graph is the same 18 nodes and 72 pulls at all of them, because the
+    Mixer pulls a voice at level 0 exactly as hard as one at unity. The one
+    position that is not is **Mix 0**, where `output` is the source and
+    nothing this class owns is pulled at all; no shipped patch sits there.
+    Only the constructor can make a *working* instance cheaper.
     """
 
     NAME = 'MultibandCompressor'
@@ -252,9 +264,10 @@ class MultibandCompressor(_component.Component):
         (0.0, 1.0),
     )
     #: Patch 0 is the constructor's defaults on the 0-127 grid, to the
-    #: nearest grid point: a BIPOLAR gain of exactly 0 dB sits at 63.5, and
-    #: 64 is 0.09 dB. `tests/test_cpython_effects_multiband.py` holds the
-    #: table to that, span by span, rather than to a hand-copied list.
+    #: nearest grid point. A BIPOLAR gain of exactly 0 dB is MIDI 64 exactly
+    #: since audiocomponents#87 -- it used to sit at 63.5, unreachable, and
+    #: 64 stood for 0.09 dB. `tests/test_cpython_effects_multiband.py` holds
+    #: the table to that, span by span, rather than to a hand-copied list.
     PATCHES = {
         0: ("Master Glue",
             (68, 51, 89, 89, 89, 47, 47, 47, 64, 64, 64, 85, 82, 127)),
@@ -291,11 +304,18 @@ class MultibandCompressor(_component.Component):
         self._bands = bands
         self._low_hz = 0.0
         self._high_hz = 0.0
+        #: Where Mix is, whether the band voices are on their sources, and
+        #: whether the graph is wired up at all yet. `_refresh_output` reads
+        #: all three and is a no-op until `_build` says so.
+        self._mix = 1.0
+        self._primed = False
+        self._ready = False
 
         rate = self._sample_rate
         channels = self._channel_count
 
-        head = self._build_input()
+        #: What the Splitter pulls from, and what `Mix` 0 hands back.
+        self._head = head = self._build_input()
 
         taps = bands + 1
         #: `reset=False`: `audioroute.Splitter` is a container, not an
@@ -355,22 +375,33 @@ class MultibandCompressor(_component.Component):
         #: frequency of 1 kHz. That is the head of every render, on every
         #: instance, and no macro move can reach it afterwards.
         self._play_voices()
+        self._ready = True
+        self._refresh_output()
 
     def _build_input(self):
         """The node the Splitter pulls from, which is never the source.
 
-        The Splitter writes whatever its immediate source hands back in one
-        call into an 8192-frame ring and drags every cursor past it
-        (`shared/audioif_splitter.c:34-39`, ring at
-        `audioif_splitter.h:20`), so a whole-buffer source -
-        `audiocore.RawSample` hands its entire array back in one
-        `get_buffer` - loses the first n - 8192 frames of it. Any node that
-        hands out its own block removes that completely, and this is the
-        cheapest one on the palette: a `Filter` with no filter is a copy.
+        **This guard no longer guards anything.** It was built because the
+        Splitter wrote whatever its immediate source handed back in one call
+        into an 8192-frame ring and dragged every cursor past it, so a
+        whole-buffer source - `audiocore.RawSample` hands its entire array
+        back in one `get_buffer` - lost the first n - 8192 frames of it.
+        Since audioif#87 the Splitter takes a call bigger than its ring in
+        pieces, and the head arrives. Measured at audioif `977ef26`: the
+        class renders the same bytes with this node and without it, at every
+        source block from 256 to 32768 frames, and burst material survives
+        unguarded (`tests/test_cpython_effects_multiband.py`,
+        `test_m5_the_guard_no_longer_changes_the_render`).
 
-        It is its own method because it is the seam the M5 planted fault
-        cuts: a subclass that returns `self._source` here is the class
-        without its guard, and the block ladder goes red on it.
+        It is kept for now, not because it is needed, but because dropping a
+        node changes the graph a shipped class was costed on and the board
+        rows cannot be re-taken until the P4 and S3 are plugged in. It is a
+        `Filter` with no filter, which is a copy, and it is the cheapest node
+        on the palette.
+
+        It is still its own method because it is the seam the `NoGuard`
+        fixture cuts - which is now the *equality* test above, not a fault.
+        M5's live fault is a source that keeps only its last ring.
         """
         self._guard = self._own(audiofilters.Filter(
             filter=None, mix=1,
@@ -426,15 +457,26 @@ class MultibandCompressor(_component.Component):
         without it a Mix 0 bypass rendered its first 256 frames silent on a
         ramp. This runs after the macros, so the levels it opens at are the
         ones the class was built with.
+
+        **At Mix 0 the voices are left on that silence.** `_refresh_output`
+        hands the bypass back off `self._head`, and a voice playing tap 0
+        would drag a block of the head through the Splitter on `play()`
+        alone (`MixerVoice.play` fetches there and then) - so the bypass
+        would start one block in. Leaving them silent also means the whole
+        graph behind this mixer is never pulled while Mix is 0.
         """
         _component.open_level_gates(
             self._mixer,
             [self._mixer.voice[index] for index in range(self._bands + 1)],
             self._silence)
+        if self._mix <= 0.0:
+            self._primed = False
+            return
         self._mixer.play(self._taps[0], voice=0, loop=True)
         for band in range(self._bands):
             self._mixer.play(self._detectors[band], voice=band + 1,
                              loop=True)
+        self._primed = True
 
     def _reset_mixer(self):
         """Clear the Mixer, then hand its voices back their sources.
@@ -578,9 +620,54 @@ class MultibandCompressor(_component.Component):
         band voices contribute exactly nothing and the dry tap is at unity,
         which is a byte compare against the source and not a claim about the
         sum being flat."""
+        self._mix = mix
         self._mixer.voice[0].level = 1.0 - mix
         for band in range(self._bands):
             self._mixer.voice[band + 1].level = mix
+        self._refresh_output()
+
+    def _refresh_output(self):
+        """At Mix 0 the output is the class's input, not a path through it.
+
+        A mixer voice at level 1.0 is not unity: upstream's Q15 level is
+        `1.0 * 32768` and the kernel divides by 32767, so on a stereo mixer
+        the right channel - and on a mono one both - comes out one LSB
+        larger at every sample from 32736 up (audioif#95). Through the dry
+        voice this class's Mix 0 differed from its source on 15 of 32768
+        samples of a full-scale ramp. So Mix 0 puts no mixer in the path at
+        all, which is the answer `Fuzz` and `Overdrive` already give.
+
+        **What is handed back is `self._head`, not `self._source`, and the
+        difference is one node wide.** `_build_input`'s guard is an
+        `audiofilters.Filter`, and `Filter.play()` resets its source and
+        fetches a block from it on the spot - so by the end of construction
+        the first 256 frames of the source are inside the guard. Handing
+        back the source would start the bypass 256 frames in; handing back
+        the guard hands back those frames, and the guard is a `Filter` with
+        no filter, which is a copy: measured bit-exact against a full-scale
+        ramp on all three interpreters, at both channel counts. It is also
+        the node the Splitter reads, so a Mix move off 0 picks the graph up
+        at exactly the sample the bypass stopped on. `NoGuard` sets
+        `_head` to the source itself, and there the bypass *is* the borrowed
+        source, which is what audioif#87 finally allows.
+
+        Coming back off 0, the voices are handed their sources with the
+        level gates opened first. Since CircuitPython 10.3.0 a voice takes a
+        level change only at a zero crossing and a freshly played one starts
+        at zero, so without that block of silence the first frames after the
+        move would be silent and the level would step in at the block
+        boundary - which is the click this avoids
+        (`_component.open_level_gates`). `_apply_mix` sets the levels before
+        it calls here, so the gates open at the levels Mix just asked for.
+        """
+        if not self._ready:
+            return
+        if self._mix <= 0.0:
+            self._output = self._head
+            return
+        if not self._primed:
+            self._play_voices()
+        self._output = self._mixer
 
 
 def audiomixer_mixer(rate, channels, voices):
