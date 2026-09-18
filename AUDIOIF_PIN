@@ -83,5 +83,16 @@
 # that existed changed: every verify_dsp row is byte-identical, audiospeed is
 # untouched. Board proof of the new node is owed by Phase 4's board run.
 #
+# Moved to 9018e35 on 2026-09-18, same ruling: the CPython twin's mixer voice
+# now borrows its source node's buffer the way the native one does
+# (MixerVoice.c stores a pointer at play(); the twin copied). Saturation's
+# coupling-pole charge pulls the wet chain behind an attached voice, so on
+# every native build and both boards the voice mixed the settled block and on
+# CPython it mixed the bang. No native C changed - the boards stay at the
+# e3b95e7 firmware, which is DSP-identical - and verify_dsp reads 49/0/0 with
+# every earlier row byte-identical. Also in the range since e3b95e7: docs and
+# tests only (the Waveshaper headroom note, audioif_util.float32, the
+# soundtrack render gate, the upstream PR material, the re-pinned oracle).
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-e3b95e7eeee1f0d3711ae0ec1440930ae5df2573 e3b95e7eeee1f0d3711ae0ec1440930ae5df2573
+9018e355f82a836eff5d125bf2ef55fff3ee6775 9018e355f82a836eff5d125bf2ef55fff3ee6775
