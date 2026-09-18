@@ -69,8 +69,9 @@ release — so the board asked whether the row under-prices the node
 between this class's own gains and 0 dB. A few per cent, not the 27 % the
 S3 is missing. **The gains are not what the row was missing.**
 
-**What the boards measured is 32.3 % / 57.8 % and 42.5 % / 81.6 %** — over
-by 3.4 / 4.0 and 4.3 / 9.3 points. The S3's extra five points on
+**What the boards measured on the 128-frame graph is 32.3 % / 57.8 % and
+42.5 % / 81.6 %** — over by 3.4 / 4.0 and 4.3 / 9.3 points. The S3's extra
+five points on
 `transient` are the `Dynamics` costing this class **1.234 ms** where the
 palette prices it 0.985, against **0.537 against 0.495 on the P4**: 27 %
 over on the S3 and 9 % on the P4. The suspect, unproven: the class handed
@@ -83,9 +84,17 @@ block, and it **moves no byte** — `59f2e64ed63c1362` at patch 0 and
 **Desktop MicroPython cannot confirm the saving and in one arrangement
 reads the other way** (the node behind a 128-frame mixer measured 0.850× a
 256-frame one, over six order-balanced runs); an x86 build's per-call
-overhead is under a microsecond, which is why. **The board ROW of the
-256-frame graph is unmeasured** and it is what this owes the next board
-pass. (Setting `transient_fast_release_ms` still costs nothing — the four
+overhead is under a microsecond, which is why. **The second board pass
+measured the 256-frame graph on 2026-09-18**: 28.9 % / 54.3 % on `classic`,
+39.3 % / 77.0 % on `transient`, 39.4 % / 77.5 % at the costliest patch. The
+block was worth 3.4 / 3.5 points on `classic` and 3.2 / 4.6 on `transient`;
+the `Dynamics` on the S3 is still 22 % over its row and still unexplained.
+
+**Alone on an ESP32-S3 this uses 54 % of a block on `classic` and 77 % on
+`transient`, 78 % at its costliest patch; there is no lean patch, so run it
+alone or with something cheap.**
+
+(Setting `transient_fast_release_ms` still costs nothing — the four
 transient time constants are config fields whose defaults are the literals
 the node used before they were fields, `audioif_dynamics.c:48-53`.)
 **No lean position.** `oversample=2` was documented as one until
@@ -319,8 +328,11 @@ TRANSIENT_FAST_RELEASE_MS = 8.0
 #: on the S3**. `1024 * channel_count` is one pull per block at either
 #: channel count, which is what `Distortion` already does (`_pcm_mixer`),
 #: and the three classes that missed their budget on these boards are three
-#: of the four that handed back 128 frames. **Unproven on a board, and
-#: desktop MicroPython cannot see it either way.**
+#: of the four that handed back 128 frames. **The second board pass measured
+#: the 256-frame graph: it is worth 3.4 / 3.5 points on `classic` and
+#: 3.2 / 4.6 on `transient`, so the block was most of the P4's miss and
+#: about half the S3's. What the `Dynamics` costs over its row — 22 % on the
+#: S3 — is not the block and is still unexplained.**
 MIXER_BUFFER_BYTES = 1024
 
 # BEGIN EXCITER_CURVE

@@ -105,9 +105,15 @@ construction raises `ImportError`.
 stage plays instead: 3×Biquad + Waveshaper ×2 0.558/1.017 = **0.882 /
 1.629 ms → 17 % / 31 %**. That patch, not the constructor, is the S3's
 shipped position.
-The boards measured **44.6 % / 76.8 %** and **18.8 % / 31.8 %** —
-**over by 2.3 / 2.2 and 2.3 / 1.3 points**, and the node census confirms the
-count, so it is not a miscount. **The cause is not located**, and the shape
+The boards measured **44.4 % / 76.8 %** at patch 0, **18.5 % / 32.8 %** at
+patch 8 and **44.6 % / 77.7 %** at the costliest shipped patch (second pass,
+256-frame blocks, 2026-09-18) — **over by 2.1 / 2.2 points**, and the node
+census confirms the count, so it is not a miscount.
+
+**Alone on an ESP32-S3 this uses 77 % of a block at its default germanium
+patch, 78 % at its costliest; use patch 8 `Fuzz - lean` (33 %) to stack.**
+
+**The cause of the palette miss is not located**, and the shape
 of it is the finding: the miss is **0.122 ms on the P4 and 0.116 ms on the
 S3**, near enough the same absolute number on two chips that differ by 1.8×
 in speed — CPU work does not do that. It is not the shaper's settings

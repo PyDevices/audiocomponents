@@ -843,9 +843,10 @@ class TheAdoptionGate(unittest.TestCase):
     `rebuilt.ADOPTED` is the one list this package keeps, and it is the
     auditor's, not the builder's. Every class that has come home is out of
     `ADOPTED` and out of `rebuilt/` -- it is staging, not a roster. What
-    remains here is the two Example fixtures, the rebuilds a gate parked
-    (Flanger; Saturation, Fuzz and Exciter on board budget), and the
-    machinery later phases will use.
+    remains here is the two Example fixtures, the one rebuild a gate parked
+    (Flanger), the three the board run adopted on 2026-09-18 and has not yet
+    brought home (Saturation, Fuzz, Exciter), and the machinery later phases
+    will use.
 
     A rebuild still adds exactly one file and edits nothing else. Adoption
     is a separate edit, made once, in a commit that cites the gate. Coming
@@ -856,18 +857,21 @@ class TheAdoptionGate(unittest.TestCase):
         # Home classes must not reappear in ADOPTED.
         self.assertTrue(set(REBUILT).isdisjoint(rebuilt.ADOPTED))
         # Phase 3's THROUGH names and RingMod have come home; Flanger stays
-        # parked. Phase 4's four were adopted on the boards on 2026-09-18
-        # and promoted the same day, so they have left ADOPTED too and it
-        # is empty again. `Saturation` missed its palette budget on both
-        # boards and `Fuzz` and `Exciter` never reached them, so all three
-        # are parked under this directory, `drive.py` still serves the
-        # classes they replace, and the substitution machinery stays.
-        self.assertEqual(rebuilt.ADOPTED, ())
+        # parked. Phase 4's first four were adopted on the boards on
+        # 2026-09-18 and promoted the same day, so they have left ADOPTED
+        # too. `Saturation`, `Fuzz` and `Exciter` were adopted later the
+        # same day under Brad's G6 ruling -- the cost gate is a real-time
+        # ceiling, 80 % of a stereo block, and all three are inside it on
+        # both boards at every shipped patch -- so ADOPTED names them until
+        # they come home, and the library serves them now.
+        self.assertEqual(rebuilt.ADOPTED, ("Saturation", "Fuzz", "Exciter"))
         self.assertEqual(rebuilt.adopted(), rebuilt.ADOPTED)
         for name in ("Saturation", "Fuzz", "Exciter"):
-            self.assertNotIn(name, rebuilt.ADOPTED)
-            self.assertIsNotNone(rebuilt.module_class(name))
-            self.assertIsNone(rebuilt.load(name))
+            self.assertIn(name, rebuilt.ADOPTED)
+            built = rebuilt.module_class(name)
+            self.assertIsNotNone(built)
+            self.assertIs(rebuilt.load(name), built)
+            self.assertIs(getattr(audioeffects, name), built)
         parked = set(rebuilt.parked())
         known = set(rebuilt.known())
         self.assertTrue(set(FIXTURES) <= parked)
@@ -877,7 +881,7 @@ class TheAdoptionGate(unittest.TestCase):
         self.assertTrue(known - set(FIXTURES) <= set(audioeffects.ALL))
         self.assertIn("Flanger", parked)
         for name in ("Saturation", "Fuzz", "Exciter"):
-            self.assertIn(name, parked)
+            self.assertNotIn(name, parked)
         self.assertNotIn("RingMod", parked)
         self.assertNotIn("AutoPan", parked)
         self.assertNotIn("Chorus", parked)

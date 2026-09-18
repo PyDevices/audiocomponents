@@ -92,8 +92,14 @@ per 256-frame block, and one extra Python-level pull is worth about
 P4 that is the whole 3.4 points. `MIXER_BUFFER_BYTES × channel_count` makes
 one pull one block and **moves no byte**: `ffb5e07e33e2732d` at patch 0 and
 `58444f96ff950621` at patch 8, at either block length, on CPython,
-MicroPython and CircuitPython. The board ROW of the 256-frame graph is
-unmeasured. At 22.05 kHz the block is 11.61 ms and ×2 prices at
+MicroPython and CircuitPython. **The second board pass measured that graph
+on 2026-09-18 and the miss is gone**: 29.4 % / 55.4 % at patch 0, 20.8 % /
+39.6 % at patch 8, 29.9 % / 56.4 % at its costliest patch.
+
+**Alone on an ESP32-S3 this uses 55 % of a block at its default patch,
+56 % at its costliest; use patch 8 `Saturation - lean` (40 %) to stack.**
+
+At 22.05 kHz the block is 11.61 ms and ×2 prices at
 1.139 / 2.172 ms, **10 % / 19 %**.
 The identity `MidSide` tail is gone: it was there so the class would not end
 on a Mixer, and what it bought instead was an LSB on every full-scale sample
