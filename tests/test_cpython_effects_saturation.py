@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import kit_faults                                               # noqa: E402
 import kit_probes as probes                                     # noqa: E402
-from audioeffects.rebuilt import saturation as rebuilt          # noqa: E402
+from audioeffects import saturation as rebuilt                 # noqa: E402
 from tools import effect_measurements as kit                    # noqa: E402
 
 VENDOR = "PyDevices"
@@ -252,11 +252,6 @@ class Construction(unittest.TestCase):
             self.assertGreater(
                 max(fine["values"]["measured_latency_samples"]),
                 effect.LATENCY_SAMPLES, (rate, fine))
-
-    def test_old_class_still_imports(self):
-        from audioeffects.drive import Saturation as Old
-        self.assertTrue(issubclass(Old, object))
-        self.assertIsNot(Old, Saturation)
 
     def test_mono_constructs_and_mix_zero_is_a_wire(self):
         probe = probes.ramp_fs(2048, 1)

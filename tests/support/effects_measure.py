@@ -4,8 +4,9 @@ The effects suite is split by what retires each part. The contract-level
 tests over `audioeffects.ALL` live in `test_cpython_effects_library.py` and
 are not retired at all; each family's old-surface trait tests live in a
 module the family phase deletes when it rebuilds those classes
-(`test_cpython_effects_dynamics_eq.py`, `..._modulation.py`, `..._drive.py`,
-`..._time.py`, `..._pitch.py`, `..._racks.py`), and
+(`test_cpython_effects_dynamics_eq.py`, `..._modulation.py`, `..._time.py`,
+`..._pitch.py`, `..._racks.py`; `..._drive.py` went on 2026-09-18 when the
+last of its seven came home), and
 `test_cpython_convolve_node.py` holds the audioconvolve node checks, which
 belong to the palette and outlive every rewrite. The building and measuring
 they have in common is here, so retiring one module disturbs no other.

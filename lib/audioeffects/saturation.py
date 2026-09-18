@@ -3,8 +3,9 @@
 Rebuilt from scratch for Phase 4 against
 `workspace docs/effects-internal/dossiers/Saturation.md`, traits frozen at
 Station A on 2026-09-17 before this file existed. The old `drive.py:Saturation`
-is not consulted except for the six defects the dossier's section 7 names,
-and it stays the class the library serves until the auditor adopts this one.
+was not consulted except for the six defects the dossier's section 7 names;
+it was the class the library served until this one was adopted on the boards
+on 2026-09-18, and `drive.py` went with the promotion.
 
 **What it sounds like.** `tube` (default) is a 12AX7 common-cathode stage:
 even harmonics below 0.5 V grid, a hard plate ceiling one way and grid
@@ -217,7 +218,7 @@ except ImportError:                                  # pragma: no cover
     def _f32(value):
         return value
 
-from .. import _component
+from . import _component
 
 
 # --- BEGIN TUBE_CURVE ---

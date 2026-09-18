@@ -54,7 +54,8 @@ REBUILT = ("Compressor", "Limiter", "Expander", "NoiseGate", "DeEsser",
            "GraphicEQ", "LowPass", "HighPass", "BandPass", "Notch",
            "LadderFilter", "CombFilter", "DynamicEQ",
            "AutoPan", "Chorus", "Phaser", "Tremolo", "Vibrato", "RingMod",
-           "Overdrive", "Distortion", "Bitcrusher", "CabinetSim")
+           "Overdrive", "Distortion", "Fuzz", "Saturation", "Bitcrusher",
+           "Exciter", "CabinetSim")
 
 
 def source(channels=2, rate=48000):
@@ -844,9 +845,7 @@ class TheAdoptionGate(unittest.TestCase):
     auditor's, not the builder's. Every class that has come home is out of
     `ADOPTED` and out of `rebuilt/` -- it is staging, not a roster. What
     remains here is the two Example fixtures, the one rebuild a gate parked
-    (Flanger), the three the board run adopted on 2026-09-18 and has not yet
-    brought home (Saturation, Fuzz, Exciter), and the machinery later phases
-    will use.
+    (Flanger), and the machinery later phases will use.
 
     A rebuild still adds exactly one file and edits nothing else. Adoption
     is a separate edit, made once, in a commit that cites the gate. Coming
@@ -857,21 +856,15 @@ class TheAdoptionGate(unittest.TestCase):
         # Home classes must not reappear in ADOPTED.
         self.assertTrue(set(REBUILT).isdisjoint(rebuilt.ADOPTED))
         # Phase 3's THROUGH names and RingMod have come home; Flanger stays
-        # parked. Phase 4's first four were adopted on the boards on
-        # 2026-09-18 and promoted the same day, so they have left ADOPTED
-        # too. `Saturation`, `Fuzz` and `Exciter` were adopted later the
-        # same day under Brad's G6 ruling -- the cost gate is a real-time
-        # ceiling, 80 % of a stereo block, and all three are inside it on
-        # both boards at every shipped patch -- so ADOPTED names them until
-        # they come home, and the library serves them now.
-        self.assertEqual(rebuilt.ADOPTED, ("Saturation", "Fuzz", "Exciter"))
+        # parked. All seven of Phase 4's were adopted on the boards on
+        # 2026-09-18 and promoted the same day -- `Saturation`, `Fuzz` and
+        # `Exciter` last, under Brad's G6 ruling that the cost gate is a
+        # real-time ceiling, 80 % of a stereo block, which all three are
+        # inside on both boards at every shipped patch. `drive.py` is
+        # deleted, so ADOPTED is empty again and the substitution machinery
+        # stays for Flanger and the phases to come.
+        self.assertEqual(rebuilt.ADOPTED, ())
         self.assertEqual(rebuilt.adopted(), rebuilt.ADOPTED)
-        for name in ("Saturation", "Fuzz", "Exciter"):
-            self.assertIn(name, rebuilt.ADOPTED)
-            built = rebuilt.module_class(name)
-            self.assertIsNotNone(built)
-            self.assertIs(rebuilt.load(name), built)
-            self.assertIs(getattr(audioeffects, name), built)
         parked = set(rebuilt.parked())
         known = set(rebuilt.known())
         self.assertTrue(set(FIXTURES) <= parked)
@@ -880,15 +873,14 @@ class TheAdoptionGate(unittest.TestCase):
         self.assertTrue(parked - set(FIXTURES) <= set(audioeffects.ALL))
         self.assertTrue(known - set(FIXTURES) <= set(audioeffects.ALL))
         self.assertIn("Flanger", parked)
-        for name in ("Saturation", "Fuzz", "Exciter"):
-            self.assertNotIn(name, parked)
         self.assertNotIn("RingMod", parked)
         self.assertNotIn("AutoPan", parked)
         self.assertNotIn("Chorus", parked)
         self.assertNotIn("Phaser", parked)
         self.assertNotIn("Tremolo", parked)
         self.assertNotIn("Vibrato", parked)
-        for name in ("Overdrive", "Distortion", "Bitcrusher", "CabinetSim"):
+        for name in ("Overdrive", "Distortion", "Fuzz", "Saturation",
+                     "Bitcrusher", "Exciter", "CabinetSim"):
             self.assertNotIn(name, parked)
         for name in known:
             if name not in FIXTURES:

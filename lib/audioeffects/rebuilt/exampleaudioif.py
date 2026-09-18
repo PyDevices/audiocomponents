@@ -6,8 +6,8 @@ the 46, absent from `audioeffects.__all__`, removed at Phase 7
 audioif-tier subject to hold to its documented `ImportError` from the day
 the test is written.
 
-The tier pattern is `CabinetSim`'s (`drive.py:29-32`, `:331-332`), in two
-halves. The **guarded import** below keeps this module importable on a stock
+The tier pattern is `CabinetSim`'s (`cabinetsim.py`, the guarded import and
+`REQUIRES`), in two halves. The **guarded import** below keeps this module importable on a stock
 CircuitPython board, so the other classes in a family module stay reachable.
 The **construction-time raise** is the base class's `_require_modules()`,
 driven by `REQUIRES`; it imports the module for itself rather than reading

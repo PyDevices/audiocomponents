@@ -3,8 +3,9 @@
 Rebuilt from scratch for Phase 4 against
 `workspace docs/effects-internal/dossiers/Fuzz.md`, traits frozen at
 Station A on 2026-09-17 before this file existed. The old `drive.py:Fuzz`
-is not consulted except for the five defects the dossier's section 7 names,
-and it stays the class the library serves until the auditor adopts this one.
+was not consulted except for the five defects the dossier's section 7 names;
+it was the class the library served until this one was adopted on the boards
+on 2026-09-18, and `drive.py` went with the promotion.
 
 **What it sounds like.** `germanium` (default) is a Fuzz Face: Q1 sits off
 centre, so small signals clip on one half first and both halves go square
@@ -257,7 +258,7 @@ except ImportError:
 import audiocore
 import audiomixer
 
-from .. import _component
+from . import _component
 
 
 # --- BEGIN GERMANIUM_CURVE ---

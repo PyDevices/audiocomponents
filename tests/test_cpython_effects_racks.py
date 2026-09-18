@@ -65,7 +65,7 @@ class RackTest(unittest.TestCase):
 
     def test_racks_nest(self):
         # "Racks may contain and be used by other racks" - both directions.
-        inner = ("Rack", {"chain": (("Saturation", {"amount": 0.2}),)})
+        inner = ("Rack", {"chain": (("Saturation", {"drive_db": 6.0}),)})
         outer = audioeffects.Rack(source(), chain=(
             inner, ("Reverb", {"preset": "room", "mix": 0.2})))
         self.assertEqual(type(outer.effects[0]).__name__, "Rack")

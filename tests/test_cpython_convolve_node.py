@@ -5,8 +5,9 @@ audioif node - the palette layer - so the three-tap convolution checked
 against its own arithmetic, the no-impulse wire with no latency, the refused
 oversized impulse and the transform inverting itself hold whatever
 `ConvolutionReverb` and `CabinetSim` are rebuilt into. The classes built on
-the node are covered by `test_cpython_effects_time.py` and
-`test_cpython_effects_drive.py`, which their phases do retire.
+the node are covered by `test_cpython_effects_time.py`, which its phase does
+retire, and - since Phase 4 retired `test_cpython_effects_drive.py` on
+2026-09-18 - by `test_cpython_effects_cabinetsim.py`.
 """
 
 import math

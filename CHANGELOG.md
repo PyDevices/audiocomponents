@@ -10,6 +10,49 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **Phase 4 is closed: `Saturation`, `Fuzz` and `Exciter` are adopted and
+  home, and `drive.py` is deleted.** Brad's G6 ruling of 2026-09-18
+  (vision §7.2) makes the cost gate a real-time ceiling -- at or under 80 %
+  of one stereo block on the ESP32-S3 and the ESP32-P4, at the constructor
+  default and at every shipped patch -- and turns the palette sum back into
+  the planning estimate it was, so a miss against it is a note. On the
+  second board pass's 256-frame rows all three are inside it at every patch:
+  `Saturation` **29.4 / 55.4** (worst patch 29.9 / 56.4, lean 20.8 / 39.6),
+  `Fuzz` germanium **44.4 / 76.8** (worst 44.6 / 77.7, lean 18.5 / 32.8,
+  `cascade` at its shipped ×2 40.7 / 74.3), `Exciter` `classic`
+  **28.9 / 54.3** and `transient` **39.3 / 77.0** (worst 39.4 / 77.5).
+  Nothing was re-measured. Each catalogue row and class docstring now says
+  what the class costs alone on an S3 in plain words, and the two "board ROW
+  of the 256-frame graph unmeasured" notes are answered.
+
+  **Both open digest questions have answers.** audioif `9018e35` makes the
+  CPython mixer twin borrow its source node's buffer the way the native one
+  does, so `Saturation`'s coupling-pole charge settles on the desktop as it
+  already did on both boards: CPython renders `1f9bcf50dc14a4ee` at patch 4
+  and `1c18ce574a03af14` at patch 6 now, and no other cell of the 27 moved.
+  That also accounts for the one cell the pack recorded and could not
+  explain. And `Exciter` patch 3's split is located: `_refresh` computes
+  `post_gain` as `16.0 / gain` in Python float and writes it straight to
+  `audioshaper.Waveshaper.set`, which has no read-back, so the first census
+  could not see it -- it is `40e3415d` on the desktop and `40e3415c` on the
+  board, **one ULP**, which is
+  [#75](https://github.com/PyDevices/audiocomponents/issues/75) exactly, the
+  cause `Overdrive` and `Distortion` were adopted with.
+
+  The promotion is a refactor and nothing else: **65 digest cells per
+  interpreter, byte for byte identical** before and after on CPython,
+  MicroPython and CircuitPython, and the smoke identical but for the count
+  of what is served from its own module, **28 -> 31**. `drive.py` and
+  `test_cpython_effects_drive.py` are both gone -- the retirement that
+  file's own docstring prescribes, now that the last class it covered has
+  come home. `_push`, `_DM`, `_FM` and `_CHARACTERS` were used only by the
+  classes it held and die with them; nothing moved to a private module.
+  `rebuilt/` keeps the substitution machinery, the two `Example` fixtures
+  and parked `Flanger`. `ADOPTED` is empty again and `ALL` is still 45.
+  Closes [#70](https://github.com/PyDevices/audiocomponents/issues/70),
+  [#74](https://github.com/PyDevices/audiocomponents/issues/74) and
+  [#72](https://github.com/PyDevices/audiocomponents/issues/72).
+
 - **Phase 4 promotion.** `Overdrive`, `Distortion`, `Bitcrusher` and
   `CabinetSim` come home as one file per effect --
   `audioeffects.overdrive`, `.distortion`, `.bitcrusher`, `.cabinetsim` --

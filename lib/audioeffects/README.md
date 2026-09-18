@@ -391,8 +391,9 @@ the measurements and the one-line coefficient fix.
 `audioeffects.ALL` to the contract - exports and metadata, the factory,
 building and rendering, chaining, the patch surface - under CPython. What
 each class *sounds* like is measured beside it, one module per family:
-`test_cpython_effects_dynamics_eq.py`, `..._modulation.py`, `..._drive.py`,
-`..._time.py`, `..._pitch.py` and `..._racks.py`, with
+`test_cpython_effects_dynamics_eq.py`, `..._modulation.py`, `..._time.py`,
+`..._pitch.py` and `..._racks.py` - plus one module per rebuilt class, which
+is what a family module's phase leaves behind - with
 `test_cpython_convolve_node.py` for the audioconvolve node underneath the
 convolvers. `tests/parity/effects_library_smoke.py` is the coarse half of
 all that in portable Python, so MicroPython and patched CircuitPython can

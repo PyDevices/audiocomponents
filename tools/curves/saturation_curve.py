@@ -6,7 +6,7 @@ Run from the audiocomponents worktree:
     PYTHONPATH=lib python3 tools/curves/saturation_curve.py
 
 Writes TUBE_CURVE, TAPE_CURVE, IRON_CURVE (hex bytes, int16 Q15) between
-the marker comments in lib/audioeffects/rebuilt/saturation.py. Run again:
+the marker comments in lib/audioeffects/saturation.py. Run again:
 exit 0 if the module already holds what this file generates.
 
 Tube: S2 eqs (10)-(12), RSD-1 parameters, in S1's netlist (Rp 100 k, Rk 1.5 k
@@ -27,7 +27,7 @@ import sys
 POINTS = 1025
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-MODULE = os.path.join(ROOT, "lib", "audioeffects", "rebuilt", "saturation.py")
+MODULE = os.path.join(ROOT, "lib", "audioeffects", "saturation.py")
 
 # S2 Table 1, RSD-1.
 G = 2.242e-3

@@ -11,9 +11,11 @@ over the catalogue.
 The per-class trait tests that used to sit beside these were written against
 the surfaces the effects program replaces. They live in one module per
 family phase now - `test_cpython_effects_dynamics_eq.py` (phase 2),
-`..._modulation.py` (3), `..._drive.py` (4), `..._time.py` (5),
-`..._pitch.py` and `..._racks.py` (6) - and a phase retires its own by
-deleting its module, touching nothing else. `test_cpython_convolve_node.py`
+`..._modulation.py` (3), `..._time.py` (5), `..._pitch.py` and
+`..._racks.py` (6) - and a phase retires its own by deleting its module,
+touching nothing else. Phase 4 did exactly that on 2026-09-18: its seven
+classes are all home, so `..._drive.py` is gone and the drive traits are
+read in the seven per-class modules beside it. `test_cpython_convolve_node.py`
 holds the audioconvolve node checks, which belong to the palette.
 
 This is also the first offline coverage the library ever had: half of it is
@@ -77,7 +79,7 @@ class EffectsLibraryTest(unittest.TestCase):
         # The `.output` of one is the `source` of the next; that is the whole
         # composition rule, and the three here cover all three node kinds
         # (a plain effect, one built on a Splitter, one built on Dynamics).
-        drive = audioeffects.Exciter(source(), frequency=2500.0, amount=0.4)
+        drive = audioeffects.Exciter(source(), tune=2500.0, harmonics=0.4)
         comp = audioeffects.Compressor(drive.output, threshold_db=-30.0,
                                        ratio=6.0, character="optical")
         verb = audioeffects.Reverb(comp.output, preset="hall", mix=0.35)

@@ -7,7 +7,7 @@ Run from the audiocomponents worktree:
 
 Writes `GERMANIUM_CURVE` and `CASCADE_CURVE` (hex bytes literals wrapping
 int16 Q15) between the marker comments in
-`lib/audioeffects/rebuilt/fuzz.py`. Run again: exit 0 if the module already
+`lib/audioeffects/fuzz.py`. Run again: exit 0 if the module already
 holds what this file generates, exit 1 if it drifted.
 
 Germanium (Fuzz Face Q1). S1: Rc 33 kΩ, collector at rest −1.6 V on a 9 V
@@ -41,7 +41,7 @@ import sys
 POINTS = 1025
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-MODULE = os.path.join(ROOT, "lib", "audioeffects", "rebuilt", "fuzz.py")
+MODULE = os.path.join(ROOT, "lib", "audioeffects", "fuzz.py")
 
 # S9 AC128 Ebers-Moll (dossier A3).
 GE_IS = 23.75e-6

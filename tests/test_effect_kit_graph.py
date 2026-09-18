@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import audiocore                                                # noqa: E402
 import audioroute                                               # noqa: E402
 import kit_probes as probes                                     # noqa: E402
-from audioeffects.rebuilt.exciter import Exciter                # noqa: E402
+from audioeffects.exciter import Exciter                       # noqa: E402
 from tools import effect_measurements as kit                    # noqa: E402
 
 VENDOR = "PyDevices"

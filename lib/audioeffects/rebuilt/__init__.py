@@ -18,11 +18,10 @@ is named after. Anything else in the file is private helpers.
 **Coming home is a separate step from adoption.** Phase 2's sixteen classes
 have come home, and so have Phase 3's THROUGH classes plus RingMod
 (`autopan.py`, `chorus.py`, `phaser.py`, `tremolo.py`, `vibrato.py`,
-`ringmod.py`) and Phase 4's first four adopted classes (`overdrive.py`,
-`distortion.py`, `bitcrusher.py`, `cabinetsim.py`). This directory keeps the
-substitution machinery, the two `Example` fixtures, the parked Phase 3
-rebuild (`flanger.py`) and Phase 4's last three (`saturation.py`, `fuzz.py`,
-`exciter.py`), which `ADOPTED` names until they come home too. `ADOPTED`
+`ringmod.py`) and all seven of Phase 4's (`overdrive.py`, `distortion.py`,
+`fuzz.py`, `saturation.py`, `bitcrusher.py`, `exciter.py`,
+`cabinetsim.py`). This directory keeps the substitution machinery, the two
+`Example` fixtures and the parked Phase 3 rebuild (`flanger.py`). `ADOPTED`
 below no longer
 names the classes that have come home -- there is nothing left here for it
 to arbitrate for them -- and it will name later phases' classes until those
@@ -82,23 +81,16 @@ def _present():
 #: is parked - still importable, still measurable, not shipped.
 #:
 #: Phase 2's sixteen, Phase 3's five THROUGH classes and RingMod have come
-#: home, so they are not listed. Nor are Phase 4's first four - `Overdrive`,
+#: home, so they are not listed. Nor are Phase 4's seven - `Overdrive`,
 #: `Distortion`, `Bitcrusher` and `CabinetSim` were adopted by the board
-#: runner on 2026-09-18 and promoted the same day, so there is nothing left
-#: here to arbitrate for them either.
-#:
-#: `Saturation`, `Fuzz` and `Exciter` are Phase 4's last three, adopted
-#: 2026-09-18 under Brad's G6 ruling of the same day: the cost gate is a
-#: real-time ceiling, 80 % of one stereo block on both chips at every shipped
-#: patch, and all three are inside it (worst 56.4 %, 77.7 % and 77.5 % on the
-#: S3). G5 closed with them - audioif 9018e35 put the CPython mixer twin back
-#: in step with the native builds for `Saturation`, and `Exciter` patch 3's
-#: last unlocated split turned out to be a derived `post_gain` one ULP apart,
-#: which is audiocomponents#75's shape (#70, #74, #72). They are named here
-#: until they come home; `drive.py` serves nothing now.
+#: runner on 2026-09-18 and promoted the same day, and `Saturation`, `Fuzz`
+#: and `Exciter` followed the same day under Brad's G6 ruling (the cost gate
+#: is a real-time ceiling, 80 % of one stereo block on both chips at every
+#: shipped patch, and all three are inside it). `drive.py` is deleted, and
+#: there is nothing left here to arbitrate for any of them.
 #:
 #: What stays parked under this directory: Phase 3's `Flanger`.
-ADOPTED = ("Saturation", "Fuzz", "Exciter")
+ADOPTED = ()
 
 
 def load(name):

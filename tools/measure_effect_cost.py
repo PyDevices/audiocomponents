@@ -653,7 +653,7 @@ def _dynamics_options(probe):
 # statement about the settings it was rendered at: a class whose digest
 # splits between two boards cannot be attributed to a node row taken at a
 # different curve, frequency or level. These rows repeat six nodes at the
-# settings `overdrive.py` and `rebuilt/exciter.py` construct them
+# settings `overdrive.py` and `exciter.py` construct them
 # with, so a per-node answer is about the arithmetic the class runs.
 
 #: `Overdrive._refresh()`'s `pre_gain` at patch 0 - `(r2/R1)/UMAX` with
@@ -990,7 +990,7 @@ def _rebuilt(name):
     `rebuilt:Fuzz@os2` is the third form, and it is a construction option
     rather than a patch: the two Phase 4 classes that have a lean position at
     all reach it with `oversample=2` at `create()`, not with a
-    `program_change` (`rebuilt/fuzz.py`, `rebuilt/saturation.py`; the other
+    `program_change` (`fuzz.py`, `saturation.py`; the other
     five say "no lean patch" in their own docstrings). Without it a lean cost
     is unmeasurable through this tool, which is how Phase 2 ended with no lean
     row anywhere.

@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import audiocore                                                # noqa: E402
 import kit_faults                                               # noqa: E402
 import kit_probes as probes                                     # noqa: E402
-from audioeffects.rebuilt import fuzz as rebuilt                # noqa: E402
+from audioeffects import fuzz as rebuilt                       # noqa: E402
 from tools import effect_measurements as kit                    # noqa: E402
 
 VENDOR = "PyDevices"
@@ -304,11 +304,6 @@ class Construction(unittest.TestCase):
         effect = build(mix=0.0)
         self.assertEqual(effect.latency_samples, 0)
         effect.deinit()
-
-    def test_old_class_still_imports(self):
-        from audioeffects.drive import Fuzz as Old
-        self.assertTrue(issubclass(Old, object))
-        self.assertIsNot(Old, Fuzz)
 
 
 class WireAndClick(unittest.TestCase):

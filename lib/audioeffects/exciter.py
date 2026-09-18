@@ -2,9 +2,10 @@
 
 Rebuilt from scratch at Phase 4 against
 `workspace docs/effects-internal/dossiers/Exciter.md`, traits frozen
-2026-09-17 at Station A. The old class in `drive.py` is consulted only for
+2026-09-17 at Station A. The old class in `drive.py` was consulted only for
 the defects that dossier §7 names: no macros, no Harmonics knob, Mix to
-1.0, no transient character, and an unexplained mixer buffer size.
+1.0, no transient character, and an unexplained mixer buffer size. That
+module went when this class was adopted on the boards on 2026-09-18.
 
 **What it is.** The note always passes at unity. A second-order Butterworth
 high-pass (Tune) feeds a 1N914 one-sided clipper; that wet branch is
