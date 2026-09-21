@@ -197,7 +197,7 @@ class WholeGraphTest(unittest.TestCase):
         probe = sine(1010.0, -6.0, 8000)
         effect = build(Exciter, probe, mix=0.0)
         self.addCleanup(effect.deinit)
-        self.assertIs(effect.output, effect._source)
+        self.assertIs(kit.port_target(effect.output), effect._source)
         self.assertEqual(kit.unread_taps(effect.output, effect), [])
         probes.render(effect, 8000, rate=RATE)
 

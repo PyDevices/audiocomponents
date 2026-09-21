@@ -14,6 +14,38 @@ minimoog = audioinstruments.create("minimoog", sample_rate=48000)
 chain = audioeffects.create("TapeDelay", minimoog.output, sample_rate=48000)
 ```
 
+## `output` is a wire you can keep
+
+Hold `fx.output`, wire it anywhere — a mixer voice, a rack, an `audio_out.play()`,
+a C pump pulling the graph from another thread — and every later knob move is
+heard, **including Mix from zero**:
+
+```python
+fx = audioeffects.create("Overdrive", source, 48000)
+mixer.voice[0].play(fx.output)      # take it once
+
+fx.set_macro(fx.MACRO_LABELS.index("Mix"), 127)   # and now you hear it
+fx.program_change(3)                              # and now you hear that
+```
+
+That used to be untrue and it was quiet about it. About twenty classes rebuild
+part of their graph when a control crosses a threshold — a Phaser changing its
+number of stages, a Distortion rebuilding the whole thing — and handed out a
+new node afterwards, so whoever was holding the old one went on playing the
+graph the class had finished with, or went silent. Turning a Mix macro up from
+0 did nothing at all.
+
+An effect now ends in a wire that gets re-pointed rather than replaced, so the
+object never changes. Two things follow from it being a wire and not a node:
+it is not the last node the class built, and at Mix 0 it is a wire onto the
+source you handed in rather than that source itself. The contract, and the one
+interpreter where the promise does not hold, are in
+[docs/audio-component-api.md](docs/audio-component-api.md#output-is-stable-for-the-life-of-the-component).
+
+An instrument can also play a part on the audio's clock rather than on
+Python's, so a garbage collection does not land as a late note:
+[docs/sequencing.md](docs/sequencing.md).
+
 ## Status: the shipping source
 
 This repository publishes `audioinstruments` and `audioeffects`: the
@@ -49,7 +81,8 @@ keys, micropython-vst3's `MPVST_AUDIOIF_LIB`, and the org repo database.
   `delay`, `reverb`, `modulation`, `drive`, `pitch`) plus `rack.py` and
   `_core.py`
 - `docs/audio-component-api.md` — the runtime contract every component
-  satisfies; `docs/audio-components.md` — the static metadata manifest
+  satisfies; `docs/audio-components.md` — the static metadata manifest;
+  `docs/sequencing.md` — writing a part that keeps time in frames
 - `tools/validate_api.py`, `tools/validate_metadata.py` — the two validators
   that enforce those documents
 - `tests/` — the CPython suites; `tests/parity/` — the instrument parity

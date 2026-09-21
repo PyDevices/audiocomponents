@@ -108,6 +108,131 @@ import sys
 
 import audiocore
 
+#: `audioroute.Port` -- the pass-through node every Component ends in, so the
+#: object a consumer takes from `.output` is the same object for the life of
+#: the component. `None` where audioif is not installed: on a stock
+#: CircuitPython board there is no `audioroute` and no C pump either, and a
+#: class there behaves exactly as it did before the port existed. See
+#: `_OutputPort` below for what that costs and where.
+try:
+    from audioroute import Port as PORT
+except (ImportError, AttributeError):        # pragma: no cover - stock board
+    PORT = None
+
+
+def _get_output(effect):
+    return getattr(effect, "_port", None)
+
+
+#: How far `_would_loop` looks before giving up. It never gets this far on a
+#: board: the first node it asks has no `__dict__`, so the walk stops at one.
+_LOOP_BUDGET = 32
+
+
+def _would_loop(port, node):
+    """Whether pointing `port` at `node` would make the port its own source.
+
+    `self._output = Wrap(self._output)` -- appending one more stage to the
+    end of the graph -- was a legal construction before the port and is a
+    loop after it: the wrapper takes the WIRE as its source, and the wire is
+    then pointed at the wrapper. Nothing catches it downstream. A pull walks
+    the two of them until the interpreter runs out of stack, which on
+    CPython is a `RecursionError` out of the render and on a board is the
+    pump thread wedged with no exception anyone can see.
+
+    So it is refused here, on the interpreter thread, where raising is free.
+    A class that means to append a stage wraps `port_target(self._output)` --
+    the node at the end of the graph -- and not `self._output` itself, and
+    that is what the API contract says.
+
+    The walk reads `__dict__`, so it sees the CPython twins in full and
+    finds nothing on a native build, where a node holds its source in C.
+    That is the same honest degradation the measurement kit's graph walks
+    have, and it costs a board one failed attribute lookup per re-point.
+    """
+    pending = [node]
+    seen = 0
+    while pending and seen < _LOOP_BUDGET:
+        current = pending.pop()
+        if current is port:
+            return True
+        seen += 1
+        try:
+            held = current.__dict__
+        except AttributeError:           # a native node keeps no __dict__
+            continue
+        for value in held.values():
+            if hasattr(value, "_get_buffer"):
+                pending.append(value)
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    if hasattr(item, "_get_buffer"):
+                        pending.append(item)
+    return False
+
+
+def _set_output(effect, node):
+    if node is None:
+        effect._port = None
+        return
+    port = getattr(effect, "_port", None)
+    if port is None:
+        # No `audioroute`: the port is the node, which is exactly what
+        # `_output` has always been.
+        effect._port = node if PORT is None else PORT(node)
+        return
+    if PORT is None:
+        effect._port = node
+        return
+    if _would_loop(port, node):
+        raise ValueError(
+            "%s's new output is built on its own output port, so playing it "
+            "would make the port its own source and a pull would never "
+            "return. To append a node to the end of the graph, wrap "
+            "port_target(self._output) -- the node the port is playing -- "
+            "rather than self._output, which is the wire."
+            % type(effect).__name__)
+    port.play(node)
+
+
+#: `self._output = node` is a re-point, not a new identity.
+#:
+#: The defect this fixes is a pattern, not a class: about twenty classes in
+#: the palette do `self._output = self._source` when Mix reaches 0 and
+#: `self._output = self._mixer` when it leaves, `Distortion._rebuild` points
+#: `_output` at a brand new mixer when Character crosses 0.5, and
+#: `Phaser._install_cascade` swaps the cascade node that IS its output on
+#: every Stages move. Everything downstream took `.output` ONCE -- a rack
+#: when it built its chain, a user at `mixer.voice[0].play(fx.output)`, a C
+#: pump when it adopted the tail -- so none of them ever heard about it.
+#:
+#: So it is fixed centrally, here, rather than in forty files: the first
+#: assignment builds a `Port` around the node and every assignment after that
+#: re-points that same port. A class author writes what they always wrote.
+#:
+#: `None` clears it, which is what `__init__` and `deinit` do. Releasing the
+#: port itself is `deinit`'s job and not this setter's, because the order
+#: matters there and a plain attribute store is no place to say so.
+#:
+#: Both bases carry it -- `_core.Effect` imports this very object -- so the
+#: pre-contract classes get the same fix without being rebuilt first.
+output_port = property(_get_output, _set_output)
+
+
+def port_target(output):
+    """What a component's output actually plays.
+
+    A `Port`'s identity never changes, so "what is the consumer holding" and
+    "which node is really at the end of the graph" have different answers for
+    the first time. Callers that mean the second one ask here: a reset that
+    must not reach through to the borrowed source, a deinit that must release
+    the node rather than the wire.
+    """
+    if PORT is not None and isinstance(output, PORT):
+        return output.source
+    return output
+
+
 #: Portability tiers (roadmap §3). `STOCK` runs on a stock CircuitPython
 #: board; `AUDIOIF` needs at least one audioif-own node and says which.
 STOCK = "stock"
@@ -459,6 +584,10 @@ class Component:
     _MACRO_RANGES = ()
     PATCHES = {}
 
+    #: Every `self._output = node` in every subclass re-points one stable
+    #: port. See `output_port` at the top of this module.
+    _output = output_port
+
     def __init__(self, source, *options, **keywords):
         sample_rate = keywords.pop("sample_rate", None)
         transport = keywords.pop("transport", None)
@@ -492,6 +621,7 @@ class Component:
         self._nodes = []
         self._resets = []
         self._deinits = []
+        self._port = None
         self._output = None
         self._macros = []
         self._patch_index = 0
@@ -790,6 +920,15 @@ class Component:
         it never deinitialises the borrowed source."""
         if self._deinited:
             return
+        # THE PORT GOES FIRST. A pump is holding it, and the walk below is
+        # about to free buffers the pump would otherwise still be reading:
+        # releasing the wire stops the pull at the wire, with a published
+        # reason, instead of inside a Mixer whose voice buffers have gone.
+        # Where `audioroute` is absent the port IS the tail node and the walk
+        # releases it, exactly as before.
+        port = self._port
+        if PORT is not None and isinstance(port, PORT):
+            port.deinit()
         for position in range(len(self._nodes) - 1, -1, -1):
             release = self._deinits[position]
             if release is False:

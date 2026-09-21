@@ -60,6 +60,7 @@ from audioinstruments._support import (
     make_table, noise_table,
 )
 from audioinstruments._support import Instrument
+from audioinstruments import _support
 
 SINE = make_table(((1, 1.0),))
 TONE = make_table(((1, 1.0), (2, 0.3), (3, 0.12)))
@@ -74,7 +75,7 @@ FLUT = array.array("h", [32767, 4800, 30000, 4800, 27500, 8000]
 def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     NOISE_HZ = SR / 8192.0
-    synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
+    synth = _support.synthesizer(SR, channel_count)
 
     volume = 0.8
     kick_tune = 1.0

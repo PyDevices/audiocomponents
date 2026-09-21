@@ -16,8 +16,12 @@
 select = F,E9,W6
 
 # tests/vendor is third-party code kept as it was published.
+# .venv-* as well as .venv: a worktree gets its own venv (`.venv-*/`, see
+# .gitignore), and without the glob `python -m flake8` there lints
+# site-packages and drowns in third-party F401s.
 extend-exclude =
     .venv,
+    .venv-*,
     build,
     dist,
     tests/vendor,

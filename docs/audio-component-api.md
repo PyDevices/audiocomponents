@@ -115,6 +115,56 @@ find, say, pitch-bend-aware or tempo-synced components; declaring
 capabilities across the shipped libraries is deferred to future component
 work, not dropped.
 
+### `output` is stable for the life of the component
+
+Take it once and keep it. An effect's `output` is the same object from
+construction until `deinit()`, whatever the component does to its graph in
+between. Move a Mix macro to 0 and back, step through the patches, sweep a
+control that rebuilds a whole section: the object a consumer is holding does
+not change, and it goes on playing what the component is playing.
+
+That is what a consumer may rely on, and it is all of it. `output` may be
+held in a mixer voice, in a rack, in a `play()` call, or by a C pump pulling
+the graph from another thread, for the life of the component. It may not be
+assumed to be any particular node type, to be the last node the component
+built, or to be identical to the source that was handed in. It is a wire, not
+a node: at Mix 0 an effect bypasses its whole graph and `output` is then a
+wire onto the consumer's own source rather than that source itself.
+
+Where the node is wanted instead of the wire — a `reset()` that must not
+rewind a borrowed source, or a class appending one more stage to its own
+graph — `audioeffects._component.port_target(output)` returns what the wire
+is playing.
+
+**A class appends a stage to `port_target(self._output)`, never to
+`self._output`.** Wrapping the wire and assigning the wrapper points the wire
+at something that reads the wire, and a pull on that never returns. On CPython
+it is refused with a `ValueError` naming `port_target`. On a native build the
+check has nothing to read and the loop is built, so the rule is the protection
+there.
+
+Underneath, an effect ends in an `audioroute.Port` — a zero-copy pass-through
+whose `play()` re-points it — and `Component._output` is a property that
+builds one on the first assignment and re-points it on every one after
+(`lib/audioeffects/_component.py`). A class author writes `self._output =
+node` exactly as before. The port moves no bytes: it hands back its source's
+own buffer, length and result.
+
+**Instruments have no port**, and neither does a rack. An instrument's graph
+is fixed at construction, so `Instrument.output` is the node itself and always
+was — stable because nothing re-points it, not because anything guarantees it.
+A rack's output is its last child's, which is already a stable one, and an
+empty rack is a wire, so its output is the source it was handed.
+
+**On an interpreter with no `audioroute.Port` the promise does not hold.** A
+stock CircuitPython board has no `audioroute`, and no C pump either; there
+`_component.PORT` is `None`, `output` is the node at the end of the graph, and
+it changes identity when the component re-points it, exactly as it did before
+ports existed. A consumer that takes `output` once and keeps it across a Mix
+move stops hearing that effect. `TIER` and `REQUIRES` do not change for this —
+a class does not *need* `audioroute`, it degrades — so a host that must work
+on both reads `output` after any control change, or checks `_component.PORT`.
+
 ## MIDI and control methods
 
 All public control values use MIDI-native units:
@@ -185,6 +235,38 @@ Zero means the first frame. Providers must honor non-zero positions rather
 than interpreting them as seconds; an adapter may establish the current
 interval and schedule the event at that frame. Callers that do not schedule
 within a block use the default zero.
+
+### Scheduling a note at a frame
+
+`sample_position` places an event inside the block a host is *about to*
+render. It cannot say "a bar from now", because nobody has rendered that bar
+yet. That is what these three are for, and they are separate from it:
+
+```python
+inst.schedulable                     # can this instrument take a frame?
+with inst.scheduled(queue, frame) as tokens:
+    inst.note_on(36, 127)            # heard at `frame`, not now
+inst.at(queue, frame).note_on(38, 90)
+```
+
+Inside the block, the instrument does **all** of its usual Python on the
+calling thread — validating, tracking held keys, building notes — and only
+its final presses and releases go on `queue`, which is an
+`audiopump.Events`. `tokens` collects one token per event in schedule order;
+a `0` is an event a full queue refused.
+
+Schedule in time order, and schedule a note-off with every note-on: the
+instrument's own bookkeeping is updated at schedule time, so a note-off
+written before its note-on finds nothing to release, and a live press of a
+key the queue is still holding can leave a scheduled note sounding forever.
+
+`schedulable` is `False` when an instrument's note-on reaches the audio by
+some route other than a press — a modal bank retuned in place. Those
+instruments still play live. `audioinstruments.sequencer.Sequencer` refuses
+one rather than playing its part early.
+
+Writing a part against this, and the two traps that cost a run: the
+[sequencing guide](sequencing.md).
 
 ## Macro and patch state
 

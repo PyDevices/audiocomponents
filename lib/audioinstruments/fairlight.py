@@ -63,7 +63,7 @@ WAVE_ORCH5_8BIT = quantize_table(WAVE_ORCH5, 256)
 
 def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
-    synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
+    synth = _support.synthesizer(SR, channel_count)
 
     # Macros
     volume = 0.8

@@ -813,10 +813,15 @@ class Distortion(_component.Component):
         self._push()
 
     def _rebuild(self, scoop):
-        for node in reversed(self._nodes):
-            release = getattr(node, "deinit", None)
-            if release is not None:
-                release()
+        # BUILD FIRST, RE-POINT, RELEASE LAST. This used to deinit every node
+        # it owned before building anything, and with a pump pulling the
+        # graph that is a write into freed Mixer buffers: a finger sweeping
+        # the Character slider stopped the audio dead on the P4, and the
+        # desktop storm's three `err=1 fault=deinited` rows were all this
+        # method. Now the new graph is standing and the port is pointed at it
+        # before a single old node is told to let go, so nothing is ever
+        # pulled after it is released.
+        old_nodes = self._nodes
         self._nodes = []
         self._resets = []
         self._deinits = []
@@ -839,8 +844,17 @@ class Distortion(_component.Component):
             # (the four scoop patches, 6 to 9) lost the first 5.3 ms of
             # the material exactly that way: a click at frame 1024 came
             # out at 774 rather than 1028 (audiocomponents#82).
+            self._release(old_nodes)
             return
         self._connect()
+        self._release(old_nodes)
+
+    def _release(self, nodes):
+        """Let go of a graph nothing is pointing at any more."""
+        for node in reversed(nodes):
+            release = getattr(node, "deinit", None)
+            if release is not None:
+                release()
 
     def _push(self):
         if not self._macros:

@@ -63,6 +63,7 @@ from audioinstruments._support import (
     make_table, noise_table,
 )
 from audioinstruments._support import Instrument
+from audioinstruments import _support
 
 def crush_noise(length=8192, seed=1234567, levels=48, hold=3):
     # low-bit-depth, low-sample-rate stair-stepped noise - the DMX's crunchy,
@@ -98,7 +99,7 @@ FLUT = array.array("h", [32767, 4800, 30000, 4800, 27500, 8000]
 def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     NOISE_HZ = SR / 8192.0
-    synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
+    synth = _support.synthesizer(SR, channel_count)
 
     # Master params
     master_level = 0.8

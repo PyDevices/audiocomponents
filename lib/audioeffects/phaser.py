@@ -376,17 +376,26 @@ class Phaser(_component.Component):
         node.play(self._shaper)
         if self._cascade is None:
             self._own(node)
-        else:
-            old = self._cascade
-            index = self._nodes.index(old)
-            self._nodes[index] = node
-            self._resets[index] = True
-            self._deinits[index] = True
-            stopper = getattr(old, "stop", None)
-            if stopper is not None:
-                stopper()
+            self._cascade = node
+            self._output = node
+            return
+        old = self._cascade
+        index = self._nodes.index(old)
+        self._nodes[index] = node
+        self._resets[index] = True
+        self._deinits[index] = True
         self._cascade = node
+        # RE-POINT BEFORE STOPPING THE OLD ONE. `stop()` on an AllPass writes
+        # {source, pending, pending_frames} as three words, and a pull landing
+        # between them hands the DSP a length as a pointer -- the 0x400 crash,
+        # on x86-64 and on RISC-V. The pump lock makes that write atomic; what
+        # it cannot do is stop the pump pulling a node this method has already
+        # finished with. Pointing the port at the new cascade first means the
+        # old one is out of the graph before it is touched at all.
         self._output = node
+        stopper = getattr(old, "stop", None)
+        if stopper is not None:
+            stopper()
 
     def _value(self, index):
         return _component.macro_value(self._MACRO_RANGES[index],

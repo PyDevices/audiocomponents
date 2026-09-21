@@ -43,6 +43,7 @@ from audioinstruments._support import (
     make_table, noise_table,
 )
 from audioinstruments._support import Instrument
+from audioinstruments import _support
 
 SINE = make_table(((1, 1.0),))
 PULSE = make_table([(n, 1.0 / n) for n in range(1, 15)])
@@ -58,7 +59,7 @@ BANDWIDTH = 13000.0
 def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     NOISE_HZ = SR / 8192.0
-    synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
+    synth = _support.synthesizer(SR, channel_count)
 
     volume = 0.8
     kick_p = 1.0      # pitch RATIOS, spanning Yeh's measured extremes

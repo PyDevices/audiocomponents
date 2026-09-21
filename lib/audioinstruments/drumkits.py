@@ -188,6 +188,17 @@ class DrumKits(Instrument):
             output=self._mixer, transport=transport, note_map=NOTE_MAP,
             latency_samples=_MIXER_BYTES // (2 * channel_count))
 
+    def _sched_keys(self):
+        """The playing kit's, so a scheduled hit lands on the machine the
+        dropdown is showing.
+
+        A kit change while a bar is in the queue leaves those hits on the
+        outgoing machine - they fire on its synthesizer, which is still being
+        pulled on the other mixer voice, which is the same thing that keeps
+        its tail from being cut off.
+        """
+        return self._kits[self._kit_index]._sched_keys()
+
     @property
     def kit(self):
         """The module name of the kit currently playing."""

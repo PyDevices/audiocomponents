@@ -23,6 +23,15 @@ way an instrument does. See `Effect` below.
 
 import math
 
+#: The stable output port, shared with the rebuilt base rather than written
+#: twice: the identity defect is the same defect on both, and five classes
+#: still live here (`Delay`, `Modulation`, `Pitch`, `Rack`, `Reverb` and
+#: their subclasses). `_component` imports nothing from this module, so the
+#: dependency runs one way only.
+from ._component import PORT as _PORT
+from ._component import output_port as _output_port
+from ._component import port_target as _port_target
+
 #: Every node this library builds is created at this rate. It is module state
 #: rather than a constructor argument because a process only ever has one
 #: sample rate, and threading it through 39 classes would be noise. Call
@@ -140,6 +149,10 @@ class Effect:
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
 
+    #: Every `self._output = node` re-points one stable port. See
+    #: `_component.output_port`.
+    _output = _output_port
+
     def __new__(cls, *args, **kwargs):
         effect = super().__new__(cls)
         source = args[0] if args else kwargs.get("source")
@@ -151,6 +164,7 @@ class Effect:
         if source_rate is not None and source_channels is not None:
             configure(source_rate, source_channels)
         effect._source = source
+        effect._port = None
         effect._output = None
         effect._sample_rate = (SAMPLE_RATE if source_rate is None
                                else source_rate)
@@ -373,10 +387,17 @@ class Effect:
 
     def reset(self):
         self._check_live()
-        if self._output is not None and self._output is not self._source:
+        # Through the port to the node behind it, because the question this
+        # asks is "is my output the borrowed source" and the port's answer is
+        # always no -- it is a wire, never the source. Resetting the port
+        # would forward the rewind straight into the borrowed source, which
+        # this line exists to prevent.
+        output = self._output
+        node = _port_target(output) if output is not None else None
+        if node is not None and node is not self._source:
             try:
                 import audiocore
-                audiocore.reset_buffer(self._output)
+                audiocore.reset_buffer(output)
             except (AttributeError, RuntimeError):
                 pass
         self.program_change(0)
@@ -385,8 +406,15 @@ class Effect:
         if self._deinited:
             return
         output = self._output
-        if output is not None and output is not self._source:
-            deinit = getattr(output, "deinit", None)
+        node = _port_target(output) if output is not None else None
+        # The wire first, then the node behind it: a pump holding the port
+        # stops at the port rather than inside a node that has just been
+        # freed. `port_target` is what `output` used to be, so the borrowed
+        # source is still never released here.
+        if _PORT is not None and isinstance(output, _PORT):
+            output.deinit()
+        if node is not None and node is not self._source:
+            deinit = getattr(node, "deinit", None)
             if deinit is not None:
                 deinit()
         self._output = None

@@ -94,5 +94,21 @@
 # tests only (the Waveshaper headroom note, audioif_util.float32, the
 # soundtrack render gate, the upstream PR material, the re-pinned oracle).
 #
+# 2026-09-21: moved to 02b1841 (audioif PR #107), because this repository's
+# stable output needs it. A Component's `output` is an `audioroute.Port` now -
+# a zero-copy wire whose identity never changes, so a Rack, a hand-wired Mixer
+# and the audio pump all hear a knob that re-points the graph (Mix from zero,
+# Phaser's stages, Distortion's Character). On the old pin that node does not
+# exist, `_component.PORT` falls back to None, and the suite is green with
+# `TheOutputPortIsAWire` SKIPPING, planted fault included: `OK (skipped=6)`
+# where it should read `OK (skipped=2)`. The same merge brings the pump's
+# portable engine (`audiopump`: the block pull off the interpreter thread, the
+# push ring, the event queue the instruments' `scheduled()` writes to, the
+# tap), the pump lock as port hooks that default to no-ops, and the lock
+# audit's fixes under every node. No DSP changed: `verify_dsp` reads 49/0/0,
+# every parity gate is the one already published, and the 65 digest cells and
+# the 249-patch smoke are identical with and without the port on all three
+# interpreters. Re-run here at the pin: the whole suite, `Ran 1519 tests`.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-9018e355f82a836eff5d125bf2ef55fff3ee6775 9018e355f82a836eff5d125bf2ef55fff3ee6775
+02b18410a19d106449781fa01a3d1499558e662c 02b18410a19d106449781fa01a3d1499558e662c
