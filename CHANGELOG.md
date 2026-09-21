@@ -10,6 +10,68 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **An effect's `output` is the same object for the life of the component.**
+  Hold `fx.output`, wire it anywhere, and every later knob move is heard —
+  including Mix from zero, which used to do nothing at all. About twenty
+  classes replace part of their graph when a control crosses a threshold and
+  handed out a new node afterwards; a consumer holding the old one went on
+  playing the graph the class had finished with, or went silent. A rack, a
+  hand-wired mixer and `audiodev` all had the defect.
+
+  `Component._output` is a property now: it builds an `audioroute.Port` on the
+  first assignment and re-points it on every one after, so a class author
+  still writes `self._output = node` and none of the forty files that do was
+  touched for it. Four orderings the port made visible were fixed with it —
+  `Distortion._rebuild` deinited its whole graph before building the
+  replacement, `Phaser._install_cascade` stopped the cascade it was replacing
+  before re-pointing, and both `reset()` implementations asked an identity
+  question a wire always answers no to.
+
+  Eleven classes across the families render the same digests with the port in
+  the path as without, on MicroPython and on CircuitPython; the repository's
+  own suite is green (`Ran 1480 tests, OK`) and 65 digest cells are unmoved.
+  Twenty-two tests broke on the way: nineteen asserted the old contract, two
+  were a kit not seeing through a wire — and **one was real**.
+  `self._output = Wrap(self._output)` was legal before and is an infinite pull
+  after, so a class appends to `port_target(self._output)` now. That is
+  refused with a `ValueError` on CPython and is written into the contract,
+  which is the only protection on a native build.
+
+  On an interpreter with no `audioroute` — a stock CircuitPython board — the
+  promise does not hold and the behaviour is exactly what it was before ports
+  existed. `TIER` and `REQUIRES` are unchanged: a class does not need
+  `audioroute`, it degrades.
+
+- **An instrument can play a part on the audio's clock.**
+  `with inst.scheduled(queue, frame)` defers only the final presses and
+  releases onto an `audiopump.Events` queue; the instrument does all of its
+  Python now, on the calling thread. `inst.at(queue, frame)` is the same for
+  one call, `inst.schedulable` says whether it can, and
+  `audioinstruments.sequencer.Sequencer` is a step sequencer over it that
+  keeps a few steps ahead and survives a tempo change. Guide:
+  `docs/sequencing.md`.
+
+  The seam is one `Keys` object in front of the synthesizer —
+  `_support.synthesizer()`, one line changed in each of 54 instruments, three
+  in `acoustickit` and one method in `drumkits` — and **all 55 instruments
+  render byte-for-byte what they rendered before it existed**. Subclassing
+  `synthio.Synthesizer` was tried first and does not work: the Mixer cannot
+  find the native object through it, and `Events.at()` refuses it because
+  `mp_obj_is_type` is an exact-type check.
+
+  Measured on the desktop, one bar of the drum machine's own pattern on a
+  TR-808 with a Karplus line over it, under a garbage-collection storm:
+  **scheduled, 0 frames of spread and the same render six runs out of six;
+  Python-timed, 16–27 ms of spread and a different render every run.** Nothing
+  has been on a board.
+
+  Three things it does not do, each in the guide: `acoustickit` cannot be
+  scheduled and says so (a strike there is a C retune with no frame on it);
+  a scheduled retrigger's choke is approximate, by −6.6 to −18.7 dB on seven
+  drum machines; and a scheduled note-on without its note-off can be stranded
+  by a live press of the same key, which is why `Sequencer` always schedules
+  both.
+
 - **Phase 4 is closed: `Saturation`, `Fuzz` and `Exciter` are adopted and
   home, and `drive.py` is deleted.** Brad's G6 ruling of 2026-09-18
   (vision §7.2) makes the cost gate a real-time ceiling -- at or under 80 %

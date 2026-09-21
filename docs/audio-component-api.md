@@ -93,58 +93,6 @@ runtime-specific buffers at the public boundary. A provider may use NumPy on
 CPython or ulab on MicroPython/CircuitPython internally only when it supplies
 the portable fallback required by the provider contract.
 
-### `output` is stable for the life of the component
-
-**Take it once and keep it.** An effect's `output` is the same object from
-construction until `deinit()`, whatever the component does to its graph
-afterwards. Move a Mix macro to 0 and back, step through the patches, sweep a
-control that rebuilds a whole section — the object you are holding does not
-change, and it goes on playing what the component is playing.
-
-That is what a consumer may rely on, and it is all of it. Specifically you
-may hold `output` in a mixer voice, a rack, a `play()` call or a C pump for
-the life of the component; you may not assume it is any particular node type,
-that it is the last node the component built, or that it is ever identical to
-the source you handed in. It is a wire, not a node: at Mix 0 an effect
-bypasses its whole graph, and `output` is then a wire onto your own source
-rather than your source itself.
-
-When you need the node instead of the wire — a `reset()` that must not rewind
-a borrowed source, or a class appending one more stage to its own graph —
-ask `audioeffects._component.port_target(output)` for what the wire is
-playing.
-
-**A class appends a stage to `port_target(self._output)`, never to
-`self._output`.** Wrapping the wire and then assigning the wrapper points the
-wire at something that reads the wire, and a pull on that never returns. On
-CPython this is refused with a `ValueError` naming `port_target`; on a native
-build the check has nothing to read and the loop is built, so the rule is the
-protection there.
-
-Underneath, an effect ends in an `audioroute.Port` — a zero-copy
-pass-through whose `play()` re-points it — and `Component._output` is a
-property that builds one on the first assignment and re-points it on every
-one after that (`lib/audioeffects/_component.py`). A class author writes
-`self._output = node` exactly as before. The port moves no bytes: it hands
-back its source's own buffer, length and result.
-
-**On an interpreter with no `audioroute.Port` the promise does not hold.** A
-stock CircuitPython board has no `audioroute` and no C pump either; there
-`_component.PORT` is `None`, `output` is the node at the end of the graph,
-and it changes identity when the component re-points it, exactly as it did
-before ports existed. A consumer that takes `output` once and keeps it across
-a Mix move will stop hearing that effect there. `TIER` and `REQUIRES` do not
-change for this — a class does not *need* `audioroute`, it degrades — so a
-host that must work on both reads `output` after any control change, or
-checks `_component.PORT`.
-
-**Instruments have no port.** An instrument's graph is fixed at construction,
-so `Instrument.output` is the node itself and always was; it is stable
-because nothing re-points it, not because anything guarantees it. A rack has
-no port of its own either — its output is its last child's, which is already
-a stable one, and an empty rack is a wire, so its output is the source it was
-handed.
-
 `sample_rate` and `channel_count` describe `output`. An effect or rack reports
 the same channel count as its source. `latency_samples` is input-to-output
 latency at the component's sample rate. Instruments normally report zero. A
@@ -166,6 +114,56 @@ never overridden). Hosts therefore cannot yet use capability discovery to
 find, say, pitch-bend-aware or tempo-synced components; declaring
 capabilities across the shipped libraries is deferred to future component
 work, not dropped.
+
+### `output` is stable for the life of the component
+
+Take it once and keep it. An effect's `output` is the same object from
+construction until `deinit()`, whatever the component does to its graph in
+between. Move a Mix macro to 0 and back, step through the patches, sweep a
+control that rebuilds a whole section: the object a consumer is holding does
+not change, and it goes on playing what the component is playing.
+
+That is what a consumer may rely on, and it is all of it. `output` may be
+held in a mixer voice, in a rack, in a `play()` call, or by a C pump pulling
+the graph from another thread, for the life of the component. It may not be
+assumed to be any particular node type, to be the last node the component
+built, or to be identical to the source that was handed in. It is a wire, not
+a node: at Mix 0 an effect bypasses its whole graph and `output` is then a
+wire onto the consumer's own source rather than that source itself.
+
+Where the node is wanted instead of the wire — a `reset()` that must not
+rewind a borrowed source, or a class appending one more stage to its own
+graph — `audioeffects._component.port_target(output)` returns what the wire
+is playing.
+
+**A class appends a stage to `port_target(self._output)`, never to
+`self._output`.** Wrapping the wire and assigning the wrapper points the wire
+at something that reads the wire, and a pull on that never returns. On CPython
+it is refused with a `ValueError` naming `port_target`. On a native build the
+check has nothing to read and the loop is built, so the rule is the protection
+there.
+
+Underneath, an effect ends in an `audioroute.Port` — a zero-copy pass-through
+whose `play()` re-points it — and `Component._output` is a property that
+builds one on the first assignment and re-points it on every one after
+(`lib/audioeffects/_component.py`). A class author writes `self._output =
+node` exactly as before. The port moves no bytes: it hands back its source's
+own buffer, length and result.
+
+**Instruments have no port**, and neither does a rack. An instrument's graph
+is fixed at construction, so `Instrument.output` is the node itself and always
+was — stable because nothing re-points it, not because anything guarantees it.
+A rack's output is its last child's, which is already a stable one, and an
+empty rack is a wire, so its output is the source it was handed.
+
+**On an interpreter with no `audioroute.Port` the promise does not hold.** A
+stock CircuitPython board has no `audioroute`, and no C pump either; there
+`_component.PORT` is `None`, `output` is the node at the end of the graph, and
+it changes identity when the component re-points it, exactly as it did before
+ports existed. A consumer that takes `output` once and keeps it across a Mix
+move stops hearing that effect. `TIER` and `REQUIRES` do not change for this —
+a class does not *need* `audioroute`, it degrades — so a host that must work
+on both reads `output` after any control change, or checks `_component.PORT`.
 
 ## MIDI and control methods
 
@@ -267,10 +265,8 @@ some route other than a press — a modal bank retuned in place. Those
 instruments still play live. `audioinstruments.sequencer.Sequencer` refuses
 one rather than playing its part early.
 
-This is a spike, on the desktop only:
-[live-audio-path-sequenced.md](../../docs/spikes/live-audio-path-sequenced.md)
-in the workspace anchor has the measurements, including which instruments are
-less than perfectly faithful when scheduled and by how much.
+Writing a part against this, and the two traps that cost a run: the
+[sequencing guide](sequencing.md).
 
 ## Macro and patch state
 
