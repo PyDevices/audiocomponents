@@ -24,8 +24,10 @@ used by other racks: a `chain` entry may itself be a `("Rack", {...})`.
 VENDOR = "PyDevices"
 
 from . import _core
+from ._component import PORT as _PORT
 from ._component import macro_position as _macro_position
 from ._component import midi_of_position as _midi_of_position
+from ._component import port_target as _port_target
 
 
 def _child(name, tail, options):
@@ -104,7 +106,13 @@ class Rack(_core.Effect):
         self._check_live()
         for child in self.effects:
             output = child.output
-            if output is not child._source:
+            # Ask the port what it is playing, not what it is. A child at
+            # Mix 0 has its port pointed straight at the borrowed source --
+            # the previous child's output, or the rack's own -- and a reset
+            # forwarded through the port would rewind the whole chain
+            # upstream of it. Before the port, `output is child._source` was
+            # the same test.
+            if _port_target(output) is not child._source:
                 try:
                     import audiocore
                     audiocore.reset_buffer(output)
@@ -115,6 +123,11 @@ class Rack(_core.Effect):
     def deinit(self):
         if self._deinited:
             return
+        # The rack's own wire first, then the children, each of which
+        # releases its own. Nothing here touches the outer borrowed source.
+        output = self._output
+        if _PORT is not None and isinstance(output, _PORT):
+            output.deinit()
         for child in reversed(self.effects):
             child.deinit()
         self._output = None
