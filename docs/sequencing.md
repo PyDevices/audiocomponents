@@ -60,9 +60,45 @@ Four bars of a real pattern through `Sequencer`, with the app thrashing
 between every tick: 187 events, 0 refused, 0 late, 0 dropped, worst apply
 7 µs.
 
-**Nothing here has run on a board.** Everything above is the desktop.
+### On a board
 
-## The two traps
+The seam has been on one. On the **Waveshare ESP32-P4 panel**, the drum
+machine ran its full pattern at 200 BPM with the screen redrawing: **0 late,
+0 dropped, 0 refused**, with the worst gap between two `Sequencer.tick()`
+calls at **54 ms against a 300 ms look-ahead**. The same bar driven from a
+Python timer had a worst step error of 37 ms on a 75 ms step.
+
+A bar of sixteenths on a grid, measured as error against the frame each hit
+asked for:
+
+| board | scheduled | the same bar, Python-timed |
+|---|---|---|
+| Waveshare ESP32-P4 | 16 of 16 hits, **4.4 ms mean / 11.6 ms worst** | 15 of 16 — one hit lost — 15.4 / 49.4 ms |
+| LilyGO T-Embed S3 | 16 of 16, **2.6 ms mean / 5.0 ms worst**, identical with the screen busy and idle | 8 of 16, 22 ms mean |
+
+**The full-bar re-entrancy guard below has not been exercised on a board.**
+Its two files are on the P4, but the bar that raised the original error was
+not replayed there, and the proof that the guard fires in exactly that window
+uses `sys.settrace`, which is CPython only.
+
+## The three traps
+
+**A tick can land inside your own bar.** On a board the timer that calls
+`tick()` arrives through `micropython.schedule`, between the interpreter's own
+bytecodes — so a top-up can land in the middle of `start()` while it is still
+laying the bar, and re-arm the same keyboard. What comes back instead of a
+voice is the seam's own state: `_staged` put back to `()` and `_tokens` put
+back to `None` by a second `scheduled()` block nobody wrote, arriving as an
+`AttributeError` out of a press. It reads exactly like an exhausted voice
+pool, and it is not one — at the drum machine's own queue capacity a full bar
+refuses nothing and presses five of the engine's sixty-four voices.
+
+You do not have to do anything about it. `Keys.arm()` nests, and
+`Sequencer.tick()` is refused while the sequencer is already writing and
+counted in `Sequencer.reentered`. What it means for you is that **a tick is
+allowed to do nothing**: if you drive `tick()` from an interrupt or a
+scheduled callback, do not assume every call tops the queue up, and keep the
+look-ahead wide enough that the next one is in time.
 
 **Schedule the note-off with the note-on.** An instrument updates its own
 bookkeeping at *schedule* time, so a live press of a key the queue is still
@@ -172,7 +208,18 @@ That is queue capacity. A sequencer that fills one gets a `0` token and a
 
 ## What is not built
 
-- No board has run any of this.
+- The full-bar re-entrancy guard has not been exercised on a board. Its two
+  files are on the Waveshare ESP32-P4; the bar that raised the original error
+  was not replayed there, and the proof that the guard fires in exactly that
+  window uses `sys.settrace`, which is CPython only.
+- Nothing in this repository's CI runs a real pump. The gates here drive
+  `tests/support/fake_pump.py`, the engine's event queue written out in Python
+  with the same validation, ordering, token rules and apply window. It catches
+  everything above the queue — which events the seam writes, in what order, at
+  which frames, carrying which notes — and all three defects the spike found
+  lived there. It cannot catch whether the C sorts the way the Python does,
+  whether applying an event allocates, or whether the pump reaches the frame
+  on time.
 - Voice stealing does not apply to scheduled notes: the arbiter asks the
   engine whether a press was taken, and a scheduled press has not happened
   yet. Past capacity a scheduled chord loses notes silently.

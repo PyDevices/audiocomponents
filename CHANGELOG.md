@@ -29,7 +29,8 @@ there, and are recorded in its changelog.
 
   Eleven classes across the families render the same digests with the port in
   the path as without, on MicroPython and on CircuitPython; the repository's
-  own suite is green (`Ran 1480 tests, OK`) and 65 digest cells are unmoved.
+  own suite is green (`Ran 1519 tests, OK (skipped=2)` with the sequencing
+  rows below in it) and 65 digest cells are unmoved.
   Twenty-two tests broke on the way: nineteen asserted the old contract, two
   were a kit not seeing through a wire — and **one was real**.
   `self._output = Wrap(self._output)` was legal before and is an infinite pull
@@ -62,8 +63,39 @@ there, and are recorded in its changelog.
   Measured on the desktop, one bar of the drum machine's own pattern on a
   TR-808 with a Karplus line over it, under a garbage-collection storm:
   **scheduled, 0 frames of spread and the same render six runs out of six;
-  Python-timed, 16–27 ms of spread and a different render every run.** Nothing
-  has been on a board.
+  Python-timed, 16–27 ms of spread and a different render every run.**
+
+  **It has been on a board.** On the **Waveshare ESP32-P4 panel** the drum
+  machine ran its full pattern at 200 BPM with the screen redrawing: **0 late,
+  0 dropped, 0 refused**, worst gap between two `Sequencer.tick()` calls 54 ms
+  against a 300 ms look-ahead, where the same bar from a Python timer had a
+  worst step error of 37 ms on a 75 ms step. A bar of sixteenths on a grid,
+  as error against the frame each hit asked for: **4.4 ms mean / 11.6 ms
+  worst** on the P4 against 15.4 / 49.4 Python-timed (which also lost a hit),
+  and **2.6 / 5.0** on the **LilyGO T-Embed S3**, identical with the screen
+  busy and idle, against 22 ms mean and 8 of 16 hits.
+
+- **A tick that lands inside a scheduled press must not disarm it.** On a
+  board the step timer arrives through `micropython.schedule`, between the
+  interpreter's own bytecodes, so a top-up tick can re-arm the keyboard while
+  `start()` is still laying the bar. What came back instead of a voice was the
+  seam's own state — `_staged` put back to `()` and `_tokens` put back to
+  `None` by a second `scheduled()` block nobody wrote. It read like an
+  exhausted voice pool and it was not: at the drum machine's own queue
+  capacity a full bar refuses nothing and presses five of the engine's
+  sixty-four voices.
+
+  `Keys.arm()` nests now, and `Sequencer.tick()` is refused while the
+  sequencer is already writing, counted in `Sequencer.reentered`. Five new
+  rows, planted three ways: today's code `FAILED (failures=6, errors=1)` with
+  the board's own error, the `Keys` stack alone `(failures=5, errors=1)`, the
+  `Sequencer` guard alone `(failures=1)`, both `OK`. On the real pump, 24 of
+  24 injected interrupts were refused and counted, with nothing late.
+
+  **The guard has not been exercised on a board.** Its two files are on the
+  P4, the bar that raised the original error was not replayed there, and the
+  proof that it fires in exactly that window uses `sys.settrace`, which is
+  CPython only.
 
   Three things it does not do, each in the guide: `acoustickit` cannot be
   scheduled and says so (a strike there is a C retune with no frame on it);
