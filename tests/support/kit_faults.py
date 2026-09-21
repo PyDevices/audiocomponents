@@ -118,7 +118,7 @@ class HiddenGain(_Node):
 
 class StuckDc(_Node):
     """TAIL's fault: +1 LSB of DC left in the node's state once it has seen
-    signal - the real audioif#23 residue (LowPass 100 Hz reads +1 LSB,
+    signal - the real audiodsp#23 residue (LowPass 100 Hz reads +1 LSB,
     40 Hz/q=8 reads -4 LSB).
 
     A state that never returns to zero has no last non-zero sample, so this

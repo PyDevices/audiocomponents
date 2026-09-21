@@ -44,11 +44,11 @@ The source block size, and why a node sits in front of the effect
 hands back in one ``get_buffer`` call. It is not cosmetic -
 `MultibandCompressor` M5 renders **zero non-zero samples** from 16384-,
 20000- and 32768-frame sources, because the Splitter's ring is 8192 frames
-(`audioif_splitter.c:34-39`).
+(`audiodsp_splitter.c:34-39`).
 
 `audiocore.RawSample.get_buffer()` hands back the whole array in one call
 and `audiocore.WaveFile`'s own buffer is capped at 1024 bytes on the native
-builds (`audioif/src/audiocore/WaveFile.c`, "buffer length must be 8-1024",
+builds (`audiodsp/src/audiocore/WaveFile.c`, "buffer length must be 8-1024",
 and it halves what it is given), so neither source can be asked for a
 stated block size directly, and the two native builds disagree about what
 the number they do take even means. So the renderer re-blocks: the probe
@@ -88,7 +88,7 @@ import audioeffects
 def checksum(data, value=2166136261):
     """FNV-1a over the bytes.
 
-    Copied unchanged from `audioif/tests/parity/effects_component_probe.py`
+    Copied unchanged from `audiodsp/tests/parity/effects_component_probe.py`
     at line 15, which the kit spec names as the digest. `sum(data)` is a sum
     over UNSIGNED BYTES, so it is invariant under any set of byte deltas that
     cancel - a +256-LSB sample error paid for by a single -1-LSB error moves
@@ -100,7 +100,7 @@ def checksum(data, value=2166136261):
     return value
 
 
-# --- event kinds, adopted from audioif/lib/audiorender/events.py -----------
+# --- event kinds, adopted from audiodsp/lib/audiorender/events.py -----------
 
 # Spec section 8 leaves the event format open and says Phase 1 either adopts
 # `events.py:27`'s serialisable tuple form or says why not. It is adopted:

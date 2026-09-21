@@ -17,7 +17,7 @@ way a real resonator's losses do, so the ring goes dull as it dies rather
 than staying bright to the end. Glide is the tuning knob's own portamento:
 turn Frequency with Glide up and the comb *bends* to the new note.
 
-**Portability tier: audioif** (`REQUIRES = ("audioecho", "audiobiquad")`).
+**Portability tier: audiodsp** (`REQUIRES = ("audioecho", "audiobiquad")`).
 `audiodelays.Echo` - the only stock delay - quantises its line to whole
 samples and floors it at its own buffer length, so on the library's standard
 buffer every frequency from 47 to 880 Hz comes out as the same 46.88 Hz comb
@@ -39,7 +39,7 @@ the ESP32-P4 and 7 % on the S3; the board run in the evidence pack settles it.
 **Trim is headroom, and it is taken before the gain.** A comb's peak gain is
 `1/(1-Feedback)`: +10 dB at 0.7, +22 dB at 0.92, +26 dB at 0.95. Feed a
 loud note at the tuned pitch into that and the node's output saturates
-(`audioif_feedback_delay.c:308-316`). Measured, a 220 Hz sine at -9.5 dBFS
+(`audiodsp_feedback_delay.c:308-316`). Measured, a 220 Hz sine at -9.5 dBFS
 through Feedback 0.92: with the trim **behind** the comb, -9 dB of it leaves
 a peak of 12 083 - which is the rail, attenuated, i.e. distortion made quiet;
 with the trim **in front**, -18 dB leaves 15 392 and the comb never reaches
@@ -121,7 +121,7 @@ from . import _component
 
 
 #: The line, in milliseconds. 20 Hz wants 50 ms and the node keeps one frame
-#: of headroom below the line's length (`audioif_feedback_delay.c:142-150`),
+#: of headroom below the line's length (`audiodsp_feedback_delay.c:142-150`),
 #: so a 50 ms line would tune the bottom of the range to 20.02 Hz. 60 ms is
 #: the next round number that clears it; the cost is RAM, 11.5 KB of stereo
 #: int16 at 48 kHz, allocated once.
@@ -130,7 +130,7 @@ MAX_DELAY_MS = 60.0
 #: The top of the Tone travel means *off*, not "a low-pass at 24 kHz". The
 #: node's one-pole coefficient at 24 kHz on a 48 kHz graph is 0.957, not 1,
 #: so it would still shade the top of every pass; `damping_hz = 0` is the
-#: node's own "no filter at all" (`audioif_feedback_delay.c:31-38`). A macro
+#: node's own "no filter at all" (`audiodsp_feedback_delay.c:31-38`). A macro
 #: at 127/127 maps to exactly this value, so the off position is exact.
 TONE_OFF_HZ = 24000.0
 
@@ -159,14 +159,14 @@ TRIM_Q = 0.7071067811865476
 class CombFilter(_component.Component):
     """A tuned feedback comb: one delay line of 1/f seconds fed back on
     itself, with an in-loop tone control, a make-up trim and a glide on the
-    tuning knob. Two nodes; audioif tier; zero latency."""
+    tuning knob. Two nodes; audiodsp tier; zero latency."""
 
     NAME = 'CombFilter'
     DISPLAY_NAME = 'Comb Filter'
     CATEGORIES = ('Filter',)
     VERSION = '0.0.2'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audioecho", "audiobiquad")
 
     CAPABILITIES = ()
@@ -217,7 +217,7 @@ class CombFilter(_component.Component):
         parts company with `LowPass`. A comb is linear, so `trim . comb` and
         `comb . trim` are the same filter on paper -- but not in int16: the
         comb node writes its output through `to_s16`, which saturates
-        (`audioif_feedback_delay.c:308-316`), and a peak of `1/(1-g)` is
+        (`audiodsp_feedback_delay.c:308-316`), and a peak of `1/(1-g)` is
         +21.9 dB at Feedback 0.92. Measured on the library's own smoke probe
         (11 000 LSB, -9.5 dBFS), the trim behind the comb left patches 1 and
         3 pinned at the rail, 32 768; the same trims in front of it clear the

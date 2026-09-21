@@ -1,4 +1,4 @@
-"""Forty-five effect classes built out of audioif's audio nodes.
+"""Forty-five effect classes built out of audiodsp's audio nodes.
 
 Every class wires itself from an audio source - a synthesizer, an
 instrument's `output`, a host input, or a previous effect's `output` - and

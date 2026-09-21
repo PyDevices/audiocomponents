@@ -52,7 +52,7 @@ EXTRA_ARGUMENTS = {
 #: Frames the probe carries, and frames one patch is allowed to pull off it.
 #: The whole probe is one `audiocore.RawSample`, which hands its array back
 #: in a single `get_buffer` call, and `audioroute.Splitter`'s ring is 8192
-#: frames (`audioif/src/shared/audioif_splitter.h:20`) - so a longer probe
+#: frames (`audiodsp/src/shared/audiodsp_splitter.h:20`) - so a longer probe
 #: would render *silence* through every unguarded Splitter class in the
 #: catalogue, which is the trap `MultibandCompressor` M5 records. 8000 is
 #: under that and 4096 was not enough: one instance is walked through all of

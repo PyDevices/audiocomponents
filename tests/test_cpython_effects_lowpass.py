@@ -50,7 +50,7 @@ def magnitude_db(node, hz, rate=SAMPLE_RATE):
     its mix**.
 
     The node crossfades: `out = (1 - mix) * dry + mix * wet`
-    (`audioif/src/shared/audioif_filter_f32.c:222-239`), so the section a
+    (`audiodsp/src/shared/audiodsp_filter_f32.c:222-239`), so the section a
     listener hears is `(1 - mix) + mix * H(z)`, not `H(z)`. A section at
     `mix` 0 is a wire and contributes exactly 0 dB; one at `mix` 0.001 is
     very nearly a wire, and this net used to read it as fully wet.
@@ -106,7 +106,7 @@ def burst_then_silence(rate=SAMPLE_RATE, burst=9600, seconds=6, channels=2):
 
     Once a source ends, the node downstream is handed silence by a different
     code path and the state it is holding is never asked for again - which is
-    how audioif#23 hid for as long as it did. So the silence is part of the
+    how audiodsp#23 hid for as long as it did. So the silence is part of the
     sample, and every pull below stays strictly inside it.
     """
     values = array.array("h")
@@ -137,7 +137,7 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(len(lowpass.LowPass.PATCHES), 6)
         self.assertEqual(lowpass.LowPass.CAPABILITIES, ())
         self.assertEqual(lowpass.LowPass.LATENCY_SAMPLES, 0)
-        self.assertEqual(lowpass.LowPass.TIER, _component.AUDIOIF)
+        self.assertEqual(lowpass.LowPass.TIER, _component.AUDIODSP)
         self.assertEqual(lowpass.LowPass.REQUIRES, ("audiobiquad",))
 
     def test_every_patch_is_reachable_and_moves_the_filter(self):
@@ -400,7 +400,7 @@ class TheTailReachesExactZero(unittest.TestCase):
     def test_the_ported_biquad_the_class_replaced_is_red(self):
         """The planted fault is the node this class does not use.
 
-        `audioif#23`'s own two configurations, built on `synthio.Biquad`
+        `audiodsp#23`'s own two configurations, built on `synthio.Biquad`
         through `audiofilters.Filter` - the palette the old class was on -
         park on a non-zero word and hold it. Same probe, same pulls, same
         settle window as the green run above, so the difference is the node.

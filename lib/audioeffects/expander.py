@@ -10,8 +10,8 @@ it is a wire. The side chain is a two-ended key band (12 dB/octave at each
 end, `sidechain_poles=2`), the detector is true RMS by default, and an
 external key stream may drive it instead of the audio.
 
-**Portability tier: audioif.** `audiodynamics` is audioif's own module and
-not a CircuitPython port (`audioif/docs/upstream-diff.md:661`), so the
+**Portability tier: audiodsp.** `audiodynamics` is audiodsp's own module and
+not a CircuitPython port (`audiodsp/docs/upstream-diff.md:661`), so the
 import below is guarded and construction raises `ImportError` on a stock
 CircuitPython board.
 
@@ -71,7 +71,7 @@ measured rather than assumed, each with its number in the evidence pack:
 
 * **No Hold, and no one-shot envelope** (dossier E5). The node's
   closed/attack/hold/decay machine is gated on `mode ==
-  AUDIOIF_DYNAMICS_GATE` (`audioif/src/shared/audioif_dynamics.c:452-453`)
+  AUDIODSP_DYNAMICS_GATE` (`audiodsp/src/shared/audiodsp_dynamics.c:452-453`)
   and *replaces* the gain computer with a binary open/floor
   (`:679-724`), so the ratio law and the one-shot envelope cannot both
   exist in one node. `hold_ms` in `DYN_EXPAND` is silently inert -
@@ -91,7 +91,7 @@ measured rather than assumed, each with its number in the evidence pack:
 
 **The detector's own window.** With `detector="rms"` the level is a
 one-pole mean square over a fixed 10 ms window (the node's unset default,
-`audioif_dynamics.c:77-82`). That window is what makes a sine and a square
+`audiodsp_dynamics.c:77-82`). That window is what makes a sine and a square
 of equal RMS get the same gain, and it also puts a floor of its own order
 under the Attack knob. The Detector toggle's peak position removes both.
 
@@ -114,7 +114,7 @@ from . import _component
 
 try:
     import audiodynamics
-except ImportError:      # a stock CircuitPython board, or an old audioif
+except ImportError:      # a stock CircuitPython board, or an old audiodsp
     audiodynamics = None
 
 
@@ -127,7 +127,7 @@ class Expander(_component.Component):
     CATEGORIES = ('Dynamics',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiodynamics",)
 
     #: Nothing in an expander's law refers to tempo, and neither source's
@@ -207,7 +207,7 @@ class Expander(_component.Component):
         if key is not None:
             node.key(key)
         # `audiodynamics.Dynamics` has no `deinit`/`__enter__`/`__exit__` at
-        # all (`audioif/docs/upstream-diff.md:711-714`), so the deinit walk
+        # all (`audiodsp/docs/upstream-diff.md:711-714`), so the deinit walk
         # finds nothing to call on it; `reset` is `reset_buffer`, which
         # drops the detector envelopes and keeps the side-chain filter
         # memory on purpose (`:704`).

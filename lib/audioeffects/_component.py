@@ -22,12 +22,12 @@ What is different here, and why:
   node only, so what a chain's reset actually clears depends on which node
   happened to be last. Every node clears something different:
   `audiofilters.Filter` and `Phaser` clear their own delay buffers and
-  biquad states (`audioif/src/audiofilters/Filter.c:133-149`);
+  biquad states (`audiodsp/src/audiofilters/Filter.c:133-149`);
   `audioecho.FeedbackDelay` empties its whole line
   (`audioecho/FeedbackDelay.c:233-244`, "everything goes");
   `audiodynamics.Dynamics` clears its envelopes and its lookahead but lets
   the sidechain filter's memory and the last reported gain reduction survive
-  on purpose (`shared/audioif_dynamics.c:281-295`); and `audiomixer`'s
+  on purpose (`shared/audiodsp_dynamics.c:281-295`); and `audiomixer`'s
   voices reset their sources recursively
   (`audiomixer/MixerVoice.c:97`), as does `audiospeed.SpeedChanger`
   (`audiospeed/SpeedChanger.c:109`). One walk over the class's own list is
@@ -36,10 +36,10 @@ What is different here, and why:
   Two details of the roadmap's wording at that point do not survive contact
   with the files, checked 2026-09-07 and recorded here rather than left to
   be rediscovered. `audiofilters/Filter.c` and `Phaser.c` do **not** reset
-  their source inside `reset_buffer` -- not in audioif
+  their source inside `reset_buffer` -- not in audiodsp
   (`src/audiofilters/Filter.c:133-149`) and not in upstream CircuitPython
   (`cmods/circuitpython/shared-module/audiofilters/Filter.c:126-139`). The
-  recursion in those files is in `play()` (audioif `:161`, CircuitPython
+  recursion in those files is in `play()` (audiodsp `:161`, CircuitPython
   `:151`) and in the loop-restart path (CircuitPython `:190`); the nodes
   whose `reset_buffer` really does recurse are `audiomixer`'s and
   `audiospeed`'s. None of that changes the design -- the enumerated walk is
@@ -66,7 +66,7 @@ What is different here, and why:
   part that must hold on a board.
 
 * **Every class states a portability tier.** `STOCK` is built from
-  CircuitPython-ported nodes only. `AUDIOIF` needs at least one audioif-own
+  CircuitPython-ported nodes only. `AUDIODSP` needs at least one audiodsp-own
   node and says which in `REQUIRES`; the module does the guarded import so it
   stays importable on a stock board, and construction raises a clear
   `ImportError`. The construction-time check imports the module for itself
@@ -110,7 +110,7 @@ import audiocore
 
 #: `audioroute.Port` -- the pass-through node every Component ends in, so the
 #: object a consumer takes from `.output` is the same object for the life of
-#: the component. `None` where audioif is not installed: on a stock
+#: the component. `None` where audiodsp is not installed: on a stock
 #: CircuitPython board there is no `audioroute` and no C pump either, and a
 #: class there behaves exactly as it did before the port existed. See
 #: `_OutputPort` below for what that costs and where.
@@ -234,14 +234,14 @@ def port_target(output):
 
 
 #: Portability tiers (roadmap §3). `STOCK` runs on a stock CircuitPython
-#: board; `AUDIOIF` needs at least one audioif-own node and says which.
+#: board; `AUDIODSP` needs at least one audiodsp-own node and says which.
 STOCK = "stock"
-AUDIOIF = "audioif"
+AUDIODSP = "audiodsp"
 
-#: The audioif-own modules, as of the Phase 1 palette. A class whose `TIER`
-#: is `AUDIOIF` names the ones it needs in `REQUIRES`, and every name must be
+#: The audiodsp-own modules, as of the Phase 1 palette. A class whose `TIER`
+#: is `AUDIODSP` names the ones it needs in `REQUIRES`, and every name must be
 #: one of these -- a typo would otherwise buy a tier claim nothing checks.
-AUDIOIF_MODULES = (
+AUDIODSP_MODULES = (
     "audiobiquad", "audioconvolve", "audiodynamics", "audioecho",
     "audioladder", "audiomath", "audioroute", "audioshaper", "audioverb",
 )
@@ -253,7 +253,7 @@ MAX_MACROS = 16
 MAX_PATCHES = 128
 
 #: How many taps one `audioroute.Splitter` fans out to. The limit lives in
-#: the C (`AUDIOIF_SPLITTER_MAX_TAPS`, which raises "taps must be 1..4") and
+#: the C (`AUDIODSP_SPLITTER_MAX_TAPS`, which raises "taps must be 1..4") and
 #: the native modules do not export it, so classes that build parallel
 #: branches count against this mirror rather than a literal 4 apiece.
 SPLITTER_TAPS = 4
@@ -369,7 +369,7 @@ def open_level_gates(node, voices, silence):
 
     Since CircuitPython 10.3.0 a mixer voice or a synthio note does not take
     a level, amplitude or pan change until its signal is at zero or changes
-    sign, and a fresh one starts at level 0 (audioif 4ec5718). So a class's
+    sign, and a fresh one starts at level 0 (audiodsp 4ec5718). So a class's
     first block is gated: silent for material that does not cross zero in
     it - a gain table, a ramp, an impulse at frame 0 - and then the level
     steps in at the block boundary, which is a click. A zero sample opens
@@ -381,7 +381,7 @@ def open_level_gates(node, voices, silence):
     `silence` must hold **at least two frames**. A one-frame mono sample is
     two bytes, less than the packed word the native mixer consumes per
     loop, and `get_buffer` never returns on MicroPython or CircuitPython
-    (audioif#85); the CPython twin returns, so the hang only shows on a
+    (audiodsp#85); the CPython twin returns, so the hang only shows on a
     board or a native desktop build. Two Phase 4 classes lost their mono
     renders to it. `bytes(2 * 2 * channels)` is the shape the classes here
     use.
@@ -432,21 +432,21 @@ def _check_metadata(cls):
         errors.append("NAME must be a non-empty string")
 
     tier = getattr(cls, "TIER", None)
-    if tier not in (STOCK, AUDIOIF):
-        errors.append("TIER must be _component.STOCK or _component.AUDIOIF")
+    if tier not in (STOCK, AUDIODSP):
+        errors.append("TIER must be _component.STOCK or _component.AUDIODSP")
     requires = getattr(cls, "REQUIRES", ())
     if not isinstance(requires, tuple):
         errors.append("REQUIRES must be a tuple")
         requires = ()
     for module in requires:
-        if module not in AUDIOIF_MODULES:
-            errors.append("REQUIRES names %r, which is not an audioif-own "
+        if module not in AUDIODSP_MODULES:
+            errors.append("REQUIRES names %r, which is not an audiodsp-own "
                           "module" % (module,))
-    if tier == AUDIOIF and not requires:
-        errors.append("the audioif tier must name the modules it needs in "
+    if tier == AUDIODSP and not requires:
+        errors.append("the audiodsp tier must name the modules it needs in "
                       "REQUIRES")
     if tier == STOCK and requires:
-        errors.append("the stock tier may not require an audioif-own module")
+        errors.append("the stock tier may not require an audiodsp-own module")
 
     labels = getattr(cls, "MACRO_LABELS", None)
     if not isinstance(labels, tuple):
@@ -566,8 +566,8 @@ class Component:
     #: The stable provider name `audioeffects.create()` discovers.
     NAME = None
 
-    #: roadmap §3: STOCK or AUDIOIF, with REQUIRES naming the audioif-own
-    #: modules an AUDIOIF class needs.
+    #: roadmap §3: STOCK or AUDIODSP, with REQUIRES naming the audiodsp-own
+    #: modules an AUDIODSP class needs.
     TIER = STOCK
     REQUIRES = ()
 
@@ -706,7 +706,7 @@ class Component:
         return node
 
     def _pcm(self, buffer_size=2048):
-        """The keyword bundle an audioif node wants, at this instance's
+        """The keyword bundle an audiodsp node wants, at this instance's
         format. There is no module state behind it."""
         return {
             "sample_rate": self._sample_rate,

@@ -1,6 +1,6 @@
-# The audioif floor. Every gate in this repository runs against this exact
-# audioif commit: the components are held to a fixed core the same way
-# audioif itself is held to a fixed CircuitPython (its CIRCUITPYTHON_ORACLE).
+# The audiodsp floor. Every gate in this repository runs against this exact
+# audiodsp commit: the components are held to a fixed core the same way
+# audiodsp itself is held to a fixed CircuitPython (its CIRCUITPYTHON_ORACLE).
 #
 # A floating core makes a component failure unattributable -- you cannot tell
 # a rewritten instrument from a moved node underneath it. Moving this pin is
@@ -8,7 +8,7 @@
 # side effect of some other work.
 #
 # From 2026-09-02 this pin named an UNRELEASED commit rather than a release
-# tag, deliberately: audioif carried four synthio fixes that the accuracy
+# tag, deliberately: audiodsp carried four synthio fixes that the accuracy
 # program needed -- the CPython press semantics and filter cascade (b420dac),
 # a re-pressed finished note being dropped entirely (afb6b71, also reported
 # upstream), ring modulation, which the CPython target had never implemented
@@ -23,7 +23,7 @@
 # rendered sound of tr808 and cr78, whose hats share a circuit, so both were
 # re-listened.
 #
-# Moved to v0.2.0 on 2026-09-03, the first audioif release that contains the
+# Moved to v0.2.0 on 2026-09-03, the first audiodsp release that contains the
 # four fixes named above, plus the release-tail reclaim (aed9336) and the
 # 14-everywhere Note ceiling (63efb13). The pin names a release again for the
 # first time since it moved to d84470a; the floor in each pyproject.toml is
@@ -32,52 +32,52 @@
 #
 #
 # Moved to 2f6cbc3 on 2026-09-07 by the effects program's Phase 1 (anchor
-# docs/effects-roadmap.md; audiocomponents#29). That commit is audioif main
+# docs/effects-roadmap.md; audiocomponents#29). That commit is audiodsp main
 # with the eight palette nodes Phase 0's survey asked for and Phase 1 built
-# (audioif#37-#44, #47): four FeedbackDelay options, eleven Dynamics options,
+# (audiodsp#37-#44, #47): four FeedbackDelay options, eleven Dynamics options,
 # audioshaper.Waveshaper, audiobiquad.Biquad/AllPass, audioladder.Ladder,
 # audioverb.Tank, audiomath.SubOctave and audioroute.MidSide, each with its
 # own parity probe and golden, all fifteen probes byte-identical on CPython
-# and MicroPython. No release: audioif is released once, at Phase 7, when
+# and MicroPython. No release: audiodsp is released once, at Phase 7, when
 # the effects work is complete (Brad, 2026-09-06), so this pin names a commit
 # and the pyproject floors stay at v0.2.0 until then. This is also the first
-# floor to carry the 64-voice ceiling (audioif 8f8b10d); the three
+# floor to carry the 64-voice ceiling (audiodsp 8f8b10d); the three
 # instruments the ceiling moves at the gate's material are retired to
-# REBUILT with Brad's listen of 2026-09-06 as the blessing (audioif#31).
+# REBUILT with Brad's listen of 2026-09-06 as the blessing (audiodsp#31).
 #
 # Moved to cebb7ca on 2026-09-15, for audiomodal.Bank. `acoustickit` imports
 # it, so the floor had to carry it or the kit could not be built at all -- CI
-# installs audioif from this pin and nothing else. Still no release, for the
-# reason above: audioif is released once, at Phase 7.
+# installs audiodsp from this pin and nothing else. Still no release, for the
+# reason above: audiodsp is released once, at Phase 7.
 #
 # Moved to 3388df4 on 2026-09-17, in the effects program's Phase 4 fix round,
 # on Brad's ruling of the same day: a toolkit defect is fixed the moment it is
 # found and the phase pins to the merge commit, the version to be named later.
-# That commit is audioif PR #86: the CPython mixer twin scales a voice in
-# float32 as the kernel does (audioif#84 - CPython and the native builds now
+# That commit is audiodsp PR #86: the CPython mixer twin scales a voice in
+# float32 as the kernel does (audiodsp#84 - CPython and the native builds now
 # agree at fractional voice levels, where a sparse +-1 LSB separated them); no
-# shared kernel fuses a multiply-add (audioif#79 - proven on hardware the same
+# shared kernel fuses a multiply-add (audiodsp#79 - proven on hardware the same
 # day: the P4 and the S3 render identical digests on all fifteen float nodes,
 # where six biquad rows split at cebb7ca); a looping sample shorter than one
 # packed word is refused at play() instead of hanging the native mixer
-# (audioif#85); and a Splitter takes a block bigger than its ring in pieces
-# instead of writing over itself (audioif#87). What still separates a board
+# (audiodsp#85); and a Splitter takes a block bigger than its ring in pieces
+# instead of writing over itself (audiodsp#87). What still separates a board
 # from a desktop is audiocomponents#75: a filter setting a class derives in
 # Python float, which is single precision on an ESP32.
 #
-# Moved to 977ef26 the same evening, under the same ruling: audioif PR #93
+# Moved to 977ef26 the same evening, under the same ruling: audiodsp PR #93
 # fixes two upstream CircuitPython 10.3.0 defects in audiospeed.SpeedChanger on
 # the MicroPython and CPython targets as documented deviations - the rate
-# rounds to its Q16 step instead of truncating (audioif#92) and the phase
-# carries across a source buffer instead of restarting (audioif#91) - found by
+# rounds to its Q16 step instead of truncating (audiodsp#92) and the phase
+# carries across a source buffer instead of restarting (audiodsp#91) - found by
 # Bitcrusher's fix round, the only class that uses the node; PR #90 adds the
 # CircuitPython copy-manifest lines audiomodal needed. Proven on both boards:
 # the hold probe matches the CPython twin on all fifty lines on the P4, the S3
 # and desktop MicroPython, and nothing else moved from 3388df4.
 #
-# Moved to e3b95e7 on 2026-09-17 late evening, same ruling: audioif PR #98
-# adds audioshaper.SampleHold (audioif#97), an exact sample-and-hold of
-# audioif's own, because a SpeedChanger down-then-up pair can never be made
+# Moved to e3b95e7 on 2026-09-17 late evening, same ruling: audiodsp PR #98
+# adds audioshaper.SampleHold (audiodsp#97), an exact sample-and-hold of
+# audiodsp's own, because a SpeedChanger down-then-up pair can never be made
 # reciprocal at Q16 rate resolution - the Phase 4 gate audit traced
 # Bitcrusher's slow flange (one sample per ~190k frames) to the node. Nothing
 # that existed changed: every verify_dsp row is byte-identical, audiospeed is
@@ -91,10 +91,10 @@
 # CPython it mixed the bang. No native C changed - the boards stay at the
 # e3b95e7 firmware, which is DSP-identical - and verify_dsp reads 49/0/0 with
 # every earlier row byte-identical. Also in the range since e3b95e7: docs and
-# tests only (the Waveshaper headroom note, audioif_util.float32, the
+# tests only (the Waveshaper headroom note, audiodsp_util.float32, the
 # soundtrack render gate, the upstream PR material, the re-pinned oracle).
 #
-# 2026-09-21: moved to 02b1841 (audioif PR #107), because this repository's
+# 2026-09-21: moved to 02b1841 (audiodsp PR #107), because this repository's
 # stable output needs it. A Component's `output` is an `audioroute.Port` now -
 # a zero-copy wire whose identity never changes, so a Rack, a hand-wired Mixer
 # and the audio pump all hear a knob that re-points the graph (Mix from zero,
@@ -110,5 +110,17 @@
 # the 249-patch smoke are identical with and without the port on all three
 # interpreters. Re-run here at the pin: the whole suite, `Ran 1519 tests`.
 #
+# 2026-09-21: 02b1841 -> 4e58091, the core's rename. The repository is
+# `audiodsp` and so is everything in it: the distribution is
+# `pydevices-audiodsp`, the helper package `audiodsp_util`, the CPython
+# extension `_audiodsp`, and every C identifier and header carries the
+# `audiodsp_` prefix. The pin HAS to move with it: CI installs
+# `pydevices-audiodsp @ git+...@<pin>` and pip refuses a checkout whose
+# project name is not the one asked for. No DSP changed -- the core's five
+# parity digests are the ones 02b1841 printed, and a unix firmware links to
+# the same text/data/bss. Re-run here at the pin: `Ran 1519 tests`,
+# `OK (skipped=2)`, validate_api 55 instruments and 45 effects, the smoke
+# green -- the same counts as at 02b1841.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-02b18410a19d106449781fa01a3d1499558e662c 02b18410a19d106449781fa01a3d1499558e662c
+4e5809195af58dd17f1705edcb9981e6fec3a312 4e5809195af58dd17f1705edcb9981e6fec3a312

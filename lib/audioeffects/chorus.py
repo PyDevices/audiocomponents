@@ -15,7 +15,7 @@ wire. Delay is the mean line, 3–20 ms, default 8.8 ms from the vintage
 100 pF timing capacitor. Tone is the wet voice's reconstruction low-pass,
 default 3 kHz, far darker than anti-aliasing requires.
 
-**Portability tier: audioif** (`REQUIRES = ("audioecho",)`). The stock
+**Portability tier: audiodsp** (`REQUIRES = ("audioecho",)`). The stock
 `audiodelays.Chorus` reads whole-sample taps, moves them once per block, and
 with `voices=1` emits no delayed voice at all. On a stock CircuitPython
 board this module imports cleanly and construction raises `ImportError`.
@@ -116,7 +116,7 @@ def nominal_damping_hz(corner_hz, sample_rate):
     """`damping_hz` whose one-pole −3 dB is `corner_hz` at `sample_rate`.
 
     The node takes the analog-style coefficient `1 − exp(−2π f/fs)`
-    (`audioif_feedback_delay.c:31-38`), so the knob's hertz is not the
+    (`audiodsp_feedback_delay.c:31-38`), so the knob's hertz is not the
     digital −3 dB. Inverse of |H|² = 1/2 for y += a(x − y).
     """
     fs = float(sample_rate)
@@ -137,7 +137,7 @@ def nominal_damping_hz(corner_hz, sample_rate):
 
 class Chorus(_component.Component):
     """One-voice analog chorus: a triangle on the BBD clock, not on the
-    delay. audioif tier; zero latency.
+    delay. audiodsp tier; zero latency.
 
     **Latency is 0.** No lookahead, no partition, no pitch window. The Delay
     macro is the wet-path mean (3–20 ms at 48 kHz) and is the effect, not
@@ -153,7 +153,7 @@ class Chorus(_component.Component):
     CATEGORIES = ('Modulation',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audioecho",)
 
     CAPABILITIES = ()

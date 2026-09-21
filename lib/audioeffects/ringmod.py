@@ -12,7 +12,7 @@ square-law ring: two sidebands. *Switching* is his chopper: odd harmonics of
 the carrier, truncated below Nyquist. Frequency is the oscillator the 6401
 never owned.
 
-**Portability tier: audioif** (`REQUIRES = ("audiomath",)`). On a stock
+**Portability tier: audiodsp** (`REQUIRES = ("audiomath",)`). On a stock
 CircuitPython board this module imports cleanly and construction raises
 `ImportError`.
 
@@ -133,7 +133,7 @@ def bandlimited_odd(phase, freq_hz, sample_rate, shape):
 
 
 class RingMod(_component.Component):
-    """Bode-style ring modulation. `audioif` tier: needs `audiomath`.
+    """Bode-style ring modulation. `audiodsp` tier: needs `audiomath`.
 
     **Latency is 0.** No lookahead. `tail_samples` is 0.
 
@@ -159,7 +159,7 @@ class RingMod(_component.Component):
     CATEGORIES = ("Modulation",)
     VERSION = "0.1.0"
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiomath",)
 
     CAPABILITIES = ()

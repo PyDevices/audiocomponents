@@ -3,7 +3,7 @@
 Roadmap section 3 gives every class one of two tiers:
 
 **stock** -- built from CircuitPython-ported nodes only, so it runs on a
-stock CircuitPython board. **audioif** -- needs at least one audioif-own
+stock CircuitPython board. **audiodsp** -- needs at least one audiodsp-own
 node (`audioecho`, `audiodynamics`, `audiomath`, `audioroute`,
 `audioconvolve`, or one of the modules D1 added), so it runs on
 MicroPython, CPython and the patched CircuitPython build, and on a stock
@@ -13,14 +13,14 @@ the other classes in its module stay importable.
 **No stock CircuitPython interpreter exists in this workspace** --
 `cmods/bin/circuitpython` is the patched oracle and
 `cmods/bin/circuitpython-effects` is the patched effects build -- so the
-roadmap names this substitute: a CPython test that blocks the audioif-own
+roadmap names this substitute: a CPython test that blocks the audiodsp-own
 modules in `sys.modules`, then holds every stock-tier class to building and
-rendering and every audioif-tier class to its documented `ImportError`.
+rendering and every audiodsp-tier class to its documented `ImportError`.
 
 What that substitute does **not** prove is in this file's own "what is not
 done" line, and in every evidence pack that cites it: blocking a module in
 `sys.modules` is not a board without the module. A stock CircuitPython
-`audiofilters` is a different C build from audioif's, and only a stock board
+`audiofilters` is a different C build from audiodsp's, and only a stock board
 can show a stock-tier class actually rendering on one.
 
 The battery runs over the classes that declare a tier today and grows on its
@@ -76,7 +76,7 @@ def subjects():
 
 
 class BlockedModules:
-    """The audioif-own modules, made unimportable for the duration.
+    """The audiodsp-own modules, made unimportable for the duration.
 
     `None` in `sys.modules` is the interpreter's own "blocked" marker: a
     later `import` of that name raises `ImportError` rather than finding the
@@ -89,7 +89,7 @@ class BlockedModules:
 
     def __enter__(self):
         self.saved = {}
-        for name in _component.AUDIOIF_MODULES:
+        for name in _component.AUDIODSP_MODULES:
             self.saved[name] = sys.modules.get(name)
             sys.modules[name] = None
         return self
@@ -117,22 +117,22 @@ class PortabilityTierTests(unittest.TestCase):
         # checking. It fails loudly when the last subject in a tier goes.
         self.assertTrue(self.tiers(_component.STOCK),
                         "no stock-tier class to hold")
-        self.assertTrue(self.tiers(_component.AUDIOIF),
-                        "no audioif-tier class to hold")
+        self.assertTrue(self.tiers(_component.AUDIODSP),
+                        "no audiodsp-tier class to hold")
 
     def test_every_class_declares_one_of_the_two_tiers(self):
         for name, cls in self.subjects.items():
             with self.subTest(name=name):
                 self.assertIn(cls.TIER, (_component.STOCK,
-                                         _component.AUDIOIF))
-                if cls.TIER == _component.AUDIOIF:
+                                         _component.AUDIODSP))
+                if cls.TIER == _component.AUDIODSP:
                     self.assertTrue(cls.REQUIRES)
                     for module in cls.REQUIRES:
-                        self.assertIn(module, _component.AUDIOIF_MODULES)
+                        self.assertIn(module, _component.AUDIODSP_MODULES)
                 else:
                     self.assertEqual(cls.REQUIRES, ())
 
-    def test_stock_tier_classes_build_and_render_with_audioif_blocked(self):
+    def test_stock_tier_classes_build_and_render_with_audiodsp_blocked(self):
         with BlockedModules():
             for name, cls in self.tiers(_component.STOCK).items():
                 with self.subTest(name=name):
@@ -145,9 +145,9 @@ class PortabilityTierTests(unittest.TestCase):
                     finally:
                         effect.deinit()
 
-    def test_audioif_tier_classes_raise_a_clear_import_error(self):
+    def test_audiodsp_tier_classes_raise_a_clear_import_error(self):
         with BlockedModules():
-            for name, cls in self.tiers(_component.AUDIOIF).items():
+            for name, cls in self.tiers(_component.AUDIODSP).items():
                 with self.subTest(name=name):
                     with self.assertRaises(ImportError) as caught:
                         cls.create(source(), 48000)
@@ -156,11 +156,11 @@ class PortabilityTierTests(unittest.TestCase):
                     self.assertIn(cls.REQUIRES[0], message)
                     self.assertIn("stock CircuitPython board", message)
 
-    def test_control_the_same_audioif_classes_build_when_nothing_is_blocked(
+    def test_control_the_same_audiodsp_classes_build_when_nothing_is_blocked(
             self):
         # The control beside the battery. Without it, a class that cannot be
         # built at all would read as a passing tier check.
-        for name, cls in self.tiers(_component.AUDIOIF).items():
+        for name, cls in self.tiers(_component.AUDIODSP).items():
             with self.subTest(name=name):
                 effect = cls.create(source(), 48000)
                 try:
@@ -169,8 +169,8 @@ class PortabilityTierTests(unittest.TestCase):
                 finally:
                     effect.deinit()
 
-    def test_planted_fault_a_stock_class_that_reaches_for_audioif(self):
-        # A class mis-declared as stock while building on an audioif-own
+    def test_planted_fault_a_stock_class_that_reaches_for_audiodsp(self):
+        # A class mis-declared as stock while building on an audiodsp-own
         # node: the block must turn it red rather than let the tier claim
         # stand. This is the shape a wrong dossier line would take.
         class MislabelledStock(_component.Component):

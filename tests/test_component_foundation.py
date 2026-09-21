@@ -71,7 +71,7 @@ class TwoNodes(_component.Component):
     list to walk rather than a tail to touch."""
 
     NAME = 'TwoNodes'
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audioecho",)
     MACRO_LABELS = ("Feedback",)
     MACRO_MODES = {0: "UNIPOLAR"}
@@ -362,8 +362,8 @@ class ResetAndDeinitWalkTheNodeList(unittest.TestCase):
         effect = TwoNodes.create(source(), RATE)
         delay = effect.delay
         effect.deinit()
-        # A released audioif node raises ValueError on every target, as
-        # CircuitPython does (audioif e1f3704).
+        # A released audiodsp node raises ValueError on every target, as
+        # CircuitPython does (audiodsp e1f3704).
         with self.assertRaises(ValueError):
             audiocore.get_buffer(delay)
 
@@ -539,14 +539,14 @@ class TheMetadataShape(unittest.TestCase):
     def test_the_tier_must_be_one_of_the_two(self):
         self.refuse("TIER must be", TIER="portable")
 
-    def test_the_audioif_tier_names_its_modules(self):
-        self.refuse("must name the modules", TIER=_component.AUDIOIF)
+    def test_the_audiodsp_tier_names_its_modules(self):
+        self.refuse("must name the modules", TIER=_component.AUDIODSP)
 
     def test_the_stock_tier_may_not_require_one(self):
         self.refuse("may not require", REQUIRES=("audioecho",))
 
-    def test_requires_may_only_name_a_real_audioif_module(self):
-        self.refuse("not an audioif-own module", TIER=_component.AUDIOIF,
+    def test_requires_may_only_name_a_real_audiodsp_module(self):
+        self.refuse("not an audiodsp-own module", TIER=_component.AUDIODSP,
                     REQUIRES=("audioecho2",))
 
     def test_vendor_is_read_from_the_defining_module(self):

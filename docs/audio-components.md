@@ -4,8 +4,8 @@ The live-object construction and processing surface is specified separately in
 [`audio-component-api.md`](audio-component-api.md). This document defines only
 the static provider metadata and its consumer rules.
 
-An **audio component** is an audioif instrument, effect, or effect rack. The
-component's metadata is a static declaration owned by `audioif`. Consumers
+An **audio component** is an audiodsp instrument, effect, or effect rack. The
+component's metadata is a static declaration owned by `audiodsp`. Consumers
 such as the offline renderer and `micropython-vst3` may use as much or as
 little of the optional metadata as they need.
 
@@ -98,7 +98,7 @@ Corollary worth stating, because it is easy to get wrong: since construction
 applies patch `0` and a patch supplies every macro, **a source-level default
 for a macro-controlled parameter is never observable.** What ships is patch
 `0`. Where the two disagree, the source is documentation that contradicts the
-artifact — see [audioif#17](https://github.com/PyDevices/audioif/issues/17). Patch `0` is the component's default state. When there is only one
+artifact — see [audiodsp#17](https://github.com/PyDevices/audiodsp/issues/17). Patch `0` is the component's default state. When there is only one
 patch, `Default` is the convention but not a validity requirement. When
 there are multiple patches, patch `0` has a descriptive name like every other
 patch. A macro-less component uses an empty values tuple.
@@ -166,7 +166,7 @@ MicroPython, or CPython on Linux, Windows, WebAssembly, Android (wheels
 build and publish; playback is not yet validated on an emulator or a
 device — see `handoff.md`), or another
 host supported by the surrounding audio stack. Component code must therefore
-use the common Python/audioif surface. When an operation differs by runtime,
+use the common Python/audiodsp surface. When an operation differs by runtime,
 the component supplies another route for the other runtimes rather than
 silently depending on a CPython-only function or object.
 
@@ -223,6 +223,6 @@ provider still declares those fields explicitly.
 
 <!-- Home: this document and audio-component-api.md live here, in
      audiocomponents/docs/, and nowhere else. They address components rather
-     than audioif, and audiocomponents is the repository that ships the
-     components; audioif's copies are retired with its component copies
+     than audiodsp, and audiocomponents is the repository that ships the
+     components; audiodsp's copies are retired with its component copies
      (audiocomponents#2). Edit them here. -->

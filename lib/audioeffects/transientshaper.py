@@ -15,7 +15,7 @@ that narrowed it): the gain trace agrees within 0.5 dB point by point over
 -6 dBFS render clips 578 samples at full scale, and the peak readout is one
 setting's number too (at Attack -12 the peak spread over -6...-60 dBFS is
 **1.395 dB**). Below -60 dBFS the node's own +1e-5 envelope floor
-(`audioif_dynamics.c:628-630`) is a -100 dBFS pedestal on a difference of
+(`audiodsp_dynamics.c:628-630`) is a -100 dBFS pedestal on a difference of
 logs, so the law stops being scale-free: +11.076 dB at -80 dBFS against
 +12.000 at -6. **T1 is disconfirmed as stated and true over the span above.**
 
@@ -42,9 +42,9 @@ adds nothing to a live pedalboard's round trip (vision section 9a).
 `tail_samples` is 0: a VCA multiplies, so silence in is exactly zero out in
 the same frame.
 
-**Portability tier: audioif.** It is one `audiodynamics.Dynamics` node, and
-`audiodynamics` is audioif's own module rather than a CircuitPython port
-(`audioif/docs/upstream-diff.md:661`), so a stock CircuitPython board raises
+**Portability tier: audiodsp.** It is one `audiodynamics.Dynamics` node, and
+`audiodynamics` is audiodsp's own module rather than a CircuitPython port
+(`audiodsp/docs/upstream-diff.md:661`), so a stock CircuitPython board raises
 `ImportError` at construction. **Cost** is one node: four one-pole
 followers, a peak-hold, an RMS one-pole and one multiply per frame - and it
 is still **over its Tier 3 budget on both boards**, 14.9 % of a stereo block
@@ -79,7 +79,7 @@ there is a graph idling, so measure it at patch 1 (Snap).
   the number.
 * *The control is normalised over 6 dB.* The envelope difference is divided
   by 6 dB and clamped to +/-1 before it scales the setting
-  (`audioif_dynamics.c:630-636`), so every transient sharper than 6 dB gets
+  (`audiodsp_dynamics.c:630-636`), so every transient sharper than 6 dB gets
   the whole of Attack and no more. That is the node's law, not a knob.
 """
 
@@ -89,7 +89,7 @@ from . import _component
 
 try:
     import audiodynamics
-except ImportError:      # a stock CircuitPython board, or an old audioif
+except ImportError:      # a stock CircuitPython board, or an old audiodsp
     audiodynamics = None
 
 
@@ -102,7 +102,7 @@ class TransientShaper(_component.Component):
     CATEGORIES = ('Dynamics',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiodynamics",)
 
     #: No tempo input on the panel and no `self._transport()` read here.
@@ -127,13 +127,13 @@ class TransientShaper(_component.Component):
     }
 
     #: The attack pair's four time constants at Attack Speed 1x, which are
-    #: the node's own defaults (`audioif_dynamics.c:43-46`). Attack Speed
+    #: the node's own defaults (`audiodsp_dynamics.c:43-46`). Attack Speed
     #: divides all four by its factor, so the pair keeps its shape and only
     #: its rate changes.
     _ATTACK_MS = (1.0, 50.0, 25.0, 300.0)
 
     #: The sustain pair's fast envelope attacks instantaneously, because the
-    #: peak-hold beside it does (`audioif_dynamics.c:646-649`): a 1 ms
+    #: peak-hold beside it does (`audiodsp_dynamics.c:646-649`): a 1 ms
     #: partner opens the differential at every onset and fires Sustain on
     #: the transient - measured 11.832 dB below the trace's running maximum
     #: inside the first 200 ms, where the dossier's T4 allows 0.25, and half

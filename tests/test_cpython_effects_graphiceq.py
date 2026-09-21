@@ -330,7 +330,7 @@ class TheDetentIsAWire(unittest.TestCase):
         audiocomponents#87 gave a BIPOLAR macro a centre detent, so code 64
         is now **exactly 0.000 dB**. A 0 dB section forced to `mix = 1` is
         byte-identical to a section at `mix = 0` on audiobiquad's transposed
-        direct form II (audioif#64, at the cebb7ca floor) - which is exactly
+        direct form II (audiodsp#64, at the cebb7ca floor) - which is exactly
         why the *previous* fault was retired, one test down. So this one is
         inert at all ten bands too, and asserting it fires would be
         asserting a fiction.
@@ -362,7 +362,7 @@ class TheDetentIsAWire(unittest.TestCase):
         # Kept as the record of why it was replaced, not as evidence. The
         # auditor's reproduction read RED at bands 0-2 and green from 4 up,
         # at the pack's own probe level. Since audiobiquad's transposed
-        # direct form II (audioif#64, at the cebb7ca floor) a flat section
+        # direct form II (audiodsp#64, at the cebb7ca floor) a flat section
         # forced to mix 1 is bit-transparent at all ten centres, so the old
         # plant could not fail anywhere - which is the case for replacing it,
         # made complete.
@@ -432,7 +432,7 @@ class TheTailReachesZero(unittest.TestCase):
         # the probe and not about the class. The same probe through the
         # composition this class was rebuilt off -- one `audiofilters.Filter`
         # over `synthio.Biquad` -- holds a constant residue for ever
-        # (audioif#23).
+        # (audiodsp#23).
         import audiofilters
         import synthio
         centres = [31.25 * (2 ** n) for n in range(BANDS)]
@@ -511,7 +511,7 @@ class TheClampIsReported(unittest.TestCase):
 
     def test_planted_fault_a_centre_the_kernel_moves_and_nobody_reports(self):
         # The fault of the same kind is *not* railing -- `audiobiquad` does
-        # not rail, because `audioif_filter_f32.c:95-96` clamps `frequency`
+        # not rail, because `audiodsp_filter_f32.c:95-96` clamps `frequency`
         # to 0.4999 x the rate for itself. It is the shape the old class had
         # and section 7 names: the band moves and nothing says so. Asked for
         # 16 kHz at 22.05 kHz the section runs at 11022.45 Hz and reads its
@@ -581,7 +581,7 @@ class TheJumpDoesNotSlam(unittest.TestCase):
     def test_planted_fault_the_jump_taken_on_the_old_curves_state(self):
         # Held to the check's own 2x bar, on a pair that check reads. On the
         # direct-form I sections this was 5 -> 1 at more than 4x; since
-        # audiobiquad moved to transposed direct form II (audioif#64) a jump
+        # audiobiquad moved to transposed direct form II (audiodsp#64) a jump
         # on stale state rings far less, and 2 -> 1 is the pair that still
         # crosses the bar: 12032 against 4424 (2.72x) with the fault planted,
         # 1.32x through the class, measured at the cebb7ca floor.

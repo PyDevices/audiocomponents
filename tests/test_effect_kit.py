@@ -10,7 +10,7 @@ One test per measurement, each holding both halves:
 
     WIRE       dry path x 32767/32768, on `ramp_fs` - and green on a quiet
                chord, which is the fault's own material clause
-    TAIL       +1 LSB of DC left in the node's state (audioif#23)
+    TAIL       +1 LSB of DC left in the node's state (audiodsp#23)
     LEVEL      +0.1 dB of hidden gain against a 0.05 dB bar
     CLICK      `latency_samples` reported 256 short, DSP untouched
     STATE      a delay line left full after reset(); an intermediate node
@@ -311,8 +311,8 @@ class StateTest(unittest.TestCase):
 
         A node type with no `deinit()` cannot be released by anybody, so a
         class that builds one is not at fault for it. Reported as one number
-        with real leaks, it made every audioif-tier class read like a leak.
-        `audioroute.Splitter` was that node until audioif#58 gave it a
+        with real leaks, it made every audiodsp-tier class read like a leak.
+        `audioroute.Splitter` was that node until audiodsp#58 gave it a
         `deinit()`; Compressor now releases everything, and the gap half is
         held to its behaviour with a planted node that has none.
         """
@@ -659,7 +659,7 @@ class ReadoutsTest(unittest.TestCase):
         control = measure(None)
         self.assertTrue(control["passed"], control["red"])
         # The offset is there while the source supplies it and gone the
-        # moment it is removed - the audioif#23 shape, read both ways.
+        # moment it is removed - the audiodsp#23 shape, read both ways.
         self.assertAlmostEqual(control["values"]["dc_while_supplied_lsb"],
                                16384.0, delta=2.0)
         self.assertEqual(control["values"]["dc_residual_lsb"], 0)

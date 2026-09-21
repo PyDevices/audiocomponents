@@ -5,7 +5,7 @@ instrument, an effect, or an effect rack. The metadata contract is documented
 separately in `audio-components.md`.
 
 The contract is structural. A provider does not have to inherit from an
-`audioif` helper class, but it must expose the required attributes and methods.
+`audiodsp` helper class, but it must expose the required attributes and methods.
 The helper classes in `audioinstruments._support` and `audioeffects._core` are
 implementation conveniences, not a requirement imposed on consumers.
 
@@ -39,7 +39,7 @@ An effect or rack factory has this shape:
 create(source, sample_rate, transport=None, **options)
 ```
 
-`sample_rate` is a positive integer; audioif v1 supports `channel_count` 1 or
+`sample_rate` is a positive integer; audiodsp v1 supports `channel_count` 1 or
 2. An instrument creates audio at the requested rate and channel count. An
 effect obtains its channel count from `source` and preserves it. The source
 must have the requested sample rate; construction must reject a mismatch
@@ -67,7 +67,7 @@ accepted by those factories without constructing audio graphs.
 Every live component provides:
 
 ```python
-component.output             # audioif-compatible pull source
+component.output             # audiodsp-compatible pull source
 component.sample_rate        # read-only integer
 component.channel_count      # read-only integer
 component.latency_samples    # read-only non-negative integer
@@ -86,8 +86,8 @@ The current method names are part of API v1. New optional arguments may be
 added compatibly, but existing names and their basic call patterns remain
 valid.
 
-`output` is the only audio-processing interface. It is an audioif-compatible
-pull source suitable for `audio_out.play()` and for the surrounding audioif
+`output` is the only audio-processing interface. It is an audiodsp-compatible
+pull source suitable for `audio_out.play()` and for the surrounding audiodsp
 graph. Components do not exchange NumPy arrays, ulab arrays, or
 runtime-specific buffers at the public boundary. A provider may use NumPy on
 CPython or ulab on MicroPython/CircuitPython internally only when it supplies

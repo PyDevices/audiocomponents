@@ -6,7 +6,7 @@ maracas, rimshot and cowbell. That is faithful to the hardware, where those
 sounds really do come off one circuit and choke each other. It is also the one
 place a target can get an envelope wrong without anything sounding broken.
 
-audioif's CPython target used to bake the envelope definition into the state
+audiodsp's CPython target used to bake the envelope definition into the state
 object at press time, so a re-pressed note kept stepping the envelope it was
 FIRST pressed with (fixed in d84470a, this repository's pinned floor). A closed
 hat struck a beat after an open one rang for the OPEN hat's decay: 400 ms

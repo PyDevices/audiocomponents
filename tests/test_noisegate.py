@@ -81,7 +81,7 @@ class NoHoldGate(NoiseGate):
     """The class forgetting to keep the gate machine on: `hold_ms` at zero
     drops the node back to its memoryless computer, which has no trigger
     state, no hold and an `over * 8.0f` slope instead of a depth
-    (`audioif_dynamics.c:452`, `:386-389`). G1, G2 and G4's fault."""
+    (`audiodsp_dynamics.c:452`, `:386-389`). G1, G2 and G4's fault."""
 
     NAME = 'NoHoldGate'
 
@@ -348,7 +348,7 @@ class Tier1Invariants(unittest.TestCase):
         """A measured Tier 1 qualification, committed rather than described.
 
         `state_init` and `clear_extras` set the machine's gain to 0.0
-        (`audioif_dynamics.c:265`), and only the CLOSED branch ever writes
+        (`audiodsp_dynamics.c:265`), and only the CLOSED branch ever writes
         `floor_gain` (`:719-722`). So the *first* opening after
         construction or a reset ramps from silence rather than from the
         Range floor, and at Range 0 dB - where the class should be a wire -
@@ -473,7 +473,7 @@ class Tier1Invariants(unittest.TestCase):
         material, not silence, and the readout is the first block after the
         reset.
 
-        The loud pass is at -20 dBFS: before audioif 1f33077 the node kept
+        The loud pass is at -20 dBFS: before audiodsp 1f33077 the node kept
         its side-chain filter memory across reset, and after a full-scale
         pass that stale state alone reopened the gate and masked the fault.
         The node clears it now (see the next test); the level stays so the
@@ -512,10 +512,10 @@ class Tier1Invariants(unittest.TestCase):
     def test_reset_clears_the_key_filters_too(self):
         """Once a measured Tier 1 miss, now closed by the node.
 
-        `audioif_dynamics_reset` used to keep the side-chain filter memory,
+        `audiodsp_dynamics_reset` used to keep the side-chain filter memory,
         so after a loud pass the detector read a stale high-pass state as
         signal and opened the gate on a -60 dBFS tone under the threshold
-        (33 LSB). audioif 1f33077 clears the key filters on reset, as a
+        (33 LSB). audiodsp 1f33077 clears the key filters on reset, as a
         fresh build does, so the first block after a loud pass is exact
         zero - from full scale as well as from -6 dBFS.
         """
@@ -524,7 +524,7 @@ class Tier1Invariants(unittest.TestCase):
 
     def test_a_duck_build_still_renders_after_reset(self):
         """Upstream CircuitPython's `Mixer.reset_buffer` stops its voices
-        (`audioif/src/audiomixer/MixerVoice.c:91`), so a duck build reset
+        (`audiodsp/src/audiomixer/MixerVoice.c:91`), so a duck build reset
         through the plain walk goes silent on `circuitpython-effects` and
         nowhere else. The class hands the voices back; this holds it to
         that on every interpreter, this one included."""
@@ -557,7 +557,7 @@ class Tier1Invariants(unittest.TestCase):
             if not hasattr(node, "deinit"):
                 continue
             if not hasattr(node, "_get_buffer"):
-                # audioroute.Splitter releases (audioif#58) but is not a
+                # audioroute.Splitter releases (audiodsp#58) but is not a
                 # sample itself; its taps are, and they are in the list.
                 self.assertTrue(node._deinited)
                 continue

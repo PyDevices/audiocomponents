@@ -292,7 +292,7 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(len(cls.PATCHES), 7)
         self.assertEqual(cls.CAPABILITIES, ())
         self.assertEqual(cls.LATENCY_SAMPLES, 0)
-        self.assertEqual(cls.TIER, _component.AUDIOIF)
+        self.assertEqual(cls.TIER, _component.AUDIODSP)
         self.assertEqual(cls.REQUIRES, ("audioecho",))
         effect = build()
         self.assertEqual(effect.latency_samples, 0)

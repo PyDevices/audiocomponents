@@ -530,7 +530,7 @@ class TheHold(unittest.TestCase):
 
     def test_inverting_the_legs_is_red_at_the_default(self):
         """Read on the same six points the trait is, and the default is one
-        of them. At audioif `977ef26` a hold-then-decimate pair is close to
+        of them. At audiodsp `977ef26` a hold-then-decimate pair is close to
         an identity, so this is red by the size of the sinc curve itself --
         which is also why the integer-4 leg has to be in the measurement."""
         self.assertGreater(self.worst_tilt_error(SkewedHold), 1.0)
@@ -613,7 +613,7 @@ class TheRateKnob(unittest.TestCase):
         the hertz, so the hold rate is exact -- not near. There is no grid
         to lose an LSB on any more: the pair of `SpeedChanger`s this
         replaced could not be made reciprocal at Q16 and slipped a sample
-        per ~190k frames (audioif#97)."""
+        per ~190k frames (audiodsp#97)."""
         for asked in (26040.0, 12000.0, 8000.0, 7947.0, 6040.0):
             for rate in (48000, 44100, 22050):
                 effect = Bitcrusher.create(
@@ -733,9 +733,9 @@ class TheAliasFilter(unittest.TestCase):
         return line(wet, abs(f_hold - hz)) - line(dry, hz)
 
     def test_the_image_stands_at_its_own_level(self):
-        """T5, demonstrated 2026-09-17 at audioif `977ef26`.
+        """T5, demonstrated 2026-09-17 at audiodsp `977ef26`.
 
-        It was disconfirmed at `cebb7ca` with audioif#91 named as the cause:
+        It was disconfirmed at `cebb7ca` with audiodsp#91 named as the cause:
         `SpeedChanger` reset its phase at every source buffer, the line
         smeared, and the 1 kHz image read -31.7 dB. With the phase carried
         it reads what a zero-order hold puts there.

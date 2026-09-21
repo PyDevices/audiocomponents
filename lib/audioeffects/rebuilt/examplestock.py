@@ -29,7 +29,7 @@ from .. import _component
 class ExampleStock(_component.Component):
     """A low-pass with a mix knob, built from CircuitPython-ported nodes
     only: `audiofilters.Filter` and a `synthio.Biquad`. Nothing here needs
-    an audioif-own module, so it runs on a stock CircuitPython board."""
+    an audiodsp-own module, so it runs on a stock CircuitPython board."""
 
     NAME = 'ExampleStock'
     DISPLAY_NAME = 'Example (stock tier)'

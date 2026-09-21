@@ -1181,7 +1181,7 @@ class DriveCeilingAndLean(unittest.TestCase):
         return wet.float[24000:, 0], latency
 
     def test_mix_zero_is_the_borrowed_source_itself(self):
-        """audioif#95: a mixer voice at level 1.0 scales by 32768/32767, so
+        """audiodsp#95: a mixer voice at level 1.0 scales by 32768/32767, so
         a wire through the mixer gains an LSB on every sample at or above
         32736. Mix 0 hands back the source, so the invariant is exact by
         construction rather than by luck."""
@@ -1245,7 +1245,7 @@ class DriveCeilingAndLean(unittest.TestCase):
         effect.deinit()
 
     def test_one_priming_path_for_every_interpreter(self):
-        """audioif#85's cure is a two-frame silence, not a branch: a
+        """audiodsp#85's cure is a two-frame silence, not a branch: a
         one-frame looped zero sample hangs `get_buffer` on a 1-channel
         native Mixer, and a class that asks which interpreter it is on is
         not testing on MicroPython what it tested on CPython
@@ -1263,7 +1263,7 @@ class TheClassHandsBackThePalettesOwnBlock(unittest.TestCase):
     this class shipped rendered **128 stereo frames** and every node behind
     it - the `Splitter`, whose own chunk is 256 frames, the oversampled
     shaper, the three biquads - was pulled twice per 256-frame block. That
-    is the palette's block and the unit every audioif node works in, and an
+    is the palette's block and the unit every audiodsp node works in, and an
     extra Python-level pull is worth about 0.18 ms on the P4 and 0.11 ms on
     the S3 off the board's own rows (audiocomponents#70, fifth fix round).
     """
@@ -1345,7 +1345,7 @@ class TheGenerator(unittest.TestCase):
 
 
 class TheNodeIsNeverAskedPastItsRail(unittest.TestCase):
-    """audioif#99, re-measured on this class's own curve.
+    """audiodsp#99, re-measured on this class's own curve.
 
     `audioshaper.Waveshaper` clamps its output at int16, so a `post_gain`
     that asks it for more than full scale clips at the BASE rate, behind

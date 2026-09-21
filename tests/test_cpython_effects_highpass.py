@@ -134,7 +134,7 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(len(cls.PATCHES), 6)
         self.assertEqual(cls.CAPABILITIES, ())
         self.assertEqual(cls.LATENCY_SAMPLES, 0)
-        self.assertEqual(cls.TIER, _component.AUDIOIF)
+        self.assertEqual(cls.TIER, _component.AUDIODSP)
         self.assertEqual(cls.REQUIRES, ("audiobiquad",))
 
     def test_patch_zero_is_the_constructors_own_defaults(self):

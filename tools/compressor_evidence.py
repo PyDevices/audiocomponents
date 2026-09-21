@@ -75,7 +75,7 @@ def sample(values, rate=RATE, channels=CHANNELS, block=BLOCK,
     The adapter is not decoration. `audiocore.RawSample.get_buffer` hands
     back its **whole** buffer in one call, and an `audioroute.Splitter` at
     the head of a graph writes whatever it is handed into an 8192-frame ring
-    (`audioif/src/shared/audioif_splitter.h:20`). A probe longer than the
+    (`audiodsp/src/shared/audiodsp_splitter.h:20`). A probe longer than the
     ring therefore overruns it at construction and the class renders from
     somewhere in the middle of the probe: measured, a 20000-frame probe
     starts at source frame 11808, exactly 20000 - 8192. Re-blocked to 2048
@@ -158,7 +158,7 @@ def dry_pcm(values, rate=RATE, channels=CHANNELS, frames=None, **options):
     straight off the probe, because building the graph pulls a block through
     it and the `audioroute.Splitter` at the head cannot be rewound: it
     exposes no `reset`, and a tap's is deliberately a no-op
-    (`audioif/src/audioroute/SplitterTap.c:47-55`). Both sides of every
+    (`audiodsp/src/audioroute/SplitterTap.c:47-55`). Both sides of every
     measurement therefore start at the same frame of the probe."""
     options = dict(options)
     options.pop("macros", None)
@@ -218,7 +218,7 @@ except ImportError:      # MicroPython and CircuitPython: no numpy
 
 
 def fnv1a(data, value=2166136261):
-    """`audioif/tests/parity/effects_component_probe.py:15`, unchanged, so
+    """`audiodsp/tests/parity/effects_component_probe.py:15`, unchanged, so
     the digest cases run where the kit's numpy does not."""
     for byte in data:
         value ^= byte

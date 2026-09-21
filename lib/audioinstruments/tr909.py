@@ -115,7 +115,7 @@ def create(sample_rate, channel_count=2, transport=None):
     # in place. Nothing is allocated at strike time and nothing is
     # released mid-play, so the kit resides at 13 Notes - exactly the
     # ceiling the charter sets (synthio's core caps at 14 simultaneous
-    # notes on every runtime; audioif#8/#9 make 13 the safe maximum).
+    # notes on every runtime; audiodsp#8/#9 make 13 the safe maximum).
     # The 13th is a single stick-click shared by all three toms - the
     # dossier's stretch slot, spent there rather than on the snare's
     # second VCO because the reference captures' tom centroid is

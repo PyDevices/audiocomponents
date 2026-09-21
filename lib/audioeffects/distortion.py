@@ -14,11 +14,11 @@ a 7.2 kHz cap, and a passive V-shaped tone. Mix 0 is the wire; Distortion
 The DS-1's booster is in the circuit, not on the panel, so `scoop` starts
 with Boost at 35 dB; the Rat has no booster and starts at 0.
 
-**Portability tier: audioif** (`REQUIRES = ("audioshaper", "audiobiquad",
+**Portability tier: audiodsp** (`REQUIRES = ("audioshaper", "audiobiquad",
 "audioroute")`). The clipper is `audioshaper.Waveshaper` with a table
 derived from the 1N4148 pair (tools/curves/distortion_curve.py). Tone and
 the Rat's legs are `audiobiquad` so a 60 Hz pole still decays to exact
-zero; `synthio.Biquad` / `audiofilters.Filter` would not (audioif#77).
+zero; `synthio.Biquad` / `audiofilters.Filter` would not (audiodsp#77).
 `scoop` also carries the DS-1's **output coupling capacitor** at 20 Hz.
 It is no longer load-bearing: **Asymmetry is a second table now, not a
 bias.** `STOCK_ASYMMETRY * macro` was a 3.5 V offset into diodes that clip
@@ -165,7 +165,7 @@ import audiocore
 import audiomixer
 
 try:
-    from audioif_util import float32 as _f32
+    from audiodsp_util import float32 as _f32
 except ImportError:                                  # pragma: no cover
     def _f32(value):
         return value
@@ -477,7 +477,7 @@ def _fo_hp(frequency, rate):
 
 
 class Distortion(_component.Component):
-    """Hard clipping after a shaped gain stage. `audioif` tier.
+    """Hard clipping after a shaped gain stage. `audiodsp` tier.
 
     Character `filter` (default) follows the ProCo Rat; `scoop` follows the
     Boss DS-1. Mix 0 is the wire. Distortion 0 is clean only in `filter`.
@@ -488,7 +488,7 @@ class Distortion(_component.Component):
     CATEGORIES = ('Drive',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audioshaper", "audiobiquad", "audioroute")
 
     CAPABILITIES = ()
@@ -619,7 +619,7 @@ class Distortion(_component.Component):
         # `Mixer._render_size` is `buffer_size // 2 // 4 * 4` BYTES, so the
         # stock 1024 renders 128 stereo frames and every mixer in the chain
         # is pulled twice per 256-frame block - the palette's block, and the
-        # unit every audioif node works in. 1024 * channel_count makes one
+        # unit every audiodsp node works in. 1024 * channel_count makes one
         # pull one block at either channel count.
         return dict(
             voice_count=voices,

@@ -1,7 +1,7 @@
 """The audioconvolve node itself: the arithmetic under the convolvers.
 
 Not an effect-class test, and no family phase retires it. `Convolver` is an
-audioif node - the palette layer - so the three-tap convolution checked
+audiodsp node - the palette layer - so the three-tap convolution checked
 against its own arithmetic, the no-impulse wire with no latency, the refused
 oversized impulse and the transform inverting itself hold whatever
 `ConvolutionReverb` and `CabinetSim` are rebuilt into. The classes built on

@@ -16,8 +16,8 @@ audio; it is a listening position, not a mix. Give the class ``key=`` and
 another stream drives the detector entirely, which is how one sound gates
 another.
 
-**Portability tier: audioif.** Built on ``audiodynamics.Dynamics``, which is
-audioif's own module and not a CircuitPython port, so a stock CircuitPython
+**Portability tier: audiodsp.** Built on ``audiodynamics.Dynamics``, which is
+audiodsp's own module and not a CircuitPython port, so a stock CircuitPython
 board raises ``ImportError`` at construction and says so. The default build
 is **one node**: a per-sample peak detector, two key filters, a four-stage
 envelope and a VCA, all in C, with Python computing coefficients only at
@@ -69,7 +69,7 @@ from . import _component
 
 try:
     import audiodynamics
-except ImportError:      # a stock CircuitPython board, or an old audioif
+except ImportError:      # a stock CircuitPython board, or an old audiodsp
     audiodynamics = None
 try:
     import audioroute
@@ -86,7 +86,7 @@ import audiocore
 import audiomixer
 
 
-#: The gate machine in `audioif_dynamics.c:452` is on only when
+#: The gate machine in `audiodsp_dynamics.c:452` is on only when
 #: `hold_frames != 0`, and below that the node is the memoryless computer
 #: with its `over * 8.0f` slope, no hold and no one-shot. The Hold macro's
 #: floor is what keeps it on: 2 ms is 96 frames at 48 kHz and 44 at
@@ -94,7 +94,7 @@ import audiomixer
 MINIMUM_HOLD_MS = 2.0
 
 #: The one modulator value that inverts exactly: `(a * -32768) >> 15 == -a`
-#: on signed int16 (`audioif_multiply.c:38`). +32767 does not - it is the
+#: on signed int16 (`audiodsp_multiply.c:38`). +32767 does not - it is the
 #: WIRE planted fault, 32767/32768 - which is why a built duck graph cannot
 #: be switched back to a plain gate by levels alone.
 INVERTING_LEVEL = -32768
@@ -114,7 +114,7 @@ class NoiseGate(_component.Component):
     CATEGORIES = ('Dynamics',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     #: `audiodynamics` first, because that is the one the default build
     #: needs and the one a stock board's ImportError should name.
     #: `audioroute` and `audiomath` are built only by `duck=True`.
@@ -158,7 +158,7 @@ class NoiseGate(_component.Component):
     THRESHOLD, ATTACK, HOLD, RELEASE, RANGE, KEY_LOW, KEY_HIGH, \
         KEY_LISTEN = range(8)
 
-    #: `audioif_dynamics.h:104`. The node clamps for itself; the class
+    #: `audiodsp_dynamics.h:104`. The node clamps for itself; the class
     #: clamps too so `latency_samples` reports what the node will do.
     MAX_LOOKAHEAD_MS = 50.0
 
@@ -179,7 +179,7 @@ class NoiseGate(_component.Component):
         """
         lookahead_ms = min(max(float(lookahead_ms), 0.0),
                            self.MAX_LOOKAHEAD_MS)
-        #: The node's own conversion, `audioif_dynamics.c:126-127`, so the
+        #: The node's own conversion, `audiodsp_dynamics.c:126-127`, so the
         #: reported latency is the frame count the C will actually hold.
         self._latency = int(lookahead_ms * self._sample_rate / 1000.0)
         self._duck = bool(duck)
@@ -187,7 +187,7 @@ class NoiseGate(_component.Component):
         if self._duck:
             # See the note in `compressor.py`: `reset=False` because a
             # ring cannot be rewound, but the Splitter can be released
-            # (audioif#58) and `getattr` skips the call on an audioif that
+            # (audiodsp#58) and `getattr` skips the call on an audiodsp that
             # has none.
             self._split = self._own(
                 audioroute.Splitter(source=self._source, taps=2),
@@ -251,11 +251,11 @@ class NoiseGate(_component.Component):
         """Clear the duck's summing mixer and hand its voices back.
 
         Upstream CircuitPython's `Mixer.reset_buffer` **stops** its voices
-        (`audioif/src/audiomixer/MixerVoice.c:91`, which says so in as many
+        (`audiodsp/src/audiomixer/MixerVoice.c:91`, which says so in as many
         words), and the patched CircuitPython build carries the upstream
         one: measured on `cmods/bin/circuitpython-effects`, a mixer playing
         a sample reads 8000 LSB before `audiocore.reset_buffer` and 0 after
-        it, for good. audioif's own `audiomixer` does not do that - the
+        it, for good. audiodsp's own `audiomixer` does not do that - the
         same probe reads 8000 both sides on CPython and on desktop
         MicroPython - so a duck build reset through the base class's walk
         would go silent on one interpreter of three and nowhere else.

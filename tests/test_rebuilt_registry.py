@@ -10,7 +10,7 @@ Phase 2's sixteen have come home as one file per effect beside the package,
 so they are no longer under `rebuilt/`. This directory keeps the machinery
 and the two `Example` fixtures for the phases still to come.
 
-`ExampleStock` and `ExampleAudioif` are the subjects: fixtures under
+`ExampleStock` and `ExampleAudiodsp` are the subjects: fixtures under
 `rebuilt/`, deliberately absent from `audioeffects.__all__` so that neither
 enters `audioeffects.ALL` and no host can reach them (audiocomponents#37).
 
@@ -42,7 +42,7 @@ from tools.validate_metadata import MetadataError, validate_effects
 #: is a real rebuilt class, and these tests must not care how many there are:
 #: sixteen of them arrive in parallel, and a test that lists them by hand is
 #: the shared file the registry rule exists to avoid.
-FIXTURES = ("ExampleAudioif", "ExampleStock")
+FIXTURES = ("ExampleAudiodsp", "ExampleStock")
 
 #: Every class of the 46 that has come home: Phase 2's sixteen, Phase 3's
 #: five THROUGH classes plus RingMod, and Phase 4's four adopted. Coming
@@ -259,17 +259,17 @@ class TheLookup(unittest.TestCase):
         # The two fixtures are always there; anything else in the list is a
         # rebuilt member of the 46, and nothing else may appear.
         listed = sorted(rebuilt.known())
-        self.assertIn("ExampleAudioif", listed)
+        self.assertIn("ExampleAudiodsp", listed)
         self.assertIn("ExampleStock", listed)
         for name in listed:
-            if name not in ("ExampleAudioif", "ExampleStock"):
+            if name not in ("ExampleAudiodsp", "ExampleStock"):
                 self.assertIn(name, audioeffects.ALL)
         # The two fixtures are always there; the rest of the list grows by
         # one file per rebuilt class, so what is held is the property and
         # not the roll call.
         names = rebuilt.known()
         self.assertEqual(len(names), len(set(names)))
-        for fixture in ("ExampleAudioif", "ExampleStock"):
+        for fixture in ("ExampleAudiodsp", "ExampleStock"):
             self.assertIn(fixture, names)
         for name in names:
             with self.subTest(name=name):
@@ -287,7 +287,7 @@ class TheLookup(unittest.TestCase):
         # The two fixtures are always there; a rebuilt class joins them, and
         # everything `known()` reports must load back under its own name.
         names = sorted(rebuilt.known())
-        self.assertIn("ExampleAudioif", names)
+        self.assertIn("ExampleAudiodsp", names)
         self.assertIn("ExampleStock", names)
         self.assertEqual(len(names), len(set(names)))
         for name in names:
@@ -307,10 +307,10 @@ class TheLookup(unittest.TestCase):
         # The two fixtures are always there; anything else in the list is a
         # rebuilt member of the 46, and nothing else may appear.
         listed = sorted(rebuilt.known())
-        self.assertIn("ExampleAudioif", listed)
+        self.assertIn("ExampleAudiodsp", listed)
         self.assertIn("ExampleStock", listed)
         for name in listed:
-            if name not in ("ExampleAudioif", "ExampleStock"):
+            if name not in ("ExampleAudiodsp", "ExampleStock"):
                 self.assertIn(name, audioeffects.ALL)
 
     def test_each_of_the_46_either_misses_or_resolves_to_its_own_name(self):
@@ -347,7 +347,7 @@ class TheLookup(unittest.TestCase):
         # each family phase lands one, so this is a subset check plus the
         # honesty check that everything listed actually resolves.
         listed = sorted(rebuilt.known())
-        self.assertIn("ExampleAudioif", listed)
+        self.assertIn("ExampleAudiodsp", listed)
         self.assertIn("ExampleStock", listed)
         for name in listed:
             with self.subTest(name=name):
@@ -427,7 +427,7 @@ class TheLookup(unittest.TestCase):
         self.assertEqual(set(name.lower() for name in rebuilt.known()),
                          modules)
         self.assertIn("ExampleStock", rebuilt.known())
-        self.assertIn("ExampleAudioif", rebuilt.known())
+        self.assertIn("ExampleAudiodsp", rebuilt.known())
 
     def test_every_name_misses_or_resolves_to_its_own_class__hp(self):
         # Both branches of the fallback, over the real catalogue. A name with
@@ -487,11 +487,11 @@ class TheLookup(unittest.TestCase):
         known = sorted(rebuilt.known())
         # The two fixtures are always there; everything else `known()`
         # reports is one of the 46, never a stray module.
-        self.assertIn("ExampleAudioif", known)
+        self.assertIn("ExampleAudiodsp", known)
         self.assertIn("ExampleStock", known)
         self.assertEqual(len(known), len(set(known)))
         for name in known:
-            if name not in ("ExampleAudioif", "ExampleStock"):
+            if name not in ("ExampleAudiodsp", "ExampleStock"):
                 self.assertIn(name, audioeffects.ALL)
 
     def test_every_name_either_misses_or_resolves_to_its_own_class__nt(self):
@@ -531,7 +531,7 @@ class TheLookup(unittest.TestCase):
         self.assertEqual(set(name.lower() for name in rebuilt.known()),
                          modules)
         self.assertIn("ExampleStock", rebuilt.known())
-        self.assertIn("ExampleAudioif", rebuilt.known())
+        self.assertIn("ExampleAudiodsp", rebuilt.known())
 
     def test_every_name_not_yet_rebuilt_is_still_a_miss(self):
         # The fallback branch, over the real catalogue: a name with no file
@@ -579,7 +579,7 @@ class TheLookup(unittest.TestCase):
         self.assertEqual(set(name.lower() for name in rebuilt.known()),
                          modules)
         self.assertIn("ExampleStock", rebuilt.known())
-        self.assertIn("ExampleAudioif", rebuilt.known())
+        self.assertIn("ExampleAudiodsp", rebuilt.known())
 
     def test_every_name_either_misses_or_is_what_the_package_exports__deq(self):
         # The fallback branch and the hit branch, over the real catalogue. A
@@ -611,10 +611,10 @@ class TheLookup(unittest.TestCase):
         # The two fixtures are always here; anything else listed is a rebuilt
         # member of the 46, and nothing else may appear.
         listed = sorted(rebuilt.known())
-        self.assertIn("ExampleAudioif", listed)
+        self.assertIn("ExampleAudiodsp", listed)
         self.assertIn("ExampleStock", listed)
         for name in listed:
-            if name not in ("ExampleAudioif", "ExampleStock"):
+            if name not in ("ExampleAudiodsp", "ExampleStock"):
                 self.assertIn(name, audioeffects.ALL)
 
 
@@ -686,7 +686,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
     #: The same two names as the module-level `FIXTURES`, on the class
     #: because the `ParametricEQ` rebuild's tests read them from
     #: `self`.
-    FIXTURES = ("ExampleStock", "ExampleAudioif")
+    FIXTURES = ("ExampleStock", "ExampleAudiodsp")
 
 
     def test_the_fixtures_are_not_among_the_46(self):
@@ -698,7 +698,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         self.assertEqual(len(audioeffects.ALL), 45)
         for name in rebuilt.known():
             with self.subTest(name=name):
-                if name in ("ExampleStock", "ExampleAudioif"):
+                if name in ("ExampleStock", "ExampleAudiodsp"):
                     self.assertNotIn(name, audioeffects.ALL)
                     self.assertNotIn(name, audioeffects.__all__)
                 else:
@@ -742,7 +742,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # name, it never adds one. The two Example fixtures are the ones that
         # must stay outside it.
         self.assertEqual(len(audioeffects.ALL), 45)
-        for name in ("ExampleStock", "ExampleAudioif"):
+        for name in ("ExampleStock", "ExampleAudiodsp"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
 
@@ -771,7 +771,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # name. The two fixtures are the ones that must never enter it; a
         # rebuilt class is *expected* in it, under the name it replaced.
         self.assertEqual(len(audioeffects.ALL), 45)
-        for name in ("ExampleStock", "ExampleAudioif"):
+        for name in ("ExampleStock", "ExampleAudiodsp"):
             self.assertIn(name, rebuilt.known())
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
@@ -787,7 +787,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # replaces one of them by NAME, and the two fixtures are reachable
         # from neither `ALL` nor `__all__`.
         self.assertEqual(len(audioeffects.ALL), 45)
-        for name in ("ExampleStock", "ExampleAudioif"):
+        for name in ("ExampleStock", "ExampleAudiodsp"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
 
@@ -796,7 +796,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # name. The two fixtures are the ones that must never enter it; a
         # rebuilt class is *expected* in it, under the name it replaced.
         self.assertEqual(len(audioeffects.ALL), 45)
-        for name in ("ExampleStock", "ExampleAudioif"):
+        for name in ("ExampleStock", "ExampleAudiodsp"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
 
@@ -823,7 +823,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # name. The two fixtures are the ones that must never enter it; a
         # rebuilt class is *expected* in it, under the name it replaced.
         self.assertEqual(len(audioeffects.ALL), 45)
-        for name in ("ExampleStock", "ExampleAudioif"):
+        for name in ("ExampleStock", "ExampleAudiodsp"):
             self.assertIn(name, rebuilt.known())
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
@@ -833,7 +833,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
         # name, it never adds one. The two Example fixtures are the ones that
         # must stay outside it.
         self.assertEqual(len(audioeffects.ALL), 45)
-        for name in ("ExampleStock", "ExampleAudioif"):
+        for name in ("ExampleStock", "ExampleAudiodsp"):
             self.assertNotIn(name, audioeffects.ALL)
             self.assertNotIn(name, audioeffects.__all__)
 

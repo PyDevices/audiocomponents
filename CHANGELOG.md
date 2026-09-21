@@ -2,8 +2,8 @@
 
 All notable changes to `audioinstruments` and `audioeffects` are recorded
 here. The two packages version and release together, from this repository;
-[audioif](https://github.com/PyDevices/audioif) publishes the core only.
-Releases up to and including audioif's v0.1.1 shipped both packages from
+[audiodsp](https://github.com/PyDevices/audiodsp) publishes the core only.
+Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
 ## Unreleased
@@ -119,7 +119,7 @@ there, and are recorded in its changelog.
   what the class costs alone on an S3 in plain words, and the two "board ROW
   of the 256-frame graph unmeasured" notes are answered.
 
-  **Both open digest questions have answers.** audioif `9018e35` makes the
+  **Both open digest questions have answers.** audiodsp `9018e35` makes the
   CPython mixer twin borrow its source node's buffer the way the native one
   does, so `Saturation`'s coupling-pole charge settles on the desktop as it
   already did on both boards: CPython renders `1f9bcf50dc14a4ee` at patch 4
@@ -187,7 +187,7 @@ there, and are recorded in its changelog.
   built its blend `Mixer` at `buffer_size=1024`, so it rendered **128 stereo
   frames** and everything behind it was pulled twice per 256-frame block —
   including a `Dynamics`, whose own output block is 256 frames by
-  construction (`audioif_dynamics.h:56`). It hands back the palette's own
+  construction (`audiodsp_dynamics.h:56`). It hands back the palette's own
   block now, which **moves no byte** (`59f2e64ed63c1362` at patch 0,
   `56b7966ed074ab8b` at patch 1, either length, three interpreters). The
   budget is re-derived at the 2026-09-18 palette — **29 % / 54 %** on
@@ -362,11 +362,11 @@ there, and are recorded in its changelog.
   worth (`ALIAS_OVERSAMPLE_COST_DB`, at least 20 dB wherever the clip
   stage is in circuit), and its §7.2 redefinition now names its rates:
   the old −60 dB target is **kept at 44.1 kHz**, where the shipped build
-  meets it, and [audioif#104](https://github.com/PyDevices/audioif/issues/104)
+  meets it, and [audiodsp#104](https://github.com/PyDevices/audiodsp/issues/104)
   is the node ask 22.05 kHz needs.
 
 - **Phase 4's fix round, 2026-09-17.** Every drive class went back through
-  its own gate at the new audioif floor (`977ef26`) and six of the seven
+  its own gate at the new audiodsp floor (`977ef26`) and six of the seven
   landed. What changed across the round, beyond each class's own entry:
 
   **Five of seven graphs got smaller, so five budgets came down.** `Fuzz`
@@ -396,7 +396,7 @@ there, and are recorded in its changelog.
   two-thirds of full scale by construction. All three tables are fixed and
   the gate is green.
 
-  **A mixer voice at level 1.0 is not a wire** (audioif#95). Upstream's Q15
+  **A mixer voice at level 1.0 is not a wire** (audiodsp#95). Upstream's Q15
   level for 1.0 is 32768 and the kernel divides by 32767, so a dry path
   through a voice at unity lifts every sample at or above 32736 by one LSB.
   Nothing under −6.02 dBFS can reach it, which is why only the classes
@@ -504,7 +504,7 @@ there, and are recorded in its changelog.
   that is not modelling a box.** Every other drum here is a machine; this one
   is what a struck head does, a bank of decaying inharmonic modes excited by a
   short burst standing in for the stick. It runs on `audiomodal.Bank`, which
-  audioif carries for it. Fourteen GM notes across twelve voices, two banks -
+  audiodsp carries for it. Fourteen GM notes across twelve voices, two banks -
   the hi-hat has its own so that closing it chokes what was ringing - and one
   shared excitation, because a resonator bank is linear and all the shaping
   lives in the mode gains.
@@ -530,6 +530,16 @@ there, and are recorded in its changelog.
   machine's, and a program change cannot rename them.
 
 ### Changed
+
+- **The core is `audiodsp` now.** The repository these packages are built on
+  was renamed on 2026-09-21, and everything here that named it follows: the
+  dependency is `pydevices-audiodsp>=0.5.0` (its first release under that
+  name), `audiodsp_util` is the helper package the instruments import, the pin
+  file is `AUDIODSP_PIN`, and links and issue references say `audiodsp`.
+  Nothing in `audioeffects` or `audioinstruments` changed its own name or
+  behaviour, with one exception: the module
+  `audioeffects.rebuilt.exampleaudiodsp`, the worked example of a rebuilt
+  effect, was named after the core and is renamed with it.
 
 - **Every drum machine speaks General MIDI.** One MIDI track now plays on any
   of the ten kits: every kick hit sounds where the kit has a kick, and a hit
@@ -622,8 +632,8 @@ there, and are recorded in its changelog.
   a tap rather than pushing a macro, so a class read at an inner node still
   gets a refusal and not a wet-branch reading of the probe.
 
-- **The effects catch up with the audioif floor at cebb7ca** (#66). Moving
-  `AUDIOIF_PIN` there for `acoustickit` brought five deliberate audioif
+- **The effects catch up with the audiodsp floor at cebb7ca** (#66). Moving
+  `AUDIODSP_PIN` there for `acoustickit` brought five deliberate audiodsp
   changes, and 27 tests went red. `AutoPan`'s Centre was mirrored, because
   CircuitPython 10.3.0 reversed synthio's panning sign; its notes are paired
   the other way now. A fresh mixer voice or synthio note now starts at level 0
@@ -632,9 +642,9 @@ there, and are recorded in its changelog.
   its gates on one block of silence before it takes its source
   (`_component.open_level_gates`). `Saturation`'s shelves moved to
   `audiobiquad`, because `synthio.Biquad` is CircuitPython's Q15 arithmetic
-  again (audioif#77) and tape had lost its head bump. `BandPass` T1 now
-  holds in 55 of 56 cells, both stops included (audioif#64). The rest were
-  tests holding audioif's old behaviour: released nodes raise `ValueError`,
+  again (audiodsp#77) and tape had lost its head bump. `BandPass` T1 now
+  holds in 55 of 56 cells, both stops included (audiodsp#64). The rest were
+  tests holding audiodsp's old behaviour: released nodes raise `ValueError`,
   `Splitter` releases, `Dynamics.reset()` clears its key filters, and there
   are 55 instruments.
 
@@ -929,9 +939,9 @@ there, and are recorded in its changelog.
   8192-byte bar in all eighteen cells, `deinit()` 5 of 5 owned nodes
   released — and the three planted faults the gate audit sent back are
   replanted so that they fire and the surface cannot dial them.
-  `docs/effects/Compressor-evidence.md`. Two audioif issues came out of it:
-  **audioif#58** (`audioroute.Splitter` has no `deinit()`) and
-  **audioif#59** (the native builds have no deinitialised guard; pulling a
+  `docs/effects/Compressor-evidence.md`. Two audiodsp issues came out of it:
+  **audiodsp#58** (`audioroute.Splitter` has no `deinit()`) and
+  **audiodsp#59** (the native builds have no deinitialised guard; pulling a
   released `audiomixer.Mixer` dumps core).
 - **`Limiter`'s true-peak ceiling now needs lookahead, and gets it.** The
   Phase 2 gate audit parked the class on a broken promise: at a -6 dBFS
@@ -1104,7 +1114,7 @@ there, and are recorded in its changelog.
   (`tools/phase2_probes/lowpass_tier1_portable.py`); one row is marked `n/a`
   with its cause instead of passed, because `audiobiquad.Biquad` has no
   `deinit()` on the native builds and the clean run and its fault read alike
-  (audioif#63). The four disconfirmed traits are now stated in the class
+  (audiodsp#63). The four disconfirmed traits are now stated in the class
   docstring and the README catalogue row, as a disconfirmed trait must be.
   **No `" - lean"` patch is possible** and the measurement says so: every
   section runs whatever its `mix` is, so the spread across every setting the
@@ -1138,7 +1148,7 @@ there, and are recorded in its changelog.
   no-allocation row (`gc.mem_alloc()` on the native builds). T3's Nyquist leg
   was green on a wire and is re-stated so a wire fails it. **No `" - lean"`
   patch exists** — `mix` 0 does not stop a biquad's recursion running
-  (`audioif_filter_f32.c:216-241`), so the class stays parked on G6.
+  (`audiodsp_filter_f32.c:216-241`), so the class stays parked on G6.
   Evidence: `docs/effects/HighPass-evidence.md`; new probes
   `tools/phase2_probes/highpass_sweep.py` and `highpass_cost.py`.
 - **`BandPass`'s gate-audit fix round.** T1's "0 dB peak at every Q" is
@@ -1149,7 +1159,7 @@ there, and are recorded in its changelog.
   direct-form I recursion carries `float` state, and at w0 = 0.0026 rad its
   two feedback coefficients cancel to seven parts in a million; the same five
   coefficients through a `float64` recursion read -0.003 dB
-  (PyDevices/audioif#64). The bound is in the class docstring and the README
+  (PyDevices/audiodsp#64). The bound is in the class docstring and the README
   catalogue row, with what it sounds like. Two measurements that could not
   fail were replaced: T1's and T5's readings were both **green on a wire**,
   and T1's planted fault built an `audiobiquad.Biquad` outside the class so
@@ -1184,7 +1194,7 @@ there, and are recorded in its changelog.
   constants as patches. Two `audiodynamics.Dynamics` in series carry the
   two-stage release with a memory; the surface is fourteen macros and
   fourteen patches; latency is zero at every setting. Portability tier
-  **audioif**, `REQUIRES = ("audiodynamics", "audioroute")`. Evidence:
+  **audiodsp**, `REQUIRES = ("audiodynamics", "audioroute")`. Evidence:
   `docs/effects/Compressor-evidence.md`.
 - The kit's CURVE and paired-build fixtures name `character="fet"`
   explicitly: their subject is the textbook single-stage law, and
@@ -1209,7 +1219,7 @@ there, and are recorded in its changelog.
   Attack, Release, Key Low, Key High, Key Listen, Detector — a true-RMS
   detector, a two-ended 12 dB/octave key band, an external key input, and a
   Depth floor that reaches −80 dB where the old class was stuck at the node's
-  −60 dB literal without saying so. Portability tier **audioif**
+  −60 dB literal without saying so. Portability tier **audiodsp**
   (`audiodynamics`); `latency_samples` 0 with no look-ahead option at all.
   The dossier's Hold macro is deliberately absent: `hold_ms` does nothing in
   `DYN_EXPAND` and the reason is measured, not assumed
@@ -1239,7 +1249,7 @@ there, and are recorded in its changelog.
   (Frequency, Range, Sensitivity, Mode, Release, Attack, Listen) and six
   patches, where there were none; a broadband and an HF-only mode, where
   there was only broadband; and Range is a real maximum, where `ratio` was
-  not. Portability tier **audioif** (`audiobiquad`, `audiodynamics`,
+  not. Portability tier **audiodsp** (`audiobiquad`, `audiodynamics`,
   `audioroute`), latency zero, and no option that adds any. Three traits the
   palette cannot reach are stated in its docstring rather than hidden: the
   release curves where the 902's is a straight line in dB, Range is an
@@ -1272,7 +1282,7 @@ there, and are recorded in its changelog.
   Three changes under the surface. The crossover moved to
   **`audiobiquad.Biquad`**: on the ported `synthio.Biquad` cascade the old
   class held **2 LSB of DC for ever at a 100 Hz corner and 8 LSB at 40 Hz**,
-  which is audioif#23 sitting in the one node a multiband cannot do without.
+  which is audiodsp#23 sitting in the one node a multiband cannot do without.
   The Splitter is fed through a **block-sized guard**, so a source that hands
   back more than 8192 frames in one call no longer loses the head of every
   buffer — the old class rendered **exact silence** from 16384-, 20000- and
@@ -1298,9 +1308,9 @@ there, and are recorded in its changelog.
   `docs/effects/ParametricEQ-evidence.md`). It is a Pultec EQP-1A bottom and
   resonant top with three API 550A proportional-Q bells between: sixteen
   macros in the panel's own units, seven patches, `capabilities = ()`, zero
-  latency at every setting and rate. **Its portability tier is `audioif`** -
+  latency at every setting and rate. **Its portability tier is `audiodsp`** -
   eight `audiobiquad.Biquad` sections, whose float state lets a decaying tail
-  reach exact zero where the ported `synthio.Biquad` parks on DC (audioif#23).
+  reach exact zero where the ported `synthio.Biquad` parks on DC (audiodsp#23).
   The old class stays in `eq.py`, untouched, beneath the registry; its
   old-surface trait test in `tests/test_cpython_effects_dynamics_eq.py` is
   retired in the same commit and replaced by
@@ -1317,10 +1327,10 @@ there, and are recorded in its changelog.
   an accident. A band at its centre detent is a **wire byte for byte**, and
   patch 0 is byte-identical to the source. Bands above Nyquist **clamp and
   say so** (`clamped`, `built_centres`) instead of vanishing silently.
-- **`GraphicEQ` moves to the `audioif` portability tier** (`audiobiquad`).
+- **`GraphicEQ` moves to the `audiodsp` portability tier** (`audiobiquad`).
   On the ported `synthio.Biquad` it held **+7 LSB** after silence at
   31.25 Hz/+6 dB and +5 LSB with all ten bands engaged, for ever
-  (audioif#23); on `audiobiquad`'s float sections the same settings reach
+  (audiodsp#23); on `audiobiquad`'s float sections the same settings reach
   exact zero. Twelve sections, `latency_samples` 0, `tail_samples` 465 ms.
   Costs about two thirds of an ESP32-S3's stereo block by arithmetic — not
   yet measured on a board.
@@ -1334,10 +1344,10 @@ there, and are recorded in its changelog.
   a `set_frequency` that raised above Nyquist, this one has five macros -
   Frequency, Resonance, Slope, Mix, Trim - six patches, `capabilities = ()`,
   zero latency at every setting and rate, and a declared `tail_samples`.
-  **Its portability tier is `audioif`** - three `audiobiquad.Biquad`
+  **Its portability tier is `audiodsp`** - three `audiobiquad.Biquad`
   sections, whose float state lets a decaying tail reach exact zero where the
   ported `synthio.Biquad` parks on 1 to 4 LSB of DC at exactly the corners a
-  low-pass is for (audioif#23). The old class stays in `eq.py`, untouched,
+  low-pass is for (audiodsp#23). The old class stays in `eq.py`, untouched,
   beneath the registry; its two old-surface trait tests in
   `tests/test_cpython_effects_dynamics_eq.py` are retired in the same commit
   and replaced by `tests/test_cpython_effects_lowpass.py`.
@@ -1352,10 +1362,10 @@ there, and are recorded in its changelog.
   switch, Mix and a +/-12 dB Trim), six named patches, a declared
   `tail_samples` of 305 152 measured rather than assumed, and a `frequency`
   that clamps below Nyquist instead of raising.
-- **`HighPass`'s portability tier moves to audioif** (`REQUIRES =
+- **`HighPass`'s portability tier moves to audiodsp** (`REQUIRES =
   ("audiobiquad",)`). Its three sections are `audiobiquad.Biquad`, whose
   float state reaches exact zero; the ported `synthio.Biquad` holds up to
-  71 LSB of DC at a 10 Hz corner for ever (audioif#23), which is the Tier 1
+  71 LSB of DC at a 10 Hz corner for ever (audiodsp#23), which is the Tier 1
   invariant failing at exactly the corners a low-cut is for. A stock
   CircuitPython board can no longer construct this class, where the old one
   ran there and quietly failed that invariant.
@@ -1372,9 +1382,9 @@ there, and are recorded in its changelog.
   four-macro surface where it had none — Frequency, Width, Slope and Mix —
   six patches, and a `tail_samples` computed from the build rather than left
   `None`, which for a resonator is 301 ms at the Sub Window patch and 3 ms at
-  the default. Its portability tier moves from stock to **audioif**
+  the default. Its portability tier moves from stock to **audiodsp**
   (`REQUIRES = ("audiobiquad",)`): on the ported Q15 biquad a low centre
-  holds DC for ever (audioif#23), and on audioif's float-state node every
+  holds DC for ever (audiodsp#23), and on audiodsp's float-state node every
   setting the surface reaches settles to bit-exact zero. The old class stays
   in `eq.py` untouched; the registry adopts the rebuild by `NAME`. Dossier
   `docs/effects/BandPass.md`, evidence `docs/effects/BandPass-evidence.md` —
@@ -1389,22 +1399,22 @@ there, and are recorded in its changelog.
   has five macros — Frequency, Width, Harmonics, Depth, Trim — six patches,
   `capabilities = ()`, zero latency at every setting and rate, and a
   declared `tail_samples` measured at its own worst corner.
-  **Its portability tier is `audioif`** — three `audiobiquad.Biquad`
+  **Its portability tier is `audiodsp`** — three `audiobiquad.Biquad`
   sections, whose float state lets a decaying tail reach exact zero where
   the ported `synthio.Biquad` parks on 2 LSB of DC at `Notch(60 Hz, q=8)`
   and 18 at `Notch(20 Hz, q=32)`, which are the settings a notch is most
-  used at (audioif#23).
+  used at (audiodsp#23).
   **The trade that move costs, stated because a caller has to know it:** a
   `float` coefficient set cannot hold the notch's zeros exactly on the unit
   circle, so the rejection at the centre is a true null from 500 Hz up at
   Q ≤ 12 but −35.65 dB at 60 Hz Q 12 and −11.21 dB at 20 Hz Q 32, against
   −78.87 and −40.04 dB on the integer kernel it replaces. The dossier's T1 is
   recorded disconfirmed below about 250 Hz with that cause, and its §5
-  carries the audioif node ask that would recover 17–36 dB of it.
+  carries the audiodsp node ask that would recover 17–36 dB of it.
   The old class stays in `eq.py`, untouched, beneath the registry.
 - `LadderFilter` rebuilt on the component contract, as
   `lib/audioeffects/rebuilt/ladderfilter.py` — one `audioladder.Ladder`, so
-  the class is **audioif tier** (`REQUIRES = ("audioladder",)`) and does not
+  the class is **audiodsp tier** (`REQUIRES = ("audioladder",)`) and does not
   run on a stock CircuitPython board. It is a ladder now rather than four
   low-passes in a row: the passband droops as `Resonance` rises, it
   self-oscillates at the top of the knob at the cutoff, and `Drive` is the
@@ -1427,7 +1437,7 @@ there, and are recorded in its changelog.
   with per-sample interpolation and tunes to 0.002 cents, and adds the
   surface the old class had none of: six macros - Frequency, Feedback, Mix,
   Tone, Trim, Glide - six patches, `capabilities = ()`, and zero latency at
-  every setting and every rate. **Its portability tier is `audioif`**
+  every setting and every rate. **Its portability tier is `audiodsp`**
   (`audioecho`, `audiobiquad`); there is no honest stock fallback, because
   even a 512-byte buffer floors the comb at 187.5 Hz.
   - Trim is **input** headroom, not make-up, and it runs to -18 dB: a comb's
@@ -1457,7 +1467,7 @@ there, and are recorded in its changelog.
   which takes the idle reconstruction from 0.015 dB to **0.0000 dB** from
   100 Hz to 12 kHz and takes a low band's held DC to **0 LSB** at 60, 80, 120,
   400 and 3000 Hz - on the Q12 ported biquad the same 60 Hz section holds
-  2 LSB for ever, which is audioif#23. The Splitter is fed through a
+  2 LSB for ever, which is audiodsp#23. The Splitter is fed through a
   **block-sized guard**, so an impulse inside a 40000-frame source no longer
   vanishes (measured: guarded peak 20000, unguarded peak 0), and renders are
   byte-identical at 256, 8192, 16384, 20000 and 32768 frames. And the class
@@ -1505,7 +1515,7 @@ there, and are recorded in its changelog.
 ## v0.2.0 (2026-09-03)
 
 The first release from this repository. These packages continue a version
-history begun in audioif, which published them up to 0.1.1 — that is why
+history begun in audiodsp, which published them up to 0.1.1 — that is why
 the first release from this repository is 0.2.0.
 
 ### Added
@@ -1515,11 +1525,11 @@ the first release from this repository is 0.2.0.
   (`prepare-release.yml`, `tag-release.yml`, `publish-release-packages.yml`),
   with `project.urls` pointing here. The two MIP entries ride on one call
   (`mip-profile: audioinstruments,audioeffects`).
-- Seeded from audioif at `v0.1.1` (`eefc673`) with the components' own commit
+- Seeded from audiodsp at `v0.1.1` (`eefc673`) with the components' own commit
   history preserved: `lib/audioinstruments/`, `lib/audioeffects/`, their
   tests, the two validators, the component API and metadata documents, and
   the instrument parity harness with its goldens.
-- `AUDIOIF_PIN`, naming the audioif release every gate runs against.
+- `AUDIODSP_PIN`, naming the audiodsp release every gate runs against.
 
 ### Changed
 
@@ -1527,10 +1537,10 @@ the first release from this repository is 0.2.0.
   `drumtraks`, `linndrum`, `simmons_sdsv`, `sp1200`, `tr606`, `tr707`,
   `tr808`, `tr909` — rebuilt as fixed circuits against named references, each
   with a dossier, and blessed at the phase batch listen on 2026-09-02. They
-  sound different from audioif's v0.1.1 copies on purpose: the cr78 snare had
+  sound different from audiodsp's v0.1.1 copies on purpose: the cr78 snare had
   no audible backbeat, the tr808 hats were filtered into near-silence and its
   cymbal was all sizzle and no clang. `docs/phase1-closeout.md` records what
   was and was not established.
-- `pydevices-audioif>=0.1.1` is a real dependency floor in both
+- `pydevices-audiodsp>=0.1.1` is a real dependency floor in both
   `pyproject.toml`s (it was unbounded). The gates still run against the exact
-  commit in `AUDIOIF_PIN`, which may sit ahead of the floor.
+  commit in `AUDIODSP_PIN`, which may sit ahead of the floor.

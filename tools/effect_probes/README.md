@@ -21,7 +21,7 @@ or L−R is not silent at width zero and a correct endpoint reads as broken.
 the length in seconds, the measured peak and RMS in dBFS, the byte count,
 and the **FNV-1a digest of the PCM bytes** (header excluded — the same
 `checksum()` `tools/render_effect.py` uses, which is
-`audioif/tests/parity/effects_component_probe.py:15` unchanged). It also
+`audiodsp/tests/parity/effects_component_probe.py:15` unchanged). It also
 records what each probe *is*: the step table of `tones_step` and
 `staircase`, the segment plan of `dc_step`, the burst starts of
 `burst_train`, the PRNG and seed of `noise_det`, the achieved level of

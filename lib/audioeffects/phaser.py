@@ -31,7 +31,7 @@ at Drive 0. The floor's 0.5→0.7 step also deepens at 22.05 kHz with Drive 0
 
 Patch 8 is `Phaser - lean`: Drive 0, AllPass only.
 
-**Portability tier: audioif** (`REQUIRES = ("audiobiquad", "audioshaper")`).
+**Portability tier: audiodsp** (`REQUIRES = ("audiobiquad", "audioshaper")`).
 The ported `audiofilters.Phaser` holds a DC residue after silence and will
 not take feedback 0 (dossier B.1, F.1, F.4). On a stock CircuitPython board
 this module imports and construction raises `ImportError`.
@@ -277,13 +277,13 @@ class Phaser(_component.Component):
     CATEGORIES = ('Modulation',)
     VERSION = '0.0.2'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiobiquad", "audioshaper")
 
     CAPABILITIES = ("tempo_sync",)
     LATENCY_SAMPLES = 0
     #: Worst-case first-order all-pass flush at the coefficient cap
-    #: (`AUDIOIF_FILTER_F32_MAX_ALLPASS_C`) is ~550_000 samples in the C
+    #: (`AUDIODSP_FILTER_F32_MAX_ALLPASS_C`) is ~550_000 samples in the C
     #: comment; musical settings die much sooner. Ceiling, next 2048.
     TAIL_SAMPLES = 552960
 

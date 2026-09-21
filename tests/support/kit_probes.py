@@ -164,7 +164,7 @@ def burst_silence(hz=1000.0, on_ms=200.0, total_s=1.0, dbfs=-6.0,
 
 def dc_step(level=0.5, hold_s=0.5, total_s=1.5, rate=48000, channels=2):
     """+-level FS held, then removed while the source still supplies
-    frames - the audioif#23 shape."""
+    frames - the audiodsp#23 shape."""
     held = int(rate * hold_s)
     frames = int(rate * total_s)
     value = int(round(level * 32767))

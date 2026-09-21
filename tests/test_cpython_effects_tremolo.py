@@ -217,7 +217,7 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(cls.CAPABILITIES, ("tempo_sync",))
         self.assertEqual(cls.LATENCY_SAMPLES, 0)
         self.assertEqual(cls.TAIL_SAMPLES, 0)
-        self.assertEqual(cls.TIER, _component.AUDIOIF)
+        self.assertEqual(cls.TIER, _component.AUDIODSP)
         self.assertEqual(cls.REQUIRES, ("audiomath",))
         effect = build()
         self.assertEqual(effect.latency_samples, 0)

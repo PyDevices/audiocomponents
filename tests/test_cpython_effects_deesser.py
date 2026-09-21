@@ -255,7 +255,7 @@ def settled_change(values, wet, frames, hz, rate):
 
 
 class ThroughTheDryVoice(deesser.DeEsser):
-    """The wiring this class shipped with before audioif#95: Range 0 routed
+    """The wiring this class shipped with before audiodsp#95: Range 0 routed
     through the output mixer's dry voice at level 1.0 instead of handing the
     borrowed source back. Nothing else moves - the levels are the same
     numbers - so the only difference in the render is the mixer's own
@@ -290,7 +290,7 @@ def fine_ramp_fs(frames, channels=2):
     sawtooth climbing 64 counts a frame: the only samples it ever puts at or
     above 32736 are the rails themselves, and a one-LSB *lift* clamps there.
     That probe can see a dry path a hair light (32767/32768) and cannot see
-    one a hair heavy (32768/32767), which is what audioif#95 is.
+    one a hair heavy (32768/32767), which is what audiodsp#95 is.
     """
     values = array.array("h")
     last = float(frames - 1)
@@ -823,7 +823,7 @@ class Tier2(unittest.TestCase):
         The cause is worth the paragraph. With `relative_threshold` on, the
         gain computer subtracts a full-band reference that is a **rectified
         peak follower whatever `detector` says** - `fabsf(sense)`,
-        `audioif_dynamics.c:594-600` - so `detector="rms"` governs only the
+        `audiodsp_dynamics.c:594-600` - so `detector="rms"` governs only the
         band level. A matched-RMS sine and square therefore cannot come out
         equal: their peaks differ by 3 dB and the reference is a peak.
 
@@ -1198,7 +1198,7 @@ class PlantedFaults(unittest.TestCase):
         # The fault: the dry voice a hair under unity - the 32767/32768 the
         # kit spec names, which `ramp_fs` was built to expose. It has to put
         # the mixer back in the path to be planted at all, because Range 0
-        # no longer runs through one (audioif#95).
+        # no longer runs through one (audiodsp#95).
         effect2, _holder2 = build(rate=rate, values=probe("ramp_fs", rate),
                                   cls=ThroughTheDryVoice, range_db=0.0)
         effect2._out.voice[0].level = 32767.0 / 32768.0
@@ -1210,7 +1210,7 @@ class PlantedFaults(unittest.TestCase):
         effect2.deinit()
 
     def test_wire_goes_red_on_a_dry_voice_at_unity(self):
-        """audioif#95's fault, and the probe the row above cannot use.
+        """audiodsp#95's fault, and the probe the row above cannot use.
 
         A mixer voice at level 1.0 is not unity - upstream's Q15 level is
         `1.0 * 32768` and the kernel divides by 32767 - so the dry voice at
@@ -1247,7 +1247,7 @@ class PlantedFaults(unittest.TestCase):
         self.assertEqual(M.tail(clean, burst_end_frame=burst_end)["red"], [],
                          "the control failed")
         # The fault: one LSB of DC held in the settled state, which is the
-        # audioif#23 class of defect this invariant exists for.
+        # audiodsp#23 class of defect this invariant exists for.
         faulted_pcm = bytearray(clean.pcm)
         offset = (frames - 100) * 4
         faulted_pcm[offset] = 1

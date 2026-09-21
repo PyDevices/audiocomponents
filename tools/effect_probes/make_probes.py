@@ -295,7 +295,7 @@ def build_burst_silence(rate):
 def build_dc_step(rate):
     """+-0.5 FS held 5 s, removed while the source still supplies frames.
 
-    The audioif#23 shape: a node that holds +1 LSB of DC after the offset is
+    The audiodsp#23 shape: a node that holds +1 LSB of DC after the offset is
     taken away has no last non-zero sample, and TAIL reads the residual both
     while the step is present and after it is gone.
     """

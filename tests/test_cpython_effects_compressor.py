@@ -47,7 +47,7 @@ MIX = 13
 
 
 class ThroughTheDryVoice(ev.Compressor):
-    """The wiring this class shipped with before audioif#95: Mix 0 routed
+    """The wiring this class shipped with before audiodsp#95: Mix 0 routed
     through the mixer's dry voice at level 1.0 instead of handing back the
     borrowed source. Nothing else moves - the levels are the same numbers -
     so the only difference in the render is the mixer's own `level / 32767`
@@ -67,7 +67,7 @@ class ThroughTheDryVoice(ev.Compressor):
 class MixZeroIsAWireTest(unittest.TestCase):
     """WIRE, on the only probe that can see the fault it is about.
 
-    This class had no byte-compare row at all, and audioif#95 is why one is
+    This class had no byte-compare row at all, and audiodsp#95 is why one is
     needed: a mixer voice at level 1.0 is not unity - upstream's Q15 level
     is `1.0 * 32768` and the kernel divides by 32767 - so the dry voice at
     unity came out one LSB high at every sample from 32736 up. Three of

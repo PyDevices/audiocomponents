@@ -111,7 +111,7 @@ class SurfaceTests(unittest.TestCase):
         self.assertEqual(cls.CAPABILITIES, ())
         self.assertEqual(cls.LATENCY_SAMPLES, 0)
         self.assertEqual(cls.TAIL_SAMPLES, 0)
-        self.assertEqual(cls.TIER, "audioif")
+        self.assertEqual(cls.TIER, "audiodsp")
         self.assertEqual(cls.REQUIRES, ("audiodynamics",))
 
     def test_the_class_reads_no_transport(self):

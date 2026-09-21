@@ -60,16 +60,16 @@ UNITY = {"low_ratio": 1.0, "mid_ratio": 1.0, "high_ratio": 1.0, "mix": 1.0}
 class NoGuard(CLASS):
     """The Splitter fed straight off the source.
 
-    This *was* M5's fault. It is not one any more: at audioif `977ef26` a
+    This *was* M5's fault. It is not one any more: at audiodsp `977ef26` a
     `Splitter` takes a call bigger than its ring in pieces instead of
-    keeping only the tail (audioif#87), so the head it used to drop is
+    keeping only the tail (audiodsp#87), so the head it used to drop is
     delivered and the guard has nothing left to guard. Measured on this
     floor, `NoGuard` and the shipped class render the same bytes at every
     source block in the ladder - digest 3824975193 at 256, 8192, 16384,
     20000 and 32768 frames - and burst material survives unguarded.
 
     The fixture stays because that equality is worth asserting: it is the
-    regression test for audioif#87, and it is what says the guard may now
+    regression test for audiodsp#87, and it is what says the guard may now
     be dropped. M5's live fault moved to `OldRingSource` below.
     """
 
@@ -79,7 +79,7 @@ class NoGuard(CLASS):
 
 
 class ThroughTheDryVoice(CLASS):
-    """The wiring this class shipped with before audioif#95: Mix 0 routed
+    """The wiring this class shipped with before audiodsp#95: Mix 0 routed
     through the Mixer's dry voice at level 1.0 rather than handing back the
     head.
 
@@ -123,7 +123,7 @@ class NoLevelGates(CLASS):
 class OldRingSource:
     """M5's fault at this floor: a source that keeps only its last ring.
 
-    The `Splitter` before audioif#87, in Python, because the node no longer
+    The `Splitter` before audiodsp#87, in Python, because the node no longer
     does it. A call bigger than 8192 frames arrives with its head gone, so
     the block ladder reads a different render at every block size and burst
     material that ends inside the dropped head disappears entirely.
@@ -417,7 +417,7 @@ class TierOne(unittest.TestCase):
         """WIRE on a full-scale ramp, which is the only probe that can see
         the fault it is about.
 
-        A mixer voice at level 1.0 scales by 32768/32767 (audioif#95), so
+        A mixer voice at level 1.0 scales by 32768/32767 (audiodsp#95), so
         the dry tap at unity lifted every sample from 32736 up by one LSB -
         15 of 32768 here, all in the right channel, because a stereo voice
         at pan 0 gets 32767 on the left and 32768 on the right. Mono gets
@@ -558,7 +558,7 @@ class TierOne(unittest.TestCase):
     def test_the_class_renders_again_after_reset(self):
         # The row that catches a permanent silence. `audiomixer`'s reset
         # STOPS its voices on the ported CircuitPython node and rewinds them
-        # on audioif's, and a stopped voice never plays again -- so "silent
+        # on audiodsp's, and a stopped voice never plays again -- so "silent
         # after reset" is both what a clean reset looks like and what a dead
         # class looks like. The class re-plays its voices in `_reset_mixer`
         # so the two builds behave alike; this asserts the sound comes back.
@@ -793,10 +793,10 @@ class Traits(unittest.TestCase):
         return digests
 
     def test_m5_goes_red_on_a_source_that_keeps_only_its_ring(self):
-        """M5's fault, rebuilt for audioif `977ef26`.
+        """M5's fault, rebuilt for audiodsp `977ef26`.
 
         The old fault was `NoGuard`, and it cannot fire any more: the
-        Splitter takes an oversized call in pieces (audioif#87), so the
+        Splitter takes an oversized call in pieces (audiodsp#87), so the
         class renders the same bytes with the guard and without it. The
         fault that still fires is a source that does what the Splitter used
         to - hand back only its last 8192 frames.
@@ -805,7 +805,7 @@ class Traits(unittest.TestCase):
         self.assertGreater(len(self._ladder(NoGuard, old_ring=True)), 1)
 
     def test_m5_the_guard_no_longer_changes_the_render(self):
-        """The regression test for audioif#87, and what says the guard may go.
+        """The regression test for audiodsp#87, and what says the guard may go.
 
         `_build_input`'s `Filter` was there to stop the Splitter dropping
         the head of an oversized block. At this floor it is a copy that

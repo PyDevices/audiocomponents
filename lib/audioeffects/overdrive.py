@@ -25,7 +25,7 @@ multiplies that into the shaper's `post_gain`. Level and curve are exactly
 what they were, and the table keeps all the resolution it has - it used to
 reach only 35 % of int16 (audiocomponents#77).
 
-**Portability: audioif.** `audioshaper.Waveshaper`, `audiobiquad` for the
+**Portability: audiodsp.** `audioshaper.Waveshaper`, `audiobiquad` for the
 100 Hz tone points Q15 cannot carry, `audioroute` for the dry split. It
 will not import on a stock CircuitPython board.
 
@@ -165,9 +165,9 @@ sine unless named):
   cost (+0.799 ms a block on the P4, +1.408 on the S3, which projects the
   S3 to rt 1.00) and that projection **has no board behind it** - a board
   run at x8 is what would settle it. At **22.05 kHz** x8 reads -46.608
-  and x16 does not exist: `AUDIOIF_SHAPER_MAX_OVERSAMPLE` is 8
-  (`audioif/src/shared/audioif_shaper.h:72`), which vision section 6
-  routes to a node ask, and it is filed as **audioif#104**.
+  and x16 does not exist: `AUDIODSP_SHAPER_MAX_OVERSAMPLE` is 8
+  (`audiodsp/src/shared/audiodsp_shaper.h:72`), which vision section 6
+  routes to a node ask, and it is filed as **audiodsp#104**.
 - T7's **3700 Hz** diagnostic at full Drive does **not** hold, and the
   figure the pack published for it was a **mixed** reading. On the wet
   branch, with the dry voice muted and a whole number of periods in the
@@ -196,7 +196,7 @@ import audiomixer
 from . import _component
 
 try:
-    from audioif_util import float32 as _f32
+    from audiodsp_util import float32 as _f32
 except ImportError:                                  # pragma: no cover
     def _f32(value):
         return value
@@ -439,7 +439,7 @@ def shipped_oversample(sample_rate):
     the wet branch, **-41.732 dB** at the worst macro corner. (The -56.9 dB
     the second fix round quoted here was a *mixed* reading, with the dry
     note diluting the floor by about 6 dB.) The ceiling is the node's:
-    `AUDIOIF_SHAPER_MAX_OVERSAMPLE` is 8, and audioif#104 is the ask.
+    `AUDIODSP_SHAPER_MAX_OVERSAMPLE` is 8, and audiodsp#104 is the ask.
     The floor is a target, not a guarantee, and the class's bars are
     `ALIAS_DEFAULT_DB` / `ALIAS_PATCH_DB` / `ALIAS_SURFACE_DB` /
     `ALIAS_OVERSAMPLE_COST_DB`.
@@ -489,7 +489,7 @@ class Overdrive(_component.Component):
     CATEGORIES = ('Distortion',)
     VERSION = '0.0.2'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audioshaper", "audiobiquad", "audioroute")
 
     CAPABILITIES = ()

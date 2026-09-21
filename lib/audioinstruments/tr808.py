@@ -268,7 +268,7 @@ def create(sample_rate, channel_count=2, transport=None):
     # full-kit hit. The kit resides at 13 notes, deliberately one below
     # that cap: the CPython extension additionally mishandles an at-cap
     # re-press (it evicts a bystander and leaks a slot - a core
-    # divergence from the oracle, filed as audioif#8), and at 13 every
+    # divergence from the oracle, filed as audiodsp#8), and at 13 every
     # retrigger stays below the cap on every runtime. The shared
     # circuits are the hardware's own sharing: tom/conga, claves/
     # rimshot, maracas/clap, and open/closed hat each ride one circuit

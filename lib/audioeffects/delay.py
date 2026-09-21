@@ -9,7 +9,7 @@ built that way. All three are named after something that happens *inside* the
 feedback loop - a filter that takes a little more off each pass, a soft-clip
 that rounds it, a modulation that bends it, a cross-feed that sends it to the
 other speaker - so they run on `audioecho.FeedbackDelay`, which puts those
-there. See audioif's docs/upstream-diff.md.
+there. See audiodsp's docs/upstream-diff.md.
 
 The three coloured ones carry patches; see this package's README.
 """

@@ -59,7 +59,7 @@ ENVELOPE, IFREQ, TAPS, DECAY, STEREO, RESIDUAL, TRUEPEAK, NULL, COST,
 ROUNDTRIP - are not in this file at all.
 
 Reused rather than rebuilt (spec section 2):
-`fnv1a` is `audioif/tests/parity/effects_component_probe.py:15` unchanged;
+`fnv1a` is `audiodsp/tests/parity/effects_component_probe.py:15` unchanged;
 the tau -> T60 least-squares log-envelope fit and the WAV loader are
 `tools/measure_hits.py`'s; the analysis primitives are the ones
 `tests/test_cpython_effects_library.py` already had, rate-parameterised here
@@ -81,7 +81,7 @@ import numpy as np
 def fnv1a(data):
     """FNV-1a over the bytes.
 
-    `audioif/tests/parity/effects_component_probe.py:15`, unchanged and for
+    `audiodsp/tests/parity/effects_component_probe.py:15`, unchanged and for
     the reason stated there: `sum(data)` is a sum over UNSIGNED BYTES, so it
     is invariant under any set of byte deltas that cancel - a +256 LSB error
     paid for by a single -1 LSB error moves it by exactly zero. DIGEST's
@@ -623,7 +623,7 @@ def tail(burst_render, *, burst_end_frame, declared_tail_samples=None,
          residual_tolerance_lsb=0, settle_frames=None, dc_render=None,
          dc_removed_frame=None, dc_settle_frames=None):
     """TAIL - silence in, silence out; decay to *exact* zero; the held-DC
-    class of defect (audioif#23).
+    class of defect (audiodsp#23).
 
     This is one of the two measurements whose subject is an absence, so it
     does not call `require_signal` on the whole render: it requires signal
@@ -907,9 +907,9 @@ def state(effect, *, pull, swap, probe_source, silent_source, blocks=64,
     # two causes is the class's. A node whose type HAS a deinit() on this
     # interpreter and was not released is a leak the class could have
     # prevented - that is red. A node whose type has none cannot be released
-    # by anybody here: it is audioif's palette gap (audioif#58, #60, #63),
+    # by anybody here: it is audiodsp's palette gap (audiodsp#58, #60, #63),
     # which the class carries rather than causes. Reporting them as one
-    # number made every audioif-tier class read the same as a real leak, and
+    # number made every audiodsp-tier class read the same as a real leak, and
     # ruling the whole row `partial` hid genuine leaks behind the gap.
     leaked = [name for name, node in live
               if getattr(node, "deinit", None) is not None]
@@ -2928,8 +2928,8 @@ def _grid(grids):
 # 70 dB of measurement floor off an instrument like that and blamed the
 # unread tap.
 #
-# THE UNREAD TAP IS NOT WHAT COSTS THE 70 dB. At audioif `3388df4`, which
-# carries audioif#87, a tap nobody reads cannot corrupt the tap somebody
+# THE UNREAD TAP IS NOT WHAT COSTS THE 70 dB. At audiodsp `3388df4`, which
+# carries audiodsp#87, a tap nobody reads cannot corrupt the tap somebody
 # does: a counting ramp through a `Splitter` with one tap pulled comes back
 # seamless at every source block size from 256 frames to 40000 - nearly five
 # rings - on CPython, MicroPython and CircuitPython alike, and draining the
@@ -3254,7 +3254,7 @@ def mute_dry(effect, *, voices=None):
 
     **A dry leg that is not a mixer voice at all.** `audioshaper.Waveshaper`
     blends inside the node - `out = (1-mix)*source + mix*post_gain*shaped`
-    (`audioif/src/shared/audioif_shaper.c:253`) - and the node is
+    (`audiodsp/src/shared/audiodsp_shaper.c:253`) - and the node is
     write-only, so there is no voice to mute and nothing to read back.
     `Fuzz`'s germanium graph is that shape: its dry copy never reaches a
     `Mixer`. For a class like that the dry is muted through the class's own

@@ -54,7 +54,7 @@ out loud what a kick is.
 
 ## The planted faults
 
-`docs/correctness-standard.md` in audioif: "a trait without a planted fault is
+`docs/correctness-standard.md` in audiodsp: "a trait without a planted fault is
 not a check; it is a hope." Each of these was made and reverted:
 
 | Fault | Breaks | What was measured |

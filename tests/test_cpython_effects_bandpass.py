@@ -559,7 +559,7 @@ class TierTwo(unittest.TestCase):
 
     # -- T1: 0 dB peak, at every Q ------------------------------------
     #
-    # DISCONFIRMED at one cell. Until audioif#64 the kernel's float32
+    # DISCONFIRMED at one cell. Until audiodsp#64 the kernel's float32
     # direct-form I recursion missed the bar in 11 of 56 cells below 100 Hz
     # at Q >= 4, worst -0.50 dB at the macro stops. Its transposed direct
     # form II, at the cebb7ca floor, leaves 1 of 56: -0.091 dB at f0 31.5 Hz,
@@ -602,7 +602,7 @@ class TierTwo(unittest.TestCase):
     def test_t1_holds_at_the_two_macro_stops(self):
         """This test used to hold the disconfirmation at the stops - worst
         -0.50 dB at Frequency 0 against Width 127 - and said it would be the
-        one to announce audioif#64. It did: at the cebb7ca floor the kit's
+        one to announce audiodsp#64. It did: at the cebb7ca floor the kit's
         sweep over the spans T1 quantifies over passes, stops included.
         """
         effect = build(frequency=1000.0, q=0.707)

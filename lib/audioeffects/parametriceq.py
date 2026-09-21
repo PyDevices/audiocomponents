@@ -15,14 +15,14 @@ separate shelf on its own frequency selector. The three bells in between are
 an API 550A: turn one up and the skirt stays where it is while the curve
 narrows, and its cut is the exact mirror of its boost.
 
-**Portability tier: audioif** (`REQUIRES = ("audiobiquad",)`). Every section
+**Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`). Every section
 is an `audiobiquad.Biquad` - float state, and a tail that reaches exact
 zero. The ported `synthio.Biquad` cannot: a 20 Hz low shelf at +10 dB parks
-on 32 LSB of DC and holds it for ever (audioif#23, dossier appendix B), and
+on 32 LSB of DC and holds it for ever (audiodsp#23, dossier appendix B), and
 this class's own useful settings sit right in that band.
 
 **Headroom, and what it costs the traits.** Every section writes int16 and
-clips there (`audioif_filter_f32.c:43-51`), so a boost is delivered whole
+clips there (`audiodsp_filter_f32.c:43-51`), so a boost is delivered whole
 only while the signal has room for it. Measured at 1 kHz through the middle
 bell at +16 dB, RMS of the rendered tone: **+16.00 dB at -20 dBFS, +13.77 dB
 at -12 dBFS, +8.37 dB at -6 dBFS**, while the matching -16 dB cut reads
@@ -89,7 +89,7 @@ from . import _component
 
 #: A section whose gain is under this is built as a wire: `mix = 0` makes
 #: the kernel write `to_s16(x0)`, which is the input sample unchanged
-#: (`audioif/src/shared/audioif_filter_f32.c:239`). Two reasons for the
+#: (`audiodsp/src/shared/audiodsp_filter_f32.c:239`). Two reasons for the
 #: number. A quarter of a decibel is inaudible and a section still costs a
 #: pass. And a knob passes through the codes either side of a BIPOLAR
 #: macro's centre detent: 65 puts a +/-16 dB bell at 0.127 dB. (The detent
@@ -118,7 +118,7 @@ ANCHOR_Q = 2.0
 #: `Q = sqrt(2^N)/(2^N - 1)`, which is 1.4142 at N = 1.
 CONSTANT_Q = 1.4142135623730951
 
-#: `audiobiquad`'s own clamp (`AUDIOIF_FILTER_F32_MIN_Q`/`MAX_Q`), mirrored
+#: `audiobiquad`'s own clamp (`AUDIODSP_FILTER_F32_MIN_Q`/`MAX_Q`), mirrored
 #: because the module does not export it.
 MIN_Q = 0.05
 MAX_Q = 60.0
@@ -196,7 +196,7 @@ def _nearest(value, steps):
 
 class ParametricEQ(_component.Component):
     """Pultec EQP-1A shelves and a resonant top, API 550A proportional-Q
-    bells in between. Eight `audiobiquad` sections; audioif tier; zero
+    bells in between. Eight `audiobiquad` sections; audiodsp tier; zero
     latency."""
 
     NAME = 'ParametricEQ'
@@ -204,7 +204,7 @@ class ParametricEQ(_component.Component):
     CATEGORIES = ('EQ',)
     VERSION = '0.0.2'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiobiquad",)
 
     CAPABILITIES = ()
@@ -281,7 +281,7 @@ class ParametricEQ(_component.Component):
         The two attenuators lead, the three bells sit in the middle and the
         two boosts and the output trim close, because the chain is not
         linear: each section writes int16 and clips there
-        (`audioif_filter_f32.c:43-51`), so a boost ahead of a cut spends
+        (`audiodsp_filter_f32.c:43-51`), so a boost ahead of a cut spends
         headroom the cut then throws away. The class states the headroom it
         needs rather than hiding it: at full low boost a full-scale source
         clips in section 5, exactly as it would in the make-up amplifier of
