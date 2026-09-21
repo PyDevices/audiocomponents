@@ -124,6 +124,53 @@ def _get_output(effect):
     return getattr(effect, "_port", None)
 
 
+#: How far `_would_loop` looks before giving up. It never gets this far on a
+#: board: the first node it asks has no `__dict__`, so the walk stops at one.
+_LOOP_BUDGET = 32
+
+
+def _would_loop(port, node):
+    """Whether pointing `port` at `node` would make the port its own source.
+
+    `self._output = Wrap(self._output)` -- appending one more stage to the
+    end of the graph -- was a legal construction before the port and is a
+    loop after it: the wrapper takes the WIRE as its source, and the wire is
+    then pointed at the wrapper. Nothing catches it downstream. A pull walks
+    the two of them until the interpreter runs out of stack, which on
+    CPython is a `RecursionError` out of the render and on a board is the
+    pump thread wedged with no exception anyone can see.
+
+    So it is refused here, on the interpreter thread, where raising is free.
+    A class that means to append a stage wraps `port_target(self._output)` --
+    the node at the end of the graph -- and not `self._output` itself, and
+    that is what the API contract says.
+
+    The walk reads `__dict__`, so it sees the CPython twins in full and
+    finds nothing on a native build, where a node holds its source in C.
+    That is the same honest degradation the measurement kit's graph walks
+    have, and it costs a board one failed attribute lookup per re-point.
+    """
+    pending = [node]
+    seen = 0
+    while pending and seen < _LOOP_BUDGET:
+        current = pending.pop()
+        if current is port:
+            return True
+        seen += 1
+        try:
+            held = current.__dict__
+        except AttributeError:           # a native node keeps no __dict__
+            continue
+        for value in held.values():
+            if hasattr(value, "_get_buffer"):
+                pending.append(value)
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    if hasattr(item, "_get_buffer"):
+                        pending.append(item)
+    return False
+
+
 def _set_output(effect, node):
     if node is None:
         effect._port = None
@@ -137,6 +184,14 @@ def _set_output(effect, node):
     if PORT is None:
         effect._port = node
         return
+    if _would_loop(port, node):
+        raise ValueError(
+            "%s's new output is built on its own output port, so playing it "
+            "would make the port its own source and a pull would never "
+            "return. To append a node to the end of the graph, wrap "
+            "port_target(self._output) -- the node the port is playing -- "
+            "rather than self._output, which is the wire."
+            % type(effect).__name__)
     port.play(node)
 
 

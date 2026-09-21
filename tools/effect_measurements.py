@@ -417,6 +417,33 @@ def onset(x, *, threshold_ratio=1e-3, floor_lsb=2.0):
 #: The register's own bookkeeping, which holds no nodes to be named after.
 _REGISTER_ATTRIBUTES = ("_nodes", "_resets", "_deinits")
 
+#: What a component's output is a wire ONTO. Imported rather than
+#: duck-typed, because `_component` is the one place that decides what a
+#: port is and a second opinion here would drift. `port_target` is re-exported
+#: on purpose: a test that means "the node the class is playing" says
+#: `kit.port_target(effect.output)`.
+try:
+    from audioeffects._component import PORT as _PORT, port_target
+except Exception:                       # pragma: no cover - kit used bare
+    _PORT = None
+
+    def port_target(output):
+        return output
+
+
+def _wire_of(effect):
+    """The `audioroute.Port` a component ends in, or `None`.
+
+    `None` on an interpreter without `audioroute` as well, where `_port`
+    holds the tail node itself and there is no wire to see through - the
+    walks below then behave exactly as they did before the port existed,
+    which is the point.
+    """
+    if _PORT is None:
+        return None
+    port = getattr(effect, "_port", None)
+    return port if isinstance(port, _PORT) else None
+
 
 def _scan_for_nodes(effect, include_private=False):
     """Nodes reachable through the instance's attributes, by attribute name.
@@ -426,13 +453,26 @@ def _scan_for_nodes(effect, include_private=False):
     through a list or tuple attribute. The class's source is excluded: it is
     the caller's node, not the class's, and deinitialising it is not this
     class's job.
+
+    **The component's port is excluded for the same reason, from the other
+    end.** It is a wire, not a node the class built: it is not in the
+    register, `reset()` forwards through it and `deinit()` releases it
+    first, and a walk that counted it reported every Component as holding
+    one node it never registered - four nodes where the class built three.
+    `_output` is read through `port_target`, so the tail the walk names is
+    the node the class assigned, exactly as before the port.
     """
     found = []
     source = getattr(effect, "_source", None)
-    output = getattr(effect, "_output", None)
+    # Through the wire, not at it. `_output` is the port; the node the class
+    # built and registered is what the port is playing, and that is what
+    # every caller of this walk is asking after.
+    port = _wire_of(effect)
+    output = port_target(getattr(effect, "_output", None))
 
     def looks_like_a_node(value):
-        return (hasattr(value, "_get_buffer") and value is not source)
+        return (hasattr(value, "_get_buffer") and value is not source
+                and value is not port)
 
     for name, value in vars(effect).items():
         if name.startswith("_"):
@@ -3273,7 +3313,13 @@ def mute_dry(effect, *, voices=None):
     # either case would turn a refusal into a wet-branch reading of the
     # probe itself, which is how a null build goes green on a measurement
     # that cannot fail.
-    if "Mix" in labels and getattr(effect, "_source", None) is not output:
+    # `port_target`, because a port's answer to "are you the borrowed
+    # source" is always no - it is a wire, never the source. Asked of the
+    # wire this clause went true on a class built as a wire, and the Mix
+    # push below turned a refusal into a wet reading of the probe itself:
+    # exactly the null build going green that the comment above forbids.
+    if "Mix" in labels and getattr(effect, "_source", None) is not \
+            port_target(output):
         require_whole_graph(output, effect, what="mute_dry of %s" % name)
         index = labels.index("Mix")
         before = effect.get_macro(index)
