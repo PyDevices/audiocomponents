@@ -1212,9 +1212,9 @@ there, and are recorded in its changelog.
   palette cannot reach are stated in its docstring rather than hidden: the
   release curves where the 902's is a straight line in dB, Range is an
   asymptote rather than a clamp, and the program-dependent attack does not
-  reach the 902's ratio. Evidence:
-  [`docs/effects/DeEsser.md`](docs/effects/DeEsser.md) and
-  [`docs/effects/DeEsser-evidence.md`](docs/effects/DeEsser-evidence.md).
+  reach the 902's ratio. Evidence: `workspace
+  docs/effects-internal/dossiers/DeEsser.md` and
+  `workspace docs/effects-internal/evidence/DeEsser-evidence.md`.
 ### Added
 
 - `TransientShaper` rebuilt from scratch on the Phase 2 construction module
