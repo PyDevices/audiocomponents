@@ -2,14 +2,14 @@
 
 `audioinstruments` (53 instruments) and `audioeffects` (45 effect classes,
 racks included): the pure-Python audio component tier that PyDevices owns,
-built on [audioif](https://github.com/PyDevices/audioif)'s nodes. **This
+built on [audiodsp](https://github.com/PyDevices/audiodsp)'s nodes. **This
 repository publishes both** — `pydevices-audioinstruments` and
 `pydevices-audioeffects` on TestPyPI, and the `audioinstruments` and
-`audioeffects` entries in the MIP index. audioif publishes the core only.
+`audioeffects` entries in the MIP index. audiodsp publishes the core only.
 
 ## Read this before you change anything
 
-This is the canonical home of both packages and the one that ships. audioif
+This is the canonical home of both packages and the one that ships. audiodsp
 still carries a pre-rewrite copy of `lib/audioinstruments/` and
 `lib/audioeffects/`; that copy is retired. Nothing ships from it, nothing is
 gated against it, and no fix belongs in it.
@@ -17,10 +17,10 @@ gated against it, and no fix belongs in it.
 Three rules follow from that, and they are the whole reason this file leads
 with them:
 
-1. **A bug fix belongs here.** Fixing it in audioif's copy fixes it for
+1. **A bug fix belongs here.** Fixing it in audiodsp's copy fixes it for
    nobody.
-2. **Accuracy work belongs here.** Do not push it into audioif's copy.
-3. **Leave audioif's copies to Brad.** Deleting them, and replaying anything
+2. **Accuracy work belongs here.** Do not push it into audiodsp's copy.
+3. **Leave audiodsp's copies to Brad.** Deleting them, and replaying anything
    from them into this copy, are his decisions, taken with a diff in front
    of him — tracked in
    [#2](https://github.com/PyDevices/audiocomponents/issues/2). Never
@@ -28,8 +28,8 @@ with them:
 
 ## The floor is pinned
 
-`AUDIOIF_PIN` names the exact audioif release every gate here runs against.
-It is the same discipline as audioif's own `CIRCUITPYTHON_ORACLE`, for the
+`AUDIODSP_PIN` names the exact audiodsp release every gate here runs against.
+It is the same discipline as audiodsp's own `CIRCUITPYTHON_ORACLE`, for the
 same reason: with a floating core underneath, a component failure is
 unattributable — you cannot tell a rewritten instrument from a moved node
 beneath it. Moving the pin is its own change, with the gates re-run, never a
@@ -41,8 +41,8 @@ side effect of other work.
   layout is load-bearing twice over: it is what makes each a standalone
   distribution, and the MIP publisher expects `<repo>/lib/<package>`.
   `pyproject.toml`'s `project.urls` point here, and its `dependencies` carry
-  the audioif floor, `pydevices-audioif>=<release>` — the newest audioif
-  *release*. That is not the pin: `AUDIOIF_PIN` may name a commit ahead of
+  the audiodsp floor, `pydevices-audiodsp>=<release>` — the newest audiodsp
+  *release*. That is not the pin: `AUDIODSP_PIN` may name a commit ahead of
   the floor, and the gates use the pin.
 - `docs/audio-component-api.md` — the runtime contract (construction,
   methods, properties). `docs/audio-components.md` — the static metadata
@@ -115,5 +115,5 @@ time, never an agent's.**
 
 ## What is not here
 
-- No C. The native nodes these components call live in audioif; if a fix needs
+- No C. The native nodes these components call live in audiodsp; if a fix needs
   to go below the Python, it goes there.

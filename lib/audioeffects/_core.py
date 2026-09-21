@@ -13,7 +13,7 @@ tail as ``.output``:
                                preset="hall", mix=0.3)
     audio_out.play(verb.output)
 
-The underlying audioif nodes are kept as attributes so applications can bind
+The underlying audiodsp nodes are kept as attributes so applications can bind
 parameters straight to them. Direct class construction remains supported for
 local code after `configure()`.
 
@@ -64,14 +64,14 @@ def static_transport():
 
 
 #: How many taps one `audioroute.Splitter` fans out to. The limit lives in
-#: the C (`AUDIOIF_SPLITTER_MAX_TAPS`, which raises "taps must be 1..4"),
+#: the C (`AUDIODSP_SPLITTER_MAX_TAPS`, which raises "taps must be 1..4"),
 #: and the native modules do not export it, so classes that build parallel
 #: branches count against this mirror rather than a literal 4 apiece.
 SPLITTER_TAPS = 4
 
 
 def pcm(buffer_size=2048):
-    """The keyword bundle every audioif node wants."""
+    """The keyword bundle every audiodsp node wants."""
     return {
         "sample_rate": SAMPLE_RATE,
         "channel_count": CHANNEL_COUNT,

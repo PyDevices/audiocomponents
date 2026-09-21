@@ -48,7 +48,7 @@ rate/6 → 13.50, rate/5 → 14.14, against T1's 12.3 ± 1.5 dB). At 48 and
 44.1 kHz rate/7 is above the macro's own 6 kHz top and never bites. **At
 22.05 kHz Tune tops out at 3150 Hz**, whatever the knob reads.
 
-**Portability: audioif.** `audioshaper.Waveshaper` at ×4, `audiobiquad`
+**Portability: audiodsp.** `audioshaper.Waveshaper` at ×4, `audiobiquad`
 for the high-pass, `audioroute.Splitter` for the dry copy, and
 `audiodynamics.Dynamics` **only on `transient`**. It will not import on a
 stock CircuitPython board.
@@ -77,7 +77,7 @@ five points on
 palette prices it 0.985, against **0.537 against 0.495 on the P4**: 27 %
 over on the S3 and 9 % on the P4. The suspect, unproven: the class handed
 back a **128-frame** block, and a `Dynamics` renders in 256-frame blocks by
-construction (`audioif_dynamics.h:56`, "the effects library's latency
+construction (`audiodsp_dynamics.h:56`, "the effects library's latency
 assumptions … are written around it"), so it sat in a graph shaped the
 wrong way for it. `MIXER_BUFFER_BYTES × channel_count` makes one pull one
 block, and it **moves no byte** — `59f2e64ed63c1362` at patch 0 and
@@ -97,7 +97,7 @@ alone or with something cheap.**
 
 (Setting `transient_fast_release_ms` still costs nothing — the four
 transient time constants are config fields whose defaults are the literals
-the node used before they were fields, `audioif_dynamics.c:48-53`.)
+the node used before they were fields, `audiodsp_dynamics.c:48-53`.)
 **No lean position.** `oversample=2` was documented as one until
 2026-09-17 on the strength of the two points that sentence named. Over
 T7's own grid ×2 is red at **12 of 48** readings, worst **−45.1 dB**
@@ -301,7 +301,7 @@ HARMONICS_SPAN_DB = 14.0
 #: 6 dB bar, with `classic` reading 0.00 dB as the control.
 #:
 #: `sustain_gain_db` cannot carry the emphasis on its own: it acts on the
-#: DECAY, not on the steady state (`audioif_dynamics.c:755-759` - the sign of
+#: DECAY, not on the steady state (`audiodsp_dynamics.c:755-759` - the sign of
 #: fast-minus-slow picks which gain applies), so at attack 0 dB the character
 #: is a wire on a sustained tone (0.00 dB of emphasis, measured). The decay
 #: time is not a trait: T5's tau clause is frozen as DISCONFIRMED, so what
@@ -309,7 +309,7 @@ HARMONICS_SPAN_DB = 14.0
 #:
 #: `transient_fast_release_ms` costs nothing: the four transient time
 #: constants are config fields whose defaults are the literals the node used
-#: before they were fields (`audioif_dynamics.c:48-53`), so a node that sets
+#: before they were fields (`audiodsp_dynamics.c:48-53`), so a node that sets
 #: one computes exactly what a node that sets none computes. The budget keeps
 #: the palette's bare `Dynamics` row.
 TRANSIENT_ATTACK_DB = 6.0
@@ -321,7 +321,7 @@ TRANSIENT_FAST_RELEASE_MS = 8.0
 #: back **128 stereo frames** and everything behind it was pulled TWICE per
 #: 256-frame block — including, on `transient`, an `audiodynamics.Dynamics`
 #: whose own output block is 256 frames by construction
-#: (`audioif_dynamics.h:56`, "the effects library's latency assumptions —
+#: (`audiodsp_dynamics.h:56`, "the effects library's latency assumptions —
 #: notably the Splitter ring's depth — are written around it"). The board's
 #: own rows are where the suspicion comes from: adding the `Dynamics` cost
 #: this class **0.537 ms on the P4 and 1.234 ms on the S3** where the
@@ -481,7 +481,7 @@ class Exciter(_component.Component):
     CATEGORIES = ('Distortion',)
     VERSION = '0.0.1'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audioshaper", "audiobiquad", "audioroute", "audiodynamics")
 
     CAPABILITIES = ()

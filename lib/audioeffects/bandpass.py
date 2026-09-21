@@ -9,11 +9,11 @@ Nyquist, and its peak is 0 dB **at every width**: narrowing the band changes
 what gets through, never how loud it is. That is the property that makes the
 width knob musical rather than a gain staircase.
 
-**Portability tier: audioif** (`REQUIRES = ("audiobiquad",)`), and the reason
+**Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`), and the reason
 is a defect, not a preference. On the ported `synthio.Biquad` the recursion
 keeps its output memory in Q12 sample units with no dither and no leak, so it
 lands on states that reproduce themselves: `BandPass(80 Hz, q=4)` there holds
--1 LSB of DC for ever after the music stops (audioif#23; the dossier's A3).
+-1 LSB of DC for ever after the music stops (audiodsp#23; the dossier's A3).
 `audiobiquad.Biquad` is the float-state answer Phase 1 landed for exactly
 that, and on it every setting this class offers settles to bit-exact zero
 (the dossier's A14). A stock CircuitPython board does not have the module and
@@ -54,7 +54,7 @@ decibel wherever it was checked.
 
 **The build's one - the 0 dB peak is not held at one low, narrow cell.** T1
 says the gain at f0 is 0.00 dB +- 0.05 at every width. Measured 2026-09-17 at
-the audioif cebb7ca floor over the whole `Frequency` x `Width` grid at four
+the audiodsp cebb7ca floor over the whole `Frequency` x `Width` grid at four
 probe levels, it holds in fifty-five of fifty-six cells, both knob stops
 included, and misses in one: **-0.091 dB at f0 31.5 Hz with Q 32**. What it
 sounds like: nothing anyone will hear - a tenth of a decibel on the narrowest
@@ -68,11 +68,11 @@ The cause is not this class and not the prototype. RBJ's closed form at that
 cell is `+0.00000 dB`, and `audiobiquad`'s own five coefficients, read off the
 node and run through a `float64` recursion, give `-0.003 dB`. Run through the
 kernel's `float32` one they give `-0.480`, which is the class to a ten
-thousandth of a decibel. `audioif_filter_f32.c:220-238` is a direct-form I
+thousandth of a decibel. `audiodsp_filter_f32.c:220-238` is a direct-form I
 biquad with float state, and at `w0 = 0.0026 rad` its two feedback
 coefficients cancel to seven parts in a million, so the increment single
 precision has to carry is 2e-5 of the numbers being differenced. Filed as
-audioif#64 with the fix (a transposed direct form II costs nothing at run
+audiodsp#64 with the fix (a transposed direct form II costs nothing at run
 time), and the fix landed; the one cell left is what it did not reach
 (audiocomponents#66). The measurement, the map and the four-way
 decomposition are
@@ -106,7 +106,7 @@ skirt and left standing in the rest.
 **One thing to know before automating it.** The biquad's coefficients step
 at the block boundary - they are deliberately not interpolated, because
 sliding between two high-Q sections can pass through an unstable pair
-(`audioif/docs/upstream-diff.md:1953`). So a *hard jump* in `Frequency` or
+(`audiodsp/docs/upstream-diff.md:1953`). So a *hard jump* in `Frequency` or
 `Width` - a program change from a high centre to a low one, say - rings the
 energy stored at the old centre out through the new filter, and that is
 audible as a click: measured 11 964 peak from a 2 637 peak steady state on a
@@ -141,7 +141,7 @@ class BandPass(_component.Component):
     CATEGORIES = ('Filter',)
     VERSION = '0.0.2'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiobiquad",)
 
     CAPABILITIES = ()

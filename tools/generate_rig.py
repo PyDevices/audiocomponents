@@ -26,7 +26,7 @@ Every script embedded in plug-in state is a two-line loader
 (`mpvst_adapter.run("audioinstruments.<name>")`) exactly like
 micropython-vst3's own `piece.shared_instruments()` builds for the
 soundtrack - the sidecar resolves `audioinstruments` from whatever is
-staged beside it. That only reads accuracy's own code (not audioif's) if
+staged beside it. That only reads accuracy's own code (not audiodsp's) if
 the installed bundle has accuracy's lib/ staged over the top; see
 render_rig.sh, which does that before every render. This generator embeds
 nothing but the two-line loader - the instrument's actual source is never

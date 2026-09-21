@@ -32,7 +32,7 @@ that LR-2 and LR-6 need an inversion and LR-4 and LR-8 do not.
   measured here, a 256-frame DC burst through a LOW_PASS pair holds **2 LSB
   for ever at 100 Hz and 8 LSB at 40 Hz**, while the same pair on
   `audiobiquad.Biquad` reaches exact zero at frame 1895 and 3987. That is
-  audioif#23, and it is the Tier 1 invariant this family is held to first.
+  audiodsp#23, and it is the Tier 1 invariant this family is held to first.
   The dossier's section 4 mapped the ported node; the palette has had the
   float one since Phase 1.
 
@@ -41,7 +41,7 @@ that LR-2 and LR-6 need an inversion and LR-4 and LR-8 do not.
   zero is a **real bypass** and not "the bands, summed, which ought to be
   the same thing". It is not the same thing, and the byte compare would say
   so. Nor is the dry tap at unity enough: a mixer voice at level 1.0 scales
-  by 32768/32767 on every target (audioif#95), so `_refresh_output` hands
+  by 32768/32767 on every target (audiodsp#95), so `_refresh_output` hands
   back the borrowed source itself and puts no node of this class's in the
   path at all.
 
@@ -114,7 +114,7 @@ from . import _component
 
 try:
     import audiobiquad
-except ImportError:      # a stock CircuitPython board, or an old audioif
+except ImportError:      # a stock CircuitPython board, or an old audiodsp
     audiobiquad = None
 try:
     import audiodynamics
@@ -151,14 +151,14 @@ _TAIL_PERIODS = 3.6
 #: Frames the guard hands back in one call. 256 is what every other node on
 #: the palette hands out, so the graph runs in one block size. It used to
 #: have to be at or under the Splitter's 8192-frame ring as well; since
-#: audioif#87 the Splitter takes any call in pieces and that clause is gone.
+#: audiodsp#87 the Splitter takes any call in pieces and that clause is gone.
 _GUARD_FRAMES = 256
 
 
 class MultibandCompressor(_component.Component):
     """Two or three bands, each with its own compressor, summed back flat.
 
-    `audioif` tier: `audiobiquad` for a crossover whose tail reaches exact
+    `audiodsp` tier: `audiobiquad` for a crossover whose tail reaches exact
     zero, `audiodynamics` for the per-band detectors, `audioroute` for the
     fan-out.
 
@@ -191,7 +191,7 @@ class MultibandCompressor(_component.Component):
     node, a `Filter` with no filter, which is a copy - because a mixer voice
     at level 1.0 is not unity on any target: upstream's Q15 level is
     `1.0 * 32768` and the kernel then divides by 32767, so every sample at
-    or above 32736 comes out one LSB larger (audioif#95). Through the dry
+    or above 32736 comes out one LSB larger (audiodsp#95). Through the dry
     voice this class's Mix 0 differed from its source on 15 of 32768 samples
     of a full-scale ramp; it is now exact at 22.05, 44.1 and 48 kHz, mono
     and stereo, on all three interpreters. In between, Mix is parallel
@@ -226,7 +226,7 @@ class MultibandCompressor(_component.Component):
     CATEGORIES = ('Dynamics',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiobiquad", "audiodynamics", "audioroute")
 
     #: No band's behaviour refers to tempo, so the transport is never read
@@ -322,8 +322,8 @@ class MultibandCompressor(_component.Component):
         #: `audiosample`, and has no `reset_buffer`. After a reset every
         #: cursor is still at `write_pos`, so the audio left in the ring is
         #: behind every reader and is never heard. It does have `deinit()`
-        #: since audioif#58, and releasing it releases the taps owned below;
-        #: on an audioif without one, `getattr` skips the call.
+        #: since audiodsp#58, and releasing it releases the taps owned below;
+        #: on an audiodsp without one, `getattr` skips the call.
         self._split = self._own(audioroute.Splitter(head, taps=taps),
                                 reset=False)
         self._taps = [self._own(self._split.tap(index))
@@ -386,8 +386,8 @@ class MultibandCompressor(_component.Component):
         into an 8192-frame ring and dragged every cursor past it, so a
         whole-buffer source - `audiocore.RawSample` hands its entire array
         back in one `get_buffer` - lost the first n - 8192 frames of it.
-        Since audioif#87 the Splitter takes a call bigger than its ring in
-        pieces, and the head arrives. Measured at audioif `977ef26`: the
+        Since audiodsp#87 the Splitter takes a call bigger than its ring in
+        pieces, and the head arrives. Measured at audiodsp `977ef26`: the
         class renders the same bytes with this node and without it, at every
         source block from 256 to 32768 frames, and burst material survives
         unguarded (`tests/test_cpython_effects_multiband.py`,
@@ -481,10 +481,10 @@ class MultibandCompressor(_component.Component):
     def _reset_mixer(self):
         """Clear the Mixer, then hand its voices back their sources.
 
-        `audioif`'s `audiomixer` rewinds a voice on reset; **upstream
+        `audiodsp`'s `audiomixer` rewinds a voice on reset; **upstream
         CircuitPython's stops it**, and a stopped voice never plays again
-        (audioif's `docs/upstream-diff.md`, "Resetting a Mixer silenced it,
-        permanently"). audioif fixed that in its own copy, so a class that
+        (audiodsp's `docs/upstream-diff.md`, "Resetting a Mixer silenced it,
+        permanently"). audiodsp fixed that in its own copy, so a class that
         only calls `reset_buffer` here works on this port and is silent for
         ever after its first `reset()` on a stock board -- measured on
         `cmods/bin/circuitpython-effects`, where `voice[0].playing` is
@@ -632,7 +632,7 @@ class MultibandCompressor(_component.Component):
         A mixer voice at level 1.0 is not unity: upstream's Q15 level is
         `1.0 * 32768` and the kernel divides by 32767, so on a stereo mixer
         the right channel - and on a mono one both - comes out one LSB
-        larger at every sample from 32736 up (audioif#95). Through the dry
+        larger at every sample from 32736 up (audiodsp#95). Through the dry
         voice this class's Mix 0 differed from its source on 15 of 32768
         samples of a full-scale ramp. So Mix 0 puts no mixer in the path at
         all, which is the answer `Fuzz` and `Overdrive` already give.
@@ -649,7 +649,7 @@ class MultibandCompressor(_component.Component):
         the node the Splitter reads, so a Mix move off 0 picks the graph up
         at exactly the sample the bypass stopped on. `NoGuard` sets
         `_head` to the source itself, and there the bypass *is* the borrowed
-        source, which is what audioif#87 finally allows.
+        source, which is what audiodsp#87 finally allows.
 
         Coming back off 0, the voices are handed their sources with the
         level gates opened first. Since CircuitPython 10.3.0 a voice takes a
@@ -675,7 +675,7 @@ def audiomixer_mixer(rate, channels, voices):
 
     `audiomixer` is a ported CircuitPython module and is on every build this
     library runs on, so it is not in `REQUIRES`; it is imported here rather
-    than at module level only to keep the guarded audioif imports together
+    than at module level only to keep the guarded audiodsp imports together
     at the top.
     """
     import audiomixer

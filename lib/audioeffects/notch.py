@@ -15,11 +15,11 @@ Harmonics adds a second notch an octave up, half as wide in hertz, because
 mains hum is a series and one notch at 50 or 60 Hz leaves the buzz. Depth is
 a blend, not a filter control - at 0 the class is a wire.
 
-**Portability tier: audioif** (`REQUIRES = ("audiobiquad",)`). All three
+**Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`). All three
 sections are `audiobiquad.Biquad`: float state, and a tail that reaches
 exact zero. The ported `synthio.Biquad` cannot - the mains-hum setting
 `Notch(60 Hz, q=8)` parks on 2 LSB of DC and `Notch(20 Hz, q=32)` on 18, and
-they hold it for ever (audioif#23, dossier A3 and A16), which is Tier 1's
+they hold it for ever (audiodsp#23, dossier A3 and A16), which is Tier 1's
 first invariant failing at exactly the settings this class is for.
 
 **What that costs, said here because a caller has to know it.** A `float`
@@ -45,7 +45,7 @@ leaking, and it is why Frequency clamps at 0.4*Fs rather than at Nyquist.
 **Cost.** Three sections, always built, two of them wires at patch 0 - and
 a wire costs what a notch costs, because the kernel runs each recursion
 before it blends and there is no branch on `mix`
-(`audioif/src/shared/audioif_filter_f32.c:216-241`). So Harmonics buys back
+(`audiodsp/src/shared/audiodsp_filter_f32.c:216-241`). So Harmonics buys back
 no CPU: the class costs three sections at every setting. The dossier budgets
 1.5 % of one stereo block's real-time deadline on the ESP32-P4 and 5 % on
 the S3 with one notch and 2.5 % / 9 % with two, and since the two are the
@@ -72,8 +72,8 @@ except ImportError:                     # pragma: no cover - a stock board
 from . import _component
 
 
-#: `audiobiquad`'s own clamp (`AUDIOIF_FILTER_F32_MIN_Q` / `MAX_Q`,
-#: `audioif/src/shared/audioif_filter_f32.c:21-22`), mirrored because the
+#: `audiobiquad`'s own clamp (`AUDIODSP_FILTER_F32_MIN_Q` / `MAX_Q`,
+#: `audiodsp/src/shared/audiodsp_filter_f32.c:21-22`), mirrored because the
 #: module does not export it. It bites on the harmonic notch: Width 32
 #: doubles to 64 and lands on 60, so the harmonic is 6.7 % wider in hertz
 #: than the fundamental there. Stated rather than hidden - dossier D3.
@@ -112,7 +112,7 @@ FLAT_DB = 0.2
 
 class Notch(_component.Component):
     """A tuned band-stop with a bandwidth knob, an octave-up harmonic notch
-    and a make-up trim. Three `audiobiquad` sections; audioif tier; zero
+    and a make-up trim. Three `audiobiquad` sections; audiodsp tier; zero
     latency."""
 
     NAME = 'Notch'
@@ -120,7 +120,7 @@ class Notch(_component.Component):
     CATEGORIES = ('Filter', 'EQ')
     VERSION = '0.0.2'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiobiquad",)
 
     CAPABILITIES = ()
@@ -168,7 +168,7 @@ class Notch(_component.Component):
 
         The trim closes the chain because it is the *output* make-up and
         each section writes int16 and clips there
-        (`audioif/src/shared/audioif_filter_f32.c:43-51`); a boost applied
+        (`audiodsp/src/shared/audiodsp_filter_f32.c:43-51`); a boost applied
         before the notch would clip material the notch is about to remove.
 
         The harmonic section is built at every setting and left as a wire

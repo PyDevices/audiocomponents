@@ -1,9 +1,9 @@
-"""Worked example of the rebuilt-class shape - **audioif** portability tier.
+"""Worked example of the rebuilt-class shape - **audiodsp** portability tier.
 
 The sibling of `examplestock.py`, and the same kind of fixture: not one of
 the 46, absent from `audioeffects.__all__`, removed at Phase 7
 (audiocomponents#37). It exists so `tests/test_portability_tier.py` has an
-audioif-tier subject to hold to its documented `ImportError` from the day
+audiodsp-tier subject to hold to its documented `ImportError` from the day
 the test is written.
 
 The tier pattern is `CabinetSim`'s (`cabinetsim.py`, the guarded import and
@@ -21,20 +21,20 @@ from .. import _component
 
 try:
     import audioecho
-except ImportError:      # a stock CircuitPython board, or an old audioif
+except ImportError:      # a stock CircuitPython board, or an old audiodsp
     audioecho = None
 
 
-class ExampleAudioif(_component.Component):
-    """A feedback delay on `audioecho.FeedbackDelay` - an audioif-own node,
-    so this class needs audioif's build and says so."""
+class ExampleAudiodsp(_component.Component):
+    """A feedback delay on `audioecho.FeedbackDelay` - an audiodsp-own node,
+    so this class needs audiodsp's build and says so."""
 
-    NAME = 'ExampleAudioif'
-    DISPLAY_NAME = 'Example (audioif tier)'
+    NAME = 'ExampleAudiodsp'
+    DISPLAY_NAME = 'Example (audiodsp tier)'
     CATEGORIES = ('Example',)
     VERSION = '0.0.1'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audioecho",)
 
     CAPABILITIES = ()

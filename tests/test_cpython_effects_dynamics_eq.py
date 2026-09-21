@@ -70,7 +70,7 @@ class DynamicsAndEQTest(unittest.TestCase):
     # `test_cpython_effects_parametriceq.py`, whose `BellLawTest` reads the
     # built section's own coefficients. The two engine fixes it also pinned
     # (`PEAKING_EQ`'s b2 sign, per-channel biquad state) keep their own
-    # tests in audioif. `GraphicEQ` below still builds on the home
+    # tests in audiodsp. `GraphicEQ` below still builds on the home
     # `ParametricEQ` and is not affected.
 
     def test_a_cut_and_a_boost_cost_the_same(self):
@@ -162,8 +162,8 @@ class DynamicsAndEQTest(unittest.TestCase):
     def test_a_low_shelf_lifts_its_shelf_and_not_the_whole_band(self):
         # An 80 Hz LOW_SHELF asked for +1.5 dB used to lift everything below
         # it by +13.4 - Q15 coefficients have nowhere near enough resolution
-        # to describe a gentle shelf that low. audioif widened them, and since
-        # audioif#77 the widened kernel is audiobiquad's alone: synthio.Biquad
+        # to describe a gentle shelf that low. audiodsp widened them, and since
+        # audiodsp#77 the widened kernel is audiobiquad's alone: synthio.Biquad
         # runs CircuitPython's Q15 arithmetic on every target again (-7.65 dB
         # here at the cebb7ca floor), so the claim is read where it lives, and
         # `Saturation` builds its shelves there.

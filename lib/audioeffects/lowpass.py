@@ -54,16 +54,16 @@ The one trait that survived an independent refutation is the roll-off:
 rate** - swept over the whole Frequency travel it is within **0.0104 dB** of
 its 0.05 dB bar.
 
-**Portability tier: audioif** (`REQUIRES = ("audiobiquad",)`). Both filter
+**Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`). Both filter
 sections and the trim are `audiobiquad.Biquad` - float state, and a tail
 that reaches exact zero. The ported `synthio.Biquad` cannot: a `LowPass` at
 100 Hz parks on 1 LSB of DC and a 40 Hz one at Q 8 on 4 LSB, and they hold
-it for ever (audioif#23, dossier A3 and A14), which is Tier 1's first
+it for ever (audiodsp#23, dossier A3 and A14), which is Tier 1's first
 invariant failing at exactly the corners this class is for. That is the
 dossier's section 8 question 1, settled here for this class.
 
 **Cost.** Three sections, always built - and *all three run whatever their
-`mix` is*: `audioif_filter_f32.c:216-241` has no branch on `mix`, so a
+`mix` is*: `audiodsp_filter_f32.c:216-241` has no branch on `mix`, so a
 section left as a wire costs what a working section costs. Measured on the
 boards 2026-09-07: **5.6 % of one stereo block's real-time deadline on the
 ESP32-P4 and 9.6 % on the S3**, against a dossier budget of 1.5 % / 5 %.
@@ -125,7 +125,7 @@ BUTTERWORTH_HIGH = 1.3065629648763766
 #: the panel's own "flat" position stands for.
 FLAT_Q = 0.7071067811865476
 
-#: `audiobiquad`'s own clamp (`AUDIOIF_FILTER_F32_MIN_Q` / `MAX_Q`),
+#: `audiobiquad`'s own clamp (`AUDIODSP_FILTER_F32_MIN_Q` / `MAX_Q`),
 #: mirrored because the module does not export it. Resonance 16 at
 #: 24 dB/oct asks for 29.56, which is inside it.
 MIN_Q = 0.05
@@ -151,7 +151,7 @@ FLAT_DB = 0.2
 
 class LowPass(_component.Component):
     """A two-pole low-pass with a resonant corner, a 12/24 dB/oct slope
-    switch and a make-up trim. Three `audiobiquad` sections; audioif tier;
+    switch and a make-up trim. Three `audiobiquad` sections; audiodsp tier;
     zero latency."""
 
     NAME = 'LowPass'
@@ -159,7 +159,7 @@ class LowPass(_component.Component):
     CATEGORIES = ('Filter', 'EQ')
     VERSION = '0.0.2'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiobiquad",)
 
     CAPABILITIES = ()
@@ -205,7 +205,7 @@ class LowPass(_component.Component):
 
         The trim closes the chain rather than opening it because each
         section writes int16 and clips there
-        (`audioif/src/shared/audioif_filter_f32.c:43-51`): a resonant corner
+        (`audiodsp/src/shared/audiodsp_filter_f32.c:43-51`): a resonant corner
         at Resonance 16 stands 24 dB above the passband, and the trim is
         there to bring that back down, so it has to sit after the peak it is
         trimming.

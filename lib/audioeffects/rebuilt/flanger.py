@@ -23,7 +23,7 @@ peak rise holds +15 dB at 48 / 44.1 / 22.05 kHz on noise (held 3 ms,
 Matrix on). Color max (0.99, 3 ms, Matrix on) is the 2 s ring on a
 200–440 Hz burst; the default is not, and a click is not that bar.
 
-**Portability tier: audioif** (`REQUIRES = ("audioecho", "audioroute")`).
+**Portability tier: audiodsp** (`REQUIRES = ("audioecho", "audioroute")`).
 `audioroute` is only built when Through Zero is on. On a stock
 CircuitPython board this module imports and construction raises
 `ImportError`.
@@ -141,7 +141,7 @@ def _linear_ms_table(duty, length=SHAPE_LEN):
 
 
 class Flanger(_component.Component):
-    """Electric Mistress-informed flanger: one `FeedbackDelay`, audioif
+    """Electric Mistress-informed flanger: one `FeedbackDelay`, audiodsp
     tier, zero latency until Through Zero (10 ms at Range max / 48 kHz) is
     turned on.
 
@@ -158,7 +158,7 @@ class Flanger(_component.Component):
     CATEGORIES = ('Modulation',)
     VERSION = '0.0.2'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audioecho", "audioroute")
 
     CAPABILITIES = ("tempo_sync",)

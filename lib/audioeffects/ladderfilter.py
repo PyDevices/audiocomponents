@@ -10,13 +10,13 @@ is also where the growl comes from. `Drive` is the only warmth control the
 circuit has: it is how hard that saturator is hit, so the character follows
 the input level the way it does in the hardware.
 
-**Portability tier: audioif** (`REQUIRES = ("audioladder",)`). The linear
+**Portability tier: audiodsp** (`REQUIRES = ("audioladder",)`). The linear
 half of this filter *is* reachable on stock CircuitPython biquads - two of
 them track the analytic ladder to 0.05 dB at every resonance short of
 oscillation - but a biquad cascade is linear, so from silence it stays
 silent however far the resonance is pushed, and it makes no harmonics for
 the growl to live in. That gap is not a matter of degree, which is why
-`audioladder.Ladder` exists and why this class needs audioif's build.
+`audioladder.Ladder` exists and why this class needs audiodsp's build.
 Dossier: `workspace docs/effects-internal/dossiers/LadderFilter.md` sections 4 and 5.
 
 **Latency: 0 samples - 0.000 ms - at every setting, and there is no
@@ -24,7 +24,7 @@ latency-adding option on this class.** `Oversample` runs the loop at twice
 the rate so the saturator's harmonics fold back less; its resampler is a
 linear interpolation up and a two-tap average down, half a sample of group
 delay for the pair, which the node reports as none
-(`audioif/src/shared/audioif_ladder.c:302-311`). It defaults **on** because
+(`audiodsp/src/shared/audiodsp_ladder.c:302-311`). It defaults **on** because
 half the cost is the wrong saving on the one node whose job is to distort;
 patch 6, `Ladder - lean`, is patch 0 with it off for the S3.
 
@@ -64,7 +64,7 @@ from . import _component
 
 try:
     import audioladder
-except ImportError:      # a stock CircuitPython board, or an older audioif
+except ImportError:      # a stock CircuitPython board, or an older audiodsp
     audioladder = None
 
 
@@ -78,7 +78,7 @@ class LadderFilter(_component.Component):
     CATEGORIES = ('Filter',)
     VERSION = '0.0.2'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audioladder",)
 
     #: No tempo-dependent behaviour anywhere in the class, so the transport
@@ -101,7 +101,7 @@ class LadderFilter(_component.Component):
     #: `Resonance` spans past the self-oscillation threshold deliberately:
     #: k = 4 has to be a position *inside* the travel, or "sustains at 4 and
     #: not before" cannot be measured from the panel at all. The node clamps
-    #: at the same 4.2 (`audioif_ladder.c:130`).
+    #: at the same 4.2 (`audiodsp_ladder.c:130`).
     #: `Drive` is decibels here and a linear gain at the node, converted in
     #: `_apply_macro` rather than guessed at by the C.
     _MACRO_RANGES = (
@@ -161,7 +161,7 @@ class LadderFilter(_component.Component):
             # Clamped to 0.49 * sample_rate by `_hz()`, which is the node's
             # own clamp at `oversample = 1` and inside it at 2. Rate-honest:
             # at 22.05 kHz the top of this span becomes 10.8 kHz rather than
-            # refusing (`_component.py:487-496`, `audioif_ladder.c:79`).
+            # refusing (`_component.py:487-496`, `audiodsp_ladder.c:79`).
             self._node.set(cutoff_hz=self._hz(value))
         elif index == 1:
             self._node.set(resonance=value)

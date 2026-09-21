@@ -320,7 +320,7 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(cls.CAPABILITIES, ())
         self.assertEqual(cls.LATENCY_SAMPLES, 0)
         self.assertIsNone(cls.TAIL_SAMPLES)
-        self.assertEqual(cls.TIER, _component.AUDIOIF)
+        self.assertEqual(cls.TIER, _component.AUDIODSP)
         self.assertEqual(cls.REQUIRES, ("audioecho", "audiobiquad"))
 
     def test_every_patch_is_reachable_and_moves_the_comb(self):

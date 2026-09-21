@@ -18,7 +18,7 @@ when it is named on its own.
 The analysis primitives (`_fft`, `spectrum`, `harmonic_db`, `rms`, `peak`,
 `tone_gain_db`, `tilt_db`, `sine`, `burst`, `channels`, `loudest_in`) are
 numpy-free on purpose: they are what the measurement kit takes over, and the
-kit runs where audioif builds (docs/effects-kit-spec.md section 2).
+kit runs where audiodsp builds (docs/effects-kit-spec.md section 2).
 """
 
 import math
@@ -140,7 +140,7 @@ def spectrum(sample, blocks=20, skip=8):
 
 
 def _fft(real, imaginary):
-    """In-place radix-2 FFT. No numpy: these tests run wherever audioif
+    """In-place radix-2 FFT. No numpy: these tests run wherever audiodsp
     builds, and the parity interpreters have no third-party packages."""
     size = len(real)
     j = 0

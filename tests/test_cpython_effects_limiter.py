@@ -151,7 +151,7 @@ class UndocumentedTrade(rebuilt.Limiter):
     distortion trade taken out of the docstring."""
 
     NAME = 'Limiter'
-    __doc__ = "Brickwall limiting against a ceiling. audioif tier."
+    __doc__ = "Brickwall limiting against a ceiling. audiodsp tier."
 
 
 #: What L7's second clause asks the docstring to say, as patterns a run can
@@ -874,7 +874,7 @@ class TierOne(unittest.TestCase):
 class TheSurface(unittest.TestCase):
     def test_the_tier_is_declared_and_the_module_is_named(self):
         from audioeffects import _component
-        self.assertEqual(rebuilt.Limiter.TIER, _component.AUDIOIF)
+        self.assertEqual(rebuilt.Limiter.TIER, _component.AUDIODSP)
         self.assertEqual(rebuilt.Limiter.REQUIRES, ("audiodynamics",))
 
     def test_true_peak_on_selects_the_four_times_detector(self):

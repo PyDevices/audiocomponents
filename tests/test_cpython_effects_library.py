@@ -21,7 +21,7 @@ holds the audioconvolve node checks, which belong to the palette.
 This is also the first offline coverage the library ever had: half of it is
 built on Dynamics and Splitter, which used to exist only inside a VST
 plug-in's engine, so the only way to run those classes was to load the
-plug-in in a host. Now they are ordinary audioif nodes and the whole
+plug-in in a host. Now they are ordinary audiodsp nodes and the whole
 catalogue renders here.
 """
 

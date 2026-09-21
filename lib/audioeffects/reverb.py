@@ -17,7 +17,7 @@ from . import _core
 
 try:
     import audioconvolve
-except ImportError:      # a stock CircuitPython board, or an old audioif
+except ImportError:      # a stock CircuitPython board, or an old audiodsp
     audioconvolve = None
 
 _PRESETS = {

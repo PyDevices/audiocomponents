@@ -20,7 +20,7 @@ time, whether applying one allocates, and whether the C sorts the way this
 does are not testable from here -- they are measured on a built interpreter
 by ``docs/spikes/probes/events_timing.py``, ``events_bytes.py``,
 ``seq_timing.py`` and ``alloc_gate.py`` in the workspace anchor, and by
-audioif's own ``tests/pump/`` probes in its clean-build workflow. What this
+audiodsp's own ``tests/pump/`` probes in its clean-build workflow. What this
 *does* catch is everything above the queue: which events the seam writes, in
 what order, at which frames, carrying which notes. That is where all three
 defects the spike found actually lived.

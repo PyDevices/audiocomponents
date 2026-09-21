@@ -17,8 +17,8 @@ follows a G12M-class driver in an open back - a lower box corner it does not
 have, a hotter low mid, and a designed 100-300 Hz cancellation notch. Mix 0
 is the Tier 1 wire.
 
-**Portability: audioif.** Eight `audiobiquad.Biquad`. Tone at 20-230 Hz is
-below the ~300 Hz floor where Q15 `synthio.Biquad` is honest (audioif#77),
+**Portability: audiodsp.** Eight `audiobiquad.Biquad`. Tone at 20-230 Hz is
+below the ~300 Hz floor where Q15 `synthio.Biquad` is honest (audiodsp#77),
 so this is not stock. The clipper nodes are unused.
 
 **Cost.** Palette sum at patch 0, eight live sections, Mix 1: 0.800 / 1.352 ms
@@ -58,7 +58,7 @@ against a published +10.91, and the ceiling is -13 dBFS by the pack's own
 at **3164 Hz**, a frequency the THD table below never reads. The numbers
 were wrong **in the safe direction**, which is what makes them a park: a
 user told -11 who plays at -11 clips (audit 3 (p)2 and (p)3). Every one of the eight sections hands the next an
-int16 and audioif's converter saturates at the rail, and the designed
+int16 and audiodsp's converter saturates at the rail, and the designed
 response is a **boost**: +5.3 dB at the default (its 3.2 kHz break-up
 peak) and +10.9 dB at the hottest corner of the surface (combo, Body +6,
 118 Hz). There is no output trim and no headroom. Measured at 48 kHz on
@@ -232,7 +232,7 @@ def _grid(value, step):
 
 class CabinetSim(_component.Component):
     """A designed 4x12 / 1x12 cabinet. Eight `audiobiquad` sections;
-    audioif tier; zero latency unless a user impulse is loaded.
+    audiodsp tier; zero latency unless a user impulse is loaded.
 
     **This cabinet clips above -11 dBFS, and at the constructor default
     above -5 dBFS**: the response is a boost (+10.9 dB at the hottest
@@ -249,7 +249,7 @@ class CabinetSim(_component.Component):
     CATEGORIES = ('Distortion',)
     VERSION = '0.3.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiobiquad",)
 
     CAPABILITIES = ()

@@ -3,7 +3,7 @@
 The PyDevices audio component tier: **`audioinstruments`** — 53 classic
 synthesizers, electromechanical keyboards and drum machines — and
 **`audioeffects`** — 45 effect classes, effect racks included. Both are pure
-Python built on [audioif](https://github.com/PyDevices/audioif)'s audio nodes,
+Python built on [audiodsp](https://github.com/PyDevices/audiodsp)'s audio nodes,
 and both run unchanged on CPython, MicroPython and CircuitPython.
 
 ```python
@@ -51,7 +51,7 @@ Python's, so a garbage collection does not land as a late note:
 This repository publishes `audioinstruments` and `audioeffects`: the
 `pydevices-audioinstruments` and `pydevices-audioeffects` distributions on
 TestPyPI, and the `audioinstruments` and `audioeffects` entries in the MIP
-index. [PyDevices/audioif](https://github.com/PyDevices/audioif) publishes
+index. [PyDevices/audiodsp](https://github.com/PyDevices/audiodsp) publishes
 the core only — the native nodes and the CircuitPython-compatible `synthio`
 layer these components stand on.
 
@@ -63,15 +63,15 @@ tag, publishes them, and requests the two MIP entries. The version is a
 human's to name, in the release PR; `VERSION` holds a placeholder until then,
 and `tag-release.yml` refuses to tag anything that is not a release version.
 
-The repository was seeded from audioif at **v0.1.1** with the components' own
-history intact, and the accuracy rewrite has happened here since. audioif
+The repository was seeded from audiodsp at **v0.1.1** with the components' own
+history intact, and the accuracy rewrite has happened here since. audiodsp
 still carries its pre-rewrite copies of `lib/audioinstruments/` and
 `lib/audioeffects/`; they are retired — nothing ships from them and no fix
 belongs in them. Deleting them, like replaying anything from them into this
 copy, is Brad's decision, tracked in
 [#2](https://github.com/PyDevices/audiocomponents/issues/2) along with the
 rest of the rewiring that follows the move: the MIP lockfile's `repository`
-keys, micropython-vst3's `MPVST_AUDIOIF_LIB`, and the org repo database.
+keys, micropython-vst3's `MPVST_AUDIODSP_LIB`, and the org repo database.
 
 ## Layout
 
@@ -87,33 +87,33 @@ keys, micropython-vst3's `MPVST_AUDIOIF_LIB`, and the org repo database.
   that enforce those documents
 - `tests/` — the CPython suites; `tests/parity/` — the instrument parity
   harness and its goldens
-- `AUDIOIF_PIN` — the exact audioif release every gate runs against
+- `AUDIODSP_PIN` — the exact audiodsp release every gate runs against
 - `VERSION` — the version the next tag carries; a placeholder until Brad
   names the release
 - `.github/workflows/` — CI (`tests.yml`, `lint.yml`) and the release chain
 
 Each package keeps its own `pyproject.toml` under `lib/<package>/`, which is
 both what makes it a standalone distribution and what the MIP publisher
-expects. Leave that layout alone. Each `pyproject.toml` carries the audioif
-floor, `pydevices-audioif>=<release>`, the newest audioif *release*; that is
-not the pin — `AUDIOIF_PIN` may name a commit ahead of the floor, and the
+expects. Leave that layout alone. Each `pyproject.toml` carries the audiodsp
+floor, `pydevices-audiodsp>=<release>`, the newest audiodsp *release*; that is
+not the pin — `AUDIODSP_PIN` may name a commit ahead of the floor, and the
 gates use the pin.
 
 ## Developing
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install "pydevices-audioif @ git+https://github.com/PyDevices/audioif@v0.2.0"
+.venv/bin/pip install "pydevices-audiodsp @ git+https://github.com/PyDevices/audiodsp@v0.2.0"
 .venv/bin/pip install -e lib/audioinstruments -e lib/audioeffects
 ```
 
-The pin matters. `AUDIOIF_PIN` names the audioif release the gates are read
-against, for the same reason audioif pins CircuitPython in
+The pin matters. `AUDIODSP_PIN` names the audiodsp release the gates are read
+against, for the same reason audiodsp pins CircuitPython in
 `CIRCUITPYTHON_ORACLE`: with a floating core underneath, a component failure
 is unattributable — you cannot tell a rewritten instrument from a moved node
 beneath it. A local install from TestPyPI (`pip install -i
 https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/
-pydevices-audioif`) is fine for poking around; it is not what a gate result
+pydevices-audiodsp`) is fine for poking around; it is not what a gate result
 may be reported against.
 
 ## Testing
@@ -138,7 +138,7 @@ Most work does not need that full suite. `tools/scoped_tests.py` picks the files
 | Shared promises only | `tools/scoped_tests.py contract` |
 | Gate, integration, audit, release | `tools/scoped_tests.py full` |
 
-`--list` prints the choice and runs nothing. Instrument tests (`test_cpython_instruments`, `test_cpython_piano_polyphony`) run only when `lib/audioinstruments/` or `AUDIOIF_PIN` moved, or when `full` is named.
+`--list` prints the choice and runs nothing. Instrument tests (`test_cpython_instruments`, `test_cpython_piano_polyphony`) run only when `lib/audioinstruments/` or `AUDIODSP_PIN` moved, or when `full` is named.
 
 The instrument parity gate is workspace-local by design. It renders each
 component under every interpreter it can find and holds it to a hash captured
@@ -169,10 +169,10 @@ matures — so a component may render audibly differently from one release to
 the next. If a composition depends on the exact sound of a release, pin that
 release rather than tracking the latest.
 
-Beneath the components sits a harder guarantee, and it is audioif's, not
+Beneath the components sits a harder guarantee, and it is audiodsp's, not
 ours: the CircuitPython-compatible `synthio`/`audiocore`/effects-module core
 is held bit-exact to CircuitPython itself and does not change release to
-release. Where CircuitPython and audioif disagree, that is a bug and it is
+release. Where CircuitPython and audiodsp disagree, that is a bug and it is
 reported upstream. The components are where the sound evolves; the floor they
 stand on does not.
 

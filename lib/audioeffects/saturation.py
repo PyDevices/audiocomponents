@@ -62,7 +62,7 @@ the block boundary like the patch change it is (3357 LSB against 1281 for
 an ordinary patch change on the same material) — a setup choice, not a
 knob to ride.
 
-**Portability tier: audioif** (`REQUIRES = ("audioshaper", "audiobiquad",
+**Portability tier: audiodsp** (`REQUIRES = ("audioshaper", "audiobiquad",
 "audioroute", "audioecho")`). On a stock CircuitPython board this module
 imports and construction raises `ImportError`.
 
@@ -104,7 +104,7 @@ At 22.05 kHz the block is 11.61 ms and ×2 prices at
 1.139 / 2.172 ms, **10 % / 19 %**.
 The identity `MidSide` tail is gone: it was there so the class would not end
 on a Mixer, and what it bought instead was an LSB on every full-scale sample
-(audioif#95). At Mix 0 the output **is** the borrowed source, so the wire is
+(audiodsp#95). At Mix 0 the output **is** the borrowed source, so the wire is
 exact by construction and nothing in the graph is pulled at all.
 Patch 8 `Saturation - lean` is one factor below whatever the rate ships —
 ×2 at 48 kHz, through a second node nothing else pulls: Waveshaper ×2
@@ -213,7 +213,7 @@ import audiocore
 import audiomixer
 
 try:
-    from audioif_util import float32 as _f32
+    from audiodsp_util import float32 as _f32
 except ImportError:                                  # pragma: no cover
     def _f32(value):
         return value
@@ -449,7 +449,7 @@ OVERSAMPLE_RATE_HZ = 32000.0
 #: `audioshaper.Waveshaper` clamps its own output at int16 (`to_s16`), so a
 #: `post_gain` that asks the node for more than full scale hard-clips at the
 #: BASE rate, downstream of the decimator, where no oversampling factor can
-#: reach it — Distortion's audioif#99, re-measured on this curve. The tube
+#: reach it — Distortion's audiodsp#99, re-measured on this curve. The tube
 #: table is smooth, so unlike a diode clipper it does not ring: the bare
 #: node on this table at 1010 Hz, 0 dBFS, x8 reads -95.331 dB of inharmonic
 #: energy at an output peak of 0.98120 and -70.233 at 1.00000, a 25 dB step
@@ -473,7 +473,7 @@ MAKEUP_SHELF_HZ = 10.0
 #: back **128 stereo frames** and every node behind it — the `Splitter`,
 #: whose own chunk is 256 frames, the oversampled shaper and the three
 #: biquads — was pulled TWICE per 256-frame block. 256 frames is the
-#: palette's block and the unit every audioif node works in, and
+#: palette's block and the unit every audiodsp node works in, and
 #: `1024 * channel_count` is one pull per block at either channel count.
 #: `Distortion` already does this (`_pcm_mixer`) and came in inside its
 #: budget on both boards; `Saturation`, `Exciter` and `Bitcrusher` were the
@@ -492,7 +492,7 @@ CHARGE_FRAMES = 512
 TILT_HZ = 1000.0
 PLATE_HZ = 20.0
 # 20 Hz, not the 5 Hz this was while it sat at the grid. The node's kernel
-# is Q15 (audioif#77), and a 5 Hz pole at 48 kHz sits at radius 0.99935,
+# is Q15 (audiodsp#77), and a 5 Hz pole at 48 kHz sits at radius 0.99935,
 # where a biquad's rounding noise gain is enormous. In front of the shaper
 # that noise was attenuated by `pre_gain`; at the plate it lands on the
 # output, and A4 read 12 dB worse for it (1010 Hz Drive 0: -65.8 against
@@ -642,7 +642,7 @@ class Saturation(_component.Component):
     CATEGORIES = ('Distortion',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audioshaper", "audiobiquad", "audioroute", "audioecho")
 
     CAPABILITIES = ()
@@ -830,7 +830,7 @@ class Saturation(_component.Component):
         self._output = self._mix
         # Two frames, not one: `audiocore.get_buffer` of a 1-channel Mixer
         # whose voices loop a one-frame all-zero RawSample never returns on
-        # MicroPython or CircuitPython (audioif#85). Two frames is the cure
+        # MicroPython or CircuitPython (audiodsp#85). Two frames is the cure
         # `Fuzz`, `Overdrive`, `Distortion` and `Exciter` all take, and it
         # keeps one priming path for every interpreter and channel count.
         self._silence = self._own(audiocore.RawSample(
@@ -1028,7 +1028,7 @@ class Saturation(_component.Component):
         The output level is then split between the node and the wet mixer
         voice so the node's own output stays under `NODE_CEILING`: past the
         rail it hard-clips at the base rate, behind the decimator, which is
-        the one kind of alias no oversampling factor reaches (audioif#99).
+        the one kind of alias no oversampling factor reaches (audiodsp#99).
         Twelve of this class's 75 shipped positions asked past it, all of
         them Output >= +6 dB, worst 1.618 at Headroom +6 / Output +12. The
         voice takes what the node gives up, so the level law is unchanged
@@ -1078,8 +1078,8 @@ class Saturation(_component.Component):
 
         A mixer voice at level 1.0 scales by 32768/32767, so every sample at
         or above 32736 comes back one LSB bigger, and since the pin moved to
-        audioif `977ef26` the CPython twin reproduces that instead of hiding
-        it (audioif#95). A wire routed through a mixer is therefore never
+        audiodsp `977ef26` the CPython twin reproduces that instead of hiding
+        it (audiodsp#95). A wire routed through a mixer is therefore never
         bit-exact at full scale on any target. Handing back the source makes
         the invariant exact by construction — and free, since nothing in the
         graph is pulled at all while Mix is 0. `Fuzz` took the same cure.

@@ -16,7 +16,7 @@ Delay is the mean line, default 4 ms, and that number is
 high-pass (−3 dB at 17 kHz and 40 Hz at the published defaults). Level is
 an output trim.
 
-**Portability tier: audioif** (`REQUIRES = ("audioecho",)`). The stock
+**Portability tier: audiodsp** (`REQUIRES = ("audioecho",)`). The stock
 `audiodelays.PitchShift` is a granular window resampler that sums dry+wet
 at mix 1. On a stock CircuitPython board this module imports cleanly and
 construction raises `ImportError`.
@@ -305,7 +305,7 @@ class _SplitOut:
 
 class Vibrato(_component.Component):
     """Boss VB-2–informed vibrato: a sine on the BBD clock, wet alone.
-    audioif tier; latency is the mean delay (4 ms at the default).
+    audiodsp tier; latency is the mean delay (4 ms at the default).
 
     **Latency is the Delay macro**, in samples, at the running rate. Default
     4.0 ms = 192 samples at 48 kHz, 176 samples at 44.1 kHz. No lookahead.
@@ -325,7 +325,7 @@ class Vibrato(_component.Component):
     CATEGORIES = ('Modulation',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audioecho",)
 
     CAPABILITIES = ()

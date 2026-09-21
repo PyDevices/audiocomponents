@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generate a named instrument's rig project, stage accuracy's OWN
 # lib/audioinstruments (and lib/audioeffects) over the installed VST3
-# bundle so the plug-in runs this repo's code rather than audioif's frozen
+# bundle so the plug-in runs this repo's code rather than audiodsp's frozen
 # copy, then render it headlessly through REAPER and through this repo's
 # offline CPython renderer, and compare the two.
 #
@@ -9,9 +9,9 @@
 #
 # Needs: the plug-in installed for Windows already
 # (micropython-vst3/scripts/install-plugin-windows.sh, after rebuilding the
-# sidecar engine if audioif's C changed - see AUDIOIF_PIN and
+# sidecar engine if audiodsp's C changed - see AUDIODSP_PIN and
 # micropython-vst3's own hazard notes; this script does not do either of
-# those, on purpose - they are not "every render", they are "audioif
+# those, on purpose - they are not "every render", they are "audiodsp
 # changed").
 set -euo pipefail
 
@@ -68,7 +68,7 @@ echo "--- 1. generating the rig project ---"
 echo
 echo "--- 2. staging accuracy's own lib/ over the installed bundle ---"
 echo "    (so the plug-in runs THIS repo's audioinstruments/audioeffects," \
-     "not audioif's frozen copy - reversible, and repeated every render)"
+     "not audiodsp's frozen copy - reversible, and repeated every render)"
 "$cmake_exe" -DMPVST_LIB_SRC="$(wslpath -w "$repo_dir/lib")" \
     -DMPVST_LIB_DST="$(wslpath -w "$bundle_lib")" \
     -P "$(wslpath -w "$vst3_repo/src/plugin/stage_lib.cmake")"

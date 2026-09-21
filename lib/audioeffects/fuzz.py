@@ -94,7 +94,7 @@ oversampled path to be filtered, and ×8 buys 11.2 dB there against 34.8 at
 48 kHz. At Phase 7, listen at full Fuzz on a high note for a thin metallic
 ring that does not move with the note.
 
-**Portability tier: audioif** (`REQUIRES = ("audioshaper", "audiobiquad",
+**Portability tier: audiodsp** (`REQUIRES = ("audioshaper", "audiobiquad",
 "audioroute")`). On a stock CircuitPython board this module imports and
 construction raises `ImportError`.
 
@@ -518,7 +518,7 @@ CASCADE_OVERSAMPLE = 2
 #: `buffer_size // 2 // 4 * 4` BYTES, so the 1024 `cascade` shipped rendered
 #: **128 stereo frames** and the tilt stage behind it pulled the three-voice
 #: mixer, both tone arms and the dry tap **twice** per 256-frame block —
-#: the palette's block, and the unit every audioif node works in.
+#: the palette's block, and the unit every audiodsp node works in.
 #: `1024 * channel_count` is one pull per block at either channel count,
 #: which is what `Distortion` already does (`_pcm_mixer`).
 MIXER_BUFFER_BYTES = 1024
@@ -560,7 +560,7 @@ def _patch(*engineering):
                  for span, mode, value in zip(_RANGES, _MODES, engineering))
 
 
-# audioif CPython binding documents these; the native MP/CP modules do not
+# audiodsp CPython binding documents these; the native MP/CP modules do not
 # export the dict. Same numbers as audioshaper.GROUP_DELAY_SAMPLES.
 _GROUP_DELAY_SAMPLES = {1: 0.0, 2: 2.2, 4: 3.3, 8: 3.9}
 
@@ -593,7 +593,7 @@ class Fuzz(_component.Component):
     CATEGORIES = ('Distortion',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audioshaper", "audiobiquad", "audioroute")
 
     CAPABILITIES = ()
@@ -937,7 +937,7 @@ class Fuzz(_component.Component):
         if self._tone_mix is None:
             # The node's own law is
             # `out = (1-mix)*source + mix*post_gain*shaped`
-            # (`audioif/src/shared/audioif_shaper.c:253`), so a trim written
+            # (`audiodsp/src/shared/audiodsp_shaper.c:253`), so a trim written
             # to `post_gain` alone scales the wet half and **leaves the dry
             # half at full level** - Level 0 went on emitting at every Mix
             # below 1 (audiocomponents#74, second audit). The Volume pot is
@@ -974,7 +974,7 @@ class Fuzz(_component.Component):
 
         Nothing rounds on the way, so the wire invariant is exact by
         construction rather than by luck - which is what the `MidSide` tail
-        stopped being when the pin moved to audioif `3388df4` (seven samples
+        stopped being when the pin moved to audiodsp `3388df4` (seven samples
         of 16384 off by one LSB).
         """
         if not self._ready:

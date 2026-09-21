@@ -34,7 +34,7 @@ byte-identical to the source rather than merely flat: there is **no mixer in
 the path** at all there, because a mixer voice at level 1.0 is not unity -
 upstream's Q15 level is `1.0 * 32768` and the kernel divides by 32767, so
 the dry tap at unity came out one LSB high at every sample from 32736 up
-(audioif#95, three of 16384 on a full-scale ramp). The mixer's voices take
+(audiodsp#95, three of 16384 on a full-scale ramp). The mixer's voices take
 their sources the first time Mix leaves 0, with their level gates opened on
 one block of silence first.
 
@@ -50,7 +50,7 @@ threshold-and-ratio law this class is held to, and the palette route for it
 (`makeup_db` against `depth_db`) is recorded in the dossier rather than
 half-built here.
 
-**Portability tier: audioif.** `audiobiquad` for a split whose two branches
+**Portability tier: audiodsp.** `audiobiquad` for a split whose two branches
 sum to unity and whose tail reaches exact zero; `audiodynamics` for the gain
 cell and its detector; `audioroute` for the fan-out. It will not import on a
 stock CircuitPython board - the module loads, and construction raises.
@@ -71,7 +71,7 @@ repeats of each: **1.46-1.56 ms per 256-frame stereo block against
 the dry tap and the tail. Two of them still earn it: `Mix` 0 is not a real
 bypass without the dry tap, and CircuitPython renders silence without the
 tail. The guard's reason has expired - it was there because a long source
-vanished into the Splitter's ring, and audioif#87 removed that ring limit,
+vanished into the Splitter's ring, and audiodsp#87 removed that ring limit,
 so at `977ef26` the graph renders the same bytes without it. It is a node
 this class could drop, once a board is free to re-take the row. The single
 256-frame block size keeps every
@@ -112,7 +112,7 @@ from . import _component
 
 try:
     import audiobiquad
-except ImportError:      # a stock CircuitPython board, or an old audioif
+except ImportError:      # a stock CircuitPython board, or an old audiodsp
     audiobiquad = None
 try:
     import audiodynamics
@@ -127,7 +127,7 @@ except ImportError:
 #: Frames the guard hands back in one call, and so the block size the whole
 #: graph runs in. 256 is what `audiobiquad` and `audiodynamics` hand out
 #: themselves, so nothing in the chain re-blocks anything else. It used to
-#: have to be at or under the Splitter's 8192-frame ring as well; audioif#87
+#: have to be at or under the Splitter's 8192-frame ring as well; audiodsp#87
 #: took that limit out, so the clause no longer binds.
 _GUARD_FRAMES = 256
 
@@ -151,7 +151,7 @@ _TAIL_PERIODS = 4.0
 class DynamicEQ(_component.Component):
     """A bell that only appears when the band it sits on crosses a threshold.
 
-    `audioif` tier: `audiobiquad` for the complementary split, `audiodynamics`
+    `audiodsp` tier: `audiobiquad` for the complementary split, `audiodynamics`
     for the gain cell, `audioroute` for the fan-out.
     """
 
@@ -160,7 +160,7 @@ class DynamicEQ(_component.Component):
     CATEGORIES = ('EQ',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiobiquad", "audiodynamics", "audioroute")
 
     #: `()`, and the dossier's reason (D10): attack and release are absolute
@@ -240,7 +240,7 @@ class DynamicEQ(_component.Component):
         # 8192-frame ring and drag every cursor past the overflow, and
         # `audiocore.RawSample.get_buffer()` hands back its whole array in one
         # call - so an impulse inside a 40000-frame probe reached this class
-        # as silence unless something blocked the source first. audioif#87
+        # as silence unless something blocked the source first. audiodsp#87
         # took the ring limit out: at `977ef26` the unguarded split passes
         # that impulse at full height, measured in
         # `test_the_block_ladder_no_longer_needs_the_guard`.
@@ -251,7 +251,7 @@ class DynamicEQ(_component.Component):
         # `audiofilters.Filter` with no filter is a copy, and it is the
         # cheapest node on the palette that hands out its own block size. Its
         # `reset_buffer` drops its pending bytes and does **not** reset its
-        # source (`audioif/src/audiofilters/Filter.c:133-149`), which is what
+        # source (`audiodsp/src/audiofilters/Filter.c:133-149`), which is what
         # keeps the borrowed source untouched by `reset()`.
         guard = audiofilters.Filter(
             filter=None, mix=1, buffer_size=_GUARD_FRAMES * channels * 2,
@@ -291,7 +291,7 @@ class DynamicEQ(_component.Component):
 
         # The class does **not** end in the Mixer, and that is not decoration.
         # On upstream CircuitPython `audiomixer.Mixer.reset_buffer` *stops*
-        # every voice rather than rewinding it, permanently; audioif fixed
+        # every voice rather than rewinding it, permanently; audiodsp fixed
         # that in its own port and deliberately did not patch it into the
         # CircuitPython build (`upstream-diff.md`, "Resetting a Mixer
         # silenced it, permanently"). Anything upstream resets what it is
@@ -302,7 +302,7 @@ class DynamicEQ(_component.Component):
         # `sum 0 SILENT` until this node existed, on a class the smoke and a
         # hand-pumped probe both passed. `audioroute.MidSide` at width 1 is
         # the exact identity - `outL = (2L+1) >> 1` is `L` for every int16
-        # (`audioif_midside.c`, and audioif's own section on it) - and its
+        # (`audiodsp_midside.c`, and audiodsp's own section on it) - and its
         # `reset_buffer` clears its own cursor and nothing else.
         tail = audioroute.MidSide(width=1.0, sample_rate=rate,
                                   channel_count=channels)
@@ -337,13 +337,13 @@ class DynamicEQ(_component.Component):
         # rewound - its Python surface is `tap()`, and a tap's `reset_buffer`
         # is a documented no-op, "the cursors belong to the Splitter and the
         # other taps are still reading from them"
-        # (`audioif/src/audioroute/SplitterTap.c`). It **can** be released:
-        # `deinit()` landed in audioif#58, and it releases the taps with it.
+        # (`audiodsp/src/audioroute/SplitterTap.c`). It **can** be released:
+        # `deinit()` landed in audiodsp#58, and it releases the taps with it.
         # This used to read `deinit=False`, which was honest while the palette
         # had nothing to call but left the Tier 1 row unmeasurable. Asking for
         # a release the node may not have is safe either way -
         # `_component.deinit()` looks the method up with `getattr` and skips
-        # what is not there - so this is correct against the pinned audioif as
+        # what is not there - so this is correct against the pinned audiodsp as
         # well as the current one.
         self._own(split, reset=False)
         self._own(cell)
@@ -353,7 +353,7 @@ class DynamicEQ(_component.Component):
 
         #: The silence the level gates open on. Two frames, because a
         #: one-frame mono sample is smaller than the packed word the native
-        #: mixer consumes and `get_buffer` never returns on it (audioif#85).
+        #: mixer consumes and `get_buffer` never returns on it (audiodsp#85).
         #: It holds no state, so it declines its own reset.
         self._silence = self._own(audiocore.RawSample(
             array("h", bytes(2 * 2 * channels)),
@@ -411,7 +411,7 @@ class DynamicEQ(_component.Component):
         `1.0 * 32768` and the kernel divides by 32767, so the dry tap at
         unity came out one LSB high at every sample from 32736 up - three of
         16384 on a full-scale ramp, all in the right channel, and both on a
-        mono mixer (audioif#95).
+        mono mixer (audiodsp#95).
 
         What is handed back is `self._head`, not `self._source`, and the
         difference is one node wide: the guard is an `audiofilters.Filter`
@@ -439,8 +439,8 @@ class DynamicEQ(_component.Component):
     def _reset_mixer(self):
         """Clear the Mixer, then hand its voices back their sources.
 
-        `audioif`'s `audiomixer` rewinds a voice on reset; **upstream
-        CircuitPython's stops it, permanently** (audioif's
+        `audiodsp`'s `audiomixer` rewinds a voice on reset; **upstream
+        CircuitPython's stops it, permanently** (audiodsp's
         `docs/upstream-diff.md`, "Resetting a Mixer silenced it,
         permanently"), and a class that only called `reset_buffer` here would
         work on this port and render silence for ever after its first

@@ -15,7 +15,7 @@ whole signal (a vocal) or on the high band alone (the 902's own setting for
 picking noise and cymbal edge). **Listen** puts the detector's own band on
 the output so you can hear what it is reacting to.
 
-**Portability tier: audioif.** `audiobiquad` for a crossover whose tail
+**Portability tier: audiodsp.** `audiobiquad` for a crossover whose tail
 reaches exact zero, `audiodynamics` for the relative-threshold detector that
 is the whole point of the circuit, `audioroute` for the parallel routing. It
 will not import on a stock CircuitPython board.
@@ -73,7 +73,7 @@ bounded trait has to be visible.**
 * **`detector="rms"` only half-applies here.** With
   `relative_threshold` on, the full-band level the gain computer subtracts
   is a rectified peak follower whatever `detector` says
-  (`audioif_dynamics.c:594-600`), so the RMS option governs the band level
+  (`audiodsp_dynamics.c:594-600`), so the RMS option governs the band level
   and not the reference. The option is demonstrably working - a 10 %-duty
   train against a sine of the same RMS separates by 4.96 dB on RMS and
   3.54 dB on peak - but dossier D6's own criterion, a matched-RMS sine and
@@ -121,7 +121,7 @@ from . import _component
 
 try:
     import audiobiquad
-except ImportError:      # a stock CircuitPython board, or an old audioif
+except ImportError:      # a stock CircuitPython board, or an old audiodsp
     audiobiquad = None
 try:
     import audiodynamics
@@ -145,8 +145,8 @@ _BUTTERWORTH_Q = 0.7071067811865476
 _DETECTOR_CORNER = 1.0 / 1.5537739740300374
 
 #: What a reset has to push through a Splitter's ring. The ring is 8192
-#: frames (`audioif/src/shared/audioif_splitter.h:20`) and one take is at
-#: most 256 (`audioif_splitter.c:64-70`), so this many pulls a tap empties
+#: frames (`audiodsp/src/shared/audiodsp_splitter.h:20`) and one take is at
+#: most 256 (`audiodsp_splitter.c:64-70`), so this many pulls a tap empties
 #: any backlog it can be holding.
 _FLUSH_PULLS = 8192 // 256 + 1
 
@@ -171,7 +171,7 @@ class DeEsser(_component.Component):
     CATEGORIES = ('Dynamics',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiobiquad", "audiodynamics", "audioroute")
 
     #: `()`, and the dossier's reason: sibilance has nothing to do with
@@ -305,7 +305,7 @@ class DeEsser(_component.Component):
 
         # The class does NOT end in a mixer, and that is not decoration.
         # On CircuitPython `audiomixer.Mixer.reset_buffer` *stops* every
-        # voice rather than rewinding it, permanently - audioif fixed that
+        # voice rather than rewinding it, permanently - audiodsp fixed that
         # in its own port and deliberately did not patch it into the
         # oracle build (`upstream-diff.md`, "Resetting a Mixer silenced it,
         # permanently"), and the consequence recorded there is that a class
@@ -364,8 +364,8 @@ class DeEsser(_component.Component):
             self._own(node, reset=False)
         for splitter in (band, raw, top):
             # No `reset_buffer` and no `clear`, so `_reset_chain()` is what
-            # clears these. `deinit()` it does have, since audioif#58, and
-            # asking for one an older audioif lacks is skipped by `getattr`.
+            # clears these. `deinit()` it does have, since audiodsp#58, and
+            # asking for one an older audiodsp lacks is skipped by `getattr`.
             self._own(splitter, reset=False)
         self._own(adapter, reset=False)
         # The eight taps and the silent filler are nodes this class built
@@ -443,7 +443,7 @@ class DeEsser(_component.Component):
         `1.0 * 32768` and the kernel divides by 32767, so the dry voice at
         unity came out one LSB high at every sample from 32736 up - 7 of
         16384 on a full-scale ramp, all in the right channel, and both on a
-        mono mixer (audioif#95). The `MidSide` tail used to round the pair
+        mono mixer (audiodsp#95). The `MidSide` tail used to round the pair
         back together and stopped doing so when the pin moved. Nothing
         rounds on the way out of the source, so handing it back is exact by
         construction rather than by luck.
@@ -570,7 +570,7 @@ class DeEsser(_component.Component):
             # (1 - alpha) * source + alpha * duck(source); at Range 0 that is
             # the source itself, byte for byte - and `_refresh_output` then
             # hands the source back rather than running it through a voice
-            # at level 1.0, which is not unity (audioif#95).
+            # at level 1.0, which is not unity (audiodsp#95).
             self._out.voice[0].level = 1.0 - alpha
             self._out.voice[1].level = 0.0
             self._out.voice[2].level = 0.0

@@ -10,7 +10,7 @@ and a mono wire.
 `synthio.Synthesizer` with two `Note`s (left / right gain) whose waveform is
 one 256-frame period of the pan law. Rate is the notes' frequency, so the
 pull is one block of oscillator, not a whole-period `RawSample`. Depth 0 is
-`mix = 0`, the bit-exact wire (`audioif_multiply.c` wet/dry pair). A mono
+`mix = 0`, the bit-exact wire (`audiodsp_multiply.c` wet/dry pair). A mono
 source gets **no node** - `output` is the borrowed source.
 
 The Mixer + `synthio.LFO` route the old class used is rejected: it is not a
@@ -20,7 +20,7 @@ published pan law, it is block-rate, and on CPython it does not move at all.
 is 0. `capabilities` is `("tempo_sync",)`: Sync on reads `self._transport()`
 and snaps Rate to tempo divisions; with no host transport Rate stays free.
 
-**Portability: audioif.** Needs `audiomath`. A stock CircuitPython board
+**Portability: audiodsp.** Needs `audiomath`. A stock CircuitPython board
 raises `ImportError` at construction.
 
 **What the default surrenders:** Rate starts at 2 Hz, not a slow 0.05 Hz
@@ -53,7 +53,7 @@ import synthio
 
 class AutoPan(_component.Component):
     """Auto-panner: constant-power / 4.5 dB / 6 dB pan laws under a
-    per-sample LFO. `audioif` tier (`audiomath.Multiply`).
+    per-sample LFO. `audiodsp` tier (`audiomath.Multiply`).
 
     Macros: Rate (2-20 Hz), Depth (0 is a wire), Shape (triangle to sine),
     Law (3.01-6.02 dB centre attenuation), Centre, Phase, Sync. Latency is
@@ -71,7 +71,7 @@ class AutoPan(_component.Component):
     CATEGORIES = ('Modulation',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiomath",)
 
     CAPABILITIES = ("tempo_sync",)
@@ -316,7 +316,7 @@ class AutoPan(_component.Component):
                 sample_rate=self._sample_rate, channel_count=2)
             # Since CircuitPython 10.3.0, panning > 0 attenuates the LEFT
             # channel, so -1 lands a note on the left column alone and +1 on
-            # the right, on every target (audioif 4ec5718). The pre-10.3.0
+            # the right, on every target (audiodsp 4ec5718). The pre-10.3.0
             # pairing was the reverse and put each gain on the wrong side.
             #
             # A fresh note renders at level 0 until its output crosses zero

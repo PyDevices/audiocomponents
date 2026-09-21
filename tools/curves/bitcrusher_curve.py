@@ -25,7 +25,7 @@ BEGIN = "# BEGIN BITCRUSHER_CURVE"
 END = "# END BITCRUSHER_CURVE"
 
 #: 12-bit default. The table is read at `x_i = -32768 + 65536*i/(P-1)` --
-#: the node's OWN grid (`audioif_shaper.c:217`, `position = (value + 1) *
+#: the node's OWN grid (`audiodsp_shaper.c:217`, `position = (value + 1) *
 #: 0.5 * (points - 1)` with `value = sample / 32768`), not `65535*i/(P-1)`.
 #: The old spacing was 7.99988 codes against the node's 8, so the table
 #: drifted up to a whole code across the span and the staircase's treads

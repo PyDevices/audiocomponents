@@ -850,7 +850,7 @@ class TestExciter(unittest.TestCase):
         self.assertEqual(effect.capabilities, ())
         self.assertEqual(effect.latency_samples, 0)
         self.assertEqual(effect.tail_samples, 4096)
-        self.assertEqual(effect.TIER, "audioif")
+        self.assertEqual(effect.TIER, "audiodsp")
         effect.reset()
         effect.deinit()
 
@@ -1360,7 +1360,7 @@ class TheClassHandsBackThePalettesOwnBlock(unittest.TestCase):
     this class shipped rendered **128 stereo frames** and everything behind
     it was pulled twice per 256-frame block — including, on `transient`, an
     `audiodynamics.Dynamics` whose own output block is 256 frames by
-    construction (`audioif_dynamics.h:56`). The board's rows show it: adding
+    construction (`audiodsp_dynamics.h:56`). The board's rows show it: adding
     that node cost the class 0.537 ms on the P4 and 1.234 on the S3 where
     the palette prices it 0.495 / 0.985 (audiocomponents#72, fifth round).
     """

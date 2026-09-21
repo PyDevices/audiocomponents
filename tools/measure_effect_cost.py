@@ -1,4 +1,4 @@
-"""What does ONE effect, or ONE audioif node, cost this board per block?
+"""What does ONE effect, or ONE audiodsp node, cost this board per block?
 
     mpftp put -d COM4 tools/measure_effect_cost.py /measure_effect_cost.py
     mpftp exec -d COM4 'import measure_effect_cost as m; m.main("node:audiofilters.Filter")'
@@ -35,7 +35,7 @@ ONE target per run, against a fixed probe source, in three numbers:
     ms/block   wall milliseconds one 256-frame block costs
 
 256 frames is not an arbitrary unit here. Every fixed-size node in the
-audioif palette - `audioecho.FeedbackDelay`, `audiodynamics.Dynamics`,
+audiodsp palette - `audioecho.FeedbackDelay`, `audiodynamics.Dynamics`,
 `audiomath.Multiply`, `audioconvolve.Convolver`, and the `audioroute`
 splitter's chunk - works in exactly 256-frame blocks, so it is the palette's
 own block. At 48 kHz one such block is 5.333 ms of audio: a target must beat
@@ -124,7 +124,7 @@ PROBE_FRAMES = 4096
 
 
 def pcm(buffer_size=BLOCK_BYTES):
-    """The keyword bundle every audioif node wants, at this tool's format."""
+    """The keyword bundle every audiodsp node wants, at this tool's format."""
     return {
         "sample_rate": SAMPLE_RATE,
         "channel_count": CHANNELS,
@@ -510,7 +510,7 @@ def _modal(modes, ringing=True):
 
 def _allpass(probe):
     """The same six stages, frequency and feedback as the
-    `audiofilters.Phaser` row - the comparison audioif#36 is about."""
+    `audiofilters.Phaser` row - the comparison audiodsp#36 is about."""
     import audiobiquad
     node = audiobiquad.AllPass(stages=6, frequency=800.0, feedback=0.6,
                                mix=1.0, sample_rate=SAMPLE_RATE,
@@ -606,7 +606,7 @@ def _speed_changer(rate):
 
 def _sample_hold(probe):
     """`audioshaper.SampleHold` at Bitcrusher's default hold: 48000/26040
-    reduces to 400/217. Since audioif e3b95e7 (audioif#97) the class holds
+    reduces to 400/217. Since audiodsp e3b95e7 (audiodsp#97) the class holds
     with this one node instead of a SpeedChanger pair, so this row is what
     its budget is priced from; the pair's two rows stay for the record."""
     import audioshaper
@@ -770,7 +770,7 @@ def _mixer_at(levels, voice):
     which is a voice at unity and a voice that is off: the one case where
     the scale is exact on any interpreter. `Overdrive` runs two of these
     stages, and only the first is at unity - its blend is 0.0 / 100/127,
-    a fractional level, which is where audioif#84 lives.
+    a fractional level, which is where audiodsp#84 lives.
     """
     def build(probe):
         node = audiomixer.Mixer(voice_count=2, **pcm(2 * BLOCK_BYTES))
@@ -840,7 +840,7 @@ def _dynamics_transient(probe):
     return node, (), (node,)
 
 
-#: The audioif palette as the effects library uses it. Keys are the import
+#: The audiodsp palette as the effects library uses it. Keys are the import
 #: path of the node, with a suffix where one node is worth measuring at more
 #: than one size.
 NODES = {

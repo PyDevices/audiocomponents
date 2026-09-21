@@ -103,7 +103,7 @@ from . import _component
 
 try:
     import audiodynamics
-except ImportError:      # a stock CircuitPython board, or an old audioif
+except ImportError:      # a stock CircuitPython board, or an old audiodsp
     audiodynamics = None
 
 try:
@@ -182,7 +182,7 @@ class Compressor(_component.Component):
     CATEGORIES = ('Dynamics',)
     VERSION = '0.0.2'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiodynamics", "audioroute")
 
     CAPABILITIES = ()
@@ -278,13 +278,13 @@ class Compressor(_component.Component):
         # rewound - its Python surface is `tap()`, and a tap's `reset_buffer`
         # is a documented no-op, "the cursors belong to the Splitter and the
         # other taps are still reading from them"
-        # (`audioif/src/audioroute/SplitterTap.c`). It **can** be released:
-        # `deinit()` landed in audioif#58, and it releases the taps with it.
+        # (`audiodsp/src/audioroute/SplitterTap.c`). It **can** be released:
+        # `deinit()` landed in audiodsp#58, and it releases the taps with it.
         # This used to read `deinit=False`, which was honest while the palette
         # had nothing to call but left the Tier 1 row unmeasurable. Asking for
         # a release the node may not have is safe either way -
         # `_component.deinit()` looks the method up with `getattr` and skips
-        # what is not there - so this is correct against the pinned audioif as
+        # what is not there - so this is correct against the pinned audiodsp as
         # well as the current one.
         split = self._own(audioroute.Splitter(self._source, taps=2),
                           reset=False)
@@ -300,7 +300,7 @@ class Compressor(_component.Component):
         self._slow.play(self._fast)
 
         # `reset=False` on the mixer, measured rather than assumed:
-        # `audiomixer_mixer_reset_buffer` (`audioif/src/audiomixer/Mixer.c:
+        # `audiomixer_mixer_reset_buffer` (`audiodsp/src/audiomixer/Mixer.c:
         # 208-214`) does nothing of its own - it only resets its voices, and
         # a voice's reset re-fetches from whatever it plays. Through the
         # dry tap that reaches the borrowed source, and because the Splitter
@@ -317,7 +317,7 @@ class Compressor(_component.Component):
         self._output = mixer
         #: Two frames, because a one-frame mono sample is smaller than the
         #: packed word the native mixer consumes and `get_buffer` never
-        #: returns on it (audioif#85).
+        #: returns on it (audiodsp#85).
         self._silence = self._own(audiocore.RawSample(
             array("h", bytes(2 * 2 * self._channel_count)),
             sample_rate=self._sample_rate,
@@ -356,7 +356,7 @@ class Compressor(_component.Component):
         `1.0 * 32768` and the kernel divides by 32767, so the dry voice at
         unity came out one LSB high at every sample from 32736 up - three of
         16384 on a full-scale ramp, all in the right channel, and on a mono
-        mixer it would be both (audioif#95). Nothing rounds on the way out
+        mixer it would be both (audiodsp#95). Nothing rounds on the way out
         of the source, so handing it back is exact by construction.
 
         It works because nothing here touches the source until `_prime`

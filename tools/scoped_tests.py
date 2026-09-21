@@ -177,7 +177,7 @@ def choose(scope, modules):
         return modules, "full suite: a gate, an integration, or a release"
     if scope == "effects":
         return (_effects_only(modules),
-                "every effect; instruments skipped (audioif is pinned)")
+                "every effect; instruments skipped (audiodsp is pinned)")
     if scope == "contract":
         return list(CONTRACT), "the shared promises only"
     if scope.startswith("class:"):
@@ -215,7 +215,7 @@ def choose(scope, modules):
                 picked.update(hits or [])
                 why.append("%s -> %s" % (stem, ", ".join(hits) or "no test"))
             picked.update(CONTRACT)
-        elif path.startswith("lib/audioinstruments/") or "AUDIOIF_PIN" in path:
+        elif path.startswith("lib/audioinstruments/") or "AUDIODSP_PIN" in path:
             picked.update(INSTRUMENTS)
             why.append("instruments, because %s moved" % path)
         elif path.startswith("tools/effect_measurements") or \

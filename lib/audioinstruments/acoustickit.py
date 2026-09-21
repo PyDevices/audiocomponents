@@ -6,7 +6,7 @@ all. It is what a struck drum head does: a bank of decaying sinusoids at
 frequencies that are not harmonics of anything, excited by a short burst that
 stands in for the stick.
 
-That is `audiomodal.Bank`, which audioif carries for this. The kit is two
+That is `audiomodal.Bank`, which audiodsp carries for this. The kit is two
 banks and one excitation: the hi-hat has its own so that closing it can choke
 what was ringing, and everything else shares one, because nothing else in a
 kit silences anything else.

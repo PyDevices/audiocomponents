@@ -76,7 +76,7 @@ class RatioPinnedExpander(Expander):
 class DepthSignFlippedExpander(Expander):
     """E4's fault: `depth_db` reaches the node positive, which the node
     reads as *unset* and answers with its own fixed -60 dB literal
-    (`audioif/src/shared/audioif_dynamics.c:377-380`), so the Depth knob is
+    (`audiodsp/src/shared/audiodsp_dynamics.c:377-380`), so the Depth knob is
     dead. The panel's span is 0 ... -80 dB and never reads a positive
     number, so no macro position and no patch can dial it."""
 

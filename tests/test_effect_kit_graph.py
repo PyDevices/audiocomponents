@@ -22,7 +22,7 @@ So there are two guards and two faults:
                           the render. Control: a probe 256 frames longer.
 
 `Exciter` is the subject because it is the class the issue was found on. The
-numbers here are at audioif `3388df4`.
+numbers here are at audiodsp `3388df4`.
 """
 
 import math
@@ -74,7 +74,7 @@ class UnreadTapIsHarmlessTest(unittest.TestCase):
     """audiocomponents#78's premise, tested rather than assumed.
 
     The issue says an unread tap drags the ring and costs the read tap its
-    stream. At audioif `3388df4` - which carries audioif#87, the oversized
+    stream. At audiodsp `3388df4` - which carries audiodsp#87, the oversized
     block fix - it does not, and the guard below exists for a different
     reason.
     """
@@ -154,8 +154,8 @@ class WholeGraphTest(unittest.TestCase):
         # so the walk takes every node-like attribute rather than a list of
         # names. `Bitcrusher` is the case: a Splitter, a hold in front of
         # the shaper, and a dry voice muted to zero. The hold was a
-        # SpeedChanger pair until audioif e3b95e7; it is an
-        # `audioshaper.SampleHold` now (audioif#97), which also calls its
+        # SpeedChanger pair until audiodsp e3b95e7; it is an
+        # `audioshaper.SampleHold` now (audiodsp#97), which also calls its
         # source `source` and is just as nameless to the walk.
         from audioeffects.bitcrusher import Bitcrusher
         probe = sine(1000.0, -12.0, 8000)

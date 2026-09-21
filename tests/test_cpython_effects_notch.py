@@ -212,7 +212,7 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(Notch.PATCHES[0][0], "Wide Notch")
         self.assertEqual(Notch.CAPABILITIES, ())
         self.assertEqual(Notch.LATENCY_SAMPLES, 0)
-        self.assertEqual(Notch.TIER, _component.AUDIOIF)
+        self.assertEqual(Notch.TIER, _component.AUDIODSP)
         self.assertEqual(Notch.REQUIRES, ("audiobiquad",))
 
     def test_every_patch_notches_where_its_comment_says(self):
@@ -357,7 +357,7 @@ class TheBypassIsAWire(unittest.TestCase):
 
 
 class TheTailReachesExactZero(unittest.TestCase):
-    """Tier 1's first invariant, and the reason the tier is audioif."""
+    """Tier 1's first invariant, and the reason the tier is audiodsp."""
 
     FRAMES = 120000
 
@@ -382,7 +382,7 @@ class TheTailReachesExactZero(unittest.TestCase):
 
         `synthio.Biquad` through `audiofilters.Filter`, the same 60 Hz Q 8
         the mains-hum patch reaches for, parks on a non-zero word and holds
-        it - audioif#23 itself and not a stand-in for it.
+        it - audiodsp#23 itself and not a stand-in for it.
         """
         node = audiofilters.Filter(
             filter=synthio.Biquad(synthio.FilterMode.NOTCH, 60.0, Q=8.0),

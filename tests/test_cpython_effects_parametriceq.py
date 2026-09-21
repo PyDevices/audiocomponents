@@ -102,7 +102,7 @@ class SurfaceTest(unittest.TestCase):
     def test_the_declared_shape_is_what_the_class_builds(self):
         effect = parametriceq.ParametricEQ.create(source(), SAMPLE_RATE)
         self.addCleanup(effect.deinit)
-        self.assertEqual(effect.TIER, 'audioif')
+        self.assertEqual(effect.TIER, 'audiodsp')
         self.assertEqual(effect.REQUIRES, ("audiobiquad",))
         self.assertEqual(effect.capabilities, ())
         self.assertEqual(effect.latency_samples, 0)
@@ -208,10 +208,10 @@ class TailTest(unittest.TestCase):
         self.assertLessEqual(arrived, effect.tail_samples)
 
     def test_planted_fault_the_ported_kernel_holds_dc_for_ever(self):
-        # audioif#23, reproduced here rather than cited: the same section on
+        # audiodsp#23, reproduced here rather than cited: the same section on
         # `synthio.Biquad` in an `audiofilters.Filter` parks on a non-zero
         # word and holds it. This is the fault the measurement above must go
-        # red on, and it is why the class's tier is audioif.
+        # red on, and it is why the class's tier is audiodsp.
         import audiofilters
         import synthio
         node = audiofilters.Filter(
@@ -343,7 +343,7 @@ class HeadroomTest(unittest.TestCase):
     Everything above reads the built sections' coefficients, which is a
     small-signal statement: it is true of the filter and says nothing about
     the chain, because every section writes int16 and clips there
-    (`audioif_filter_f32.c:43-51`). Rendered, the boost stops being
+    (`audiodsp_filter_f32.c:43-51`). Rendered, the boost stops being
     delivered while the cut is untouched, and that asymmetry is what breaks
     T5's reciprocal and T3's peak-gain difference above -16 dBFS. The
     numbers are this session's, at 1 kHz through the middle bell.

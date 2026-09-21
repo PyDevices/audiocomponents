@@ -1,4 +1,4 @@
-"""Validate audio component metadata declared by the audioif providers.
+"""Validate audio component metadata declared by the audiodsp providers.
 
 This module deliberately uses only the Python standard library.  It is a
 provider-side validator and test/tooling helper, not part of the audio graph

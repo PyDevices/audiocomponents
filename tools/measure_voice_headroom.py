@@ -6,7 +6,7 @@ Runs on the device. Prints a table and one verdict line.
 
 WHY THIS EXISTS
 ---------------
-The voice ceiling was raised from 14 to 64 (audioif#31). On desktop that is
+The voice ceiling was raised from 14 to 64 (audiodsp#31). On desktop that is
 free. On a microcontroller it may not be, and nobody has measured it.
 
 The ceiling used to be an accidental CPU governor. At 14, a patch too heavy

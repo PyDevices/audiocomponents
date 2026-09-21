@@ -7,7 +7,7 @@ sounds really do come off one circuit and choke each other.
 
 It also means the two voices only stay correct if each hit's parameters are
 fully applied. A circuit whose pitches assign DIFFERENT envelopes is the case
-worth testing: audioif d84470a fixed a CPython target that kept stepping the
+worth testing: audiodsp d84470a fixed a CPython target that kept stepping the
 envelope a note was first pressed with, and before it a closed hat struck after
 an open one rang for the open hat's full decay in eight of ten kits.
 
@@ -136,7 +136,7 @@ _FRAMES_PER_BLOCK = None
 def frames_per_block(sample_rate=SAMPLE_RATE):
     """Frames in one pull - the resolution every block count here is quoted at.
 
-    Probed rather than assumed: the pull size is audioif's to choose.
+    Probed rather than assumed: the pull size is audiodsp's to choose.
     """
     global _FRAMES_PER_BLOCK
     if _FRAMES_PER_BLOCK is None:

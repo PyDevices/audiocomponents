@@ -74,11 +74,11 @@ from . import _component
 
 try:
     import audiodynamics
-except ImportError:      # a stock CircuitPython board, or an old audioif
+except ImportError:      # a stock CircuitPython board, or an old audiodsp
     audiodynamics = None
 
 
-#: The detector reads `gain_to_db(envelope + 1e-6)` (`audioif_dynamics.c:749`),
+#: The detector reads `gain_to_db(envelope + 1e-6)` (`audiodsp_dynamics.c:749`),
 #: which puts a full-scale sample a hair over 0 dBFS and pulls it down by one
 #: LSB. Everything at or below the ceiling has to pass untouched, so the class
 #: hands each node a threshold this much higher. It is 2e-5 of an LSB at full
@@ -108,7 +108,7 @@ _DB_PER_TIME_CONSTANT = 8.685889638065035
 
 class Limiter(_component.Component):
     """Brickwall limiting against a ceiling, with optional lookahead and
-    true-peak detection. `audioif` tier: it needs `audiodynamics`.
+    true-peak detection. `audiodsp` tier: it needs `audiodynamics`.
 
     Two `audiodynamics.Dynamics` in series - a shaping stage that carries the
     Knee, the Lookahead and the true-peak detector, and a catch stage that is
@@ -154,7 +154,7 @@ class Limiter(_component.Component):
     CATEGORIES = ('Dynamics',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiodynamics",)
 
     #: A ceiling has no tempo. The class never reads `self._transport()`.
@@ -192,7 +192,7 @@ class Limiter(_component.Component):
     }
 
     #: `DYN_LIMIT` has no knee term in its gain computer at all
-    #: (`audioif_dynamics.c:369-370`), so the Knee macro rides a
+    #: (`audiodsp_dynamics.c:369-370`), so the Knee macro rides a
     #: `DYN_COMPRESS` node instead, at a ratio high enough that Knee 0
     #: measures 0.0000 dB/dB of slope above the threshold - a brickwall by
     #: measurement, not by mode name. It is a class attribute and not a
@@ -207,9 +207,9 @@ class Limiter(_component.Component):
 
     #: The true-peak reserve, in samples, and why it is a sample count and
     #: not a millisecond figure. The node's 4x detector reads a **12-tap**
-    #: polyphase window (`AUDIOIF_DYNAMICS_TP_TAPS`,
-    #: `audioif_dynamics.h:51`; `oversampled_peak`,
-    #: `audioif_dynamics.c:349-357`), so the inter-sample peak it names at
+    #: polyphase window (`AUDIODSP_DYNAMICS_TP_TAPS`,
+    #: `audiodsp_dynamics.h:51`; `oversampled_peak`,
+    #: `audiodsp_dynamics.c:349-357`), so the inter-sample peak it names at
     #: sample *n* happened about five and a half samples earlier. A gain
     #: computed from that number can only be applied to audio at least that
     #: far behind the detector - with no delay in the catch stage the peak
@@ -288,7 +288,7 @@ class Limiter(_component.Component):
         """Ceiling and Gain are one setting on the nodes.
 
         `makeup_db` is applied *after* the gain computer
-        (`audioif_dynamics.c:679`), so it cannot be the drive-into-the-ceiling
+        (`audiodsp_dynamics.c:679`), so it cannot be the drive-into-the-ceiling
         knob on its own - it would push the output back through the ceiling.
         Dropping the threshold by the same number of dB compensates exactly:
         below the threshold the output is `L + G`, above it the output is
@@ -307,7 +307,7 @@ class Limiter(_component.Component):
 
         The node truncates in single precision -
         `lookahead_frames = (uint32_t)(ms * fs / 1000.0f)`,
-        `audioif_dynamics.c:126-127` - so asking for the millisecond value
+        `audiodsp_dynamics.c:126-127` - so asking for the millisecond value
         directly and then computing the sample count in double precision
         disagrees with the node about once in twenty-five at 44.1 kHz.
         Asking for the *midpoint* of the truncation bin instead puts the

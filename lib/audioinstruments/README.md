@@ -3,7 +3,7 @@
 Fifty-four classic synthesizers, electromechanical keyboards and drum
 machines, each a self-contained `synthio` program. No samples: every voice is
 oscillators, envelopes and filters, so the whole library is a few hundred
-kilobytes of Python and runs anywhere audioif does.
+kilobytes of Python and runs anywhere audiodsp does.
 
 ```python
 import audioinstruments
@@ -27,17 +27,17 @@ exact sound of a release, pin that release rather than tracking the
 latest; the code of every release stays available for exactly this
 reason.
 
-Beneath the components sits a harder guarantee: the audioif core — the
+Beneath the components sits a harder guarantee: the audiodsp core — the
 CircuitPython-compatible `synthio`/`audiocore`/effects-module layer — is
 held bit-exact to CircuitPython itself, verified by parity gates, and
 that never changes release to release. Where we find CircuitPython and
-audioif disagree, we treat it as a bug and report it upstream. The
+audiodsp disagree, we treat it as a bug and report it upstream. The
 components are where the sound evolves; the floor they stand on does
 not.
 
 ## The instrument API
 
-This package follows audioif's audio component metadata manifest. Every
+This package follows audiodsp's audio component metadata manifest. Every
 instrument module explicitly declares `NAME`, `MACRO_LABELS`,
 `MACRO_MODES`, and `PATCHES`; percussion modules also declare `NOTE_MAP`.
 The complete provider rules are in `docs/audio-components.md`.

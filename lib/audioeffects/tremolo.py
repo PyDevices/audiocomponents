@@ -14,7 +14,7 @@ faster than it recovers, as a resistive divider, never a gate. Rate is
 0.5–15 Hz (amp patches sit in 3–10 Hz). Depth 0 is a wire. Speed Link
 makes depth fall as Rate falls, the way one pot moves one RC section.
 
-**Portability tier: audioif** (`REQUIRES = ("audiomath",)`). On a stock
+**Portability tier: audiodsp** (`REQUIRES = ("audiomath",)`). On a stock
 CircuitPython board this module imports cleanly and construction raises
 `ImportError`.
 
@@ -202,7 +202,7 @@ def snap_rate(rate_hz, bpm):
 
 
 class Tremolo(_component.Component):
-    """Bias-vary and optical tremolo on `audiomath.Multiply`. audioif tier.
+    """Bias-vary and optical tremolo on `audiomath.Multiply`. audiodsp tier.
 
     **Latency is 0.** No lookahead, no partition, no pitch window. Lag is a
     shape parameter (5–100 ms of photocell recovery) baked into the table,
@@ -223,7 +223,7 @@ class Tremolo(_component.Component):
     CATEGORIES = ('Modulation',)
     VERSION = '0.1.0'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiomath",)
 
     CAPABILITIES = ("tempo_sync",)

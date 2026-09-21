@@ -27,11 +27,11 @@ the SP-1200's own word length, so the span and the standout now agree.
 scale the wet against a mixer voice that clamps at 1.0, which made it a
 no-op at the shipped Mix.
 
-**Portability: audioif, and nothing of CircuitPython's.**
+**Portability: audiodsp, and nothing of CircuitPython's.**
 `audioshaper.Waveshaper` ×1 holds the round-to-nearest staircase
 (`audiofilters.Distortion` is 19.6 ms/block and does not fit).
 `audioshaper.SampleHold` is the hold. `audiobiquad` is the optional band
-limit. Every node is audioif's own and is in `REQUIRES`; until 2026-09-17
+limit. Every node is audiodsp's own and is in `REQUIRES`; until 2026-09-17
 Rate was a pair of `audiospeed.SpeedChanger` nodes, and that module is a
 CircuitPython port whose Q16 rate grid this class could not land on
 exactly — see **the hold** below.
@@ -55,7 +55,7 @@ rounded to the whole hertz, reduced by the node (26 040 at 48 kHz is
 legs this replaced could not be made reciprocal at Q16: the pair multiplied
 out to 0.9999947 at 48 kHz — one sample late per 189 339 frames — and
 1.0000108 at 44.1 kHz, one sample *early* per 92 708, which put 10.74 dB of
-slow flange on a 12 kHz tone at a setting nobody was touching (audioif#97).
+slow flange on a 12 kHz tone at a setting nobody was touching (audiodsp#97).
 
 **Latency: the hold's displacement, plus the band limit's.**
 `latency_samples` reports `ceil(num/den) − 1` off the node's own reduced
@@ -1329,7 +1329,7 @@ class Bitcrusher(_component.Component):
     CATEGORIES = ('Distortion',)
     VERSION = '0.0.1'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audioshaper", "audiobiquad", "audioroute",
                 "audiodynamics")
 
@@ -1377,7 +1377,7 @@ class Bitcrusher(_component.Component):
         # this was two parallel `audiospeed.SpeedChanger` PAIRS, because a
         # `SpeedChanger`'s source is fixed at construction; the pair could
         # not be made reciprocal on that node's Q16 rate grid and the hold
-        # slipped a sample per ~190k frames (audioif#97). `SampleHold` has
+        # slipped a sample per ~190k frames (audiodsp#97). `SampleHold` has
         # `play()` and counts in integers, so one node does the whole job.
         sections = []
         upstream = wet_in
@@ -1535,7 +1535,7 @@ class Bitcrusher(_component.Component):
         # 26 040 Hz at 48 kHz multiplied out to 0.9999947, one sample late
         # per 189 339 frames, and 1.0000108 at 44.1 kHz, one sample EARLY
         # per 92 708 -- 10.74 dB of slow flange on a 12 kHz tone nobody was
-        # touching (audioif#97). An integer accumulator cannot drift, so
+        # touching (audiodsp#97). An integer accumulator cannot drift, so
         # what the knob asks for is what runs, for as long as it runs.
         num = int(self._sample_rate)
         den = int(rate_hz + 0.5)

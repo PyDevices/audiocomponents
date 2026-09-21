@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pydevices-audioeffects"
 dynamic = ["version"]
-description = "Audio effects built on audioif's audio nodes for PyDevices"
+description = "Audio effects built on audiodsp's audio nodes for PyDevices"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -17,10 +17,12 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
-# The audioif floor is the newest audioif RELEASE. It is not the pin:
-# AUDIOIF_PIN (repo root) names the exact commit the gates run against,
+# The audiodsp floor is the newest audiodsp RELEASE. It is not the pin:
+# AUDIODSP_PIN (repo root) names the exact commit the gates run against,
 # and may sit ahead of any release.
-dependencies = ["pydevices-audioif>=0.2.0"]
+# 0.5.0 is the first release the core made under this name (it was renamed on
+# 2026-09-21), so there is no older pydevices-audiodsp to be compatible with.
+dependencies = ["pydevices-audiodsp>=0.5.0"]
 
 [project.urls]
 Repository = "https://github.com/PyDevices/audiocomponents"

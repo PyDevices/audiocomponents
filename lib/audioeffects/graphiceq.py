@@ -78,10 +78,10 @@ sections and saturates at full scale, so +12 dB of Gain into a hot source
 clips at the first section -- an M-108's op-amps do too. Pull `Volume` down
 when you push `Gain` up, or push the bank instead.
 
-**`audioif` tier: it needs `audiobiquad`.** The ported `synthio.Biquad` holds
+**`audiodsp` tier: it needs `audiobiquad`.** The ported `synthio.Biquad` holds
 DC after silence at exactly this bank's bottom two bands -- +7 LSB at 31.25 Hz
-and +5 LSB with all ten engaged, for ever (audioif#23). Those are the numbers
-that made the DC-clean node (audioif#39); on it every one of them is exact
+and +5 LSB with all ten engaged, for ever (audiodsp#23). Those are the numbers
+that made the DC-clean node (audiodsp#39); on it every one of them is exact
 zero.
 
 **Cost.** Twelve biquad sections run at every setting -- a flat band is muted,
@@ -98,7 +98,7 @@ from . import _component
 
 try:
     import audiobiquad
-except ImportError:      # a stock CircuitPython board, or an old audioif
+except ImportError:      # a stock CircuitPython board, or an old audiodsp
     audiobiquad = None
 
 
@@ -143,7 +143,7 @@ _SKIRT_DB = 1.0
 #: The anchor gain the `Band Q` macro names the Q of.
 _ANCHOR_DB = 12.0
 
-#: `audioif_filter_f32.c:99-100` clamps Q into this band for stability; the class
+#: `audiodsp_filter_f32.c:99-100` clamps Q into this band for stability; the class
 #: clamps to the same numbers so a macro cannot ask for what the kernel will
 #: silently refuse.
 _Q_MIN = 0.05
@@ -180,7 +180,7 @@ def band_q(gain_db, anchor):
 class GraphicEQ(_component.Component):
     """A ten-band octave graphic EQ with proportional Q, after the MXR M-108.
 
-    `audioif` tier: it needs `audiobiquad`, whose float state is what lets a
+    `audiodsp` tier: it needs `audiobiquad`, whose float state is what lets a
     31.25 Hz band reach exact zero after silence.
 
     Twelve `audiobiquad.Biquad` nodes in series -- `Gain`, nine bells, the
@@ -193,7 +193,7 @@ class GraphicEQ(_component.Component):
     CATEGORIES = ('EQ',)
     VERSION = '0.0.1'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiobiquad",)
 
     #: The transport is never read: nothing here is tempo-dependent, and a
@@ -350,7 +350,7 @@ class GraphicEQ(_component.Component):
             # `mix = 0` makes the kernel compute `1.0f * x + 0.0f * y`, which
             # is the input sample exactly. A `gain_db = 0` section used to
             # drift up to 5 LSB at 31.25 Hz over 24000 frames and no longer
-            # does -- audiobiquad's transposed direct form II (audioif#64) is
+            # does -- audiobiquad's transposed direct form II (audiodsp#64) is
             # bit-transparent at 0 dB at all ten centres, measured in
             # `tests/test_cpython_effects_graphiceq.py`. So what this branch
             # buys now is the section's work and `_wake`'s state hygiene, not
@@ -368,7 +368,7 @@ class GraphicEQ(_component.Component):
         """Clear a section that is leaving the detent.
 
         The kernel runs the recursion even at `mix = 0`
-        (`audioif_filter_f32.c:216-241` has no short-circuit), so a muted
+        (`audiodsp_filter_f32.c:216-241` has no short-circuit), so a muted
         section's state is a filter nobody heard, tracking the input through
         coefficients nobody chose. Handing that state to the filter about to
         run is what makes a patch change slam: measured on a 220 Hz tone at

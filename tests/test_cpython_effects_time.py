@@ -129,7 +129,7 @@ class TimeTest(unittest.TestCase):
     def test_a_synthesized_room_is_normalized_rather_than_clipped(self):
         # An unnormalized tail of unit-amplitude noise is tens of thousands
         # of times the input. This is the check that the energy scaling in
-        # audioif_convolve_synthesize is doing its job.
+        # audiodsp_convolve_synthesize is doing its job.
         verb = audioeffects.ConvolutionReverb(source(), seconds=0.5)
         verb.set_macro(4, 127)
         self.assertLess(peak(verb.output, 12, skip=2), 0.95)

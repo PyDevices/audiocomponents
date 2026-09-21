@@ -77,7 +77,7 @@ def impulse(amplitude, at, total_frames, channels=CHANNELS):
 
 
 class _OldRingSource:
-    """The `Splitter` as it was before audioif#87, written out in Python.
+    """The `Splitter` as it was before audiodsp#87, written out in Python.
 
     A call bigger than the 8192-frame ring kept only its tail, so the head
     of a whole-buffer source never reached the graph. The node does not do
@@ -115,7 +115,7 @@ T1_SWEEP = (100.0, 500.0, 1500.0, 2500.0, 3000.0, 3600.0, 6000.0, 12000.0)
 
 
 class ThroughTheDryVoice(module.DynamicEQ):
-    """The wiring this class shipped with before audioif#95: Mix 0 routed
+    """The wiring this class shipped with before audiodsp#95: Mix 0 routed
     through the Mixer's dry voice at level 1.0 instead of handing back the
     class's input. Nothing else moves - the levels are the same numbers - so
     the only difference in the render is the mixer's own `level / 32767`
@@ -144,7 +144,7 @@ class ThroughTheDryVoice(module.DynamicEQ):
 
 
 def ramp_fs(frames, channels=CHANNELS):
-    """Full-scale ramp. The only probe that reaches audioif#95's mechanism:
+    """Full-scale ramp. The only probe that reaches audiodsp#95's mechanism:
     it starts at |value| 32736, which nothing peaking under -6.02 dBFS has.
     """
     values = array.array('h')
@@ -208,7 +208,7 @@ def tone_gain(hz, level_db, frames=16384, rate=RATE, channels=CHANNELS,
 
 
 def law(over_db, ratio, knee_db=6.0):
-    """`audioif/src/shared/audioif_dynamics.c:392-403`, in Python."""
+    """`audiodsp/src/shared/audiodsp_dynamics.c:392-403`, in Python."""
     half = knee_db * 0.5
     slope = 1.0 - 1.0 / ratio
     if over_db <= -half:
@@ -303,7 +303,7 @@ class Tier1(unittest.TestCase):
         self.assertEqual(bytes(out), bytes(data))
 
     def test_wire_at_mix_zero_holds_at_full_scale(self):
-        """The same row on the probe that can see audioif#95.
+        """The same row on the probe that can see audiodsp#95.
 
         A tone at -4.4 dBFS peaks at 19700 and the mixer's `level / 32767`
         lift starts at 32736, so the row above could not have caught a dry
@@ -589,7 +589,7 @@ class Surface(unittest.TestCase):
         cls = module.DynamicEQ
         self.assertLessEqual(len(cls.MACRO_LABELS), 16)
         self.assertGreater(len(cls.PATCHES), 1)
-        self.assertEqual(cls.TIER, _component.AUDIOIF)
+        self.assertEqual(cls.TIER, _component.AUDIODSP)
         self.assertEqual(cls.REQUIRES,
                          ("audiobiquad", "audiodynamics", "audioroute"))
 
@@ -801,7 +801,7 @@ class PlantedFaults(unittest.TestCase):
         self.assertIsNotNone(first)
 
     def test_wire_goes_red_on_a_dry_voice_at_unity(self):
-        """audioif#95's fault, which is the wiring this class shipped with.
+        """audiodsp#95's fault, which is the wiring this class shipped with.
 
         A mixer voice at level 1.0 is not unity - upstream's Q15 level is
         `1.0 * 32768` and the kernel divides by 32767 - so the dry tap at
@@ -824,7 +824,7 @@ class PlantedFaults(unittest.TestCase):
         self.assertTrue(all(abs(data[index]) >= 32736 for index in differ))
 
     def test_tail_goes_red_on_a_held_dc_state(self):
-        """TAIL's fault: the audioif#23 shape, a state that never arrives.
+        """TAIL's fault: the audiodsp#23 shape, a state that never arrives.
         Planted by running the same graph on the ported Q12 biquad."""
         import audiofilters
         import synthio
@@ -866,11 +866,11 @@ class PlantedFaults(unittest.TestCase):
         self.assertNotEqual(at - 50, effect.latency_samples)
 
     def test_the_block_ladder_no_longer_needs_the_guard(self):
-        """The guard's row, rewritten at audioif `977ef26`.
+        """The guard's row, rewritten at audiodsp `977ef26`.
 
         It used to read: a `Splitter` fed straight off a whole-buffer source
         loses everything past its 8192-frame ring, so an impulse 200 frames
-        into a 40000-frame `RawSample` arrives as silence. audioif#87 ended
+        into a 40000-frame `RawSample` arrives as silence. audiodsp#87 ended
         that - the Splitter takes a call bigger than its ring in pieces - and
         the unguarded split now passes the impulse at full height.
 
@@ -934,11 +934,11 @@ class PlantedFaults(unittest.TestCase):
         clean = sum_of_a_split(True)
         unguarded = sum_of_a_split(False)
         old_ring = sum_of_a_split("old ring")
-        print("\n  GUARD row at audioif 977ef26: impulse at frame 200 of a"
+        print("\n  GUARD row at audiodsp 977ef26: impulse at frame 200 of a"
               " 40000-frame RawSample, guarded peak %d, unguarded peak %d,"
               " old-ring peak %d" % (clean, unguarded, old_ring))
         self.assertGreater(clean, 1000)
-        # audioif#87: the head survives without the guard now.
+        # audiodsp#87: the head survives without the guard now.
         self.assertEqual(unguarded, clean)
         # And the fault of the same kind still fires.
         self.assertEqual(old_ring, 0)

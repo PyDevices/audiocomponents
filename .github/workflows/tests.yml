@@ -19,7 +19,7 @@ jobs:
         python: ["3.11", "3.12", "3.13", "3.14"]
         include:
           # The components are pure Python; the platform variance comes from
-          # audioif's extension underneath them, so one Python is enough to
+          # audiodsp's extension underneath them, so one Python is enough to
           # prove the other two platforms.
           - os: windows-latest
             python: "3.13"
@@ -32,26 +32,26 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      # AUDIOIF_PIN, not the latest release: the gates below are only
+      # AUDIODSP_PIN, not the latest release: the gates below are only
       # attributable against a fixed core. A component failure over a moving
-      # audioif cannot be told apart from a node that moved beneath it.
-      - name: Resolve the audioif pin
+      # audiodsp cannot be told apart from a node that moved beneath it.
+      - name: Resolve the audiodsp pin
         id: pin
         shell: bash
         run: |
-          tag=$(grep -v '^[[:space:]]*#' AUDIOIF_PIN | grep -v '^[[:space:]]*$' \
+          tag=$(grep -v '^[[:space:]]*#' AUDIODSP_PIN | grep -v '^[[:space:]]*$' \
                 | head -1 | awk '{print $1}')
           if [[ -z "$tag" ]]; then
-            echo "AUDIOIF_PIN has no pin line" >&2
+            echo "AUDIODSP_PIN has no pin line" >&2
             exit 1
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "audioif pinned at $tag"
+          echo "audiodsp pinned at $tag"
 
-      - name: Install audioif at the pin
+      - name: Install audiodsp at the pin
         run: >-
           python -m pip install
-          "pydevices-audioif @ git+https://github.com/PyDevices/audioif@${{ steps.pin.outputs.tag }}"
+          "pydevices-audiodsp @ git+https://github.com/PyDevices/audiodsp@${{ steps.pin.outputs.tag }}"
 
       # Editable, so the tests exercise lib/ directly rather than a copy, and
       # so each package's own pyproject.toml is exercised too.
@@ -60,8 +60,8 @@ jobs:
       - run: python -m pip install numpy
 
       # --no-deps is load-bearing: without it a floor raised above the pinned
-      # release re-resolves pydevices-audioif from the index and every
-      # measurement is taken against a core AUDIOIF_PIN does not name -- the
+      # release re-resolves pydevices-audiodsp from the index and every
+      # measurement is taken against a core AUDIODSP_PIN does not name -- the
       # failure the pin exists to prevent, arriving through packaging. Do not
       # drop the flag.
       - run: python -m pip install --no-deps -e lib/audioinstruments -e lib/audioeffects

@@ -26,7 +26,7 @@ knob turn from patch 0's own default corner - and the peak stands
 Resonance 16 it is 2.68 dB shy. The cause is under this class and it is
 arithmetic, not a bug in the cut: `audiobiquad` derives its coefficients in
 double and stores the five it uses as `float`
-(`audioif/src/shared/audioif_filter_f32.h:103`), and a resonant pole pair's
+(`audiodsp/src/shared/audiodsp_filter_f32.h:103`), and a resonant pole pair's
 corner gain is set by `1 + a1 + a2`, which at a 10 Hz corner is 1.7e-6 -
 smaller than the rounding of `a1 ~ -2` into single precision. Evaluating the
 class's own cascade with the coefficients rounded that way predicts every
@@ -62,12 +62,12 @@ settles to exact zero and a held offset decays away. That is the class's
 whole musical job, and it is why this class is `audiobiquad` and not
 `synthio.Biquad`.
 
-**Portability tier: audioif** (`REQUIRES = ("audiobiquad",)`). Both filter
+**Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`). Both filter
 sections and the trim are `audiobiquad.Biquad` - float state, and a state
 word below 1e-20 written as exact zero. The ported `synthio.Biquad` cannot
 do the paragraph above: its Q12 integer memory has fixed points, and a
 `HighPass` parks on **-71 LSB of DC at a 10 Hz corner, -18 at 20 Hz and -8
-at 30 Hz, and holds them for ever** (audioif#23; dossier A3 and A15). A
+at 30 Hz, and holds them for ever** (audiodsp#23; dossier A3 and A15). A
 stock CircuitPython board therefore cannot construct this class. That is the
 dossier's section 8 question 1, settled there as D1, and the cost is real:
 the old class ran on a stock board and quietly failed the invariant.
@@ -79,7 +79,7 @@ over the probe source alone), against dossier budgets of 1.5 % and 5 %:
 **over on both**, and it stays parked on that gate item. There is no lean
 patch to offer, and the reason is worth knowing before optimising anything
 here - `mix` 0 takes a section out of the *sound*, not out of the *work*
-(`audioif/src/shared/audioif_filter_f32.c:216-241` computes and stores the
+(`audiodsp/src/shared/audiodsp_filter_f32.c:216-241` computes and stores the
 recursion for every sample and only the output line reads `mix`), so patch
 0's two wired-out sections cost what live ones cost. What would fit the
 budget is a construction option that builds one section instead of three,
@@ -134,7 +134,7 @@ BUTTERWORTH_HIGH = 1.3065629648763766
 #: the panel's own "flat" position stands for.
 FLAT_Q = 0.7071067811865476
 
-#: `audiobiquad`'s own clamp (`AUDIOIF_FILTER_F32_MIN_Q` / `MAX_Q`),
+#: `audiobiquad`'s own clamp (`AUDIODSP_FILTER_F32_MIN_Q` / `MAX_Q`),
 #: mirrored because the module does not export it. Resonance 16 at
 #: 24 dB/oct asks for 29.56, which is inside it.
 MIN_Q = 0.05
@@ -164,7 +164,7 @@ FLAT_DB = 0.2
 
 class HighPass(_component.Component):
     """A two-pole high-pass with a resonant corner, a 12/24 dB/oct slope
-    switch and a make-up trim. Three `audiobiquad` sections; audioif tier;
+    switch and a make-up trim. Three `audiobiquad` sections; audiodsp tier;
     zero latency; DC removed exactly rather than nearly."""
 
     NAME = 'HighPass'
@@ -172,7 +172,7 @@ class HighPass(_component.Component):
     CATEGORIES = ('Filter', 'EQ')
     VERSION = '0.0.2'
 
-    TIER = _component.AUDIOIF
+    TIER = _component.AUDIODSP
     REQUIRES = ("audiobiquad",)
 
     CAPABILITIES = ()
@@ -230,7 +230,7 @@ class HighPass(_component.Component):
 
         The trim closes the chain rather than opening it because each
         section writes int16 and clips there
-        (`audioif/src/shared/audioif_filter_f32.c:43-51`): a resonant corner
+        (`audiodsp/src/shared/audiodsp_filter_f32.c:43-51`): a resonant corner
         at Resonance 16 stands 24 dB above the passband, and the trim is
         there to bring that back down, so it has to sit after the peak it is
         trimming. It also has to sit after the poles for T1: a shelf ahead
