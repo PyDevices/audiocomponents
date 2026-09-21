@@ -78,7 +78,16 @@ class Rack(_core.Effect):
             child = _child(name, tail, options)
             self.effects.append(child)
             tail = child.output
-        self._output = tail
+        # A RACK DOES NOT GET A PORT OF ITS OWN, and that is a decision, not
+        # an omission. Its output never changes after construction -- nothing
+        # in this file re-points it -- and the last child's output is already
+        # a stable port, so a second one would buy nothing and cost a call per
+        # block. It would also break two things the contract says out loud and
+        # `tests/test_cpython_effects_racks.py` asserts: a rack's output IS
+        # its last child's output, and an empty rack IS a wire (`rack.output
+        # is src`). So the port is set directly here, going around the
+        # property that would wrap it.
+        self._port = tail
 
     @property
     def latency_samples(self):
@@ -123,11 +132,9 @@ class Rack(_core.Effect):
     def deinit(self):
         if self._deinited:
             return
-        # The rack's own wire first, then the children, each of which
-        # releases its own. Nothing here touches the outer borrowed source.
-        output = self._output
-        if _PORT is not None and isinstance(output, _PORT):
-            output.deinit()
+        # No port of its own to release -- `self._output` is the last child's
+        # port, or, for an empty rack, the borrowed source. Releasing either
+        # from here would be releasing something this rack does not own.
         for child in reversed(self.effects):
             child.deinit()
         self._output = None
