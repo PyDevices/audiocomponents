@@ -286,12 +286,16 @@ class TheSurface(unittest.TestCase):
             self.assertAlmostEqual(effect.get_macro(index), expected, delta=0.6)
 
     def test_default_output_is_the_delay_not_the_mixer(self):
+        # Asked of the port this test could not fail - a port is never the
+        # mixer, so both `assertIsNot`s would pass on any build at all. It
+        # asks what the port is PLAYING.
         effect = build()
-        self.assertIsNot(effect.output, effect._mixer)
+        playing = _component.port_target
+        self.assertIsNot(playing(effect.output), effect._mixer)
         effect.set_macro(LEVEL_I, 127)
-        self.assertIs(effect.output, effect._mixer)
+        self.assertIs(playing(effect.output), effect._mixer)
         effect.set_macro(LEVEL_I, rebuilt.Vibrato.PATCHES[0][1][LEVEL_I])
-        self.assertIsNot(effect.output, effect._mixer)
+        self.assertIsNot(playing(effect.output), effect._mixer)
 
 
 class T1NoDry(unittest.TestCase):

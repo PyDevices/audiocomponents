@@ -24,7 +24,6 @@ used by other racks: a `chain` entry may itself be a `("Rack", {...})`.
 VENDOR = "PyDevices"
 
 from . import _core
-from ._component import PORT as _PORT
 from ._component import macro_position as _macro_position
 from ._component import midi_of_position as _midi_of_position
 from ._component import port_target as _port_target

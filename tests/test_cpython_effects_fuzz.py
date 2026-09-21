@@ -1724,7 +1724,10 @@ class TheGraph(unittest.TestCase):
         of what blocks the germanium offset (audiocomponents#74)."""
         effect = build()
         chain = []
-        node = effect.output
+        # Through the wire to the node at the end of the graph. `output` is
+        # a stable port now, so the walk starts one node later than the
+        # object the consumer holds.
+        node = kit.port_target(effect.output)
         while node is not None and node is not effect._source:
             chain.append(type(node).__name__)
             node = getattr(node, "_source", None) or getattr(
@@ -1741,11 +1744,15 @@ class TheGraph(unittest.TestCase):
         effect.deinit()
 
     def test_mix_zero_is_the_borrowed_source_itself(self):
+        # What the class is PLAYING, not what the consumer is holding.
+        # `output` is a port whose identity never changes, so it is never
+        # the source and never the tilt; `port_target` is the question this
+        # test has always been asking.
         effect = build(mix=0.0)
-        self.assertIs(effect.output, effect._source)
+        self.assertIs(kit.port_target(effect.output), effect._source)
         self.assertEqual(effect.latency_samples, 0)
         effect.set_macro(5, 127)
-        self.assertIs(effect.output, effect._tilt)
+        self.assertIs(kit.port_target(effect.output), effect._tilt)
         self.assertEqual(effect.latency_samples, 4)
         effect.deinit()
 

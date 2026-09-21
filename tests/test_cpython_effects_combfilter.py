@@ -114,7 +114,13 @@ class LeakyWireCombFilter(combfilter.CombFilter):
 
     def _build(self, **options):
         combfilter.CombFilter._build(self, **options)
-        self._leak = self._own(_LeakyTap(self._output))
+        # `port_target(self._output)`, not `self._output`: appending a stage
+        # means wrapping the node at the end of the graph, not the wire the
+        # consumer holds. Wrapping the wire and then pointing the wire at
+        # the wrapper is a loop -- `_component._would_loop` refuses it, and
+        # `TheOutputPortIsAWire` below plants exactly that.
+        tail = _component.port_target(self._output)
+        self._leak = self._own(_LeakyTap(tail))
         self._output = self._leak
 
 

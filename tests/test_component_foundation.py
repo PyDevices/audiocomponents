@@ -140,6 +140,96 @@ class Wire(_component.Component):
         self._output = node
 
 
+class RepointsOnAMacro(TwoNodes):
+    """The shape a dozen shipped classes have: at the bottom of its Feedback
+    macro it hands back the borrowed source, and above it the tail."""
+
+    NAME = 'RepointsOnAMacro'
+
+    def _apply_macro(self, index, position):
+        TwoNodes._apply_macro(self, index, position)
+        self._output = self._source if position <= 0.0 else self.tail
+
+
+class AppendsAStage(Wire):
+    """One more filter on the end of the graph, built after `_build` has
+    already set an output -- which is where the wire and the node it plays
+    stop being the same object.
+
+    `WRAP_THE_WIRE` is the fault: `self._output` is the port, so wrapping it
+    and then pointing the port at the wrapper makes the port its own source.
+    """
+
+    NAME = 'AppendsAStage'
+    WRAP_THE_WIRE = False
+
+    def _build(self, cutoff_hz=1000.0):
+        Wire._build(self, cutoff_hz)
+        behind = (self._output if self.WRAP_THE_WIRE
+                  else _component.port_target(self._output))
+        self.stage = self._own(audiofilters.Filter(
+            filter=synthio.Biquad(synthio.FilterMode.HIGH_PASS,
+                                  self._hz(200.0), Q=0.707),
+            mix=1.0, **self._pcm()))
+        self.stage.play(behind)
+        self._output = self.stage
+
+
+class WrapsItsOwnWire(AppendsAStage):
+    """Planted fault: the appended stage takes the WIRE as its source."""
+
+    NAME = 'WrapsItsOwnWire'
+    WRAP_THE_WIRE = True
+
+
+class TheOutputPortIsAWire(unittest.TestCase):
+    """`output` is a port whose identity never changes.
+
+    Three things follow and all three are checked here, because between them
+    they are the whole contract a consumer is allowed to rely on: the object
+    survives a re-point, `port_target` is how you ask what is behind it, and
+    a class may not build its next stage on the wire.
+    """
+
+    def setUp(self):
+        if _component.PORT is None:       # pragma: no cover - stock board
+            self.skipTest("no audioroute.Port on this interpreter")
+
+    def test_the_identity_survives_a_repoint(self):
+        effect = RepointsOnAMacro.create(source(), RATE)
+        self.addCleanup(effect.deinit)
+        held = effect.output
+        effect.set_macro(0, 0)
+        self.assertIs(effect.output, held)
+        effect.set_macro(0, 127)
+        self.assertIs(effect.output, held)
+
+    def test_port_target_says_what_the_class_is_playing(self):
+        effect = RepointsOnAMacro.create(source(), RATE)
+        self.addCleanup(effect.deinit)
+        effect.set_macro(0, 0)
+        self.assertIs(_component.port_target(effect.output), effect._source)
+        effect.set_macro(0, 127)
+        self.assertIs(_component.port_target(effect.output), effect.tail)
+
+    def test_planted_fault_a_stage_built_on_the_wire_is_refused(self):
+        # Before the guard this built without complaint and the first pull
+        # walked the wrapper and the wire until the interpreter ran out of
+        # stack. On a board there is no stack to run out of on the
+        # interpreter's terms - the pump thread simply never returns.
+        with self.assertRaises(ValueError) as caught:
+            WrapsItsOwnWire.create(source(), RATE)
+        self.assertIn("port_target", str(caught.exception))
+
+    def test_the_same_class_appending_to_the_tail_is_green(self):
+        # The control, so what goes red above is the fault and not the
+        # fixture: one line apart, and this one builds and plays.
+        effect = AppendsAStage.create(source(), RATE)
+        self.addCleanup(effect.deinit)
+        self.assertIs(_component.port_target(effect.output), effect.stage)
+        self.assertGreater(peak(effect.output, blocks=40), 0)
+
+
 class FormatComesFromTheFactory(unittest.TestCase):
     def test_the_factory_rate_must_match_the_source(self):
         with self.assertRaises(ValueError) as caught:

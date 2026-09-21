@@ -1185,15 +1185,18 @@ class DriveCeilingAndLean(unittest.TestCase):
         a wire through the mixer gains an LSB on every sample at or above
         32736. Mix 0 hands back the source, so the invariant is exact by
         construction rather than by luck."""
+        # `port_target`, not `output`: the object a consumer holds is a port
+        # whose identity never changes, and what this asks is which node the
+        # class is playing through it.
         effect = build(mix=0.0)
-        self.assertIs(effect.output, effect._source)
+        self.assertIs(kit.port_target(effect.output), effect._source)
         self.assertEqual(effect.latency_samples, 0)
         effect.set_macro(2, 127)
-        self.assertIs(effect.output, effect._mix)
+        self.assertIs(kit.port_target(effect.output), effect._mix)
         self.assertEqual(effect.latency_samples,
                          rebuilt.CLICK_ONSET_SAMPLES[("tube", 4)])
         effect.set_macro(2, 0)
-        self.assertIs(effect.output, effect._source)
+        self.assertIs(kit.port_target(effect.output), effect._source)
         effect.deinit()
 
     def test_leaving_mix_zero_does_not_step(self):

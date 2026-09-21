@@ -138,7 +138,14 @@ class WetExciter(Exciter):
 
     def _prime_if_wet(self):
         Exciter._prime_if_wet(self)
-        if self._output is self._blend:
+        # `port_target`, not `_output`. The class ends in a port now, so
+        # `self._output is self._blend` is false on every build - and this
+        # fixture then quietly stopped muting anything, which turned
+        # fourteen of the rows below into readings of the MIXED output. A
+        # wet instrument that reads the mixed output is not a wet
+        # instrument: T1's octave read -4.2 dB where the wet branch reads
+        # -11.8, and the null build went green beside it.
+        if kit.port_target(self._output) is self._blend:
             self._blend.voice[0].level = 0.0
 
 
@@ -239,7 +246,10 @@ class DryHalf(Exciter):
 
     def _prime_if_wet(self):
         Exciter._prime_if_wet(self)
-        if self._output is self._blend:
+        # Through the port -- see `WetExciter` above. Asked of the wire this
+        # planted fault plants nothing, and the guard reads green on a class
+        # that has the defect.
+        if kit.port_target(self._output) is self._blend:
             self._blend.voice[0].level *= 0.5
 
 
@@ -250,7 +260,8 @@ class WetOverDry(Exciter):
 
     def _prime_if_wet(self):
         Exciter._prime_if_wet(self)
-        if self._output is self._blend:
+        # Through the port -- see `WetExciter` above.
+        if kit.port_target(self._output) is self._blend:
             self._blend.voice[1].level *= 2.2
 
 
