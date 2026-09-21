@@ -725,6 +725,14 @@ class Keys:
     # silently would bypass the scheduling seam and the shadow copies while
     # armed. Nothing in this package calls those three; when something does,
     # they want routing through the queue, not a forward.
+    #
+    # Two of the six -- `samples_signed` and `waveform` -- exist on the
+    # CPython twin and not on the native `synthio.Synthesizer`. Forwarding
+    # them anyway is right: on a board the property raises the same
+    # AttributeError absence would, so `Keys` stays faithful to whatever
+    # synthesizer is underneath rather than to one interpreter's surface.
+    # Checked on both the MicroPython and CircuitPython builds that carry
+    # the port.
     @property
     def envelope(self):
         return self.node.envelope
