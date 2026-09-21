@@ -587,10 +587,13 @@ class Keys:
     def press(self, note):
         q = self._q
         if q is None:
-            if self._shadows:
-                # This source note is being played live now. Anything the
-                # queue still holds for it belongs to the old life.
-                self._shadows.pop(note, None)
+            # This source note is being played live now. Anything the queue
+            # still holds for it belongs to the old life -- and the copy
+            # standing in for it is pressed on the engine, so it is let go
+            # here rather than left holding a channel nothing can reach.
+            spent = self._shadows.pop(note, None)
+            if spent is not None and spent is not note:
+                self.node.release(spent)
             self.node.press(note)
             return
         # Staged FIRST, so `note in keys.pressed` is true on the line after
@@ -628,7 +631,15 @@ class Keys:
     def release(self, note):
         q = self._q
         if q is None:
-            self._shadows.pop(note, None)
+            # What is SOUNDING for a scheduled note is the shadow copy, not
+            # the note the instrument hands back -- so releasing only the
+            # source leaves the copy pressed for ever. The drum machine's
+            # STOP button is `all_notes_off()`, which comes through here,
+            # and it left one voice per drum held on the engine and a tail
+            # audible after the transport said stop.
+            spent = self._shadows.pop(note, None)
+            if spent is not None and spent is not note:
+                self.node.release(spent)
             self.node.release(note)
             return
         spent = self._shadows.pop(note, note)
