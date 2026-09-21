@@ -186,6 +186,40 @@ than interpreting them as seconds; an adapter may establish the current
 interval and schedule the event at that frame. Callers that do not schedule
 within a block use the default zero.
 
+### Scheduling a note at a frame
+
+`sample_position` places an event inside the block a host is *about to*
+render. It cannot say "a bar from now", because nobody has rendered that bar
+yet. That is what these three are for, and they are separate from it:
+
+```python
+inst.schedulable                     # can this instrument take a frame?
+with inst.scheduled(queue, frame) as tokens:
+    inst.note_on(36, 127)            # heard at `frame`, not now
+inst.at(queue, frame).note_on(38, 90)
+```
+
+Inside the block, the instrument does **all** of its usual Python on the
+calling thread — validating, tracking held keys, building notes — and only
+its final presses and releases go on `queue`, which is an
+`audiopump.Events`. `tokens` collects one token per event in schedule order;
+a `0` is an event a full queue refused.
+
+Schedule in time order, and schedule a note-off with every note-on: the
+instrument's own bookkeeping is updated at schedule time, so a note-off
+written before its note-on finds nothing to release, and a live press of a
+key the queue is still holding can leave a scheduled note sounding forever.
+
+`schedulable` is `False` when an instrument's note-on reaches the audio by
+some route other than a press — a modal bank retuned in place. Those
+instruments still play live. `audioinstruments.sequencer.Sequencer` refuses
+one rather than playing its part early.
+
+This is a spike, on the desktop only:
+[live-audio-path-sequenced.md](../../docs/spikes/live-audio-path-sequenced.md)
+in the workspace anchor has the measurements, including which instruments are
+less than perfectly faithful when scheduled and by how much.
+
 ## Macro and patch state
 
 `get_macro(index)` returns the current public macro value in MIDI units. The

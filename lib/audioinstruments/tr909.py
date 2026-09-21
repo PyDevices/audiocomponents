@@ -60,6 +60,7 @@ from audioinstruments._support import (
     make_table, noise_table,
 )
 from audioinstruments._support import Instrument
+from audioinstruments import _support
 
 import array
 
@@ -80,7 +81,7 @@ FLUTTER = array.array("h", [32767, 4800, 31000, 4800, 29000, 9800]
 def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     NOISE_HZ = SR / 8192.0
-    synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
+    synth = _support.synthesizer(SR, channel_count)
 
     # Master params
     master_level = 0.8

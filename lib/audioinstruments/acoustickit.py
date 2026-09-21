@@ -144,6 +144,7 @@ import synthio
 
 from audioinstruments._support import FALL, make_table, noise_table
 from audioinstruments._support import Instrument
+from audioinstruments import _support
 
 import audiomixer
 import audiomodal
@@ -415,7 +416,7 @@ def create(sample_rate, channel_count=2, transport=None):
     _FILTER_MODES = (synthio.FilterMode.LOW_PASS,
                      synthio.FilterMode.HIGH_PASS,
                      synthio.FilterMode.BAND_PASS)
-    synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
+    synth = _support.synthesizer(SR, channel_count)
 
     master_level = 0.8
     hardness = 0.5
@@ -449,21 +450,21 @@ def create(sample_rate, channel_count=2, transport=None):
     # One excitation, split to both banks. A bank is linear, so what a strike
     # puts into each mode is the mode's own gain - the burst only has to carry
     # energy everywhere, not carry a shape.
-    split = audioroute.Splitter(synth, taps=2)
+    split = audioroute.Splitter(_support.node(synth), taps=2)
     main_bank.play(split.tap(0))
     hat_bank.play(split.tap(1))
 
     # A second synthesizer, played straight into the mixer rather than into a
     # bank. It has to be a second one: the first is the banks' excitation, and
     # anything pressed there would be resonated rather than heard.
-    direct = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
+    direct = _support.synthesizer(SR, channel_count)
 
     mixer = audiomixer.Mixer(voice_count=3, buffer_size=2048,
                              channel_count=channel_count, sample_rate=SR,
                              bits_per_sample=16, samples_signed=True)
     mixer.voice[0].play(main_bank, loop=True)
     mixer.voice[1].play(hat_bank, loop=True)
-    mixer.voice[2].play(direct, loop=True)
+    mixer.voice[2].play(_support.node(direct), loop=True)
     mixer.voice[0].level = 1.0
     mixer.voice[1].level = 1.0
     mixer.voice[2].level = 1.0
@@ -675,5 +676,12 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 15:
                 cymbal_level = value
 
+    # NOT SCHEDULABLE, and the reason is `strike()` above: a hit here is
+    # `bank.set_mode()` on a modal bank that is already running, which injects
+    # the energy the moment it is called. That is a C state change, not a
+    # press, so no queue can hold it back - and deferring only the two
+    # `direct.press()` calls would split one drum in half. See
+    # docs/spikes/live-audio-path-sequenced.md.
     return Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
-                      output=mixer, transport=transport, note_map=NOTE_MAP)
+                      output=mixer, transport=transport, note_map=NOTE_MAP,
+                      schedulable=False)

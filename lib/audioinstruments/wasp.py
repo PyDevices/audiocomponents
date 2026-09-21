@@ -49,7 +49,7 @@ WAVE_DIGI = make_table([(n, 1.0 / n) for n in range(1, 40, 2)], fast=False)
 def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     NOISE_HZ = SR / 8192.0
-    synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
+    synth = _support.synthesizer(SR, channel_count)
 
     # Macros
     volume = 0.8

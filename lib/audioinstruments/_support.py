@@ -499,6 +499,277 @@ def apply_patch(handle_event, patches, index, channel=0, note_id=-1,
                      macro_value / 127.0, 0.0, sample_position)
 
 
+# --- scheduling ------------------------------------------------------------
+#
+# An instrument's note_on() is Python and always will be: it validates, keeps
+# a dict of held keys, divides floats, allocates Notes and envelopes. None of
+# that can run on the pump's thread. What CAN run there is the last step -
+# `synth.press(note)` - which `audiopump.Events` applies with stores at a
+# frame Python chose in advance.
+#
+# So the seam is the synthesizer itself. Every instrument builds one the same
+# way; `synthesizer()` hands back a `Keys` standing in front of it. Live, a
+# press goes straight through. Inside `Instrument.scheduled(q, frame)` the
+# same call becomes `q.at(frame, PRESS, real_synth, note)` and nothing is
+# heard until the pump reaches that frame. The instrument's own Python - the
+# key dict, the voice arbiter, the wavetables - has already run, on the
+# interpreter thread, where it is allowed to allocate and to raise.
+#
+# `Keys` is not a general proxy. It answers press/release/release_all and
+# `pressed`, which is everything the instruments ask a synthesizer for, and
+# it carries the real node for the graph. See `node()`.
+
+_PENDING = []
+
+_OPS = None
+
+
+def _ops():
+    """(PRESS, RELEASE, RELEASE_ALL), imported the first time one is needed.
+
+    `audiopump` exists only where the pump does. An instrument that is never
+    scheduled must import and run on a host that has no such module."""
+    global _OPS
+    if _OPS is None:
+        import audiopump
+        _OPS = (audiopump.PRESS, audiopump.RELEASE, audiopump.RELEASE_ALL)
+    return _OPS
+
+
+def node(obj):
+    """The audio node behind ``obj`` - itself, unless it is a `Keys`."""
+    return obj.node if isinstance(obj, Keys) else obj
+
+
+class Keys:
+    """The keyboard in front of an instrument's synthesizer.
+
+    Live it is a pass-through. Armed by `Instrument.scheduled`, every press
+    and release becomes an event on the pump's queue at one frame.
+    """
+
+    def __init__(self, synth):
+        self.node = synth
+        self._q = None
+        self._frame = 0
+        self._ops = None
+        self._tokens = None
+        self._staged = ()
+        # Source note -> the copy standing in for it on the queue. See
+        # `_shadow`. Emptied by a release, so it holds at most what this
+        # instrument has scheduled and not yet let go of.
+        self._shadows = {}
+        self._choked = None
+
+    # -- the seam, driven by Instrument.scheduled ---------------------------
+
+    def arm(self, q, frame, ops, tokens):
+        self._q = q
+        self._frame = frame
+        self._ops = ops
+        self._tokens = tokens
+        self._staged = []
+        self._choked = {}
+
+    def disarm(self):
+        self._q = None
+        self._tokens = None
+        self._staged = ()
+        self._choked = None
+
+    @property
+    def shadows(self):
+        """How many scheduled notes this keyboard is still standing in for."""
+        return len(self._shadows)
+
+    # -- what the instruments call ------------------------------------------
+
+    def press(self, note):
+        q = self._q
+        if q is None:
+            if self._shadows:
+                # This source note is being played live now. Anything the
+                # queue still holds for it belongs to the old life.
+                self._shadows.pop(note, None)
+            self.node.press(note)
+            return
+        # Staged FIRST, so `note in keys.pressed` is true on the line after
+        # this one whether or not the queue took the event. press_voice()
+        # reads that answer to decide whether to steal a voice, and stealing
+        # from a future that has not happened yet would be worse than the
+        # dropped note a full queue already reports through stats().
+        self._staged.append(note)
+        spent = self._choked.pop(note, None)
+        if spent is None:
+            # Pressed again with no release in between - which is how every
+            # drum machine here retriggers a circuit. synthio would take the
+            # channel straight back; two shadows cannot, so the outgoing copy
+            # is released at this same frame, choked, and the press follows
+            # it in schedule order.
+            spent = self._shadows.pop(note, None)
+            if spent is not None:
+                _choke(spent)
+                self._tokens.append(q.at(self._frame, self._ops[1],
+                                         self.node, spent))
+        if spent is not None:
+            # A release and a press of the same note at one frame is a
+            # RETRIGGER, and on this hardware a retrigger CHOKES: pressing a
+            # note synthio is already sounding takes its channel back, and
+            # every hi-hat in the package is built on exactly that. Two
+            # shadows cannot share a channel, so the choke is made out of the
+            # release instead: the outgoing copy is given a release of zero
+            # and goes silent in the block its release lands in. The envelope
+            # is read when the release is applied, so writing it here reaches
+            # the event already on the queue.
+            _choke(spent)
+        self._tokens.append(q.at(self._frame, self._ops[0], self.node,
+                                 self._shadow(note)))
+
+    def release(self, note):
+        q = self._q
+        if q is None:
+            self._shadows.pop(note, None)
+            self.node.release(note)
+            return
+        spent = self._shadows.pop(note, note)
+        self._choked[note] = spent
+        self._tokens.append(q.at(self._frame, self._ops[1], self.node, spent))
+
+    def release_all(self):
+        q = self._q
+        if q is None:
+            self._shadows.clear()
+            self.node.release_all()
+            return
+        self._shadows.clear()
+        self._tokens.append(q.at(self._frame, self._ops[2], self.node))
+
+    def _shadow(self, source):
+        """A private copy of ``source`` as it is at this instant.
+
+        This is what makes a whole bar schedulable rather than one hit. Every
+        drum machine here owns one permanent `Note` per circuit and rewrites
+        its amplitude, envelope and filter on each strike; a melodic voice
+        reclaims a let-go note and copies a new one over it. Both are fine
+        when the press happens on the next line, and both are wrong when the
+        press is a bar away, because the SECOND hit's Python has already
+        overwritten the first hit's note before the first hit sounds.
+        Measured on tr808: the downbeat of a loud-then-quiet figure came out
+        at the quiet hit's level, peak 25795 live against 4638 scheduled.
+
+        A copy per scheduled press, at schedule time, on the interpreter
+        thread, where allocating is what we are allowed to do. The queue
+        applies a `Note` it alone holds.
+
+        A bare MIDI number carries no state and is passed through.
+        """
+        if isinstance(source, int):
+            return source
+        copy = synthio.Note(frequency=source.frequency)
+        copy_note(source, copy)
+        self._shadows[source] = copy
+        return copy
+
+    @property
+    def pressed(self):
+        """What is sounding - or, while armed, what this block has staged.
+
+        `press_voice` asks this about a note it pressed one line earlier, and
+        about nothing else. Answering with the real synthesizer's channels
+        while armed would say "refused" for every scheduled note and send the
+        arbiter stealing voices from keys that are still audibly held.
+        """
+        return self.node.pressed if self._q is None else self._staged
+
+    # -- what the graph and the base class ask -------------------------------
+
+    @property
+    def sample_rate(self):
+        return self.node.sample_rate
+
+    @property
+    def channel_count(self):
+        return self.node.channel_count
+
+    @property
+    def blocks(self):
+        return self.node.blocks
+
+    def deinit(self):
+        self.node.deinit()
+
+
+def _choke(note):
+    """Make ``note``'s release instant, leaving the rest of its shape alone.
+
+    `synthio.Envelope` is a namedtuple, so this is a new one with the same
+    attack and decay and a release of zero, not a mutation of a shape some
+    other note may be sharing."""
+    envelope = getattr(note, "envelope", None)
+    if envelope is None or envelope.release_time == 0.0:
+        return
+    note.envelope = synthio.Envelope(
+        attack_time=envelope.attack_time, decay_time=envelope.decay_time,
+        release_time=0.0, attack_level=envelope.attack_level,
+        sustain_level=envelope.sustain_level)
+
+
+def synthesizer(sample_rate, channel_count):
+    """The synthesizer an instrument plays, behind its `Keys`.
+
+    Every instrument in this package builds its voice engine through here.
+    The `Keys` is remembered until the next `Instrument` is constructed,
+    which is how a factory with two synthesizers (acoustickit) gets both of
+    them armed without the base class having to be told about either.
+    """
+    keys = Keys(synthio.Synthesizer(sample_rate=sample_rate,
+                                    channel_count=channel_count))
+    _PENDING.append(keys)
+    return keys
+
+
+class _Scheduled:
+    """The context manager `Instrument.scheduled` returns."""
+
+    def __init__(self, instrument, q, frame, tokens):
+        self._keys = instrument._sched_keys()
+        self._q = q
+        self._frame = frame
+        self.tokens = [] if tokens is None else tokens
+        if not self._keys:
+            raise RuntimeError("this instrument cannot be scheduled")
+
+    def __enter__(self):
+        ops = _ops()
+        for keys in self._keys:
+            keys.arm(self._q, self._frame, ops, self.tokens)
+        return self.tokens
+
+    def __exit__(self, *exc):
+        for keys in self._keys:
+            keys.disarm()
+        return False
+
+
+class _At:
+    """`inst.at(q, frame).note_on(60, 100)` - one call, one frame."""
+
+    def __init__(self, instrument, q, frame):
+        self._inst = instrument
+        self._q = q
+        self._frame = frame
+        self.tokens = []
+
+    def __getattr__(self, name):
+        method = getattr(self._inst, name)
+
+        def scheduled(*args, **kwargs):
+            with self._inst.scheduled(self._q, self._frame, self.tokens):
+                return method(*args, **kwargs)
+
+        return scheduled
+
+
 class Instrument:
     """A live instrument implementing the audio component API.
 
@@ -509,9 +780,20 @@ class Instrument:
 
     def __init__(self, synth, handle_event, patches, macro_labels,
                  output=None, transport=None, note_map=None,
-                 capabilities=(), latency_samples=0, tail_samples=0):
+                 capabilities=(), latency_samples=0, tail_samples=0,
+                 schedulable=True):
         self.synth = synth
-        self._output = synth if output is None else output
+        # Every Keys built since the last Instrument belongs to this one. An
+        # instrument factory runs start to finish on one thread and ends by
+        # constructing exactly one Instrument, so the list is that factory's
+        # and nobody else's.
+        self._keys = tuple(_PENDING)
+        del _PENDING[:]
+        # Declared separately from `_keys`, which stay reachable either way:
+        # a probe that wants to SHOW an instrument is not schedulable has to
+        # be able to arm the keyboards this flag refuses.
+        self._schedulable = schedulable
+        self._output = node(synth) if output is None else node(output)
         self.patches = patches
         self.macro_labels = tuple(macro_labels)
         self.note_map = note_map
@@ -678,6 +960,49 @@ class Instrument:
                 self._active.items()):
             self.note_off(pitch, channel=channel, note_id=note_id)
 
+    # -- scheduling ---------------------------------------------------------
+
+    @property
+    def schedulable(self):
+        """Whether this instrument's notes can be put on a frame.
+
+        False when something in its note-on reaches the audio outside a
+        press: a modal bank retuned in place, a mixer voice started, a kit
+        that owns other instruments. Those instruments still play live.
+        """
+        return bool(self._sched_keys())
+
+    def _sched_keys(self):
+        """The keyboards `scheduled()` arms. An instrument that plays through
+        another one (drumkits) overrides this to name that one's."""
+        return self._keys if self._schedulable else ()
+
+    def scheduled(self, q, frame, tokens=None):
+        """Play into ``q`` at ``frame`` instead of now.
+
+            with inst.scheduled(q, audiopump.now() + 24000) as tokens:
+                inst.note_on(36, 127)
+
+        Everything the instrument does in Python happens on this thread, as
+        it always did. Only the presses and releases are deferred, and they
+        land at the start of the block ``frame`` falls in. The list yielded
+        collects one `at()` token per event, in schedule order; a 0 in it is
+        an event the queue was too full to take.
+
+        Schedule in time order. The instrument's own bookkeeping - which keys
+        are down, which voice is oldest - is updated here, now, so a note-off
+        written before its note-on finds nothing to release.
+        """
+        self._check_live()
+        return _Scheduled(self, q, frame, tokens)
+
+    def at(self, q, frame):
+        """`inst.at(q, frame).note_on(60, 100)`, for a single call."""
+        self._check_live()
+        if not self._sched_keys():
+            raise RuntimeError("this instrument cannot be scheduled")
+        return _At(self, q, frame)
+
     def get_macro(self, index):
         self._check_live()
         return self._macro_values[self._macro_index(index)]
@@ -696,11 +1021,11 @@ class Instrument:
             return
         self.all_notes_off()
         seen = set()
-        for node in (self._output, self.synth):
-            if id(node) in seen:
+        for part in (self._output, node(self.synth)):
+            if id(part) in seen:
                 continue
-            seen.add(id(node))
-            deinit = getattr(node, "deinit", None)
+            seen.add(id(part))
+            deinit = getattr(part, "deinit", None)
             if deinit is not None:
                 deinit()
         self._output = None

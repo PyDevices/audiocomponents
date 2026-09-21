@@ -86,7 +86,7 @@ RATCHET = array.array("h", [32767, 3000, 30000, 3000, 27500, 3000, 25000,
 def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     NOISE_HZ = SR / 8192.0
-    synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
+    synth = _support.synthesizer(SR, channel_count)
 
     # Master params
     master_level = 0.8
