@@ -305,5 +305,168 @@ class AFullQueueIsCounted(unittest.TestCase):
         self.assertGreater(rig.queue.dropped, 0)
 
 
+#: Every row on every step: the drum machine's four circuits, sixteen
+#: sixteenths, no rest anywhere. It is the heaviest bar the shipped app can
+#: be asked for, and the one the P4 raised on.
+FULL_BAR = {step: (36, 38, 42, 46) for step in range(16)}
+
+#: The same bar for a melodic instrument, with a four-step gate so each
+#: chord is still sounding when the next three land on top of it.
+FULL_CHORDS = {step: ((48, 100, 4), (55, 100, 4), (60, 100, 4),
+                      (64, 100, 4)) for step in range(16)}
+
+
+class ATickInsideAnotherOne(unittest.TestCase):
+    """A tick that arrives while the sequencer is already laying a step.
+
+    A tick is a timer callback. On a board a timer callback arrives through
+    `micropython.schedule`, between the interpreter's own bytecodes, so it
+    lands wherever it lands - including in the middle of `start()`, which
+    with a full bar is a hundred-odd lines of scheduling, and including
+    inside a `Keys.press` that the sequencer has armed and not yet
+    disarmed. Found on the P4 on 2026-09-21 as two AttributeErrors out of
+    an LVGL timer callback, at two different lines of
+    `audioinstruments._support.press`, on a full bar that a sparse one
+    never showed: `docs/spikes/live-audio-path-fullbar.md`.
+
+    Nothing is exhausted when it happens - at the app's queue capacity of
+    96 a full bar refuses nothing and presses at most five voices of the
+    engine's sixty-four. What came back instead of a voice was the seam's
+    own state, put back to `()` and `None` by the inner tick's exit.
+
+    The interrupt is delivered from `Events.at()` because that is a call
+    the armed region really makes; the line-by-line version, which is the
+    only way to reach the other of the two lines, is in
+    `test_scheduling_seam.ArmingNests`.
+    """
+
+    #: How many `at()` calls to use as interrupt points. The first bar of a
+    #: full pattern is about forty; today's code raises inside the first
+    #: dozen.
+    POINTS = 24
+
+    #: instrument, pattern, bpm, queue capacity. 96 is the drum machine
+    #: app's own `QUEUE_CAPACITY`, which a full drum bar fits inside; the
+    #: melodic bar is four-note chords with a four-step gate, which is eight
+    #: events a step and does not. The last row is the app's queue cut to
+    #: eight on purpose: past capacity the hit has to be dropped and counted,
+    #: interrupted or not, and still never raise.
+    CASES = (("tr808", FULL_BAR, 200, 96), ("tr909", FULL_BAR, 200, 96),
+             ("juno106", FULL_CHORDS, 200, 256), ("tr808", FULL_BAR, 120, 96),
+             ("tr808", FULL_BAR, 200, 8))
+
+    class Ticking(fake_pump.Events):
+        """`micropython.schedule`, as a queue that calls back once."""
+
+        seq = None
+        at_call = None
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.calls = 0
+            self.fired = 0
+            self._inside = False
+
+        def at(self, frame, op, target, arg=None, loop=False):
+            self.calls += 1
+            if (self.at_call == self.calls and self.seq is not None
+                    and not self._inside):
+                self._inside = True
+                try:
+                    self.fired += 1
+                    self.seq.tick()
+                finally:
+                    self._inside = False
+            return super().at(frame, op, target, arg, loop)
+
+    def bar(self, instrument, pattern, bpm, at_call=None, bars=2,
+            capacity=96):
+        """Two bars of ``pattern``, with one tick delivered at ``at_call``.
+
+        Returns what the queue APPLIED, which is what a listener would
+        hear: the frame, the op and the pitch of every event, in order.
+        """
+        clock = fake_pump.now
+        clock.frame = 0
+        queue = self.Ticking(capacity=capacity)
+        inst = audioinstruments.create(instrument, RATE)
+        self.addCleanup(inst.deinit)
+        seq = Sequencer(queue, sample_rate=RATE, bpm=bpm, steps=16, ahead=4,
+                        now=clock)
+        seq.track(inst, dict(pattern))
+        queue.seq = seq
+        queue.at_call = at_call
+        seq.start()
+        for _ in range((seq.step_frames * 16 * bars) // BLOCK):
+            queue.apply(clock.frame, BLOCK)
+            clock.frame += BLOCK
+            seq.tick()
+        heard = [(frame, op, getattr(note, "frequency", note))
+                 for frame, op, _target, note in queue.log]
+        return heard, seq, queue
+
+    def test_the_full_bar_survives_a_tick_landing_anywhere_in_it(self):
+        for instrument, pattern, bpm, capacity in self.CASES:
+            with self.subTest(instrument=instrument, bpm=bpm,
+                              capacity=capacity):
+                quiet, whole, _queue = self.bar(instrument, pattern, bpm,
+                                                capacity=capacity)
+                self.assertTrue(quiet, "the bar played nothing at all")
+                fired = 0
+                for at_call in range(1, self.POINTS + 1):
+                    heard, seq, queue = self.bar(instrument, pattern, bpm,
+                                                 at_call=at_call,
+                                                 capacity=capacity)
+                    fired += queue.fired
+                    self.assertEqual(
+                        heard, quiet,
+                        "a tick delivered at at() call %d changed the bar"
+                        % at_call)
+                    self.assertEqual(
+                        seq.refused, whole.refused,
+                        "the interrupt changed what the queue turned away")
+                    self.assertEqual(
+                        seq.reentered, queue.fired,
+                        "a re-entrant tick was run instead of counted")
+                self.assertEqual(fired, self.POINTS,
+                                 "the interrupt did not land every time")
+
+    def test_past_capacity_the_hit_is_dropped_and_counted_not_raised(self):
+        """The queue cut to eight: the bar thins, nothing throws.
+
+        This is the degradation a timer callback can live with. It is also
+        what the P4's failure was mistaken for - at the app's own capacity
+        of 96 a full drum bar refuses nothing at all and presses five of
+        the engine's sixty-four voices, so nothing was exhausted there.
+        """
+        _quiet, whole, queue = self.bar("tr808", FULL_BAR, 200, capacity=8)
+        self.assertGreater(whole.refused, 0, "a queue of eight took the bar")
+        self.assertEqual(whole.refused, queue.dropped,
+                         "the sequencer and the queue disagree on refusals")
+        _roomy, wide, queue = self.bar("tr808", FULL_BAR, 200, capacity=96)
+        self.assertEqual(wide.refused, 0,
+                         "the app's own capacity refused a full drum bar")
+        self.assertEqual(queue.dropped, 0)
+
+    def test_a_refused_tick_is_counted_and_the_next_one_catches_up(self):
+        """The refusal has to be visible, and it has to be free.
+
+        `reentered` climbing is the app's sign that its timer is firing
+        faster than a bar can be laid; what it must never mean is a hole,
+        because the look-ahead is hundreds of milliseconds deep and the
+        next tick lays whatever this one did not.
+        """
+        quiet, _whole, _q = self.bar("tr808", FULL_BAR, 200)
+        heard, seq, queue = self.bar("tr808", FULL_BAR, 200, at_call=6)
+        self.assertEqual(queue.fired, 1, "the interrupt did not land")
+        self.assertEqual(seq.reentered, 1, "the refused tick was not counted")
+        self.assertEqual(heard, quiet, "the bar is not the same bar")
+        self.assertEqual(seq.scheduled,
+                         len([1 for _f, op, _n in heard
+                              if op in (fake_pump.PRESS, fake_pump.RELEASE)])
+                         + queue.pending(),
+                         "a step was laid twice or not at all")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -560,10 +560,34 @@ class Keys:
         # instrument has scheduled and not yet let go of.
         self._shadows = {}
         self._choked = None
+        # Arming while already armed stacks instead of overwriting. See
+        # `arm`; empty on every path a board actually takes.
+        self._outer = []
 
     # -- the seam, driven by Instrument.scheduled ---------------------------
 
     def arm(self, q, frame, ops, tokens):
+        """Start writing presses onto ``q`` at ``frame`` instead of now.
+
+        **Nests.** A keyboard can be armed while it is already armed, and on
+        a board it is: the app's step timer arrives through
+        `micropython.schedule`, between the interpreter's own bytecodes, and
+        a timer that calls `Sequencer.tick` can land inside `press` itself -
+        after it has read `self._q` into a local and before it has touched
+        the list that read promised. Overwriting the armed state there and
+        clearing it on the inner `disarm` left the outer press holding a
+        `()` to append to and a `None` to append to, which is two
+        AttributeErrors out of an LVGL timer callback and a bar that stops.
+        Seen on the P4 at 06:45 on 2026-09-21 with every row on every step,
+        and reproduced on the desktop at both lines: see
+        docs/spikes/live-audio-path-fullbar.md.
+
+        Nothing else changes: with no nesting `_outer` stays empty and this
+        is the four stores it always was.
+        """
+        if self._q is not None:
+            self._outer.append((self._q, self._frame, self._ops,
+                                self._tokens, self._staged, self._choked))
         self._q = q
         self._frame = frame
         self._ops = ops
@@ -572,6 +596,11 @@ class Keys:
         self._choked = {}
 
     def disarm(self):
+        """Give the keyboard back to whoever had it - live, or the outer arm."""
+        if self._outer:
+            (self._q, self._frame, self._ops, self._tokens, self._staged,
+             self._choked) = self._outer.pop()
+            return
         self._q = None
         self._tokens = None
         self._staged = ()

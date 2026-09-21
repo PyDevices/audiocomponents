@@ -403,5 +403,106 @@ class PlayingLiveThroughTheKeyboardIsAWire(unittest.TestCase):
                                  "Keys as it does without one")
 
 
+class ArmingNests(unittest.TestCase):
+    """A second `scheduled()` inside the first must give the keyboard BACK.
+
+    On a board the second one is not written by anybody: the app's step
+    timer arrives through `micropython.schedule`, between the interpreter's
+    own bytecodes, and a timer that tops a sequencer up opens a scheduled
+    block of its own wherever it lands - including inside `Keys.press`,
+    after it has read `self._q` into a local and before it has touched the
+    list that read promised.
+
+    Found on the P4 on 2026-09-21 with every row of the drum machine on
+    every step, as two AttributeErrors out of an LVGL timer callback at two
+    different lines of `press` - `'tuple' object has no attribute 'append'`
+    where the staging list had been put back to `()`, and `'NoneType'
+    object has no attribute 'append'` where the token list had been put
+    back to `None`. Both are this one class's doing, and both are here.
+    """
+
+    def test_the_inner_block_hands_the_outer_one_back(self):
+        inst = drum()
+        self.addCleanup(inst.deinit)
+        keys = inst.synth
+        queue = fake_pump.Events(capacity=64)
+
+        with inst.scheduled(queue, 6000) as outer:
+            self.assertIsNotNone(keys._q, "the outer block did not arm")
+            with inst.scheduled(queue, 12000) as inner:
+                inst.note_on(38, 100)
+            self.assertTrue(inner, "the inner block scheduled nothing")
+            # The outer block is still the one holding the keyboard.
+            self.assertIs(keys._tokens, outer,
+                          "the inner block took the outer one's token list")
+            self.assertIsInstance(keys._staged, list,
+                                  "the inner block left the staging list a "
+                                  "tuple, which is line 604's AttributeError")
+            self.assertEqual(keys._frame, 6000,
+                             "the outer block's frame did not come back")
+            inst.note_on(36, 127)
+
+        self.assertTrue(outer, "the outer block scheduled nothing after the "
+                               "inner one")
+        self.assertIsNone(keys._q, "the keyboard is still armed")
+        self.assertEqual(keys._staged, (), "the keyboard is still staging")
+        self.assertFalse(keys._outer, "the arm stack was not emptied")
+
+    def test_a_press_interrupted_between_its_own_lines_still_schedules(self):
+        """The 604 window, reached the way a board reaches it.
+
+        `Keys.press` reads `self._q` and then appends to `self._staged`.
+        Nothing calls out between those two lines, so the only way in is a
+        callback the interpreter delivers between bytecodes. `sys.settrace`
+        stands in for `micropython.schedule`; what it delivers is a whole
+        scheduled block, which is what the sequencer's tick opens.
+        """
+        settrace = getattr(sys, "settrace", None)
+        code = getattr(_support.Keys.press, "__code__", None)
+        if settrace is None or code is None or not hasattr(code, "co_lines"):
+            self.skipTest("this interpreter cannot be interrupted by line")
+        try:
+            with open(_support.__file__) as handle:
+                source = handle.read().splitlines()
+        except (OSError, AttributeError):          # frozen, or no __file__
+            self.skipTest("_support.py is not readable here")
+        inst = drum()
+        self.addCleanup(inst.deinit)
+        other = audioinstruments.create("tr909", RATE)
+        self.addCleanup(other.deinit)
+        queue = fake_pump.Events(capacity=64)
+
+        target = None
+        for line in sorted({ln for _s, _e, ln in code.co_lines() if ln}):
+            if "_staged.append" in source[line - 1]:
+                target = line
+                break
+        self.assertIsNotNone(target, "no staging line in Keys.press")
+
+        state = {"fired": False}
+
+        def interrupt(frame, event, _arg):
+            if event == "line" and frame.f_lineno == target \
+                    and not state["fired"]:
+                state["fired"] = True
+                with other.scheduled(queue, 24000):
+                    other.note_on(42, 90)
+            return interrupt
+
+        def tracer(frame, _event, _arg):
+            return interrupt if frame.f_code is code else None
+
+        settrace(tracer)
+        try:
+            with inst.scheduled(queue, 6000) as tokens:
+                inst.note_on(36, 127)
+        finally:
+            settrace(None)
+
+        self.assertTrue(state["fired"], "the interrupt never landed")
+        self.assertTrue(tokens, "the interrupted press scheduled nothing")
+        self.assertNotIn(0, tokens, "the queue refused an event")
+
+
 if __name__ == "__main__":
     unittest.main()

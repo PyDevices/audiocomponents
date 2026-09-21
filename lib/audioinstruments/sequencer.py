@@ -35,6 +35,13 @@ after something reset the pump's clock.
 The queue is this sequencer's. `cancel()` takes back one event by token and
 is what a tempo change uses; `Events.clear()` would drop a live player's
 notes too, and this never calls it.
+
+`tick()` is **refused while the sequencer is already writing to the queue**,
+and counted in `reentered`. On a board a timer callback arrives between the
+interpreter's own bytecodes, so it can land inside `start()` or inside
+another tick; re-entering there laid the same step twice and disarmed the
+keyboard underneath a press that was still using it. See
+`docs/spikes/live-audio-path-fullbar.md` in the workspace anchor.
 """
 
 
@@ -64,6 +71,15 @@ class Sequencer:
         self._next = 0
         self._live = []            # (step, [token, ...]) not yet sounded
         self._running = False
+        #: True while this sequencer is writing to the queue. A `tick()` that
+        #: arrives inside that window is refused and counted rather than run.
+        #: See `tick`.
+        self._busy = False
+        #: How many ticks arrived while the sequencer was already scheduling.
+        #: Not an error: the next tick tops the queue up, and `ahead` is
+        #: hundreds of milliseconds deep. A number that climbs fast means the
+        #: timer is firing faster than a bar can be laid.
+        self.reentered = 0
 
     # -- the grid ----------------------------------------------------------
 
@@ -150,26 +166,58 @@ class Sequencer:
         downbeat instead of where the player was is a jump they did not ask
         for.
         """
-        step = int(step)
-        origin = self._now() + (self._lead or self.step_frames) \
-            if at is None else at
-        self._origin = origin - (step * self.sample_rate * 60
-                                 // int(self._bpm * self.steps_per_beat))
-        self._next = step
-        self._live = []
-        self._running = True
-        self.tick()
+        self._busy = True
+        try:
+            step = int(step)
+            origin = self._now() + (self._lead or self.step_frames) \
+                if at is None else at
+            self._origin = origin - (step * self.sample_rate * 60
+                                     // int(self._bpm * self.steps_per_beat))
+            self._next = step
+            self._live = []
+            self._running = True
+            self._top_up()
+        finally:
+            self._busy = False
         return self
 
     def stop(self):
         """Stop, and take back every step that has not sounded."""
-        self._running = False
-        self.cancelled += self._cancel_pending()
-        for instrument, _pattern in self.tracks:
-            instrument.all_notes_off()
+        self._busy = True
+        try:
+            self._running = False
+            self.cancelled += self._cancel_pending()
+            for instrument, _pattern in self.tracks:
+                instrument.all_notes_off()
+        finally:
+            self._busy = False
 
     def tick(self):
-        """Top the queue up. Cheap, idempotent, and safe to call late."""
+        """Top the queue up. Cheap, idempotent, and safe to call late.
+
+        **Refused while this sequencer is already writing to the queue.**
+        A tick is a timer callback, and on a board a timer callback arrives
+        through `micropython.schedule`, between the interpreter's own
+        bytecodes - so it can land inside `start()`, `relay()`, a tempo
+        change, or another tick, all of which are laying steps on this same
+        queue through this same instrument. Re-entering there laid `_next`
+        twice, once from each call, and left the armed keyboard underneath
+        disarmed by the inner call's exit while the outer press was still
+        using it (docs/spikes/live-audio-path-fullbar.md). A refused tick
+        costs nothing: the look-ahead is hundreds of milliseconds and the
+        next tick tops up what this one did not.
+        """
+        if self._busy:
+            self.reentered += 1
+            return 0
+        self._busy = True
+        try:
+            return self._top_up()
+        finally:
+            self._busy = False
+
+    def _top_up(self):
+        """`tick()` without the re-entrancy guard, for callers holding it."""
         if not self._running:
             return 0
         now = self._now()
@@ -201,9 +249,13 @@ class Sequencer:
         """
         if not self._running:
             return 0
-        taken, resume = self._take_back()
-        self._next = resume
-        self.tick()
+        self._busy = True
+        try:
+            taken, resume = self._take_back()
+            self._next = resume
+            self._top_up()
+        finally:
+            self._busy = False
         return taken
 
     def _take_back(self):
@@ -262,16 +314,20 @@ class Sequencer:
         # resuming past it skipped every silent step inside the look-ahead.
         # With a 300 ms window that was two sixteenths of nothing at the
         # seam, which is a hole in the bar and not a tempo change.
-        taken, resume = self._take_back()
-        self._bpm = bpm
-        # The next unsounded step starts one step in front of the audio, on
-        # the new grid. Re-anchoring on the ORIGIN instead would move every
-        # step that already played, which is a different bar.
-        self._origin = (self._now() + (self._lead or self.step_frames)
-                        - (resume * self.sample_rate * 60
-                           // int(bpm * self.steps_per_beat)))
-        self._next = resume
-        self.tick()
+        self._busy = True
+        try:
+            taken, resume = self._take_back()
+            self._bpm = bpm
+            # The next unsounded step starts one step in front of the audio,
+            # on the new grid. Re-anchoring on the ORIGIN instead would move
+            # every step that already played, which is a different bar.
+            self._origin = (self._now() + (self._lead or self.step_frames)
+                            - (resume * self.sample_rate * 60
+                               // int(bpm * self.steps_per_beat)))
+            self._next = resume
+            self._top_up()
+        finally:
+            self._busy = False
         return taken
 
     # -- inside ------------------------------------------------------------
