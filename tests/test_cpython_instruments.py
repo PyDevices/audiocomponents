@@ -125,6 +125,34 @@ class InstrumentLibraryTest(unittest.TestCase):
         instrument.all_notes_off()
         self.assertEqual(instrument.synth.pressed, ())
 
+    def test_the_keyboard_does_not_narrow_the_synthesizer(self):
+        """`instrument.synth` answers everything a synthesizer answers.
+
+        The scheduling seam stands a `Keys` in front of the real engine, and
+        a proxy is a place a public surface quietly shrinks: four names were
+        forwarded, five were not, and `note_info` -- the one the piano
+        polyphony gate reads instead of a spectrum -- was among the missing.
+        Asking synthio itself what it offers means the next name synthio
+        gains is caught here rather than by whoever calls it.
+
+        The three that change what sounds are excluded on purpose: they have
+        to route through the queue while armed, not be forwarded. See the
+        comment in `_support.Keys`.
+        """
+        import synthio
+        from audioinstruments import _support
+        engine = synthio.Synthesizer(sample_rate=SAMPLE_RATE)
+        routes_through_the_queue = ("change", "release_then_press",
+                                    "release_all_then_press")
+        expected = {name for name in dir(engine)
+                    if not name.startswith("_")
+                    and name not in routes_through_the_queue}
+        keyboard = _support.Keys(engine)
+        missing = sorted(name for name in expected
+                         if not hasattr(keyboard, name))
+        self.assertEqual(missing, [],
+                         "Keys hides part of the synthesizer: %s" % missing)
+
 
 if __name__ == "__main__":
     unittest.main()

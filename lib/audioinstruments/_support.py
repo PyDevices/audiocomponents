@@ -709,6 +709,53 @@ class Keys:
     def deinit(self):
         self.node.deinit()
 
+    # -- what everyone ELSE asks -------------------------------------------
+    #
+    # `instrument.synth` is a public handle, and standing a proxy in front of
+    # it narrowed synthio.Synthesizer from seventeen names to eight. The four
+    # above were added one at a time as something broke; `note_info` was the
+    # fifth, and it broke the piano-polyphony gate, which reads the engine's
+    # own note state precisely BECAUSE a thirty-nine-harmonic wavetable makes
+    # a spectrum an unreliable witness.
+    #
+    # These are the synthesizer's own state and its pure queries: none of them
+    # presses or releases anything, so armed or live the honest answer is the
+    # node's. No blanket `__getattr__` -- `change`, `release_then_press` and
+    # `release_all_then_press` DO change what sounds, so forwarding them
+    # silently would bypass the scheduling seam and the shadow copies while
+    # armed. Nothing in this package calls those three; when something does,
+    # they want routing through the queue, not a forward.
+    @property
+    def envelope(self):
+        return self.node.envelope
+
+    @envelope.setter
+    def envelope(self, value):
+        self.node.envelope = value
+
+    @property
+    def waveform(self):
+        return self.node.waveform
+
+    @waveform.setter
+    def waveform(self, value):
+        self.node.waveform = value
+
+    @property
+    def max_polyphony(self):
+        return self.node.max_polyphony
+
+    @property
+    def bits_per_sample(self):
+        return self.node.bits_per_sample
+
+    @property
+    def samples_signed(self):
+        return self.node.samples_signed
+
+    def note_info(self, note):
+        return self.node.note_info(note)
+
 
 def _choke(note):
     """Make ``note``'s release instant, leaving the rest of its shape alone.
