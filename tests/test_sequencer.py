@@ -542,5 +542,88 @@ class ATickInsideAnotherOne(unittest.TestCase):
                          "a step was laid twice or not at all")
 
 
+class ATickInsideARelayOrATempoChange(unittest.TestCase):
+    """audiocomponents#99: the guard was there, the cost was never measured.
+
+    `relay()` and `set_bpm()` take the keyboard the same way `tick()` does,
+    so a timer callback arriving inside either is refused and counted. What
+    that costs a part in flight - a late step, a dropped one, neither - was
+    never put on paper. It is neither: the enclosing call tops the queue up
+    itself before it returns, so the refused tick's work is already done.
+
+    Measured here at every single `at()` call the guarded region makes, not
+    a sample of them - 48 inside `relay()`, 36 inside `set_bpm()` - with the
+    whole stamped bar compared frame for frame.
+    """
+
+    def region(self, action, at_call=None, bars=2, bpm=200, capacity=512):
+        """Two bars, with `action` at the halfway point and one tick
+        delivered from inside its `at_call`-th `at()`. Returns every event
+        the sequencer stamped, in order."""
+        clock = fake_pump.now
+        clock.frame = 0
+        queue = ATickInsideAnotherOne.Ticking(capacity=capacity)
+        inst = audioinstruments.create("tr808", RATE)
+        self.addCleanup(inst.deinit)
+        seq = Sequencer(queue, sample_rate=RATE, bpm=bpm, steps=16, ahead=4,
+                        now=clock)
+        seq.track(inst, dict(FULL_BAR))
+        queue.seq = seq
+        seq.start()
+        total = (seq.step_frames * 16 * bars) // BLOCK
+        half = total // 2
+        for index in range(total):
+            queue.apply(clock.frame, BLOCK)
+            clock.frame += BLOCK
+            if index == half:
+                queue.calls = 0
+                queue.at_call = at_call
+                if action == "relay":
+                    seq.relay()
+                else:
+                    seq.set_bpm(bpm * 1.25)
+                queue.at_call = None
+                # How many places a callback could have landed inside the
+                # guarded region, before the rest of the bar adds its own.
+                queue.region_calls = queue.calls
+            seq.tick()
+        heard = [(frame, op, getattr(note, "frequency", note))
+                 for frame, op, _target, note in queue.log]
+        return heard, seq, queue
+
+    def test_no_interrupt_point_in_either_moves_a_single_event(self):
+        for action in ("relay", "bpm"):
+            with self.subTest(action=action):
+                clean, _seq, _q = self.region(action)
+                self.assertTrue(clean, "the bar played nothing at all")
+                fired = 0
+                for at_call in range(1, 61):
+                    heard, seq, queue = self.region(action, at_call=at_call)
+                    fired += queue.fired
+                    self.assertEqual(
+                        heard, clean,
+                        "%s interrupted at at() call %d changed the bar"
+                        % (action, at_call))
+                    self.assertEqual(
+                        seq.reentered, queue.fired,
+                        "a re-entrant tick was run instead of counted")
+                self.assertGreater(fired, 30,
+                                   "%s made too few at() calls for the sweep "
+                                   "to mean anything: %d" % (action, fired))
+
+    def test_the_guarded_region_is_a_fraction_of_the_look_ahead(self):
+        # The other half of "what does it cost": how long the door is shut,
+        # against how deep the queue is when it shuts. Under a thousandth
+        # here; the number on the issue is 0.47 ms of relay against 300 ms
+        # of look-ahead on the desktop pump.
+        _heard, seq, queue = self.region("relay")
+        self.assertLess(queue.region_calls, 120,
+                        "relay() got much more expensive: %d at() calls"
+                        % queue.region_calls)
+        self.assertGreater(queue.region_calls, 0, "relay() laid nothing")
+        self.assertGreater(seq.ahead * seq.step_frames, RATE // 10,
+                           "the look-ahead is no longer hundreds of ms")
+
+
 if __name__ == "__main__":
     unittest.main()
