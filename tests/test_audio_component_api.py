@@ -318,19 +318,46 @@ class AConstructorPatchCostsTheSourceNothing(unittest.TestCase):
         for name, cls in patch_classes():
             if not getattr(cls, "PATCHES", None):
                 continue
-            try:
-                cls.create(CountingSource(), 48000, patch=0).deinit()
-            except TypeError:
-                # Nine shipped classes that were never rebuilt take no
-                # constructor `patch=` at all, and neither do the stock
-                # twins the Phase 4 rebuilds will replace
-                # (audiocomponents#84). Every class that does take one is
-                # held to the law.
-                continue
+            # Every class takes one since audiocomponents#84, so the walk
+            # no longer steps over anything and `checked` is the whole
+            # library. A class that started refusing again would fail in
+            # `create` here, loudly, rather than be skipped.
+            cls.create(CountingSource(), 48000, patch=0).deinit()
             with self.subTest(name=name):
                 self.check(cls, name)
             checked += 1
         self.assertGreater(checked, 20, "the walk found almost no classes")
+
+    def test_no_class_refuses_a_constructor_patch(self):
+        """audiocomponents#84: `create(..., patch=N)` works everywhere.
+
+        Ten classes on the pre-contract `_core.Effect` base never declared
+        the parameter, so a host writing the obvious thing got a TypeError
+        instead of a patch, and the row above had to walk past them. The
+        cure is one pattern in `Effect.create`, which pops `patch` and
+        applies it once the class is built - free on that base, where a
+        class calls `_init_macros()` at the end of its `__init__` with
+        nothing primed afterwards, and NOT free on `_component.Component`,
+        where 74 of the shipped (class, patch) pairs move if the patch
+        lands after `_build` instead of inside it. So `Component` is
+        untouched and keeps applying it where it did.
+        """
+        refused = []
+        walked = 0
+        for name, cls in patch_classes():
+            for index in sorted(getattr(cls, "PATCHES", None) or {0: None}):
+                walked += 1
+                try:
+                    effect = cls.create(CountingSource(), 48000, patch=index)
+                except TypeError as exc:
+                    refused.append((name, index, str(exc)))
+                    continue
+                try:
+                    self.assertEqual(effect.patch_index, index, name)
+                finally:
+                    effect.deinit()
+        self.assertEqual(refused, [], "classes still refusing a patch=")
+        self.assertGreater(walked, 200, "the walk found almost nothing")
 
     def test_every_rebuilt_class_takes_a_constructor_patch(self):
         for name in rebuilt.known():
