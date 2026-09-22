@@ -298,11 +298,20 @@ class AFullQueueIsCounted(unittest.TestCase):
 
     def test_a_refused_event_is_a_zero_token_and_a_count(self):
         rig = Transport(self, capacity=2)
+        said = []
+        rig.seq.on_refused = lambda *row: said.append(row)
         rig.seq.start()
         rig.run_to(4)
         self.assertGreater(rig.seq.refused, 0,
                            "a queue of two took a whole bar")
         self.assertGreater(rig.queue.dropped, 0)
+        # And it says so, once, with the depth that would have been enough
+        # (audiocomponents#93). Once is the requirement: this bar refuses
+        # dozens of times, and a print per refusal out of a board's timer
+        # callback is its own failure.
+        self.assertEqual(len(said), 1, said)
+        self.assertEqual(said[0][3], 2)
+        self.assertGreater(said[0][2], 2)
 
 
 #: Every row on every step: the drum machine's four circuits, sixteen
@@ -396,6 +405,11 @@ class ATickInsideAnotherOne(unittest.TestCase):
         seq.track(inst, dict(pattern))
         queue.seq = seq
         queue.at_call = at_call
+        # The warning goes to a list rather than to the console: a test that
+        # refuses on purpose should not print, and a warning nobody collects
+        # is not asserted (audiocomponents#93).
+        queue.warnings = []
+        seq.on_refused = lambda *row: queue.warnings.append(row)
         seq.start()
         for _ in range((seq.step_frames * 16 * bars) // BLOCK):
             queue.apply(clock.frame, BLOCK)
@@ -447,6 +461,66 @@ class ATickInsideAnotherOne(unittest.TestCase):
         self.assertEqual(wide.refused, 0,
                          "the app's own capacity refused a full drum bar")
         self.assertEqual(queue.dropped, 0)
+
+    def test_a_queue_too_small_says_so_before_it_drops_anything(self):
+        """audiocomponents#93: the thinning bar above used to be silent.
+
+        A queue that cannot hold these tracks is said at `start()`, once,
+        with the depth that would be enough - not discovered later as a
+        step that did not sound. One line, not one per refusal: a bar of
+        refusals on a board would otherwise be two hundred prints out of a
+        timer callback.
+        """
+        _heard, short, queue = self.bar("tr808", FULL_BAR, 200, capacity=8)
+        self.assertEqual(len(queue.warnings), 1, queue.warnings)
+        _step, _refused, needed, capacity = queue.warnings[0]
+        self.assertEqual(capacity, 8)
+        self.assertGreater(needed, 8)
+        self.assertGreater(short.refused, 0)
+        # And the room it asks for is enough: nothing is refused there.
+        _heard, roomy, wide = self.bar("tr808", FULL_BAR, 200,
+                                       capacity=needed)
+        self.assertEqual(roomy.refused, 0,
+                         "depth_needed asked for %d and %d still refused"
+                         % (needed, roomy.refused))
+        self.assertEqual(wide.warnings, [])
+
+    def test_health_carries_the_counter_that_had_no_reader(self):
+        """audiocomponents#97: `reentered` is kept, and is readable.
+
+        Kept because a board proved it fires; not shown as a dropped step,
+        because it is not one. The dict is the surface an app puts on a
+        screen, and `refused` is the entry that means a step was not heard.
+        """
+        _heard, seq, _q = self.bar("tr808", FULL_BAR, 200, at_call=6,
+                                   capacity=96)
+        row = seq.health()
+        self.assertEqual(set(row), {"scheduled", "refused", "cancelled",
+                                    "reentered", "needed", "capacity"})
+        self.assertGreater(row["reentered"], 0, row)
+        self.assertEqual(row["refused"], 0,
+                         "the app's own capacity dropped a step")
+        self.assertEqual(row["capacity"], 96)
+        self.assertGreater(row["scheduled"], 0)
+
+    def test_the_depth_it_asks_for_is_the_smallest_that_works(self):
+        # A bound nobody can quietly inflate: one event less than the
+        # answer has to refuse something.
+        for instrument, pattern in (("tr808", FULL_BAR),
+                                    ("juno106", FULL_CHORDS)):
+            with self.subTest(instrument=instrument):
+                _heard, seq, _q = self.bar(instrument, pattern, 200,
+                                           capacity=4096)
+                needed = seq.depth_needed()
+                _heard, exact, _q = self.bar(instrument, pattern, 200,
+                                             capacity=needed)
+                self.assertEqual(exact.refused, 0, (instrument, needed))
+                _heard, tight, _q = self.bar(instrument, pattern, 200,
+                                             capacity=needed - 1)
+                self.assertGreater(
+                    tight.refused, 0,
+                    "%s: depth_needed says %d, but %d took the bar too"
+                    % (instrument, needed, needed - 1))
 
     def test_a_refused_tick_is_counted_and_the_next_one_catches_up(self):
         """The refusal has to be visible, and it has to be free.

@@ -42,6 +42,13 @@ interpreter's own bytecodes, so it can land inside `start()` or inside
 another tick; re-entering there laid the same step twice and disarmed the
 keyboard underneath a press that was still using it. See
 `docs/spikes/live-audio-path-fullbar.md` in the workspace anchor.
+
+`health()` is the four counters and the two depths in one dict, for an app
+that wants to show them. The one that means a step was not heard is
+`refused`: the queue has a fixed capacity, and asking for one event past it
+gets a token of 0 back. `depth_needed()` says how deep a queue these tracks
+want, by laying the grid rather than guessing at it, and `start()` says so
+once if the queue is smaller than that.
 """
 
 
@@ -80,6 +87,11 @@ class Sequencer:
         #: hundreds of milliseconds deep. A number that climbs fast means the
         #: timer is firing faster than a bar can be laid.
         self.reentered = 0
+        #: Called as ``on_refused(step, refused, needed, capacity)`` the first
+        #: time the queue turns an event away, and again after `start()`.
+        #: None means `_warn` prints one line instead. See `depth_needed`.
+        self.on_refused = None
+        self._warned = False
 
     # -- the grid ----------------------------------------------------------
 
@@ -154,6 +166,119 @@ class Sequencer:
         self.relay()
         return old
 
+    def depth_needed(self, ahead=None):
+        """How deep a queue these tracks need, in events.
+
+        `Events` has a fixed capacity, and a sequencer that asks for one
+        event past it gets a token of 0 back: the step is simply not heard,
+        and until audiocomponents#93 nothing said so. 96 fits four drum
+        circuits; four-note chords with a gate refused 246 events over two
+        bars on `juno106`.
+
+        **The grid is laid, not estimated**, because a cell's cost is the
+        instrument's and not the pattern's. A `tr808` step of four notes is
+        seven to twelve events, not four - a kit presses more than one voice
+        for a note - and a `juno106` step of four gated notes is twenty-four.
+        Nothing that counted cells could have known either number. So the
+        two passes below hand every step to the real instruments through the
+        real seam, with a stand-in queue that counts and stores nothing, and
+        then count what is in flight at the worst moment.
+
+        Two passes, because a gate landing past the end of the bar is
+        pending at the same time as the next pass's own step. Nothing on the
+        tick path calls this; `start()` does, once.
+        """
+        ahead = self.ahead if ahead is None else int(ahead)
+        cycle = self.steps
+        if not self.tracks or cycle <= 0:
+            return 0
+        tally = _Tally()
+        laid = []
+        for step in range(cycle * 2):
+            mark = len(tally.frames)
+            self._lay(step, tally, [])
+            for frame in tally.frames[mark:]:
+                laid.append((step, frame))
+        step_frames = self.step_frames
+        worst = 0
+        for step in range(cycle, cycle * 2):
+            # The audio position at which `step` is the last step laid, at
+            # its earliest - which is the moment most is in flight. `_top_up`
+            # lays while the step's frame is before `now + ahead * step`, so
+            # one frame past that boundary is where this step has just gone
+            # on and the oldest one has just come off.
+            now = self.frame_of(step) - ahead * step_frames + 1
+            pending = 0
+            for at_step, frame in laid:
+                if at_step <= step and frame >= now:
+                    pending += 1
+            if pending > worst:
+                worst = pending
+        return worst
+
+    def health(self):
+        """The four counters and the two depths, as one dict to put on a
+        screen.
+
+        `reentered` used to be an attribute nothing read
+        (audiocomponents#97). It is kept rather than dropped, because a
+        board proved it fires - 4 over a twenty-second full bar at 200 BPM
+        on the ESP32-P4 - but it is **not** a dropped step and an app that
+        showed it as one would be lying. A refused tick costs nothing: the
+        look-ahead is hundreds of milliseconds and the next tick lays what
+        this one did not. What it means is that the timer is arriving
+        faster than a bar can be laid, and what to do about it is a slower
+        timer or a deeper `ahead`.
+
+        `refused` is the one that is a dropped step, and it has a warning of
+        its own - see `on_refused`.
+
+            scheduled   events laid on the queue, ever
+            refused     events the queue turned away: steps not heard
+            cancelled   events taken back by a tempo change or `stop()`
+            reentered   ticks that arrived while this one was writing
+            needed      the depth these tracks want (`depth_needed`)
+            capacity    the depth this queue has, or None
+        """
+        return {"scheduled": self.scheduled, "refused": self.refused,
+                "cancelled": self.cancelled, "reentered": self.reentered,
+                "needed": self.depth_needed(),
+                "capacity": self.queue_capacity()}
+
+    def queue_capacity(self):
+        """The queue's capacity, or None when it will not say.
+
+        `audiopump.Events.stats()` returns it last; the pure-Python
+        stand-in carries it as an attribute.
+        """
+        capacity = getattr(self.queue, "capacity", None)
+        if isinstance(capacity, int):
+            return capacity
+        stats = getattr(self.queue, "stats", None)
+        if stats is None:
+            return None
+        try:
+            return stats()[7]
+        except (IndexError, TypeError):
+            return None
+
+    def _warn(self, step, refused):
+        """Say, once, that the queue is too small. Never on the tick path
+        twice: a bar of refusals is one line, not two hundred."""
+        if self._warned:
+            return
+        self._warned = True
+        needed = self.depth_needed()
+        capacity = self.queue_capacity()
+        if self.on_refused is not None:
+            self.on_refused(step, refused, needed, capacity)
+            return
+        print("sequencer: the queue refused %d event%s at step %d. These "
+              "tracks need a depth of %d at ahead=%d; this queue holds %s."
+              % (refused, "" if refused == 1 else "s", step, needed,
+                 self.ahead,
+                 "an unknown number" if capacity is None else str(capacity)))
+
     # -- transport ---------------------------------------------------------
 
     def start(self, at=None, step=0):
@@ -165,7 +290,24 @@ class Sequencer:
         pump, which resets its clock to zero, and restarting the bar at the
         downbeat instead of where the player was is a jump they did not ask
         for.
+
+        A queue too small for these tracks is said here rather than
+        discovered as a missing step halfway through the bar. `start()` is
+        also where `_warned` is cleared, so a part that fixes its depth and
+        restarts is told again if it is still short.
         """
+        self._warned = False
+        capacity = self.queue_capacity()
+        if capacity is not None:
+            needed = self.depth_needed()
+            if needed > capacity:
+                self._warned = True
+                if self.on_refused is not None:
+                    self.on_refused(int(step), 0, needed, capacity)
+                else:
+                    print("sequencer: these tracks need a queue depth of %d "
+                          "at ahead=%d and this queue holds %d, so steps "
+                          "will be dropped." % (needed, self.ahead, capacity))
         self._busy = True
         try:
             step = int(step)
@@ -332,24 +474,32 @@ class Sequencer:
 
     # -- inside ------------------------------------------------------------
 
-    def _schedule(self, step):
+    def _lay(self, step, queue, tokens):
+        """Write one step's events to `queue`. The queue is a parameter so
+        `depth_needed` can lay the same grid on a stand-in that counts."""
         frame = self.frame_of(step)
         cell_index = step % self.steps
-        tokens = []
         for instrument, pattern in self.tracks:
             cells = pattern.get(cell_index)
             if not cells:
                 continue
             for cell in cells:
                 pitch, velocity, gate = _cell(cell)
-                with instrument.scheduled(self.queue, frame, tokens):
+                with instrument.scheduled(queue, frame, tokens):
                     instrument.note_on(pitch, velocity)
                 if gate:
                     off = self.frame_of(step + gate)
-                    with instrument.scheduled(self.queue, off, tokens):
+                    with instrument.scheduled(queue, off, tokens):
                         instrument.note_off(pitch)
+        return tokens
+
+    def _schedule(self, step):
+        tokens = self._lay(step, self.queue, [])
         self.scheduled += len(tokens)
-        self.refused += tokens.count(0)
+        refused = tokens.count(0)
+        if refused:
+            self.refused += refused
+            self._warn(step, refused)
         if tokens:
             self._live.append((step, tokens))
 
@@ -365,6 +515,25 @@ class Sequencer:
                     taken += 1
         self._live = []
         return taken
+
+
+class _Tally:
+    """A queue that counts and stores nothing, for `depth_needed`.
+
+    It answers `at()` with a token so the seam it is handed to behaves
+    exactly as it would on a real queue, and refuses every `cancel()`,
+    because nothing it took is real.
+    """
+
+    def __init__(self):
+        self.frames = []
+
+    def at(self, frame, op, target, arg=None, loop=False):
+        self.frames.append(frame)
+        return len(self.frames)
+
+    def cancel(self, token):
+        return False
 
 
 def _cell(cell):
