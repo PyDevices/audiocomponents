@@ -171,6 +171,17 @@ The way round it today is the look-ahead window: the defect only exists while
 two hits of one voice sit in the queue together, so topping up one step at a
 time removes it, at the cost of the lateness it was bought to avoid.
 
+[audiocomponents#95](https://github.com/PyDevices/audiocomponents/issues/95)
+carries a controlled re-measurement at the current pin — nulled against the
+live render, with a single strike as the control — and the proposal for
+making the choke frame-exact. The short of it: there is no fix on this side
+of the seam. The shadow copy is what two hits of one voice in one queue
+need, and a live retrigger is exact because it presses the *same* object and
+lets the engine hand the channel back with the envelope where it already is.
+Pressing the same shadow twice was tried and is exact only where the second
+hit's parameters are unchanged; elsewhere it rewrites a note under the hit
+that is still sounding, which is a worse defect for a smaller one.
+
 ## One instrument, no sequencer
 
 `Sequencer` is a convenience over one primitive, and a part that is not a grid
