@@ -523,6 +523,8 @@ _PENDING = []
 
 _OPS = None
 
+_BANK_OPS = None
+
 
 def _ops():
     """(PRESS, RELEASE, RELEASE_ALL), imported the first time one is needed.
@@ -534,6 +536,33 @@ def _ops():
         import audiopump
         _OPS = (audiopump.PRESS, audiopump.RELEASE, audiopump.RELEASE_ALL)
     return _OPS
+
+
+def _bank_ops():
+    """(STRIKE, CHOKE), imported the first time one is needed.
+
+    Separate from `_ops` on purpose: these two arrived later (audiodsp#138)
+    and an engine can have the first three without them -- the pump shipped
+    in 0.5.1 and these did not. Asking for them only when a modal instrument
+    is actually armed means a kit still plays live on such a build, which is
+    every bit of what it could do before.
+
+    The `AttributeError` is turned into a sentence deliberately. It surfaces
+    at the seam, a bar ahead of the audio, where a caller can still choose to
+    play live; a bare AttributeError out of a timer callback is two lines of
+    traceback and a bar that stops.
+    """
+    global _BANK_OPS
+    if _BANK_OPS is None:
+        import audiopump
+        try:
+            _BANK_OPS = (audiopump.STRIKE, audiopump.CHOKE)
+        except AttributeError:
+            raise RuntimeError(
+                "this audiopump has no STRIKE/CHOKE, so a modal instrument "
+                "cannot be put on a frame (audiodsp#138). It still plays "
+                "live; scheduling it needs a newer audiodsp.")
+    return _BANK_OPS
 
 
 def node(obj):
@@ -605,6 +634,59 @@ class Keys:
         self._tokens = None
         self._staged = ()
         self._choked = None
+
+    # -- a modal bank, which is not pressed but retuned --------------------
+    #
+    # A struck `audiomodal.Bank` is the one thing in this package that reaches
+    # the audio outside a press: `set_mode()` writes a running node's gains
+    # and the energy goes in on that line. It is why `acoustickit` was not
+    # schedulable. audiodsp#138 gave the pump a frame-stamped version of both
+    # halves, and these are where an instrument reaches them.
+    #
+    # They live on `Keys` because `Keys` is what knows the arm state -- the
+    # queue, the frame, the token list. The target is the bank, not this
+    # keyboard; the keyboard is the clock.
+
+    def strike_bank(self, bank, table):
+        """Retune ``bank`` from ``table`` at the frame this is armed at.
+
+        Returns False when nothing is armed, and then the caller does its own
+        `set_mode()` sweep -- the live path stays exactly the C calls it
+        always was, with no array handed across the seam and no allocation.
+
+        ``table`` is an `array('f')` of frequency, decay and gain per mode and
+        **must cover every mode in the bank**. The engine silences whatever a
+        short table does not reach by writing frequency 0, which takes the
+        recursion with it and stops every other drum dead -- where this
+        package's own "off" keeps the pole and zeroes only the gain. A table
+        that stops short is a kit where one strike cuts the ringing crash.
+
+        The copy is the same rule as `_shadow`, one layer down: the event
+        holds the buffer object, so a second strike laid before the first one
+        lands would otherwise rewrite the first one's modes. Copying here, on
+        the interpreter thread, is where allocating is allowed.
+        """
+        q = self._q
+        if q is None:
+            return False
+        strike, _choke_op = _bank_ops()
+        self._tokens.append(
+            q.at(self._frame, strike, bank, array.array('f', table)))
+        return True
+
+    def choke_bank(self, bank):
+        """Silence ``bank`` at the frame this is armed at -- the closing hat.
+
+        Returns False when nothing is armed, and then the caller calls
+        `bank.clear()` itself. Schedule this before the `strike_bank` that
+        follows it: events at one frame apply in schedule order.
+        """
+        q = self._q
+        if q is None:
+            return False
+        _strike, choke = _bank_ops()
+        self._tokens.append(q.at(self._frame, choke, bank))
+        return True
 
     @property
     def shadows(self):
@@ -792,6 +874,18 @@ class Keys:
 
     def note_info(self, note):
         return self.node.note_info(note)
+
+    @property
+    def refused(self):
+        """Presses this engine had no channel for -- or None if it cannot say.
+
+        `synthio.Synthesizer.refused` (audiodsp#137), and **None rather than
+        0 when it is absent**, because an engine that cannot count is not an
+        engine that lost nothing. An older audiodsp has no such property, and
+        a 0 read off it would say "your bar is fine" about a bar that dropped
+        nineteen hundred notes. See `Instrument.refused`.
+        """
+        return getattr(self.node, "refused", None)
 
 
 def _choke(note):
@@ -1056,6 +1150,48 @@ class Instrument:
             self.note_off(pitch, channel=channel, note_id=note_id)
 
     # -- scheduling ---------------------------------------------------------
+
+    @property
+    def refused(self):
+        """Notes this instrument's engine had nowhere to put -- or None.
+
+        A press that reaches a synthesizer with every channel held is
+        dropped. That is deliberate and it is the right behaviour: stealing
+        cannot be decided at schedule time, because the occupancy at a
+        *future* frame is unknowable and every number available to guess with
+        lies. `max_polyphony` is the wrong denominator once notes-per-key
+        varies with a macro, and `len(synth.pressed)` has been measured
+        reading 0 while a fresh press was refused. A Python-side prediction
+        would be that same lie one layer further from the truth.
+
+        What was wrong was that the drop was **silent**, on both sides of the
+        seam (audiocomponents#96). Measured through the sequencer at the
+        64-voice ceiling, two bars: `tr808` with every circuit on every
+        sixteenth loses nothing, `juno106` in four-note chords loses nothing,
+        `juno106` in eight-note chords loses **488** notes and `solina` --
+        an ensemble voice -- loses **1976**. So a part one step richer than
+        the drum machine's own bar drops hundreds of notes and says nothing.
+
+        Now it says. This is the sum over every keyboard the instrument
+        plays, so `acoustickit`'s two synthesizers count as one instrument.
+
+        **It is not `Sequencer.health()['refused']`,** and adding the two
+        together would be meaningless. That one is the queue turning an
+        event away at the door, for want of capacity: nothing was applied.
+        This one is an event that applied perfectly and had no channel for
+        its note. Only the second is a note the player would have heard.
+
+        None means the engine cannot answer -- an audiodsp older than
+        audiodsp#137 -- and it is None rather than 0 on purpose.
+        """
+        self._check_live()
+        total = 0
+        for keys in self._keys:
+            count = keys.refused
+            if count is None:
+                return None
+            total += count
+        return total
 
     @property
     def schedulable(self):

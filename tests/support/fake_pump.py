@@ -11,8 +11,8 @@ this is that object, in Python, written from ``audiopump_events.c``:
   rather than raising when the queue is full;
 * ``cancel()`` is True only while the event is still pending;
 * :meth:`Events.apply` is ``audiopump_events_apply``: every event inside
-  ``[now, now + block)`` is applied in frame order, one press, release or
-  release-all per event, and late ones are counted;
+  ``[now, now + block)`` is applied in frame order, one press, release,
+  release-all, strike or choke per event, and late ones are counted;
 * ``stats()`` returns the same eight numbers in the same order.
 
 **What a fake cannot catch.** Whether the real pump reaches those frames on
@@ -34,6 +34,16 @@ RELEASE_ALL = 3
 PLAY = 4
 STOP = 5
 LEVEL = 6
+#: ``audiomodal.Bank``, a mode table validated and flattened at schedule time
+#: (audiodsp#138). A strike on a modal bank is a retune of a running node, not
+#: a press, and these are how it gets a frame. ``acoustickit`` is the one
+#: instrument here that emits them -- audiocomponents#94.
+STRIKE = 7
+CHOKE = 8
+
+#: ``AUDIODSP_MODAL_MIN_DECAY`` (``audiodsp_modal.h``). What the engine puts
+#: in a mode the table did not reach, alongside a frequency of 0.
+MIN_DECAY = 0.001
 
 #: ``audiopump.STATUS_WORDS`` -- the pump's status block, unused here but
 #: part of the surface a caller may look for.
@@ -136,6 +146,10 @@ class Events:
                 event.target.release(event.arg)
             elif event.op == RELEASE_ALL:
                 event.target.release_all()
+            elif event.op == STRIKE:
+                _strike(event.target, event.arg)
+            elif event.op == CHOKE:
+                event.target.clear()
             applied += 1
         self.applied_count += applied
         return applied
@@ -163,7 +177,42 @@ class Events:
                 raise TypeError("a scheduled note is a Note or a MIDI number"
                                 " -- an iterable of them is several events")
             return
+        if op in (STRIKE, CHOKE):
+            # Everything that can refuse happens here, as it does in the C:
+            # the apply half reads floats and stores, and a table that
+            # reached it in the wrong shape would have to raise on the pump
+            # thread, which is the one thing the queue exists to prevent.
+            if not hasattr(target, "set_mode"):
+                raise TypeError("strike/choke want an audiomodal.Bank")
+            if op == CHOKE:
+                return
+            if getattr(arg, "typecode", None) != "f":
+                raise TypeError("a strike's table is an array('f') of "
+                                "frequency, decay, gain per mode")
+            if len(arg) == 0 or len(arg) % 3:
+                raise ValueError("a strike's table needs three floats a mode")
+            if len(arg) // 3 > target.modes:
+                raise ValueError("table has %d modes, bank holds %d"
+                                 % (len(arg) // 3, target.modes))
+            return
         raise ValueError("unknown op")
+
+
+def _strike(bank, table):
+    """``audiopump_apply_strike``: three floats a mode, then silence the rest.
+
+    The second loop is the part worth having in a stand-in. A mode the table
+    does not reach gets frequency 0, which takes the recursion with it and
+    stops that mode dead -- where an instrument's own "off" keeps the pole
+    and zeroes only the gain. An instrument that sends a short table is
+    asking for a smaller drum, not a quieter one, and only this will say so.
+    """
+    count = len(table) // 3
+    for index in range(count):
+        bank.set_mode(index, table[index * 3], table[index * 3 + 1],
+                      table[index * 3 + 2])
+    for index in range(count, bank.modes):
+        bank.set_mode(index, 0.0, MIN_DECAY, 0.0)
 
 
 class _Clock:
@@ -183,8 +232,9 @@ def install():
     """Put this module on ``sys.modules`` as ``audiopump`` and reset it.
 
     `audioinstruments._support` caches ``(PRESS, RELEASE, RELEASE_ALL)`` the
-    first time an instrument is scheduled, so the module has to be in place
-    before that and has to stay the same object afterwards.
+    first time an instrument is scheduled, and ``(STRIKE, CHOKE)`` the first
+    time a modal one is, so the module has to be in place before that and has
+    to stay the same object afterwards.
     """
     sys.modules.setdefault("audiopump", sys.modules[__name__])
     now.frame = 0

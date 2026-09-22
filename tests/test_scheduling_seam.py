@@ -322,16 +322,115 @@ class TheProxyForwardsTheSynthesizer(unittest.TestCase):
                              name + " forwards past the scheduling seam")
 
 
-class NotEveryInstrumentCanBeScheduled(unittest.TestCase):
+class _Counting:
+    """A synthesizer stand-in that can, or cannot, count refused presses.
 
-    def test_acoustickit_says_no(self):
-        inst = audioinstruments.create("acoustickit", RATE)
+    `synthio.Synthesizer.refused` arrived in audiodsp#137 and this
+    repository's `AUDIODSP_PIN` is older, so the engine CI runs against
+    cannot answer. Testing the reading against whatever engine happens to be
+    installed would mean this file proves one thing today and the other
+    thing after the pin moves, and says nothing either way -- so the subject
+    is a stand-in with the property and one without it.
+    """
+
+    sample_rate = RATE
+    channel_count = 2
+    blocks = ()
+    pressed = ()
+
+    def __init__(self, refused=None):
+        if refused is not None:
+            self.refused = refused
+
+    def press(self, note):
+        pass
+
+    def release(self, note):
+        pass
+
+    def release_all(self):
+        pass
+
+    def deinit(self):
+        pass
+
+
+class ARefusedNoteIsCounted(unittest.TestCase):
+    """audiocomponents#96: a press the engine had no channel for.
+
+    Stealing cannot be decided at schedule time -- the occupancy at a future
+    frame is unknowable and every number available to guess with lies -- so
+    the library refuses, which is what it always did. What it did not do was
+    say so. Measured on the real pump at the 64-voice ceiling, two bars at
+    200 BPM: `tr808` and a four-note `juno106` lose nothing, an eight-note
+    `juno106` loses **488** notes and `solina` loses 1796, and before this
+    nothing on either side of the seam could see one of them.
+    """
+
+    def instrument(self, *counts):
+        """An `Instrument` over one keyboard per entry in ``counts``.
+
+        `Instrument` adopts every `Keys` built since the last one, through
+        `_support._PENDING`. Reaching into it is what building a two-keyboard
+        instrument by hand costs, and this file is that module's test.
+        """
+        del _support._PENDING[:]
+        keyboards = [_support.Keys(_Counting(count)) for count in counts]
+        _support._PENDING.extend(keyboards)
+        inst = _support.Instrument(keyboards[0], lambda *a: None, {}, ())
         self.addCleanup(inst.deinit)
-        self.assertFalse(inst.schedulable)
+        return inst
+
+    def test_an_engine_that_cannot_count_says_None_rather_than_zero(self):
+        """0 would read as "your bar is fine" about a bar that lost 488."""
+        self.assertIsNone(self.instrument(None).refused)
+
+    def test_the_count_comes_off_the_engine(self):
+        self.assertEqual(488, self.instrument(488).refused)
+
+    def test_it_is_summed_over_every_keyboard_the_instrument_plays(self):
+        """`acoustickit` has two synthesizers and is one instrument."""
+        self.assertEqual(19, self.instrument(12, 7).refused)
+
+    def test_one_keyboard_that_cannot_say_makes_the_whole_answer_unknown(self):
+        """A partial total would read as a small number, not an unknown one,
+        and a small number here is the answer an app is hoping for."""
+        self.assertIsNone(self.instrument(12, None).refused)
+
+    def test_a_keyboard_forwards_what_its_node_says(self):
+        self.assertEqual(3, _support.Keys(_Counting(3)).refused)
+        self.assertIsNone(_support.Keys(_Counting()).refused)
+
+
+class AnInstrumentCanStillRefuseToBeScheduled(unittest.TestCase):
+    """`schedulable=False` is part of the `Instrument` contract. Nothing
+    shipped uses it any more, and the subject here is a stand-in that does.
+
+    `acoustickit` was the one, because a strike there is `Bank.set_mode()` on
+    a running node rather than a press. audiodsp#138 gave the pump a
+    frame-stamped `STRIKE` and `CHOKE` and audiocomponents#94 made the kit
+    emit them, so the kit carries a frame now like everything else.
+
+    These two tests used to name the kit, and that is worth not repeating:
+    a refusal tested against whichever shipped instrument happens not to
+    have been fixed yet goes quietly vacuous on the day it is fixed, and a
+    passing suite is what you get either way. The flag is for a provider
+    whose note-on reaches the audio outside a press -- which is a thing
+    outside this package can still be -- so the subject declares it.
+    """
+
+    def unschedulable(self):
+        synth = _support.synthesizer(RATE, 2)
+        inst = _support.Instrument(synth, lambda *a: None, {}, (),
+                                   schedulable=False)
+        self.addCleanup(inst.deinit)
+        return inst
+
+    def test_it_says_no(self):
+        self.assertFalse(self.unschedulable().schedulable)
 
     def test_it_refuses_with_a_sentence(self):
-        inst = audioinstruments.create("acoustickit", RATE)
-        self.addCleanup(inst.deinit)
+        inst = self.unschedulable()
         queue = fake_pump.Events(capacity=8)
         with self.assertRaises(RuntimeError) as caught:
             inst.at(queue, 6000).note_on(38, 100)
@@ -342,13 +441,23 @@ class NotEveryInstrumentCanBeScheduled(unittest.TestCase):
         self.assertEqual(queue.pending(), 0,
                          "a refused instrument still wrote to the queue")
 
-    def test_the_drum_machines_and_the_melodic_voices_can(self):
-        for name in ("tr808", "tr909", "karplus", "dx7", "juno106"):
+    def test_every_instrument_this_package_ships_can_be_scheduled(self):
+        """All 55 of them, the kit included -- which is audiocomponents#94.
+
+        The whole list rather than a handful: the claim worth holding is
+        that nothing here plays a bar live and early, and a sample of five
+        cannot say that.
+        """
+        refused = []
+        for name in audioinstruments.ALL:
             inst = audioinstruments.create(name, RATE)
             try:
-                self.assertTrue(inst.schedulable, name + " is not schedulable")
+                if not inst.schedulable:
+                    refused.append(name)
             finally:
                 inst.deinit()
+        self.assertEqual([], refused,
+                         "these ship unschedulable: " + ", ".join(refused))
 
 
 class PlayingLiveThroughTheKeyboardIsAWire(unittest.TestCase):

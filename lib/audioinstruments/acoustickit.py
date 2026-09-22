@@ -138,6 +138,7 @@ PATCHES = {
                         127, 70, 74, 120)),
 }
 
+import array
 import math
 
 import synthio
@@ -447,6 +448,15 @@ def create(sample_rate, channel_count=2, transport=None):
     hat_bank = audiomodal.Bank(modes=hat_modes, sample_rate=SR,
                                channel_count=channel_count)
 
+    # One mode table per bank - frequency, decay and gain for every mode -
+    # rewritten in place on every strike and built once, here, because a
+    # sequencer cannot wait for a malloc mid-bar. Played live these rows go
+    # into the bank a `set_mode()` at a time exactly as they always did;
+    # scheduled, the whole array becomes one `audiopump.STRIKE` and `Keys`
+    # takes its own copy. See `_support.Keys.strike_bank`.
+    MAIN_TABLE = array.array("f", (0.0,) * (main_modes * 3))
+    HAT_TABLE = array.array("f", (0.0,) * (hat_modes * 3))
+
     # One excitation, split to both banks. A bank is linear, so what a strike
     # puts into each mode is the mode's own gain - the burst only has to carry
     # energy everywhere, not carry a shape.
@@ -549,17 +559,31 @@ def create(sample_rate, channel_count=2, transport=None):
             return hat_level
         return cymbal_level
 
-    def load(bank, slots, table, voice, velocity):
-        """Arm one voice and silence the rest, then the burst plays only it.
+    def fill(out, slots, rows, flat, voice, velocity):
+        """Write the whole bank's mode table for one strike of ``voice``.
 
+        Arms one voice and silences the rest, so the burst plays only it.
         Setting another voice's gain to zero does NOT stop it ringing: the
         gain is how new signal enters a mode, and a mode already in motion
         carries on decaying from its own state. That is the whole reason one
         bank can hold a kit - a crash goes on sounding underneath the next
         four kicks without any of them feeding it.
+
+        Every row is written every time, the struck voice's from the kit's
+        tables and every other from ``flat`` at gain zero. That sweep is not
+        an optimisation waiting to happen: the rows a previous strike tuned
+        have to go back to their resting poles, and a scheduled strike sends
+        this array whole.
+
+        **A muted mode keeps its pole.** Writing frequency 0 as well - which
+        is the obvious way to write "off" - takes the recursion with it, and
+        every other drum in the bank stops dead the instant this one is
+        struck rather than ringing on underneath. Measured when it was wrong:
+        a whisper-quiet kick cut a ringing crash from 7584 to 61. It is also
+        exactly what the engine does to modes a short table does not reach,
+        which is why this one always covers the bank.
         """
         start, stop = slots[voice]
-        flat = MAIN_FLAT if slots is MAIN_SLOTS else HAT_FLAT
         tune = tune_for(voice)
         stretch = decay_for(voice)
         gain = level_for(voice)
@@ -568,31 +592,40 @@ def create(sample_rate, channel_count=2, transport=None):
         # away hard and it reads as a heavier stick.
         bite = 0.25 + 1.5 * hardness
         snap = 1.0
-        for index, (frequency, decay, amplitude, tilt) in enumerate(table):
+        for index, (frequency, decay, amplitude, tilt) in enumerate(rows):
             if voice == "snare" and frequency >= 1500.0:
                 snap = 0.4 + 1.2 * snare_snap
             scaled = (amplitude * (velocity ** (1.0 + tilt * bite))
                       * gain * NORM[voice])
-            bank.set_mode(start + index, frequency * tune * wobble(),
-                          decay * stretch * wobble(), scaled * snap)
+            at = (start + index) * 3
+            # Left to right, and it matters: `wobble()` is one step of an LCG
+            # and the frequency has always taken the first of the pair.
+            out[at] = frequency * tune * wobble()
+            out[at + 1] = decay * stretch * wobble()
+            out[at + 2] = scaled * snap
             snap = 1.0
         for index in range(0, start):
-            _silence(bank, flat, index)
-        for index in range(stop, bank.modes):
-            _silence(bank, flat, index)
+            at = index * 3
+            out[at], out[at + 1] = flat[index]
+            out[at + 2] = 0.0
+        for index in range(stop, len(flat)):
+            at = index * 3
+            out[at], out[at + 1] = flat[index]
+            out[at + 2] = 0.0
 
-    def _silence(bank, flat, index):
-        """Mute a mode without stopping it.
+    def load(bank, slots, rows, flat, out, voice, velocity):
+        """Strike ``voice`` on ``bank`` - now, or at the frame we are armed at.
 
-        The pole has to go back in unchanged. Setting the frequency to zero
-        here as well - which is the obvious way to write "off" - takes the
-        recursion with it, and every other drum in the bank stops dead the
-        instant this one is struck rather than ringing on underneath. Measured
-        when it was wrong: a whisper-quiet kick cut a ringing crash from 7584
-        to 61.
+        `strike_bank` answers False when nothing has armed the keyboard, and
+        then this is the `set_mode()` sweep it always was: the live path
+        hands no array across the seam and allocates nothing.
         """
-        frequency, decay = flat[index]
-        bank.set_mode(index, frequency, decay, 0.0)
+        fill(out, slots, rows, flat, voice, velocity)
+        if synth.strike_bank(bank, out):
+            return
+        for index in range(len(flat)):
+            at = index * 3
+            bank.set_mode(index, out[at], out[at + 1], out[at + 2])
 
     def strike(pitch, velocity):
         voice = PITCH_VOICE.get(pitch)
@@ -600,11 +633,17 @@ def create(sample_rate, channel_count=2, transport=None):
             return
         if voice in HAT_VOICES:
             # Closing a hi-hat silences what the open one was doing. This is
-            # the choke, and it is why the hat has a bank to itself.
-            hat_bank.clear()
-            load(hat_bank, HAT_SLOTS, HAT_VOICES[voice], voice, velocity)
+            # the choke, and it is why the hat has a bank to itself. It goes
+            # on the queue BEFORE the strike that follows it: events at one
+            # frame apply in schedule order, and a choke after its own strike
+            # would wipe the hit it was meant to make room for.
+            if not synth.choke_bank(hat_bank):
+                hat_bank.clear()
+            load(hat_bank, HAT_SLOTS, HAT_VOICES[voice], HAT_FLAT, HAT_TABLE,
+                 voice, velocity)
         else:
-            load(main_bank, MAIN_SLOTS, VOICES[voice], voice, velocity)
+            load(main_bank, MAIN_SLOTS, VOICES[voice], MAIN_FLAT, MAIN_TABLE,
+                 voice, velocity)
         rows = LAYERS.get(voice)
         if rows is not None:
             gain = level_for(voice)
@@ -676,12 +715,13 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 15:
                 cymbal_level = value
 
-    # NOT SCHEDULABLE, and the reason is `strike()` above: a hit here is
+    # SCHEDULABLE, and it took an engine change to get here. A hit is
     # `bank.set_mode()` on a modal bank that is already running, which injects
-    # the energy the moment it is called. That is a C state change, not a
-    # press, so no queue can hold it back - and deferring only the two
-    # `direct.press()` calls would split one drum in half. See
-    # docs/spikes/live-audio-path-sequenced.md.
+    # the energy the moment it is called - a C state change rather than a
+    # press, and for a long time no queue could hold it back. audiodsp#138
+    # gave the pump both halves with a frame on them, `STRIKE` and `CHOKE`,
+    # so `load()` above lays the whole mode table on the queue instead and
+    # the hat's choke goes with it. The layer notes and the stick were always
+    # presses and always rode the seam. See docs/sequencing.md.
     return Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
-                      output=mixer, transport=transport, note_map=NOTE_MAP,
-                      schedulable=False)
+                      output=mixer, transport=transport, note_map=NOTE_MAP)
