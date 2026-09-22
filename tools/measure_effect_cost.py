@@ -1098,12 +1098,40 @@ def _seconds_since(start):
     return _ticks_delta_us(start) / 1000000.0
 
 
-def _warm(output, extras, want_digest, blocks=DIGEST_BLOCKS):
+def _idle_readout(keep):
+    """A per-family "am I working" readout on the target, or `(None, None)`.
+
+    The digest cannot answer this question, and that is the whole reason this
+    exists. An `Expander` patch whose threshold the probe never crosses
+    returns 0 dB of gain reduction on every block and STILL renders a digest
+    of its own, because the int16 round trip moves the bytes - so six of that
+    class's seven patches idled on this probe and not one of them handed the
+    probe back for the BYPASS check to catch (audiocomponents#51). Every
+    figure taken that way is a figure for a graph idling, and the parked
+    budgets it feeds are understated rather than merely wrong.
+
+    One readout so far, because four classes have it and it is the family
+    where the trap was found. A drive stage wants THD, a reverb wants `mix`;
+    add them here as they grow one, and the check simply does not fire for a
+    target with no readout rather than guessing.
+    """
+    for node in keep:
+        readout = getattr(node, "gain_reduction_db", None)
+        if callable(readout):
+            return "gain_reduction_db", readout
+    return None, None
+
+
+def _warm(output, extras, want_digest, blocks=DIGEST_BLOCKS, watch=None):
     """Render `blocks` blocks from a chain that has just been built.
 
     Hashes them when asked, and times them roughly - roughly because the
     hashing is in the loop, so this pass sizes the timed pass's segments and
     is never itself reported as a cost.
+
+    `watch` is read once per pull and is how the caller finds out whether the
+    class did any work at all - see `_idle_readout`. It is never in the timed
+    pass.
     """
     hasher = None
     if want_digest:
@@ -1112,6 +1140,7 @@ def _warm(output, extras, want_digest, blocks=DIGEST_BLOCKS):
     wanted = blocks * BLOCK_FRAMES
     frames = 0
     pulls = 0
+    moved = 0.0
     gc.collect()
     start = _ticks_us()
     while frames < wanted:
@@ -1122,6 +1151,13 @@ def _warm(output, extras, want_digest, blocks=DIGEST_BLOCKS):
             raise RuntimeError(
                 "get_buffer returned no data (result %s) after %d pulls"
                 % (result, pulls))
+        if watch is not None:
+            try:
+                value = abs(float(watch()))
+            except Exception:                            # noqa: BLE001
+                value = 0.0
+            if value > moved:
+                moved = value
         if hasher is not None:
             hasher.update(bytes(buffer))
         got = len(buffer) // BYTES_PER_FRAME
@@ -1136,7 +1172,7 @@ def _warm(output, extras, want_digest, blocks=DIGEST_BLOCKS):
     if hasher is not None:
         import binascii
         digest = binascii.hexlify(hasher.digest()).decode()[:16]
-    return digest, spent, frames, pulls
+    return digest, spent, frames, pulls, moved
 
 
 def _timed(output, extras):
@@ -1221,11 +1257,12 @@ def run(build, want_digest):
     output, extras, keep = build(probe)
     gc.collect()
     after = _mem_alloc()
-    digest, _warm_s, _warm_frames, _warm_pulls = _warm(output, extras,
-                                                       want_digest)
+    readout, watch = _idle_readout(keep)
+    digest, _warm_s, _warm_frames, _warm_pulls, moved = _warm(
+        output, extras, want_digest, watch=watch)
     spent, frames, pulls = _timed(output, extras)
     blocks_per_s, rt, ms_per_block = _rates(spent, frames)
-    del keep, probe, output, extras
+    del keep, probe, output, extras, watch
     gc.collect()
     return {
         "digest": digest,
@@ -1236,6 +1273,8 @@ def run(build, want_digest):
         "rt": rt,
         "ms_per_block": ms_per_block,
         "bytes": after - before,
+        "readout": readout,
+        "moved": moved,
     }
 
 
@@ -1310,7 +1349,7 @@ def digests(*targets):
             build = resolve(target)
             probe = Probe()
             output, extras, keep = build(probe)
-            digest, _spent, _frames, _pulls = _warm(output, extras, True)
+            digest, _spent, _frames, _pulls, _m = _warm(output, extras, True)
             del keep, probe, output, extras
             gc.collect()
         except Exception as exc:                       # noqa: BLE001
@@ -1364,7 +1403,7 @@ def main(target=None):
     if target != "source" and not target.startswith("node:"):
         probe = Probe()
         output, extras, keep = _source(probe)
-        bare, _s, _f, _p = _warm(output, extras, True)
+        bare, _s, _f, _p, _m = _warm(output, extras, True)
         del keep, probe, output, extras
         gc.collect()
         if bare == measured["digest"]:
@@ -1378,6 +1417,22 @@ def main(target=None):
                 % (target, measured["digest"], target.partition("@")[0]))
         else:
             print("not a bypass: the bare probe's digest is %s" % bare)
+    # The other way a figure can be a graph idling, and the one the digest
+    # cannot see. See `_idle_readout`.
+    if measured.get("readout"):
+        print("%s: worst |%s| over the digest window = %.2f dB"
+              % ("working" if measured["moved"] > 0.0 else "IDLING",
+                 measured["readout"], measured["moved"]))
+        if measured["moved"] <= 0.0:
+            raise RuntimeError(
+                "IDLING: %s never left its null state - %s stayed at 0.00 dB "
+                "for all %d digest blocks, so the figure above is this class "
+                "being pulled and doing nothing. It is not a bypass: the "
+                "render differs from the bare probe by the int16 round trip "
+                "alone. Name a patch whose threshold this probe crosses - "
+                "`%s#<patch>` - and run it again."
+                % (target, measured["readout"], DIGEST_BLOCKS,
+                   target.partition("@")[0].partition("#")[0]))
     print("timed:  %d frames in %.3f s over %d pulls"
           % (measured["frames"], measured["seconds"], measured["pulls"]))
 
