@@ -233,17 +233,46 @@ class Sequencer:
         `refused` is the one that is a dropped step, and it has a warning of
         its own - see `on_refused`.
 
+        `unvoiced` is the other dropped note, and it is a **different**
+        failure with the same feel (audiocomponents#96). `refused` is the
+        queue turning an event away at the door, for want of capacity:
+        nothing was applied. `unvoiced` is an event that applied perfectly
+        and found every channel held, so the note was dropped by the engine.
+        Adding the two together would be meaningless; showing only one of
+        them is how a bar loses 488 notes quietly. Both are notes nobody
+        heard, and the cure is different for each - a deeper queue for the
+        first, fewer voices or a higher ceiling for the second.
+
             scheduled   events laid on the queue, ever
             refused     events the queue turned away: steps not heard
+            unvoiced    notes the engine had no channel for, over the
+                        tracked instruments -- or None where the engine
+                        cannot say (an audiodsp older than audiodsp#137)
             cancelled   events taken back by a tempo change or `stop()`
             reentered   ticks that arrived while this one was writing
             needed      the depth these tracks want (`depth_needed`)
             capacity    the depth this queue has, or None
         """
         return {"scheduled": self.scheduled, "refused": self.refused,
+                "unvoiced": self.unvoiced(),
                 "cancelled": self.cancelled, "reentered": self.reentered,
                 "needed": self.depth_needed(),
                 "capacity": self.queue_capacity()}
+
+    def unvoiced(self):
+        """Notes the engine dropped for want of a channel, over every track.
+
+        None when any tracked instrument's engine cannot say, because a
+        partial total would read as a small number rather than as an unknown
+        one -- and a small number here is the answer an app wants to see.
+        """
+        total = 0
+        for instrument, _pattern in self.tracks:
+            count = instrument.refused
+            if count is None:
+                return None
+            total += count
+        return total
 
     def queue_capacity(self):
         """The queue's capacity, or None when it will not say.

@@ -24,6 +24,7 @@ fake_pump.install()
 
 import audioinstruments                                     # noqa: E402
 from audioinstruments.sequencer import Sequencer            # noqa: E402
+from audioinstruments import _support                       # noqa: E402
 
 RATE = 48000
 BLOCK = 256
@@ -271,25 +272,115 @@ class TheTransportStopsCleanly(unittest.TestCase):
             "restarting at step 5 re-played a step that had gone by")
 
 
+class _Track:
+    """A real instrument with the refusal count answered by hand.
+
+    `health()` has to carry a number the engine CI runs against cannot
+    produce -- `synthio.Synthesizer.refused` is newer than `AUDIODSP_PIN` --
+    so what is proved here is the plumbing and the separation, and the
+    numbers themselves are measured on the real pump.
+
+    Everything but the number is a `tr808`, because `health()` calls
+    `depth_needed()`, which lays the grid: a bare stand-in with no
+    `scheduled()` does not survive being asked how deep a queue it wants.
+    """
+
+    def __init__(self, test, refused):
+        self._inst = audioinstruments.create("tr808", RATE)
+        test.addCleanup(self._inst.deinit)
+        self.refused = refused
+
+    def __getattr__(self, name):
+        return getattr(self._inst, name)
+
+
+class HealthSeparatesTheTwoWaysANoteIsLost(unittest.TestCase):
+    """audiocomponents#96. `refused` is the queue turning an event away at
+    the door for want of capacity: nothing was applied. `unvoiced` is an
+    event that applied perfectly and found every channel held.
+
+    They are different failures with different cures -- a deeper queue, or
+    fewer voices -- and a `solina` bar measured on the real pump reads 1520
+    and 1796 at the same time, so an app that added them would print a
+    number that means nothing.
+    """
+
+    def sequencer(self):
+        return Sequencer(fake_pump.Events(capacity=64), sample_rate=RATE,
+                         now=fake_pump.now)
+
+    def test_unvoiced_is_summed_over_the_tracks(self):
+        seq = self.sequencer()
+        seq.track(_Track(self, 488), dict(PATTERN))
+        seq.track(_Track(self, 12), dict(PATTERN))
+        self.assertEqual(500, seq.unvoiced())
+        self.assertEqual(500, seq.health()["unvoiced"])
+
+    def test_an_engine_that_cannot_count_leaves_it_unknown(self):
+        seq = self.sequencer()
+        seq.track(_Track(self, None), dict(PATTERN))
+        self.assertIsNone(seq.health()["unvoiced"])
+
+    def test_one_track_that_cannot_say_is_not_a_partial_total(self):
+        seq = self.sequencer()
+        seq.track(_Track(self, 488), dict(PATTERN))
+        seq.track(_Track(self, None), dict(PATTERN))
+        self.assertIsNone(seq.health()["unvoiced"])
+
+    def test_it_is_a_different_number_from_the_queues_own_refusal(self):
+        seq = self.sequencer()
+        seq.track(_Track(self, 488), dict(PATTERN))
+        health = seq.health()
+        self.assertEqual(0, health["refused"], "nothing was turned away")
+        self.assertEqual(488, health["unvoiced"], "but 488 were not heard")
+
+    def test_a_real_instrument_answers_it_too(self):
+        """Whatever engine is installed: a number, or None where it cannot
+        say. What must never happen is the key being absent."""
+        rig = Transport(self)
+        self.assertIn("unvoiced", rig.seq.health())
+        count = rig.seq.health()["unvoiced"]
+        self.assertTrue(count is None or count >= 0)
+
+
 class ATrackHasToBeSchedulable(unittest.TestCase):
+    """The subject is an instrument that declares `schedulable=False`.
+
+    It used to be `acoustickit`, the one shipped instrument that could not
+    carry a frame; audiocomponents#94 made it able to, and a refusal test
+    whose subject stops refusing passes for the wrong reason without saying
+    so. `tests/test_scheduling_seam.py` holds the other half of that -- that
+    every instrument this package ships can now be tracked.
+    """
+
+    def unschedulable(self):
+        synth = _support.synthesizer(RATE, 2)
+        inst = _support.Instrument(synth, lambda *a: None, {}, (),
+                                   schedulable=False)
+        self.addCleanup(inst.deinit)
+        return inst
 
     def test_an_unschedulable_instrument_is_refused_with_a_sentence(self):
         queue = fake_pump.Events(capacity=64)
         seq = Sequencer(queue, sample_rate=RATE, now=fake_pump.now)
-        kit = audioinstruments.create("acoustickit", RATE)
-        self.addCleanup(kit.deinit)
         with self.assertRaises(ValueError) as caught:
-            seq.track(kit, dict(PATTERN))
+            seq.track(self.unschedulable(), dict(PATTERN))
         self.assertIn("cannot be scheduled", str(caught.exception))
         self.assertEqual(seq.tracks, [],
                          "the refused instrument was tracked anyway")
 
     def test_retrack_refuses_one_too(self):
         rig = Transport(self)
+        with self.assertRaises(ValueError):
+            rig.seq.retrack(self.unschedulable())
+
+    def test_the_kit_can_be_tracked_now(self):
+        """audiocomponents#94, at the seam a drum machine actually uses."""
+        rig = Transport(self)
         kit = audioinstruments.create("acoustickit", RATE)
         self.addCleanup(kit.deinit)
-        with self.assertRaises(ValueError):
-            rig.seq.retrack(kit)
+        rig.seq.retrack(kit)
+        self.assertIs(kit, rig.seq.tracks[0][0])
 
 
 class AFullQueueIsCounted(unittest.TestCase):
@@ -491,12 +582,20 @@ class ATickInsideAnotherOne(unittest.TestCase):
         Kept because a board proved it fires; not shown as a dropped step,
         because it is not one. The dict is the surface an app puts on a
         screen, and `refused` is the entry that means a step was not heard.
+
+        `unvoiced` is the *other* entry that means that, and it is a
+        different failure (audiocomponents#96): `refused` is the queue
+        turning an event away at the door, `unvoiced` is an event that
+        applied and found every channel held. The key set is pinned here
+        because this dict is a surface an app lays out, so adding to it is
+        a decision and not a side effect.
         """
         _heard, seq, _q = self.bar("tr808", FULL_BAR, 200, at_call=6,
                                    capacity=96)
         row = seq.health()
-        self.assertEqual(set(row), {"scheduled", "refused", "cancelled",
-                                    "reentered", "needed", "capacity"})
+        self.assertEqual(set(row), {"scheduled", "refused", "unvoiced",
+                                    "cancelled", "reentered", "needed",
+                                    "capacity"})
         self.assertGreater(row["reentered"], 0, row)
         self.assertEqual(row["refused"], 0,
                          "the app's own capacity dropped a step")

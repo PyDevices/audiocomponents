@@ -3,10 +3,12 @@
     MICROPYPATH=<repo>:<repo>/lib <workspace>/cmods/bin/micropython \
         tests/parity/scheduling_seam_live.py [case ...] [--fault WHICH]
 
-Cases: ``frame``, ``velocity``, ``silence``, ``wire`` (all by default).
+Cases: ``frame``, ``velocity``, ``silence``, ``wire``, ``kit``,
+``kitlevels``, ``kitchoke`` (all by default).
 Faults: ``early`` (frame), ``flat`` (velocity), ``held`` (silence),
-``armed`` (wire). Each one must make this exit non-zero; a probe whose
-failing mode is never run is not a gate.
+``armed`` (wire), ``unstruck`` (kit), ``even`` (kitlevels), ``ringing``
+(kitchoke). Each one must make this exit non-zero; a probe whose failing
+mode is never run is not a gate.
 
 Why it exists
 -------------
@@ -220,8 +222,105 @@ def wire(fault):
                % (len(plain), plain == other))
 
 
+# --- the modal kit, whose strike is not a press -----------------------------
+#
+# `acoustickit` is the one instrument here whose hit reaches the audio outside
+# a press: a strike is `Bank.set_mode()` on a running node and the energy goes
+# in on that line. audiodsp#138 gave the pump `STRIKE` and `CHOKE` with frames
+# on them and audiocomponents#94 made the kit emit them, so these three ask
+# the same questions of a retune that the four above ask of a press.
+#
+# Every case strikes a TOM, and that is the measurement, not a taste in drums.
+# Only `kick`, `snare` and `sidestick` carry layer notes played straight into
+# the mixer; a tom is the bank and nothing else, and the excitation burst is
+# not in the mixer at all. So a tom makes a sound if and only if a `STRIKE`
+# reached the bank, and a case that passed with the strike missing could not
+# happen quietly.
+
+
+def kit():
+    return audioinstruments.create("acoustickit", RATE)
+
+
+def kit_frame(fault):
+    """A kit's strike carries a frame: the bank is retuned by the pump."""
+    inst = kit()
+    at_block = 0 if fault == "unstruck" else 20
+
+    def lay(queue, frame_of):
+        with inst.scheduled(queue, frame_of(at_block)):
+            inst.note_on(45, 127)               # Low Tom: bank-only
+
+    pcm, _pulled = render(inst, 40, lay)
+    inst.deinit()
+    window = peaks(pcm, BLOCK_FRAMES)
+    before = max(window[:20]) if len(window) >= 20 else 0
+    after = max(window[20:]) if len(window) > 20 else 0
+    return say("kit", before == 0 and after > 1000,
+               "loudest sample before block 20: %d (want 0), after: %d "
+               "(want a hit)" % (before, after))
+
+
+def kit_levels(fault):
+    """Two strikes laid before either sounds keep their own levels.
+
+    This is the case that a frame-stamped `STRIKE` is *for*, and the one a
+    retune at schedule time cannot pass: both sweeps would have run on this
+    thread before the first stick arrived, so the downbeat would sound with
+    the second hit's gains. Measured by declining `strike_bank` and leaving
+    everything else scheduled - the old behaviour exactly - the loud hit came
+    out at 666 and the soft one at 808, the bar inside out and both of them
+    ten times down from 6981 and 2072.
+    """
+    inst = kit()
+    second = 127 if fault == "even" else 32
+
+    def lay(queue, frame_of):
+        with inst.scheduled(queue, frame_of(4)):
+            inst.note_on(45, 127)
+        with inst.scheduled(queue, frame_of(24)):
+            inst.note_on(45, second)
+
+    pcm, _pulled = render(inst, 44, lay)
+    inst.deinit()
+    window = peaks(pcm, BLOCK_FRAMES)
+    loud = max(window[4:20]) if len(window) > 20 else 0
+    quiet = max(window[24:40]) if len(window) > 40 else 0
+    return say("kitlevels", loud > 1000 and quiet > 0 and loud > quiet * 2,
+               "tom at 127 peaks %d, tom at 32 peaks %d (want the first at "
+               "least twice the second)" % (loud, quiet))
+
+
+def kit_choke(fault):
+    """A closing hi-hat silences the open one, at the closing hat's frame.
+
+    Live this is `Bank.clear()`. Scheduled it is `audiopump.CHOKE`, laid at
+    the same frame as the strike that follows it and before it, because
+    events at one frame apply in schedule order.
+    """
+    inst = kit()
+
+    def lay(queue, frame_of):
+        with inst.scheduled(queue, frame_of(2)):
+            inst.note_on(46, 127)               # Open Hi-Hat: a long voice
+        if fault != "ringing":
+            with inst.scheduled(queue, frame_of(16)):
+                inst.note_on(42, 20)            # Closed Hi-Hat, soft
+
+    pcm, _pulled = render(inst, 40, lay)
+    inst.deinit()
+    window = peaks(pcm, BLOCK_FRAMES)
+    struck = max(window[2:16]) if len(window) > 16 else 0
+    tail = max(window[24:]) if len(window) > 24 else 0
+    return say("kitchoke", struck > 1000 and tail < struck // 20,
+               "the open hat peaks %d, the tail 8 blocks after the closing "
+               "hat peaks %d (want under %d)" % (struck, tail, struck // 20))
+
+
 CASES = (("frame", frame), ("velocity", velocity),
-         ("silence", silence), ("wire", wire))
+         ("silence", silence), ("wire", wire),
+         ("kit", kit_frame), ("kitlevels", kit_levels),
+         ("kitchoke", kit_choke))
 
 
 def main():

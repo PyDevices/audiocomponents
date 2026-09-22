@@ -123,14 +123,24 @@ in the table above and a table with no story in it.
 
 ## What cannot be scheduled
 
-**`acoustickit`, and only it.** A strike there is `ModalBank.set_mode()` on a
-bank that is already running, plus a press on a second synthesizer to excite
-it. The retune is a C state change with no frame on it and it is shared by
-every hit of that voice, so a bar scheduled ahead would retune the bank to the
-last hit before the first one sounded. It declares `schedulable = False`, it
-still plays live, and `Sequencer` refuses it rather than playing its part
-early — which is the failure nobody would hear as a failure. All 54 others
-take a frame.
+**No instrument in this package.** All 55 take a frame, `acoustickit`
+included — which it did not until
+[#94](https://github.com/PyDevices/audiocomponents/issues/94). A strike there
+is `Bank.set_mode()` on a bank that is already running: a C state change with
+no frame on it, shared by every hit of that voice, so a bar scheduled ahead
+retuned the bank to the last hit before the first one sounded. Measured with
+the retune left on the interpreter thread and everything else scheduled, a
+loud tom and a soft one laid together came out at 666 and 808 — the bar
+inside out, and both ten times down from the 6981 and 2072 they should be.
+The fix was an engine one:
+[audiodsp#138](https://github.com/PyDevices/audiodsp/issues/138) put
+`STRIKE` and `CHOKE` on the pump's queue, and the kit lays its whole mode
+table on them.
+
+`schedulable = False` is still part of the `Instrument` contract, for a
+provider outside this package whose note-on reaches the audio outside a
+press. `Sequencer` refuses one rather than playing its part live and early —
+the failure nobody would hear as a failure.
 
 **A macro move.** `set_macro` reaches code that builds new node objects with
 delay lines and filter state in them; that is not a value to store, and the
@@ -193,7 +203,7 @@ with inst.scheduled(q, audiopump.now() + 24000) as tokens:
     inst.note_on(42, 100)
 
 inst.at(q, frame).note_on(38, 90)    # the same thing, for one call
-inst.schedulable                     # False for acoustickit, and only it
+inst.schedulable                     # True for all 55 that ship here
 ```
 
 Inside the block the instrument does **all** of its usual Python on the
