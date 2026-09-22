@@ -1,6 +1,6 @@
 """Render an audioinstruments component's one-shots, kit hit, or phrases.
 
-    python tools/render_component.py <name> <outdir> [MODE] [sr]
+    python tools/render_component.py <name> <outdir> [MODE] [sr] [gate]
     MODE = oneshots | kit | phrase | transitions
 
 Deliberately dual-runtime: runs under CPython and the workspace MicroPython
@@ -20,10 +20,36 @@ argparse, pathlib, and wave on purpose.
 
 Events land on block boundaries (the pull size), which is what makes the
 render identical across interpreters.
+
+Every press is released. A DAW sends a note-off and most of what anyone
+records is what the DAW plays, so a renderer that only ever presses was
+describing an instrument nobody hears (#16). It was also the only thing
+here that did not: `tests/parity/instrument_sequences.py` has always
+released a drum hit two pulls after striking it - 10.7 ms - and every
+instrument golden in the repository was captured that way.
+
+`GATE` is how long a key is held. 1.0 s, against the 2.0 s one-shot
+render, buys the two things that matter. The four sustaining keyboards -
+rhodes, wurlitzer, pianet, clavinet, all with `amp_s` above zero - spend
+the back half of the render in release, which is the only place their
+key-off behaviour can be heard at all; before this they rang forever and
+three of the most identifying traits in `docs/phase2-listening-guide.md`
+could not be measured offline. And it is gentle on the percussion: 9 of
+the 122 drum one-shots across the ten kits move, every one of them a
+cymbal, a ride or a crash still sounding when the key comes up, which is
+what a DAW would do to them too. Two of the nine (sp1200's kick and
+snare) differ by residue at -107 dBFS, below the 16-bit floor.
+
+Pass a fifth argument to hold the key longer - a gate at or past the
+render length is the old never-release behaviour.
 """
 import sys
 import audiocore
 import audioinstruments
+
+#: Seconds a key is held before its note-off, unless the same pitch is
+#: struck again first - see `gated()`.
+GATE = 1.0
 
 
 def wav_header(data_len, sample_rate, channels):
@@ -34,6 +60,35 @@ def wav_header(data_len, sample_rate, channels):
             + sample_rate.to_bytes(4, "little") + byte_rate.to_bytes(4, "little")
             + (channels * 2).to_bytes(2, "little") + (16).to_bytes(2, "little")
             + b"data" + data_len.to_bytes(4, "little"))
+
+
+def gated(instrument, presses, gate_blocks):
+    """Turn `(block, pitch, velocity)` presses into press/release events.
+
+    The release lands `gate_blocks` after the press, except that a pitch
+    struck again before its gate expires is released one block early
+    instead. That is not a nicety: a note-off carries only the pitch, so a
+    gate allowed to outlive the next strike would release the *new* note and
+    silence a hit the listener can see in the score. A DAW has the same
+    constraint on one channel and resolves it the same way.
+    """
+    next_strike = {}
+    for block, pitch, _velocity in sorted(presses, key=lambda p: -p[0]):
+        next_strike[(pitch, block)] = next_strike.get(pitch)
+        next_strike[pitch] = block
+    events = []
+    for block, pitch, velocity in presses:
+        events.append((block, lambda p=pitch, v=velocity:
+                       instrument.note_on(p, v)))
+        if gate_blocks is None:
+            continue
+        following = next_strike[(pitch, block)]
+        off = block + gate_blocks
+        if following is not None and off >= following:
+            off = following - 1
+        if off > block:
+            events.append((off, lambda p=pitch: instrument.note_off(p)))
+    return events
 
 
 def render(instrument, seconds, sample_rate, events, path):
@@ -77,6 +132,13 @@ def main():
     outdir = sys.argv[2]
     mode = sys.argv[3] if len(sys.argv) > 3 else "oneshots"
     sr = int(sys.argv[4]) if len(sys.argv) > 4 else 48000
+    # `transitions` is the exception, and not an oversight. It is not DAW
+    # material - it is a fault-exposure probe, and the fault it exposes is a
+    # voice inheriting its sibling's envelope, which is exactly the state a
+    # note-off changes. Gating it by default would quietly alter what the
+    # mode is for; ask for it on the command line if you want it.
+    gate = float(sys.argv[5]) if len(sys.argv) > 5 else (
+        0.0 if mode == "transitions" else GATE)
     try:
         import os
         os.mkdir(outdir)
@@ -86,12 +148,22 @@ def main():
     module = __import__("audioinstruments." + name, None, None, ("NOTE_MAP",))
     note_map = getattr(module, "NOTE_MAP", ())
 
+    # The block size, read off a throwaway instrument: the gate is in seconds
+    # and every event has to land on a block boundary, and in `oneshots` the
+    # instrument that will be rendered must not be pulled before its press.
+    probe = audioinstruments.create(name, sample_rate=sr, channel_count=2)
+    fpb = len(bytes(audiocore.get_buffer(probe.output)[1])) // 4
+    probe.deinit()
+    # A gate of 0 is "never release", which is what the renderer did before
+    # #16 and what `transitions` still wants.
+    gate_blocks = None if gate <= 0 else max(1, int(gate * sr / fpb))
+
     if mode == "oneshots":
         for note, label in note_map:
             inst = audioinstruments.create(name, sample_rate=sr, channel_count=2)
             fname = "%s/%02d_%s.wav" % (outdir, note, label.replace(" ", "_"))
             digest = render(inst, 2.0, sr,
-                            [(0, lambda n=note: inst.note_on(n, 100))], fname)
+                            gated(inst, [(0, note, 100)], gate_blocks), fname)
             inst.deinit()
             try:
                 import gc
@@ -101,35 +173,35 @@ def main():
             print("%-24s %s" % (fname.rsplit("/", 1)[-1], digest[:16]))
     elif mode == "kit":
         inst = audioinstruments.create(name, sample_rate=sr, channel_count=2)
-        evs = [(0, lambda n=note: inst.note_on(n, 100)) for note, _ in note_map]
-        digest = render(inst, 2.0, sr, evs, outdir + "/kit.wav")
+        presses = [(0, note, 100) for note, _ in note_map]
+        digest = render(inst, 2.0, sr, gated(inst, presses, gate_blocks),
+                        outdir + "/kit.wav")
         inst.deinit()
         print("kit.wav %s" % digest[:16])
     elif mode == "phrase":
         # Two bars, 120 BPM: BD quarters, SD 2+4, CH eighths, OH bar-end,
         # second bar adds toms/cowbell/clap. Block-quantized.
         inst = audioinstruments.create(name, sample_rate=sr, channel_count=2)
-        result, buf = audiocore.get_buffer(inst.output)
-        fpb = len(bytes(buf)) // 4
-        inst.reset()
         beat = 60.0 / 120.0
         def at(t):
             return int(t * sr / fpb)
-        evs = []
+        presses = []
         for bar in (0, 1):
             for q in range(4):
                 t = (bar * 4 + q) * beat
-                evs.append((at(t), lambda: inst.note_on(36, 110)))
+                presses.append((at(t), 36, 110))
                 if q in (1, 3):
-                    evs.append((at(t), lambda: inst.note_on(38, 100)))
+                    presses.append((at(t), 38, 100))
                 for e in (0.0, 0.5):
-                    evs.append((at(t + e * beat), lambda: inst.note_on(42, 80)))
-        evs.append((at(3.5 * beat), lambda: inst.note_on(46, 90)))
-        evs.append((at(4 * beat + 2 * beat), lambda: inst.note_on(39, 100)))
-        evs.append((at(4 * beat + 3 * beat), lambda: inst.note_on(56, 90)))
+                    presses.append((at(t + e * beat), 42, 80))
+        presses.append((at(3.5 * beat), 46, 90))
+        presses.append((at(4 * beat + 2 * beat), 39, 100))
+        presses.append((at(4 * beat + 3 * beat), 56, 90))
         for i, tom in enumerate((48, 45, 41)):
-            evs.append((at(7 * beat + i * 0.33 * beat), lambda n=tom: inst.note_on(n, 100)))
-        digest = render(inst, 8 * beat + 1.0, sr, evs, outdir + "/phrase.wav")
+            presses.append((at(7 * beat + i * 0.33 * beat), tom, 100))
+        digest = render(inst, 8 * beat + 1.0, sr,
+                        gated(inst, presses, gate_blocks),
+                        outdir + "/phrase.wav")
         inst.deinit()
         print("phrase.wav %s" % digest[:16])
     elif mode == "transitions":
@@ -169,9 +241,6 @@ def main():
             return "%d %s" % (pitch, labels.get(pitch, "?"))
 
         inst = audioinstruments.create(name, sample_rate=sr, channel_count=2)
-        result, buf = audiocore.get_buffer(inst.output)
-        fpb = len(bytes(buf)) // 4
-        inst.reset()
         def at(t):
             return int(t * sr / fpb)
         # 0.25 s is where the fault was measured across all ten kits (a closed
@@ -205,7 +274,7 @@ def main():
             return decay_cache[pitch]
 
         # One velocity throughout: order is meant to be the only variable.
-        evs = []
+        presses = []
         start = 0.0
         print("%s: %d shared-circuit pair%s, %d legs"
               % (name, len(pairs), "" if len(pairs) == 1 else "s",
@@ -228,17 +297,16 @@ def main():
                 lead_in = tail + 0.15
                 pair_at = lead_in + overlap
                 leg = pair_at + max(lead, tail) + 0.5
-                evs.append((at(start), lambda n=second: inst.note_on(n, 100)))
-                evs.append((at(start + lead_in),
-                            lambda n=first: inst.note_on(n, 100)))
-                evs.append((at(start + pair_at),
-                            lambda n=second: inst.note_on(n, 100)))
+                presses.append((at(start), second, 100))
+                presses.append((at(start + lead_in), first, 100))
+                presses.append((at(start + pair_at), second, 100))
                 print("  %6.2f s  %s alone, then %s under %s "
                       "(gap %5.1f ms, %4.2f s apart)"
                       % (start, label(second), label(second), label(first),
                          overlap * 1000.0, pair_at))
                 start += leg
-        digest = render(inst, start, sr, evs, outdir + "/transitions.wav")
+        digest = render(inst, start, sr, gated(inst, presses, gate_blocks),
+                        outdir + "/transitions.wav")
         inst.deinit()
         print("transitions.wav %s" % digest[:16])
     else:
