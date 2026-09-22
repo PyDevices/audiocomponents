@@ -101,6 +101,41 @@ The shape a rebuilt class takes:
 `_build` replaces `__init__`: the base does the format, the tier and the
 metadata first, then hands the constructor's own options straight through, so
 no class author can forget to call up.
+
+A setting you derive here is not the setting a board derives
+------------------------------------------------------------
+
+`mp_float_t` is **single precision on an ESP32 and double on every
+desktop**. So a corner computed from a macro, a shelf gain computed from a
+level, a `frequency * ratio` - anything a class works out in Python and
+hands to a node - reaches the node as a different number on a board than on
+a desktop, before a single sample is rendered. Measured on `Overdrive`
+(audiocomponents#75), read back as float32 bits, board against desktop:
+
+    _hp.frequency      4434fc30 / 4434fc2f    723.940430 / 723.940369 Hz
+    _c4.frequency      46a44afe / 46a44afd    21029.4961 / 21029.4941 Hz
+    _shelf.gain_db     3b4e6980 / 3b4e69a0    0.00314959884 / 0.00314960629
+    its a2 coefficient 3f2e8697 / 3f2e8698    0.681741178 / 0.681741238
+
+One ULP of float32 on three of those and 32 on the shelf gain. `audiobiquad`
+gives bit-identical coefficients from identical settings on all four legs,
+so this is the class's own arithmetic and not the node's.
+
+**This is accepted and deliberately not fixed** (Brad, 2026-09-22): a board
+and a desktop are allowed to differ by a last-bit coefficient, and no class
+is to be rewritten around it. What it means for you:
+
+- Do not write a gate that requires a board and a desktop to render the
+  same bytes out of a class that derives a setting in Python. They cannot,
+  and the gate would be measuring the width of a float.
+- A literal does not rescue you unless it is exactly representable in
+  float32. `11.7709228` written as a literal is `413c55b4` on a board and
+  `413c55b3` on a desktop, because each parses it at its own width
+  (audiocomponents#90). `11.75` is the same on both.
+- Where you want the legs to agree, hand the node a number every format
+  holds - a power of two, a short binary fraction, or a value from a table
+  of literals chosen that way - and say in the class why that number and
+  not the obvious one.
 """
 
 import math
