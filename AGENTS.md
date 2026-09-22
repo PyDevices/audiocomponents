@@ -66,11 +66,22 @@ instrument modules are deliberately compact and generated modules put
 `MACRO_LABELS` above their imports; gating layout here would be a fight with
 the house style, not a check.
 
-The heavier gate is workspace-local:
+The heavier gates are workspace-local:
 
 ```bash
 python3 tests/parity/run_instruments_parity.py --verify --batch all
+MICROPYPATH=$PWD:$PWD/lib ../cmods/bin/micropython \
+    tests/parity/scheduling_seam_live.py
 ```
+
+The second is the scheduling seam against the **real** pump
+(audiocomponents#92). `tests/test_scheduling_seam.py` proves which events
+the seam writes, against a Python stand-in for `audiopump_events.c`, and
+runs anywhere; this one asks what was *heard*, off `audiopump.Tap`, with
+the loop advanced by `audiopump.service()` on the calling thread. It needs
+a MicroPython build carrying audiodsp as a usermod, because `audiopump`
+exists only where the pump does. Four cases, each with a planted fault that
+must make it exit non-zero: `--fault early|flat|held|armed`.
 
 It renders each component under every interpreter it finds and holds it to a
 hash captured from the original micropython-vst3 script — read out of that

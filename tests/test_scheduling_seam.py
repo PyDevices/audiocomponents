@@ -14,6 +14,14 @@ cannot prove. Timing on a real pump, and allocation on its thread, are
 measured on built interpreters by the spike's probes; what is proved here is
 which events the seam writes, in what order, at which frames, carrying which
 notes -- which is where all three of the defects above actually lived.
+
+**The same seam against the real engine** is
+`tests/parity/scheduling_seam_live.py` (audiocomponents#92), which asks the
+other question: not which events were written, but what was heard. It reads
+its answers off `audiopump.Tap` with the loop advanced by
+`audiopump.service()`, has no event log on purpose, and needs a MicroPython
+build carrying the pump -- so it is workspace-local, and this file is what
+runs everywhere.
 """
 
 import os
