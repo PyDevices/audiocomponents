@@ -3297,11 +3297,23 @@ def mute_dry(effect, *, voices=None):
         mixer_voices = getattr(node, "voice", None)
         if not isinstance(mixer_voices, (list, tuple)):
             continue
-        for index, voice in enumerate(mixer_voices):
-            sample = getattr(voice, "_sample", None)
-            if any(sample is tap for tap in taps):
-                muted.append((node, index, voice.level))
-                voice.level = 0.0
+        bare = [index for index, voice in enumerate(mixer_voices)
+                if any(getattr(voice, "_sample", None) is tap
+                       for tap in taps)]
+        # A mixer where EVERY voice plays a bare tap is not a blend, it is a
+        # selector: a fan-in choosing which copy of the input goes on to be
+        # processed. There is no wet on it to keep, and muting it does not
+        # read a wet branch - it starves one. `DeEsser` is the case: its
+        # `_pre` mixer picks the whole signal or the high band alone as the
+        # gain cell's INPUT, and muting both voices left the ducker with
+        # nothing to duck. The class read -45 dBFS of noise with the tone
+        # 0.1 dB above its own alias floor, which no measurement should ever
+        # have been allowed to call a wet reading (audiocomponents#81).
+        if len(bare) == len(mixer_voices):
+            continue
+        for index in bare:
+            muted.append((node, index, mixer_voices[index].level))
+            mixer_voices[index].level = 0.0
     if muted:
         return muted
 

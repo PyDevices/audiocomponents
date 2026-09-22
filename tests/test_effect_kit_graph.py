@@ -244,6 +244,108 @@ class MuteDryTest(unittest.TestCase):
             kit.mute_dry(effect)
 
 
+class MixPushTest(unittest.TestCase):
+    """The Mix-macro fallback, and the wire it may not be used on.
+
+    `mute_dry`'s last reach is to push the class's own `Mix` macro to full,
+    for a dry leg that lives inside a node and is not a mixer voice at all.
+    It is guarded: a class whose output IS the borrowed source has no dry to
+    mute, because the whole of its output is dry, and pushing Mix there
+    answers about a configuration the caller never asked to read. The guard
+    went in without a row of its own (audiocomponents#98); this is the row.
+    """
+
+    def test_the_fallback_reaches_a_dry_leg_that_is_inside_a_node(self):
+        # `Fuzz`'s germanium graph blends inside `audioshaper.Waveshaper`,
+        # so there is no voice to mute and the macro is the only handle.
+        from audioeffects.fuzz import Fuzz
+        probe = sine(1010.0, -6.0, 8000)
+        effect = build(Fuzz, probe)
+        self.addCleanup(effect.deinit)
+        mix = list(effect.MACRO_LABELS).index("Mix")
+        before = effect.get_macro(mix)
+        muted = kit.mute_dry(effect)
+        self.assertEqual([index for _, index, _ in muted], [mix])
+        self.assertEqual([level for _, _, level in muted], [before])
+        self.assertEqual(effect.get_macro(mix), 127)
+
+    def test_a_class_handing_back_its_source_is_refused_not_pushed(self):
+        # At Mix 0 the class is a wire: `output` is a Port whose target is
+        # the borrowed source, and the render is the probe byte for byte.
+        probe = sine(1010.0, -6.0, 8000)
+        effect = build(Exciter, probe, mix=0.0)
+        self.addCleanup(effect.deinit)
+        self.assertIs(kit.port_target(effect.output), effect._source)
+        with self.assertRaises(kit.MeasurementRefused):
+            kit.mute_dry(effect)
+
+    def test_the_fault_is_asking_the_wire_instead_of_what_it_plays(self):
+        # THE PLANTED FAULT. A Port's answer to "are you the borrowed
+        # source" is always no - it is a wire, never the source - so the
+        # guard has to ask `port_target`. Blinded to the wire it goes
+        # through, pushes Mix to full, and hands back a reading of the class
+        # at Mix 127 while recording `before` as the 0 the caller set. A
+        # pack asking for the wet floor of a bypass gets the floor of a
+        # setting nobody chose, with nothing to say it happened.
+        probe = sine(1010.0, -6.0, 8000)
+        bypassed = probes.render(build(Exciter, probe, mix=0.0), 8000,
+                                 rate=RATE)
+        effect = build(Exciter, probe, mix=0.0)
+        self.addCleanup(effect.deinit)
+        real = kit.port_target
+        kit.port_target = lambda node: node
+        try:
+            muted = kit.mute_dry(effect)
+        finally:
+            kit.port_target = real
+        self.assertEqual([level for _, _, level in muted], [0.0])
+        self.assertEqual(effect.get_macro(muted[0][1]), 127)
+        pushed = probes.render(effect, 8000, rate=RATE)
+        self.assertNotEqual(pushed.digest, bypassed.digest)
+
+    def test_a_mixer_whose_every_voice_is_a_bare_tap_is_a_selector(self):
+        # `DeEsser`'s `_pre` picks the gain cell's INPUT - the whole signal
+        # or the high band - and both its voices play a bare Splitter tap.
+        # Muting them starved the ducker: the class read -45 dBFS of noise
+        # with the tone 0.1 dB above its own alias floor and `require_signal`
+        # said yes to it. A blend has something processed on it to keep; a
+        # fan-in has not, so it is skipped (audiocomponents#81).
+        from audioeffects.deesser import DeEsser
+        probe = sine(1010.0, -6.0, 12000)
+        effect = build(DeEsser, probe)
+        self.addCleanup(effect.deinit)
+        muted = kit.mute_dry(effect)
+        self.assertEqual(sorted(index for mixer, index, _ in muted
+                                if mixer is effect._out), [0, 2])
+        self.assertEqual([mixer for mixer, _, _ in muted
+                          if mixer is effect._pre], [])
+        self.assertEqual([voice.level for voice in effect._pre.voice],
+                         [1.0, 0.0])
+
+    def test_the_fault_of_muting_the_selector_too_starves_the_wet_branch(self):
+        # THE PLANTED FAULT for the row above, stated as what it costs: with
+        # `_pre` muted as well there is nothing left for the gain cell to
+        # duck, and the "wet" reading is the class's own noise floor.
+        from audioeffects.deesser import DeEsser
+        probe = sine(1010.0, -6.0, 12000)
+        effect = build(DeEsser, probe)
+        self.addCleanup(effect.deinit)
+        kit.mute_dry(effect)
+        good = probes.render(effect, 12000, rate=RATE)
+        effect.deinit()
+
+        starved = build(DeEsser, probe)
+        self.addCleanup(starved.deinit)
+        kit.mute_dry(starved)
+        for voice in starved._pre.voice:
+            voice.level = 0.0
+        bad = probes.render(starved, 12000, rate=RATE)
+        self.assertGreater(kit.rms_db(np.frombuffer(good.pcm, dtype="<i2")
+                                      .astype(np.float64) / 32768.0),
+                           kit.rms_db(np.frombuffer(bad.pcm, dtype="<i2")
+                                      .astype(np.float64) / 32768.0) + 10.0)
+
+
 class LiveRenderTest(unittest.TestCase):
     """`require_live` - the guard that catches what #78 actually measured."""
 
