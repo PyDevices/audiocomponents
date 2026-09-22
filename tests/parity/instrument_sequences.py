@@ -50,9 +50,15 @@ PRIVATE_PERIHELION = (
 #: Every note any drum machine in the library maps, plus two it does not - the
 #: machines with a fallback branch answer those with a noise burst, the ones
 #: without stay silent, and both behaviours are worth pinning down.
+#:
+#: 73 is `cr78`'s Guiro, added 2026-09-22. It was the one voice in the ten
+#: kits this list did not cover, so the probe refused `cr78` outright rather
+#: than rendering it - which is the guard working, and it had been working
+#: unheard because the gate's own default `--old-root` named a repository
+#: that no longer exists (audiocomponents#24).
 DRUM_NOTES = (
     35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51,
-    54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 69, 70, 75, 82, 33, 90,
+    54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 69, 70, 73, 75, 82, 33, 90,
 )
 
 MELODIC_CHORD = (48, 60, 64, 67)

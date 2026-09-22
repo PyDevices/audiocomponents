@@ -54,7 +54,10 @@ BATCHES = {
 
 DEFAULT_MICROPYTHON = WORKSPACE / "cmods" / "bin" / "micropython"
 DEFAULT_CIRCUITPYTHON = WORKSPACE / "cmods" / "bin" / "circuitpython"
-DEFAULT_OLD_ROOT = WORKSPACE / "micropython-vst3"
+#: `micropython-vst3` is `mpvst` since the rename; the history the originals
+#: are read out of came with it, so `ac87f13` still resolves there. Bare, the
+#: old name made every run of this gate fail at the first probe.
+DEFAULT_OLD_ROOT = WORKSPACE / "mpvst"
 
 #: The last micropython-vst3 revision whose instruments were still whole
 #: scripts of their own. It imports `audioinstruments` now, so its working
