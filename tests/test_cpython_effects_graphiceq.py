@@ -165,6 +165,73 @@ class NoDetentGraphicEQ(graphiceq.GraphicEQ):
         node.mix = 1.0
 
 
+class NoWakeGraphicEQ(graphiceq.GraphicEQ):
+    """T4's planted fault, restated (audiocomponents#88): a section leaving
+    the detent keeps the state it built while it was muted.
+
+    The kernel runs the recursion at `mix = 0` (`audiodsp_filter_f32.c:216-241`
+    has no short-circuit), so a detented section is a filter nobody hears,
+    tracking the input through the coefficients it had when it was last
+    live. `_wake` clears that on the way back in. Deleted, the band comes
+    back carrying it.
+    """
+
+    @staticmethod
+    def _wake(node):
+        return
+
+
+def _sweep(cls, steps, hz=220.0, peak=3000, dwell=24000, after=96000,
+           rate=RATE, channels=CHANNELS):
+    """Move macros mid-render and report the transient after the last move.
+
+    `steps` is a list of macro-move lists, applied `dwell` frames apart.
+    Returns `(peak, settled, ms_above_settled)`, where `settled` is the
+    loudest block of the last quarter of the tail - the level the class
+    arrives at, so the transient is measured against where it was going
+    rather than where it came from.
+    """
+    total = dwell * len(steps) + after
+    effect = cls.create(ArraySource(tone(hz, total, peak=peak, rate=rate,
+                                         channels=channels),
+                                    rate=rate, channels=channels), rate)
+    audiocore.reset_buffer(effect.output)
+    peaks = []
+    frames = done = blocks = 0
+    last = 0
+    try:
+        while frames < total:
+            while done < len(steps) and frames >= done * dwell:
+                for index, value in steps[done]:
+                    effect.set_macro(index, value)
+                done += 1
+                last = blocks
+            samples = memoryview(
+                bytes(audiocore.get_buffer(effect.output)[1])).cast("h")
+            peaks.append(max(abs(value) for value in samples))
+            frames += len(samples) // channels
+            blocks += 1
+        per_block = len(samples) // channels
+    finally:
+        effect.deinit()
+    after_move = peaks[last:]
+    settled = max(after_move[-len(after_move) // 4:])
+    over = 0
+    for value in after_move:
+        if value > settled:
+            over += 1
+        elif over:
+            break
+    return max(after_move), settled, over * per_block * 1000.0 / rate
+
+
+#: Every band to a rail, then to the detent, then to the other rail.
+def _across_the_detent(first, second, bands=range(BANDS)):
+    return [[(band, first) for band in bands],
+            [(band, DETENT) for band in bands],
+            [(band, second) for band in bands]]
+
+
 class RailedBandGraphicEQ(graphiceq.GraphicEQ):
     """A wrong input to the reachability check: a "fault" macro 5 can dial."""
 
@@ -357,6 +424,85 @@ class TheDetentIsAWire(unittest.TestCase):
             "centre detent or the biquad form changed back, T4 can have its "
             "guard again and this test should become an assertion that it "
             "fires" % fired)
+
+    def test_a_band_returning_from_the_detent_starts_from_nothing(self):
+        """T4 restated, with a fault that bites (audiocomponents#88).
+
+        The old claim - "a band at the detent is the chain built without
+        it" - is a tautology since the centre detent, because 0 dB is 0 dB
+        whoever computes it, and the test above is its record. What the
+        detent branch *still* buys is state hygiene, and that is not a
+        claim about a steady render at all: it is a claim about the moment
+        a band comes back.
+
+        220 Hz at peak 3000, all ten bands driven full boost, held at the
+        detent for half a second, then driven to full cut. The class peaks
+        at **824** against a settled 668 - 1.8 dB of overshoot, which is a
+        filter arriving. `NoWakeGraphicEQ` peaks at **1714**: 8.2 dB over
+        the same settled level, and 6.36 dB more than the class. That is
+        nobody's setting. It is the boosted curve's memory, still in the
+        sections, arriving on a cut.
+        """
+        clean = _sweep(graphiceq.GraphicEQ, _across_the_detent(127, 0))
+        faulted = _sweep(NoWakeGraphicEQ, _across_the_detent(127, 0))
+        self.assertGreater(faulted[0], clean[0] * 1.7,
+                           "the restated T4 fault is inert: %r against %r"
+                           % (faulted, clean))
+        self.assertGreater(faulted[0], faulted[1] * 2.0,
+                           "the fault stopped slamming: %r" % (faulted,))
+        self.assertLess(clean[0], clean[1] * 1.35,
+                        "the class itself slams: %r" % (clean,))
+
+    def test_the_fault_bites_on_every_crossing_and_on_one_band_alone(self):
+        # Not one lucky arrangement. Both directions across the detent, the
+        # whole bank and a single band, and the shelf band as well as a bell.
+        for label, steps in (
+                ("all bands, boost to cut", _across_the_detent(127, 0)),
+                ("all bands, cut to boost", _across_the_detent(0, 127)),
+                ("31 Hz alone, boost to cut", _across_the_detent(127, 0, (0,))),
+                ("31 Hz alone, cut to boost", _across_the_detent(0, 127, (0,))),
+                ("1 kHz alone, boost to cut", _across_the_detent(127, 0, (5,))),
+        ):
+            clean = _sweep(graphiceq.GraphicEQ, steps)
+            faulted = _sweep(NoWakeGraphicEQ, steps)
+            self.assertGreater(faulted[0], clean[0],
+                               "%s: fault inert, %r against %r"
+                               % (label, faulted, clean))
+
+    def test_the_fault_is_inert_where_the_detent_is_never_crossed(self):
+        # The control that keeps the row above from being "clearing filter
+        # state changes a render", which would be true of any filter. `_wake`
+        # only clears a section at `mix = 0`, so a slider driven rail to rail
+        # without stopping at the detent must read identically - and it does,
+        # to the sample. A slider being pushed rides through on the state it
+        # has, deliberately; the docstring on `_wake` says so and this is
+        # the measurement behind it.
+        live_to_live = [[(band, 127) for band in range(BANDS)],
+                        [(band, 0) for band in range(BANDS)]]
+        self.assertEqual(_sweep(graphiceq.GraphicEQ, live_to_live),
+                         _sweep(NoWakeGraphicEQ, live_to_live))
+
+    def test_a_patch_change_hides_the_fault_because_it_clears_everything(self):
+        # Why the fault has to be driven by `set_macro`. `program_change`
+        # clears every node in the bank (graphiceq.py, the `for node in
+        # self._nodes` loop), so it never reaches `_wake` at all and the
+        # planted fault is invisible through the patch surface. A guard
+        # written on patches would have looked like a guard and been none.
+        for pair in ((0, 5), (5, 1), (0, 2)):
+            data = tone(220.0, 96000, peak=3000)
+            renders = []
+            for cls in (graphiceq.GraphicEQ, NoWakeGraphicEQ):
+                effect = cls.create(ArraySource(data), RATE)
+                effect.program_change(pair[0])
+                audiocore.reset_buffer(effect.output)
+                try:
+                    for _ in range(94):
+                        audiocore.get_buffer(effect.output)
+                    effect.program_change(pair[1])
+                    renders.append(render(effect.output, 48000))
+                finally:
+                    effect.deinit()
+            self.assertEqual(renders[0].digest, renders[1].digest, pair)
 
     def test_the_fault_it_replaced_is_green_on_every_band(self):
         # Kept as the record of why it was replaced, not as evidence. The

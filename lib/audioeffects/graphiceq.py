@@ -354,7 +354,9 @@ class GraphicEQ(_component.Component):
             # bit-transparent at 0 dB at all ten centres, measured in
             # `tests/test_cpython_effects_graphiceq.py`. So what this branch
             # buys now is the section's work and `_wake`'s state hygiene, not
-            # a different output. See audiocomponents#88.
+            # a different output -- so T4's guard is a measurement of a band
+            # coming BACK from the detent, not of a steady render
+            # (audiocomponents#88).
             node.mix = 0.0
             return
         self._wake(node)
@@ -370,14 +372,23 @@ class GraphicEQ(_component.Component):
         The kernel runs the recursion even at `mix = 0`
         (`audiodsp_filter_f32.c:216-241` has no short-circuit), so a muted
         section's state is a filter nobody heard, tracking the input through
-        coefficients nobody chose. Handing that state to the filter about to
-        run is what makes a patch change slam: measured on a 220 Hz tone at
-        peak 11000, `Flat` to `Full Boost` peaks at **32752 and stays above
-        its own steady level for 344 ms** without this, and at **13575 for
-        0 ms** with it -- the level shelves sit at 5 Hz, so their stale state
-        takes a third of a second to leave. Live-to-live gain changes are not
-        cleared: those states mean something, and the same measurement puts
-        that transient at 19 ms.
+        the coefficients it had when it was last live. Handing that state to
+        the filter about to run is what makes a slider slam.
+
+        **This is the `set_macro` path and only that path.** `program_change`
+        clears every node in the bank before anything else, so a patch change
+        never reaches here and the same fault is invisible through it -- the
+        numbers this docstring used to carry were a patch change's, and they
+        cannot be reproduced now. Measured on a 220 Hz tone at peak 3000,
+        all ten bands driven to full boost, held at the detent for half a
+        second and then driven to full cut: the class peaks at **824**
+        against a settled 668, and without this at **1714**, 8.2 dB over the
+        level it is arriving at. Live-to-live moves are deliberately not
+        cleared -- those states mean something, a slider being pushed should
+        ride through on the state it has, and that path is byte-identical
+        with this method and without it. Both halves are asserted in
+        `tests/test_cpython_effects_graphiceq.TheDetentIsAWire`, which is
+        where T4's planted fault lives since audiocomponents#88.
         """
         if node.mix == 0.0:
             node.clear()
