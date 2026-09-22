@@ -337,6 +337,40 @@ class TheDetectorBoundsTheLaw(unittest.TestCase):
     def test_peak_does_not(self):
         self.assertGreater(abs(self.slope_error(0.0, 8.0)), 5.0)
 
+    def test_patch_five_keeps_the_peak_position_and_its_own_number(self):
+        """audiocomponents#50, the decision: the class ships **one** ratio
+        law, the RMS detector's, stated with its scope - and patch 5 keeps
+        the peak position it is named for.
+
+        A peak follower riding each cycle of the waveform is what a peak
+        follower does; the shortfall is the position working, not a defect
+        in the law. `Hard Downward` is the class's gate-adjacent patch and
+        the peak detector is what makes it one. Moving it to RMS would have
+        changed a shipped sound to tidy a trait table, which is backwards:
+        the shipped patch is the product.
+
+        So the number is pinned here instead, at the patch's own settings,
+        because a figure quoted in the docstring and the catalogue row and
+        asserted nowhere is a figure that drifts. Measured -29.33 %; the
+        bar is wide enough to be about the detector rather than about the
+        third decimal.
+        """
+        error = self.slope_error(0.0, 8.0)
+        self.assertLess(error, 0.0, "the peak slope over-reads: %r" % error)
+        settings = law_settings({RATIO: 8.0, DETECTOR: 0.0})
+        patched = Expander.create(source_of(tone(1000.0, -21.0, 0.05)), RATE)
+        try:
+            patched.program_change(5)
+            self.assertEqual(patched.get_macro(DETECTOR), 0,
+                             "patch 5 stopped shipping the peak detector")
+        finally:
+            patched.deinit()
+        # And the law's own position is still RMS, so the two do not drift
+        # into each other.
+        self.assertGreater(settings[DETECTOR], -1.0)
+        self.assertEqual(LAW[DETECTOR], 1.0,
+                         "E1's operating point is no longer the RMS one")
+
 
 if __name__ == "__main__":
     unittest.main()
