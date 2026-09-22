@@ -40,6 +40,7 @@ from tools.effect_measurements import (  # noqa: E402
     digest, envelope_record_seconds, envelope_shape, ifreq, null, residual,
     require_identical_channels, roundtrip, stereo, taps, truepeak,
 )
+from tools import provenance_gate  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -907,6 +908,15 @@ class Digest(unittest.TestCase):
     def test_cpython_against_desktop_micropython(self):
         """The measurement's own subject: the same node, rendered by two
         interpreters, compared by hashing the bytes."""
+        # A present binary is not a current one. cmods/bin/micropython is
+        # built by hand and goes stale silently; one that predates
+        # AUDIODSP_PIN renders a core the pin does not name and this
+        # comparison agrees with itself about the wrong thing (cmods#27).
+        # Fail rather than skip: a skip here would read as "the two
+        # interpreters agree".
+        ok, message = provenance_gate.check(MICROPYTHON)
+        self.assertTrue(ok, message + "\n  rebuild: cd ../cmods && "
+                        "./build_interpreters.sh --only mp-unix")
         with tempfile.TemporaryDirectory() as directory:
             script = os.path.join(directory, "dual_runtime_render.py")
             with open(script, "w") as handle:

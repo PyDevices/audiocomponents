@@ -39,7 +39,9 @@ WORKSPACE = ROOT.parent
 GOLDEN = HERE / "golden"
 
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(ROOT / "tools"))
 import instrument_sequences as sequences  # noqa: E402
+import provenance_gate  # noqa: E402
 
 BATCHES = {
     "drums": ("instruments_drums", sequences.DRUMS, "lib/instruments", None),
@@ -151,7 +153,14 @@ REBUILT = {
 
 
 def interpreter_table(args):
-    """Map interpreter name -> argv prefix, keeping only the ones present."""
+    """Map interpreter name -> argv prefix, keeping only the ones present.
+
+    A present interpreter is not necessarily a usable one. `cmods/bin/`
+    binaries are built by hand and go stale silently: a run against one that
+    predates AUDIODSP_PIN certifies a core the pin does not name, and it is
+    green while it does it (cmods#27). So each one is refused here, before it
+    renders anything, unless its provenance stamp says it contains the pin.
+    """
     found = {}
     if "cpython" in args.interpreters:
         found["cpython"] = [sys.executable]
@@ -160,6 +169,7 @@ def interpreter_table(args):
         if name not in args.interpreters:
             continue
         if path and Path(path).exists():
+            provenance_gate.require(path)
             found[name] = [str(path)]
         elif args.require_interpreters:
             raise SystemExit("%s not found at %s" % (name, path))
