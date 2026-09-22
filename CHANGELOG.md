@@ -533,8 +533,8 @@ there, and are recorded in its changelog.
 
 - **The core is `audiodsp` now.** The repository these packages are built on
   was renamed on 2026-09-21, and everything here that named it follows: the
-  dependency is `pydevices-audiodsp>=0.5.0` (its first release under that
-  name), `audiodsp_util` is the helper package the instruments import, the pin
+  dependency is `pydevices-audiodsp>=0.5.1` (its first published release
+  under that name), `audiodsp_util` is the helper package the instruments import, the pin
   file is `AUDIODSP_PIN`, and links and issue references say `audiodsp`.
   Nothing in `audioeffects` or `audioinstruments` changed its own name or
   behaviour, with one exception: the module

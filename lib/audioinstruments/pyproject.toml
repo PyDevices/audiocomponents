@@ -20,9 +20,10 @@ classifiers = [
 # The audiodsp floor is the newest audiodsp RELEASE. It is not the pin:
 # AUDIODSP_PIN (repo root) names the exact commit the gates run against,
 # and may sit ahead of any release.
-# 0.5.0 is the first release the core made under this name (it was renamed on
-# 2026-09-21), so there is no older pydevices-audiodsp to be compatible with.
-dependencies = ["pydevices-audiodsp>=0.5.0"]
+# 0.5.1 is the first release the core PUBLISHED under this name: it was renamed
+# on 2026-09-21, and v0.5.0 was tagged that day and published nothing. So there
+# is no older pydevices-audiodsp to be compatible with.
+dependencies = ["pydevices-audiodsp>=0.5.1"]
 
 [project.urls]
 Repository = "https://github.com/PyDevices/audiocomponents"
