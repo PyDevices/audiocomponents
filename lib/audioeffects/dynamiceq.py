@@ -298,7 +298,7 @@ class DynamicEQ(_component.Component):
         # handed - a host, the next effect's `play()`, and
         # `tools/render_effect.py:717` before every render - so a class
         # ending in a Mixer renders **silence** there. Measured: every kit
-        # render of this class on `cmods/bin/circuitpython-effects` came back
+        # render of this class on `bin/circuitpython-effects` came back
         # `sum 0 SILENT` until this node existed, on a class the smoke and a
         # hand-pumped probe both passed. `audioroute.MidSide` at width 1 is
         # the exact identity - `outL = (2L+1) >> 1` is `L` for every int16

@@ -1,6 +1,6 @@
 """The scheduling seam's claims, against the REAL pump instead of a stand-in.
 
-    MICROPYPATH=<repo>:<repo>/lib <workspace>/cmods/bin/micropython \
+    MICROPYPATH=<repo>:<repo>/lib <workspace>/bin/micropython \
         tests/parity/scheduling_seam_live.py [case ...] [--fault WHICH]
 
 Cases: ``frame``, ``velocity``, ``silence``, ``wire``, ``kit``,

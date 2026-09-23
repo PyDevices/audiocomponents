@@ -253,7 +253,7 @@ class NoiseGate(_component.Component):
         Upstream CircuitPython's `Mixer.reset_buffer` **stops** its voices
         (`audiodsp/src/audiomixer/MixerVoice.c:91`, which says so in as many
         words), and the patched CircuitPython build carries the upstream
-        one: measured on `cmods/bin/circuitpython-effects`, a mixer playing
+        one: measured on `bin/circuitpython-effects`, a mixer playing
         a sample reads 8000 LSB before `audiocore.reset_buffer` and 0 after
         it, for good. audiodsp's own `audiomixer` does not do that - the
         same probe reads 8000 both sides on CPython and on desktop

@@ -45,7 +45,7 @@ from tools import provenance_gate  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 RATE = 48000
-MICROPYTHON = os.path.join(ROOT, "..", "cmods", "bin", "micropython")
+MICROPYTHON = os.path.join(ROOT, "..", "bin", "micropython")
 
 
 def make_render(x, rate=RATE, **axes):
@@ -904,18 +904,18 @@ class Digest(unittest.TestCase):
         self.assertFalse(result["passed"])
 
     @unittest.skipUnless(os.path.exists(MICROPYTHON),
-                         "cmods/bin/micropython not present")
+                         "../bin/micropython not present")
     def test_cpython_against_desktop_micropython(self):
         """The measurement's own subject: the same node, rendered by two
         interpreters, compared by hashing the bytes."""
-        # A present binary is not a current one. cmods/bin/micropython is
+        # A present binary is not a current one. The anchor's bin/micropython is
         # built by hand and goes stale silently; one that predates
         # AUDIODSP_PIN renders a core the pin does not name and this
         # comparison agrees with itself about the wrong thing (cmods#27).
         # Fail rather than skip: a skip here would read as "the two
         # interpreters agree".
         ok, message = provenance_gate.check(MICROPYTHON)
-        self.assertTrue(ok, message + "\n  rebuild: cd ../cmods && "
+        self.assertTrue(ok, message + "\n  rebuild: ../tools/build_interpreters.sh "
                         "./build_interpreters.sh --only mp-unix")
         with tempfile.TemporaryDirectory() as directory:
             script = os.path.join(directory, "dual_runtime_render.py")

@@ -32,8 +32,8 @@ has a directory -- every interpreter in this workspace, and a board's VFS --
 one `os.listdir` at first use says which names have a file, and the misses
 cost nothing after that. Where it does not -- a package frozen into firmware
 -- every name falls back to an import attempt, which is correct but slower:
-measured 2026-09-07, 46 misses cost +5.7 ms on `cmods/bin/micropython` and
-+20.6 ms on `cmods/bin/circuitpython-effects`, once, at import.
+measured 2026-09-07, 46 misses cost +5.7 ms on `bin/micropython` and
++20.6 ms on `bin/circuitpython-effects`, once, at import.
 """
 
 import sys

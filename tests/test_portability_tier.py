@@ -11,8 +11,8 @@ board imports cleanly and raises a clear `ImportError` at construction while
 the other classes in its module stay importable.
 
 **No stock CircuitPython interpreter exists in this workspace** --
-`cmods/bin/circuitpython` is the patched oracle and
-`cmods/bin/circuitpython-effects` is the patched effects build -- so the
+`bin/circuitpython` (the workspace anchor's) is the patched oracle and
+`bin/circuitpython-effects` is the patched effects build -- so the
 roadmap names this substitute: a CPython test that blocks the audiodsp-own
 modules in `sys.modules`, then holds every stock-tier class to building and
 rendering and every audiodsp-tier class to its documented `ImportError`.

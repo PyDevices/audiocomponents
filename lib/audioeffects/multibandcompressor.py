@@ -487,7 +487,7 @@ class MultibandCompressor(_component.Component):
         permanently"). audiodsp fixed that in its own copy, so a class that
         only calls `reset_buffer` here works on this port and is silent for
         ever after its first `reset()` on a stock board -- measured on
-        `cmods/bin/circuitpython-effects`, where `voice[0].playing` is
+        `bin/circuitpython-effects`, where `voice[0].playing` is
         `False` after the reset and the render is zeros from there on.
 
         Re-playing is what the fixed node does anyway: `play()` rewinds the

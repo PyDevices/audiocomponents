@@ -1,8 +1,8 @@
-"""Refuse a `cmods/bin/` interpreter that does not contain the audiodsp this
+"""Refuse a workspace `bin/` interpreter that does not contain the audiodsp this
 repository's gates are read at.
 
 [cmods#27](https://github.com/PyDevices/cmods/issues/27). A binary in
-`cmods/bin/` reports MicroPython's own version and a build date and says
+`bin/` reports MicroPython's own version and a build date and says
 nothing about which audiodsp was compiled into it. On 2026-09-03 that cost a
 week of green gates: `bin/micropython` was built at 01:16, an audiodsp C
 change landed at 01:29, and every parity run after that certified a binary
@@ -10,7 +10,7 @@ that did not contain the code the gate was about. **A green gate on a stale
 binary is the most expensive kind of stale**, because absence of a signal
 reads as agreement.
 
-`cmods/scripts/provenance.py` writes a stamp beside every interpreter
+`tools/provenance.py` (in the workspace anchor) writes a stamp beside every interpreter
 `build_interpreters.sh` installs. This is the half our gates call.
 
 The question this repository asks is not the one audiodsp's own gates ask.
@@ -34,7 +34,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
-PROVENANCE = WORKSPACE / "cmods" / "scripts" / "provenance.py"
+PROVENANCE = WORKSPACE / "tools" / "provenance.py"
 PIN_FILE = ROOT / "AUDIODSP_PIN"
 
 #: Set to 1 to skip the check. There is no in-band way to do this on purpose,
@@ -84,5 +84,5 @@ def require(binary) -> None:
         raise SystemExit(
             f"\n{binary} cannot certify this repository: it does not contain "
             f"the audiodsp in AUDIODSP_PIN.\n"
-            f"Rebuild it:  cd ../cmods && ./build_interpreters.sh --only mp-unix\n"
+            f"Rebuild it:  ../tools/build_interpreters.sh --only mp-unix\n"
             f"(cp-unix for circuitpython.)\n")

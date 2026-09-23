@@ -10,7 +10,7 @@ applies the dossier's own bars, which are quoted beside each readout.
 Cases: `tier1`, `rates`, `f1` `f2` `f3` `f4` `f5`, `o1` `o2` `o3` `o4`,
 `v1` `v2` `v3` `v4` `v6`, `m1` `m2` `m3` `m5`, `faults`, `digests`.
 `tier1` and `digests` are the two that need a second interpreter; run them
-under `cmods/bin/micropython` and `cmods/bin/circuitpython-effects` too - the
+under `bin/micropython` and `bin/circuitpython-effects` too - the
 Tier 1 half is pure-Python and the digests are the point.
 """
 

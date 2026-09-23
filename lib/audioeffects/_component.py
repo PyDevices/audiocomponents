@@ -38,7 +38,7 @@ What is different here, and why:
   be rediscovered. `audiofilters/Filter.c` and `Phaser.c` do **not** reset
   their source inside `reset_buffer` -- not in audiodsp
   (`src/audiofilters/Filter.c:133-149`) and not in upstream CircuitPython
-  (`cmods/circuitpython/shared-module/audiofilters/Filter.c:126-139`). The
+  (`circuitpython/shared-module/audiofilters/Filter.c:126-139`). The
   recursion in those files is in `play()` (audiodsp `:161`, CircuitPython
   `:151`) and in the loop-restart path (CircuitPython `:190`); the nodes
   whose `reset_buffer` really does recurse are `audiomixer`'s and

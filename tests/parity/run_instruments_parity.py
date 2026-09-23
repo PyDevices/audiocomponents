@@ -54,8 +54,8 @@ BATCHES = {
         "soundtrack/Perihelion/instruments", "soundtrack/Perihelion/instruments"),
 }
 
-DEFAULT_MICROPYTHON = WORKSPACE / "cmods" / "bin" / "micropython"
-DEFAULT_CIRCUITPYTHON = WORKSPACE / "cmods" / "bin" / "circuitpython"
+DEFAULT_MICROPYTHON = WORKSPACE / "bin" / "micropython"
+DEFAULT_CIRCUITPYTHON = WORKSPACE / "bin" / "circuitpython"
 #: `micropython-vst3` is `mpvst` since the rename; the history the originals
 #: are read out of came with it, so `ac87f13` still resolves there. Bare, the
 #: old name made every run of this gate fail at the first probe.
@@ -155,7 +155,7 @@ REBUILT = {
 def interpreter_table(args):
     """Map interpreter name -> argv prefix, keeping only the ones present.
 
-    A present interpreter is not necessarily a usable one. `cmods/bin/`
+    A present interpreter is not necessarily a usable one. `bin/`
     binaries are built by hand and go stale silently: a run against one that
     predates AUDIODSP_PIN certifies a core the pin does not name, and it is
     green while it does it (cmods#27). So each one is refused here, before it
