@@ -1,3 +1,74 @@
+## v0.3.0 (2026-09-23)
+
+- docs: 55 instruments, audiodsp's old copies are gone, parity needs ../bin/micropython (#106)
+- docs: add audiocomponents newcomer guide
+- AGENTS.md: the interpreter lives in the workspace anchor's bin, not cmods
+- The interpreters and the stamper live in the workspace anchor, not cmods
+- acoustickit carries a frame: the kit's strike and the hat's choke go on the queue (#94, #96) (#104)
+- The two gates that spawn a cmods/bin interpreter refuse a binary that predates AUDIODSP_PIN
+- The cost runner refuses a figure taken while the class was idling (#102)
+- Every effect class takes a constructor patch=, and the ten that did not get it in one place (#103)
+- _component: a setting a class derives in Python is not the setting a board derives
+- sequencing: the scheduled retrigger's choke has a re-measurement and a proposal, one link away
+- The scheduling seam has a gate against the real pump, not only against a stand-in
+- A tick landing inside relay() or a tempo change costs a part in flight nothing, measured
+- Expander ships one ratio law, the RMS detector's, and patch 5 keeps the peak position it is named for
+- The instruments gate can run again, and its goldens are re-captured at the current pin
+- The sequencer says how deep a queue its parts want, and says when one is too small
+- GraphicEQ T4 is about a band coming back from the detent, and that has a fault that bites
+- mute_dry: a fan-in of bare taps is not a blend, and the Mix push has a row of its own
+- The evidence renderer releases its keys, so a sustaining instrument has a release to hear
+- The core's floor is the version it first published under its new name, 0.5.1 (#101)
+- The core is audiodsp: the pin, the dependency, audiodsp_util and every link (#100)
+- A component's output is a wire, and an instrument can play a part on the audio's clock (#91)
+- Read sources as UTF-8: the curve-table gate and the metadata guard failed on Windows' cp1252
+- Phase 4 comes home: the last three classes, and drive.py is deleted
+- Saturation, Fuzz and Exciter are adopted: the last three of Phase 4
+- AUDIOIF_PIN moves to 9018e35: the CPython twin's mixer voice borrows its source's buffer, as the native one does
+- Effects Phase 4 (Drive): four classes rebuilt from their circuits and adopted on both boards
+- open_level_gates: the silence must be at least two frames, or the native mixer never returns (audioif#85)
+- scoped_tests: run the checkout the caller stands in, not the one the script lives in
+- BandPass and GraphicEQ: what audiobiquad's transposed direct form II fixed
+- Saturation's shelves move to audiobiquad, where low shelves are still accurate
+- Open the mixers' level gates before the first block
+- AutoPan: the sides and the first block, at CircuitPython 10.3.0's synthio
+- Tests catch up with four deliberate changes at the cebb7ca floor
+- Move the audioif floor to cebb7ca, for audiomodal
+- acoustickit: the kick and the snare needed what a bank cannot do
+- acoustickit: one normalisation table per rate, because one was not enough
+- acoustickit: a drum kit rather than a drum machine
+- drumkits declares its tables instead of computing them
+- drumkits: ten machines under one program change
+- Publish which kit answers which hit
+- Every drum machine speaks General MIDI
+- An unmapped note makes no sound
+- Drum machines answer their own factory MIDI charts
+- Drop Python 3.10
+- Allocation gate: exact on 3.11+, tolerant of 3.10's frame objects
+- The five Splitter-headed classes stop declining to release it
+- STATE walks the class's register, not one public attribute
+- The smoke reported 'adopted and served: nothing yet' with 24 classes serving
+- rebuilt.known() could not list the package on Windows
+- RingMod comes home: the rebuild is the shipped class, its M4 claim dropped
+- Phase 3: five modulation effects rebuilt, one dropped, two carried forward
+- Phase 2: sixteen dynamics and EQ effects, rebuilt from their circuits
+- gitignore: the alias-floor kit's scratch directory
+- Effects Phase 1: the cost table with the eight nodes, and the waveshaper's alias floor, on both boards
+- Move the audioif pin to 2f6cbc3: the palette with Phase 1's eight nodes
+- Effects Phase 1: the measurement kit, its planted-fault tests, the test split and the smoke rewrite
+- Cost table: say what block size each row actually pulled
+- Board cost baseline: what the effects palette costs on the P4 and the S3
+- Effects Phase 0: the survey — 46 dossier seeds, the node list, the kit spec, the audit
+- Keep original license readings; append cloud re-fetch results
+- measure_voice_headroom: drop the unused sys import that has failed flake8 on main since 0165fb2
+- Audit dossier reference columns against reachable sources
+- Effects dossier template: Tier 1 block mirrors the reviewed vision; portability tier and mono behaviour in section 4
+- Effects dossier template: Tier 3 carries latency, for the live stompbox case
+- spice: the TS808 under ngspice — Phase 0's proof of the reference workflow
+- Effects dossiers: the directory, its README and the template Phase 0 seeds from
+- tools: measure how many voices a board actually renders in real time
+- parity: pin the old side's ceiling so a re-capture cannot launder itself
+
 # Changelog
 
 All notable changes to `audioinstruments` and `audioeffects` are recorded
