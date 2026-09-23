@@ -6,6 +6,9 @@ synthesizers, electromechanical keyboards and drum machines — and
 Python built on [audiodsp](https://github.com/PyDevices/audiodsp)'s audio nodes,
 and both run unchanged on CPython, MicroPython and CircuitPython.
 
+New here? Start with the [newcomer's guide](docs/newcomers.md) for the
+repository map, public component flow, and contributor boundary.
+
 ```python
 import audioinstruments, audioeffects
 
