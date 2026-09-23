@@ -3,13 +3,13 @@
 `audiocomponents` is PyDevices' pure-Python library of playable instruments
 and audio effects. It publishes two packages:
 
-- `audioinstruments`: 53 synthesizers, keyboards, and drum machines.
+- `audioinstruments`: 55 synthesizers, keyboards, and drum machines.
 - `audioeffects`: 45 effect classes, including ready-made racks.
 
 They run on CPython, MicroPython, and CircuitPython by building on
 [`audiodsp`](https://github.com/PyDevices/audiodsp)'s audio nodes. This
-repository is the shipping source for both packages. The older copies under
-audiodsp are retired: do not fix, synchronize, or delete them here.
+repository is the only source for both packages; audiodsp's older copies
+have been deleted.
 
 ## Start by using the packages
 
@@ -141,9 +141,8 @@ python -m flake8
 
 The full instrument parity run needs the larger PyDevices workspace and its
 MicroPython build, so it is intentionally not a normal CI requirement. Read
-[AGENTS.md](../AGENTS.md) before changing the pin, parity goldens, release
-files, or the retired audiodsp copies; several of those actions require
-maintainer decisions.
+[AGENTS.md](../AGENTS.md) before changing the pin, parity goldens, or release
+files; several of those actions require maintainer decisions.
 
 ## Good first contributions
 
