@@ -6,7 +6,7 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
-## Unreleased
+## v0.3.0 (2026-09-23)
 
 ### Added
 
