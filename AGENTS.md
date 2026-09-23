@@ -70,7 +70,7 @@ The heavier gates are workspace-local:
 
 ```bash
 python3 tests/parity/run_instruments_parity.py --verify --batch all
-MICROPYPATH=$PWD:$PWD/lib ../cmods/bin/micropython \
+MICROPYPATH=$PWD:$PWD/lib ../bin/micropython \
     tests/parity/scheduling_seam_live.py
 ```
 
@@ -87,7 +87,7 @@ It renders each component under every interpreter it finds and holds it to a
 hash captured from the original micropython-vst3 script — read out of that
 repository's **git history** at `ac87f13`, not its working tree, because its
 tree imports these packages now and would no longer be an independent oracle.
-Needs `cmods/bin/micropython` and a `micropython-vst3` checkout as siblings.
+Needs the workspace anchor's `bin/micropython` and a `micropython-vst3` checkout as siblings.
 Comparison is always within one interpreter; cross-interpreter agreement is
 recorded as an observation, never enforced.
 
