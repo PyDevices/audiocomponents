@@ -30,7 +30,12 @@ Repository = "https://github.com/PyDevices/audiocomponents"
 Issues = "https://github.com/PyDevices/audiocomponents/issues"
 
 [tool.setuptools]
-packages = ["audioeffects"]
+# Every package directory under lib/audioeffects, listed by hand: the
+# package-dir mapping below ("." is the package) rules out packages.find,
+# which would discover rebuilt/ as a top-level "rebuilt". v0.3.0 shipped
+# without audioeffects.rebuilt and failed on import; tools/wheel_gate.py
+# (the "Wheel" job in tests.yml) fails if a directory is left off again.
+packages = ["audioeffects", "audioeffects.rebuilt"]
 
 [tool.setuptools.package-dir]
 audioeffects = "."
