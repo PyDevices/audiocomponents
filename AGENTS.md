@@ -1,6 +1,6 @@
 # AGENTS.md — audiocomponents
 
-`audioinstruments` (53 instruments) and `audioeffects` (45 effect classes,
+`audioinstruments` (55 instruments) and `audioeffects` (45 effect classes,
 racks included): the pure-Python audio component tier that PyDevices owns,
 built on [audiodsp](https://github.com/PyDevices/audiodsp)'s nodes. **This
 repository publishes both** — `pydevices-audioinstruments` and
@@ -9,22 +9,10 @@ repository publishes both** — `pydevices-audioinstruments` and
 
 ## Read this before you change anything
 
-This is the canonical home of both packages and the one that ships. audiodsp
-still carries a pre-rewrite copy of `lib/audioinstruments/` and
-`lib/audioeffects/`; that copy is retired. Nothing ships from it, nothing is
-gated against it, and no fix belongs in it.
-
-Three rules follow from that, and they are the whole reason this file leads
-with them:
-
-1. **A bug fix belongs here.** Fixing it in audiodsp's copy fixes it for
-   nobody.
-2. **Accuracy work belongs here.** Do not push it into audiodsp's copy.
-3. **Leave audiodsp's copies to Brad.** Deleting them, and replaying anything
-   from them into this copy, are his decisions, taken with a diff in front
-   of him — tracked in
-   [#2](https://github.com/PyDevices/audiocomponents/issues/2). Never
-   delete or sync them yourself.
+This is the only home of both packages. audiodsp's pre-rewrite copy of
+`lib/audioinstruments/` and `lib/audioeffects/` was deleted on 2026-09-03
+([#2](https://github.com/PyDevices/audiocomponents/issues/2)), so every bug
+fix and every piece of accuracy work belongs here.
 
 ## The floor is pinned
 
@@ -87,7 +75,7 @@ It renders each component under every interpreter it finds and holds it to a
 hash captured from the original micropython-vst3 script — read out of that
 repository's **git history** at `ac87f13`, not its working tree, because its
 tree imports these packages now and would no longer be an independent oracle.
-Needs the workspace anchor's `bin/micropython` and a `micropython-vst3` checkout as siblings.
+Needs `../bin/micropython` (or `--micropython`) and an `mpvst` checkout beside this one (or `--old-root`).
 Comparison is always within one interpreter; cross-interpreter agreement is
 recorded as an observation, never enforced.
 

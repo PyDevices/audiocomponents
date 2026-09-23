@@ -1,6 +1,6 @@
 # audiocomponents
 
-The PyDevices audio component tier: **`audioinstruments`** — 53 classic
+The PyDevices audio component tier: **`audioinstruments`** — 55 classic
 synthesizers, electromechanical keyboards and drum machines — and
 **`audioeffects`** — 45 effect classes, effect racks included. Both are pure
 Python built on [audiodsp](https://github.com/PyDevices/audiodsp)'s audio nodes,
@@ -67,14 +67,10 @@ human's to name, in the release PR; `VERSION` holds a placeholder until then,
 and `tag-release.yml` refuses to tag anything that is not a release version.
 
 The repository was seeded from audiodsp at **v0.1.1** with the components' own
-history intact, and the accuracy rewrite has happened here since. audiodsp
-still carries its pre-rewrite copies of `lib/audioinstruments/` and
-`lib/audioeffects/`; they are retired — nothing ships from them and no fix
-belongs in them. Deleting them, like replaying anything from them into this
-copy, is Brad's decision, tracked in
-[#2](https://github.com/PyDevices/audiocomponents/issues/2) along with the
-rest of the rewiring that follows the move: the MIP lockfile's `repository`
-keys, micropython-vst3's `MPVST_AUDIODSP_LIB`, and the org repo database.
+history intact, and the accuracy rewrite has happened here since. audiodsp's pre-rewrite
+copies of `lib/audioinstruments/` and `lib/audioeffects/` were deleted on
+2026-09-03, so this is the only copy
+([#2](https://github.com/PyDevices/audiocomponents/issues/2) has the move).
 
 ## Layout
 
@@ -152,8 +148,9 @@ history at a fixed revision so the oracle cannot drift:
 python3 tests/parity/run_instruments_parity.py --verify --batch all
 ```
 
-It needs `cmods/bin/micropython` and a `micropython-vst3` checkout as siblings
-in the workspace, so CI does not attempt it. Comparison is always *within* one
+It needs a MicroPython binary with audiodsp built in at `../bin/micropython`
+(or pass `--micropython`) and an `mpvst` checkout beside this one (or
+`--old-root`), so CI does not attempt it. Comparison is always *within* one
 interpreter — `ulab`'s vectorized sine and libm's are different functions, so
 two interpreters agreeing is an observation, never a gate.
 
