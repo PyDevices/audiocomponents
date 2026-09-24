@@ -1,7 +1,3 @@
-## v0.3.1 (2026-09-24)
-
-- Ship audioeffects.rebuilt in the wheel, and gate the built wheels in CI (#108)
-
 # Changelog
 
 All notable changes to `audioinstruments` and `audioeffects` are recorded
@@ -9,6 +5,16 @@ here. The two packages version and release together, from this repository;
 [audiodsp](https://github.com/PyDevices/audiodsp) publishes the core only.
 Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
+
+## v0.3.1 (2026-09-24)
+
+### Fixed
+
+- **`pydevices-audioeffects` installs and imports.** The 0.3.0 wheel left out
+  `audioeffects.rebuilt`, so the published package failed on import; 0.3.0 of
+  `audioinstruments` was unaffected. The wheel now ships the subpackage, and a
+  `wheel` CI job builds both wheels the way a release does, checks every source
+  module is in them, and imports and renders from a clean venv (#108).
 
 ## v0.3.0 (2026-09-23)
 
