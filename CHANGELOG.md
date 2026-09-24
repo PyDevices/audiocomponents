@@ -1,3 +1,7 @@
+## v0.3.1 (2026-09-24)
+
+- Ship audioeffects.rebuilt in the wheel, and gate the built wheels in CI (#108)
+
 # Changelog
 
 All notable changes to `audioinstruments` and `audioeffects` are recorded
