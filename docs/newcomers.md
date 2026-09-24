@@ -22,11 +22,8 @@ python -m pip install \
   pydevices-audioinstruments pydevices-audioeffects
 ```
 
-The current TestPyPI `0.2.0` packages predate this repository's move to the
-audiodsp core, so their installed dependency is `pydevices-audioif`. The source
-tree's next release instead declares `pydevices-audiodsp>=0.5.1`. That release
-boundary affects contributors and release work; the public factories below are
-the normal starting point for either installed package.
+Both packages depend on `pydevices-audiodsp`, which pip pulls in for you. The
+public factories below are the normal starting point for either one.
 
 An instrument is created by its stable catalogue name. Effects take an audio
 source, then expose their own `output`, so they chain naturally:
