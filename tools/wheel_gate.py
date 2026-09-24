@@ -110,14 +110,18 @@ def build_wheel(package, work):
     shutil.copytree(source, staged, ignore=shutil.ignore_patterns(
         "__pycache__", "*.egg-info", "build", "dist"))
     shutil.copy(ROOT / "VERSION", staged / "VERSION")
+    # List what was staged, and before building: the copy drops build/, dist/
+    # and *.egg-info, which in a working checkout hold stale .py copies no
+    # wheel should carry (38 false MISSING lines once), and `build` then
+    # writes a build/ of its own into the staged tree.
+    expected = {package + "/" + path.relative_to(staged).as_posix()
+                for path in staged.rglob("*.py")
+                if "__pycache__" not in path.parts}
     out = work / "dist"
     run(sys.executable, "-m", "build", "--wheel", "--outdir", out, staged,
         check=True, stdout=subprocess.DEVNULL)
     wheel = next(out.glob("pydevices_%s-*.whl" % package))
 
-    expected = {package + "/" + path.relative_to(source).as_posix()
-                for path in source.rglob("*.py")
-                if "__pycache__" not in path.parts}
     with zipfile.ZipFile(wheel) as archive:
         shipped = set(archive.namelist())
     missing = sorted(expected - shipped)
