@@ -1,3 +1,8 @@
+## v0.3.2 (2026-09-25)
+
+- newcomers: drop the 0.2.0 audioif caveat; both packages depend on audiodsp
+- wheel_gate: list the staged tree before building, not the checkout (#110)
+
 # Changelog
 
 All notable changes to `audioinstruments` and `audioeffects` are recorded
