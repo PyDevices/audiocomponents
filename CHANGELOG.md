@@ -6,6 +6,16 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## v0.3.2 (2026-09-25)
+
+No change to either package's code: both packages are 0.3.1 under a new
+version number. The release carries repository tooling and docs only.
+
+- `tools/wheel_gate.py` lists modules from the staged tree it builds, not the
+  checkout, so a stale `build/` no longer reports false MISSING lines (#110).
+- `docs/newcomers.md` drops the 0.2.0 audioif caveat: both packages depend on
+  audiodsp.
+
 ## v0.3.1 (2026-09-24)
 
 ### Fixed
