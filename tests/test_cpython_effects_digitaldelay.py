@@ -22,6 +22,15 @@ no position dials at any rate; every fault's reachability walk runs at
 the output does) at the position walked. The input ceiling, the Glide
 round trip, a 0 bpm host and Repeat Tone's clamp at 22.05 kHz each have a
 test beside a planted fault.
+
+Fix round 2 (2026-09-27, after gate audit round 2): the input ceiling is
+rendered over 20 s at -3.1 dBFS and shown red at the old -3.0; the Glide
+readback survives a 7-bit round trip through `_component.macro_of`, beside
+the round-2 seeding; a NaN or infinite tempo leaves Time on the knob,
+beside the round-2 guard; T5's Tone-compounding fault `PostToneDelay` is
+here and in the reachability walks; and T2's part of the knob the row no
+longer claims (rising, strictly between Glide grid 1 and 2) is tested by a
+float32 model of the node's walk and by rendered fractional positions.
 """
 
 import math
@@ -290,6 +299,32 @@ class _PostHighPass:
         return result, memoryview(out.astype("<i2").tobytes())
 
 
+class _PostLowPass(_PostHighPass):
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        owner = self._owner
+        result, data = audiocore.get_buffer(owner._delay)
+        raw = bytes(data)
+        if not raw or owner._post_lp <= 0.0:
+            return result, memoryview(raw)
+        a = 1.0 - math.exp(-2.0 * math.pi * owner._post_lp
+                           / owner._sample_rate)
+        v = np.frombuffer(raw, dtype="<i2").astype(np.float64)
+        channels = self.channel_count
+        out = np.empty_like(v)
+        for c in range(channels):
+            state = owner._lp[c]
+            column = v[c::channels]
+            filtered = np.empty_like(column)
+            for i in range(len(column)):
+                state += a * (column[i] - state)
+                filtered[i] = state
+            owner._lp[c] = state
+            out[c::channels] = filtered
+        out = np.clip(np.where(out >= 0, np.trunc(out + 0.5),
+                               np.trunc(out - 0.5)), -32768, 32767)
+        return result, memoryview(out.astype("<i2").tobytes())
+
+
 class ZeroBpmDelay(DigitalDelay):
     """The round-1 reading of a host's tempo: 0 bpm read as 120 bpm, so a
     host that reports no tempo drags Time to 120 bpm's value."""
@@ -316,6 +351,59 @@ class JumpSeedGlideDelay(DigitalDelay):
         DigitalDelay._build(self, *arguments, **options)
         if self._macros[GLIDE_I] <= dd.GLIDE_FLOOR:
             self._macros[GLIDE_I] = 0.0
+
+
+class NearZeroSeedGlideDelay(DigitalDelay):
+    """The round-2 Glide seeding: a constructor Glide at or under 800 ms
+    seeded at position 1e-9, just above the jump. A float host keeps it;
+    it reads back as MIDI 1.27e-7, which any 7-bit path stores as 0."""
+
+    NAME = 'DigitalDelay'
+
+    def _build(self, *arguments, **options):
+        DigitalDelay._build(self, *arguments, **options)
+        if (self._glide_exact is not None and self._glide_exact > 0.0
+                and self._glide_exact <= 800.0):
+            self._macros[GLIDE_I] = 1e-9
+
+
+class NanBpmDelay(DigitalDelay):
+    """The round-2 tempo guard, `bpm <= 0.0`, which a NaN passes and an
+    infinite tempo passes too: both drag Time to the bottom of the knob."""
+
+    NAME = 'DigitalDelay'
+
+    def _synced_ms(self):
+        transport, state = self._transport_state()
+        if transport is _component.static_transport:
+            return None
+        bpm = float(state[2] or 0.0)
+        if bpm <= 0.0:
+            return None
+        index = int(round(self._value(DIVISION_I)))
+        index = min(len(dd.DIVISION_BEATS) - 1, max(0, index))
+        return dd.DIVISION_BEATS[index] * 60000.0 / bpm
+
+
+class PostToneDelay(DigitalDelay):
+    """T5's compounding clause, Tone half: Repeat Tone's one-pole low-pass
+    moved out of the loop onto the output - the same pre-warped
+    coefficient, applied once. One pass is identical to the class; the
+    repeats do not compound, so T3's control stops darkening. (The
+    re-refuter's fault, `digitaldelay_rerefute1_t5.py`, moved here at fix
+    round 2.)"""
+
+    NAME = 'DigitalDelay'
+
+    def _build(self, *arguments, **options):
+        self._post_lp = 0.0
+        self._lp = [0.0, 0.0]
+        DigitalDelay._build(self, *arguments, **options)
+        self._output = _PostLowPass(self)
+
+    def _tone_damping(self, position):
+        self._post_lp = DigitalDelay._tone_damping(self, position)
+        return 0.0
 
 
 # --------------------------------------------------------------------------
@@ -629,6 +717,50 @@ def t2_measure(cls, rate=RATE, glide_ms=3937.5, start_ms=200.0,
                    "bar_gap": bar_gap, "bar_after": bar_after,
                    "window": window})
     return result
+
+
+def f32_walk_cents(rate, grids, start_ms=150.0, target_ms=200.0):
+    """A float32 model of the node's slew walk (`current += slew`,
+    `audiodsp_feedback_delay.c:408` / `:413` at v0.6.1), from `start_ms` to
+    `target_ms` in whole frames, at the dossier's law for each Glide grid
+    position in `grids`. Returns, per position, the cents the walk plays
+    off the law, read over the walk's middle 80 % (gate audit round 2's
+    model, `digitaldelay_audit2_f32scan.py`)."""
+    grids = np.asarray(grids, dtype=np.float64)
+    a = dd.whole_frames(start_ms, rate)
+    b = dd.whole_frames(target_ms, rate)
+    law = np.array([dossier_slew(glide_of_grid(g)) for g in grids])
+    step = law.astype(np.float32)
+    rising = b > a
+    tgt = np.float32(b)
+    start = np.full(len(grids), a, np.float32)
+
+    def advance(c):
+        if rising:
+            return np.minimum((c + step).astype(np.float32), tgt)
+        return np.maximum((c - step).astype(np.float32), tgt)
+
+    n = np.zeros(len(grids), np.int64)
+    c = start.copy()
+    done = np.zeros(len(grids), bool)
+    k = 0
+    while not done.all():
+        k += 1
+        c = np.where(done, c, advance(c))
+        newly = (~done) & (c == tgt)
+        n[newly] = k
+        done |= newly
+    ia, ib = n // 10, n - n // 10
+    c = start.copy()
+    pa = np.zeros(len(grids))
+    pb = np.zeros(len(grids))
+    for k in range(1, int(n.max()) + 1):
+        c = advance(c)
+        pa[ia == k] = c[ia == k]
+        pb[ib == k] = c[ib == k]
+    eff = np.abs(pb - pa) / (ib - ia)
+    ratio = (1.0 - eff) / (1.0 - law) if rising else (1.0 + eff) / (1.0 + law)
+    return 1200.0 * np.log2(ratio)
 
 
 def t3_burst(rate):
@@ -957,6 +1089,13 @@ def read_cut_placement(effect):
             round(float(getattr(effect, "_post", 0.0)), 3))
 
 
+def read_tone_placement(effect):
+    """(the `damping_hz` handed to the loop, the low-pass applied outside
+    it)."""
+    return (round(float(effect._delay._handed["damping_hz"]), 3),
+            round(float(getattr(effect, "_post_lp", 0.0)), 3))
+
+
 def read_slew_against_label(effect):
     """The `delay_slew` handed to the node against the dossier's law at the
     Glide the knob's label says (the constructor's exact value while the
@@ -986,6 +1125,8 @@ REACH_WALKS = (
     ("CornerShiftDelay", CornerShiftDelay, read_corner_ratios,
      {"tone_hz": 7000.0, "cut_hz": 40.0}),
     ("PostCutDelay", PostCutDelay, read_cut_placement, {"cut_hz": 40.0}),
+    ("PostToneDelay", PostToneDelay, read_tone_placement,
+     {"tone_hz": 7000.0}),
 )
 
 
@@ -1161,6 +1302,34 @@ class T2TimeResamples(unittest.TestCase):
         self.assertFalse(result["passed"], result)
         self.assertGreater(result["body"], result["bar"])
 
+    def test_the_unclaimed_band_is_where_the_float32_walk_says(self):
+        # Fix round 2 (dossier section 8.11): the rising move is not claimed
+        # strictly between Glide grid 1 and grid 2. The float32 model of the
+        # node's walk, over the whole knob in steps of 0.01, puts every
+        # position more than 10 c off the law inside that band at every
+        # rate, and does find some there at 48 kHz (so the scan can fail).
+        grids = np.arange(100, 12701) / 100.0
+        for rate in (48000, 44100, 22050):
+            off = grids[np.abs(f32_walk_cents(rate, grids)) > 10.0]
+            self.assertTrue(np.all((off > 1.0) & (off < 2.0)),
+                            (rate, off[(off <= 1.0) | (off >= 2.0)]))
+            if rate == 48000:
+                self.assertGreater(len(off), 0)
+        falling = f32_walk_cents(48000, grids, 200.0, 150.0)
+        self.assertLess(float(np.abs(falling).max()), 10.0)
+
+    def test_inside_the_band_is_red_and_outside_it_holds(self):
+        # Grid 1.245 is the model's worst position at 48 kHz: rendered, it
+        # reads about -15 c. Fractional positions outside the band pass.
+        inside = t2_measure(DigitalDelay, glide_grid=1.245, start_ms=150.0,
+                            target_ms=200.0)
+        self.assertLess(inside["pitch_cents"], -10.0, inside)
+        for rate, grid in ((48000, 2.05), (48000, 3.55), (44100, 1.95),
+                           (22050, 1.245)):
+            result = t2_measure(DigitalDelay, rate=rate, glide_grid=grid,
+                                start_ms=150.0, target_ms=200.0)
+            self.assertTrue(result["passed"], (rate, grid, result))
+
 
 class T3NoDarkening(unittest.TestCase):
     def test_the_constructor_time_at_48k_and_22k(self):
@@ -1252,6 +1421,16 @@ class T5BandLimit(unittest.TestCase):
             self.assertLessEqual(clean["last"][0], -6.0, (rate, clean))
             post = t5_compound(PostCutDelay, rate, settings={CUT_I: 127})
             self.assertGreater(post["last"][0], -1.0, (rate, post))
+
+    def test_the_tone_compounds_in_the_loop(self):
+        # T3's control is the Tone half of the compounding clause: Repeat
+        # Tone 3 kHz takes repeat 8's 4 kHz-Nyquist share at least 20 dB
+        # under repeat 1's. Moved out of the loop it does not compound.
+        for rate in (48000, 44100, 22050):
+            clean = t3_measure(DigitalDelay, rate=rate, tone_hz=3000.0)
+            self.assertLessEqual(clean["high8"], -20.0, (rate, clean))
+            post = t3_measure(PostToneDelay, rate=rate, tone_hz=3000.0)
+            self.assertGreater(post["high8"], -1.0, (rate, post))
 
 
 # --------------------------------------------------------------------------
@@ -1413,16 +1592,37 @@ class Tier1Fast(unittest.TestCase):
 
 
 class InputCeiling(unittest.TestCase):
-    """The docstring's ceiling on `noise_det`, 48 kHz: the defaults clean at
-    -3 dBFS peak, patch 3 (the first shipped patch to rail) at -4; 1 dB
-    over each rails."""
+    """The docstring's ceiling on `noise_det`, 48 kHz stereo, over 20 s:
+    the defaults clean at -3.1 dBFS peak, patch 3 (the first shipped patch
+    to rail) at -4. Fix round 2: 1 s could not see the defaults rail at the
+    old -3.0 dBFS (4 samples over 20 s, the first at frame 169 739), so the
+    render is 20 s and -3.0 is the red leg."""
 
-    def test_the_stated_ceiling_is_clean_and_one_db_over_is_not(self):
-        for options, ceiling in (({}, -3.0), ({"patch": 3}, -4.0)):
+    SECONDS = 20.0
+
+    def test_the_stated_ceiling_is_clean_and_just_over_is_not(self):
+        for options, ceiling, over in (({}, -3.1, -3.0),
+                                       ({"patch": 3}, -4.0, -3.0)):
             self.assertEqual(railed_samples(DigitalDelay, ceiling,
-                                            **options), 0, options)
-            self.assertGreater(railed_samples(DigitalDelay, ceiling + 1.0,
-                                              **options), 0, options)
+                                            self.SECONDS, **options), 0,
+                             options)
+            self.assertGreater(railed_samples(DigitalDelay, over,
+                                              self.SECONDS, **options), 0,
+                               options)
+
+    def test_the_any_material_bound(self):
+        # A DC one LSB under floor(32767 (1 - Mix)) never reaches the rail
+        # at Feedback 0.99; at floor(32767 (1 - Mix)) itself the sum rounds
+        # onto 32767 (the docstring says so: nothing clips).
+        for mix in (0.5, 0.3):
+            edge = int(math.floor(32767 * (1.0 - mix)))
+            for level, railed in ((edge - 1, False), (edge, mix == 0.5)):
+                values = [level] * (RATE // 2)
+                effect = DigitalDelay(array_src(values), sample_rate=RATE,
+                                      time_ms=12.5, feedback=0.99, mix=mix)
+                out = pull(effect, len(values))
+                self.assertEqual(bool(np.any(out >= 32767)), railed,
+                                 (mix, level))
 
 
 class GlideRoundTrip(unittest.TestCase):
@@ -1433,10 +1633,13 @@ class GlideRoundTrip(unittest.TestCase):
         return before, dd.slew_of(effect._glide_ms())
 
     def test_get_macro_hands_back_the_glide(self):
+        # A constructor Glide faster than grid 1 reads back as grid 1, so a
+        # float trip lands the knob's fastest walk (0.966689; from 500 ms's
+        # pinned 0.99 that is -2.36 %, the most the knob can hold).
         for glide_ms in (500.0, 800.0, 4000.0):
             before, after = self._round_trip(DigitalDelay, glide_ms)
             self.assertGreater(before, 0.0)
-            self.assertLessEqual(abs(after / before - 1.0), 0.02, glide_ms)
+            self.assertLessEqual(abs(after / before - 1.0), 0.025, glide_ms)
         effect = DigitalDelay(silence_src(512), sample_rate=RATE,
                               glide_ms=0.0)
         self.assertEqual(effect.get_macro(GLIDE_I), 0.0)
@@ -1446,8 +1649,51 @@ class GlideRoundTrip(unittest.TestCase):
         self.assertGreater(before, 0.9)
         self.assertEqual(after, 0.0)
 
+    def _seven_bit_trip(self, cls, glide_ms):
+        """The Glide knob stored as a 7-bit value, the way a patch author
+        or a MIDI host stores it (`_component.macro_of` of `macro(3)`), and
+        handed back."""
+        effect = cls(silence_src(512), sample_rate=RATE, glide_ms=glide_ms)
+        before = dd.slew_of(effect._glide_ms())
+        midi = _component.macro_of(cls._MACRO_RANGES[GLIDE_I],
+                                   effect.macro(GLIDE_I))
+        effect.set_macro(GLIDE_I, midi)
+        return before, midi, dd.slew_of(effect._glide_ms())
+
+    def test_a_seven_bit_trip_keeps_the_glide(self):
+        grid_1 = dossier_slew(glide_of_grid(1))
+        for glide_ms in (500.0, 800.0, 810.0, 4000.0):
+            before, midi, after = self._seven_bit_trip(DigitalDelay,
+                                                       glide_ms)
+            self.assertGreater(after, 0.0, glide_ms)
+            if before > grid_1:
+                # Faster than the grid can hold: grid 1, the fastest walk.
+                self.assertEqual(midi, 1, glide_ms)
+                self.assertAlmostEqual(after, 0.966689, places=6)
+            else:
+                self.assertLessEqual(abs(after / before - 1.0), 0.02,
+                                     glide_ms)
+        for glide_ms in (500.0, 800.0):
+            _, midi, after = self._seven_bit_trip(NearZeroSeedGlideDelay,
+                                                  glide_ms)
+            self.assertEqual((midi, after), (0, 0.0), glide_ms)
+
 
 class ZeroBpmHost(unittest.TestCase):
+    def test_a_tempo_that_is_not_finite_leaves_time_on_the_knob(self):
+        # Fix round 2: NaN and infinity passed the round-2 guard
+        # (`bpm <= 0.0`) and landed Time at 12.5 ms (600 frames).
+        for bpm in (float("nan"), float("inf"), float("-inf")):
+            def transport(_bpm=bpm):
+                return (True, 0.0, _bpm, 4, 4)
+            measured, _ = t4_delay(DigitalDelay, transport=transport,
+                                   sync=127, division=51, time_ms=350.0)
+            self.assertLessEqual(abs(measured - 16800), 1.0, bpm)
+            measured, _ = t4_delay(NanBpmDelay, transport=transport,
+                                   sync=127, division=51, time_ms=350.0)
+            if bpm > 0.0 or bpm != bpm:
+                self.assertLessEqual(abs(measured - 600), 1.0, bpm)
+
     def test_no_tempo_leaves_time_on_the_knob(self):
         for bpm in (0.0, None):
             def transport(_bpm=bpm):

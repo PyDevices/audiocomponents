@@ -75,23 +75,41 @@ top of the knob goes flat. At 22.05 kHz positions 111-126 (labelled
 and position 127 takes the filter out. At 44.1 and 48 kHz every position
 moves.
 
-A constructor `glide_ms` faster than the knob's span (under 800 ms, down to
-the 0.99 pin) stays on the audio path, and the knob reads back just above
-its bottom stop, never at grid 0, the jump: handing `get_macro(3)` back to
-`set_macro(3, ...)` keeps the glide.
+A constructor `glide_ms` faster than the knob's fastest walk (under
+814.6 ms, down to the 0.99 pin) stays on the audio path, and the knob
+reads back at grid 1, the fastest walk it has, never at grid 0, the jump:
+handing `get_macro(3)` back to `set_macro(3, ...)`, even rounded to a
+7-bit MIDI value, keeps the glide (at grid 1's slew, 0.967).
+
+**Where the pitch claim stops.** The node walks the read head in single
+precision, so the rate it plays is the Glide's rate rounded to the float
+step of the delay. Near a stall that rounding is worth several cents: on
+a rising Time at the Glide knob's fastest 1 %, strictly between grid 1 and
+grid 2 (814.6-829.5 ms), the repeats can read up to 15 cents off the
+glide law at 48 kHz and 11.5 at 44.1 kHz. That part of the knob is not
+claimed on a rising move; grid 1, grid 2 and everything slower are.
+Nor is a constructor Glide under 829.5 ms on a rising move, except
+800 ms (slew 63/64, which single precision holds exactly): at the 0.99
+pin a rising Time can read 41 cents off. The rising move's pitch and no-step claims are measured on inputs from
+-8.7 to -0.2 dBFS; quieter, a near-stall rising glide is a few LSB of
+signal and int16 rounding decides the reading.
 
 **Input ceiling.** The dry path sits at unity and the repeats add to it, so
 a hot input can put the output on the int16 rail; there is no input gain
-to turn down. Measured on the kit's `noise_det` at 48 kHz, the defaults are
-clean up to -3 dBFS peak and the shipped patches up to -4 dBFS (patch 3,
-Mix 0.5, rails first). On any material, with Repeat Cut out and Mix below
-1, an input peaking at or below (1 - Mix) of full scale cannot reach the
+to turn down. Measured on the kit's `noise_det` at 48 kHz over 20 s, the
+defaults are clean up to -3.1 dBFS peak and the shipped patches up to
+-4 dBFS (patch 3, Mix 0.5, rails first). At -3.0 dBFS the defaults put a
+few samples on the rail over 4 s and more. On any material, with Repeat
+Cut out and Mix below 1, an input peaking at or below one LSB under
+(1 - Mix) of full scale, floor(32767 (1 - Mix)) - 1, cannot reach the
 rail at any Time or Feedback, because the line holds int16 and so the
 repeats never exceed Mix x full scale: -3.1 dBFS at the default Mix 0.3,
--6.1 dBFS at patch 3. High Feedback does not keep building past that: at Feedback 0.99
-the line saturates, and the defaults' noise_det ceiling is -4 dBFS after
-6 s and after 20 s alike. Repeat Cut's high-pass can overshoot a peak, so
-with it in circuit leave more room.
+-6.1 dBFS at patch 3. At exactly (1 - Mix) of full scale the sum can round
+onto 32767, the rail value, though nothing is clipped. High Feedback does
+not keep building past that: at Feedback 0.99 the line saturates, and the
+defaults' noise_det ceiling is -4 dBFS after 6 s and after 20 s alike.
+Repeat Cut's high-pass can overshoot a peak, so with it in circuit leave
+more room.
 
 **Tail.** `tail_samples` is an upper bound on how long the repeats take to
 reach exact zero after your input stops, and it is long: the loop has to
@@ -106,8 +124,9 @@ Repeat Cut in circuit it is `None` too.
 
 `capabilities = ("tempo_sync",)`: with Sync on, the class reads
 `self._transport()` on every macro move and program change (not per block).
-With no host transport, or a host that reports no tempo (0 bpm), Time stays
-where the knob is.
+With no host transport, or a host whose tempo is not a finite positive
+number (0, negative, NaN, infinite or missing), Time stays where the knob
+is.
 """
 
 VENDOR = "PyDevices"
@@ -136,10 +155,11 @@ FULL_RANGE_MS = TIME_MAX_MS - TIME_MIN_MS
 #: grid position gets there (grid 1 is slew 0.967).
 SLEW_PIN = 0.99
 
-#: The Glide knob's position for a constructor Glide at or under 800 ms:
-#: just above grid 0, which is the jump. It reads back as MIDI 1.27e-7 and
-#: stands for 800.0 ms (slew 0.984).
-GLIDE_FLOOR = 1e-9
+#: The Glide knob's position for a constructor Glide faster than grid 1:
+#: grid 1 itself (814.6 ms, slew 0.967), the knob's fastest walk. Grid 0 is
+#: the jump, and a position just above it reads back as a MIDI value that
+#: rounds to 0 on any 7-bit path (fix round 2).
+GLIDE_FLOOR = 1.0 / 127.0
 
 #: The node's own loop ceiling (`audiodsp_feedback_delay.c:157`).
 FEEDBACK_MAX = 0.99
@@ -348,14 +368,15 @@ class DigitalDelay(_component.Component):
         self._own(self._delay, reset=self._clear)
         self._delay.play(self._source)
         self._output = self._delay
-        # The knob is seeded at its bottom (800 ms) for a faster constructor
-        # Glide; `_glide_exact` carries the real value. Position 0 is the
-        # jump, so a Glide that is not 0 is seeded just above it, and a
-        # get_macro / set_macro round trip keeps it gliding.
+        # The knob is seeded where the constructor's Glide is, or at grid 1
+        # for a faster one; `_glide_exact` carries the real value. Position
+        # 0 is the jump, so a Glide that is not 0 is never seeded below grid
+        # 1, and a get_macro / set_macro round trip keeps it gliding even
+        # when a host rounds it to a MIDI value.
         self._init_macros((time_ms, feedback, mix, max(800.0, glide_ms),
                            1.0 if sync else 0.0, float(division), tone_hz,
                            cut_hz))
-        if self._glide_exact > 0.0 and self._macros[GLIDE_I] <= 0.0:
+        if self._glide_exact > 0.0 and self._macros[GLIDE_I] < GLIDE_FLOOR:
             self._macros[GLIDE_I] = GLIDE_FLOOR
         self._seeding = False
         if patch is not None:
@@ -418,10 +439,12 @@ class DigitalDelay(_component.Component):
         transport, state = self._transport_state()
         if transport is _component.static_transport:
             return None
-        # A host that reports no tempo (0 or None) leaves Time on the knob,
-        # as the static transport does; it is never read as 120 bpm.
+        # A host whose tempo is not a finite positive number (0, None, a
+        # negative, NaN or infinity) leaves Time on the knob, as the static
+        # transport does; it is never read as 120 bpm. `not bpm > 0` catches
+        # NaN, and `bpm * 0` is NaN for infinity.
         bpm = float(state[2] or 0.0)
-        if bpm <= 0.0:
+        if not bpm > 0.0 or bpm * 0.0 != 0.0:
             return None
         index = int(round(self._value(DIVISION_I)))
         index = min(len(DIVISION_BEATS) - 1, max(0, index))
