@@ -42,6 +42,15 @@ edge moves from Glide grid 2 to grid 3, placed by rendering every rounding
 class of the node's walk, and the edge test goes red at the old edge. A
 constructor Glide slower than 8 s reads back as the 8 s it plays, and a
 constructor Time, Repeat Tone or Repeat Cut of 0 builds.
+
+Re-audit fix round 2 (2026-09-27, after gate re-audit 1): with Repeat Tone
+in circuit the class hands the node a Feedback just outside its own stall
+windows, and every stall cell and window centre reaches exact zero inside
+a finite `tail_samples`, beside re-audit fix round 1's class, which said
+`None` there and held 1-5 LSB. T2's pitch clause is read per binade of the
+node's walk (`t2_segments`), which goes red at grid 3.0079 where the
+whole-walk fit passed, and the rising edge moves to Glide grid 4. A NaN
+`glide_ms` is the jump and a NaN `max_time_ms` is 800 ms.
 """
 
 import math
@@ -483,6 +492,18 @@ class OneLapToneDelay(DigitalDelay):
         return int(laps * (self._reach + 1))
 
 
+class StallWindowToneDelay(DigitalDelay):
+    """Re-audit fix round 1's class with Repeat Tone in: the node handed
+    the Feedback asked for, inside the stall windows, where the class said
+    `None` and the node held 1-5 LSB for ever (1 at Feedback 0.5, 5 at
+    0.9, Tone 800 Hz, a 2 LSB DC)."""
+
+    NAME = 'DigitalDelay'
+
+    def _loop_feedback(self, feedback):
+        return feedback
+
+
 class SlowSeedGlideDelay(DigitalDelay):
     """The seeding up to re-audit fix round 1: a constructor Glide slower
     than 8 s stayed on the audio path while the knob read 8 s, so handing
@@ -656,8 +677,10 @@ def dossier_slew(glide_ms):
 
 
 #: Where T2's rising 150 -> 200 ms move is claimed from on the Glide knob
-#: (dossier section 8.12): grid 3, 844.72 ms. Fix round 2 said grid 2.
-RISING_EDGE_GRID = 3.0
+#: (dossier section 8.13): grid 4, 860.17 ms, read per binade. Fix round 2
+#: said grid 2 and re-audit fix round 1 grid 3, both read by one fit over
+#: the whole walk.
+RISING_EDGE_GRID = 4.0
 
 
 def glide_of_grid(grid):
@@ -734,6 +757,96 @@ def t2_render(cls, rate, values, start_ms, target_ms, glide_ms, glide_grid,
     return left(pull(effect, frames, 2, on_block=move), 2)
 
 
+#: The shortest binade segment of a walk the pitch clause reads (frames,
+#: after trimming); a shorter one is reported unread.
+T2_MIN_SEGMENT = 128
+
+#: The sine fit reads a segment only where it holds at least this many
+#: periods of the shifted tone; under that (the top binade of a near-stall
+#: rising walk at 22.05 kHz is 0.1-0.3 of a period, where the fit read
+#: -18.6 c at grid 1 and +142 c at 800 ms against the ramp's -5.65 and
+#: +0.08) it reads its own floor, not the walk, and the fine ramp alone is
+#: graded there.
+T2_MIN_PERIODS = 1.0
+
+
+def t2_fine_delay(cls, rate, start_ms, target_ms, glide_ms, glide_grid,
+                  move_at, frames, end, coarse):
+    """The delay the node plays at each frame, read off a ramp as steep as
+    int16 allows over just the source frames the walk reads: n - D(n) runs
+    from move_at - a to end - b (a, b the whole-frame start and target), so
+    near a stall the walk reads only a few dozen source frames and the ramp
+    can climb hundreds of LSB per frame. Linear interpolation is exact on
+    a ramp, so the only error is the output's int16 rounding, half an LSB,
+    which is 0.5 / slope of a frame. A walk that reads more source frames
+    than int16 can ramp over one LSB at a time (the full-range move) keeps
+    `coarse`, the measurement's own slope-1/k ramp, whose k-frame steps
+    are nothing against segments tens of thousands of frames long."""
+    a = dd.whole_frames(start_ms, rate)
+    b = dd.whole_frames(target_ms, rate)
+    j_lo = min(move_at - a, end - b) - 16
+    j_hi = max(move_at - a, end - b) + 16
+    if j_hi - j_lo > 60000:
+        return coarse, 0
+    slope = min(1000, 60000 // (j_hi - j_lo))
+    values = [max(-30000, min(30000, -30000 + slope * (j - j_lo)))
+              for j in range(frames)]
+    r = t2_render(cls, rate, values, start_ms, target_ms, glide_ms,
+                  glide_grid, move_at, frames)
+    delay = np.arange(frames) - (j_lo + (r + 30000.0) / slope)
+    delay[(r <= -30000) | (r >= 30000)] = np.nan
+    return delay, slope
+
+
+def t2_segments(y, delay, rate, start_ms, target_ms, slew, first, last,
+                falling, ratio):
+    """T2's pitch clause read per binade of the node's walk (re-audit fix
+    round 2). The node steps `current += slew` in float32
+    (`audiodsp_feedback_delay.c:444` / `:449` at v0.6.2), so inside each
+    binade [2^e, 2^(e+1)) of the read head it plays the slew rounded to
+    2^(e-23): a walk that crosses a power of two plays two rates, and one
+    fit over the whole walk reads their weighted mean, which is what hid
+    gate re-audit 1's grid 3.0079. The walk window [first, last) is cut
+    where the fine delay (`t2_fine_delay`) crosses each power of two, less
+    a pad either side, and each piece of at least `T2_MIN_SEGMENT` frames
+    is read two ways against the law: the fine ramp's delay slope, and
+    `ls_hz` on the 997 Hz render where the piece holds `T2_MIN_PERIODS` of
+    the shifted tone. Returns [(start, stop, sine cents or None, ramp cents
+    or None)]; both None where a piece is too short to read."""
+    a = dd.whole_frames(start_ms, rate)
+    b = dd.whole_frames(target_ms, rate)
+    lo, hi = min(a, b), max(a, b)
+    cuts = []
+    e = int(math.floor(math.log(lo, 2))) + 1
+    span = delay[first:last]
+    while 2 ** e < hi:
+        bound = float(2 ** e)
+        with np.errstate(invalid="ignore"):
+            crossed = np.where(span < bound if falling else span >= bound)[0]
+        if len(crossed):
+            cuts.append(first + int(crossed[0]))
+        e += 1
+    pad = int(math.ceil(2.0 / slew)) + 8
+    edges = [first] + sorted(cuts) + [last]
+    shifted = 997.0 * ratio
+    out = []
+    for i in range(len(edges) - 1):
+        s0 = edges[i] + (pad if i > 0 else 0)
+        s1 = edges[i + 1] - (pad if i + 1 < len(edges) - 1 else 0)
+        piece = delay[s0:s1]
+        if s1 - s0 < T2_MIN_SEGMENT or np.isnan(piece).any():
+            out.append((s0, s1, None, None))
+            continue
+        played = abs(float(np.polyfit(np.arange(s0, s1), piece, 1)[0]))
+        ramp = cents(((1.0 + played) if falling else (1.0 - played))
+                     / ratio)
+        sine = None
+        if (s1 - s0) * shifted / rate >= T2_MIN_PERIODS:
+            sine = cents(ls_hz(y[s0:s1], rate) / shifted)
+        out.append((s0, s1, sine, ramp))
+    return out
+
+
 def t2_measure(cls, rate=RATE, glide_ms=3937.5, start_ms=200.0,
                target_ms=150.0, move_at=20480, glide_grid=None, level=12000):
     """T2's three clauses at one cell, against the dossier's own law.
@@ -742,8 +855,12 @@ def t2_measure(cls, rate=RATE, glide_ms=3937.5, start_ms=200.0,
     constructor's `glide_ms`, or the knob's label at `glide_grid` - never
     the class's own `slew_of`. The walk's end is read off a ramp render of
     the same move (the node's float32 walk ends early, A8.1). Pitch: the
-    least-squares frequency of the walk less a margin of min(400, walk/10)
-    frames at each end; residual: the same fit 50-250 ms after the walk.
+    walk less a margin of min(400, walk/10) frames at each end, read per
+    binade of the node's walk (`t2_segments`), and the worst piece is
+    `pitch_cents`; `whole_pitch_cents` is the least-squares fit over the
+    whole window, the reading up to re-audit fix round 1, which averaged
+    two rates where the walk crosses a power of two. Residual: the same
+    fit 50-250 ms after the walk.
     No-step: the largest first difference in the walk against
     1.05 |1 - dD| x the unramped maximum, a gap past the ramp's end against
     the looser legitimate slope, and 2000 frames after against the unramped
@@ -798,8 +915,14 @@ def t2_measure(cls, rate=RATE, glide_ms=3937.5, start_ms=200.0,
     after = float(np.abs(np.diff(y[end + margin:end + margin + 2000])).max())
     edge = min(400, walked // 10)
     window = walked - 2 * edge
-    pitch = cents(ls_hz(y[move_at + edge:end - edge], rate)
+    whole = cents(ls_hz(y[move_at + edge:end - edge], rate)
                   / (997.0 * ratio))
+    fine, _ = t2_fine_delay(cls, rate, start_ms, target_ms, glide_ms,
+                            glide_grid, move_at, frames, end, delay)
+    segments = t2_segments(y, fine, rate, start_ms, target_ms, slew,
+                           move_at + edge, end - edge, falling, ratio)
+    read = [c for s in segments for c in s[2:] if c is not None]
+    pitch = max(read, key=abs) if read else whole
     settled = end + margin
     residual = cents(ls_hz(y[settled + int(0.05 * rate):
                              settled + int(0.25 * rate)], rate) / 997.0)
@@ -809,6 +932,7 @@ def t2_measure(cls, rate=RATE, glide_ms=3937.5, start_ms=200.0,
               and walk <= result["bar"] and gap <= bar_gap
               and after <= bar_after)
     result.update({"passed": passed, "pitch_cents": pitch,
+                   "whole_pitch_cents": whole, "segments": segments,
                    "residual_cents": residual, "walk": walk, "body": body,
                    "end": end_jump, "gap": gap, "after": after,
                    "bar_gap": bar_gap, "bar_after": bar_after,
@@ -858,6 +982,30 @@ def f32_walk_cents(rate, grids, start_ms=150.0, target_ms=200.0):
     eff = np.abs(pb - pa) / (ib - ia)
     ratio = (1.0 - eff) / (1.0 - law) if rising else (1.0 + eff) / (1.0 + law)
     return 1200.0 * np.log2(ratio)
+
+
+def binade_model_cents(rate, grids, start_ms=150.0, target_ms=200.0):
+    """The exact per-binade model of the node's walk (re-audit fix round
+    2): in each binade the move crosses, the slew as float32 rounded to
+    that binade's ulp, 2^(e-23), against the dossier's law. Returns, per
+    Glide grid position, the worst binade's cents off the law."""
+    grids = np.asarray(grids, dtype=np.float64)
+    # dossier_slew(glide_of_grid(g)) for every g > 0, vectorised
+    law = np.minimum(0.99, 787.5 / (800.0 * 10.0 ** (grids / 127.0)))
+    s32 = law.astype(np.float32).astype(np.float64)
+    a = dd.whole_frames(start_ms, rate)
+    b = dd.whole_frames(target_ms, rate)
+    worst = np.zeros(len(grids))
+    for e in range(int(math.floor(math.log(min(a, b), 2))),
+                   int(math.floor(math.log(max(a, b), 2))) + 1):
+        ulp = 2.0 ** (e - 23)
+        played = np.round(s32 / ulp) * ulp
+        if b > a:
+            c = 1200.0 * np.log2((1.0 - played) / (1.0 - law))
+        else:
+            c = 1200.0 * np.log2((1.0 + played) / (1.0 + law))
+        worst = np.where(np.abs(c) > np.abs(worst), c, worst)
+    return worst
 
 
 def t3_burst(rate):
@@ -1052,7 +1200,7 @@ def t5_compound(cls, rate=RATE, level=8192, settings=None, **options):
 
 
 def tail_measure(cls, feedback, material, rate=RATE, channels=2,
-                 time_ms=12.5, **options):
+                 time_ms=12.5, budget=None, **options):
     """The frames from the input's end to the output's last non-zero frame,
     against the `tail_samples` the class declares once the input has
     stopped. `floor` is gate audit round 1's cell (997 Hz at 12 000 LSB for
@@ -1063,7 +1211,7 @@ def tail_measure(cls, feedback, material, rate=RATE, channels=2,
                          time_ms=time_ms, feedback=feedback, mix=2.0,
                          **options)
     lap = probe._frames
-    budget = probe.tail_samples or 4 * rate
+    budget = budget or probe.tail_samples or 4 * rate
     probe.deinit()
     if material == "floor":
         values = [0] * 256 + sine_values(997.0, 2048, rate, 12000)
@@ -1332,16 +1480,23 @@ class TheSurface(unittest.TestCase):
         effect.set_macro(FEEDBACK_I, 64)
         self.assertEqual(effect.tail_samples, 15 * 601)
         # Repeat Tone in: each lap is the low-pass's forgetting time longer
-        # (22 frames at grid 100, 48 kHz), and at Feedback 0.99 the class
-        # has no bound, because a lap can hand a value back there.
+        # (22 frames at grid 100, 48 kHz). Feedback 0.99 sits in a stall
+        # window, so the node is handed the window's lower edge, a hair
+        # under 0.99, the knob still reads 127, and the bound is finite.
         effect.set_macro(TONE_I, 100)
         self.assertEqual(effect._tone_excess()[0], 22)
         self.assertEqual(effect.tail_samples, 15 * (601 + 22))
         effect.set_macro(FEEDBACK_I, 65)
         self.assertEqual(effect.tail_samples, 17 * (601 + 22))
         effect.set_macro(FEEDBACK_I, 127)
-        self.assertIsNone(effect.tail_samples)
+        self.assertEqual(effect.get_macro(FEEDBACK_I), 127.0)
+        self.assertLess(effect._feedback, 0.99)
+        self.assertGreater(effect._feedback, 0.99 - 3e-5)
+        laps = dd.laps_to_zero(effect._feedback, effect._tone_excess()[1])
+        self.assertIsNotNone(laps)
+        self.assertEqual(effect.tail_samples, laps * (601 + 22))
         effect.set_macro(TONE_I, 127)
+        self.assertEqual(effect._feedback, 0.99)
         self.assertEqual(effect.tail_samples, 685 * 601)
         self.assertEqual(dd.laps_to_zero(0.99, 1e-5), None)
         self.assertEqual(dd.laps_to_zero(0.5, 1e-5), None)
@@ -1426,12 +1581,14 @@ class T2TimeResamples(unittest.TestCase):
         self.assertTrue(result["passed"], result)
 
     def test_a_near_stall_rising_cell(self):
-        # Glide grid 2, 150 -> 200 ms: the law's ratio is 0.051 (a 50 Hz
-        # tone, 1.7 cycles in the window). The analytic-signal median read
-        # -15.00 c here; the least-squares fit reads the node.
-        result = t2_measure(DigitalDelay, glide_grid=2, start_ms=150.0,
-                            target_ms=200.0)
-        self.assertTrue(result["passed"], result)
+        # Glide grid 1, 150 -> 200 ms: the law's ratio is 0.033 (a 33 Hz
+        # tone), and at 22.05 kHz the walk's top binade is under a third of
+        # a period, where the sine fit reads its own floor (-18.6 c) and
+        # the fine ramp reads the walk (-5.65 c). Claimed at three rates.
+        for rate in (48000, 44100, 22050):
+            result = t2_measure(DigitalDelay, rate=rate, glide_grid=1,
+                                start_ms=150.0, target_ms=200.0)
+            self.assertTrue(result["passed"], (rate, result))
 
     def test_the_constructor_800_ms_cell(self):
         result = t2_measure(DigitalDelay, glide_ms=800.0)
@@ -1447,49 +1604,69 @@ class T2TimeResamples(unittest.TestCase):
         self.assertFalse(result["passed"], result)
         self.assertGreater(result["body"], result["bar"])
 
-    def test_the_unclaimed_band_is_where_the_float32_walk_says(self):
-        # A cross-check, not where the edge came from: the float32 model of
-        # the node's walk, over the whole knob in steps of 0.01, puts every
-        # position more than 10 c off the law inside the unclaimed band at
-        # every rate, and does find some there at 48 kHz (so the scan can
-        # fail). The edge is placed by rendering every rounding class
-        # (`digitaldelay_reaudit1_t2edge.py`); the model reads 1-1.5 c
-        # kinder than the render near the stall, which is how fix round 2
-        # put the edge at grid 2 and grid 2.0342 got past it.
-        grids = np.arange(100, 12701) / 100.0
+    def test_the_unclaimed_band_is_where_the_binade_model_says(self):
+        # A cross-check: the exact per-binade model of the node's walk,
+        # over the whole knob in steps of 0.0001, puts every position more
+        # than 10 c off the law inside the unclaimed band (1, 4) at every
+        # rate, and does find some there at 48 and 44.1 kHz, so the scan
+        # can fail. Falling moves stay under 1 c everywhere.
+        grids = np.arange(10000, 1270001) / 10000.0
         for rate in (48000, 44100, 22050):
-            off = grids[np.abs(f32_walk_cents(rate, grids)) > 10.0]
+            model = binade_model_cents(rate, grids)
+            off = grids[np.abs(model) > 10.0]
             self.assertTrue(np.all((off > 1.0) & (off < RISING_EDGE_GRID)),
                             (rate, off[(off <= 1.0)
                                        | (off >= RISING_EDGE_GRID)]))
-            if rate == 48000:
-                self.assertGreater(len(off), 0)
-        falling = f32_walk_cents(48000, grids, 200.0, 150.0)
-        self.assertLess(float(np.abs(falling).max()), 10.0)
+            if rate != 22050:
+                self.assertGreater(len(off), 0, rate)
+            falling = binade_model_cents(rate, grids, 200.0, 150.0)
+            self.assertLess(float(np.abs(falling).max()), 1.0, rate)
+
+    def test_the_pitch_is_read_per_binade(self):
+        # Gate re-audit 1's cell: grid 3.0079, rising 150 -> 200 ms. The
+        # walk plays the law below 8192 frames and 12.5 c off it above; one
+        # fit over the whole walk reads their mean (-8.66 c at 48 kHz,
+        # -1.57 c at 44.1 kHz) and passed. Read per binade it is red, the
+        # sine fit and the fine ramp agreeing on the top piece.
+        for rate in (48000, 44100):
+            result = t2_measure(DigitalDelay, rate=rate, glide_grid=3.0079,
+                                start_ms=150.0, target_ms=200.0)
+            self.assertLess(abs(result["whole_pitch_cents"]), 10.0,
+                            (rate, result))
+            self.assertLess(result["pitch_cents"], -12.0, (rate, result))
+            self.assertFalse(result["passed"], (rate, result))
+            top = result["segments"][-1]
+            self.assertLess(top[3], -12.0, (rate, top))
+        # At 22.05 kHz the same position holds (+0.02 c on the ramp).
+        result = t2_measure(DigitalDelay, rate=22050, glide_grid=3.0079,
+                            start_ms=150.0, target_ms=200.0)
+        self.assertTrue(result["passed"], result)
 
     def test_inside_the_band_is_red_and_outside_it_holds(self):
-        # Re-audit fix round 1 (dossier section 8.12): the rising 150 ->
-        # 200 ms move is claimed from Glide grid 3 up (and at grid 1
-        # itself). Every rounding class of the node's float32 walk was
-        # rendered at three rates; the red ones reach grid 2.505 at
-        # 48 kHz and 1.512 at 44.1 kHz, none at 22.05 kHz. Inside: gate
-        # audit round 3's cell 2.0342, which fix round 2's edge claimed,
-        # and each rate's worst class. Outside: the edge, and the worst
-        # class above it at each rate (8.68 c at 48 kHz, just above 3).
-        # A cell passes exactly when the edge claims it, so an edge moved
-        # back to 2 claims 2.0342 and 2.49031 and goes red on them.
+        # Re-audit fix round 2 (dossier section 8.13): the rising 150 ->
+        # 200 ms move is claimed at Glide grid 1 and from grid 4 up, read
+        # per binade. Inside: gate audit round 3's 2.0342 and 2.49031,
+        # round 2's 1.245 and 1.0076, and gate re-audit 1's 3.0079 at 48
+        # and 44.1 kHz, 3.24 and 3.30, which re-audit fix round 1's edge
+        # (grid 3) claimed. Outside: the edge at three rates and each
+        # rate's worst position above it in the per-binade model (9.90 c
+        # at 4.05795 at 48 and 44.1 kHz, 4.98 c at 4.0138 at 22.05). A
+        # cell passes exactly when the edge claims it, so an edge moved
+        # back to 3 claims 3.0079, 3.24 and 3.30 and goes red on them.
         for rate, grid in ((48000, 2.0342), (48000, 2.49031),
-                           (48000, 1.245), (44100, 1.0076), (48000, 3.0),
-                           (48000, 3.00397), (48000, 3.01517),
-                           (48000, 4.06536), (44100, 3.03684),
-                           (22050, 3.00794)):
+                           (48000, 1.245), (44100, 1.0076),
+                           (48000, 3.0079), (44100, 3.0079), (48000, 3.24),
+                           (48000, 3.3), (48000, 4.0), (44100, 4.0),
+                           (22050, 4.0), (48000, 4.05795), (44100, 4.05795),
+                           (22050, 4.0138)):
             result = t2_measure(DigitalDelay, rate=rate, glide_grid=grid,
                                 start_ms=150.0, target_ms=200.0)
             self.assertEqual(result["passed"], grid >= RISING_EDGE_GRID,
                              (rate, grid, result))
-        # The constructor, the same way: 830.056 ms is red (fix round 2
-        # claimed it, above its 829.5 ms), the edge's own 844.72 ms holds.
-        for glide_ms in (830.056, glide_of_grid(3.0)):
+        # The constructor, the same way: 830.056 ms and 844.84 ms (grid
+        # 3.0079, which re-audit fix round 1 claimed from its 844.72 ms)
+        # are red, the new edge's own 860.17 ms holds.
+        for glide_ms in (830.056, glide_of_grid(3.0079), glide_of_grid(4.0)):
             result = t2_measure(DigitalDelay, glide_ms=glide_ms,
                                 start_ms=150.0, target_ms=200.0)
             self.assertEqual(result["passed"],
@@ -1682,30 +1859,71 @@ class Tier1Fast(unittest.TestCase):
         result = tail_measure(SixtyDbTailDelay, 0.7, "fullscale")
         self.assertFalse(result["passed"], result)
 
-    def test_repeat_tone_can_hold_a_value_where_the_class_says_none(self):
-        # With Repeat Tone in, the node sends its damping state round, and
-        # that single-precision state can rest a few ulps above a small
-        # value v. Where 0.5 / (1 - f) is v, `recirculated` then rounds
-        # f x back up to v, and the line holds v for ever: 1 LSB at 0.5,
-        # 2 at 0.75, 5 at 0.9 on a 2 LSB DC, Tone 800 Hz, at audiodsp
-        # v0.6.2 (issue draft `audiodsp-feedback-delay-damping-holds-the-
-        # line.md`). The class says None there. Fix round 2's rule for
-        # Repeat Tone, one extra lap, declares a finite tail and is red.
-        for feedback, held in ((0.5, 1), (0.75, 2), (0.9, 5)):
+    def test_repeat_tone_stall_windows_are_stepped_clear(self):
+        # With Repeat Tone in, the node sends its single-precision damping
+        # state round, and that state can rest a few ulps above a small
+        # value v; where 0.5 / (1 - f) is v, `recirculated` then rounds
+        # f v back up to v, and the line holds v for ever (issue draft
+        # `audiodsp-feedback-delay-damping-holds-the-line.md`). Re-audit
+        # fix round 2 hands the node the nearer edge of the class's own
+        # window instead. The stall cells on a 2 LSB DC, 20 s at least:
+        # re-audit fix round 1's class says None and holds v; this class
+        # declares a bound and reaches exact zero inside it.
+        for feedback, tone_hz, held in ((0.5, 800.0, 1), (0.75, 800.0, 2),
+                                        (1.0 - 0.5 / 3.0, 800.0, 3),
+                                        (0.875, 800.0, 4), (0.9, 800.0, 5),
+                                        (0.5, 3000.0, 1)):
             result = tail_measure(DigitalDelay, feedback, "dc2",
-                                  tone_hz=800.0)
-            self.assertIsNone(result["declared"], feedback)
-            self.assertEqual(result["held"], held, (feedback, result))
-        result = tail_measure(OneLapToneDelay, 0.9, "dc2", tone_hz=800.0)
-        self.assertIsNotNone(result["declared"])
-        self.assertFalse(result["passed"], result)
-        # Where the class does declare a bound with Repeat Tone in, the
-        # low-pass still stretches the tail past one extra lap: Feedback
-        # grid 113, Tone at its 800 Hz stop, full scale.
+                                  tone_hz=tone_hz)
+            self.assertTrue(result["passed"], (feedback, tone_hz, result))
+            self.assertEqual(result["held"], 0, (feedback, tone_hz, result))
+            old = tail_measure(StallWindowToneDelay, feedback, "dc2",
+                               tone_hz=tone_hz, budget=20 * RATE)
+            self.assertIsNone(old["declared"], (feedback, tone_hz, old))
+            self.assertFalse(old["passed"], (feedback, tone_hz, old))
+            self.assertEqual(old["held"], held, (feedback, tone_hz, old))
+        # A Feedback on a window's edge: the re-refuter's k = 1 edge at
+        # Tone grid 0 came back through the Feedback macro 10^-17 inside
+        # `laps_to_zero`'s window and read None. Every value within a few
+        # float steps of the lower edge now declares a bound.
+        probe = DigitalDelay(silence_src(64), sample_rate=RATE)
+        probe.set_macro(TONE_I, 0)
+        excess = probe._tone_excess()[1]
+        edge = 0.5 / ((1.0 + dd.FEEDBACK_MARGIN) * (1.0 + excess))
+        for steps in range(-4, 5):
+            feedback = edge * (1.0 + steps * 2.0 ** -52)
+            effect = DigitalDelay(silence_src(64), sample_rate=RATE,
+                                  feedback=feedback)
+            effect.set_macro(TONE_I, 0)
+            self.assertIsNotNone(effect.tail_samples, (steps, feedback))
+        # Fix round 2's rule for Repeat Tone, one extra lap, is still red
+        # where a bound holds: Feedback grid 113, Tone at 800 Hz.
         feedback = 113 * 0.99 / 127.0
         for cls, passed in ((DigitalDelay, True), (OneLapToneDelay, False)):
             result = tail_measure(cls, feedback, "fullscale", tone_hz=800.0)
             self.assertEqual(result["passed"], passed, (cls, result))
+
+    def test_every_window_centre_reaches_zero(self):
+        # The k = 1 ... 50 window centres, f = 1 - 0.5 / k, at Repeat Tone
+        # grid 0, 64 and 126, on the 2 LSB DC (the line fills to 4k LSB and
+        # decays through k): each reaches exact zero inside a finite
+        # declared tail, and the handed Feedback stays within 3e-5 of the
+        # one asked. Re-audit fix round 1's class says None at every one.
+        for grid in (0, 64, 126):
+            tone_hz = 800.0 * 20.0 ** (grid / 127.0)
+            for k in range(1, 51):
+                feedback = 1.0 - 0.5 / k
+                result = tail_measure(DigitalDelay, feedback, "dc2",
+                                      tone_hz=tone_hz)
+                self.assertTrue(result["passed"], (grid, k, result))
+                self.assertEqual(result["held"], 0, (grid, k, result))
+                probe = DigitalDelay(silence_src(64), sample_rate=RATE,
+                                     feedback=feedback, tone_hz=tone_hz)
+                self.assertLess(abs(probe._feedback - feedback), 3e-5)
+                old = StallWindowToneDelay(silence_src(64), sample_rate=RATE,
+                                           feedback=feedback,
+                                           tone_hz=tone_hz)
+                self.assertIsNone(old.tail_samples, (grid, k))
 
     def _walk_tail(self, cls):
         """800 ms of 997 Hz, then Time 800 -> 12.5 ms at the default Glide
@@ -1944,6 +2162,48 @@ class ConstructorZeros(unittest.TestCase):
             renders.append(pull(effect, len(values)))
         self.assertTrue(np.array_equal(renders[0], renders[1]))
         self.assertGreater(int(np.abs(renders[0]).max()), 0)
+
+    def _clicks(self, **options):
+        """Impulses at frames 1 000 and 30 000 through the class (Feedback
+        0, Mix 2), Time moved to 100 ms on the block at frame 29 952: the
+        frames each impulse comes back at, and the knobs read after."""
+        values = [0] * 50000
+        values[1000] = 30000
+        values[30000] = 30000
+        effect = DigitalDelay(array_src(values), sample_rate=RATE,
+                              feedback=0.0, mix=2.0, **options)
+        frames = effect._frames
+
+        def move(frame):
+            if frame == 29952:
+                effect.set_macro(TIME_I, midi_of_ms(100.0))
+
+        out = left(pull(effect, len(values), on_block=move), 2)
+        first = int(np.argmax(np.abs(out[:29952]))) - 1000
+        second = int(np.argmax(np.abs(out[30001:]))) + 1
+        return frames, first, second, effect.get_macro(GLIDE_I)
+
+    def test_nan_glide_and_nan_line_build_on_their_stated_values(self):
+        # Gate re-audit 1: a NaN `glide_ms` passed the 8 s clamp and handed
+        # the node a NaN slew, which neither walks nor jumps, so a Time
+        # move did nothing (the click stayed at 16 800 frames) while
+        # get_macro(3) read the jump; a NaN `max_time_ms` passed both
+        # clamps, and the class reported 16 800 frames while the line
+        # played a 1-frame delay. NaN Glide is now the jump, as 0 and a
+        # negative are, and NaN `max_time_ms` is 800 ms.
+        nan = float("nan")
+        self.assertEqual(self._clicks(glide_ms=nan), (16800, 16800, 4800,
+                                                      0.0))
+        self.assertEqual(self._clicks(glide_ms=0.0), (16800, 16800, 4800,
+                                                      0.0))
+        frames, first, second, _ = self._clicks(max_time_ms=nan,
+                                                glide_ms=0.0)
+        self.assertEqual((frames, first, second), (16800, 16800, 4800))
+        effect = DigitalDelay(silence_src(512), sample_rate=RATE,
+                              max_time_ms=nan)
+        self.assertEqual(effect._max_time_ms, 800.0)
+        effect.set_macro(TIME_I, 127)
+        self.assertEqual(effect._frames, 38400)
 
 
 class ZeroBpmHost(unittest.TestCase):
