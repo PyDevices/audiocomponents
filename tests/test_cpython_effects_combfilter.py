@@ -240,6 +240,46 @@ def cents(measured, ideal):
     return 1200.0 * math.log(ideal / measured, 2.0) if measured else 1e9
 
 
+def laps_to_exact_zero(feedback, peak=32768.0):
+    """Laps of the line after which no sample can be non-zero, on audiodsp
+    v0.6.2 and later.
+
+    Rounding to nearest bounds a lap's peak by x' <= g x + 0.5, so
+    x_k <= g^k (peak - c) + c with c = 0.5 / (1 - g); and since audiodsp#154
+    no lap hands back a sample as large as the one it sent, so once the peak
+    is at most floor(c) it takes at most floor(c) more laps to reach 0. The
+    1e-6 keeps a c that is a whole number in exact arithmetic (10 at 0.95)
+    from flooring one short in float, where the loop would never end.
+    """
+    c = 0.5 / (1.0 - feedback)
+    stall = math.floor(c + 1e-6)
+    laps = 0
+    while peak >= stall + 1:
+        peak = feedback * (peak - c) + c
+        laps += 1
+    return laps + int(stall)
+
+
+def zero_bound_frames(hz, feedback, rate=SAMPLE_RATE):
+    """The tail bound in frames: `laps_to_exact_zero` laps, each at most one
+    frame past the line (the read interpolates towards the next older
+    frame)."""
+    return laps_to_exact_zero(feedback) * (math.ceil(rate / hz) + 1)
+
+
+def ring_period(values, asked, repeats=10):
+    """The ring's period, from the centroid of its `repeats`-th repeat,
+    found by walking repeat to repeat from the first one. A pulse keeps its
+    first moment through linear interpolation, so this reads the delay the
+    loop really has, fraction and all, while the ring is loud enough to
+    carry one."""
+    first = centroid(values, asked)
+    position = first
+    for _ in range(repeats - 1):
+        position = centroid(values, position + first)
+    return position / repeats
+
+
 def bin_db(values, hz, rate=SAMPLE_RATE, skip=0):
     """One DFT bin, in dB relative to full scale of the probe's own units."""
     real = imaginary = 0.0
@@ -553,6 +593,17 @@ class ResetEmptiesTheLine(unittest.TestCase):
     #: after `reset()` and reads exactly like a line that was never cleared.
     BURST_FROM = 12000
     BURST_TO = 22000
+    #: `reset()` lands the moment the burst stops, with the line at full
+    #: ring. Up to audiodsp v0.6.1 it could land anywhere after the burst,
+    #: because a line left alone parked on a few LSB for ever; since v0.6.2
+    #: (audiodsp#154) a line left alone empties itself, inside 11 544 frames
+    #: at 440 Hz / Feedback 0.9 (`zero_bound_frames`), so a reset 10 000
+    #: frames late found a line nearly drained by itself and the planted
+    #: fault below read 0 -- a control with no teeth. Here the 8192 frames
+    #: read after the reset hold the loudest part of the ring an un-reset
+    #: line still carries, from either end of the source (its first 12 000
+    #: frames are silence, and so is everything after 22 000).
+    RESET_AT = BURST_TO
 
     def residue(self, cls):
         values = array.array("h")
@@ -567,7 +618,7 @@ class ResetEmptiesTheLine(unittest.TestCase):
                                      channel_count=CHANNELS)
         effect = cls(source, frequency=440.0, feedback=0.9, mix=2.0,
                      glide=0.0)
-        pull(effect.output, 32000)
+        pull(effect.output, self.RESET_AT)
         effect.reset()
         return max(abs(v) for v in pull(effect.output, 8192)), effect, source
 
@@ -581,8 +632,10 @@ class ResetEmptiesTheLine(unittest.TestCase):
         self.assertGreater(max(abs(v) for v in pull(source, 48000)), 0)
 
     def test_a_line_left_full_is_red(self):
+        # Measured at v0.6.2: 32 768, the rail. A full line, not a parked
+        # LSB; the same reset 10 000 frames later read 0 here.
         residue, _effect, _source = self.residue(UnresetCombFilter)
-        self.assertGreater(residue, 0)
+        self.assertGreater(residue, 1000)
 
     def test_deinit_releases_the_nodes_and_leaves_the_source(self):
         source = tone(220.0, 8192)
@@ -594,16 +647,23 @@ class ResetEmptiesTheLine(unittest.TestCase):
         self.assertGreater(max(abs(v) for v in pull(source, 2048)), 0)
 
 
-class TheTailIsBoundedRatherThanZero(unittest.TestCase):
-    """The one Tier 1 invariant this class does not always meet, held to
-    both ends of what it does. `to_s16` rounds, so every |c| <= 0.5/(1-g) is
-    a fixed point of the loop -- but whether the loop can sit on one is
-    decided by the *fractional part* of `sample_rate / Frequency`, not by the
-    feedback alone. 440 Hz is 109.09 frames: the read is nearly exact and a
-    lone LSB survives its round trip. 438.3 Hz is 109.51: the interpolator
-    averages it with a zero neighbour and rounds it away. Both are asserted,
-    because the first alone would read as "this class never settles" and the
-    second alone as "it always does"."""
+class TheTailReachesExactZero(unittest.TestCase):
+    """Silence in, silence out, at every Feedback and every tuning, inside
+    a stated bound.
+
+    Up to audiodsp v0.6.1 this class could not meet it above Feedback 0.5:
+    the node's feedback write rounded to nearest, so every
+    |c| <= 0.5/(1-g) was a fixed point of the loop, and at a tuning whose
+    read lands nearly on a whole sample (440 Hz, 109.09 frames) a few LSB
+    went round for ever -- this class was `TheTailIsBoundedRatherThanZero`
+    and held the residue under that bound. v0.6.2 (audiodsp#154) truncates
+    the fed-back term toward zero exactly where rounding would hand it back
+    unchanged, so the tail now reaches exact zero at whole-sample and
+    half-sample tunings alike, inside `zero_bound_frames` of the burst's
+    end. Measured at v0.6.2 on this burst at 440 Hz: the last non-zero
+    frame is 3 164 / 4 906 / 9 597 / 18 109 frames after the burst at
+    Feedback 0.7 / 0.8 / 0.9 / 0.95, against bounds of 3 774 / 5 772 /
+    11 544 / 23 643."""
 
     #: 48 000 / 440 = 109.09 frames -- 0.09 of a sample off the grid.
     PARKS_HZ = 440.0
@@ -630,13 +690,36 @@ class TheTailIsBoundedRatherThanZero(unittest.TestCase):
     def test_below_half_the_line_reaches_exact_zero(self):
         self.assertEqual(self.residue(0.45), 0)
 
-    def test_a_whole_sample_tuning_parks_inside_the_closed_form_bound(self):
-        for feedback in (0.7, 0.8, 0.9):
+    def last_sound(self, feedback, seconds=4, tuned=None):
+        """Frames from the burst's last frame to the last non-zero one."""
+        values = array.array("h")
+        for frame in range(SAMPLE_RATE * seconds):
+            value = 0
+            if 2048 <= frame < 6848:
+                value = int(20000 * math.sin(2.0 * math.pi * 440.0 * frame
+                                             / SAMPLE_RATE))
+            for _ in range(CHANNELS):
+                values.append(value)
+        effect = combfilter.CombFilter(
+            audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
+                                channel_count=CHANNELS),
+            frequency=self.PARKS_HZ if tuned is None else tuned,
+            feedback=feedback, mix=2.0, glide=0.0)
+        y = pull(effect.output, SAMPLE_RATE * seconds)
+        last = max(i for i in range(len(y)) if y[i]) // CHANNELS
+        return last - 6847
+
+    def test_a_whole_sample_tuning_reaches_exact_zero_inside_the_bound(self):
+        for feedback in (0.7, 0.8, 0.9, 0.95):
             with self.subTest(feedback=feedback):
-                bound = math.floor(0.5 / (1.0 - feedback))
-                measured = self.residue(feedback)
+                bound = zero_bound_frames(self.PARKS_HZ, feedback)
+                measured = self.last_sound(feedback)
                 self.assertGreater(measured, 0)
-                self.assertLessEqual(measured, bound)
+                self.assertLessEqual(measured, bound,
+                                     "still sounding %d frames after the "
+                                     "burst, over the %d-frame bound"
+                                     % (measured, bound))
+                self.assertEqual(self.residue(feedback), 0)
 
     def test_a_half_sample_tuning_still_reaches_exact_zero(self):
         # The other end, and the reason the docstring's number is a bound
@@ -647,33 +730,35 @@ class TheTailIsBoundedRatherThanZero(unittest.TestCase):
                                               tuned=self.DRAINS_HZ), 0)
 
 
-class TheParkedRingIsTheNearestSample(unittest.TestCase):
-    """The TAIL-pitch bound. Above Feedback 0.5 the parked ring's period
-    is the nearest whole number of samples to F_s/Frequency, not the
-    fractional delay the comb was asked for: +17.4 cents at 1760 Hz /
-    Feedback 0.8 (27 samples at 48 kHz) and at most a half-sample —
-    about 70 cents — near 4 kHz. The first-repeat tap still lands
-    within 0.01 cents. Below Feedback 0.5, and at half-sample tunings,
-    the tail reaches exact zero."""
+class TheRingIsTheAskedPitchAndEnds(unittest.TestCase):
+    """The TAIL-pitch trait. The ring plays the fractional delay the comb
+    was asked for, through its tenth repeat within 1 cent, and then reaches
+    exact zero inside `zero_bound_frames`.
 
-    #: Half a sample at 4 kHz / 48 kHz is 70.67 cents; the bound the
-    #: class states is "about 70 cents".
-    HALF_SAMPLE_CENTS = 70.0
+    Up to audiodsp v0.6.1 this class was `TheParkedRingIsTheNearestSample`:
+    above Feedback 0.5 the tail parked on a ring whose period was the
+    nearest whole number of samples, +17.4 cents at 1760 Hz / Feedback 0.8,
+    for ever. v0.6.2 (audiodsp#154) empties the line, so there is no parked
+    ring left to measure; what the ear gets instead is the ring itself, and
+    that is what this class holds. Measured at v0.6.2: 1760 Hz / 0.8 rings
+    at 27.262 frames against the asked 27.273 (0.7 cents) and is silent
+    928 frames after the impulse (bound 1 508); 1000 Hz / 0.8 rings at
+    exactly 48 and is silent after 2 016 (bound 2 548). The line two samples
+    short rings at 25.000, 150.6 cents sharp."""
 
-    def parked_period(self, cls, hz, feedback, rate=SAMPLE_RATE, seconds=4):
+    #: The ring's period is held to this many cents of the asked delay.
+    RING_CENTS = 1.0
+
+    def ring(self, cls, hz, feedback, rate=SAMPLE_RATE, seconds=1):
+        """(period of the ring in frames, frames to its last non-zero
+        sample) for an impulse at frame 0."""
         frames = rate * seconds
         effect = cls(impulse_at(0, frames + 512, rate),
                      frequency=hz, feedback=feedback, mix=2.0, glide=0.0,
                      sample_rate=rate)
         y = left(pull(effect.output, frames))
-        edges = [i for i in range(1, len(y) - 2048, 1)
-                 if y[i - 1] == 0 and y[i] != 0 and i >= frames - rate]
-        if len(edges) < 4:
-            edges = [i for i in range(max(1, frames - rate), len(y))
-                     if y[i - 1] == 0 and y[i] != 0]
-        self.assertGreater(len(edges), 3, "tail did not oscillate")
-        gaps = [edges[i] - edges[i - 1] for i in range(1, len(edges))]
-        return sum(gaps) / len(gaps)
+        last = max(i for i in range(len(y)) if y[i])
+        return ring_period(y, rate / hz), last
 
     def delay_skew_frames(self, effect):
         """Asked delay minus the nearest whole sample. The clean class
@@ -683,18 +768,18 @@ class TheParkedRingIsTheNearestSample(unittest.TestCase):
             return float(round(asked) - 2) - round(asked)
         return asked - round(asked)
 
-    def test_1760_at_feedback_08_parks_27_samples_17_cents_sharp(self):
-        period = self.parked_period(combfilter.CombFilter, 1760.0, 0.8)
-        self.assertAlmostEqual(period, 27.0, delta=0.05)
+    def test_1760_at_feedback_08_rings_on_the_asked_pitch_then_ends(self):
+        period, last = self.ring(combfilter.CombFilter, 1760.0, 0.8)
         error = 1200.0 * math.log((SAMPLE_RATE / period) / 1760.0, 2.0)
-        self.assertAlmostEqual(error, 17.4, delta=0.2)
-        self.assertLess(abs(error), self.HALF_SAMPLE_CENTS)
+        self.assertLess(abs(error), self.RING_CENTS, period)
+        self.assertLessEqual(last, zero_bound_frames(1760.0, 0.8))
 
-    def test_1000_parks_on_the_asked_pitch(self):
-        period = self.parked_period(combfilter.CombFilter, 1000.0, 0.8)
-        self.assertAlmostEqual(period, 48.0, delta=0.05)
+    def test_1000_rings_on_the_asked_pitch_then_ends(self):
+        period, last = self.ring(combfilter.CombFilter, 1000.0, 0.8)
+        self.assertAlmostEqual(period, 48.0, delta=0.005)
         error = 1200.0 * math.log((SAMPLE_RATE / period) / 1000.0, 2.0)
-        self.assertAlmostEqual(error, 0.0, delta=0.2)
+        self.assertLess(abs(error), self.RING_CENTS, period)
+        self.assertLessEqual(last, zero_bound_frames(1000.0, 0.8))
 
     def test_the_first_repeat_at_1760_is_still_the_asked_tap(self):
         ideal = SAMPLE_RATE / 1760.0
@@ -705,10 +790,10 @@ class TheParkedRingIsTheNearestSample(unittest.TestCase):
         self.assertLess(abs(cents(centroid(y, ideal), ideal)), 0.01)
 
     def test_a_two_sample_shorter_line_is_outside_the_bound(self):
-        period = self.parked_period(TwoSampleShortCombFilter, 1760.0, 0.8)
+        period, _last = self.ring(TwoSampleShortCombFilter, 1760.0, 0.8)
         self.assertAlmostEqual(period, 25.0, delta=0.05)
         error = 1200.0 * math.log((SAMPLE_RATE / period) / 1760.0, 2.0)
-        self.assertGreater(abs(error), self.HALF_SAMPLE_CENTS)
+        self.assertGreater(abs(error), self.RING_CENTS)
 
     def test_the_surface_cannot_dial_the_two_sample_short(self):
         def build(cls):

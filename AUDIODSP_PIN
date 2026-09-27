@@ -165,5 +165,39 @@
 # The pyproject floors stay at >=0.5.1; raising them is a release-time
 # change and Phase 7's.
 #
+# 2026-09-27: v0.6.1 -> v0.6.2 (1c89b03), on Brad's instruction, the same
+# day: "merge it and release and move the pin ... Work unattended and
+# continue with effects after the release and pin move." v0.6.2 is on
+# TestPyPI and production PyPI (the first upload through audiodsp's own
+# Trusted Publisher). What moved beneath the components between v0.6.1 and
+# v0.6.2, by `git log v0.6.1..v0.6.2 -- src`: audiopump.Tap gained a C
+# stream reader (#152; no DSP node touched), and audioecho.FeedbackDelay's
+# fed-back term is truncated toward zero exactly where round-to-nearest
+# could hand a repeat back unchanged (#154, `recirculated()`,
+# src/shared/audiodsp_feedback_delay.c:344, called at :529), so a tail
+# reaches exact zero at every feedback. Below feedback 0.5 the output is
+# byte-identical; above it a tail's last few LSB differ, 1-3 LSB and at most
+# 6 at 0.99. That fix turned ten assertions red here, each pinning the old
+# floor: DigitalDelay's floor test, CombFilter's parked-residue, parked-ring
+# and un-reset-line tests, and Flanger's F8 audio T60 at Color max, which
+# reads 1.91 s against its 2.0 s bar (2.13 s at v0.6.1: the floor was
+# holding the ring up). The first eight are rewritten to the fixed
+# behaviour, each shown red at v0.6.1; Flanger's two stay red for the gate
+# audit, because the bar is not the pin move's to lower. Re-run here at the
+# new pin on Brad's workstation (Linux x86-64, Python 3.12, MicroPython
+# v1.29.0 + overlay and CircuitPython 10.3.0 + the apply scripts, both
+# rebuilt from v0.6.2): the unit suite `Ran 1601 tests ... FAILED
+# (failures=2, skipped=2)`, the two being Flanger's F8 rows above;
+# validate_api 55 instruments and 45 effects; validate_metadata valid;
+# flake8 clean; the smoke 45 classes, 249 patches, 0 failures on CPython,
+# MicroPython and CircuitPython, line for line what v0.6.1 printed. A
+# burst-and-two-seconds census of the whole catalogue (every class and
+# parked rebuild, constructor default and every patch, 316 cells; the anchor's
+# docs/effects-internal/probes/phase5_probes/pin062_catalogue_digest.py)
+# moved 18 cells, the same 18 with the same digests on all three
+# interpreters: CombFilter (5), the parked Flanger (6), TapeDelay (3),
+# AnalogDelay (2), PingPongDelay (1) and the parked DigitalDelay (1).
+# Pending both boards, as v0.6.1 was.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.1 094dde5203dadcbf30fe5f2b6a88c16e413799b8
+v0.6.2 1c89b032abb9e625390d634165a561683df81d14

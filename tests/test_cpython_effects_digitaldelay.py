@@ -505,6 +505,26 @@ def cents(ratio):
     return 1200.0 * math.log(ratio) / math.log(2.0)
 
 
+def laps_to_exact_zero(feedback, peak=32768.0):
+    """Laps of the line after which no sample can be non-zero, on audiodsp
+    v0.6.2 and later, at any Feedback below the node's 1.0.
+
+    Rounding to nearest still bounds a lap's peak by x' <= f x + 0.5, so
+    x_k <= f^k (peak - c) + c with c = 0.5 / (1 - f); and since audiodsp#154
+    no lap can hand back a sample as large as the one it sent, so once the
+    peak is at most floor(c) it takes at most floor(c) more laps to reach 0.
+    The 1e-6 keeps a c that is a whole number in exact arithmetic (10 at
+    0.95) from flooring one short in float, where the loop would never end.
+    """
+    c = 0.5 / (1.0 - feedback)
+    stall = math.floor(c + 1e-6)
+    laps = 0
+    while peak >= stall + 1:
+        peak = feedback * (peak - c) + c
+        laps += 1
+    return laps + int(stall)
+
+
 # --------------------------------------------------------------------------
 # The measurements, each returning {"passed": ...}
 
@@ -1481,18 +1501,34 @@ class Tier1Fast(unittest.TestCase):
         self.assertNotEqual(red, [], values)
         self.assertGreater(values["tail_samples"], declared)
 
-    def test_the_floor_bug_is_reported_as_unbounded(self):
-        # audiodsp v0.6.1 rounds the feedback write half away from zero, so
-        # from Feedback 0.5 a 1 LSB repeat writes itself back forever. The
-        # class says None there. When the node is fixed the residual below
-        # goes to 0, and tail_samples can come back for the top half.
+    def test_the_floor_is_gone_at_feedback_half(self):
+        # Up to audiodsp v0.6.1 the node rounded the feedback write to
+        # nearest, so from Feedback 0.5 a 1 LSB repeat wrote itself back
+        # forever: on this material 1 LSB was still going round after three
+        # seconds. v0.6.2 (audiodsp#154) truncates the fed-back term toward
+        # zero exactly where rounding would hand it back unchanged, so the
+        # largest sample on the line falls by at least 1 LSB a lap and, from
+        # full scale, by the geometric bound until then
+        # (`laps_to_exact_zero`). The tail therefore ends inside that many
+        # laps of at most one frame past the 600-frame Time (measured at
+        # v0.6.2: silent 8 748 frames after the input, bound 9 616). The class
+        # still says None here: its declaration is DigitalDelay's re-audit
+        # to change, not this pin move's.
         values = [0] * 256 + sine_values(997.0, 2048, RATE, 12000)
+        input_end = len(values)
         values += [0] * (3 * RATE)
         effect = DigitalDelay(array_src(values), sample_rate=RATE,
                               time_ms=12.5, feedback=0.5, mix=2.0)
         self.assertIsNone(effect.tail_samples)
         out = pull(effect, len(values))
-        self.assertGreater(int(np.max(np.abs(out[-600 * 2:]))), 0)
+        bound = laps_to_exact_zero(0.5) * (600 + 1)
+        nonzero = np.nonzero(out)[0]
+        self.assertGreater(len(nonzero), 0)
+        last = int(nonzero[-1]) // 2
+        self.assertLessEqual(last - input_end, bound,
+                             "the tail ran %d frames past the input, "
+                             "over the %d-frame bound"
+                             % (last - input_end, bound))
         effect.set_macro(FEEDBACK_I, 64)
         self.assertIsNotNone(effect.tail_samples)
 

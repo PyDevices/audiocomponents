@@ -63,32 +63,28 @@ first sound then arrives one line-length late - 0.25 ms at 4 kHz, 50 ms at
 20 Hz. That is the comb, not latency; it is the delay you asked for by
 tuning it.
 
-**Above Feedback 0.5 the tail may never reach zero, and the tuning decides
-whether it does.** The node's line is int16 and `to_s16` rounds, so
-`to_s16(g*c) == c` for every `|c| <= 0.5/(1-g)`: the loop has fixed points,
-and after the music stops it can park on one for as long as the graph runs.
-Whether it parks depends on the *fractional part* of `sample_rate /
-Frequency`. Measured on ten-second renders after a 0.2 s burst, at 48 kHz:
-tuned to **1000 Hz, where 48 000/f is a whole 48 frames, it parks on 10 LSB
-at Feedback 0.95** - `floor(0.5/(1-g))`, the bound, hit exactly - and on 8
-LSB at 440 Hz and 6 at 220; tuned to **438.3 Hz, half a sample off the
-grid, it reaches exact zero at every Feedback this class offers**, because
-the interpolator averages the last LSB with a zero neighbour and rounds it
-away. Below Feedback 0.5 it always reaches zero.
-
-**Above Feedback 0.5 the parked ring's period is the nearest whole number
-of samples to F_s/Frequency, not the fractional delay the comb was asked
-for: +17.4 cents at 1760 Hz / Feedback 0.8 (27 samples at 48 kHz) and at
-most a half-sample — about 70 cents — near 4 kHz. The first-repeat tap
-still lands within 0.01 cents. Below Feedback 0.5, and at half-sample
-tunings, the tail reaches exact zero.** Nothing on this palette removes
-the parked case — `cut_hz` is a DC blocker and this is not DC; a Tone
-low enough to drain 1760/0.8 misses the 1 kHz park and breaks the peak
-law — so `TAIL_SAMPLES` is `None`, `reset()` clears it, and the
-silence-in-silence-out invariant is demonstrated inside that bound and
-disconfirmed outside it. This class is a tuned resonator: Frequency is a
-pitch, and the first-repeat tap is the note it plays. The parked ring is
-the leftover, not the note.
+**The tail reaches exact zero at every Feedback and every tuning.** Up to
+audiodsp v0.6.1 it could not above Feedback 0.5: the node's int16 line
+rounded the feedback write to nearest, so every `|c| <= 0.5/(1-g)` was a
+fixed point of the loop, and at a tuning whose read lands near a whole
+sample the tail parked on a few LSB for as long as the graph ran (10 LSB at
+1000 Hz / Feedback 0.95), ringing at the nearest whole-sample period
+(+17.4 cents at 1760 Hz / Feedback 0.8). audiodsp v0.6.2 (#154) truncates
+the fed-back term toward zero exactly where rounding would hand it back
+unchanged, so the line empties: from full scale its loudest sample falls by
+the geometric law until it is within `floor(0.5/(1-g))` LSB, then by at
+least one LSB a lap. Measured at v0.6.2, 48 kHz, Tone off and Trim flat,
+after an impulse: 1760 Hz / 0.8 is silent after 928 frames, 1000 Hz / 0.95
+after 7 488, and 20 Hz / 0.95, the slowest corner of the surface, after
+374 400 (7.8 s), each inside that lap bound times the line (511 413 frames,
+10.7 s, at 20 Hz / 0.95). While it rings, it rings at the fractional delay
+it was asked for: 1760 Hz / 0.8 at 27.262 frames against the asked 27.273,
+0.7 cents, through its tenth repeat, and the first-repeat tap lands within
+0.01 cents. `TAIL_SAMPLES` stays `None` for now: a finite bound that depends
+on the setting is derivable, but declaring one changes an adopted class's
+surface, and that is the Phase 5 gate audit's call, not the pin move's.
+This class is a tuned resonator: Frequency is a pitch, and the first-repeat
+tap is the note it plays.
 
 **Two traits this class does not have.** The *negative* comb, whose peaks sit
 on the odd half-multiples and which sounds hollow rather than pitched, is
@@ -172,13 +168,12 @@ class CombFilter(_component.Component):
     CAPABILITIES = ()
     LATENCY_SAMPLES = 0
 
-    #: Not finitely bounded. Above Feedback 0.5 the parked ring's period
-    #: is the nearest whole number of samples to F_s/Frequency, not the
-    #: fractional delay the comb was asked for: +17.4 cents at 1760 Hz /
-    #: Feedback 0.8 (27 samples at 48 kHz) and at most a half-sample —
-    #: about 70 cents — near 4 kHz. The first-repeat tap still lands
-    #: within 0.01 cents. Below Feedback 0.5, and at half-sample tunings,
-    #: the tail reaches exact zero.
+    #: Declared unbounded, conservatively. Since audiodsp v0.6.2 (#154) the
+    #: tail reaches exact zero at every setting, inside
+    #: `laps * (ceil(F_s/Frequency) + 1)` frames (the module docstring has
+    #: the lap law and the numbers); up to v0.6.1 it could park for ever
+    #: above Feedback 0.5. Declaring the finite bound is the gate audit's
+    #: change to make.
     TAIL_SAMPLES = None
 
     MACRO_LABELS = ("Frequency", "Feedback", "Mix", "Tone", "Trim", "Glide")

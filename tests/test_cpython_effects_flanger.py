@@ -559,11 +559,22 @@ class F8ColorCeiling(unittest.TestCase):
                 t60 = (start - burst) / float(rate)
         return t60
 
+    #: Why the two tests below are red at audiodsp v0.6.2, said once. The
+    #: bar is the gate audit's to move or keep, not the pin move's.
+    F8_AT_V062 = (
+        "F8's 2.0 s bar at Color max on the 440 Hz burst measures %.2f s at "
+        "audiodsp v0.6.2, against 2.13 s at v0.6.1. audiodsp#154 empties "
+        "the line where rounding used to hold a few LSB going round for "
+        "ever, and part of the old T60 was that floor holding the ring up "
+        "(the 200 Hz row reads 2.13 s now, 2.35 s at v0.6.1, and still "
+        "passes). The bar is left where it is and listed for the Phase 5 "
+        "gate audit.")
+
     def test_audio_t60_at_color_max_is_at_least_two_seconds(self):
         """F8 audio: Color-max cut is 0.4 Hz so the ring clears 2 s."""
         t60 = self._audio_t60()
         self.assertIsNotNone(t60, "never reached −60 dB")
-        self.assertGreaterEqual(t60, 2.0, t60)
+        self.assertGreaterEqual(t60, 2.0, self.F8_AT_V062 % t60)
 
     def test_audio_t60_at_200hz_is_at_least_two_seconds(self):
         t60 = self._audio_t60(hz=200.0)
@@ -580,6 +591,10 @@ class F8ColorCeiling(unittest.TestCase):
             t60 = self._audio_t60(cls, listen_s=2.5)
             passed = t60 is not None and t60 >= 2.0
             return {"passed": passed, "red": [{"t60": t60}]}
+        clean = self._audio_t60(listen_s=2.5)
+        # null_build_red needs the clean class to pass first; say why not.
+        self.assertTrue(clean is not None and clean >= 2.0,
+                        self.F8_AT_V062 % (clean or 0.0))
         kit_faults.null_build_red(Flanger, measure, label="Flanger F8 audio")
 
     def test_default_audio_tail_is_not_two_seconds(self):
