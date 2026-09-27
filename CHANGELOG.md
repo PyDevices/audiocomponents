@@ -6,6 +6,24 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Added
+
+- **`DigitalDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** a clean
+  interpolated line with the Boss DD-2's control law on one
+  `audioecho.FeedbackDelay`. Turning Time pitch-bends the repeats at a rate
+  Glide sets instead of clicking, every static Time lands on a whole frame,
+  Mix 0 is a wire while the line keeps recording, and Repeat Tone and Repeat
+  Cut put the pedal's 7 kHz and 40 Hz corners into the loop as knobs that
+  default out. It lives in `lib/audioeffects/rebuilt/digitaldelay.py`, and
+  `audioeffects.DigitalDelay` is still the old class. It is parked on a
+  floor bug in the node: from Feedback 0.5 up the feedback write can hold
+  1 LSB (50 at 0.99) going round for ever, which needs an audiodsp release.
+  The docstring states the input ceiling (-3 dBFS peak at the defaults, -4
+  over the shipped patches, on `noise_det`) and Repeat Tone's flat top at
+  22.05 kHz. Board cost is unmeasured.
+
 ## v0.3.2 (2026-09-25)
 
 No change to either package's code: both packages are 0.3.1 under a new

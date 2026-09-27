@@ -11,6 +11,17 @@ in this file.
 
 The rebuild is parked (not in `rebuilt.ADOPTED`), so the class is reached by
 `rebuilt.module_class("DigitalDelay")`.
+
+Fix round 1 (2026-09-27, after gate audit round 1): T2's pitch is read by a
+local least-squares fit against the dossier's own law (787.5 / glide_ms,
+written out here, never the class's `slew_of`), with a planted wrong Glide
+law; T1 has a dry fault that shows below -6 dBFS; T5's compounding clause
+has a measurement and an out-of-loop fault, and its out-stop fault is one
+no position dials at any rate; every fault's reachability walk runs at
+48, 44.1 and 22.05 kHz with a reading of what the node is handed (or what
+the output does) at the position walked. The input ceiling, the Glide
+round trip, a 0 bpm host and Repeat Tone's clamp at 22.05 kHz each have a
+test beside a planted fault.
 """
 
 import math
@@ -71,6 +82,19 @@ class DryScaledDelay(DigitalDelay):
         self._output = kit_faults.OneLsbScale(self._delay)
 
 
+class DryGainDelay(DigitalDelay):
+    """T1 at every level the row names: the output +0.1 dB
+    (`kit_faults.HiddenGain`, LEVEL's own fault). `OneLsbScale` is the
+    identity below 16 384 LSB, so on the -20 and -40 dBFS materials only
+    this one can go red."""
+
+    NAME = 'DigitalDelay'
+
+    def _build(self, *arguments, **options):
+        DigitalDelay._build(self, *arguments, **options)
+        self._output = kit_faults.HiddenGain(self._delay, 0.1)
+
+
 class _Stepper:
     """Pulls the owner's node, stepping its delay from Python first: the
     finest a Python-driven Time can move is once per block."""
@@ -129,6 +153,17 @@ class StaircaseDelay(DigitalDelay):
         self._delay.set(delay_ms=current)
 
 
+class HalfGlideMsDelay(DigitalDelay):
+    """T2: the Glide law wrong - the knob's milliseconds halved, so the node
+    walks at twice the dossier's 787.5 / glide_ms. A measurement that took
+    its law from the class's own `slew_of` could not see it."""
+
+    NAME = 'DigitalDelay'
+
+    def _glide_ms(self):
+        return 0.5 * DigitalDelay._glide_ms(self)
+
+
 class HalfFrameDelay(DigitalDelay):
     """T3: Time handed to the node half a frame off the whole frame, so the
     read interpolator takes the top of the band down on every pass - the
@@ -151,8 +186,10 @@ class LinearMapDelay(DigitalDelay):
 
 
 class OpenTopToneDelay(DigitalDelay):
-    """T5: Repeat Tone's top stop pre-warped to a large number instead of
-    exactly 0, so the default is not out of circuit."""
+    """Superseded at fix round 1, kept so the round-1 probes still import:
+    Repeat Tone's top stop pre-warped from the clamped 16 kHz. At 22.05 kHz
+    that is 6 183.7, exactly what Tone positions 111-126 hand the node, so
+    the surface dials it there. `RawTopToneDelay` replaces it."""
 
     NAME = 'DigitalDelay'
 
@@ -160,6 +197,125 @@ class OpenTopToneDelay(DigitalDelay):
         if position >= 1.0:
             return nominal_damping_hz(self._hz(16000.0), self._sample_rate)
         return DigitalDelay._tone_damping(self, position)
+
+
+class RawTopToneDelay(DigitalDelay):
+    """T5's out stop: Repeat Tone's top stop hands the node the span's top
+    corner, clamped below Nyquist, as a raw `damping_hz` (16 000 / 16 000 /
+    10 804.5 at 48 / 44.1 / 22.05 kHz) instead of exactly 0. Every in-circuit
+    position hands a pre-warped value, which is lower at every rate, so no
+    position reaches it."""
+
+    NAME = 'DigitalDelay'
+
+    def _tone_damping(self, position):
+        if position >= 1.0:
+            return self._hz(16000.0)
+        return DigitalDelay._tone_damping(self, position)
+
+
+class CornerShiftDelay(DigitalDelay):
+    """T5's corner clauses: both filters pre-warped for a corner 15 % above
+    the label. Both filters are out at the defaults, so it is inert there by
+    design; it is read at the corner cells."""
+
+    NAME = 'DigitalDelay'
+
+    def _tone_damping(self, position):
+        if position >= 1.0:
+            return 0.0
+        corner = 1.15 * _component.macro_value(self._MACRO_RANGES[TONE_I],
+                                               position)
+        return nominal_damping_hz(self._hz(corner), self._sample_rate)
+
+    def _cut_hz(self, position):
+        if position <= 0.0:
+            return 0.0
+        corner = 1.15 * _component.macro_value(self._MACRO_RANGES[CUT_I],
+                                               position)
+        return dd.nominal_cut_hz(self._hz(corner), self._sample_rate)
+
+
+class PostCutDelay(DigitalDelay):
+    """T5's compounding clause: Repeat Cut moved out of the loop onto the
+    output - the same one-pole, the same pre-warp, applied once. One pass
+    is identical to the class; the repeats do not compound."""
+
+    NAME = 'DigitalDelay'
+
+    def _build(self, *arguments, **options):
+        self._post = 0.0
+        self._hp = [0.0, 0.0]
+        DigitalDelay._build(self, *arguments, **options)
+        self._output = _PostHighPass(self)
+
+    def _cut_hz(self, position):
+        self._post = DigitalDelay._cut_hz(self, position)
+        return 0.0
+
+
+class _PostHighPass:
+    def __init__(self, owner):
+        self._owner = owner
+        node = owner._delay
+        self.sample_rate = node.sample_rate
+        self.channel_count = node.channel_count
+        self.bits_per_sample = 16
+        self.samples_signed = True
+
+    def _reset_buffer(self, single_channel_output=False, audio_channel=0):
+        audiocore.reset_buffer(self._owner._delay)
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        owner = self._owner
+        result, data = audiocore.get_buffer(owner._delay)
+        raw = bytes(data)
+        if not raw or owner._post <= 0.0:
+            return result, memoryview(raw)
+        a = 1.0 - math.exp(-2.0 * math.pi * owner._post / owner._sample_rate)
+        v = np.frombuffer(raw, dtype="<i2").astype(np.float64)
+        channels = self.channel_count
+        out = np.empty_like(v)
+        for c in range(channels):
+            state = owner._hp[c]
+            column = v[c::channels]
+            filtered = np.empty_like(column)
+            for i in range(len(column)):
+                state += a * (column[i] - state)
+                filtered[i] = column[i] - state
+            owner._hp[c] = state
+            out[c::channels] = filtered
+        out = np.clip(np.where(out >= 0, np.trunc(out + 0.5),
+                               np.trunc(out - 0.5)), -32768, 32767)
+        return result, memoryview(out.astype("<i2").tobytes())
+
+
+class ZeroBpmDelay(DigitalDelay):
+    """The round-1 reading of a host's tempo: 0 bpm read as 120 bpm, so a
+    host that reports no tempo drags Time to 120 bpm's value."""
+
+    NAME = 'DigitalDelay'
+
+    def _synced_ms(self):
+        transport, state = self._transport_state()
+        if transport is _component.static_transport:
+            return None
+        bpm = float(state[2]) if state[2] else 120.0
+        index = int(round(self._value(DIVISION_I)))
+        index = min(len(dd.DIVISION_BEATS) - 1, max(0, index))
+        return dd.DIVISION_BEATS[index] * 60000.0 / bpm
+
+
+class JumpSeedGlideDelay(DigitalDelay):
+    """The round-1 Glide seeding: a constructor Glide at or under 800 ms
+    seeded at position 0, which the surface defines as the jump."""
+
+    NAME = 'DigitalDelay'
+
+    def _build(self, *arguments, **options):
+        DigitalDelay._build(self, *arguments, **options)
+        if self._macros[GLIDE_I] <= dd.GLIDE_FLOOR:
+            self._macros[GLIDE_I] = 0.0
 
 
 # --------------------------------------------------------------------------
@@ -290,57 +446,189 @@ def t1_measure(cls, rate=RATE, channels=2, **options):
             "frames": frames_t}
 
 
-def t2_render(cls, rate, glide_ms, start_ms, target_ms, move_at=20480):
-    slew = dd.slew_of(glide_ms)
-    nominal = 0
-    if target_ms is not None and slew > 0.0:
-        nominal = int(abs(target_ms - start_ms) / slew * rate / 1000.0)
-    frames = move_at + nominal + int(0.3 * rate)
-    source = array_src(sine_values(997.0, frames, rate, 12000), 2, rate)
+def t1_quiet(cls, dbfs, rate=RATE, channels=2, **options):
+    """WIRE over the first T - 1 frames on `noise_det` at `dbfs` peak: the
+    row's quieter levels, where `OneLsbScale` cannot show."""
+    options.setdefault("glide_ms", 4000.0)
+    effect_probe = cls(silence_src(64, channels, rate), sample_rate=rate,
+                       **options)
+    frames_t = effect_probe._frames
+    effect_probe.deinit()
+    total = frames_t + 256
+    data = probes.noise_det(frames=total, dbfs=dbfs, channels=channels)
+    effect = cls(probes.ArraySource(data, rate=rate, channels=channels,
+                                    block=BLOCK), sample_rate=rate, **options)
+    out = pull(effect, total, channels)
+    src = np.array(data, dtype=np.int16)
+    window = (frames_t - 1) * channels
+    differing = int(np.count_nonzero(out[:window] != src[:window]))
+    return {"passed": differing == 0, "differing": differing,
+            "peak": int(np.abs(src).max())}
+
+
+def dossier_slew(glide_ms):
+    """The dossier's section 6 Glide law, written out here and never taken
+    from the class: 787.5 ms over `glide_ms`, pinned at 0.99, 0 the jump."""
+    glide_ms = float(glide_ms)
+    if glide_ms <= 0.0:
+        return 0.0
+    return min(0.99, 787.5 / glide_ms)
+
+
+def glide_of_grid(grid):
+    """The Glide knob's label at a grid position: log 800-8000 ms, grid 0
+    the jump (dossier section 6)."""
+    if grid <= 0:
+        return 0.0
+    return 800.0 * 10.0 ** (grid / 127.0)
+
+
+def ls_hz(segment, rate):
+    """The frequency whose sine, with a phase and a DC term, fits `segment`
+    best in least squares. It reads only the samples it is given - the
+    analytic signal's FFT reads the whole render, which is what failed on
+    the near-stall rising cells - and it takes no law: the search starts
+    at the segment's own spectral peak, walks in 10-cent steps until the
+    minimum is inside the bracket, then narrows to 1 cent and a golden
+    section."""
+    seg = np.asarray(segment, dtype=np.float64)
+    n = len(seg)
+    t = np.arange(n) / float(rate)
+    ones = np.ones(n)
+
+    def residual(cents_off, base):
+        f = base * 2.0 ** (cents_off / 1200.0)
+        w = 2.0 * math.pi * f * t
+        basis = np.stack([np.sin(w), np.cos(w), ones], axis=1)
+        coef = np.linalg.lstsq(basis, seg, rcond=None)[0]
+        return float(np.sum((seg - basis.dot(coef)) ** 2))
+
+    pad = 1 << int(math.ceil(math.log(max(16 * n, 1 << 16), 2)))
+    spec = np.abs(np.fft.rfft((seg - seg.mean()) * np.hanning(n), pad))
+    spec[0] = 0.0
+    base = max(float(np.argmax(spec)) * rate / pad, 5.0)
+    centre = 0.0
+    for _ in range(40):
+        offsets = centre + np.arange(-300.0, 301.0, 10.0)
+        errors = [residual(c, base) for c in offsets]
+        k = int(np.argmin(errors))
+        centre = float(offsets[k])
+        if 0 < k < len(offsets) - 1:
+            break
+    offsets = centre + np.arange(-10.0, 10.5, 1.0)
+    centre = float(offsets[int(np.argmin([residual(c, base)
+                                          for c in offsets]))])
+    lo, hi = centre - 1.0, centre + 1.0
+    g = (math.sqrt(5.0) - 1.0) / 2.0
+    a, b = hi - g * (hi - lo), lo + g * (hi - lo)
+    fa, fb = residual(a, base), residual(b, base)
+    for _ in range(30):
+        if fa < fb:
+            hi, b, fb = b, a, fa
+            a = hi - g * (hi - lo)
+            fa = residual(a, base)
+        else:
+            lo, a, fa = a, b, fb
+            b = lo + g * (hi - lo)
+            fb = residual(b, base)
+    return base * 2.0 ** ((lo + hi) / 2400.0)
+
+
+def t2_render(cls, rate, values, start_ms, target_ms, glide_ms, glide_grid,
+              move_at, frames):
+    source = array_src(values, 2, rate)
     effect = cls(source, sample_rate=rate, time_ms=start_ms, feedback=0.0,
                  mix=2.0, glide_ms=glide_ms)
+    if glide_grid is not None:
+        effect.set_macro(GLIDE_I, glide_grid)
 
     def move(frame):
         if target_ms is not None and frame == move_at:
             effect.set_macro(TIME_I, midi_of_ms(target_ms))
 
-    out = left(pull(effect, frames, 2, on_block=move), 2)
-    return out, nominal
+    return left(pull(effect, frames, 2, on_block=move), 2)
 
 
 def t2_measure(cls, rate=RATE, glide_ms=3937.5, start_ms=200.0,
-               target_ms=150.0, move_at=20480):
-    """The wet pitch against w_s (1 - dD) during the walk, the residual
-    50-250 ms after it, and the no-step clause in three windows: the walk
-    (less a 128-frame margin, inside which the node's float32 walk ends;
-    A8.1 reads it ending up to 105 frames early) against the signed bar
-    |1 - dD| x the unramped maximum, the margin against the looser of the
-    two legitimate slopes, and the frames after against the unramped
-    maximum, each with 5 % for phase sampling."""
-    slew = dd.slew_of(glide_ms)
-    y, nominal = t2_render(cls, rate, glide_ms, start_ms, target_ms, move_at)
-    base, _ = t2_render(cls, rate, glide_ms, start_ms, None, move_at)
-    d_base = float(np.abs(np.diff(base[move_at:])).max())
+               target_ms=150.0, move_at=20480, glide_grid=None, level=12000):
+    """T2's three clauses at one cell, against the dossier's own law.
+
+    The law is w_s (1 - dD) with dD = 787.5 / (the Glide asked) - the
+    constructor's `glide_ms`, or the knob's label at `glide_grid` - never
+    the class's own `slew_of`. The walk's end is read off a ramp render of
+    the same move (the node's float32 walk ends early, A8.1). Pitch: the
+    least-squares frequency of the walk less a margin of min(400, walk/10)
+    frames at each end; residual: the same fit 50-250 ms after the walk.
+    No-step: the largest first difference in the walk against
+    1.05 |1 - dD| x the unramped maximum, a gap past the ramp's end against
+    the looser legitimate slope, and 2000 frames after against the unramped
+    maximum. `body` is the walk's largest step outside its last block, so
+    a staircase's one remainder jump at the end is reported apart."""
+    asked = glide_ms if glide_grid is None else glide_of_grid(glide_grid)
+    slew = dossier_slew(asked)
     falling = target_ms < start_ms
     ratio = (1.0 + slew) if falling else (1.0 - slew)
-    end = move_at + nominal
-    walk = float(np.abs(np.diff(y[move_at - 1:end - 128 + 1])).max())
-    gap = float(np.abs(np.diff(y[end - 128:end + 64 + 1])).max())
-    after = float(np.abs(np.diff(y[end + 64:end + 64 + 2000])).max())
-    hz = inst_hz(y, rate)
-    during = float(np.median(hz[move_at + 400:end - 400]))
-    residual = float(np.median(hz[end + int(0.05 * rate):
-                                  end + int(0.25 * rate)]))
-    pitch_error = cents(during / (997.0 * ratio))
-    residual_error = cents(residual / 997.0)
-    passed = (abs(pitch_error) <= 10.0 and abs(residual_error) <= 1.0
-              and walk <= 1.05 * ratio * d_base
-              and gap <= 1.05 * max(ratio, 1.0) * d_base
-              and after <= 1.05 * d_base)
-    return {"passed": passed, "pitch_cents": pitch_error,
-            "residual_cents": residual_error, "walk": walk, "gap": gap,
-            "after": after, "unramped": d_base,
-            "bar": 1.05 * ratio * d_base}
+    nominal = (int(abs(target_ms - start_ms) / slew * rate / 1000.0)
+               if slew > 0.0 else 0)
+    frames = move_at + nominal + int(0.35 * rate) + 4096
+    sine = sine_values(997.0, frames, rate, level)
+    y = t2_render(cls, rate, sine, start_ms, target_ms, glide_ms, glide_grid,
+                  move_at, frames)
+    base = t2_render(cls, rate, sine, start_ms, None, glide_ms, glide_grid,
+                     move_at, frames)
+    d_base = float(np.abs(np.diff(base[move_at:])).max())
+    k = max(1, -(-frames // 60000))
+    ramp = [i // k - 30000 for i in range(frames)]
+    r = t2_render(cls, rate, ramp, start_ms, target_ms, glide_ms, glide_grid,
+                  move_at, frames)
+    delay = np.arange(frames) - k * (r + 30000.0)
+    target_frames = int(math.floor(target_ms * rate / 1000.0 + 0.5))
+    short = np.where(np.abs(delay[move_at:] - target_frames) > 2 * k + 2)[0]
+    end = move_at + (int(short.max()) + 1 if len(short) else 0)
+    walked = end - move_at
+    result = {"slew": slew, "ratio": ratio, "unramped": d_base,
+              "walk_frames": walked, "nominal": nominal, "law": "dossier",
+              "bar": 1.05 * ratio * d_base}
+    if slew <= 0.0 or walked < 64 or end + 4096 > len(y):
+        step = float(np.abs(np.diff(y[move_at - 1:move_at + 256])).max())
+        result.update({"passed": False, "walk": step, "gap": step,
+                       "after": step, "body": step, "end": None,
+                       "bar_gap": result["bar"], "bar_after": result["bar"],
+                       "pitch_cents": None, "residual_cents": None,
+                       "why": "no walk read off the ramp"})
+        return result
+    a = move_at + walked // 10
+    b = end - walked // 10
+    result["slew_measured"] = (
+        abs(float(np.polyfit(np.arange(a, b), delay[a:b], 1)[0]))
+        if b - a > 10 else float("nan"))
+    slack = 2 * k + 2
+    margin = int(math.ceil((slack + (slack - 2) // 2) / slew)) + 2
+    walk = float(np.abs(np.diff(y[move_at - 1:end + 1])).max())
+    body = float(np.abs(np.diff(y[move_at - 1:max(move_at, end - BLOCK)
+                                  + 1])).max())
+    end_jump = float(np.abs(np.diff(y[max(move_at, end - BLOCK) - 1:
+                                      end + 1])).max())
+    gap = float(np.abs(np.diff(y[end:end + margin + 1])).max())
+    after = float(np.abs(np.diff(y[end + margin:end + margin + 2000])).max())
+    edge = min(400, walked // 10)
+    window = walked - 2 * edge
+    pitch = cents(ls_hz(y[move_at + edge:end - edge], rate)
+                  / (997.0 * ratio))
+    settled = end + margin
+    residual = cents(ls_hz(y[settled + int(0.05 * rate):
+                             settled + int(0.25 * rate)], rate) / 997.0)
+    bar_gap = 1.05 * max(ratio, 1.0) * d_base
+    bar_after = 1.05 * d_base
+    passed = (abs(pitch) <= 10.0 and abs(residual) <= 1.0
+              and walk <= result["bar"] and gap <= bar_gap
+              and after <= bar_after)
+    result.update({"passed": passed, "pitch_cents": pitch,
+                   "residual_cents": residual, "walk": walk, "body": body,
+                   "end": end_jump, "gap": gap, "after": after,
+                   "bar_gap": bar_gap, "bar_after": bar_after,
+                   "window": window})
+    return result
 
 
 def t3_burst(rate):
@@ -465,10 +753,13 @@ def t5_out_identical(cls, rate=RATE, channels=2):
     effect = cls(probes.ArraySource(noise, rate=rate, channels=channels,
                                     block=BLOCK),
                  sample_rate=rate, time_ms=12.5, feedback=0.6, mix=2.0)
+    node_ms = effect._node_ms
     out = pull(effect, frames, channels)
+    # The reference takes the class's whole-frame Time (12.5 ms is 551.25
+    # frames at 44.1 kHz; the class lands it on 551, dossier section 6).
     reference = dd.audioecho.FeedbackDelay(
         sample_rate=rate, channel_count=channels, max_delay_ms=801.0,
-        delay_ms=12.5, feedback=0.6, mix=2.0)
+        delay_ms=node_ms, feedback=0.6, mix=2.0)
     reference.play(probes.ArraySource(noise, rate=rate, channels=channels,
                                       block=BLOCK))
     ref = array("h")
@@ -494,6 +785,218 @@ def t5_measure(cls, rate=RATE):
               and differing == 0)
     return {"passed": passed, "tone": tone, "cut": cut,
             "differing": differing}
+
+
+def t5_compound(cls, rate=RATE, level=8192, settings=None, **options):
+    """T5's compounding clause: the T3 burst at Feedback 0.8, Mix 2, Time
+    350.0 ms; repeat 8's share of each band against repeat 1's, in dB, for
+    20-100 Hz (the Cut clause's band), 100 Hz-1 kHz, 1-4 kHz and
+    4 kHz-Nyquist."""
+    n = int(rate * 50.0 / 1000.0)
+    burst = np.round(np.random.RandomState(12345).uniform(-1.0, 1.0, n)
+                     * level).astype(np.int16)
+    opts = {"time_ms": 350.0, "feedback": 0.8, "mix": 2.0,
+            "glide_ms": 4000.0}
+    opts.update(options)
+    frames_t = dd.whole_frames(350.0, rate)
+    total = 9 * frames_t + n + rate // 10
+    values = np.zeros(total, dtype=np.int16)
+    values[:n] = burst
+    effect = cls(array_src(values.tolist(), 2, rate), sample_rate=rate,
+                 **opts)
+    for index in sorted(settings or {}):
+        effect.set_macro(index, settings[index])
+    y = left(pull(effect, total, 2), 2)
+    bands = ((20.0, 100.0), (100.0, 1000.0), (1000.0, 4000.0),
+             (4000.0, rate / 2.0 + 1.0))
+
+    def shares(segment):
+        spec = np.abs(np.fft.rfft(segment)) ** 2
+        freqs = np.fft.rfftfreq(len(segment), 1.0 / rate)
+        total_energy = spec[freqs >= 20.0].sum()
+        return [spec[(freqs >= lo) & (freqs < hi)].sum() / total_energy
+                for lo, hi in bands]
+
+    first = shares(y[frames_t:frames_t + n])
+    eighth = shares(y[8 * frames_t:8 * frames_t + n])
+    return {"last": [10.0 * math.log10(e / f) for e, f in zip(eighth, first)]}
+
+
+def railed_samples(cls, dbfs, seconds=1.0, rate=RATE, **options):
+    """The input ceiling's measurement: `noise_det` at `dbfs` peak, 48 kHz
+    stereo; output samples on the int16 rail that are not on it in the
+    source."""
+    frames = int(seconds * rate)
+    data = probes.noise_det(frames=frames, dbfs=dbfs, channels=2)
+    effect = cls(probes.ArraySource(data, rate=rate, channels=2, block=BLOCK),
+                 sample_rate=rate, **options)
+    out = pull(effect, frames, 2).astype(np.int64)
+    src = np.array(data, dtype=np.int64)
+    rail = (out >= 32767) | (out <= -32768)
+    return int(np.count_nonzero(rail & ~((src >= 32767) | (src <= -32768))))
+
+
+# --------------------------------------------------------------------------
+# Reachability: what the node is handed, or what the output does, at the
+# position walked. The twin's `FeedbackDelay.set` is watched while a walk
+# runs, so a reading sees the options the class actually handed over.
+
+
+class NodeSpy:
+    """While active, every `audioecho.FeedbackDelay.set` call records its
+    options on the node: `_handed` (the latest value of each option) and
+    `_writes` (each call's options, in order)."""
+
+    def __enter__(self):
+        node_class = dd.audioecho.FeedbackDelay
+        original = node_class.set
+        self._restore = (node_class, original)
+
+        def watched(node, **options):
+            if not hasattr(node, "_handed"):
+                node._handed = {}
+                node._writes = []
+            node._handed.update(options)
+            node._writes.append(dict(options))
+            return original(node, **options)
+
+        node_class.set = watched
+        return self
+
+    def __exit__(self, *exc):
+        node_class, original = self._restore
+        node_class.set = original
+        return False
+
+
+def copy_of(effect, source, **ctor):
+    """A fresh instance of the same class on `source`, at `effect`'s macro
+    positions."""
+    other = type(effect)(source, sample_rate=effect._sample_rate, **ctor)
+    for index in range(len(type(effect).MACRO_LABELS)):
+        other.set_macro(index, effect.get_macro(index))
+    return other
+
+
+def read_dry_gain(effect):
+    """The dry path's gain before the first repeat: a copy at these
+    positions on a 256-frame full-scale ramp, least-squares out / in."""
+    ramp = probes.ramp_fs(frames=256, channels=2)
+    other = copy_of(effect, probes.ArraySource(
+        ramp, rate=effect._sample_rate, channels=2, block=BLOCK))
+    out = pull(other, 256, 2).astype(np.float64)
+    src = np.array(ramp, dtype=np.float64)
+    other.deinit()
+    return round(float(np.dot(out, src) / np.dot(src, src)), 5)
+
+
+def read_python_steps(effect):
+    """How many times the node's `delay_ms` is written while eight blocks
+    are pulled after one Time move, on a copy at these positions: the class
+    writes it once, on the move; a Python-stepped Time writes it every
+    block."""
+    rate = effect._sample_rate
+    other = copy_of(effect, silence_src(16 * BLOCK, 2, rate))
+    pull(other, BLOCK, 2)
+    time_now = other.get_macro(TIME_I)
+    mark = len(other._delay._writes)
+    other.set_macro(TIME_I, time_now + 32.0 if time_now < 64 else
+                    time_now - 32.0)
+    pull(other, 8 * BLOCK, 2)
+    writes = sum(1 for w in other._delay._writes[mark:] if "delay_ms" in w)
+    other.deinit()
+    return writes
+
+
+def read_landing_fraction(effect):
+    """The handed delay's distance from a whole frame, landed the node's way
+    (float32 `value * rate / 1000`, `audiodsp_feedback_delay.c:148`)."""
+    ms = np.float32(effect._delay._handed["delay_ms"])
+    frames = float(ms * np.float32(effect._sample_rate) / np.float32(1000.0))
+    return round(abs(frames - round(frames)), 2)
+
+
+def read_map_error(effect):
+    """The handed delay's whole frames against the dossier's T4 law at the
+    knob's own position."""
+    rate = effect._sample_rate
+    frames = int(math.floor(effect._delay._handed["delay_ms"] * rate / 1000.0
+                            + 0.5))
+    return frames - mapped_frames(effect._macros[TIME_I], rate)
+
+
+def read_damping(effect):
+    """The `damping_hz` handed to the node now."""
+    return round(float(effect._delay._handed["damping_hz"]), 1)
+
+
+def read_corner_ratios(effect):
+    """Each filter's handed coefficient against the pre-warp of its label
+    at the knob's position (1.0 at an out stop and wherever they agree)."""
+    rate = effect._sample_rate
+    handed = effect._delay._handed
+    position = effect._macros[TONE_I]
+    if position >= 1.0:
+        tone = 1.0 if handed["damping_hz"] == 0.0 else 0.0
+    else:
+        label = 800.0 * 20.0 ** position
+        tone = handed["damping_hz"] / nominal_damping_hz(effect._hz(label),
+                                                         rate)
+    position = effect._macros[CUT_I]
+    if position <= 0.0:
+        cut = 1.0 if handed["cut_hz"] == 0.0 else 0.0
+    else:
+        label = 20.0 * 20.0 ** position
+        cut = handed["cut_hz"] / dd.nominal_cut_hz(effect._hz(label), rate)
+    return (round(tone, 3), round(cut, 3))
+
+
+def read_cut_placement(effect):
+    """(the `cut_hz` handed to the loop, the high-pass applied outside it)."""
+    return (round(float(effect._delay._handed["cut_hz"]), 3),
+            round(float(getattr(effect, "_post", 0.0)), 3))
+
+
+def read_slew_against_label(effect):
+    """The `delay_slew` handed to the node against the dossier's law at the
+    Glide the knob's label says (the constructor's exact value while the
+    knob has not moved)."""
+    handed = effect._delay._handed["delay_slew"]
+    if effect._glide_exact is not None:
+        asked = effect._glide_exact
+    else:
+        asked = glide_of_grid(127.0 * effect._macros[GLIDE_I])
+    law = dossier_slew(asked)
+    if law == 0.0:
+        return 1.0 if handed == 0.0 else 0.0
+    return round(handed / law, 4)
+
+
+#: (name, fault, reading, constructor options for both builds). The corner
+#: and compounding faults are built at their corner cells (Tone 7 kHz, Cut
+#: 40 Hz), because both filters are out at the defaults.
+REACH_WALKS = (
+    ("DryScaledDelay", DryScaledDelay, read_dry_gain, {}),
+    ("DryGainDelay", DryGainDelay, read_dry_gain, {}),
+    ("StaircaseDelay", StaircaseDelay, read_python_steps, {}),
+    ("HalfGlideMsDelay", HalfGlideMsDelay, read_slew_against_label, {}),
+    ("HalfFrameDelay", HalfFrameDelay, read_landing_fraction, {}),
+    ("LinearMapDelay", LinearMapDelay, read_map_error, {}),
+    ("RawTopToneDelay", RawTopToneDelay, read_damping, {}),
+    ("CornerShiftDelay", CornerShiftDelay, read_corner_ratios,
+     {"tone_hz": 7000.0, "cut_hz": 40.0}),
+    ("PostCutDelay", PostCutDelay, read_cut_placement, {"cut_hz": 40.0}),
+)
+
+
+def reach(faulted, reading, rate, ctor):
+    """`kit_faults.fault_reachability` at `rate`, the node watched."""
+    def build(cls):
+        return cls(silence_src(512, 2, rate), sample_rate=rate, **ctor)
+
+    with NodeSpy():
+        return kit_faults.fault_reachability(DigitalDelay, faulted, reading,
+                                             build)
 
 
 # --------------------------------------------------------------------------
@@ -612,6 +1115,17 @@ class T1DryIsAWire(unittest.TestCase):
         result = t1_measure(DryScaledDelay)
         self.assertFalse(result["passed"])
         self.assertGreater(result["differing"], 0)
+        result = t1_measure(DryGainDelay)
+        self.assertFalse(result["passed"])
+
+    def test_the_quieter_levels_have_a_fault_leg(self):
+        # -20 and -40 dBFS: the clean class is a wire, OneLsbScale cannot
+        # show there (it is the identity below 16 384 LSB), and the +0.1 dB
+        # fault does.
+        for dbfs in (-20.0, -40.0):
+            self.assertTrue(t1_quiet(DigitalDelay, dbfs)["passed"], dbfs)
+            self.assertEqual(t1_quiet(DryScaledDelay, dbfs)["differing"], 0)
+            self.assertGreater(t1_quiet(DryGainDelay, dbfs)["differing"], 0)
 
 
 class T2TimeResamples(unittest.TestCase):
@@ -625,10 +1139,27 @@ class T2TimeResamples(unittest.TestCase):
                             target_ms=200.0)
         self.assertTrue(result["passed"], result)
 
+    def test_a_near_stall_rising_cell(self):
+        # Glide grid 2, 150 -> 200 ms: the law's ratio is 0.051 (a 50 Hz
+        # tone, 1.7 cycles in the window). The analytic-signal median read
+        # -15.00 c here; the least-squares fit reads the node.
+        result = t2_measure(DigitalDelay, glide_grid=2, start_ms=150.0,
+                            target_ms=200.0)
+        self.assertTrue(result["passed"], result)
+
+    def test_the_constructor_800_ms_cell(self):
+        result = t2_measure(DigitalDelay, glide_ms=800.0)
+        self.assertTrue(result["passed"], result)
+
+    def test_a_wrong_glide_law_is_red(self):
+        result = t2_measure(HalfGlideMsDelay)
+        self.assertFalse(result["passed"], result)
+        self.assertGreater(result["pitch_cents"], 200.0)
+
     def test_the_block_staircase_is_red(self):
         result = t2_measure(StaircaseDelay, glide_ms=4000.0)
         self.assertFalse(result["passed"], result)
-        self.assertGreater(result["walk"], result["bar"])
+        self.assertGreater(result["body"], result["bar"])
 
 
 class T3NoDarkening(unittest.TestCase):
@@ -699,8 +1230,28 @@ class T5BandLimit(unittest.TestCase):
             t5_gain_db(DigitalDelay, 400, cut_hz=400.0), -3.01, delta=0.2)
 
     def test_an_open_top_stop_is_red(self):
-        self.assertGreater(t5_out_identical(OpenTopToneDelay), 0)
-        self.assertFalse(t5_measure(OpenTopToneDelay)["passed"])
+        for rate in (48000, 44100, 22050):
+            self.assertEqual(t5_out_identical(DigitalDelay, rate), 0, rate)
+            self.assertGreater(t5_out_identical(RawTopToneDelay, rate), 0,
+                               rate)
+        self.assertFalse(t5_measure(RawTopToneDelay)["passed"])
+
+    def test_the_corners_shifted_are_red(self):
+        # 15 % high puts the 7 kHz corner at 8 050 Hz, so 7 700 Hz is still
+        # less than 3 dB down, and the 40 Hz corner at 46 Hz.
+        result = t5_measure(CornerShiftDelay)
+        self.assertFalse(result["passed"], result)
+        self.assertGreater(result["tone"][7700], -3.0)
+
+    def test_the_cut_compounds_in_the_loop(self):
+        # Repeat Cut at its 400 Hz stop, Feedback 0.8: repeat 8's 20-100 Hz
+        # share at least 6 dB under repeat 1's (the fix round's bar, dated
+        # in the dossier); moved out of the loop it does not compound.
+        for rate in (48000, 22050):
+            clean = t5_compound(DigitalDelay, rate, settings={CUT_I: 127})
+            self.assertLessEqual(clean["last"][0], -6.0, (rate, clean))
+            post = t5_compound(PostCutDelay, rate, settings={CUT_I: 127})
+            self.assertGreater(post["last"][0], -1.0, (rate, post))
 
 
 # --------------------------------------------------------------------------
@@ -858,36 +1409,98 @@ class Tier1Fast(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------
+# Fix round 1: the audit's (o) items and the 0 bpm host
+
+
+class InputCeiling(unittest.TestCase):
+    """The docstring's ceiling on `noise_det`, 48 kHz: the defaults clean at
+    -3 dBFS peak, patch 3 (the first shipped patch to rail) at -4; 1 dB
+    over each rails."""
+
+    def test_the_stated_ceiling_is_clean_and_one_db_over_is_not(self):
+        for options, ceiling in (({}, -3.0), ({"patch": 3}, -4.0)):
+            self.assertEqual(railed_samples(DigitalDelay, ceiling,
+                                            **options), 0, options)
+            self.assertGreater(railed_samples(DigitalDelay, ceiling + 1.0,
+                                              **options), 0, options)
+
+
+class GlideRoundTrip(unittest.TestCase):
+    def _round_trip(self, cls, glide_ms):
+        effect = cls(silence_src(512), sample_rate=RATE, glide_ms=glide_ms)
+        before = dd.slew_of(effect._glide_ms())
+        effect.set_macro(GLIDE_I, effect.get_macro(GLIDE_I))
+        return before, dd.slew_of(effect._glide_ms())
+
+    def test_get_macro_hands_back_the_glide(self):
+        for glide_ms in (500.0, 800.0, 4000.0):
+            before, after = self._round_trip(DigitalDelay, glide_ms)
+            self.assertGreater(before, 0.0)
+            self.assertLessEqual(abs(after / before - 1.0), 0.02, glide_ms)
+        effect = DigitalDelay(silence_src(512), sample_rate=RATE,
+                              glide_ms=0.0)
+        self.assertEqual(effect.get_macro(GLIDE_I), 0.0)
+
+    def test_the_jump_seed_is_red(self):
+        before, after = self._round_trip(JumpSeedGlideDelay, 800.0)
+        self.assertGreater(before, 0.9)
+        self.assertEqual(after, 0.0)
+
+
+class ZeroBpmHost(unittest.TestCase):
+    def test_no_tempo_leaves_time_on_the_knob(self):
+        for bpm in (0.0, None):
+            def transport(_bpm=bpm):
+                return (True, 0.0, _bpm, 4, 4)
+            measured, _ = t4_delay(DigitalDelay, transport=transport,
+                                   sync=127, division=51, time_ms=350.0)
+            self.assertLessEqual(abs(measured - 16800), 1.0, bpm)
+            measured, _ = t4_delay(ZeroBpmDelay, transport=transport,
+                                   sync=127, division=51, time_ms=350.0)
+            self.assertLessEqual(abs(measured - 12000), 1.0, bpm)
+
+
+class RepeatToneKnee(unittest.TestCase):
+    """Repeat Tone's clamp: at 22.05 kHz positions 111-126 sit on the
+    10 804.5 Hz ceiling and 127 is out; at 44.1 and 48 kHz every position
+    moves."""
+
+    def _dampings(self, rate):
+        effect = DigitalDelay(silence_src(64, 2, rate), sample_rate=rate)
+        return [effect._tone_damping(p / 127.0) for p in range(128)]
+
+    def test_the_knee(self):
+        values = self._dampings(22050)
+        self.assertLess(values[110], values[111])
+        self.assertEqual(len(set(values[111:127])), 1)
+        self.assertEqual(values[127], 0.0)
+        for rate in (48000, 44100):
+            values = self._dampings(rate)
+            self.assertTrue(all(b > a for a, b in zip(values[:126],
+                                                      values[1:127])), rate)
+            self.assertEqual(values[127], 0.0)
+
+
+# --------------------------------------------------------------------------
 # The two checks every planted fault and every row is held to
 
 
 class FaultsAreUnreachable(unittest.TestCase):
+    """Every fault's reachability walk, at 48, 44.1 and 22.05 kHz, reading
+    what the node is handed (or what the output does) at each position."""
+
     CHECKED = 8 * 17 + 6
 
-    def _reach(self, faulted, reading):
-        return kit_faults.fault_reachability(
-            DigitalDelay, faulted, reading,
-            lambda cls: cls(silence_src(512), sample_rate=RATE))
+    def test_every_fault_is_off_the_surface_at_three_rates(self):
+        for rate in (48000, 44100, 22050):
+            for name, faulted, reading, ctor in REACH_WALKS:
+                with self.subTest(fault=name, rate=rate):
+                    result = reach(faulted, reading, rate, ctor)
+                    self.assertEqual(result["checked"], self.CHECKED)
 
-    def test_every_fault_is_off_the_surface(self):
-        for faulted, reading, expected in (
-                (DryScaledDelay,
-                 lambda e: getattr(e, "_plant_dry_scale", False), True),
-                (StaircaseDelay,
-                 lambda e: round(getattr(e, "_step_per_block", 0.0), 6),
-                 round(0.196875 * BLOCK * 1000.0 / RATE, 6)),
-                (HalfFrameDelay,
-                 lambda e: round(abs(e._node_ms * e._sample_rate / 1000.0
-                                     - round(e._node_ms * e._sample_rate
-                                             / 1000.0)), 6), 0.5),
-                (LinearMapDelay, lambda e: round(e._time_map(0.5), 6),
-                 406.25),
-                (OpenTopToneDelay, lambda e: round(e._tone_damping(1.0), 3),
-                 round(nominal_damping_hz(16000.0, RATE), 3))):
-            with self.subTest(fault=faulted.__name__):
-                result = self._reach(faulted, reading)
-                self.assertEqual(result["target"], expected)
-                self.assertEqual(result["checked"], self.CHECKED)
+    def test_the_old_out_stop_fault_is_dialled_at_22k(self):
+        with self.assertRaises(kit_faults.FaultReachable):
+            reach(OpenTopToneDelay, read_damping, 22050, {})
 
 
 class NullBuildRed(unittest.TestCase):

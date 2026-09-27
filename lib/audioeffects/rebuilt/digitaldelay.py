@@ -68,17 +68,46 @@ landed on the nearest whole frame at the running rate, where the read is
 lossless, so the repeats of a Time you have stopped turning do not darken.
 Above Mix 1 the dry falls as 2 - Mix, by `audiodelays.Echo`'s convention.
 
+**Repeat Tone at a low rate.** The knob's corners clamp below Nyquist at
+the running rate, so where the rate is too low for the top of the span the
+top of the knob goes flat. At 22.05 kHz positions 111-126 (labelled
+10 970-15 627 Hz) all sit on the 10 804.5 Hz clamp and do the same thing,
+and position 127 takes the filter out. At 44.1 and 48 kHz every position
+moves.
+
+A constructor `glide_ms` faster than the knob's span (under 800 ms, down to
+the 0.99 pin) stays on the audio path, and the knob reads back just above
+its bottom stop, never at grid 0, the jump: handing `get_macro(3)` back to
+`set_macro(3, ...)` keeps the glide.
+
+**Input ceiling.** The dry path sits at unity and the repeats add to it, so
+a hot input can put the output on the int16 rail; there is no input gain
+to turn down. Measured on the kit's `noise_det` at 48 kHz, the defaults are
+clean up to -3 dBFS peak and the shipped patches up to -4 dBFS (patch 3,
+Mix 0.5, rails first). On any material, with Repeat Cut out and Mix below
+1, an input peaking at or below (1 - Mix) of full scale cannot reach the
+rail at any Time or Feedback, because the line holds int16 and so the
+repeats never exceed Mix x full scale: -3.1 dBFS at the default Mix 0.3,
+-6.1 dBFS at patch 3. High Feedback does not keep building past that: at Feedback 0.99
+the line saturates, and the defaults' noise_det ceiling is -4 dBFS after
+6 s and after 20 s alike. Repeat Cut's high-pass can overshoot a peak, so
+with it in circuit leave more room.
+
 **Tail.** `tail_samples` is an upper bound on how long the repeats take to
 reach exact zero after your input stops, and it is long: the loop has to
 round its way down from full scale, 12 laps at the default Feedback. From
 Feedback 0.5 up it is `None`, because there the node's feedback write
-rounds a 1 LSB repeat back to itself and the line never empties (up to 50
-LSB at 0.99). That is a floor bug in the node, not in this class, and it is
-why the rebuild is parked. With Repeat Cut in circuit it is `None` too.
+rounds a 1 LSB repeat back to itself, so the line is not guaranteed to
+empty. On some material it never does (a 997 Hz burst leaves 1 LSB going
+round at Feedback 0.5 and 0.7, 50 LSB at 0.99); on other material it does
+(a 1 kHz -6 dBFS burst reaches zero at 0.5 and 0.7). That is a floor bug in
+the node, not in this class, and it is why the rebuild is parked. With
+Repeat Cut in circuit it is `None` too.
 
 `capabilities = ("tempo_sync",)`: with Sync on, the class reads
 `self._transport()` on every macro move and program change (not per block).
-With no host transport, Time stays where the knob is.
+With no host transport, or a host that reports no tempo (0 bpm), Time stays
+where the knob is.
 """
 
 VENDOR = "PyDevices"
@@ -107,6 +136,11 @@ FULL_RANGE_MS = TIME_MAX_MS - TIME_MIN_MS
 #: grid position gets there (grid 1 is slew 0.967).
 SLEW_PIN = 0.99
 
+#: The Glide knob's position for a constructor Glide at or under 800 ms:
+#: just above grid 0, which is the jump. It reads back as MIDI 1.27e-7 and
+#: stands for 800.0 ms (slew 0.984).
+GLIDE_FLOOR = 1e-9
+
 #: The node's own loop ceiling (`audiodsp_feedback_delay.c:157`).
 FEEDBACK_MAX = 0.99
 
@@ -114,10 +148,11 @@ FEEDBACK_MAX = 0.99
 #: `line_frames - 2`, so a line of exactly `max_time_ms` could not reach it.
 LINE_HEADROOM_MS = 1.0
 
-#: At and above this Feedback the node's line never empties. Its feedback
-#: write rounds half away from zero (`to_s16`, `audiodsp_feedback_delay.c:317`,
-#: called at `:493`), so every |x| <= 0.5 / (1 - f) writes itself back, and
-#: at f >= 0.5 that includes 1 LSB. `tail_samples` is `None` there.
+#: At and above this Feedback the node's line is not guaranteed to empty.
+#: Its feedback write rounds half away from zero (`to_s16`,
+#: `audiodsp_feedback_delay.c:317`, called at `:493`), so every
+#: |x| <= 0.5 / (1 - f) can write itself back, and at f >= 0.5 that
+#: includes 1 LSB. `tail_samples` is `None` there.
 FEEDBACK_UNBOUNDED = 0.5
 
 #: The largest magnitude one line sample can hold (int16).
@@ -187,14 +222,15 @@ def whole_frames(time_ms, sample_rate):
 
 def laps_to_zero(feedback):
     """How many laps of the line can still hold a non-zero sample once the
-    input stops, or `None` if the line never empties.
+    input stops, or `None` if the line is not guaranteed to empty.
 
     The node writes `round(fed + f * read)`, rounding half away from zero,
     so after the input stops a lap's peak obeys x' <= f x + 0.5 from any
     starting x <= 32768. That gives x_k <= f^k (32768 - c) + c with
     c = 0.5 / (1 - f), and x_k < 1 means x_k is exactly 0. Below
     f = 0.5, c < 1 and the count is finite; at 0.5 and above, 1 LSB writes
-    itself back forever (`FEEDBACK_UNBOUNDED`).
+    itself back, and on some material it does so forever
+    (`FEEDBACK_UNBOUNDED`).
     """
     feedback = max(0.0, float(feedback))
     if feedback >= FEEDBACK_UNBOUNDED:
@@ -312,11 +348,15 @@ class DigitalDelay(_component.Component):
         self._own(self._delay, reset=self._clear)
         self._delay.play(self._source)
         self._output = self._delay
-        # The knob is seeded at its bottom (800 ms) for a faster or zero
-        # constructor Glide; `_glide_exact` carries the real value.
+        # The knob is seeded at its bottom (800 ms) for a faster constructor
+        # Glide; `_glide_exact` carries the real value. Position 0 is the
+        # jump, so a Glide that is not 0 is seeded just above it, and a
+        # get_macro / set_macro round trip keeps it gliding.
         self._init_macros((time_ms, feedback, mix, max(800.0, glide_ms),
                            1.0 if sync else 0.0, float(division), tone_hz,
                            cut_hz))
+        if self._glide_exact > 0.0 and self._macros[GLIDE_I] <= 0.0:
+            self._macros[GLIDE_I] = GLIDE_FLOOR
         self._seeding = False
         if patch is not None:
             self.program_change(patch)
@@ -378,7 +418,9 @@ class DigitalDelay(_component.Component):
         transport, state = self._transport_state()
         if transport is _component.static_transport:
             return None
-        bpm = float(state[2]) if state[2] else 120.0
+        # A host that reports no tempo (0 or None) leaves Time on the knob,
+        # as the static transport does; it is never read as 120 bpm.
+        bpm = float(state[2] or 0.0)
         if bpm <= 0.0:
             return None
         index = int(round(self._value(DIVISION_I)))
@@ -467,7 +509,8 @@ class DigitalDelay(_component.Component):
         filter state to die away.
 
         `None` at Feedback 0.5 and above, where the node's rounding holds
-        1 LSB or more in the line forever (`FEEDBACK_UNBOUNDED`), and with
+        1 LSB or more in the line, forever on some material
+        (`FEEDBACK_UNBOUNDED`), and with
         Repeat Cut in circuit, whose high-pass can more than double a peak
         in one pass and remembers across laps at its low corners.
         """
