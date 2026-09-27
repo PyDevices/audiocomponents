@@ -31,7 +31,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import audiocore                                            # noqa: E402
-import kit_faults                                           # noqa: E402
+import audiomixer                                           # noqa: E402
+import audioroute                                           # noqa: E402
+import kit_faults                                          # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 from audioeffects import _component                         # noqa: E402
 from audioeffects import rebuilt                            # noqa: E402
@@ -92,10 +94,13 @@ DOSSIER_SPANS = ((40.0, 250.0, "log"), (0.0, 2.0), (0.0, 1.0),
 
 
 class Frames441Slapback(SlapbackDelay):
-    """T1's delay clause and T2: Time landed with 44.1 kHz frames at every
-    rate. At the 48 kHz defaults the repeat lands at 5 954 frames (124.0 ms,
-    8.8 % early); at 44.1 kHz it is the right count, so it is read at 48
-    and 22.05 kHz only."""
+    """Time landed with 44.1 kHz frames at every rate. **Off the surface at
+    22.05 kHz only** (fix round 1): there it lands 5 954 frames, past Time's
+    250 ms top, and the node clamps it at the line (250.9 ms). At 48 kHz
+    the same 5 954 frames are what the clean class plays at `time_ms`
+    124.041667 (the gate audit's dial: 0 samples differ), and at 44.1 kHz
+    it is the right count. So it is T2's 22.05 kHz fault and nothing
+    else; `ShortHalfFrameSlapback` is the delay fault at every rate."""
 
     NAME = 'SlapbackDelay'
 
@@ -104,10 +109,24 @@ class Frames441Slapback(SlapbackDelay):
         return law_frames(self._time_ms(), 44100) * 1000.0 / self._sample_rate
 
 
+class ShortHalfFrameSlapback(SlapbackDelay):
+    """T1's delay clause and T2 (fix round 1): Time landed 8 % short and
+    half a frame over, `floor(0.92 T) + 0.5` frames. The clean class lands
+    every Time on a whole frame, so no Time position or constructor value
+    hands the node a fraction; at the defaults the repeat comes 124.2 ms
+    after the dry at every rate."""
+
+    NAME = 'SlapbackDelay'
+
+    def _node_time_ms(self, frames):
+        return ((int(0.92 * frames) + 0.5) * 1000.0 / self._sample_rate)
+
+
 class FloorSlapback(SlapbackDelay):
-    """T1's no-second-repeat clause: a floor on the loop gain, Repeats 0
-    handing the node 0.05, so a second repeat comes back about 26 dB
-    down."""
+    """**Retired at fix round 1.** A floor on the loop gain, Repeats 0
+    handing the node 0.05. The clean class renders the same bytes at
+    Repeats 0.05 (`set_macro(5, 10.5833)`), so it is a surface state, not
+    a fault; `TheRetiredFaultsAreDialable` keeps that as a test."""
 
     NAME = 'SlapbackDelay'
 
@@ -115,6 +134,105 @@ class FloorSlapback(SlapbackDelay):
         SlapbackDelay._refresh(self)
         if self._feedback <= 0.0:
             self._delay.set(feedback=0.05)
+
+
+#: The second node's mix: at Level 0.35 the 2T copy is 0.35 x 0.0614 of the
+#: click against a first repeat of 0.35 + 0.0614, about -26 dB.
+SECOND_MIX = 0.0614
+
+
+class SecondRepeatSlapback(SlapbackDelay):
+    """T1's no-second-repeat clause (fix round 1): a second node after the
+    first, at the same whole-frame Time, dry at unity and 0.0614 wet. It
+    puts a copy of the first repeat at 2T, about 26 dB down, and nothing at
+    3T or 4T. Every Repeats setting above 0 puts energy at 3T as well, so
+    no surface state renders a lone 2T repeat."""
+
+    NAME = 'SlapbackDelay'
+
+    def _build(self, **options):
+        self._second = None
+        SlapbackDelay._build(self, **options)
+        second = audioecho_node(self._sample_rate, self._channel_count)
+        second.play(self._delay)
+        self._own(second, reset=second.clear)
+        self._second = second
+        self._output = second
+        self._refresh()
+
+    def _refresh(self):
+        SlapbackDelay._refresh(self)
+        if getattr(self, "_second", None) is not None:
+            self._second.set(delay_slew=sd.SLEW, delay_ms=self._node_ms,
+                             feedback=0.0, mix=SECOND_MIX, loop_drive=0.0,
+                             damping_hz=0.0, cut_hz=0.0, wow_hz=sd.WOW_HZ,
+                             wow_depth_ms=0.0)
+
+
+#: The split build's crossover and its offset, as a fraction of T.
+SPLIT_HZ = 4000.0
+SPLIT_SHIFT = 0.004
+
+
+class SplitSlapback(SlapbackDelay):
+    """T2's agreement clause (Station A's split build, run on the class at
+    fix round 1): the source split in two, one node reading 0.4 % early
+    through the loop low-pass at 4 kHz with the dry, and a second, wet only,
+    reading 0.4 % late through the loop high-pass at the same coefficient.
+    The low-pass and high-pass sum to the identity, so each band's comb is
+    a clean 1/T', and the two bands' spacings differ by 0.8 %. The late
+    node reads on a whole frame (Wow 0): with the class's wow on it too,
+    the split reads -0.03 % between the fits at 22.05 kHz at click 100,
+    green, and -0.75 to -0.84 % at other wow phases. The class builds one
+    node, so no surface state hands two delays."""
+
+    NAME = 'SlapbackDelay'
+
+    def _build(self, **options):
+        self._high = None
+        SlapbackDelay._build(self, **options)
+        rate, channels = self._sample_rate, self._channel_count
+        split = audioroute.Splitter(self._source, taps=2)
+        low_in, high_in = split.tap(0), split.tap(1)
+        self._delay.play(low_in)
+        high = audioecho_node(rate, channels)
+        high.play(high_in)
+        mixer = audiomixer.Mixer(voice_count=2, **self._pcm(1024))
+        mixer.voice[0].play(self._delay, loop=True)
+        mixer.voice[1].play(high, loop=True)
+        mixer.voice[0].level = 1.0
+        self._own(mixer, reset=False)
+        self._own(high, reset=high.clear)
+        self._own(low_in, reset=False)
+        self._own(high_in, reset=False)
+        self._own(split, reset=False)
+        self._high, self._mixer = high, mixer
+        self._output = mixer
+        self._refresh()
+
+    def _refresh(self):
+        SlapbackDelay._refresh(self)
+        if getattr(self, "_high", None) is None:
+            return
+        rate = self._sample_rate
+        shift = int(round(SPLIT_SHIFT * self._frames))
+        corner = nominal_damping_hz(self._hz(SPLIT_HZ), rate)
+        self._delay.set(delay_ms=(self._frames - shift) * 1000.0 / rate,
+                        damping_hz=corner)
+        self._high.set(delay_slew=sd.SLEW,
+                       delay_ms=(self._frames + shift) * 1000.0 / rate,
+                       feedback=0.0, mix=2.0,
+                       loop_drive=self._value(SATURATION_I), damping_hz=0.0,
+                       cut_hz=corner, wow_hz=sd.WOW_HZ, wow_depth_ms=0.0)
+        self._mixer.voice[1].level = min(self._value(LEVEL_I), 1.0)
+
+
+def audioecho_node(rate, channels):
+    """A bare node on the class's line, for the faults that add one."""
+    return sd.audioecho.FeedbackDelay(
+        sample_rate=rate, channel_count=channels, max_delay_ms=sd.LINE_MS,
+        delay_ms=135.0, feedback=0.0, mix=0.0, damping_hz=0.0, cut_hz=0.0,
+        delay_slew=0.0)
 
 
 class PannedSlapback(SlapbackDelay):
@@ -128,10 +246,12 @@ class PannedSlapback(SlapbackDelay):
 
 
 class OpenTopSlapback(SlapbackDelay):
-    """T4's out clause: the top stop hands the node the pre-warped 20 kHz
-    (13 095.11 Hz at 48 kHz) instead of exactly 0. Every in-circuit
-    position hands less at 48 and 44.1 kHz; at 22.05 kHz grid 94-126 hand
-    the same 6 183.68, so it is walked at 48 and 44.1 kHz only."""
+    """**Retired as T4's walked fault at fix round 1.** The top stop hands
+    the node the pre-warped 20 kHz (13 095.11 Hz at 48 kHz) instead of
+    exactly 0. No macro position reaches it at 48 and 44.1 kHz, but the
+    constructor's `tone_hz=19999.999` renders it byte for byte at three
+    rates, and at 22.05 kHz grid 94-126 hand the same 6 183.68. It stays
+    as a red on the out clause; `RawTopSlapback` is the walked fault."""
 
     NAME = 'SlapbackDelay'
 
@@ -141,11 +261,29 @@ class OpenTopSlapback(SlapbackDelay):
         return SlapbackDelay._tone_damping(self, position)
 
 
+class RawTopSlapback(SlapbackDelay):
+    """T4's out clause (fix round 1): the top stop hands the node a raw
+    `damping_hz` of 20 000, not 0. Every in-circuit position and
+    constructor value hands a pre-warped corner, at most 13 095.11 /
+    12 266.31 / 6 183.68 Hz at 48 / 44.1 / 22.05 kHz, so nothing on the
+    surface hands 20 000 or renders its coefficient."""
+
+    NAME = 'SlapbackDelay'
+
+    def _tone_damping(self, position):
+        if position >= 1.0:
+            return 20000.0
+        return SlapbackDelay._tone_damping(self, position)
+
+
 class RawToneSlapback(SlapbackDelay):
     """T4's corner clauses: Tone handed raw, not pre-warped. Silent at the
-    defaults (Tone out hands 0 either way) and on every shipped patch
-    inside the bar; read at the 15 kHz cell, where the one-pole then has no
-    half-power point below Nyquist."""
+    defaults (Tone out hands 0 either way). Read at the 15 kHz cell, where
+    the one-pole then has no half-power point below Nyquist. On the shipped
+    patches it stays inside the bar at 48 and 44.1 kHz (patch 5's raw
+    5 042 Hz lands +3.87 / +4.63 % off), and at 22.05 kHz patch 5 reads
+    +24.92 %, red: the corners have a fault red at a shipped patch there
+    (`test_a_raw_tone_is_red_at_patch_5_at_22k`)."""
 
     NAME = 'SlapbackDelay'
 
@@ -212,6 +350,20 @@ class TargetOnlyTailSlapback(SlapbackDelay):
     def _refresh(self):
         SlapbackDelay._refresh(self)
         self._reach = self._frames
+
+
+class EchoForgetsTimeSlapback(SlapbackDelay):
+    """Time's readback (fix round 1): any Time move drops the constructor's
+    exact Time, as the class did before, so a host echoing `get_macro(0)`
+    back moves the 44.1 kHz default from 5 954 frames to 5 953."""
+
+    NAME = 'SlapbackDelay'
+
+    def _apply_macro(self, index, position):
+        if index == TIME_I and not self._seeding:
+            self._time_exact = None
+        if not self._deferred:
+            self._refresh()
 
 
 # --------------------------------------------------------------------------
@@ -335,9 +487,41 @@ def t1_control(cls, rate=RATE, **options):
 PAD_S = 20.0
 
 
+#: The first tooth: the first local maximum of the autocorrelation at or
+#: above this fraction of its tallest (fix round 1).
+FIRST_TOOTH = 0.5
+
+
 def comb_guess(mag, bin_hz, minimum_hz=1.0):
     """The spacing's first guess: an autocorrelation along frequency, by
-    FFT, 1 Hz floor. It takes no law."""
+    FFT, 1 Hz floor, taking its **first** tooth. It takes no law.
+
+    Fix round 1: the tallest tooth is not always the first. Where 1/T
+    falls near half a bin of the 20 s pad, the first tooth is sampled off
+    its top and the second outranks it (Time grid 117, 120 and 124 at 48
+    and 44.1 kHz), and the notches were then numbered two to a gap. Every
+    tooth of a comb's autocorrelation stands at nearly the same height, so
+    the first local maximum at or above half the tallest is the first
+    tooth."""
+    m = mag - mag.mean()
+    size = 1 << int(math.ceil(math.log(2 * len(m), 2)))
+    spec = np.fft.rfft(m, n=size)
+    corr = np.fft.irfft(spec * np.conj(spec), n=size)[:len(m)]
+    low = max(1, int(minimum_hz / bin_hz))
+    c = corr[low:]
+    tall = FIRST_TOOTH * float(c.max())
+    tops = np.nonzero((c[1:-1] > c[:-2]) & (c[1:-1] >= c[2:])
+                      & (c[1:-1] >= tall))[0]
+    peak = low + (int(tops[0]) + 1 if len(tops) else int(np.argmax(c)))
+    y0, y1, y2 = corr[peak - 1], corr[peak], corr[peak + 1]
+    den = y0 - 2 * y1 + y2
+    off = 0.5 * (y0 - y2) / den if den != 0 else 0.0
+    return (peak + off) * bin_hz
+
+
+def old_comb_guess(mag, bin_hz, minimum_hz=1.0):
+    """The guess before fix round 1, kept as a planted fault: the
+    autocorrelation's tallest tooth, which is sometimes the second."""
     m = mag - mag.mean()
     size = 1 << int(math.ceil(math.log(2 * len(m), 2)))
     spec = np.fft.rfft(m, n=size)
@@ -390,14 +574,26 @@ def t2_measure(cls, rate=RATE, click_lsb=32767, click_at=100, **options):
     size = int(PAD_S * rate)
     mag = np.abs(np.fft.rfft(y, n=size))
     bin_hz = rate / float(size)
+    return t2_read(mag, bin_hz, law)
+
+
+def t2_read(mag, bin_hz, law):
+    """The fits on a magnitude spectrum. A fit that raises (a `LinAlgError`
+    from `polyfit`) reads red and is reported, never skipped."""
     guess = comb_guess(mag, bin_hz)
-    low, low_n = notch_spacing(mag, bin_hz, 200.0, 2000.0, guess)
-    high, high_n = notch_spacing(mag, bin_hz, 8000.0, 10000.0, guess)
+    try:
+        low, low_n = notch_spacing(mag, bin_hz, 200.0, 2000.0, guess)
+        high, high_n = notch_spacing(mag, bin_hz, 8000.0, 10000.0, guess)
+    except Exception as exc:        # noqa: BLE001 - a crash is a red cell
+        nan = float("nan")
+        return {"passed": False, "deviations": (nan, nan, nan),
+                "notches": (0, 0), "guess": guess,
+                "crash": type(exc).__name__}
     deviations = (100.0 * (low - law) / law, 100.0 * (high - law) / law,
                   100.0 * (high - low) / low)
     passed = all(abs(d) <= 0.5 for d in deviations)   # NaN reads red
     return {"passed": passed, "deviations": deviations,
-            "notches": (low_n, high_n)}
+            "notches": (low_n, high_n), "guess": guess, "crash": None}
 
 
 # --------------------------------------------------------------------------
@@ -434,34 +630,99 @@ def t3_measure(cls, rate=RATE, **options):
             "head": head, "energy_db": energy_db}
 
 
+#: T3's presence band (fix round 1, dossier revision): the 4 dB bar holds
+#: on material whose energy lies below a third of the running rate. Above
+#: it the wow's fractional read (section 8.3) takes the repeat's energy
+#: further down; at Nyquist `alt_fs` reads -4.86 / -5.48 / -5.20 dB.
+PRESENCE_BAND = 1.0 / 3.0
+
+
+def presence_db(cls, values, rate=RATE, **options):
+    """Level 2: (non-zero frames before T - (ceil(wow) + 2), the energy
+    after that against the source's over the same number of frames)."""
+    time_ms, wow = cell_time_and_wow(options)
+    T = law_frames(time_ms, rate)
+    w = law_wow_frames(wow, rate) + 2
+    y = render(cls, values, rate, 2, macros={LEVEL_I: 127},
+               **options)[:, 0].astype(float)
+    wet = y[T - w:]
+    s = np.asarray(values, dtype=np.float64)[:len(wet)]
+    return (int(np.count_nonzero(y[:T - w])),
+            10.0 * math.log10(max((wet ** 2).sum(), 1e-12)
+                              / (s ** 2).sum()))
+
+
+def tone(hz, rate, seconds=2.0, amp=3277):
+    n = int(seconds * rate)
+    return np.round(amp * np.sin(2.0 * math.pi * hz * np.arange(n) / rate))
+
+
 # --------------------------------------------------------------------------
 # T4: Tone's number is the corner it achieves, and out is out
 
 
-def t4_out_differing(cls, rate=RATE, channels=2):
+#: T4's out clause material since fix round 1: 0 dBFS `noise_det`, 4 s. The
+#: full-scale ramp reads 0 differing in every Tone-out state, so it could
+#: not see the 1 LSB the coefficient-1 stop leaves on a fractional tap.
+OUT_SECONDS = 4.0
+
+
+def node_pull(rate, channels, data, **options):
+    """`data` through a bare node on the class's 251 ms line."""
+    node = sd.audioecho.FeedbackDelay(sample_rate=rate,
+                                      channel_count=channels,
+                                      max_delay_ms=251.0, **options)
+    node.play(probes.ArraySource(data, rate=rate, channels=channels,
+                                 block=BLOCK))
+    out = array("h")
+    while len(out) < len(data):
+        chunk = bytes(audiocore.get_buffer(node)[1])
+        if not chunk:
+            break
+        out.extend(memoryview(chunk).cast("h"))
+    return np.array(out[:len(data)], dtype=np.int16)
+
+
+def t4_out_differing(cls, rate=RATE, channels=2, seconds=OUT_SECONDS):
     """The class at its defaults (Tone out) against a node given no
-    `damping_hz`, at the dossier's settings for the defaults, on the
-    full-scale ramp: the samples that differ."""
-    frames = law_frames(135.0, rate) + 8192
-    ramp = probes.ramp_fs(frames=frames, channels=channels)
-    effect = cls(probes.ArraySource(ramp, rate=rate, channels=channels,
+    `damping_hz`, at the dossier's settings for the defaults, on 0 dBFS
+    `noise_det`: the samples that differ."""
+    frames = int(seconds * rate)
+    data = probes.noise_det(frames=frames, dbfs=0.0, channels=channels)
+    effect = cls(probes.ArraySource(data, rate=rate, channels=channels,
                                     block=BLOCK), sample_rate=rate)
     out = pull(effect, frames, channels).reshape(-1)
-    reference = sd.audioecho.FeedbackDelay(
-        sample_rate=rate, channel_count=channels, max_delay_ms=251.0,
-        delay_ms=law_frames(135.0, rate) * 1000.0 / rate, feedback=0.0,
-        mix=0.35, loop_drive=0.15, wow_hz=0.7, wow_depth_ms=law_wow_ms(1.0),
-        delay_slew=0.1875)
-    reference.play(probes.ArraySource(ramp, rate=rate, channels=channels,
-                                      block=BLOCK))
-    ref = array("h")
-    while len(ref) < frames * channels:
-        data = bytes(audiocore.get_buffer(reference)[1])
-        if not data:
-            break
-        ref.extend(memoryview(data).cast("h"))
-    ref = np.array(ref[:frames * channels], dtype=np.int16)
+    ref = node_pull(rate, channels, data,
+                    delay_ms=law_frames(135.0, rate) * 1000.0 / rate,
+                    feedback=0.0, mix=0.35, loop_drive=0.15, wow_hz=0.7,
+                    wow_depth_ms=law_wow_ms(1.0), delay_slew=0.1875)
     return int(np.count_nonzero(out != ref))
+
+
+def t4_out_history(cls, rate=RATE, channels=2, seconds=OUT_SECONDS,
+                   steps=(), **ctor):
+    """The restated out clause: build with `ctor`, apply `steps` (patch
+    indices, or (macro, MIDI) pairs) before the first pull, and compare
+    with a node given every option the class handed except `damping_hz`,
+    on 0 dBFS `noise_det`. (differing, max |difference|, handed
+    `damping_hz`)."""
+    frames = int(seconds * rate)
+    data = probes.noise_det(frames=frames, dbfs=0.0, channels=channels)
+    with NodeSpy():
+        effect = cls(probes.ArraySource(data, rate=rate, channels=channels,
+                                        block=BLOCK), sample_rate=rate,
+                     **ctor)
+        for step in steps:
+            if isinstance(step, tuple):
+                effect.set_macro(*step)
+            else:
+                effect.program_change(step)
+        handed = dict(effect._delay._handed)
+    out = pull(effect, frames, channels).reshape(-1)
+    damping = handed.pop("damping_hz")
+    ref = node_pull(rate, channels, data, **handed)
+    d = np.abs(out.astype(np.int32) - ref.astype(np.int32))
+    return int(np.count_nonzero(d)), int(d.max()), damping
 
 
 def t4_ratio(cls, tone_hz, rate=RATE):
@@ -624,19 +885,41 @@ class NodeSpy:
         return False
 
 
-def read_landing_error(effect):
-    """The handed delay's whole frames against the law's for the Time the
-    knob (or the constructor) names."""
+# Every reading below is a value the node was handed, and nothing else: no
+# knob position, no label, no law (fix round 1; the gate audit found
+# `read_landing_error` 0 by construction and `read_floor` carrying the
+# label "Repeats at 0").
+
+
+def delay_nodes(effect):
+    return [node for node in effect._nodes
+            if isinstance(node, sd.audioecho.FeedbackDelay)]
+
+
+def read_fraction(effect):
+    """How far the handed delay sits from a whole frame at the running
+    rate, to 1e-6 of a frame."""
     rate = effect._sample_rate
-    handed = effect._delay._handed["delay_ms"]
-    return (int(math.floor(handed * rate / 1000.0 + 0.5))
-            - law_frames(effect._time_ms(), rate))
+    frames = float(effect._delay._handed["delay_ms"]) * rate / 1000.0
+    return round(abs(frames - math.floor(frames + 0.5)), 6)
 
 
-def read_floor(effect):
-    """(Repeats at its 0 stop, the handed feedback)."""
-    return (effect._macros[REPEATS_I] <= 0.0,
-            round(float(effect._delay._handed["feedback"]), 4))
+def read_delays(effect):
+    """The handed delay of every node the class owns, in frames to 1e-3:
+    one entry on the clean class at every position."""
+    rate = effect._sample_rate
+    return tuple(sorted(round(float(node._handed["delay_ms"]) * rate
+                              / 1000.0, 3) for node in delay_nodes(effect)))
+
+
+def read_frames(effect):
+    """The handed delay in frames, to 1e-3."""
+    return round(float(effect._delay._handed["delay_ms"])
+                 * effect._sample_rate / 1000.0, 3)
+
+
+def read_feedback(effect):
+    return round(float(effect._delay._handed["feedback"]), 4)
 
 
 def read_pan(effect):
@@ -647,35 +930,35 @@ def read_damping(effect):
     return round(float(effect._delay._handed["damping_hz"]), 2)
 
 
-def read_wow_ratio(effect):
-    """The handed `wow_depth_ms` against the law at the knob's cents."""
-    handed = float(effect._delay._handed["wow_depth_ms"])
-    law = law_wow_ms(3.5 * effect._macros[WOW_I])
-    if law == 0.0:
-        return 1.0 if handed == 0.0 else 0.0
-    return round(handed / law, 4)
+def read_wow_depth(effect):
+    return round(float(effect._delay._handed["wow_depth_ms"]), 5)
 
 
-#: (name, fault, reading, rates, constructor options for both builds).
+#: The fine grid every walk also runs on (fix round 1): quarter steps,
+#: 509 positions per macro.
+FINE = tuple(i / 4.0 for i in range(509))
+
+#: (name, fault, reading, constructor options for both builds). Every walk
+#: runs at 48, 44.1 and 22.05 kHz, on the kit's grid and on `FINE`.
 REACH_WALKS = (
-    ("Frames441Slapback", Frames441Slapback, read_landing_error,
-     (48000, 22050), {}),
-    ("FloorSlapback", FloorSlapback, read_floor, RATES, {}),
-    ("PannedSlapback", PannedSlapback, read_pan, RATES, {}),
-    ("OpenTopSlapback", OpenTopSlapback, read_damping, (48000, 44100), {}),
-    ("RawToneSlapback", RawToneSlapback, read_damping, RATES,
+    ("ShortHalfFrameSlapback", ShortHalfFrameSlapback, read_fraction, {}),
+    ("SecondRepeatSlapback", SecondRepeatSlapback, read_delays, {}),
+    ("SplitSlapback", SplitSlapback, read_delays, {}),
+    ("PannedSlapback", PannedSlapback, read_pan, {}),
+    ("RawTopSlapback", RawTopSlapback, read_damping, {}),
+    ("RawToneSlapback", RawToneSlapback, read_damping,
      {"tone_hz": 15000.0}),
-    ("NoTwoPiSlapback", NoTwoPiSlapback, read_wow_ratio, RATES, {}),
+    ("NoTwoPiSlapback", NoTwoPiSlapback, read_wow_depth, {}),
 )
 
 
-def reach(faulted, reading, rate, ctor):
+def reach(faulted, reading, rate, ctor, grid=None):
     def build(cls):
         return cls(silence_src(512, 2, rate), sample_rate=rate, **ctor)
 
     with NodeSpy():
         return kit_faults.fault_reachability(SlapbackDelay, faulted, reading,
-                                             build)
+                                             build, grid=grid)
 
 
 # --------------------------------------------------------------------------
@@ -741,6 +1024,27 @@ class TheSurface(unittest.TestCase):
                                  law_frames(law_time_ms(midi), rate))
                 self.assertEqual(effect._node_ms,
                                  effect._frames * 1000.0 / rate)
+
+    def test_a_host_echoing_time_keeps_the_frame(self):
+        # Fix round 1: set_macro(0, get_macro(0)) on the constructor's
+        # 135.0 ms keeps 5 954 frames at 44.1 kHz; the old behaviour,
+        # planted, drops to 5 953. Any other position still moves it.
+        for rate, frames in ((48000, 6480), (44100, 5954), (22050, 2977)):
+            effect = SlapbackDelay(silence_src(64, 2, rate), sample_rate=rate)
+            effect.set_macro(TIME_I, effect.get_macro(TIME_I))
+            self.assertEqual(effect._frames, frames, rate)
+            effect.set_macro(TIME_I, effect.get_macro(TIME_I))
+            self.assertEqual(effect._frames, frames, rate)
+        old = EchoForgetsTimeSlapback(silence_src(64, 2, 44100),
+                                      sample_rate=44100)
+        old.set_macro(TIME_I, old.get_macro(TIME_I))
+        self.assertEqual(old._frames, 5953)
+        effect = SlapbackDelay(silence_src(64, 2, 44100), sample_rate=44100)
+        effect.set_macro(TIME_I, effect.get_macro(TIME_I) + 0.01)
+        self.assertIsNone(effect._time_exact)
+        effect = SlapbackDelay(silence_src(64, 2, 44100), sample_rate=44100)
+        effect.program_change(0)
+        self.assertEqual(effect._frames, law_frames(law_time_ms(84), 44100))
 
     def test_the_wow_map_and_its_ceiling(self):
         self.assertAlmostEqual(sd.wow_depth_ms(1.0), 0.13137, places=5)
@@ -855,16 +1159,34 @@ class T1OneRepeat(unittest.TestCase):
             result = t1_control(SlapbackDelay, RATE, **options)
             self.assertTrue(result["passed"], (options, result))
 
-    def test_frames_at_the_wrong_rate_are_red(self):
-        result = t1_measure(Frames441Slapback, RATE)
-        self.assertFalse(result["passed"])
-        self.assertAlmostEqual(result["delay_ms"], 124.11, delta=0.05)
+    def test_a_short_fractional_landing_is_red(self):
+        # Fix round 1: floor(0.92 T) + 0.5 frames, off the whole-frame
+        # surface, red on the delay bar at every rate.
+        for rate in RATES:
+            result = t1_measure(ShortHalfFrameSlapback, rate)
+            self.assertFalse(result["passed"], rate)
+            self.assertIn("delay", " ".join(result["red"]))
+            self.assertLess(result["delay_ms"], 130.0)
 
-    def test_a_loop_gain_floor_is_red(self):
-        result = t1_measure(FloorSlapback, RATE)
-        self.assertFalse(result["passed"])
-        self.assertLess(result["second_db"], -20.0)
-        self.assertGreater(result["second_db"], -30.0)
+    def test_a_lone_second_repeat_is_red(self):
+        # Fix round 1: a second node puts the first repeat again at 2T,
+        # about 26 dB down, under the control's -20 dB, and nothing at 3T.
+        for rate in RATES:
+            energies, _ = t1_read(SecondRepeatSlapback, rate)
+            self.assertEqual(energies[2], 0.0, rate)
+            self.assertEqual(energies[3], 0.0, rate)
+            result = t1_measure(SecondRepeatSlapback, rate)
+            self.assertFalse(result["passed"], rate)
+            self.assertEqual(result["red"],
+                             ["a 2T-4T window is not exact zero"])
+            self.assertLess(result["second_db"], -20.0)
+            self.assertGreater(result["second_db"], -30.0)
+
+    def test_the_level_span(self):
+        # (m): the clauses hold down to a 3 LSB click (-80.8 dBFS).
+        for rate in RATES:
+            result = t1_measure(SlapbackDelay, rate, click_lsb=3)
+            self.assertTrue(result["passed"], (rate, result))
 
 
 class T2Comb(unittest.TestCase):
@@ -880,10 +1202,55 @@ class T2Comb(unittest.TestCase):
         result = t2_measure(SlapbackDelay, RATE, click_lsb=3277)
         self.assertTrue(result["passed"], result)
 
-    def test_frames_at_the_wrong_rate_are_red(self):
-        result = t2_measure(Frames441Slapback, RATE)
-        self.assertFalse(result["passed"])
-        self.assertAlmostEqual(result["deviations"][0], 8.77, delta=0.05)
+    def test_the_second_tooth_cells(self):
+        # Fix round 1: the gate audit's red cells, Wow 0, where 1/T falls
+        # near half a bin of the pad and the tallest tooth is the second.
+        for rate in (48000, 44100):
+            for midi in (117, 120, 124):
+                result = t2_measure(SlapbackDelay, rate,
+                                    time_ms=law_time_ms(midi),
+                                    wow_cents=0.0)
+                self.assertTrue(result["passed"], (rate, midi, result))
+
+    def test_the_old_first_guess_is_red_there(self):
+        # The old guess, the autocorrelation's argmax, planted: at grid 124
+        # (48 kHz, Wow 0) it takes 2/T and the low fit reads +47 %.
+        rate = 48000
+        T = law_frames(law_time_ms(124), rate)
+        x = np.zeros(100 + T + 400)
+        x[100] = 32767
+        y = render(SlapbackDelay, x, rate, 2, time_ms=law_time_ms(124),
+                   wow_cents=0.0)[:, 0].astype(float)
+        size = int(PAD_S * rate)
+        mag = np.abs(np.fft.rfft(y, n=size))
+        bin_hz = rate / float(size)
+        law = rate / float(T)
+        old = old_comb_guess(mag, bin_hz)
+        self.assertAlmostEqual(old / law, 2.0, delta=0.01)
+        low, _ = notch_spacing(mag, bin_hz, 200.0, 2000.0, old)
+        self.assertGreater(abs(low / law - 1.0), 0.005)
+        new = comb_guess(mag, bin_hz)
+        self.assertAlmostEqual(new / law, 1.0, delta=0.01)
+
+    def test_a_short_fractional_landing_is_red(self):
+        for rate in RATES:
+            result = t2_measure(ShortHalfFrameSlapback, rate)
+            self.assertFalse(result["passed"], rate)
+            self.assertGreater(result["deviations"][0], 8.0)
+
+    def test_frames_at_44k_are_red_at_22k(self):
+        result = t2_measure(Frames441Slapback, 22050)
+        self.assertFalse(result["passed"], result)
+
+    def test_the_split_build_is_red_on_agreement_alone(self):
+        # Station A's split, on the class: each fit inside 0.5 %, the two
+        # fits more than 0.5 % apart.
+        for rate in RATES:
+            low, high, between = t2_measure(SplitSlapback,
+                                            rate)["deviations"]
+            self.assertLessEqual(abs(low), 0.5, rate)
+            self.assertLessEqual(abs(high), 0.5, rate)
+            self.assertGreater(abs(between), 0.5, rate)
 
 
 class T3Mono(unittest.TestCase):
@@ -902,6 +1269,26 @@ class T3Mono(unittest.TestCase):
         result = t3_measure(PannedSlapback, RATE)
         self.assertFalse(result["passed"])
         self.assertGreater(result["lr"], 0)
+
+    def test_presence_holds_inside_the_band(self):
+        # Fix round 1: a -20 dBFS tone at a third of the rate, the band's
+        # edge, at the defaults, reads within 4 dB at every rate.
+        for rate in RATES:
+            head, energy = presence_db(SlapbackDelay,
+                                       tone(PRESENCE_BAND * rate, rate), rate)
+            self.assertEqual(head, 0, rate)
+            self.assertLessEqual(abs(energy), 4.0, (rate, energy))
+
+    def test_presence_outside_the_band_is_the_disclosed_wow_loss(self):
+        # At Nyquist the defaults read outside 4 dB, and at Wow 0 inside
+        # 0.5 dB: the loss is the wow's fractional read, not the class
+        # dropping the repeat. If this moves, the band's words move too.
+        for rate in RATES:
+            alt = probes.alt_fs(frames=rate, channels=1)
+            _, energy = presence_db(SlapbackDelay, alt, rate)
+            self.assertLess(energy, -4.0, rate)
+            _, still = presence_db(SlapbackDelay, alt, rate, wow_cents=0.0)
+            self.assertLess(abs(still), 0.5, rate)
 
 
 class T4Tone(unittest.TestCase):
@@ -924,9 +1311,57 @@ class T4Tone(unittest.TestCase):
             self.assertTrue(result["passed"], (label, result))
 
     def test_an_open_top_stop_is_red_at_the_defaults(self):
-        for rate in (48000, 44100):
+        for rate in RATES:
+            self.assertGreater(t4_out_differing(RawTopSlapback, rate), 0)
             self.assertGreater(t4_out_differing(OpenTopSlapback, rate), 0)
+        for rate in (48000, 44100):
+            self.assertFalse(t4_measure(RawTopSlapback, rate)["passed"])
             self.assertFalse(t4_measure(OpenTopSlapback, rate)["passed"])
+
+    def test_out_after_tone_has_been_in_is_within_1_lsb(self):
+        # The restated out clause (fix round 1, dossier revision): once
+        # Tone has handed an in-circuit value since the last reset (the
+        # constructor counts), the out stop is within 1 LSB of the node
+        # given no `damping_hz`, and byte-identical at Wow 0.
+        for rate in RATES:
+            for channels in (2, 1):
+                for ctor, steps in (({"tone_hz": 5000.0}, (0,)),
+                                    ({"patch": 5}, (0,))):
+                    differing, peak, damping = t4_out_history(
+                        SlapbackDelay, rate, channels, steps=steps, **ctor)
+                    self.assertLessEqual(peak, 1, (rate, channels, ctor))
+                    self.assertGreater(differing, 0, (rate, channels, ctor))
+                    # The pack's old reading, "patches 0-4 hand 0.0", is
+                    # true of a fresh history only.
+                    self.assertEqual(damping, 32.0 * rate)
+                    differing, _, _ = t4_out_history(
+                        SlapbackDelay, rate, channels,
+                        steps=steps + ((WOW_I, 0),), **ctor)
+                    self.assertEqual(differing, 0, (rate, channels, ctor))
+
+    def test_out_on_a_fresh_history_is_byte_identical(self):
+        for rate in RATES:
+            for channels in (2, 1):
+                self.assertEqual(t4_out_differing(SlapbackDelay, rate,
+                                                  channels), 0)
+                differing, _, damping = t4_out_history(
+                    SlapbackDelay, rate, channels, steps=(0,))
+                self.assertEqual((differing, damping), (0, 0.0))
+                # A Tone-in constructor with a patch 0 on top never put
+                # Tone in on the node after the constructor finished, but
+                # the constructor counts: this one is the 1 LSB case.
+                differing, peak, damping = t4_out_history(
+                    SlapbackDelay, rate, channels, tone_hz=5000.0, patch=0)
+                self.assertLessEqual(peak, 1)
+
+    def test_the_bound_goes_red(self):
+        # The restated clause's own planted faults: an open top after
+        # Tone has been in is far outside 1 LSB.
+        for rate in RATES:
+            for cls in (RawTopSlapback, OpenTopSlapback):
+                _, peak, _ = t4_out_history(cls, rate, 2, steps=(0,),
+                                            patch=5)
+                self.assertGreater(peak, 1, (rate, cls.__name__))
 
     def test_a_raw_tone_is_red_at_the_15k_cell(self):
         for rate in (48000, 44100):
@@ -934,6 +1369,12 @@ class T4Tone(unittest.TestCase):
                                passband=True)
             self.assertFalse(result["passed"])
             self.assertIsNone(result["corner"])
+
+    def test_a_raw_tone_is_red_at_patch_5_at_22k(self):
+        label = 2000.0 * 10.0 ** (51 / 127.0)
+        result = t4_corner(RawToneSlapback, label, label, 22050)
+        self.assertFalse(result["passed"], result)
+        self.assertGreater(result["corner"] / label - 1.0, 0.2)
 
 
 class T5Wow(unittest.TestCase):
@@ -946,6 +1387,16 @@ class T5Wow(unittest.TestCase):
                                          saturation=saturation) - 1.0), 0.25)
         cents = t5_cents(SlapbackDelay, RATE, patch=0)
         self.assertLess(abs(cents - 1.0), 0.25)
+
+    def test_the_level_span(self):
+        # (m): the clauses hold on a 10 LSB sine (-70.3 dBFS).
+        for rate in RATES:
+            zero = t5_cents(SlapbackDelay, rate, amp=10, wow_cents=0.0)
+            default = t5_cents(SlapbackDelay, rate, amp=10)
+            top = t5_cents(SlapbackDelay, rate, amp=10, wow_cents=3.5)
+            self.assertLess(zero, 0.05, rate)
+            self.assertLess(abs(default - 1.0), 0.25, rate)
+            self.assertLess(abs(top - 3.5), 0.5, rate)
 
     def test_the_ceiling(self):
         cents = t5_cents(SlapbackDelay, RATE, wow_cents=10.0)
@@ -1204,28 +1655,75 @@ class InputCeiling(unittest.TestCase):
 
 
 class FaultsAreUnreachable(unittest.TestCase):
-    """Every fault's reachability walk, reading what the node is handed at
-    each position, at the rates its docstring names."""
+    """Every fault's reachability walk, reading only what the node is
+    handed, at 48, 44.1 and 22.05 kHz, on the kit's grid (17 positions per
+    macro) and on the fine grid (509), plus the six patches."""
 
     CHECKED = 6 * 17 + 6
+    CHECKED_FINE = 6 * len(FINE) + 6
 
     def test_every_fault_is_off_the_surface(self):
-        for name, faulted, reading, rates, ctor in REACH_WALKS:
-            for rate in rates:
+        for name, faulted, reading, ctor in REACH_WALKS:
+            for rate in RATES:
                 with self.subTest(fault=name, rate=rate):
                     result = reach(faulted, reading, rate, ctor)
                     self.assertEqual(result["checked"], self.CHECKED)
 
-    def test_the_rates_left_out_are_left_out_for_their_stated_reason(self):
+    def test_every_fault_is_off_the_fine_grid(self):
+        for name, faulted, reading, ctor in REACH_WALKS:
+            for rate in RATES:
+                with self.subTest(fault=name, rate=rate):
+                    result = reach(faulted, reading, rate, ctor, grid=FINE)
+                    self.assertEqual(result["checked"], self.CHECKED_FINE)
+
+    def test_frames_at_44k_are_off_the_surface_at_22k_only(self):
+        reach(Frames441Slapback, read_frames, 22050, {})
+        reach(Frames441Slapback, read_frames, 22050, {}, grid=FINE)
         # At 44.1 kHz the 44.1 kHz landing is the right one: inert.
         with self.assertRaises(kit_faults.FaultInert):
-            reach(Frames441Slapback, read_landing_error, 44100, {})
-        # At 22.05 kHz grid 94-126 hand the pre-warped clamp too.
+            reach(Frames441Slapback, read_frames, 44100, {})
+
+    def test_the_rates_left_out_are_left_out_for_their_stated_reason(self):
+        # At 22.05 kHz grid 94-126 hand the old open top's clamp too.
         with self.assertRaises(kit_faults.FaultReachable):
             reach(OpenTopSlapback, read_damping, 22050, {})
         # The raw Tone is silent at the defaults, where Tone is out.
         with self.assertRaises(kit_faults.FaultInert):
             reach(RawToneSlapback, read_damping, RATE, {})
+
+
+class TheRetiredFaultsAreDialable(unittest.TestCase):
+    """The gate audit's dial, kept: the faults fix round 1 retired render
+    what a clean surface state renders, byte for byte."""
+
+    def _noise(self, rate, seconds=1.0):
+        frames = int(seconds * rate)
+        return np.frombuffer(probes.noise_det(frames=frames, dbfs=-6.0,
+                                              channels=1),
+                             dtype=np.int16)[:frames].astype(float)
+
+    def test_the_floor_is_repeats_0_05(self):
+        for rate in RATES:
+            x = self._noise(rate)
+            a = render(FloorSlapback, x, rate)
+            b = render(SlapbackDelay, x, rate, repeats=0.05)
+            c = render(SlapbackDelay, x, rate,
+                       macros={REPEATS_I: 127 * 0.05 / 0.6})
+            self.assertEqual(int(np.count_nonzero(a != b)), 0, rate)
+            self.assertEqual(int(np.count_nonzero(a != c)), 0, rate)
+
+    def test_frames_at_44k_are_a_time_at_48k(self):
+        x = self._noise(48000)
+        a = render(Frames441Slapback, x, 48000)
+        b = render(SlapbackDelay, x, 48000, time_ms=5954 * 1000.0 / 48000)
+        self.assertEqual(int(np.count_nonzero(a != b)), 0)
+
+    def test_the_open_top_is_a_constructor_tone(self):
+        for rate in RATES:
+            x = self._noise(rate)
+            a = render(OpenTopSlapback, x, rate)
+            b = render(SlapbackDelay, x, rate, tone_hz=19999.999)
+            self.assertEqual(int(np.count_nonzero(a != b)), 0, rate)
 
 
 class NullBuildRed(unittest.TestCase):

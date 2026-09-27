@@ -55,8 +55,8 @@ as bright as the dry: an Ampex 350 at 15 ips rolls off at 15 kHz and at
 7.5 ips lower still, and the Tone knob (patch 5, Dark Slap) is how you get
 there. Wow is on at 1 cent, and wow moves the read head between samples, so
 the repeat's top end breathes: at 48 kHz a 15 kHz tone in the repeat swings
-between -0.02 and -5.11 dB (mean -2.61 dB) about 25 times a second; at
-44.1 kHz between -0.03 and -6.38 dB (mean -3.34 dB). With Wow at 0 the
+between -0.03 and -5.11 dB (mean -2.61 dB) about 25 times a second; at
+44.1 kHz between -0.02 and -6.38 dB (mean -3.35 dB). With Wow at 0 the
 repeat loses nothing: every static Time is landed on the nearest whole frame
 at the running rate, so the default 135 ms is 6 480 frames at 48 kHz and
 5 954 frames (135.011 ms) at 44.1 kHz, not the 5 953.5 that would cost the
@@ -94,8 +94,16 @@ a coefficient of exactly 1, which follows the repeat sample for sample.
 That is the out stop up to float rounding: against the filter truly out,
 over 2 916 cells (Time, Wow, Saturation, Repeats and Level at three
 settings each, three rates, stereo and mono, a full-scale ramp and noise),
-5 640 of 166 430 700 samples differ, each by 1 LSB, none at Wow 0. The defaults, and anything since a reset
-that has not put Tone in, hand the node exactly no filter.
+5 640 of 166 430 700 samples differ, each by 1 LSB, none at Wow 0. The
+defaults, and anything since a reset that has not put Tone in, hand the
+node exactly no filter. A Tone in the constructor counts: `tone_hz=5000` and
+then patch 0, or `patch=5` and then patch 0, is the 1 LSB case (10 of
+384 000 samples of 4 s of 0 dBFS noise at 48 kHz stereo), and a `reset()`
+makes it exact again.
+
+**A host that echoes Time back** (`set_macro(0, get_macro(0))`) keeps the
+constructor's exact Time: the 44.1 kHz default stays on 5 954 frames.
+Any other Time position lands the knob's own value.
 
 **Tone at a low rate.** The knob's corners clamp below Nyquist at the
 running rate. At 22.05 kHz grid positions 94-126 all sit on the 10 804.5 Hz
@@ -181,6 +189,12 @@ REPEATS_MAX = 0.6
 #: The fixed Time walk, delay-seconds per second: 3/16, exact in float32,
 #: so every step of the walk is exact at 48 kHz (dossier section 8.6).
 SLEW = 0.1875
+
+#: How close, as a 0..1 knob position, a Time write must come to the
+#: constructor's own seeded position to count as a host echoing it back:
+#: 1e-6 is 1/7 874 of one MIDI step, and holds a single-precision board's
+#: round trip through the 0-127 scale.
+ECHO_TOLERANCE = 1e-6
 
 TIME_I, LEVEL_I, SATURATION_I, TONE_I, WOW_I, REPEATS_I = range(6)
 
@@ -313,6 +327,9 @@ class SlapbackDelay(_component.Component):
         #: few ulps under, which at 44.1 kHz (5 953.5 frames) lands on 5 953
         #: instead of the 5 954 the whole-frame law gives 135.0.
         self._time_exact = None
+        #: The knob position the constructor's Time seeded, which a host's
+        #: echo of `get_macro(0)` comes back to within `ECHO_TOLERANCE`.
+        self._time_seed = -1.0
         self._seeding = True
         # A log knob cannot seed 0 or a negative, so those clamp to the
         # nearer stop here; 0 or less is how the node spells Tone out.
@@ -351,6 +368,7 @@ class SlapbackDelay(_component.Component):
         finally:
             self._deferred = False
             self._seeding = False
+        self._time_seed = self._macros[TIME_I]
         self._refresh()
         if patch is not None:
             self.program_change(patch)
@@ -392,8 +410,12 @@ class SlapbackDelay(_component.Component):
         return self._value(TIME_I)
 
     def _apply_macro(self, index, position):
-        del position
-        if index == TIME_I and not self._seeding:
+        if index == TIME_I and not self._seeding and not (
+                self._time_exact is not None
+                and abs(position - self._time_seed) <= ECHO_TOLERANCE):
+            # A host that reads Time back and writes the same position
+            # (`set_macro(0, get_macro(0))`) keeps the constructor's exact
+            # Time; any other position drops it.
             self._time_exact = None
         if not self._deferred:
             self._refresh()

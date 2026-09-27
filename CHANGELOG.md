@@ -23,6 +23,19 @@ there, and are recorded in its changelog.
   The docstring states the input ceiling (-3 dBFS peak at the defaults, -4
   over the shipped patches, on `noise_det`) and Repeat Tone's flat top at
   22.05 kHz. Board cost is unmeasured.
+- **`SlapbackDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** the Sun
+  Studio tape slap on one `audioecho.FeedbackDelay`: one mono repeat at
+  135 ms, landed on a whole frame at every rate, with Saturation, Tone and
+  Wow as the tape's colours and Repeats defaulting to 0. Level 0 is a wire
+  while the line keeps recording, Time walks rather than clicks, and a host
+  echoing Time back keeps the constructor's exact frame. Tone out is
+  byte-identical to no filter until Tone has been in since a reset, and
+  within 1 LSB after. It lives in `lib/audioeffects/rebuilt/slapbackdelay.py`,
+  and `audioeffects.SlapbackDelay` is still the old class. The docstring
+  states the input ceiling (-2.5 dBFS peak at the defaults, -3.4 over the
+  shipped patches, on `noise_det`), the 15 kHz swing the wow costs the
+  repeat, the Wow step, and Tone's flat top at 22.05 kHz. Board cost is
+  unmeasured.
 
 ## v0.3.2 (2026-09-25)
 
