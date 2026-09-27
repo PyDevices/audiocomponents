@@ -630,10 +630,13 @@ def t3_measure(cls, rate=RATE, **options):
             "head": head, "energy_db": energy_db}
 
 
-#: T3's presence band (fix round 1, dossier revision): the 4 dB bar holds
-#: on material whose energy lies below a third of the running rate. Above
-#: it the wow's fractional read (section 8.3) takes the repeat's energy
-#: further down; at Nyquist `alt_fs` reads -4.86 / -5.48 / -5.20 dB.
+#: T3's presence band (fix round 1, dossier revision; scoped in fix round
+#: 2): with Tone out and Repeats 0, the 4 dB bar holds on material whose
+#: energy lies below a third of the running rate. Above it the wow's
+#: fractional read (section 8.3) takes the repeat's energy further down; at
+#: Nyquist `alt_fs` reads -4.86 / -5.48 / -5.20 dB. With Tone in, its
+#: low-pass takes an in-band tone above the corner down, and with Repeats
+#: up the repeats stack on a steady tone, so no band is claimed there.
 PRESENCE_BAND = 1.0 / 3.0
 
 
@@ -1279,6 +1282,22 @@ class T3Mono(unittest.TestCase):
             self.assertEqual(head, 0, rate)
             self.assertLessEqual(abs(energy), 4.0, (rate, energy))
 
+    def test_the_band_is_scoped_to_tone_out_and_repeats_0(self):
+        # Fix round 2: the band sentence holds with Tone out and Repeats 0
+        # only. Inside fs/3, Tone at its 2 kHz stop takes a 3 kHz tone
+        # more than 4 dB down, and Repeats at its 0.6 stop stacks a 1 kHz
+        # tone more than 4 dB up, at every rate. If either comes back
+        # inside 4 dB, the scope can widen, and the words should say so.
+        for rate in RATES:
+            head, energy = presence_db(SlapbackDelay, tone(3000.0, rate),
+                                       rate, tone_hz=2000.0)
+            self.assertEqual(head, 0, rate)
+            self.assertLess(energy, -4.0, (rate, energy))
+            head, energy = presence_db(SlapbackDelay, tone(1000.0, rate),
+                                       rate, repeats=0.6)
+            self.assertEqual(head, 0, rate)
+            self.assertGreater(energy, 4.0, (rate, energy))
+
     def test_presence_outside_the_band_is_the_disclosed_wow_loss(self):
         # At Nyquist the defaults read outside 4 dB, and at Wow 0 inside
         # 0.5 dB: the loss is the wow's fractional read, not the class
@@ -1319,10 +1338,12 @@ class T4Tone(unittest.TestCase):
             self.assertFalse(t4_measure(OpenTopSlapback, rate)["passed"])
 
     def test_out_after_tone_has_been_in_is_within_1_lsb(self):
-        # The restated out clause (fix round 1, dossier revision): once
-        # Tone has handed an in-circuit value since the last reset (the
-        # constructor counts), the out stop is within 1 LSB of the node
-        # given no `damping_hz`, and byte-identical at Wow 0.
+        # The restated out clause (fix round 1, restated again in fix
+        # round 2): once Tone has handed an in-circuit value since the
+        # last reset (the constructor counts), the out stop is within
+        # 1 LSB of the node given no `damping_hz`, and byte-identical at
+        # Wow 0 where the node's float32 landing of Time is whole: every
+        # Time at 48 kHz, and every shipped patch's Time at every rate.
         for rate in RATES:
             for channels in (2, 1):
                 for ctor, steps in (({"tone_hz": 5000.0}, (0,)),
@@ -1338,6 +1359,23 @@ class T4Tone(unittest.TestCase):
                         SlapbackDelay, rate, channels,
                         steps=steps + ((WOW_I, 0),), **ctor)
                     self.assertEqual(differing, 0, (rate, channels, ctor))
+        # Fix round 2: at Wow 0 on a Time whose float32 landing
+        # (`audiodsp_feedback_delay.c:148`) leaves a fraction, the tap is
+        # fractional and the coefficient-1 stop moves samples by 1 LSB.
+        # 44.1 kHz grid 8 (1 980 frames asked, no float32 `delay_ms` lands
+        # it whole) is such a cell; grid 84 lands whole and reads 0. The
+        # non-zero assertion is the one the old words ("byte-identical at
+        # Wow 0") fail.
+        for channels in (2, 1):
+            for midi, fractional in ((8, True), (84, False)):
+                differing, peak, _ = t4_out_history(
+                    SlapbackDelay, 44100, channels,
+                    steps=(0, (WOW_I, 0), (TIME_I, midi)), tone_hz=5000.0)
+                self.assertLessEqual(peak, 1, (channels, midi))
+                if fractional:
+                    self.assertGreater(differing, 0, (channels, midi))
+                else:
+                    self.assertEqual(differing, 0, (channels, midi))
 
     def test_out_on_a_fresh_history_is_byte_identical(self):
         for rate in RATES:

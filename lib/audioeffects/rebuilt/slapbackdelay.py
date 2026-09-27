@@ -94,16 +94,22 @@ a coefficient of exactly 1, which follows the repeat sample for sample.
 That is the out stop up to float rounding: against the filter truly out,
 over 2 916 cells (Time, Wow, Saturation, Repeats and Level at three
 settings each, three rates, stereo and mono, a full-scale ramp and noise),
-5 640 of 166 430 700 samples differ, each by 1 LSB, none at Wow 0. The
-defaults, and anything since a reset that has not put Tone in, hand the
-node exactly no filter. A Tone in the constructor counts: `tone_hz=5000` and
-then patch 0, or `patch=5` and then patch 0, is the 1 LSB case (10 of
+5 640 of 166 430 700 samples differ, each by 1 LSB. None of those was at
+Wow 0, but that run tried three Times only (40, 135 and 250 ms). Where
+the node's single-precision `delay_ms * rate / 1000` misses the whole
+frame the class asked for (21 Time positions at 44.1 kHz, 20 at
+22.05 kHz, none at 48 kHz and none at a shipped patch's Time), Wow 0
+differs by 1 LSB as well. The defaults, and anything since a reset that
+has not put Tone in, hand the node exactly no filter. A Tone in the
+constructor counts: `tone_hz=5000` and then patch 0, or `patch=5` and then patch 0, is the 1 LSB case (10 of
 384 000 samples of 4 s of 0 dBFS noise at 48 kHz stereo), and a `reset()`
 makes it exact again.
 
 **A host that echoes Time back** (`set_macro(0, get_macro(0))`) keeps the
 constructor's exact Time: the 44.1 kHz default stays on 5 954 frames.
-Any other Time position lands the knob's own value.
+Any other Time position lands the knob's own value, and that includes a
+restore: save `get_macro(0)`, move Time, write the saved value back, and
+the 44.1 kHz default comes back on 5 953 frames, one short.
 
 **Tone at a low rate.** The knob's corners clamp below Nyquist at the
 running rate. At 22.05 kHz grid positions 94-126 all sit on the 10 804.5 Hz
@@ -174,9 +180,11 @@ TONE_MAX_HZ = 20000.0
 #: 1 - expf(-2 pi 32) is exactly 1.0f (`one_pole_coefficient`,
 #: `audiodsp_feedback_delay.c:33-40`), so the loop low-pass's state follows
 #: the tap sample for sample instead of freezing. That is the identity up to
-#: float rounding, which moved 5 640 of 166 430 700 samples by 1 LSB where
-#: the tap is fractional (Wow on) and none by more
-#: (`slapbackdelay_fix_tone_track.py`).
+#: float rounding, which moved 5 640 of 166 430 700 samples by 1 LSB and
+#: none by more (`slapbackdelay_fix_tone_track.py`). It can move one only
+#: where the tap is fractional: with Wow on, and at Wow 0 wherever the node's
+#: float32 `delay_ms * rate / 1000` misses the whole frame (21 Time
+#: positions at 44.1 kHz, 20 at 22.05 kHz, none at 48 kHz).
 TONE_TRACK_PER_RATE = 32.0
 
 #: The wow's fixed rate and the Wow knob's ceiling, in cents peak.
