@@ -68,6 +68,14 @@ landed on the nearest whole frame at the running rate, where the read is
 lossless, so the repeats of a Time you have stopped turning do not darken.
 Above Mix 1 the dry falls as 2 - Mix, by `audiodelays.Echo`'s convention.
 
+**Tail.** `tail_samples` is an upper bound on how long the repeats take to
+reach exact zero after your input stops, and it is long: the loop has to
+round its way down from full scale, 12 laps at the default Feedback. From
+Feedback 0.5 up it is `None`, because there the node's feedback write
+rounds a 1 LSB repeat back to itself and the line never empties (up to 50
+LSB at 0.99). That is a floor bug in the node, not in this class, and it is
+why the rebuild is parked. With Repeat Cut in circuit it is `None` too.
+
 `capabilities = ("tempo_sync",)`: with Sync on, the class reads
 `self._transport()` on every macro move and program change (not per block).
 With no host transport, Time stays where the knob is.
@@ -105,6 +113,15 @@ FEEDBACK_MAX = 0.99
 #: The line's headroom over `max_time_ms`: the node clamps a delay at
 #: `line_frames - 2`, so a line of exactly `max_time_ms` could not reach it.
 LINE_HEADROOM_MS = 1.0
+
+#: At and above this Feedback the node's line never empties. Its feedback
+#: write rounds half away from zero (`to_s16`, `audiodsp_feedback_delay.c:317`,
+#: called at `:493`), so every |x| <= 0.5 / (1 - f) writes itself back, and
+#: at f >= 0.5 that includes 1 LSB. `tail_samples` is `None` there.
+FEEDBACK_UNBOUNDED = 0.5
+
+#: The largest magnitude one line sample can hold (int16).
+LINE_PEAK = 32768.0
 
 #: Division's sixteen note values, in quarter-note beats, rising: 1/32,
 #: 1/16T, 1/32., 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/2T, 1/4., 1/2,
@@ -166,6 +183,33 @@ def slew_of(glide_ms):
 def whole_frames(time_ms, sample_rate):
     """The nearest whole frame at the running rate (dossier section 6)."""
     return int(math.floor(float(time_ms) * sample_rate / 1000.0 + 0.5))
+
+
+def laps_to_zero(feedback):
+    """How many laps of the line can still hold a non-zero sample once the
+    input stops, or `None` if the line never empties.
+
+    The node writes `round(fed + f * read)`, rounding half away from zero,
+    so after the input stops a lap's peak obeys x' <= f x + 0.5 from any
+    starting x <= 32768. That gives x_k <= f^k (32768 - c) + c with
+    c = 0.5 / (1 - f), and x_k < 1 means x_k is exactly 0. Below
+    f = 0.5, c < 1 and the count is finite; at 0.5 and above, 1 LSB writes
+    itself back forever (`FEEDBACK_UNBOUNDED`).
+    """
+    feedback = max(0.0, float(feedback))
+    if feedback >= FEEDBACK_UNBOUNDED:
+        return None
+    c = 0.5 / (1.0 - feedback)
+    laps = 0
+    peak = LINE_PEAK
+    while peak >= 1.0:
+        laps += 1
+        if laps > 1024:
+            # Only a Feedback within a float's width of 0.5 gets here, where
+            # a board's single-precision c can round up to 1.
+            return None
+        peak = feedback * (peak - c) + c
+    return laps
 
 
 class DigitalDelay(_component.Component):
@@ -235,6 +279,17 @@ class DigitalDelay(_component.Component):
             max_time_ms = TIME_MIN_MS
         self._max_time_ms = max_time_ms
         self._frames = 1
+        #: The longest delay, in whole frames, the read head may still sit
+        #: at. A Glide walk starts from wherever the head is and the class
+        #: cannot see how far it has got, so after a falling move this keeps
+        #: the old Time until a jump (Glide 0) or a clear lands the head.
+        self._reach = 1
+        #: True while the node has been built or cleared and not yet told a
+        #: second Time: it snaps onto the configured delay on its first pull.
+        self._fresh = True
+        #: True inside `program_change`, which applies the macros one at a
+        #: time; the node is refreshed once, after the last.
+        self._deferred = False
         self._feedback = 0.0
         self._node_ms = 0.0
         #: A constructor Glide stays on the audio path until macro 3 moves:
@@ -254,7 +309,7 @@ class DigitalDelay(_component.Component):
             delay_slew=0.0)
         # `clear()` empties the line and the loop filters and re-primes the
         # read head, so a reset is silent and snaps onto patch 0's Time.
-        self._own(self._delay, reset=self._delay.clear)
+        self._own(self._delay, reset=self._clear)
         self._delay.play(self._source)
         self._output = self._delay
         # The knob is seeded at its bottom (800 ms) for a faster or zero
@@ -265,6 +320,11 @@ class DigitalDelay(_component.Component):
         self._seeding = False
         if patch is not None:
             self.program_change(patch)
+        self._fresh = False
+
+    def _clear(self):
+        self._delay.clear()
+        self._fresh = True
 
     # -- the maps ------------------------------------------------------
 
@@ -335,7 +395,27 @@ class DigitalDelay(_component.Component):
         del position
         if index == GLIDE_I and not self._seeding:
             self._glide_exact = None
-        self._refresh()
+        if not self._deferred:
+            self._refresh()
+
+    def program_change(self, index, channel=0, note_id=-1,
+                       sample_position=0):
+        """Apply patch `index` whole, then refresh once. The base applies
+        the macros in index order, so a refresh per macro would read Time
+        against the outgoing patch's Sync and, with a host transport, keep
+        its synced Time instead of the new patch's own."""
+        self._deferred = True
+        try:
+            _component.Component.program_change(
+                self, index, channel, note_id, sample_position)
+        finally:
+            self._deferred = False
+        if type(self).PATCHES.get(index) is not None:
+            self._refresh()
+
+    def reset(self):
+        _component.Component.reset(self)
+        self._fresh = False
 
     def _refresh(self):
         span = self._MACRO_RANGES[TIME_I]
@@ -352,6 +432,13 @@ class DigitalDelay(_component.Component):
             self._macros[TIME_I] = _component.macro_position(span, clamped)
         self._frames = max(1, whole_frames(clamped, self._sample_rate))
         self._node_ms = self._node_time_ms(self._frames)
+        slew = slew_of(self._glide_ms())
+        if self._fresh or slew <= 0.0:
+            # A fresh node snaps onto the target, and with the slew off the
+            # read head jumps there on the next frame.
+            self._reach = self._frames
+        elif self._frames > self._reach:
+            self._reach = self._frames
         feedback = self._value(FEEDBACK_I)
         if feedback > FEEDBACK_MAX:
             feedback = FEEDBACK_MAX
@@ -359,7 +446,7 @@ class DigitalDelay(_component.Component):
             feedback = 0.0
         self._feedback = feedback
         self._delay.set(
-            delay_slew=slew_of(self._glide_ms()),
+            delay_slew=slew,
             delay_ms=self._node_ms,
             feedback=feedback,
             mix=self._value(MIX_I),
@@ -368,13 +455,28 @@ class DigitalDelay(_component.Component):
 
     @property
     def tail_samples(self):
-        """The -60 dB lap count plus one lap, from the Time in whole frames
-        and the Feedback: `ceil(T (1 + 3 / -log10 f))`, and `T` at f = 0. A
-        loop filter only shortens the tail, so this is an upper bound."""
+        """Frames until the output is exactly zero once the input stops, as
+        an upper bound, or `None` where no bound holds.
+
+        `laps_to_zero(f)` laps, each at most one frame longer than the
+        longest delay the read head may be at (the read interpolates
+        towards the next older frame). While a Glide walk falls, that is
+        the Time it is walking from, not the target, and it stays so until
+        a Glide-0 move or a reset lands the head, because the class cannot
+        see how far the walk has got. Repeat Tone adds one lap for its
+        filter state to die away.
+
+        `None` at Feedback 0.5 and above, where the node's rounding holds
+        1 LSB or more in the line forever (`FEEDBACK_UNBOUNDED`), and with
+        Repeat Cut in circuit, whose high-pass can more than double a peak
+        in one pass and remembers across laps at its low corners.
+        """
         self._check_live()
-        frames = self._frames
-        feedback = self._feedback
-        if feedback <= 0.0:
-            return int(frames)
-        laps = 1.0 + 3.0 * math.log(10.0) / -math.log(feedback)
-        return int(math.ceil(frames * laps))
+        if self._macros[CUT_I] > 0.0:
+            return None
+        laps = laps_to_zero(self._feedback)
+        if laps is None:
+            return None
+        if self._macros[TONE_I] < 1.0:
+            laps += 1
+        return int(laps * (self._reach + 1))

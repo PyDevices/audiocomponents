@@ -31,6 +31,7 @@ from audioeffects import _component                         # noqa: E402
 from audioeffects import rebuilt                            # noqa: E402
 from audioeffects.chorus import nominal_damping_hz          # noqa: E402
 from audioeffects.rebuilt import digitaldelay as dd         # noqa: E402
+from tools import effect_measurements as kit                # noqa: E402
 
 VENDOR = "PyDevices"
 
@@ -159,6 +160,44 @@ class OpenTopToneDelay(DigitalDelay):
         if position >= 1.0:
             return nominal_damping_hz(self._hz(16000.0), self._sample_rate)
         return DigitalDelay._tone_damping(self, position)
+
+
+# --------------------------------------------------------------------------
+# Planted faults for the Tier 1 checks the review round added
+
+
+class SixtyDbTailDelay(DigitalDelay):
+    """The first build's tail: the -60 dB lap count plus one lap, which a
+    -6 dBFS burst outlives on its way down to exact zero."""
+
+    NAME = 'DigitalDelay'
+
+    @property
+    def tail_samples(self):
+        frames = self._frames
+        if self._feedback <= 0.0:
+            return int(frames)
+        laps = 1.0 + 3.0 * math.log(10.0) / -math.log(self._feedback)
+        return int(math.ceil(frames * laps))
+
+
+class TargetOnlyTailDelay(DigitalDelay):
+    """The tail from the target Time alone, while the read head is still
+    walking down from the old one."""
+
+    NAME = 'DigitalDelay'
+
+    def _refresh(self):
+        DigitalDelay._refresh(self)
+        self._reach = self._frames
+
+
+class PerMacroPatchDelay(DigitalDelay):
+    """A patch applied one macro at a time with a refresh after each, so
+    Time is read against the outgoing patch's Sync."""
+
+    NAME = 'DigitalDelay'
+    program_change = _component.Component.program_change
 
 
 # --------------------------------------------------------------------------
@@ -495,14 +534,34 @@ class TheSurface(unittest.TestCase):
                                    delta=0.6)
 
     def test_tail_samples_follows_time_and_feedback(self):
+        # laps_to_zero(f) laps of (the head's longest delay + 1) frames.
+        self.assertEqual(dd.laps_to_zero(0.0), 1)
+        self.assertEqual(dd.laps_to_zero(0.35), 12)
+        self.assertEqual(dd.laps_to_zero(64 / 127.0 * 0.99), 24)
+        self.assertIsNone(dd.laps_to_zero(0.5))
         effect = DigitalDelay(silence_src(512), sample_rate=RATE)
-        self.assertEqual(effect.tail_samples, 127343)
+        self.assertEqual(effect.tail_samples, 12 * 16801)
         effect.program_change(0)
-        self.assertEqual(effect.tail_samples, 128606)
+        self.assertEqual(effect.tail_samples, 12 * 16936)
         effect.set_macro(FEEDBACK_I, 0)
-        self.assertEqual(effect.tail_samples, 16935)
+        self.assertEqual(effect.tail_samples, 16936)
+        # A falling move walks from the old Time, so the old Time stays the
+        # bound until a jump lands the head.
         effect.set_macro(TIME_I, 0)
-        self.assertEqual(effect.tail_samples, 600)
+        self.assertEqual(effect.tail_samples, 16936)
+        effect.set_macro(GLIDE_I, 0)
+        self.assertEqual(effect.tail_samples, 601)
+        effect.set_macro(FEEDBACK_I, 64)
+        self.assertEqual(effect.tail_samples, 24 * 601)
+        effect.set_macro(TONE_I, 100)
+        self.assertEqual(effect.tail_samples, 25 * 601)
+        effect.set_macro(FEEDBACK_I, 65)
+        self.assertIsNone(effect.tail_samples)
+        effect.set_macro(FEEDBACK_I, 0)
+        effect.set_macro(CUT_I, 1)
+        self.assertIsNone(effect.tail_samples)
+        effect.reset()
+        self.assertEqual(effect.tail_samples, 12 * 16936)
 
     def test_glide_law(self):
         self.assertEqual(dd.slew_of(0.0), 0.0)
@@ -666,6 +725,98 @@ class Tier1Fast(unittest.TestCase):
                               feedback=0.99, mix=2.0, tone_hz=800.0,
                               cut_hz=400.0)
         self.assertEqual(int(np.max(np.abs(pull(effect, RATE)))), 0)
+
+    def _kit_tail(self, cls, seconds, **options):
+        data, on = probes.burst_silence(total_s=seconds, rate=RATE)
+        effect = cls(probes.ArraySource(data, rate=RATE, channels=2,
+                                        block=BLOCK),
+                     sample_rate=RATE, **options)
+        declared = effect.tail_samples
+        render = probes.render(effect, int(seconds * RATE), rate=RATE,
+                               channels=2)
+        result = kit.tail(render, burst_end_frame=on,
+                          declared_tail_samples=declared,
+                          settle_frames=effect._frames)
+        return declared, result["values"], result["red"]
+
+    def test_the_tail_reaches_exact_zero_inside_tail_samples(self):
+        # The kit's TAIL on its own -6 dBFS burst, at the defaults and at
+        # the Sync-on patch with the highest Feedback under 0.5.
+        for options, seconds in (({}, 5.0), ({"patch": 2}, 6.0)):
+            declared, values, red = self._kit_tail(DigitalDelay, seconds,
+                                                   **options)
+            self.assertEqual(red, [], (options, values))
+            self.assertLessEqual(values["tail_samples"], declared)
+        declared, values, red = self._kit_tail(SixtyDbTailDelay, 5.0)
+        self.assertNotEqual(red, [], values)
+        self.assertGreater(values["tail_samples"], declared)
+
+    def test_the_floor_bug_is_reported_as_unbounded(self):
+        # audiodsp v0.6.1 rounds the feedback write half away from zero, so
+        # from Feedback 0.5 a 1 LSB repeat writes itself back forever. The
+        # class says None there. When the node is fixed the residual below
+        # goes to 0, and tail_samples can come back for the top half.
+        values = [0] * 256 + sine_values(997.0, 2048, RATE, 12000)
+        values += [0] * (3 * RATE)
+        effect = DigitalDelay(array_src(values), sample_rate=RATE,
+                              time_ms=12.5, feedback=0.5, mix=2.0)
+        self.assertIsNone(effect.tail_samples)
+        out = pull(effect, len(values))
+        self.assertGreater(int(np.max(np.abs(out[-600 * 2:]))), 0)
+        effect.set_macro(FEEDBACK_I, 64)
+        self.assertIsNotNone(effect.tail_samples)
+
+    def _walk_tail(self, cls):
+        """800 ms of 997 Hz, then Time 800 -> 12.5 ms at the default Glide
+        on the tone's last block, Feedback 0, Mix 2."""
+        tone = int(0.8 * RATE) // BLOCK * BLOCK
+        values = sine_values(997.0, tone, RATE, 12000) + [0] * RATE
+        effect = cls(array_src(values), sample_rate=RATE, time_ms=800.0,
+                     feedback=0.0, mix=2.0)
+        seen = {}
+
+        def move(frame):
+            if frame == tone:
+                effect.set_macro(TIME_I, 0)
+                seen["declared"] = effect.tail_samples
+
+        out = pull(effect, len(values), on_block=move)
+        after = out[tone * 2:]
+        last = int(np.nonzero(after)[0][-1]) // 2 + 1
+        return seen["declared"], last
+
+    def test_a_falling_walk_keeps_the_old_time_in_the_tail(self):
+        declared, last = self._walk_tail(DigitalDelay)
+        self.assertGreater(last, 30000)
+        self.assertLessEqual(last, declared)
+        declared, last = self._walk_tail(TargetOnlyTailDelay)
+        self.assertGreater(last, declared)
+
+    def _patch_times(self, cls):
+        def transport():
+            return (True, 0.0, 120.0, 4, 4)
+        effect = cls.create(silence_src(512), RATE, transport=transport)
+        seen = []
+        effect.program_change(1)
+        effect.program_change(0)
+        seen.append((effect._frames, round(effect.get_macro(TIME_I), 3)))
+        effect.program_change(1)
+        effect.program_change(4)
+        seen.append((effect._frames, round(effect.get_macro(TIME_I), 3)))
+        effect.program_change(2)
+        effect.reset()
+        seen.append((effect._frames, round(effect.get_macro(TIME_I), 3),
+                     effect.patch_index))
+        return seen
+
+    def test_a_sync_off_patch_loads_its_own_time(self):
+        # 120 bpm: patch 1's synced Time is 12000 frames (1/8), patch 2's
+        # 18000 (1/8 dotted).
+        self.assertEqual(self._patch_times(DigitalDelay),
+                         [(16935, 102.0), (35966, 125.0),
+                          (16935, 102.0, 0)])
+        faulted = self._patch_times(PerMacroPatchDelay)
+        self.assertEqual([row[0] for row in faulted], [12000, 12000, 18000])
 
     def test_reset_empties_the_line(self):
         values = [0] * 256 + sine_values(997.0, 2048, RATE, 12000)
