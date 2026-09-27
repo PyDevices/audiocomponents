@@ -800,28 +800,27 @@ class PlantedFaults(unittest.TestCase):
         print("\n  WIRE fault: first differing sample %r" % (first,))
         self.assertIsNotNone(first)
 
-    def test_wire_goes_red_on_a_dry_voice_at_unity(self):
-        """audiodsp#95's fault, which is the wiring this class shipped with.
+    def test_the_dry_voice_at_unity_is_a_wire_since_audiodsp_v0_6_1(self):
+        """audiodsp#95's plant, kept as a control now that it cannot fire.
 
-        A mixer voice at level 1.0 is not unity - upstream's Q15 level is
-        `1.0 * 32768` and the kernel divides by 32767 - so the dry tap at
-        unity came out one LSB high at every sample from 32736 up. Three of
-        16384 on a full-scale ramp, all in the right channel, because a
-        stereo voice at pan 0 gets 32767 on the left and 32768 on the right.
-        Nothing below -6.02 dBFS can reach it, which is why the row is a
-        ramp and this fault was invisible to a -4.4 dBFS tone for a year.
+        A mixer voice at level 1.0 was not unity - upstream's Q15 level was
+        `1.0 * 32768` and the kernel divided by 32767 - so the wiring this
+        class shipped with came out one LSB high at every sample from
+        32736 up: three of 16384 on a full-scale ramp, all in the right
+        channel. audiodsp v0.6.1 (#129) made the voice at 1.0 exact and the
+        pin moved there on 2026-09-27 (`AUDIODSP_PIN`). The row above still
+        has its fault, the one-LSB voice; this is the floor's own control,
+        on the ramp because nothing below -6.02 dBFS could reach the old
+        defect. If it goes red the floor has moved back under the suite.
         """
         data = ramp_fs(8192)
         effect, _ = build(data, ThroughTheDryVoice, mix=0.0)
         out = render(effect.output, 8192)
         differ = [index for index in range(min(len(out), len(data)))
                   if out[index] != data[index]]
-        print("\n  WIRE unity fault: %d differing, first %r"
+        print("\n  WIRE unity control: %d differing, first %r"
               % (len(differ), differ[0] if differ else None))
-        self.assertTrue(differ)
-        self.assertTrue(all(abs(out[index] - data[index]) == 1
-                            for index in differ))
-        self.assertTrue(all(abs(data[index]) >= 32736 for index in differ))
+        self.assertEqual(differ, [])
 
     def test_tail_goes_red_on_a_held_dc_state(self):
         """TAIL's fault: the audiodsp#23 shape, a state that never arrives.

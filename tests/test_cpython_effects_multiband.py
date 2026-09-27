@@ -442,17 +442,38 @@ class TierOne(unittest.TestCase):
                     self.assertEqual(
                         result["values"]["differing_samples"], 0)
 
-    def test_the_dry_voice_at_unity_is_the_fault_the_wire_catches(self):
-        """The planted fault, and it is the wiring this class used to have:
-        Mix 0 routed through the mixer's dry voice at level 1.0.
+    def test_the_dry_voice_at_unity_is_a_wire_since_audiodsp_v0_6_1(self):
+        """audiodsp#95's plant, kept as a control now that it cannot fire.
 
-        Without this the row above is a measurement nobody has shown able to
-        fail - and the difference is one LSB on 15 samples of 32768, which
-        no summarising statistic would have found either.
+        The wiring this class used to have - Mix 0 through the mixer's dry
+        voice at level 1.0 - came out one LSB high on 15 samples of 32768
+        until audiodsp v0.6.1 (#129) made the voice at 1.0 exact. The pin
+        moved there on 2026-09-27 (`AUDIODSP_PIN`); if this goes red the
+        floor has moved back under the suite.
         """
         values = probes.ramp_fs(16384)
         effect = build(ThroughTheDryVoice, probe=values, mix=0.0)
         try:
+            wet = render(effect, 16384)
+        finally:
+            effect.deinit()
+        dry = kit.Render(bytes(memoryview(values).cast("B")), RATE, 2)
+        result = kit.wire(wet, dry, latency_samples=0)
+        self.assertTrue(result["passed"], result["red"])
+        self.assertEqual(result["values"]["differing_samples"], 0)
+
+    def test_the_wire_goes_red_on_a_one_lsb_dry_path(self):
+        """The fault the WIRE row is shown catching: the dry voice at
+        32767/32768, the kit spec's own plant. Without this the row above
+        is a measurement nobody has shown able to fail - and the
+        difference is one LSB, which no summarising statistic would find.
+        It has to put the mixer back in the path to be planted at all,
+        because Mix 0 no longer runs through one.
+        """
+        values = probes.ramp_fs(16384)
+        effect = build(ThroughTheDryVoice, probe=values, mix=0.0)
+        try:
+            effect._mixer.voice[0].level = 32767.0 / 32768.0
             wet = render(effect, 16384)
         finally:
             effect.deinit()

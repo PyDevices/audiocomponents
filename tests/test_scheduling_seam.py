@@ -326,8 +326,10 @@ class _Counting:
     """A synthesizer stand-in that can, or cannot, count refused presses.
 
     `synthio.Synthesizer.refused` arrived in audiodsp#137 and this
-    repository's `AUDIODSP_PIN` is older, so the engine CI runs against
-    cannot answer. Testing the reading against whatever engine happens to be
+    repository's `AUDIODSP_PIN` was older when this was written, so the
+    engine CI ran against could not answer (the pin passed #137 on
+    2026-09-27; the reasoning holds either side of it). Testing the
+    reading against whatever engine happens to be
     installed would mean this file proves one thing today and the other
     thing after the pin moves, and says nothing either way -- so the subject
     is a stand-in with the property and one without it.
