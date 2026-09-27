@@ -189,6 +189,20 @@ class RawFeedbackSlapback(SlapbackDelay):
         return feedback
 
 
+class FrozenToneSlapback(SlapbackDelay):
+    """Tier 1's silence clause after a Tone move: the out stop hands the
+    node exactly 0 even after Tone has been in, so the loop low-pass
+    freezes on whatever it held and a later Tone move plays it out of
+    silence (the review's stale-state defect)."""
+
+    NAME = 'SlapbackDelay'
+
+    def _refresh(self):
+        SlapbackDelay._refresh(self)
+        if self._macros[TONE_I] >= 1.0:
+            self._delay.set(damping_hz=0.0)
+
+
 class TargetOnlyTailSlapback(SlapbackDelay):
     """Tier 1's tail after a falling move: the bound from the target Time
     alone, while the read head is still walking down from the old one."""
@@ -1026,6 +1040,78 @@ class Tier1Fast(unittest.TestCase):
         self.assertLessEqual(last, declared)
         _declared, _last, held = self._stall(RawFeedbackSlapback)
         self.assertEqual(held, 1)
+
+    def _tone_back_in(self, cls, rate=RATE, channels=2, level=2.0):
+        """300 Hz at 30 000 LSB for 0.5 s with Tone 2 kHz, Tone out, 2 s of
+        silence, then Tone to MIDI 0: the output's peak after that move."""
+        loud = (rate // 2) // BLOCK * BLOCK
+        back = (loud + 2 * rate) // BLOCK * BLOCK
+        values = np.zeros(back + rate // 4)
+        values[:loud] = 30000 * np.sin(2 * math.pi * 300.0
+                                       * np.arange(loud) / rate)
+        source, _ = to_source(values, channels, rate)
+        effect = cls(source, sample_rate=rate, tone_hz=2000.0, level=level)
+
+        def move(frame):
+            if frame == loud:
+                effect.set_macro(TONE_I, 127)
+            elif frame == back:
+                effect.set_macro(TONE_I, 0)
+
+        y = pull(effect, len(values), channels, on_block=move)
+        return int(np.abs(y[back:]).max())
+
+    def test_tone_back_in_after_silence_stays_silent(self):
+        for rate in RATES:
+            for channels in (2, 1):
+                self.assertEqual(self._tone_back_in(SlapbackDelay, rate,
+                                                    channels), 0,
+                                 (rate, channels))
+        self.assertEqual(self._tone_back_in(SlapbackDelay, level=0.35), 0)
+        # Planted: the out stop frozen at 0 plays the held state back.
+        self.assertGreater(self._tone_back_in(FrozenToneSlapback), 20000)
+        self.assertGreater(self._tone_back_in(FrozenToneSlapback,
+                                              level=0.35), 5000)
+
+    def test_tone_out_hands_no_filter_until_tone_has_been_in(self):
+        with NodeSpy():
+            for rate in RATES:
+                effect = SlapbackDelay(silence_src(64, 2, rate),
+                                       sample_rate=rate)
+                self.assertEqual(effect._delay._handed["damping_hz"], 0.0)
+                effect.set_macro(TONE_I, 0)
+                effect.set_macro(TONE_I, 127)
+                self.assertEqual(effect._delay._handed["damping_hz"],
+                                 32.0 * rate)
+                self.assertIsNotNone(effect.tail_samples)
+                effect.reset()
+                self.assertEqual(effect._delay._handed["damping_hz"], 0.0)
+                effect = SlapbackDelay(silence_src(64, 2, rate),
+                                       sample_rate=rate, patch=5)
+                effect.program_change(0)
+                self.assertEqual(effect._delay._handed["damping_hz"],
+                                 32.0 * rate)
+
+    def test_a_wow_move_steps_as_the_docstring_says(self):
+        # The node takes a new wow depth at once; the docstring states the
+        # step. 997 Hz at 12 000 LSB, Level 2, Wow 36 -> 73 at frame 15 616.
+        at = 15616
+        values = 12000 * np.sin(2 * math.pi * 997.0 * np.arange(RATE) / RATE)
+        steps = []
+        for target in (73, 127):
+            source, _ = to_source(values)
+            effect = SlapbackDelay(source, sample_rate=RATE, level=2.0)
+            effect.set_macro(WOW_I, 36 if target == 73 else 0)
+
+            def move(frame, target=target, effect=effect):
+                if frame == at:
+                    effect.set_macro(WOW_I, target)
+
+            y = pull(effect, RATE, on_block=move)[:, 0].astype(int)
+            steady = int(np.abs(np.diff(y[at - 3000:at - 1])).max())
+            steps.append((steady, int(np.abs(y[at] - y[at - 1]))))
+        self.assertEqual(steps[0], (1565, 7684))
+        self.assertEqual(steps[1][1], 23037)
 
     def _walk_tail(self, cls):
         """250 ms of 997 Hz, then Time 250 -> 40 ms on the tone's last

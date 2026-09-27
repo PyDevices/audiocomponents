@@ -74,6 +74,29 @@ fundamental at -0.56 dB. There is no second harmonic.
 135 -> 85 ms takes 267 ms. There is no Glide knob; a slap's time is set,
 not played.
 
+**Turning Wow while it plays steps.** The node takes a new wow depth at
+once (`audiodsp_feedback_delay.c:457-458` adds depth x wow to the read
+head, with no ramp), so the repeat jumps by the change in depth times
+wherever the 0.7 Hz cycle is. On a 997 Hz tone at 12 000 LSB, Level 2,
+48 kHz, a Wow move from grid 36 to 73 steps the output 7 684 LSB where the
+tone's own largest step is 1 565, and 0 to 127 steps 23 037; near a zero of
+the cycle the same moves barely show. A patch change that moves Wow does
+the same: patch 0 to patch 2 (Doubling, the one patch with a different
+Wow), tried on every block boundary of that tone, steps up to 5 503 LSB
+against patch 0's own 2 107 at 48 kHz (5 680 against 2 293 at 44.1 kHz).
+Time walks; Wow does not, so set it before you play.
+
+**Tone out, after Tone has been in.** The node leaves its loop low-pass
+frozen while the filter is out, and a frozen filter would play what it
+held when Tone came back in, out of silence. So once Tone has been in
+circuit since the last `reset()`, the out stop keeps the filter running at
+a coefficient of exactly 1, which follows the repeat sample for sample.
+That is the out stop up to float rounding: against the filter truly out,
+over 2 916 cells (Time, Wow, Saturation, Repeats and Level at three
+settings each, three rates, stereo and mono, a full-scale ramp and noise),
+5 640 of 166 430 700 samples differ, each by 1 LSB, none at Wow 0. The defaults, and anything since a reset
+that has not put Tone in, hand the node exactly no filter.
+
 **Tone at a low rate.** The knob's corners clamp below Nyquist at the
 running rate. At 22.05 kHz grid positions 94-126 all sit on the 10 804.5 Hz
 clamp and do the same thing, and position 127 takes the filter out. At 44.1
@@ -138,6 +161,15 @@ LINE_MS = TIME_MAX_MS + 1.0
 #: The Tone span's corners; the top stop is exactly `damping_hz = 0`.
 TONE_MIN_HZ = 2000.0
 TONE_MAX_HZ = 20000.0
+
+#: Tone out after Tone has been in: `damping_hz` at 32 x the rate, where
+#: 1 - expf(-2 pi 32) is exactly 1.0f (`one_pole_coefficient`,
+#: `audiodsp_feedback_delay.c:33-40`), so the loop low-pass's state follows
+#: the tap sample for sample instead of freezing. That is the identity up to
+#: float rounding, which moved 5 640 of 166 430 700 samples by 1 LSB where
+#: the tap is fractional (Wow on) and none by more
+#: (`slapbackdelay_fix_tone_track.py`).
+TONE_TRACK_PER_RATE = 32.0
 
 #: The wow's fixed rate and the Wow knob's ceiling, in cents peak.
 WOW_HZ = 0.7
@@ -270,6 +302,10 @@ class SlapbackDelay(_component.Component):
         self._deferred = False
         self._feedback = 0.0
         self._damping = 0.0
+        #: True once the loop low-pass has been handed an in-circuit corner
+        #: since the node was built or cleared. From then on its state is
+        #: live, and Tone out hands `TONE_TRACK_PER_RATE` x the rate, not 0.
+        self._tone_used = False
         self._wow_ms = 0.0
         self._node_ms = 0.0
         #: The constructor's Time, exactly, until macro 0 moves. Seeding a
@@ -323,6 +359,7 @@ class SlapbackDelay(_component.Component):
     def _clear(self):
         self._delay.clear()
         self._fresh = True
+        self._tone_used = False
 
     # -- the maps ------------------------------------------------------
 
@@ -384,6 +421,15 @@ class SlapbackDelay(_component.Component):
         if self._fresh or self._frames > self._reach:
             self._reach = self._frames
         damping = self._tone_damping(self._macros[TONE_I])
+        if damping > 0.0:
+            self._tone_used = True
+        elif self._tone_used:
+            # The node updates its loop low-pass only while the coefficient
+            # is above 0 (`audiodsp_feedback_delay.c:493-497`), so handing 0
+            # after Tone has been in would freeze whatever the filter held,
+            # and a later Tone move would play it out of silence. A
+            # coefficient of exactly 1 keeps the state on the tap instead.
+            damping = TONE_TRACK_PER_RATE * self._sample_rate
         feedback = _between(self._value(REPEATS_I), 0.0, REPEATS_MAX)
         if damping > 0.0 and feedback > 0.0:
             # With Tone in, the node can hold a small value for ever at a
