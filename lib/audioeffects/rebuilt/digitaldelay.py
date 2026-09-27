@@ -79,21 +79,30 @@ A constructor `glide_ms` faster than the knob's fastest walk (under
 814.6 ms, down to the 0.99 pin) stays on the audio path, and the knob
 reads back at grid 1, the fastest walk it has, never at grid 0, the jump:
 handing `get_macro(3)` back to `set_macro(3, ...)`, even rounded to a
-7-bit MIDI value, keeps the glide (at grid 1's slew, 0.967).
+7-bit MIDI value, keeps the glide (at grid 1's slew, 0.967). One slower
+than the knob's 8 s plays 8 s, and the knob reads 8 s. A constructor
+Time of 0 is 12.5 ms, and a Repeat Tone or Repeat Cut of 0 is that
+filter out of circuit, as it is on the node.
 
 **Where the pitch claim stops.** The node walks the read head in single
 precision, so the rate it plays is the Glide's rate rounded to the float
-step of the delay. Near a stall that rounding is worth several cents: on
-a rising Time at the Glide knob's fastest 1 %, strictly between grid 1 and
-grid 2 (814.6-829.5 ms), the repeats can read up to 15 cents off the
-glide law at 48 kHz and 11.5 at 44.1 kHz. That part of the knob is not
-claimed on a rising move; grid 1, grid 2 and everything slower are.
-Nor is a constructor Glide under 829.5 ms on a rising move, except
-800 ms (slew 63/64, which single precision holds exactly): at the 0.99
-pin a rising Time can read 41 cents off. The pitch and no-step claims
-are measured on inputs from -8.7 to -0.2 dBFS. Quieter, int16 rounding
-decides the reading: a near-stall rising glide is a few LSB of signal,
-and even a falling move at -48.7 dBFS can step 0.4 % past its bar.
+step of the delay. Near a stall that rounding is worth several cents.
+The claim is stated for a rising 150 -> 200 ms move: at the Glide knob's
+fastest positions, strictly between grid 1 and grid 3 (814.6-844.7 ms),
+the repeats can read up to 15.4 cents off the glide law at 48 kHz and
+12.7 at 44.1 kHz, so that part of the knob is not claimed on a rising
+move. Grid 1 itself and everything from grid 3 up are (worst 8.7 cents).
+Nor is a constructor Glide under 844.7 ms claimed on a rising move,
+except 800 ms (slew 63/64, which single precision holds exactly): at
+the 0.99 pin a rising Time can read 41 cents off. A longer rising move
+reaches delays where the float step is coarser, and at a fast Glide it
+is not claimed: 350 -> 500 ms at grid 3 reads +15.8 cents at 48 kHz and
++15.3 at 44.1 kHz, and 400 -> 800 ms at grid 5 reads +10.7 at 48 kHz.
+At the default Glide every move the dossier names is inside 10 cents.
+The pitch and no-step claims are measured on inputs from -8.7 to
+-0.2 dBFS. Quieter, int16 rounding decides the reading: a near-stall
+rising glide is a few LSB of signal, and even a falling move at
+-48.7 dBFS can step 0.4 % past its bar.
 
 **Input ceiling.** The dry path sits at unity and the repeats add to it, so
 a hot input can put the output on the int16 rail; there is no input gain
@@ -108,20 +117,26 @@ repeats never exceed Mix x full scale: -3.1 dBFS at the default Mix 0.3,
 -6.1 dBFS at patch 3. At exactly (1 - Mix) of full scale the sum can round
 onto 32767, the rail value, though nothing is clipped. High Feedback does
 not keep building past that: at Feedback 0.99 the line saturates, and the
-defaults' noise_det ceiling is -4 dBFS after 6 s and after 20 s alike.
-Repeat Cut's high-pass can overshoot a peak, so with it in circuit leave
-more room.
+defaults' noise_det ceiling is still -3.1 dBFS over 20 s (at -3.0 it
+rails 2284 samples). Repeat Cut's high-pass can overshoot a peak, so with
+it in circuit leave more room: patch 5 (Cut at 40 Hz) is clean on
+noise_det at -4 dBFS, but a 40 Hz square wave there puts 54752 samples on
+the rail over 20 s, and it is clean from -6 dBFS down.
 
 **Tail.** `tail_samples` is an upper bound on how long the repeats take to
 reach exact zero after your input stops, and it is long: the loop has to
-round its way down from full scale, 12 laps at the default Feedback. From
-Feedback 0.5 up it is `None`, because there the node's feedback write
-rounds a 1 LSB repeat back to itself, so the line is not guaranteed to
-empty. On some material it never does (a 997 Hz burst leaves 1 LSB going
-round at Feedback 0.5 and 0.7, 50 LSB at 0.99); on other material it does
-(a 1 kHz -6 dBFS burst reaches zero at 0.5 and 0.7). That is a floor bug in
-the node, not in this class, and it is why the rebuild is parked. With
-Repeat Cut in circuit it is `None` too.
+round its way down from full scale, 11 laps at the default Feedback and
+685 at 0.99 (nine minutes at Time 800 ms). Since audiodsp v0.6.2 the node
+steps a repeat toward zero wherever rounding would hand it back
+unchanged, so with both filters out the bound holds at every Feedback.
+With Repeat Tone in circuit each lap is a little longer, and wherever
+0.5 / (1 - Feedback) is within a hair of a whole number (0.5, 0.75, 0.83,
+0.875, 0.9 and on up to the knob's top, 0.99) it is `None`: there the
+node's loop low-pass can come to rest a hair above a small value and send
+it round for ever. A 2 LSB DC at Feedback 0.5 with Repeat Tone at 800 Hz
+leaves 1 LSB going round; at 0.9, 5 LSB. That is a floor bug in the node,
+not in this class, and it keeps the rebuild parked. With Repeat Cut in
+circuit it is `None` too: no bound is derived there.
 
 `capabilities = ("tempo_sync",)`: with Sync on, the class reads
 `self._transport()` on every macro move and program change (not per block).
@@ -151,6 +166,12 @@ TIME_MAX_MS = 800.0
 #: (delay-seconds per second) is FULL_RANGE_MS / glide_ms (dossier section 6).
 FULL_RANGE_MS = TIME_MAX_MS - TIME_MIN_MS
 
+#: The Glide knob's span, log, with grid 0 the jump. A constructor Glide
+#: slower than the top is clamped to it, the way Time clamps at
+#: `max_time_ms`, so `get_macro(3)` always names the Glide that plays.
+GLIDE_MIN_MS = 800.0
+GLIDE_MAX_MS = 8000.0
+
 #: At slew 1 a rising Time stands the read head still, and past it the line
 #: plays backwards. A constructor Glide under 795.45 ms is pinned here; no
 #: grid position gets there (grid 1 is slew 0.967).
@@ -169,15 +190,13 @@ FEEDBACK_MAX = 0.99
 #: `line_frames - 2`, so a line of exactly `max_time_ms` could not reach it.
 LINE_HEADROOM_MS = 1.0
 
-#: At and above this Feedback the node's line is not guaranteed to empty.
-#: Its feedback write rounds half away from zero (`to_s16`,
-#: `audiodsp_feedback_delay.c:317`, called at `:493`), so every
-#: |x| <= 0.5 / (1 - f) can write itself back, and at f >= 0.5 that
-#: includes 1 LSB. `tail_samples` is `None` there.
-FEEDBACK_UNBOUNDED = 0.5
-
 #: The largest magnitude one line sample can hold (int16).
-LINE_PEAK = 32768.0
+LINE_PEAK = 32768
+
+#: `laps_to_zero` reckons with a Feedback this much larger, relatively, so
+#: the node's single-precision feedback and product, and a board's
+#: single-precision Python, can only make the bound longer, never shorter.
+FEEDBACK_MARGIN = 2.0 ** -16
 
 #: Division's sixteen note values, in quarter-note beats, rising: 1/32,
 #: 1/16T, 1/32., 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/2T, 1/4., 1/2,
@@ -196,7 +215,8 @@ def nominal_cut_hz(corner_hz, sample_rate):
 
     The node's high-pass is `y -= lp(y)` with the low-pass coefficient
     a = 1 - exp(-2 pi hz / fs) (`audiodsp_feedback_delay.c:33-40`,
-    `:462-466`), so with b = 1 - a it is H = b (1 - z^-1) / (1 - b z^-1).
+    `:498-501` at v0.6.2), so with b = 1 - a it is
+    H = b (1 - z^-1) / (1 - b z^-1).
     |H|^2 = 1/2 gives b^2 (3 - 4 cos w) + 2 b cos w - 1 = 0; the root in
     (0, 1) is the pole, and `cut_hz = -fs ln b / 2 pi`.
     """
@@ -241,31 +261,55 @@ def whole_frames(time_ms, sample_rate):
     return int(math.floor(float(time_ms) * sample_rate / 1000.0 + 0.5))
 
 
-def laps_to_zero(feedback):
+def laps_to_zero(feedback, excess=0.0):
     """How many laps of the line can still hold a non-zero sample once the
-    input stops, or `None` if the line is not guaranteed to empty.
+    input stops, or `None` where a lap could hand a sample back unchanged.
 
-    The node writes `round(fed + f * read)`, rounding half away from zero,
-    so after the input stops a lap's peak obeys x' <= f x + 0.5 from any
-    starting x <= 32768. That gives x_k <= f^k (32768 - c) + c with
-    c = 0.5 / (1 - f), and x_k < 1 means x_k is exactly 0. Below
-    f = 0.5, c < 1 and the count is finite; at 0.5 and above, 1 LSB writes
-    itself back, and on some material it does so forever
-    (`FEEDBACK_UNBOUNDED`).
+    Once the input stops, the node writes `to_s16(recirculated(s, f))` for
+    each value s it sends round (`audiodsp_feedback_delay.c:529`). Since
+    audiodsp v0.6.2 (#154) `recirculated` (`:344`) rounds f s to nearest
+    where |s| - |f s| > 0.5 and truncates it toward zero otherwise.
+
+    With Repeat Tone out (`excess` 0) s is a line sample, or a mix of two
+    at a fractional read, so |s| <= x, the line's peak, and the node
+    guarantees |write| < |s|: a lap maps x to at most
+    min(x - 1, floor(f x + 0.5)). Both halves only grow with x, so the peak
+    of one lap bounds every sample of the next, and iterating from full
+    scale counts the laps to exact zero. That is finite at every Feedback;
+    0.99 takes 685 laps.
+
+    With Repeat Tone in, s is the loop low-pass's state, which can sit
+    above the line's peak by up to `excess` times it (`DigitalDelay`'s
+    `_tone_excess`). Then a lap maps x to the node's write at
+    s = x (1 + excess), whichever branch it takes, and the guarantee is
+    gone: where that write is still x, the peak can stay there for ever.
+    The node does that (1 LSB at Feedback 0.5, 5 at 0.9, Tone 800 Hz, on
+    a DC input), so the count is `None` wherever the reckoning allows it.
     """
-    feedback = max(0.0, float(feedback))
-    if feedback >= FEEDBACK_UNBOUNDED:
-        return None
-    c = 0.5 / (1.0 - feedback)
+    feedback = float(feedback)
+    if feedback < 0.0:
+        feedback = 0.0
+    if feedback > FEEDBACK_MAX:
+        feedback = FEEDBACK_MAX
+    up = feedback * (1.0 + FEEDBACK_MARGIN)
+    low = feedback * (1.0 - FEEDBACK_MARGIN)
     laps = 0
     peak = LINE_PEAK
-    while peak >= 1.0:
+    while peak > 0:
         laps += 1
-        if laps > 1024:
-            # Only a Feedback within a float's width of 0.5 gets here, where
-            # a board's single-precision c can round up to 1.
-            return None
-        peak = feedback * (peak - c) + c
+        if excess <= 0.0:
+            image = int(math.floor(up * peak + 0.5))
+            if image >= peak:
+                image = peak - 1
+        else:
+            sent = peak * (1.0 + excess)
+            if sent * (1.0 - low) > 0.5:
+                image = int(math.floor(up * sent + 0.5))
+            else:
+                image = int(math.floor(up * sent))
+            if image >= peak:
+                return None
+        peak = image
     return laps
 
 
@@ -308,7 +352,7 @@ class DigitalDelay(_component.Component):
         (TIME_MIN_MS, TIME_MAX_MS, "log"),  # 0  Time, ms
         (0.0, FEEDBACK_MAX),                # 1  Feedback
         (0.0, 2.0),                         # 2  Mix; dry at unity to 1
-        (800.0, 8000.0, "log"),             # 3  Glide, ms; grid 0 = jump
+        (GLIDE_MIN_MS, GLIDE_MAX_MS, "log"),  # 3  Glide, ms; grid 0 = jump
         (0.0, 1.0),                         # 4  Sync
         (0.0, 15.0),                        # 5  Division index
         (800.0, 16000.0, "log"),            # 6  Repeat Tone, Hz; top = out
@@ -349,10 +393,26 @@ class DigitalDelay(_component.Component):
         self._deferred = False
         self._feedback = 0.0
         self._node_ms = 0.0
+        # 0 (or less) is how the node spells a filter out of circuit, so
+        # Repeat Tone and Repeat Cut at 0 are their out stops; Time at 0
+        # is the bottom of its span. Each is a value a log knob cannot seed.
+        time_ms = float(time_ms)
+        if not time_ms > 0.0:
+            time_ms = TIME_MIN_MS
+        tone_hz = float(tone_hz)
+        if not tone_hz > 0.0:
+            tone_hz = self._MACRO_RANGES[TONE_I][1]
+        cut_hz = float(cut_hz)
+        if not cut_hz > 0.0:
+            cut_hz = self._MACRO_RANGES[CUT_I][0]
         #: A constructor Glide stays on the audio path until macro 3 moves:
         #: the Glide span starts at 800 ms, so a faster constructor Glide
-        #: (down to the 0.99 pin) or an exact 0 has no knob position.
-        self._glide_exact = float(glide_ms)
+        #: (down to the 0.99 pin) or an exact 0 has no knob position. A
+        #: slower one is clamped to the span's top, 8 s.
+        glide_ms = float(glide_ms)
+        if glide_ms > GLIDE_MAX_MS:
+            glide_ms = GLIDE_MAX_MS
+        self._glide_exact = glide_ms
         self._seeding = True
         self._delay = audioecho.FeedbackDelay(
             sample_rate=self._sample_rate,
@@ -374,7 +434,8 @@ class DigitalDelay(_component.Component):
         # 0 is the jump, so a Glide that is not 0 is never seeded below grid
         # 1, and a get_macro / set_macro round trip keeps it gliding even
         # when a host rounds it to a MIDI value.
-        self._init_macros((time_ms, feedback, mix, max(800.0, glide_ms),
+        self._init_macros((time_ms, feedback, mix,
+                           max(GLIDE_MIN_MS, glide_ms),
                            1.0 if sync else 0.0, float(division), tone_hz,
                            cut_hz))
         if self._glide_exact > 0.0 and self._macros[GLIDE_I] < GLIDE_FLOOR:
@@ -522,28 +583,51 @@ class DigitalDelay(_component.Component):
     @property
     def tail_samples(self):
         """Frames until the output is exactly zero once the input stops, as
-        an upper bound, or `None` where no bound holds.
+        an upper bound, or `None` where no bound is derived.
 
         `laps_to_zero(f)` laps, each at most one frame longer than the
         longest delay the read head may be at (the read interpolates
         towards the next older frame). While a Glide walk falls, that is
         the Time it is walking from, not the target, and it stays so until
         a Glide-0 move or a reset lands the head, because the class cannot
-        see how far the walk has got. Repeat Tone adds one lap for its
-        filter state to die away.
+        see how far the walk has got.
 
-        `None` at Feedback 0.5 and above, where the node's rounding holds
-        1 LSB or more in the line, forever on some material
-        (`FEEDBACK_UNBOUNDED`), and with
-        Repeat Cut in circuit, whose high-pass can more than double a peak
-        in one pass and remembers across laps at its low corners.
+        Finite at every Feedback with both filters out. With Repeat Tone
+        in, each lap is `memory` frames longer, the time the low-pass takes
+        to forget the lap before, and the count is `None` near the Feedback
+        values where the node can hold a small value for ever
+        (`laps_to_zero`). `None` with Repeat Cut in circuit, whose
+        high-pass can more than double a peak in one pass, so the per-lap
+        argument does not hold; the node measures that case rather than
+        bounding it, and this class has no bound for it either.
         """
         self._check_live()
+        return self._tail_bound()
+
+    def _tail_bound(self):
+        """`tail_samples` without the liveness check: a plain method, so a
+        subclass can reach it on MicroPython, whose `property` has no
+        `fget` and whose `super()` hands back the property itself."""
         if self._macros[CUT_I] > 0.0:
             return None
-        laps = laps_to_zero(self._feedback)
+        memory, excess = self._tone_excess()
+        laps = laps_to_zero(self._feedback, excess)
         if laps is None:
             return None
-        if self._macros[TONE_I] < 1.0:
-            laps += 1
-        return int(laps * (self._reach + 1))
+        return int(laps * (self._reach + 1 + memory))
+
+    def _tone_excess(self):
+        """(frames, relative excess) for Repeat Tone's low-pass. After
+        `frames` frames whatever the state held before, full scale at
+        most, weighs under 2^-17 LSB, which is under 2^-17 of any non-zero
+        peak; and the single-precision state can rest up to 2^-24 / a of
+        the peak above it, a being the coefficient, because a step
+        a (v - y) under half an ulp rounds away. (0, 0.0) with Repeat Tone
+        out."""
+        if self._macros[TONE_I] >= 1.0:
+            return 0, 0.0
+        damping = self._tone_damping(self._macros[TONE_I])
+        per_frame = 2.0 * math.pi * damping / self._sample_rate
+        coefficient = 1.0 - math.exp(-per_frame)
+        frames = int(math.ceil(32.0 * math.log(2.0) / per_frame))
+        return frames, 2.0 ** -17 + 2.0 ** -24 / coefficient
