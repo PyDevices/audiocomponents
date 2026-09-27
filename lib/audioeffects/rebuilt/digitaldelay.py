@@ -90,9 +90,10 @@ glide law at 48 kHz and 11.5 at 44.1 kHz. That part of the knob is not
 claimed on a rising move; grid 1, grid 2 and everything slower are.
 Nor is a constructor Glide under 829.5 ms on a rising move, except
 800 ms (slew 63/64, which single precision holds exactly): at the 0.99
-pin a rising Time can read 41 cents off. The rising move's pitch and no-step claims are measured on inputs from
--8.7 to -0.2 dBFS; quieter, a near-stall rising glide is a few LSB of
-signal and int16 rounding decides the reading.
+pin a rising Time can read 41 cents off. The pitch and no-step claims
+are measured on inputs from -8.7 to -0.2 dBFS. Quieter, int16 rounding
+decides the reading: a near-stall rising glide is a few LSB of signal,
+and even a falling move at -48.7 dBFS can step 0.4 % past its bar.
 
 **Input ceiling.** The dry path sits at unity and the repeats add to it, so
 a hot input can put the output on the int16 rail; there is no input gain
