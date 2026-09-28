@@ -65,9 +65,10 @@ there, and are recorded in its changelog.
   synthesis macros with `IndexError`; no impulse ships. It lives in
   `lib/audioeffects/rebuilt/convolutionreverb.py`, and
   `audioeffects.ConvolutionReverb` is still the old class. The room holds
-  its level over both channels together, but Damping and Decay move a
-  stereo room's left-right balance by up to about 1.3 dB (2.6 dB at
-  22.05 kHz); fixing that is a node change, drafted as an audiodsp ask. The
+  its level over both channels together (for material about equally loud
+  on both sides), but Room, Damping and Decay move a stereo room's
+  left-right balance by up to about +/-4.5 dB at every rate; fixing that
+  is a node change, drafted as an audiodsp ask. The
   docstring states that, the low-material lift a dark room gives, and the
   partition a room-knob move or a mid-stream `reset()` drops. Board cost
   is unmeasured; by the cost table's line the default fits an S3, and

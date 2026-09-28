@@ -22,6 +22,14 @@ rounding differ (`TrimRounded`), D2's allocation read as the node's
 capacity through `load()` rather than `node.taps` (`ExtraPartition` in
 measured mode), D5's law from the handed seconds (`AllocatedSeconds`), and
 D6's absolute clause |wet/dry| <= 0.5 dB (`HotRoom`, a constant +3 dB).
+
+Fix round 2 (gate audit round 2) took D5's law off the class's positions
+too: the Decay and Predelay positions come from what the test handed the
+instance (`handed_build`), with `DecayKeptSquared` and `DecayMidiSquared`
+as the controls, red on the handed law at Decay 64/127 and green on the
+law read back off `effect._macros`. It also pins two edges the docstring
+now states: a negative `damping_hz` is out of circuit, and `impulse=b""`
+holds one partition.
 """
 
 import os
@@ -150,6 +158,49 @@ def law_t60(decay_pos, predelay_pos, seconds):
     predelay = predelay_pos * min(200.0, (seconds - 0.05) * 1000.0 / 2.0)
     room = seconds - predelay / 1000.0
     return 0.05 * (room / 0.05) ** decay_pos
+
+
+#: Each shipped patch's Decay and Predelay MIDI, copied from dossier
+#: section 6's patch table, so a law over a patch never reads the class.
+PATCH_DECAY_PREDELAY_MIDI = {
+    0: (127, 0), 1: (38, 13), 2: (127, 76), 3: (102, 25),
+    4: (102, 0), 5: (127, 38), 6: (0, 25), 7: (127, 0),
+}
+
+
+def handed_build(cls=None, rate=RATE, channels=2, **options):
+    """`build`, keeping `effect.handed`: the [Decay, Predelay] positions
+    this test handed the instance, from the constructor's arguments, every
+    `set_macro` (MIDI / 127, both macros UNIPOLAR) and every
+    `program_change` (the dossier's patch MIDI). D5's law takes these,
+    never `effect._macros` or `get_macro` (fix round 2): a class that held
+    a position other than the one it was handed would move a law read back
+    from it (DecayKeptSquared, DecayMidiSquared, below)."""
+    effect = build(cls, rate, channels, **options)
+    handed = [float(options.get("decay", 1.0)),
+              float(options.get("predelay", 0.0))]
+    if options.get("patch") is not None:
+        handed[:] = [m / 127.0 for m in
+                     PATCH_DECAY_PREDELAY_MIDI[options["patch"]]]
+    set_macro = effect.set_macro
+    program_change = effect.program_change
+
+    def spy_set(index, value, *args, **kwargs):
+        set_macro(index, value, *args, **kwargs)
+        if index == DECAY_I:
+            handed[0] = value / 127.0
+        elif index == PREDELAY_I:
+            handed[1] = value / 127.0
+
+    def spy_program(index, *args, **kwargs):
+        program_change(index, *args, **kwargs)
+        if index in PATCH_DECAY_PREDELAY_MIDI:
+            handed[:] = [m / 127.0 for m in PATCH_DECAY_PREDELAY_MIDI[index]]
+
+    effect.set_macro = spy_set
+    effect.program_change = spy_program
+    effect.handed = handed
+    return effect
 
 
 def schroeder_t60(energy, rate):
@@ -426,6 +477,36 @@ class AllocatedSeconds(ConvolutionReverb):
         ConvolutionReverb._refresh(self)
 
 
+class DecayKeptSquared(ConvolutionReverb):
+    """D5's control for a law read back off the class's positions (fix
+    round 2): the constructor's Decay kept squared. 0 and 1 are fixed
+    points, so it is inert at Decay 1.0 and visible at 64/127: the
+    re-refuter read 1.907 % on a law from `effect._macros` (green) and
+    -12.781 % on the handed law at 48 kHz (-13.147 % at 22.05 kHz)."""
+
+    NAME = NAME
+
+    def _init_macros(self, values, patch=None):
+        values = list(values)
+        values[DECAY_I] = values[DECAY_I] ** 2
+        ConvolutionReverb._init_macros(self, tuple(values), patch)
+
+
+class DecayMidiSquared(ConvolutionReverb):
+    """The same control through `set_macro`: a Decay move is kept
+    squared."""
+
+    NAME = NAME
+
+    def set_macro(self, index, value, channel=0, note_id=-1,
+                  sample_position=0):
+        ConvolutionReverb.set_macro(self, index, value, channel, note_id,
+                                    sample_position)
+        if index == DECAY_I:
+            self._macros[DECAY_I] = self._macros[DECAY_I] ** 2
+            self._apply_macro(DECAY_I, self._macros[DECAY_I])
+
+
 class LongDecay(ConvolutionReverb):
     """D5 (1): the decay handed to the node 5 % long against the law."""
 
@@ -446,10 +527,11 @@ class NoReset(ConvolutionReverb):
         self.program_change(0)
 
 
-def reach(faulted, reading, tolerance=0.0, rate=RATE, channels=2):
+def reach(faulted, reading, tolerance=0.0, rate=RATE, channels=2,
+          builder=build):
     return kit_faults.fault_reachability(
         ConvolutionReverb, faulted, reading,
-        lambda cls: build(cls, rate, channels), tolerance=tolerance)
+        lambda cls: builder(cls, rate, channels), tolerance=tolerance)
 
 
 WALKED = 6 * len(GRID) + 8
@@ -616,6 +698,28 @@ class TheSurface(unittest.TestCase):
             effect = build(damping_hz=hz)
             self.assertAlmostEqual(effect._synthesis()[1], 500.0, places=6)
             effect.deinit()
+        # Fix round 2 (gate audit round 2, item 7b): a negative damping_hz
+        # is out of circuit, like 0, not the 500 Hz stop.
+        for hz in (-100.0, 0.0):
+            effect = build(damping_hz=hz)
+            self.assertEqual(effect._synthesis()[1], 0.0)
+            self.assertEqual(effect.get_macro(DAMPING_I), 127)
+            effect.deinit()
+
+    def test_an_empty_impulse_holds_one_partition(self):
+        # Fix round 2 (item 7c): impulse=b"" reports taps 0 and latency 0
+        # (D3's unloaded wire), and its node is built with one partition,
+        # so it accepts a 256-frame load. Measured mode's allocation starts
+        # at one frame; zero frames is this one partition.
+        effect = build(impulse=b"")
+        self.assertEqual(effect.node.taps, 0)
+        self.assertEqual(effect.latency_samples, 0)
+        self.assertEqual(effect.tail_samples, 0)
+        # Read directly, since `capacity()` starts at one partition.
+        effect.node.load(bytes(2 * 256), 1, 1.0)
+        with self.assertRaises(ValueError):
+            effect.node.load(bytes(2 * 257), 1, 1.0)
+        effect.deinit()
 
     def test_an_int16_array_is_trimmed_by_frames(self):
         from array import array
@@ -1170,21 +1274,32 @@ class D4DelayedWire(unittest.TestCase):
 # --------------------------------------------------------------------------
 
 class D5DecayLaw(unittest.TestCase):
-    def errors_over_rooms(self, cls=None, rate=RATE, **options):
-        # The law takes the seconds this test hands the constructor, never
-        # `effect.seconds`: a class that stretched its own allocation would
-        # move a law read back from it (AllocatedSeconds, below).
+    def errors_over_rooms(self, cls=None, rate=RATE, moves=(),
+                          read_back=False, **options):
+        # The law takes the seconds and the Decay and Predelay positions
+        # this test handed the instance, never `effect.seconds` or
+        # `effect._macros`: a class that stretched its own allocation, or
+        # held a position other than the one it was handed, would move a
+        # law read back from it (AllocatedSeconds; DecayKeptSquared and
+        # DecayMidiSquared, below). `moves` are (macro, MIDI) handed after
+        # construction; `read_back=True` is the frozen reading, kept only
+        # to show the hole the handed law closes.
         seconds = options.get("seconds", 0.08)
-        effect = build(cls, rate, **options)
+        effect = handed_build(cls, rate, **options)
+        for index, midi in moves:
+            effect.set_macro(index, midi)
         errors = []
         for room in range(0, 128, 2):
             effect.set_macro(ROOM_I, room)
             t60, floor = m5_cell(effect)
             self.assertTrue(floor, room)
             self.assertIsNotNone(t60, room)
-            law = law_t60(effect._macros[DECAY_I], effect._macros[PREDELAY_I],
-                          seconds)
-            errors.append(t60 / law - 1.0)
+            if read_back:
+                decay, predelay = (effect._macros[DECAY_I],
+                                   effect._macros[PREDELAY_I])
+            else:
+                decay, predelay = effect.handed
+            errors.append(t60 / law_t60(decay, predelay, seconds) - 1.0)
         effect.deinit()
         return np.array(errors)
 
@@ -1208,14 +1323,13 @@ class D5DecayLaw(unittest.TestCase):
 
     def test_every_patch_mean_within_2_percent_at_one_second(self):
         for patch in (1, 3, 5):
-            effect = build(seconds=1.0, patch=patch)
+            effect = handed_build(seconds=1.0, patch=patch)
             errors = []
             for room in range(0, 128, 8):
                 effect.set_macro(ROOM_I, room)
                 t60, floor = m5_cell(effect)
                 self.assertTrue(floor)
-                law = law_t60(effect._macros[DECAY_I],
-                              effect._macros[PREDELAY_I], 1.0)
+                law = law_t60(effect.handed[0], effect.handed[1], 1.0)
                 errors.append(t60 / law - 1.0)
             effect.deinit()
             self.assertLessEqual(abs(float(np.mean(errors))), 0.02, patch)
@@ -1251,6 +1365,34 @@ class D5DecayLaw(unittest.TestCase):
         effect.deinit()
         self.assertLessEqual(float(np.max(np.abs(read_back))), 0.03)
 
+    def test_a_decay_held_off_the_handed_position_is_red(self):
+        # Fix round 2 (gate audit round 2, item 4). At Decay 64/127, where
+        # squaring moves the position (0.504 -> 0.254), a class that keeps
+        # the constructor's Decay squared, or a set_macro Decay squared,
+        # is red on the law from the handed position and green on the law
+        # read back off the class: that is the hole the handed law closes.
+        for rate in (48000, 22050):
+            planted = self.errors_over_rooms(DecayKeptSquared, rate,
+                                             decay=64 / 127.0,
+                                             damping_hz=0.0, diffusion=0.0)
+            self.assertGreater(float(np.max(np.abs(planted))), 0.03, rate)
+            held = self.errors_over_rooms(DecayKeptSquared, rate,
+                                          read_back=True, decay=64 / 127.0,
+                                          damping_hz=0.0, diffusion=0.0)
+            self.assertLessEqual(float(np.max(np.abs(held))), 0.03, rate)
+            moved = self.errors_over_rooms(DecayMidiSquared, rate,
+                                           moves=((DECAY_I, 64),),
+                                           damping_hz=0.0, diffusion=0.0)
+            self.assertGreater(float(np.max(np.abs(moved))), 0.03, rate)
+            held = self.errors_over_rooms(DecayMidiSquared, rate,
+                                          moves=((DECAY_I, 64),),
+                                          read_back=True, damping_hz=0.0,
+                                          diffusion=0.0)
+            self.assertLessEqual(float(np.max(np.abs(held))), 0.03, rate)
+            clean = self.errors_over_rooms(rate=rate, moves=((DECAY_I, 64),),
+                                           damping_hz=0.0, diffusion=0.0)
+            self.assertLessEqual(float(np.max(np.abs(clean))), 0.03, rate)
+
     def test_stuck_dc_turns_the_floor_red(self):
         effect = build(StuckDcAfter)
         t60, floor = m5_cell(effect)
@@ -1259,11 +1401,11 @@ class D5DecayLaw(unittest.TestCase):
 
     def test_the_plants_are_not_on_the_surface(self):
         def handed(effect):
-            law = law_t60(effect._macros[DECAY_I],
-                          effect._macros[PREDELAY_I], 0.08)
+            law = law_t60(effect.handed[0], effect.handed[1], 0.08)
             return effect._loaded[0] / law
 
-        result = reach(LongDecay, handed, tolerance=0.01)
+        result = reach(LongDecay, handed, tolerance=0.01,
+                       builder=handed_build)
         self.assertAlmostEqual(result["target"], 1.05, places=9)
         self.assertAlmostEqual(result["clean"], 1.0, places=9)
         self.assertEqual(result["checked"], WALKED)

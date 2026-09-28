@@ -9,7 +9,9 @@ the six defects that dossier's section 7 names; it stays the class the
 library serves until the board runner adopts this one. After the gate
 audit's round 1 the dossier carries a dated post-build revision (fix round
 1, 2026-09-28): D6 claims the level of both channels pooled, and this
-docstring says what that leaves out.
+docstring says what that leaves out. Fix round 2 (the same day, after the
+round-2 audit) corrected the left-right balance figure it gives, from
+about 1.3 dB to about 4.5 dB, and three edges; the audio did not change.
 
 **What it sounds like.** A short room behind your dry signal. With nothing
 loaded the class synthesizes the room: noise under an exponential that
@@ -27,11 +29,15 @@ instance can ever hold, carved once at construction: 256-frame partitions,
 ceiling of **512 partitions = 131 072 taps**, which is 2.730 s at 48 kHz,
 2.972 s at 44.1 kHz and 5.944 s at 22.05 kHz. Outside those, construction
 raises `ValueError` naming this class, the taps, the rate and the limit.
-The product is taken in double precision and `round` sends a half frame
-to even, so a `seconds` a hair over half a frame past a partition edge
-builds one partition fewer than exact arithmetic would: 0.08001041666666667
-s at 48 kHz is 3 840.5 + 7/2^48 frames exactly, and builds 3 840 taps, not
-4 096. No floor or ceiling cell moves.
+On a desktop the product is taken in double precision and `round` sends a
+half frame to even, so a `seconds` a hair over half a frame past a
+partition edge builds one partition fewer than exact arithmetic would:
+0.08001041666666667 s at 48 kHz is 3 840.5 + 7/2^48 frames exactly, and
+builds 3 840 taps, not 4 096. No floor or ceiling cell moves. A board's
+float is single precision, and there a few `seconds` land on the other
+side of a partition edge: in a single-precision emulation (not a board
+run) 0.685 s at 44.1 kHz and 1.370 s at 22.05 kHz build 118 partitions
+where a desktop builds 119. No floor, ceiling or default cell moves.
 Decay, Predelay and Diffusion are laws over what the allocation leaves
 (section 6): Decay is the T60, log from the node's 50 ms floor to
 `seconds - predelay`, so at its top the room reaches -60 dB exactly at the
@@ -96,17 +102,24 @@ in flight come out at the old Mix.
 across the whole band, so with Damping in, low material comes back louder
 than it went in: a 220 / 277 / 330 Hz chord +3.73 dB at the default
 6 kHz Damping and +13.28 dB at the 500 Hz stop. White-spectrum material
-comes back at its own level, within 0.5 dB, at every setting, counting
-both channels together. Each side on its own does not: the node scales
-the room by the mean of its two sides' energies, so on a stereo room
-Damping and Decay move the left-right balance by up to about 1.3 dB at
-48 kHz (2.6 dB at 22.05 kHz) while the total holds. A mono room is one
-side and holds. Damping clamps at 0.159 fs,
+about equally loud on both sides comes back at its own level, within
+0.5 dB, at every setting, counting both channels together. Material on
+one side only does not: white noise hard left comes back 2.7 dB down and
+hard right 1.8 dB up at 48 kHz with Decay 0, Damping 500 Hz and
+Diffusion 0 (about 0.8 / 0.5 dB at Decay 1.0, Diffusion 0.5). Each side
+on its own does not hold either: the node scales the room by the mean of
+its two sides' energies, so on a stereo room the left-right balance moves
+by up to about +/-4.5 dB at every rate while the total holds, and Room
+moves it as much as Damping and Decay do (the widest measured, with
+Damping at 500 Hz and Decay 0: -4.4 / +4.5 dB at 48 and 44.1 kHz, -4.2 /
++4.0 dB at 22.05 kHz). A mono room is one side and holds. Damping clamps
+at 0.159 fs,
 under the point where the node's one-pole coefficient stops moving, so at
 48 kHz every one of its 128 positions is a room of its own, while at
 22.05 kHz the positions from 92 up (the 6 kHz default among them) are one
 3 506 Hz room. A single Room's decay with Damping in can read up to 16 %
-off the Decay law; the 64 Rooms' mean holds within 2 %.
+off the Decay law on a stereo room and up to 22 % on a mono one (48 kHz,
+Decay 0, Damping 500 Hz); the 64 Rooms' mean holds within 2 %.
 
 **Measured mode.** The impulse is trimmed by `start_ms`
 (int(start_ms * fs / 1000) frames, truncated) through a slice that copies
@@ -121,9 +134,14 @@ impulse ships with this class; it loads yours and keeps no copy (Brad's
 ruling, 2026-09-08). An impulse is one-dimensional: a 2-D array (numpy's
 `(frames, channels)`) raises `TypeError`, so flatten it first.
 
-**Two readbacks that are not what they look like.** `damping_hz` under
-500 Hz is taken as 500 Hz, the span's bottom, with no error (0, or
-7 500 Hz and up, is out of circuit). And a fresh instance reports
+An empty impulse (`impulse=b""`) reports no taps and no latency, but its
+node is built with one partition: measured mode's allocation starts at
+one frame, and zero frames is that one partition.
+
+**Two readbacks that are not what they look like.** A `damping_hz`
+between 0 and 500 Hz is taken as 500 Hz, the span's bottom, with no
+error; 0 or below, or 7 500 Hz and up, is out of circuit (-100 hands the
+node 0 Hz and `get_macro` reads 127). And a fresh instance reports
 `patch_index` 0, the family's convention, although the constructor's exact
 defaults (Damping 6 000 Hz, Mix 0.6) sit between grid steps and patch 0 is
 those settings on the grid (6 059.8 Hz, Mix 0.598). Pass `patch=0` for
@@ -287,9 +305,9 @@ class ConvolutionReverb(_component.Component):
     in. audiodsp tier; 256 frames of latency whenever an impulse is loaded.
 
     **What the default surrenders:** a dark room lifts low material (a low
-    chord +3.73 dB at the default Damping, +13.28 dB at 500 Hz), Damping
-    and Decay move a stereo room's left-right balance by up to about
-    1.3 dB (2.6 dB at 22.05 kHz) while the total holds, moving a room knob
+    chord +3.73 dB at the default Damping, +13.28 dB at 500 Hz), Room,
+    Damping and Decay move a stereo room's left-right balance by up to
+    about +/-4.5 dB at every rate while the total holds, moving a room knob
     or calling `reset()` mid-stream drops the 256 frames in flight, dry
     included, at every Mix, and anything longer than 0.091 s on
     an S3 or 0.219 s on a P4 is a desktop room (pending hardware).
