@@ -730,6 +730,137 @@ class TheTailReachesExactZero(unittest.TestCase):
                                               tuned=self.DRAINS_HZ), 0)
 
 
+class LapShortCombFilter(combfilter.CombFilter):
+    """`tail_samples` one lap short. On full-scale DC at 20 Hz / Feedback
+    0.7, the bound's tightest cell, the tail outlives it."""
+
+    NAME = 'CombFilter'
+
+    @property
+    def tail_samples(self):
+        memory = combfilter._tone_excess(self._damping,
+                                         self._sample_rate)[0]
+        return (combfilter.CombFilter._tail_bound(self)
+                - (self._reach + 1 + memory))
+
+
+class NoTrimTermCombFilter(combfilter.CombFilter):
+    """`tail_samples` without the trim's term: the comb's laps only, while
+    the fixed-point shelf in front is still letting its last LSB out."""
+
+    NAME = 'CombFilter'
+
+    @property
+    def tail_samples(self):
+        bound = combfilter.CombFilter._tail_bound(self)
+        if self._trim.mix > 0.0:
+            bound -= int(math.ceil(combfilter.TRIM_TAIL_S
+                                   * self._sample_rate))
+        return bound
+
+
+class UnsteppedCombFilter(combfilter.CombFilter):
+    """With Tone in, the Feedback handed as set, inside a stall window of
+    audiodsp#157, where the loop low-pass holds a small value for ever."""
+
+    NAME = 'CombFilter'
+
+    def _loop_feedback(self, feedback, excess):
+        return feedback
+
+
+class TheTailIsDeclared(unittest.TestCase):
+    """`tail_samples` is finite at every setting (housekeeping,
+    2026-09-28, Brad's ruling of that date): the comb's lap bound, each lap
+    one frame past the longest line the read head may be at plus the Tone
+    low-pass's memory, plus `TRIM_TAIL_S` while the trim is in circuit.
+    Every macro's stops and interior points, every patch, the long corners
+    and the stall centres, at three rates, stereo and mono, end inside it
+    (`housekeeping_cf_tail.py`, 900 cells); these are the cells where each
+    part of the bound is tight, each beside a bound that is short there."""
+
+    def render(self, cls, material, **options):
+        """(declared, last non-zero frame after a 50 ms burst, peak of the
+        last 0.25 s), silence running to the declared bound plus 0.5 s."""
+        rate = SAMPLE_RATE
+        probe = cls(audiocore.RawSample(array.array("h", [0] * 512),
+                                        sample_rate=rate,
+                                        channel_count=CHANNELS),
+                    **options)
+        declared = probe.tail_samples
+        probe.deinit()
+        lead = rate // 20
+        frames = lead + (rate if declared is None else declared) + rate // 2
+        values = array.array("h", [0] * (frames * CHANNELS))
+        for index in range(lead * CHANNELS):
+            values[index] = material
+        effect = cls(audiocore.RawSample(values, sample_rate=rate,
+                                         channel_count=CHANNELS),
+                     **options)
+        y = pull(effect.output, frames)
+        effect.deinit()
+        last = 0
+        for index in range(len(y) - 1, lead * CHANNELS - 1, -1):
+            if y[index]:
+                last = index // CHANNELS - lead + 1
+                break
+        held = max(abs(v) for v in y[-(rate // 4) * CHANNELS:])
+        return declared, last, held
+
+    def test_finite_at_every_patch_and_every_stop(self):
+        effect = combfilter.CombFilter(
+            audiocore.RawSample(array.array("h", [0] * 512),
+                                sample_rate=SAMPLE_RATE,
+                                channel_count=CHANNELS))
+        for patch in range(6):
+            effect.program_change(patch)
+            self.assertIsInstance(effect.tail_samples, int, patch)
+        for index in range(6):
+            for midi in (0, 64, 127):
+                effect.program_change(0)
+                effect.set_macro(index, midi)
+                self.assertIsInstance(effect.tail_samples, int,
+                                      (index, midi))
+        effect.deinit()
+
+    def test_the_lap_bound_holds_where_it_is_tight(self):
+        # Full-scale DC at 20 Hz / Feedback 0.7: 69 600 frames against
+        # 69 629 when this test was written.
+        options = {"frequency": 20.0, "glide": 0.0}
+        declared, last, held = self.render(combfilter.CombFilter, 32767,
+                                           **options)
+        self.assertLessEqual(last, declared)
+        self.assertGreater(last, declared - 2402)
+        self.assertEqual(held, 0)
+        declared, last, _held = self.render(LapShortCombFilter, 32767,
+                                            **options)
+        self.assertGreater(last, declared)
+
+    def test_the_trim_term_covers_the_shelf(self):
+        options = {"trim_db": -18.0, "feedback": 0.0, "glide": 0.0}
+        declared, last, held = self.render(combfilter.CombFilter, 32767,
+                                           **options)
+        self.assertLessEqual(last, declared)
+        self.assertGreater(last, 20000)
+        self.assertEqual(held, 0)
+        declared, last, held = self.render(NoTrimTermCombFilter, 32767,
+                                           **options)
+        self.assertTrue(last > declared or held, (declared, last, held))
+
+    def test_the_stall_window_is_stepped_clear(self):
+        # Feedback 0.5 with Tone at 2 kHz is a stall centre: the node held
+        # 1 LSB for ever there when handed 0.5 (2 LSB at 0.75).
+        options = {"frequency": 1000.0, "feedback": 0.5, "tone_hz": 2000.0,
+                   "glide": 0.0}
+        declared, last, held = self.render(combfilter.CombFilter, 2,
+                                           **options)
+        self.assertLessEqual(last, declared)
+        self.assertEqual(held, 0)
+        _declared, _last, held = self.render(UnsteppedCombFilter, 2,
+                                             **options)
+        self.assertEqual(held, 1)
+
+
 class TheRingIsTheAskedPitchAndEnds(unittest.TestCase):
     """The TAIL-pitch trait. The ring plays the fractional delay the comb
     was asked for, through its tenth repeat within 1 cent, and then reaches

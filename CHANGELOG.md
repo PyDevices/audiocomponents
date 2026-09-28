@@ -46,6 +46,15 @@ there, and are recorded in its changelog.
   node no longer holds a few LSB going round for ever, and part of the old
   ring was that. The docstring and catalogue row say the measured values,
   and the two F8 tests pin them within 0.03 s.
+- **`CombFilter`: `tail_samples` is finite at every setting.** It was
+  declared `None`. The bound is the lap law on the longest line the read
+  head may be at, plus the Tone low-pass's memory, plus 1.5 s while the
+  Trim is in circuit (its fixed-point shelf was measured at up to 0.834 s).
+  With Tone in, Feedback is handed under 0.00003 clear of the node's stall
+  windows (audiodsp#157), where it held 1 or 2 LSB for ever at Feedback 0.5
+  and 0.75; with Tone off nothing moves, and no shipped patch sits in a
+  window. The docstring also discloses that Tone off after Tone has been in
+  freezes the loop low-pass, which Tone back in from silence plays.
 
 ## v0.3.2 (2026-09-25)
 
