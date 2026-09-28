@@ -193,6 +193,16 @@ class RateReciprocal(Reverb):
         return 1000.0 / value
 
 
+class ToneDetentZero(Reverb):
+    """Tier 1 silence: Tone's centre detent handed as exact 0 dB, which
+    freezes the Tank's tilt one-pole (`audiodsp_tank.c:596-602`)."""
+
+    NAME = 'Reverb'
+
+    def _tone_db(self, value):
+        return value
+
+
 def depth_ceiling_ms(lines, sample_rate):
     """The node's own Mod Depth ceiling, half the shorter modulated line
     less a frame (`audiodsp_tank.c:328-336`)."""
@@ -771,6 +781,49 @@ class Rebuilds(unittest.TestCase):
         effect.program_change(9)                  # Character and Size move
         self.assertEqual(Counting.count, 1)
 
+    def _wire_across_a_move(self, block, move):
+        """Mix 0 over a ramp served `block` frames at a time, one move
+        1536 frames in: (frames that differ from the source, how far the
+        output runs ahead of it after the move)."""
+        frames = 12288
+        ramp = np.array([((i * 7) % 20001) - 10000 for i in range(frames)],
+                        dtype=np.int16)
+        src = probes.ArraySource(interleave(ramp, 2, frames), rate=RATE,
+                                 channels=2, block=block)
+        effect = Reverb(src, sample_rate=RATE, mix=0.0)
+        head = render(effect, 1536)
+        effect.set_macro(*move)
+        out = np.concatenate([head, render(effect, frames - 2048)])[:, 0]
+        differ = int(np.sum(out != ramp[:len(out)]))
+        ahead = None
+        if differ:
+            for k in range(1, 4096):
+                if np.array_equal(out[1536:1600], ramp[1536 + k:1600 + k]):
+                    ahead = k
+                    break
+        return differ, ahead
+
+    def test_a_rebuild_keeps_the_wire_on_a_256_frame_source(self):
+        # the module docstring: a source whose buffers divide the Tank's
+        # 256-frame block loses nothing across a rebuild
+        for block in (256, 128):
+            for move in ((rv.CHARACTER_I, 42), (rv.SIZE_I, 70)):
+                self.assertEqual(self._wire_across_a_move(block, move),
+                                 (0, None), (block, move))
+
+    def test_a_rebuild_skips_what_the_old_tank_held(self):
+        # the disclosed loss: on a 1024- or 2048-frame source the old
+        # Tank's unplayed 512 frames go with it; a move that does not
+        # rebuild keeps the wire
+        for block in (1024, 2048):
+            for move in ((rv.CHARACTER_I, 42), (rv.SIZE_I, 70)):
+                differ, ahead = self._wire_across_a_move(block, move)
+                self.assertEqual(ahead, 512, (block, move))
+                self.assertGreater(differ, 0, (block, move))
+            self.assertEqual(self._wire_across_a_move(block,
+                                                      (rv.DECAY_I, 90)),
+                             (0, None), block)
+
     def test_a_rebuild_cuts_the_tail(self):
         frames = RATE
         effect = make(Reverb, "Steel Plate", mono=noise_burst(RATE,
@@ -807,6 +860,42 @@ class Tier1(unittest.TestCase):
                 effect.program_change(index)
                 self.assertEqual(int(np.max(np.abs(render(effect, 4096)))),
                                  0, index)
+
+    def _tone_route(self, cls, channels):
+        """Short Plate (Tone 74) over full-scale noise, Steel Plate (Tone
+        64, the same lines, so no rebuild) for its last block, 6 s of
+        silence, then Short Plate again: (peak over the last second before
+        the move, peak over the 0.1 s after it), Mix 2."""
+        noise = RATE // 2
+        rng = np.random.RandomState(5)
+        burst = np.round(rng.uniform(-1, 1, noise) * 32767).astype(np.int16)
+        effect = make(cls, channels=channels, mono=burst,
+                      frames=noise + 7 * RATE)
+        effect.program_change(1)
+        effect.set_macro(rv.MIX_I, 127)
+        render(effect, noise - 256)
+        first = effect._tank
+        effect.program_change(0)
+        effect.set_macro(rv.MIX_I, 127)
+        self.assertIs(effect._tank, first)
+        quiet = render(effect, 256 + 6 * RATE)
+        effect.program_change(1)
+        effect.set_macro(rv.MIX_I, 127)
+        self.assertIs(effect._tank, first)
+        after = render(effect, RATE // 10)
+        return (int(np.max(np.abs(quiet[-RATE:]))),
+                int(np.max(np.abs(after))))
+
+    def test_a_tone_move_out_of_silence_stays_silent(self):
+        for channels in (2, 1):
+            self.assertEqual(self._tone_route(Reverb, channels), (0, 0),
+                             channels)
+
+    def test_tone_detent_as_exact_zero_is_red(self):
+        for channels in (2, 1):
+            before, after = self._tone_route(ToneDetentZero, channels)
+            self.assertEqual(before, 0, channels)
+            self.assertGreater(after, 100, channels)
 
     def test_click_delay_is_zero(self):
         for name in ("Steel Plate", "Concert Hall"):

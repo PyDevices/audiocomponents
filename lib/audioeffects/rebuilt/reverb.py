@@ -52,6 +52,21 @@ released, the new one is built with every other setting applied and
 starts from empty lines. Set them before you play, not while a tail rings.
 A patch that changes both rebuilds once.
 
+A rebuild can also skip some of your dry. The Tank pulls its source a
+buffer at a time and plays 256 frames per block, so between blocks it may
+hold the rest of a source buffer it has not played yet; the old Tank takes
+those frames with it, and the new one starts at the source's next buffer.
+A source whose buffers divide 256 frames (a 256-frame host block does)
+loses nothing. One that hands 1024 or 2048 frames can lose up to a buffer
+less a block (512 frames when the move lands 1536 frames in), and the
+output then runs that far ahead of the source, at Mix 0 too: the byte-exact
+wire holds across a move only on such a source. A `RawSample` played
+straight in, which hands its whole buffer at once, loses the rest of it.
+`reset()` drops the same pending frames, as every class's reset does
+(`audiocore.reset_buffer`), and at the constructor's Size its patch 0
+rebuilds the Tank as well, since the grid's Size 64 cuts different lines
+from Size 1.0.
+
 **Decay is T60 at 500 Hz, between two knees.** The label holds to within
 12 % over most of the span (dossier T11). Below each character's *floor
 knee* its own diffusers and taps ring longer than the label, so the
@@ -85,7 +100,9 @@ source gets the mono fold-down of the stereo tank, both tap sets in the one
 lane, halved (`audiodsp_tank.c:571-580`).
 
 **Tone** spans +/-12 dB of end-to-end tilt, which the node puts half at
-each end: +12 is about -6 dB at 40 Hz and +6 dB at 16 kHz.
+each end: +12 is about -6 dB at 40 Hz and +6 dB at 16 kHz. At the centre
+the class hands 2^-24 dB rather than 0, so the tilt's filter keeps
+following the tail and a later Tone move out of silence stays silent.
 
 **Input ceiling.** The tank adds dry and wet before it rounds and clamps
 at the int16 rail. On 2 s of uniform noise at Mix 1, nothing reaches the
@@ -196,6 +213,15 @@ DAMPER_SHORT_S = 1.0
 
 #: The frequency Decay is stated at.
 DECAY_HZ = 500.0
+
+#: What the class hands for Tone at its centre detent instead of 0 dB. The
+#: Tank runs its tilt one-pole only while `tone_db` is non-zero
+#: (`audiodsp_tank.c:596-602`), so at exact 0 the filter's state freezes
+#: on whatever it last held and comes out as sound the moment Tone leaves
+#: the detent, even out of exact silence. 2^-24 dB keeps the one-pole
+#: tracking; both of its gains round to exactly 1 in single precision, so
+#: it is the flat tilt, and every float format holds it exactly.
+TONE_TRACK_DB = 1.0 / 16777216.0
 
 (CHARACTER_I, DECAY_I, SIZE_I, PREDELAY_I, DIFFUSION_I, DAMPING_I,
  BANDWIDTH_I, LOW_CUT_I, MOD_DEPTH_I, MOD_RATE_I, WIDTH_I, TONE_I,
@@ -340,8 +366,9 @@ class Reverb(_component.Component):
 
     **What the default surrenders:** Decay holds its label only between a
     floor knee and a ceiling knee (dossier section 8.9); a sparse, quiet
-    input decays sooner than the knob; Character and Size rebuild the tank
-    and cut the tail; the spring character is parked.
+    input decays sooner than the knob; Character and Size rebuild the tank,
+    cut the tail and can skip the dry the old tank held pending; the
+    spring character is parked.
     """
 
     NAME = 'Reverb'
@@ -497,6 +524,12 @@ class Reverb(_component.Component):
     def _low_cut_hz(self, value):
         return self._hz(value)
 
+    def _tone_db(self, value):
+        """The tilt handed to the Tank: never exactly 0 (`TONE_TRACK_DB`)."""
+        if value == 0.0:
+            return TONE_TRACK_DB
+        return value
+
     def _mod_rate_hz(self, value):
         return value
 
@@ -557,7 +590,8 @@ class Reverb(_component.Component):
                 _between(self._value(MOD_RATE_I), 0.1, 5.0)),
             "drive": 0.0,
             "width": _between(self._value(WIDTH_I), 0.0, 1.0),
-            "tone_db": _between(self._value(TONE_I), -12.0, 12.0),
+            "tone_db": self._tone_db(
+                _between(self._value(TONE_I), -12.0, 12.0)),
             "mix": _between(self._value(MIX_I), 0.0, 2.0),
         }
         if (self._tank is None or index != self._index
@@ -573,7 +607,9 @@ class Reverb(_component.Component):
     def _rebuild(self, index, lines, taps, handed):
         """Replace the Tank (dossier section 8.8): the output plays the dry
         alone, the old Tank is released, the new one is built with every
-        setting applied, plays the source, and the output points at it."""
+        setting applied, plays the source, and the output points at it.
+        Source frames the old Tank pulled and had not played go with it
+        (the module docstring says when)."""
         old = self._tank
         if old is not None:
             self._output = self._source
