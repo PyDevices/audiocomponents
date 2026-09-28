@@ -1603,5 +1603,163 @@ class TheTierOneRowsAtEveryShippedPatch(unittest.TestCase):
                     % (patch, peak, self.RESIDUAL_LSB))
 
 
+# -- the stale blocks (audiocomponents#113) ------------------------------
+
+import os                                                       # noqa: E402
+import sys                                                      # noqa: E402
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+import stale_blocks as stale                                    # noqa: E402
+
+class TheBypassComesBackAsBuilt(unittest.TestCase):
+    """Mix back up from 0 after a pause plays nothing that was there before
+    the pause (audiocomponents#113; Brad, 2026-09-28: "fix the stale
+    blocks"). At Mix 0 the class hands back its source and nothing behind
+    it is pulled, so the graph kept its filters' memory and the block each
+    mixer voice had queued; bringing Mix back played that out of silence.
+    `_component.Component._rejoin` clears the graph and the class re-arms
+    it the way its constructor does.
+
+    Off-centre Bias (patches 4 and 6) the plate pole is charged again, and
+    the charge leaves at most 1 LSB behind it, as it does at construction.
+    
+    """
+
+    CLS = rebuilt.Saturation
+    MIX = 2
+
+    #: Patches where the class answers silence with a fixed residue of its
+    #: own after any move (see the class docstring), and the bound it holds.
+    BOUNDED = {4: 1, 6: 1}
+
+    def test_mix_back_after_silence_plays_nothing(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                self.assertEqual(
+                    stale.blip(self.CLS, self.MIX, 127, 0, rate, channels),
+                    (0, 0), (rate, channels))
+        self.assertEqual(stale.blip(self.CLS, self.MIX, 64, 0), (0, 0))
+
+    def test_at_every_patch(self):
+        for patch in sorted(self.CLS.PATCHES):
+            before, after = stale.blip(self.CLS, self.MIX, 127, 0,
+                                       patch=patch)
+            self.assertEqual(before, 0, patch)
+            self.assertLessEqual(
+                after, max(stale.twin(self.CLS, self.MIX, 127, patch=patch),
+                           getattr(self, "BOUNDED", {}).get(patch, 0)),
+                patch)
+
+    def test_it_comes_back_in_step(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                self.assertLessEqual(
+                    stale.in_step(self.CLS, self.MIX, 127, 0, rate,
+                                  channels), 3, (rate, channels))
+
+    def test_a_block_primed_at_construction_is_not_replayed(self):
+        for channels in (2, 1):
+            self.assertEqual(
+                stale.first_blip(self.CLS, self.MIX, channels=channels), 0)
+
+    def test_the_old_rejoin_and_a_clear_without_rearming_are_red(self):
+        # The class before the fix: the graph taken back untouched.
+        before, after = stale.blip(
+            stale.planted(self.CLS, stale.StaleRejoin), self.MIX, 127, 0,
+            )
+        self.assertEqual(before, 0)
+        self.assertGreater(after, 1000)
+        # A wrong cure: cleared but not re-armed, so the voices keep the
+        # block they queued at construction.
+        self.assertGreater(stale.first_blip(
+            stale.planted(self.CLS, stale.ClearOnlyRejoin), self.MIX), 1000)
+
+
+class DrainlessSaturation(rebuilt.Saturation):
+    """Planted: the class before the fix. Bias back to the centre charges
+    nothing, so the pole bleeds the old offset out as a thump."""
+
+    def _charge_coupling(self, rewire=False):
+        if not self._bias:
+            self._charged = False
+        return rebuilt.Saturation._charge_coupling(self, rewire)
+
+
+class UnchargedHysteresis(rebuilt.Saturation):
+    """Planted, a wrong cure: Hysteresis back in clears the shapers and
+    charges nothing, so off centre the half-band's climb back to the offset
+    passes the charged pole as a thump."""
+
+    def _apply_macro(self, index, position):
+        if index != 7:
+            return rebuilt.Saturation._apply_macro(self, index, position)
+        value = rebuilt._component.macro_value(self._MACRO_RANGES[7],
+                                               position)
+        if value > 0.0 and self._hysteresis <= 0.0 \
+                and not self._constructing:
+            self._clear_nodes(only=self._shapers())
+        self._hysteresis = value
+        for shaper in self._shapers():
+            shaper.set(hysteresis=value)
+
+
+class LevellingSaturation(rebuilt.Saturation):
+    """Planted: the class before the fix. A Bias re-charge pulled a block
+    off the dry tap "to level the split", which a `Waveshaper.play()` never
+    unlevelled: the dry leg ran a block ahead of the wet one."""
+
+    def _charge_coupling(self, rewire=False):
+        done = rebuilt.Saturation._charge_coupling(self, rewire)
+        if rewire:
+            rebuilt.audiocore.get_buffer(self._dry)
+        return done
+
+
+class TheOperatingPointComesBackClean(unittest.TestCase):
+    """Bias, Hysteresis and the gain macros moved and moved back play
+    nothing out of silence (audiocomponents#113). Off centre the plate pole
+    holds `curve(bias) * post_gain`; Bias back to the centre left it to
+    bleed out (29 058 LSB), Headroom and Hysteresis moved it without a
+    re-charge (4 885, 14), and Hysteresis back in stepped from where its
+    play operator had frozen (314). And the Bias re-charge no longer pulls a
+    block off the dry tap, which put the dry leg a block ahead of the wet
+    and left the wet a block behind in the ring (13 071 at patch 7)."""
+
+    CLS = rebuilt.Saturation
+
+    def quiet(self, index, a, b, patch=None, cls=None):
+        before, after = stale.blip(cls or self.CLS, index, a, b,
+                                   patch=patch)
+        return after if before == 0 else None
+
+    def test_bias_moves_play_nothing(self):
+        for patch in [None] + sorted(self.CLS.PATCHES):
+            for b in (0, 127):
+                _before, after = stale.blip(self.CLS, 4, 64, b, patch=patch)
+                self.assertLessEqual(after, max(1, stale.twin(
+                    self.CLS, 4, 64, patch=patch)), (patch, b))
+
+    def test_hysteresis_and_headroom_moves_play_nothing(self):
+        for patch in [None, 0, 4, 6]:
+            bound = 1 if patch in (4, 6) else 0
+            for index, a, b in ((7, 127, 0), (7, 0, 127), (3, 64, 0),
+                                (0, 64, 0), (1, 64, 0)):
+                _before, after = stale.blip(self.CLS, index, a, b,
+                                            patch=patch)
+                self.assertLessEqual(after, max(bound, stale.twin(
+                    self.CLS, index, a, patch=patch)), (patch, index, a, b))
+
+    def test_the_dry_leg_stays_in_line_through_bias_moves(self):
+        self.assertLessEqual(stale.in_step(self.CLS, 4, 64, 0, patch=7), 3)
+
+    def test_the_old_class_and_a_wrong_cure_are_red(self):
+        self.assertGreater(stale.blip(DrainlessSaturation, 4, 64, 0)[1],
+                           10000)
+        self.assertGreater(stale.blip(UnchargedHysteresis, 7, 127, 0,
+                                      patch=4)[1], 1000)
+        self.assertGreater(stale.in_step(LevellingSaturation, 4, 64, 0,
+                                         patch=7), 1000)
+
+
 if __name__ == "__main__":
     unittest.main()

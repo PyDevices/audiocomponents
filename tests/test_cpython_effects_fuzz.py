@@ -2241,5 +2241,82 @@ class TheTierOneRowsAtEveryShippedPatch(unittest.TestCase):
                     "output pole was charged"
                     % (patch, peak, self.RESIDUAL_LSB))
 
+
+# -- the stale blocks (audiocomponents#113) ------------------------------
+
+import os                                                       # noqa: E402
+import sys                                                      # noqa: E402
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+import stale_blocks as stale                                    # noqa: E402
+
+class TheBypassComesBackAsBuilt(unittest.TestCase):
+    """Mix back up from 0 after a pause plays nothing that was there before
+    the pause (audiocomponents#113; Brad, 2026-09-28: "fix the stale
+    blocks"). At Mix 0 the class hands back its source and nothing behind
+    it is pulled, so the graph kept its filters' memory and the block each
+    mixer voice had queued; bringing Mix back played that out of silence.
+    `_component.Component._rejoin` clears the graph and the class re-arms
+    it the way its constructor does.
+
+    `germanium` primes nothing at construction, so the construction variant
+    reads 0 before and after; off-centre Bias the output pole is charged
+    again, and a clear without that charge is red at shipped patch 2.
+    """
+
+    CLS = rebuilt.Fuzz
+    MIX = 5
+
+    def test_mix_back_after_silence_plays_nothing(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                self.assertEqual(
+                    stale.blip(self.CLS, self.MIX, 127, 0, rate, channels),
+                    (0, 0), (rate, channels))
+        self.assertEqual(stale.blip(self.CLS, self.MIX, 64, 0), (0, 0))
+
+    def test_at_every_patch(self):
+        for patch in sorted(self.CLS.PATCHES):
+            before, after = stale.blip(self.CLS, self.MIX, 127, 0,
+                                       patch=patch)
+            self.assertEqual(before, 0, patch)
+            self.assertLessEqual(
+                after, max(stale.twin(self.CLS, self.MIX, 127, patch=patch),
+                           getattr(self, "BOUNDED", {}).get(patch, 0)),
+                patch)
+
+    def test_it_comes_back_in_step(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                self.assertLessEqual(
+                    stale.in_step(self.CLS, self.MIX, 127, 0, rate,
+                                  channels), 3, (rate, channels))
+
+    def test_a_block_primed_at_construction_is_not_replayed(self):
+        for channels in (2, 1):
+            self.assertEqual(
+                stale.first_blip(self.CLS, self.MIX, channels=channels), 0)
+
+    def test_the_old_rejoin_and_a_clear_without_rearming_are_red(self):
+        # The class before the fix: the graph taken back untouched.
+        before, after = stale.blip(
+            stale.planted(self.CLS, stale.StaleRejoin), self.MIX, 127, 0,
+            )
+        self.assertEqual(before, 0)
+        self.assertGreater(after, 1000)
+        # A wrong cure: cleared but not re-armed, so the voices keep the
+        # block they queued at construction.
+        # `germanium` primes no voice at construction, so the construction
+        # variant cannot tell a clear-only cure apart: the next test does.
+
+    def test_a_clear_without_the_charge_is_red_off_centre(self):
+        # Shipped patch 2 is Bias -0.844: cleared and not re-charged, the
+        # output pole starts cold and the offset bangs out of silence.
+        _before, after = stale.blip(
+            stale.planted(self.CLS, stale.ClearOnlyRejoin), self.MIX, 127,
+            0, patch=2)
+        self.assertGreater(after, 10000)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -15,6 +15,12 @@ clipper so harmonics are loud at onset (S2's shape), **+6 dB over 8 ms**.
 Envelope-following `Waveshaper.bias` was not granted; bias is static.
 Transient Time is not on the surface: T5's τ clause is disconfirmed.
 
+**Mix back up from 0 plays nothing from before.** At Mix 0 (with Output
+at 0 dB) the class hands back its source and the harmonic branch is not
+pulled; it used to keep what it held and play it when Mix came back, up to
+10 768 LSB out of silence. It is now cleared and its voices re-armed first
+(audiocomponents#113).
+
 **Harmonics is 0…+14 dB of drive across the diode, not 0…+24.** Measured
 on this class's own curve, the top ten of those twenty-four decibels buy
 **1.76 dB** of h2 at −6 dBFS and cost **6.7 dB** of alias: past the knee
@@ -679,11 +685,22 @@ class Exciter(_component.Component):
         # top of the macro put the wet over the dry (audiocomponents#72).
         out = 10.0 ** (self._value(4) / 20.0)
         if mix <= 0.0 and out >= 1.0:
-            self._output = self._source
+            self._route_around(self._source)
             return
         if not getattr(self, "_ready", False):
             self._output = self._blend
             return
+        if self._rejoin():
+            # Back off the bypass: the nodes are cleared, and the voices
+            # still hold the blocks they had queued when the bypass began.
+            # Re-armed as `_build` arms them - levels, gates, voices - and
+            # only then is the port pointed back (audiocomponents#113).
+            self._blend.voice[0].level = out
+            self._blend.voice[1].level = mix * out
+            _component.open_level_gates(
+                self._blend, [self._blend.voice[0], self._blend.voice[1]],
+                self._silence)
+            self._primed = False
         if not self._primed:
             self._dc.play(self._shaper)
             self._blend.voice[0].play(self._dry)

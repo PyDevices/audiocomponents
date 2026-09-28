@@ -113,6 +113,34 @@ there, and are recorded in its changelog.
   a few LSB (7 at most measured) at a Feedback inside a stall window, where
   the off stop keeps Tone in's stepped Feedback.
 
+### Fixed
+
+- **Ten effects no longer replay old audio when a control brings a bypassed
+  part of their graph back** (#113). Mix 0 hands the source straight back,
+  so nothing behind it is pulled, and the graph kept what it held - its
+  filters' memory and the block each mixer voice had queued; Mix back up
+  after a pause played it out of silence. Measured peaks, LSB: Distortion
+  24 589, Fuzz 23 153, MultibandCompressor 22 264, Bitcrusher 16 896,
+  Overdrive 11 640, Exciter 10 768, Saturation 7 927, DynamicEQ 7 769, and
+  Compressor's construction block (20 000). One helper in
+  `_component.Component` (`_route_around`, `_rejoin`, `_clear_nodes`) marks
+  a graph routed around and clears it when it comes back, and each class
+  then arms it the way its constructor does: level gates, voices, a biased
+  coupling pole charged. Limiter's Lookahead and True Peak (31 373: the
+  whole last note) were the node's lookahead line, written only as far as
+  its delay reaches; a stage whose delay grows is now reset first. Bitcrusher's
+  Band Limit and Dither clear their sections and gate when they come back.
+  Saturation drains its plate pole when Bias returns to the centre (29 058),
+  re-charges it on Drive, Output, Headroom and Hysteresis moves off centre,
+  starts Hysteresis's play operator at the centre when it comes back in, and
+  no longer pulls a block off its dry tap on a Bias re-charge - which put the
+  dry leg 256 frames ahead of the wet after every `program_change` and moves
+  the one census digest that changed, patch 7 (Mix 44). DynamicEQ's mixer
+  renders one block at a time in mono as well as stereo. After: 0 LSB out of
+  silence at every rate, channel count and patch on CPython, MicroPython and
+  CircuitPython (at most 1 LSB at Saturation's off-centre patches, what its
+  constructor's charge leaves); nothing else moved with no control moved.
+
 ## v0.3.2 (2026-09-25)
 
 No change to either package's code: both packages are 0.3.1 under a new
