@@ -11,6 +11,11 @@ round 1: the first walk read a marker only the fault set, and could not
 fail), and the measurement red on the class built as a wire. The exhaustive grids (every Glide grid position,
 every Spacing and Time position, three rates for every cell) live in the
 evidence pack, not in this file.
+
+Re-audit fix round 2 (2026-09-28) adds Tier 1's cross-feed stall: the five
+stall cells and the kit's TAIL over Spread's whole travel, each beside
+`RawSpreadTape` (the class before Spread was handed on the 1/4096 grid),
+and the reset sentence of the lean patch's paragraph.
 """
 
 import math
@@ -32,6 +37,7 @@ from audioeffects import rebuilt                            # noqa: E402
 from audioeffects.rebuilt import tapedelay as tape          # noqa: E402
 from audioeffects.rebuilt.digitaldelay import (             # noqa: E402
     clear_of_stalls)
+from tools import effect_measurements as kit                # noqa: E402
 
 VENDOR = "PyDevices"
 
@@ -399,6 +405,18 @@ class LeanMovesMoreTape(TapeDelay):
                   (89, 58, 22, 89, 32, 32, 0, 60, 0, 0, 51))
 
 
+class LeanResetTape(TapeDelay):
+    """Not the contract: a reset that restores the lean patch instead of
+    patch 0, so the drive stays off. The docstring says reset() brings it
+    back; this is the build that sentence would be false on."""
+
+    NAME = 'TapeDelay'
+
+    def reset(self):
+        TapeDelay.reset(self)
+        self.program_change(8)
+
+
 class DriveOffTape(TapeDelay):
     """Not a fault: the cost study's variant D, `loop_drive` handed 0 after
     every refresh (`tapedelay_cost_variants.py`, `DriveOff`). Built at
@@ -425,6 +443,24 @@ class JumpWowTape(TapeDelay):
         if not self._seeding and not self._deferred and self._wow_ms != old:
             self._delay.set(delay_slew=0.0,
                             delay_ms=self._node_ms + self._wow_ms - old)
+
+
+class RawSpreadTape(TapeDelay):
+    """Tier 1 TAIL: the class as at a5675d7, Spread handed to the node as
+    set at two channels, off the 1/4096 grid. With Spread strictly inside
+    (0, 1) and a Feedback a float32 step or two under 1 - 0.5 / k, the
+    node's cross-feed sum lands a float32 step above two landed k lanes and
+    hands k back for ever (re-audit round 1)."""
+
+    NAME = 'TapeDelay'
+
+    def _refresh(self):
+        TapeDelay._refresh(self)
+        if self._channel_count == 2:
+            spread = min(1.0, max(0.0, self._value(SPREAD_I)))
+            if spread != self._spread:
+                self._spread = spread
+                self._delay.set(cross_feed=spread)
 
 
 # -- sources and renders --------------------------------------------------
@@ -911,6 +947,34 @@ class LeanPatch(unittest.TestCase):
         effect.set_macro(TIME_I, 127)
         self.assertAlmostEqual(effect.macro(TIME_I), 800.0, places=6)
         self.assertEqual(effect._frames, frames_of(800.0))
+
+    def _drive_across_reset(self, cls):
+        """(Record Level MIDI and the drive handed) on the lean patch at the
+        800 ms build, after `reset()`, and after `program_change(8)`."""
+        readings = []
+        with NodeSpy():
+            effect = cls(src_of(np.zeros(512)), patch=LEAN,
+                         max_time_ms=800.0)
+            for step in (None, effect.reset,
+                         lambda: effect.program_change(LEAN)):
+                if step is not None:
+                    step()
+                readings.append((effect.get_macro(RECORD_I),
+                                 round(effect._delay._handed["loop_drive"],
+                                       5)))
+            effect.deinit()
+        return readings
+
+    def test_reset_brings_the_drive_back(self):
+        # Re-audit fix round 2, the docstring's restated sentence: reset()
+        # restores patch 0 (the component contract), so the drive and its
+        # cost come back and a board calls program_change(8) after it.
+        self.assertEqual(self._drive_across_reset(TapeDelay),
+                         [(0.0, 0.0), (25.0, 0.19685), (0.0, 0.0)])
+        # Planted: a reset that restored the lean patch would make the
+        # sentence false; the reading sees it.
+        self.assertEqual(self._drive_across_reset(LeanResetTape)[1],
+                         (0.0, 0.0))
 
 
 class T1aVarispeed(unittest.TestCase):
@@ -2169,6 +2233,116 @@ class Tier1Fast(unittest.TestCase):
         self.assertNotEqual(stepped._feedback, 0.5)
         self.assertLess(abs(stepped._feedback - 0.5), 3e-5)
 
+    #: Re-audit round 1's cross-feed stall cells, (label, k, the Feedback
+    #: the node is handed as float32, Spread): "knob" cells set Spread's
+    #: MIDI position and a fractional Feedback position by `set_macro`,
+    #: "ctor" cells pass both to the constructor. The first three are the
+    #: re-refuter's portable cells (k = 9, 11, 50), the fourth a constructor
+    #: Spread off every grid, and the fifth one of the 13 cells whose
+    #: hand-back survives every order a compiler may sum the cross-feed in
+    #: (separate roundings and both fused multiply-adds), so the plant holds
+    #: there on a board too (tapedelay_reaudit1_audit.mirror.out.txt).
+    CROSS_FEED_CELLS = (
+        ("knob", 9, 0.9444443583488464, 1),
+        ("knob", 11, 0.9545453786849976, 3),
+        ("knob", 50, 0.9899999499320984, 2),
+        ("ctor", 50, 0.9899998903274536, 0.1726040393114090),
+        ("knob", 15, 0.9666665792465210, 37),
+    )
+
+    @staticmethod
+    def feedback_position(target):
+        """A fractional Feedback knob position whose value reaches the node
+        as exactly `target` in float32 (0..0.99, linear)."""
+        want = np.float32(target)
+        m = float(want) * 127.0 / 0.99
+        for step in range(-400, 401):
+            cand = m + step * 1e-9
+            if np.float32(0.99 * (cand / 127.0)) == want:
+                return cand
+        raise ValueError("no Feedback position reaches %r" % target)
+
+    def _cross_feed_stall(self, cls, cell, rate=RATE, channels=2):
+        """Time 20 ms, Mix 2, Record Level 0, patch 8's wobble (Wow 2 c,
+        Flutter 1 c), the cell's Feedback and Spread: a DC of 2k + 2 LSB for
+        four laps, then silence for `tail_samples` (read after the knobs
+        move) plus a lap plus 4 096 frames. Returns (tail_samples, frames
+        from the input's end to the last non-zero frame, |the last frame|,
+        the Feedback handed)."""
+        route, k, feedback, spread = cell
+        ctor = dict(time_ms=20.0, mix=2.0, record_level=0.0, wow_cents=2.0,
+                    flutter_cents=1.0)
+        if route == "ctor":
+            ctor.update(feedback=feedback, spread=spread)
+
+        def build(src):
+            effect = cls(src, **ctor)
+            if route == "knob":
+                effect.set_macro(FEEDBACK_I, self.feedback_position(feedback))
+                effect.set_macro(SPREAD_I, spread)
+            return effect
+        probe = build(src_of(np.zeros(512), channels, rate))
+        declared = probe.tail_samples
+        lap = probe._frames
+        handed = probe._feedback
+        probe.deinit()
+        lead = 4 * lap
+        frames = lead + declared + lap + 4096
+        x = np.zeros(frames)
+        x[:lead] = 2 * k + 2
+        out = render(build(src_of(x, channels, rate)), frames)
+        nz = np.nonzero(np.any(out[lead:] != 0, axis=1))[0]
+        tail = int(nz[-1]) + 1 if len(nz) else 0
+        return declared, tail, int(np.max(np.abs(out[-1]))), handed
+
+    def test_the_cross_feed_stall_cells_reach_zero(self):
+        # Re-audit round 1's Tier 1 failure: with Spread handed as set these
+        # cells hold k LSB on both lanes for ever. With Spread on the 1/4096
+        # grid each ends inside the bound, in stereo and (Spread held at 0)
+        # in mono. Planted: RawSpreadTape, the class as at a5675d7, holds
+        # exactly k at every one.
+        for cell in self.CROSS_FEED_CELLS:
+            route, k, feedback, spread = cell
+            for channels in (2, 1):
+                declared, tail, final, handed = self._cross_feed_stall(
+                    TapeDelay, cell, channels=channels)
+                self.assertEqual(np.float32(handed), np.float32(feedback),
+                                 cell)
+                self.assertEqual(final, 0, (cell, channels))
+                self.assertGreater(tail, 0, (cell, channels))
+                self.assertLessEqual(tail, declared, (cell, channels))
+            declared, tail, final, handed = self._cross_feed_stall(
+                RawSpreadTape, cell)
+            self.assertEqual(final, k, cell)
+
+    def test_spread_is_handed_on_the_grid(self):
+        # At two channels Spread reaches the node on the 1/4096 grid, within
+        # 1/8192 of the knob, 0 and 1 untouched; the constructor's too.
+        for rate in (48000, 44100, 22050):
+            effect = TapeDelay(src_of(np.zeros(512), 2, rate))
+            with NodeSpy():
+                for midi in [m / 4.0 for m in range(4 * 127 + 1)]:
+                    effect.set_macro(SPREAD_I, midi)
+                    knob = effect._value(SPREAD_I)
+                    handed = effect._delay._handed["cross_feed"] * 4096.0
+                    self.assertEqual(handed, math.floor(handed), midi)
+                    self.assertEqual(effect._spread * 4096.0, handed, midi)
+                    self.assertLessEqual(abs(effect._spread - knob),
+                                         1.0 / 8192.0, midi)
+            effect.set_macro(SPREAD_I, 0)
+            self.assertEqual(effect._spread, 0.0)
+            effect.set_macro(SPREAD_I, 127)
+            self.assertEqual(effect._spread, 1.0)
+            typed = TapeDelay(src_of(np.zeros(512), 2, rate),
+                              spread=0.1726040393114090)
+            self.assertEqual(typed._spread, 707.0 / 4096.0)
+            mono = TapeDelay(src_of(np.zeros(512), 1, rate),
+                             spread=37.0 / 127.0)
+            self.assertEqual(mono._spread, 0.0)
+        # Planted: the class as at a5675d7 hands 37/127 as set.
+        raw = RawSpreadTape(src_of(np.zeros(512)), spread=37.0 / 127.0)
+        self.assertEqual(raw._spread, 37.0 / 127.0)
+
     def _depth_move(self, cls, start, target, points=8):
         """(the tone's own largest step before the move, the largest step in
         the 2 000 frames after it) over `points` moves a quarter of the
@@ -2227,6 +2401,66 @@ class Tier1Fast(unittest.TestCase):
                                           {WOW_I: 32, FLUTTER_I: 32},
                                           {WOW_I: 0, FLUTTER_I: 0}),
                          (728.0, 1117.0))
+
+
+def spread_tail_sweep(cls, feedback, rate=RATE):
+    """The kit's TAIL through `macro_sweep` over Spread's 128 grid
+    positions, stereo, Time 20 ms, Mix 2, Record Level 0, no wobble, at
+    `feedback` (the constructor's, reaching the node as its float32): each
+    cell a 0.5 FS DC held 0.5 s (`kit_probes.dc_step`), then silence for
+    `tail_samples` plus a lap plus 4 096 frames. A cell's figure is its tail
+    over `tail_samples`, infinite when the line never empties. Returns
+    (the sweep's result, the MIDI positions whose figure is over 1)."""
+    ctor = dict(feedback=feedback, mix=2.0, time_ms=20.0, record_level=0.0,
+                wow_cents=0.0, flutter_cents=0.0)
+    subject = cls(src_of(np.zeros(512), 2, rate), **ctor)
+    step, held = probes.dc_step(level=0.5, hold_s=0.5, total_s=0.5,
+                                rate=rate, channels=2)
+    lead = np.frombuffer(step.tobytes(), dtype=np.int16).reshape(-1, 2)[:, 0]
+
+    def measure(settings):
+        declared = subject.tail_samples
+        frames = held + declared + subject._frames + 4096
+        x = np.zeros(frames)
+        x[:len(lead)] = lead
+        effect = cls(src_of(x, 2, rate), **ctor)
+        effect.set_macro(SPREAD_I, settings[SPREAD_I])
+        out = render(effect, frames).astype(np.int16)
+        effect.deinit()
+        got = kit.tail(kit.Render(out.tobytes(), rate, 2),
+                       burst_end_frame=held, declared_tail_samples=declared,
+                       settle_frames=4096)["values"]
+        if not got["returns_to_zero"]:
+            return float("inf")
+        return got["tail_samples"] / float(declared)
+
+    result = kit.macro_sweep(
+        subject, [kit.MacroSpan(SPREAD_I, 0, 127, midpoints=126)], measure,
+        worst="max", bar=1.0, name="TAIL/SPREAD")
+    red = sorted(c["settings"][SPREAD_I] for c in result["values"]["cells"]
+                 if not c["figure"] <= 1.0)
+    subject.deinit()
+    return result, red
+
+
+class CrossFeedTailSweep(unittest.TestCase):
+    """Tier 1 TAIL over Spread's whole travel at the re-refuter's two
+    Feedbacks (re-audit round 1): the class is green at all 128 positions,
+    and RawSpreadTape, the class as at a5675d7, is red exactly where the
+    re-refutation found it (MIDI 1 and 5 at 0.9444443583, 2 and 39 at
+    0.9899999499)."""
+
+    def test_the_tail_ends_at_every_spread(self):
+        for feedback, raw_red in ((0.9444443583488464, [1.0, 5.0]),
+                                  (0.9899999499320984, [2.0, 39.0])):
+            result, red = spread_tail_sweep(TapeDelay, feedback)
+            self.assertEqual(result["values"]["points"], 128)
+            self.assertEqual(red, [], feedback)
+            self.assertFalse(result["red"], feedback)
+            self.assertLess(result["values"]["worst"], 1.0, feedback)
+            result, red = spread_tail_sweep(RawSpreadTape, feedback)
+            self.assertEqual(red, raw_red, feedback)
+            self.assertTrue(result["red"], feedback)
 
 
 class InputCeiling(unittest.TestCase):
@@ -2441,6 +2675,13 @@ def read_python_steps(effect):
     return writes
 
 
+def read_spread_on_grid(effect):
+    """Whether the `cross_feed` handed to the node is a whole number of
+    4096ths (RawSpreadTape hands 37/127, which is not)."""
+    handed = float(effect._delay._handed["cross_feed"]) * 4096.0
+    return handed == math.floor(handed)
+
+
 #: (name, fault, reading, constructor options for both builds). A fault
 #: whose law is live only away from the defaults is built where it is live
 #: (DigitalDelay's corner-cell precedent): `GlideScaledVarispeed` is the
@@ -2468,6 +2709,10 @@ REACH_WALKS = (
     ("FlutterOnWowLineTape", FlutterOnWowLineTape, read_table, {}),
     ("Harmonic504Tape", Harmonic504Tape, read_table, {}),
     ("NoDriftTape", NoDriftTape, read_table, {}),
+    # Re-audit fix round 2: built at an interior Spread off the grid, where
+    # the plant hands the node something the class never does.
+    ("RawSpreadTape", RawSpreadTape, read_spread_on_grid,
+     {"feedback": 0.9666665792, "spread": 37.0 / 127.0}),
 )
 
 
