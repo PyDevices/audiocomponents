@@ -108,15 +108,29 @@ Feedback 0.5 and 2 at 0.75 with Tone at 2 kHz, on a 2 LSB DC). The
 Feedback knob's top, 0.95, is one of those centres. So with Tone in, the
 class hands the node a Feedback just outside each window, at the nearer
 edge, at most 0.00003 from the one you set, and the knob still reads what
-you set; the tail then reaches zero inside the bound. With Tone off
-nothing is moved.
+you set; the tail then reaches zero inside the bound. With Tone off, on
+an instance that has not had Tone in since it was built or reset, nothing
+is moved.
 
-**Tone off, after Tone has been in, is not yet safe to come back from.**
-The node freezes its loop low-pass while Tone is off, and bringing Tone
-back after the ring has died plays what it held: 15 070 LSB at 48 kHz after
-a 300 Hz tone at 30 000 LSB, Feedback 0, Mix 2. `reset()` clears it. Found
-2026-09-28 and not fixed in this class; `DigitalDelay` and `SlapbackDelay`
-keep the filter tracking the tap instead.
+**Tone off, after Tone has been in.** The node leaves its loop low-pass
+frozen while it is out (`audiodsp_feedback_delay.c:493-497` at v0.6.2), and
+up to 2026-09-28 this class's off stop handed it exactly that: bring Tone
+back after the ring had died and it played what it held, out of silence,
+15 070 LSB at 48 kHz (10 110 at 44.1, 8 828 at 22.05) after a 300 Hz tone
+at 30 000 LSB, Feedback 0, Mix 2. So once Tone has been in circuit since
+the last `reset()`, the off stop keeps the low-pass running at a
+coefficient of exactly 1, which follows the line's tap sample for sample,
+and Tone back in after silence is silent at every rate, stereo and mono
+(the same cure as `DigitalDelay` and `SlapbackDelay`). Against the filter
+truly out that is exact where the read lands on a whole frame (1000 Hz at
+48 kHz) and within 1 LSB where it is fractional (440 Hz at every rate).
+At a Feedback inside one of the node's stall windows (0.5, 0.75, 0.9 and
+on up to the 0.95 stop) the off stop also hands the Feedback that Tone in
+hands, moved clear by at most 0.00003, and there the ring differs from the
+filter truly out by a few LSB: 7 at most in 2 s runs of noise at -30 to
+0 dBFS, 20 / 440 / 4000 Hz, 48 and 44.1 kHz (2026-09-28). A fresh
+instance, and one since a `reset()` that has not put Tone in, hands the
+node exactly no filter, and a `reset()` makes the off stop exact again.
 
 **Two traits this class does not have.** The *negative* comb, whose peaks sit
 on the odd half-multiples and which sounds hollow rather than pitched, is
@@ -153,9 +167,11 @@ from . import _component
 # node rounds the same way here. Its module moves up one level when it comes
 # home, so both homes are tried.
 try:
-    from .rebuilt.digitaldelay import clear_of_stalls, laps_to_zero
+    from .rebuilt.digitaldelay import (TONE_TRACK_PER_RATE,
+                                       clear_of_stalls, laps_to_zero)
 except ImportError:                     # pragma: no cover - after it lands
-    from .digitaldelay import clear_of_stalls, laps_to_zero
+    from .digitaldelay import (TONE_TRACK_PER_RATE, clear_of_stalls,
+                               laps_to_zero)
 
 
 #: The line, in milliseconds. 20 Hz wants 50 ms and the node keeps one frame
@@ -316,6 +332,11 @@ class CombFilter(_component.Component):
         self._fresh = True
         self._feedback = 0.0
         self._damping = 0.0
+        #: True once Tone has been handed an in-circuit corner since the
+        #: node was built or cleared. From then on the loop low-pass's
+        #: state is live, and the off stop hands `TONE_TRACK_PER_RATE` x
+        #: the rate, not 0.
+        self._tone_used = False
         self._init_macros(
             (frequency, feedback, mix, tone_hz, trim_db, glide), patch)
         self._fresh = False
@@ -339,7 +360,7 @@ class CombFilter(_component.Component):
             blend = 1.0
         tone = self._value(3)
         trim_db = self._value(4)
-        damping = 0.0 if tone >= TONE_OFF_HZ else self._hz(tone)
+        damping = self._tone_damping(tone)
         slew = self._value(5)
         frames = int(math.ceil(self._sample_rate / frequency))
         if self._fresh or slew <= 0.0 or frames > self._reach:
@@ -366,6 +387,23 @@ class CombFilter(_component.Component):
         self._trim.mix = (1.0 if blend > 0.0 and abs(trim_db) >= FLAT_DB
                           else 0.0)
 
+    def _tone_damping(self, tone):
+        """The `damping_hz` handed to the node for a Tone of `tone` Hz.
+
+        The node updates its loop low-pass only while the coefficient is
+        above 0 (`audiodsp_feedback_delay.c:493-497` at v0.6.2), so handing
+        0 after Tone has been in would freeze whatever the filter held, and
+        a later Tone move would play it out of silence. At 32 x the rate the
+        coefficient is exactly 1.0f and the state follows the tap. On a node
+        whose loop filters track the signal while out this is the same
+        state, so the cure is right on both."""
+        if tone < TONE_OFF_HZ:
+            self._tone_used = True
+            return self._hz(tone)
+        if self._tone_used:
+            return TONE_TRACK_PER_RATE * self._sample_rate
+        return 0.0
+
     def _apply_macro(self, index, position):
         del index, position
         self._refresh()
@@ -376,6 +414,7 @@ class CombFilter(_component.Component):
 
     def reset(self):
         self._fresh = True
+        self._tone_used = False
         _component.Component.reset(self)
         self._fresh = False
 

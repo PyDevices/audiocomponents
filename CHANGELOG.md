@@ -64,8 +64,17 @@ there, and are recorded in its changelog.
   With Tone in, Feedback is handed under 0.00003 clear of the node's stall
   windows (audiodsp#157), where it held 1 or 2 LSB for ever at Feedback 0.5
   and 0.75; with Tone off nothing moves, and no shipped patch sits in a
-  window. The docstring also discloses that Tone off after Tone has been in
-  freezes the loop low-pass, which Tone back in from silence plays.
+  window.
+- **`CombFilter`: Tone back in after silence no longer plays a stale
+  ring.** Tone off after Tone had been in froze the node's loop low-pass,
+  and bringing Tone back after the ring had died played what it held:
+  15 070 LSB at 48 kHz (10 110 at 44.1, 8 828 at 22.05). Once Tone has been
+  in since a reset, the off stop now keeps the low-pass tracking the line at
+  a coefficient of exactly 1, as `DigitalDelay` and `SlapbackDelay` do; a
+  fresh or reset instance still hands no filter. Against the filter truly
+  out that is exact on a whole-frame tuning and within 1 LSB otherwise, and
+  a few LSB (7 at most measured) at a Feedback inside a stall window, where
+  the off stop keeps Tone in's stepped Feedback.
 
 ## v0.3.2 (2026-09-25)
 
