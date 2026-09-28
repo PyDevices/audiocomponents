@@ -89,21 +89,45 @@ Damping, Predelay, Diffusion and Room re-synthesize the impulse, and the
 node keeps what it holds: no frame of your dry signal drops or repeats, at
 any Mix (at Mix 0 the output stays the source delayed by
 `latency_samples`, byte for byte, across the move), and a tail ringing at
-that moment rings on into the new room. Over the 256 frames already on
-their way out (5.333 ms at 48 kHz) the old room fades into the new one in
-a straight line, within 1 LSB (a sample at full scale in either room is
-clipped after the fade), and in every move measured the fade stepped no
-further from one frame to the next than the larger of the two rooms does
-on its own over the same frames; from the next block the output is exactly
-that of an instance that always had the new room. A move that lands on the room already loaded does
-nothing, and a patch change, the constructor and `reset()` synthesize
-once, not once per knob. The synthesis itself runs on the thread that
-moves the knob; on a board it can race the audio pump (audiodsp#166,
-open), which a desktop cannot show. `reset()` in the middle of a stream is
-a reset: it empties the room, and the 256 frames in flight come out as
-exact zero, dry included. Mix moves never touch the room, but a Mix move
-acts on the audio entering the node after it, so you hear it one partition
-later: the 256 frames already in flight come out at the old Mix.
+that moment rings on into the new room. The old room fades into the new
+one over the frames of the block in flight that have not played yet, in a
+straight line, within 1 LSB (a sample at full scale in either room is
+clipped after the fade); from the next block the output is exactly that
+of an instance that always had the new room. From a host, whose moves land
+between pulls, the fade is all 256 frames of the block (5.333 ms at
+48 kHz). If the source ran dry part-way through a block and play went on
+from another source without a `reset()`, it is only the frames left, down
+to one, which is close to a hard switch. A straight line is not smooth,
+so on low material the fade can step further from one frame to the next
+than either room does on its own, and how much further is not known: at
+48 kHz stereo with Damping 0 of 127 (500 Hz) and Mix 2, a 40 Hz sine at
+2 000 LSB steps 1.97 times the larger room's own largest step when
+Predelay moves from 0 to 127. A move that lands on the room already
+loaded does nothing, and a patch change, the constructor and `reset()`
+synthesize once, not once per knob. The synthesis itself runs on the
+thread that moves the knob; on a board it can race the audio pump
+(audiodsp#166, open), which a desktop cannot show. `reset()` in the middle
+of a stream is a reset: it empties the room, and the 256 frames in flight
+come out as exact zero, dry included. Mix moves never touch the room, but
+a Mix move acts on the audio entering the node after it, so you hear it
+one partition later: the 256 frames already in flight come out at the old
+Mix.
+
+**One room move per block.** The straight line is one move's. When a
+second room move lands before the next pull (a host setting two knobs at
+once, or one knob's controller stepping twice inside a block), the node
+starts the block in flight on the room of the first move, which never
+played, and fades from there to the second, so the output can jump at the
+block's first frame: at 44.1 kHz stereo with Damping 0 of 127 (500 Hz)
+and Mix 2, a 40 Hz sine at 2 000 LSB with Room moved to 50 and then
+Predelay to 40 before one pull jumps 10 046 LSB into the block, where the
+two rooms move at most 32 LSB a frame. Your dry is untouched (at Mix 0 the
+output stays exact), and the frames before the block and after it are
+exact. To avoid it, move one room knob per block, or change patch: a patch
+change moves every knob in one synthesis and keeps the straight line. The
+class cannot gather the moves for you, because nothing tells it where a
+block ends; a node change that fades from the room that played is asked
+for.
 
 **What the default surrenders.** The room is normalised to unit energy
 across the whole band, so with Damping in, low material comes back louder
@@ -196,8 +220,8 @@ CEILING_TAPS = MAX_PARTITIONS * PARTITION
 #: from the node's 50 ms floor, would have no travel.
 FLOOR_SECONDS = 0.06
 
-#: The node's shortest decay (`audiodsp_convolve.c:177`) and its clamps on
-#: predelay and diffusion (`:178`, `:179`), in seconds and milliseconds.
+#: The node's shortest decay (`audiodsp_convolve.c:183` at 0d35a90) and its
+#: clamps on predelay and diffusion (`:184`, `:185`), in seconds and milliseconds.
 NODE_DECAY_FLOOR = 0.05
 PREDELAY_MAX_MS = 200.0
 DIFFUSION_MAX_MS = 500.0
@@ -332,7 +356,9 @@ class ConvolutionReverb(_component.Component):
     calling `reset()` mid-stream drops the 256 frames in flight, dry
     included, at every Mix, and anything longer than 0.091 s on an S3 or
     0.219 s on a P4 is a desktop room (pending hardware). A room-knob move
-    drops nothing: the room changes over the block in flight.
+    drops nothing: the room changes over the block in flight. Two room
+    moves before one pull can jump at the block's first frame; move one
+    room knob a block, or change patch.
     """
 
     NAME = 'ConvolutionReverb'
@@ -406,8 +432,8 @@ class ConvolutionReverb(_component.Component):
                 sample_rate=rate,
                 channel_count=self._channel_count)
         # `clear()` drops the history and the block in flight and keeps the
-        # impulse (`Convolver.c:229`): a reset empties the room, it does not
-        # rebuild it.
+        # impulse (`Convolver.c:230` at 0d35a90): a reset empties the room,
+        # it does not rebuild it.
         self._own(self._node, reset=self._node.clear)
         self._node.play(self._source)
         self._output = self._node

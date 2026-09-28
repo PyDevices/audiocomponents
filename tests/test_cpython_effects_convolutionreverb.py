@@ -58,6 +58,14 @@ now pin each side's level (D6's clause 4, dossier section 3.6), on
 `SideTilt`, `SideNudge` and the v0.6.2 words; and `D5SingleRoom` on the
 v0.6.2 stereo figures. The reset test now covers the plain defaults too,
 where `NoReset` was inert while the node emptied itself on a re-synthesis.
+
+The re-audit's fix round 2 at v0.6.3rc2 pins the room-move paragraph to
+the room (`RoomMoveWords`): the jump two moves before one pull make at the
+cell the docstring names (red on `OneSynthesisPerBlock`, which gathers
+them into one synthesis), the step one move takes on a low sine (red on the
+figure moved), and a patch change held to the straight line (red on
+`PatchPerKnob`, one synthesis a knob). The `1b3bb94` words, which printed
+neither figure, are red on the first two.
 """
 
 import os
@@ -599,10 +607,14 @@ class DecayMidiSquared(ConvolutionReverb):
 class PredelayKeptSquared(ConvolutionReverb):
     """D5's Predelay control (re-audit fix round 1, from the round-3
     audit's item 3): the constructor's Predelay kept squared. It is
-    Predelay's shape of DecayKeptSquared: at Predelay 64/127, Decay 127,
-    Damping out, Diffusion 0 it reads worst +6.518 % on the handed law at
-    48 kHz (+7.244 % at 22.05 kHz) and +1.276 % on a law read back off the
-    class, and it passed every D5 test before this one."""
+    Predelay's shape of DecayKeptSquared, and it passed every D5 test
+    before this one. At Predelay 64/127, Decay 127, Damping out, Diffusion
+    0, at audiodsp v0.6.3rc2 (re-audit fix round 2 there), it reads worst
+    +6.540 % (mean +5.194 %) on the handed law at 48 kHz and +7.214 %
+    (+5.197 %) at 22.05 kHz, and +1.296 / -2.360 % on a law read back off
+    the class; the clean class reads +1.376 / +2.322 %. (At v0.6.2, before
+    each side of a stereo room was scaled on its own: +6.518 / +7.244 %,
+    clean +1.375 / +2.347 %.)"""
 
     NAME = NAME
 
@@ -615,11 +627,12 @@ class PredelayKeptSquared(ConvolutionReverb):
 class PredelayMidiSquared(ConvolutionReverb):
     """The same control through `set_macro` (re-audit fix round 2, from
     the re-audit round-1 audit's item 5): a Predelay move is kept squared,
-    the constructor's Predelay held exactly. At `set_macro` Predelay 64,
-    Decay 127, Damping out, Diffusion 0 the auditor read worst +6.518 % on
-    the handed law at 48 kHz (+7.244 % at 22.05 kHz), and it passed the
-    Predelay test while that test's clean leg went through the
-    constructor."""
+    the constructor's Predelay held exactly. It passed the Predelay test
+    while that test's clean leg went through the constructor. At
+    `set_macro` Predelay 64, Decay 127, Damping out, Diffusion 0 it reads
+    what PredelayKeptSquared does at audiodsp v0.6.3rc2: worst +6.540 % on
+    the handed law at 48 kHz and +7.214 % at 22.05 kHz, clean +1.376 /
+    +2.322 % by this route too (v0.6.2: +6.518 / +7.244 %)."""
 
     NAME = NAME
 
@@ -664,6 +677,70 @@ class NoReset(ConvolutionReverb):
     def reset(self):
         self._check_live()
         self.program_change(0)
+
+
+class _PullHook(kit_faults.HiddenGain):
+    """A 0 dB `HiddenGain` (a gain of exactly 1.0, so every frame passes
+    unchanged) that tells its owner a pull is about to happen."""
+
+    def __init__(self, source, owner):
+        kit_faults.HiddenGain.__init__(self, source, 0.0)
+        self._owner = owner
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        self._owner._flush()
+        return kit_faults.HiddenGain._get_buffer(
+            self, single_channel_output, audio_channel)
+
+
+class OneSynthesisPerBlock(ConvolutionReverb):
+    """The two-move test's control (re-audit fix round 2 at audiodsp
+    v0.6.3rc2): room moves that land between two pulls are gathered into
+    one synthesis at the next pull. It is what the class would do with a
+    hook at the block edge, and what a node that kept fading from the room
+    that played would render (the node ask): the block starts on that
+    room, not on the first move's. Two moves before one pull then read
+    like one move, on the straight line from the old room to the new, and
+    the docstring's jump is gone."""
+
+    NAME = NAME
+
+    def _build(self, *arguments, **options):
+        self._hooked = False
+        ConvolutionReverb._build(self, *arguments, **options)
+        self._pending = False
+        self._output = _PullHook(self._node, self)
+        self._hooked = True
+
+    def _refresh(self):
+        if not self._hooked:
+            ConvolutionReverb._refresh(self)
+            return
+        self._pending = True
+        self._node.set(mix=self._value(MIX_I) * 0.5)
+
+    def _flush(self):
+        if self._pending:
+            self._pending = False
+            ConvolutionReverb._refresh(self)
+
+
+class PatchPerKnob(ConvolutionReverb):
+    """The patch-change test's control: a patch change after construction
+    applied one knob at a time, one synthesis per room knob, as five moves
+    before one pull."""
+
+    NAME = NAME
+
+    def program_change(self, index, channel=0, note_id=-1,
+                       sample_position=0):
+        patch = type(self).PATCHES.get(index)
+        if patch is None or self._deferred:
+            ConvolutionReverb.program_change(self, index, channel, note_id,
+                                             sample_position)
+            return
+        for macro, value in enumerate(patch[1]):
+            self.set_macro(macro, value)
 
 
 def reach(faulted, reading, tolerance=0.0, rate=RATE, channels=2,
@@ -1052,6 +1129,196 @@ class ResynthesisIsDeduplicated(unittest.TestCase):
         self.assertEqual(digest(out[2816:]), digest(wire[2816:]))
 
 
+#: The docstring's room-move figures (re-audit fix round 2 at audiodsp
+#: v0.6.3rc2, from the re-audit round-1 audit at v0.6.3rc2, items 1 and 2):
+#: the step one move's straight line takes on low material, and the jump
+#: two moves before one pull make. Each names its cell.
+_KNOB = r"(Decay|Damping|Predelay|Diffusion|Room)"
+_LSB = r"(\d{1,3}(?: \d{3})*)"
+_CELL = (r"at\s+(48|44\.1|22\.05)\s+kHz\s+(stereo|mono)\s+with\s+Damping"
+         r"\s+(\d+)\s+of\s+127\s+\(500\s+Hz\)\s+and\s+Mix\s+2,\s+a\s+(\d+)"
+         r"\s+Hz\s+sine\s+at\s+" + _LSB + r"\s+LSB\s+")
+STEP_RE = re.compile(
+    _CELL + r"steps\s+(\d+\.\d\d)\s+times\s+the\s+larger\s+room's\s+own"
+    r"\s+largest\s+step\s+when\s+" + _KNOB + r"\s+moves\s+from\s+(\d+)"
+    r"\s+to\s+(\d+)")
+TWO_MOVES_RE = re.compile(
+    _CELL + r"with\s+" + _KNOB + r"\s+moved\s+to\s+(\d+)\s+and\s+then\s+"
+    + _KNOB + r"\s+to\s+(\d+)\s+before\s+one\s+pull\s+jumps\s+" + _LSB
+    + r"\s+LSB\s+into\s+the\s+block,\s+where\s+the\s+two\s+rooms\s+move\s+at"
+    r"\s+most\s+" + _LSB + r"\s+LSB\s+a\s+frame")
+KNOB_INDEX = dict(zip(ConvolutionReverb.MACRO_LABELS, range(6)))
+RATE_OF = {"48": 48000, "44.1": 44100, "22.05": 22050}
+
+#: The pull the moves land before, and the block in flight it plays.
+MOVE_AT = 10
+BLOCK_IN_FLIGHT = slice(MOVE_AT * 256, MOVE_AT * 256 + 256)
+
+
+def documented_move(doc, pattern):
+    """(rate, channels, start moves, sine Hz, sine peak, the rest of the
+    groups) of the docstring's sentence, or None."""
+    found = pattern.search(" ".join((doc or "").split()))
+    if found is None:
+        return None
+    g = found.groups()
+    number = lambda text: int(text.replace(" ", ""))             # noqa: E731
+    return (RATE_OF[g[0]], 2 if g[1] == "stereo" else 1,
+            ((DAMPING_I, int(g[2])),), int(g[3]), number(g[4]), g[5:],
+            number)
+
+
+def sine(frames, channels, hz, rate, peak):
+    t = np.arange(frames) / float(rate)
+    x = np.round(peak * np.sin(2 * np.pi * hz * t)).astype(np.int16)
+    return np.repeat(x[:, None], channels, axis=1)
+
+
+def pulled(effect, pcm, actions=None, blocks=40):
+    """`blocks` pulls over `pcm` from a source in 256-frame blocks;
+    `actions[n](effect)` runs just before pull n."""
+    channels = effect.channel_count
+    effect._source.swap(probes.ArraySource(pcm, rate=effect.sample_rate,
+                                           channels=channels))
+    audiocore.reset_buffer(effect.node)
+    out = bytearray()
+    for number in range(blocks):
+        if actions and number in actions:
+            actions[number](effect)
+        out += bytes(audiocore.get_buffer(effect.output)[1])
+    return np.frombuffer(bytes(out), dtype=np.int16).reshape(-1, channels)
+
+
+def apply_moves(effect, moves):
+    for index, value in moves:
+        effect.set_macro(index, value)
+
+
+def room_render(cls, rate, channels, moves, pcm, mix=2.0, actions=None):
+    effect = build(cls, rate, channels, mix=mix)
+    apply_moves(effect, moves)
+    out = pulled(effect, pcm, actions)
+    effect.deinit()
+    return out
+
+
+def fade_reading(old, new, moved, first=None):
+    """The block in flight of `moved` against the straight line from `old`
+    to `new` (full-scale samples left out: the node clips after its fade),
+    the jump into it, its largest step and the rooms' own largest step from
+    the frame before it to the frame after it, how many frames before it
+    are off `old` and after it off `new`, and how far its first frame sits
+    from `first` (the room of a first move) and from `old`."""
+    o, n, m = (x.astype(np.float64) for x in (old, new, moved))
+    a, b = BLOCK_IN_FLIGHT.start, BLOCK_IN_FLIGHT.stop
+    k = (np.arange(1, 257, dtype=np.float64) / 256.0)[:, None]
+    line = o[a:b] + k * (n[a:b] - o[a:b])
+    full = (np.abs(o[a:b]) >= 32767) | (np.abs(n[a:b]) >= 32767)
+    span = slice(a - 1, b + 1)
+    reading = dict(
+        pre=int(np.sum(np.any(moved[:a] != old[:a], axis=1))),
+        post=int(np.sum(np.any(moved[b:] != new[b:], axis=1))),
+        off_line=float(np.max(np.where(full, 0.0, np.abs(m[a:b] - line)))),
+        jump=int(np.max(np.abs(m[a] - m[a - 1]))),
+        step=float(np.max(np.abs(np.diff(m[span], axis=0)))),
+        own=float(max(np.max(np.abs(np.diff(o[span], axis=0))),
+                      np.max(np.abs(np.diff(n[span], axis=0))))),
+        near_old=float(np.max(np.abs(m[a] - o[a]))))
+    if first is not None:
+        reading["near_first"] = float(np.max(np.abs(
+            m[a] - first[a].astype(np.float64))))
+    return reading
+
+
+class RoomMoveWords(unittest.TestCase):
+    """The docstring's room-move paragraph, pinned to the room (re-audit
+    fix round 2 at audiodsp v0.6.3rc2). The round-1 audit at v0.6.3rc2
+    parked the class on it: its straight line and its step held for one
+    move at a block edge on white noise, and two moves before one pull
+    start the block in flight on a room never played. Each figure the
+    docstring prints is read at the cell it names; the `1b3bb94` words,
+    which printed neither, are red, and so is each figure moved."""
+
+    def test_two_moves_before_one_pull_jump_as_documented(self, cls=None):
+        # The two-move sentence: frames before the block in flight are the
+        # old room's and after it a room built with both moves, exactly;
+        # the block's first frame sits nearer the first move's room than
+        # the old one; the jump into it and the rooms' own largest step
+        # are the printed LSB; and Mix 0 stays the source delayed by
+        # `latency_samples` across the same two moves. OneSynthesisPerBlock
+        # (the moves gathered into one synthesis) is red: its block starts
+        # on the old room.
+        found = documented_move(rebuilt.__doc__, TWO_MOVES_RE)
+        self.assertIsNotNone(found, "no two-move sentence naming its cell")
+        rate, channels, start, hz, peak, rest, number = found
+        first = (KNOB_INDEX[rest[0]], int(rest[1]))
+        second = (KNOB_INDEX[rest[2]], int(rest[3]))
+        jump, own = number(rest[4]), number(rest[5])
+        pcm = sine(40 * 256, channels, hz, rate, peak)
+        old = room_render(cls, rate, channels, start, pcm)
+        mid = room_render(cls, rate, channels, start + (first,), pcm)
+        new = room_render(cls, rate, channels, start + (first, second), pcm)
+        moved = room_render(cls, rate, channels, start, pcm, actions={
+            MOVE_AT: lambda e: apply_moves(e, (first, second))})
+        r = fade_reading(old, new, moved, mid)
+        self.assertEqual((r["pre"], r["post"]), (0, 0), r)
+        self.assertLess(r["near_first"], r["near_old"], r)
+        self.assertEqual((r["jump"], int(r["own"])), (jump, own), r)
+        self.assertGreater(r["jump"], 10 * r["own"], r)
+        wire = np.vstack([silence(LATENCY, channels), pcm[:-LATENCY]])
+        out = room_render(cls, rate, channels, start, pcm, mix=0.0,
+                          actions={MOVE_AT: lambda e: apply_moves(
+                              e, (first, second))})
+        self.assertEqual(digest(out), digest(wire))
+
+    def test_one_move_steps_as_documented(self):
+        # The step sentence: one move at a block edge holds the straight
+        # line within 1 LSB and steps the printed multiple, to the
+        # hundredth, of the larger room's own largest step at its cell.
+        found = documented_move(rebuilt.__doc__, STEP_RE)
+        self.assertIsNotNone(found, "no step sentence naming its cell")
+        rate, channels, start, hz, peak, rest, _ = found
+        ratio = float(rest[0])
+        knob, before, after = KNOB_INDEX[rest[1]], int(rest[2]), int(rest[3])
+        start = start + ((knob, before),)
+        pcm = sine(40 * 256, channels, hz, rate, peak)
+        old = room_render(None, rate, channels, start, pcm)
+        new = room_render(None, rate, channels, start + ((knob, after),),
+                          pcm)
+        moved = room_render(None, rate, channels, start, pcm, actions={
+            MOVE_AT: lambda e: e.set_macro(knob, after)})
+        r = fade_reading(old, new, moved)
+        self.assertEqual((r["pre"], r["post"]), (0, 0), r)
+        self.assertLessEqual(r["off_line"], 1.0, r)
+        self.assertGreater(ratio, 1.0)
+        self.assertLessEqual(abs(r["step"] / r["own"] - ratio), 0.006, r)
+
+    def test_a_patch_change_is_one_synthesis_on_the_line(self, cls=None):
+        # "A patch change moves every knob in one synthesis and keeps the
+        # straight line": patch 1 -> 3 (every room knob moves, Mix does
+        # not) before one pull, at three rates, stereo and mono, on white
+        # noise and on the low sine. PatchPerKnob (one synthesis a knob) is
+        # red.
+        for rate in RATES:
+            for channels in (2, 1):
+                for pcm in (white(40 * 256, channels, -6.0, seed=4242),
+                            sine(40 * 256, channels, 40.0, rate, 2000.0)):
+                    renders = []
+                    for action in (None, "built", "moved"):
+                        effect = build(cls, rate, channels, patch=1)
+                        acts = None
+                        if action == "built":
+                            effect.program_change(3)
+                        elif action == "moved":
+                            acts = {MOVE_AT: lambda e: e.program_change(3)}
+                        renders.append(pulled(effect, pcm, acts))
+                        effect.deinit()
+                    r = fade_reading(*renders)
+                    label = (rate, channels, r)
+                    self.assertEqual((r["pre"], r["post"]), (0, 0), label)
+                    self.assertLessEqual(r["off_line"], 1.0, label)
+
+
 # --------------------------------------------------------------------------
 # D1 - measured mode is exactly convolution, within one output LSB
 # --------------------------------------------------------------------------
@@ -1149,7 +1416,7 @@ class D1ExactConvolution(unittest.TestCase):
 def capacity(node):
     """The node's allocation in taps, read as a board would: the longest
     impulse its `load()` accepts (the native binding refuses more,
-    `Convolver.c:183-186` at 1c89b03; the twin at `audioconvolve.py:127`).
+    `Convolver.c:183-186` at 0d35a90; the twin at `audioconvolve.py:127`).
     `node.taps` cannot stand in for it: in measured mode it reports the
     loaded length rounded to a partition, which is the law whatever the
     allocation (audit round 1). Destructive - it replaces the room - so it

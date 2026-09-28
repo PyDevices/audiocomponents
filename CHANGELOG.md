@@ -107,7 +107,10 @@ there, and are recorded in its changelog.
   `audioeffects.ConvolutionReverb` is still the old class. It stands on
   audiodsp v0.6.3rc2: moving a room knob changes the room over the block
   in flight, with no frame of the dry dropped or repeated at any Mix and
-  the tail ringing on into the new room, and each side of a stereo room
+  the tail ringing on into the new room (one move a block: a second room
+  move before the next pull starts the block on the first move's room,
+  never played, and the output can jump there; a patch change is one
+  synthesis), and each side of a stereo room
   is unit energy on its own, so the room sits in the middle (the two
   sides within 0.001 dB on the room's own impulse over the settings
   walked). The docstring states the low-material lift a dark room gives
@@ -119,8 +122,10 @@ there, and are recorded in its changelog.
 
 - **The audiodsp pin moves to v0.6.3rc2.** The release adds audiodsp#165 to
   rc1: `audioconvolve.Convolver` keeps the audio in flight when a room is
-  re-synthesized (#163: the block on its way out crossfades from the old
-  room to the new, nothing drops, the tail rings on) and normalises each
+  re-synthesized (#163: nothing drops, the tail rings on, and after one
+  room move the block on its way out crossfades from the old room to the
+  new; after two before the next pull it starts on the first move's room)
+  and normalises each
   side of a stereo room on its own (#164: the room no longer leans, and
   the pair's level holds). Mono rooms and measured impulses render the
   bytes they did. `ConvolutionReverb`, rebuilt and old, synthesizes
