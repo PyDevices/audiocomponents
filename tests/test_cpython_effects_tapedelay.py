@@ -1100,6 +1100,12 @@ def step_cell(cls, rate=RATE, amp=12000.0, start=None):
     y = render(effect, frames, {start: set_time(100.4)})[:, 0]
     got = lsq_hz(y[start + int(0.002 * rate):start + int(0.05 * rate)], rate)
     offset = cents(got / TONE) if got == got else float("inf")
+    # The struck round-0 figure, reported and never graded, so the earlier
+    # probes that print it still run.
+    coef = 1.0 - math.exp(-2.0 * math.pi * effect._damping / rate)
+    recovered = y[:-1] + np.diff(y) / coef
+    ratio = float(np.max(np.abs(np.diff(recovered))[start - 3:start + 3])) \
+        / (2.0 * math.pi * TONE / rate * amp)
     d, ok = read_position(cls, 200.0, 100.4, rate, tape.SLIDING_HEAD, start,
                           frames, glide_ms=0.0)
     lo = start - 2000
@@ -1114,7 +1120,8 @@ def step_cell(cls, rate=RATE, amp=12000.0, start=None):
     first = int(landed[0]) - start if len(landed) else None
     return dict(passed=before and after and between == 0
                 and abs(offset) <= 10.0, between=between, before=before,
-                after=after, offset=offset, landed=first, fa=fa, fb=fb)
+                after=after, offset=offset, landed=first, fa=fa, fb=fb,
+                ratio=ratio)
 
 
 G_START = 9472
