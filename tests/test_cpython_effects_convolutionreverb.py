@@ -11,8 +11,17 @@ keeps the class's raise). Exhaustive spans and rates live in the evidence
 pack, not in this file.
 
 Every measurement here computes its reference itself - D1's direct sum and
-its load gain, D5's Decay law - and never reads it back from the class.
-The M1 reference uses numpy and runs on CPython only.
+its load gain, D5's Decay law from the seconds the test handed the
+constructor - and never reads it back from the class. The M1 reference
+uses numpy and runs on CPython only.
+
+Fix round 1 (gate audit round 1, 2026-09-28) added four readings that can
+fail where the frozen ones could not, each with a control that goes red on
+it and passes the old reading: D1 at an interior trim where truncation and
+rounding differ (`TrimRounded`), D2's allocation read as the node's
+capacity through `load()` rather than `node.taps` (`ExtraPartition` in
+measured mode), D5's law from the handed seconds (`AllocatedSeconds`), and
+D6's absolute clause |wet/dry| <= 0.5 dB (`HotRoom`, a constant +3 dB).
 """
 
 import os
@@ -285,6 +294,17 @@ class TrimLate(ConvolutionReverb):
         return ConvolutionReverb._trim_frames(self, start_ms) + 1
 
 
+class TrimRounded(ConvolutionReverb):
+    """D1's control for the truncation clause: the trim rounded to the
+    nearest frame. At 0 and 10 ms the two agree, so only an interior trim
+    (41.7 ms at 48 kHz, 3.3 ms at 44.1 and 22.05 kHz) can see it."""
+
+    NAME = NAME
+
+    def _trim_frames(self, start_ms):
+        return int(round(start_ms * self._sample_rate / 1000.0))
+
+
 class ExtraPartition(ConvolutionReverb):
     """D2: one partition too many."""
 
@@ -348,13 +368,62 @@ class StuckDcAfter(_After):
 
 class UnnormalisedAfter(_After):
     """D6: `kit_faults.HiddenGain` at 10 log10(T60 / 50 ms) dB, the level an
-    unnormalised room would have, which tracks the decay."""
+    unnormalised room would have, which tracks the decay. The gain follows
+    every re-synthesis, so a host walking Decay by `set_macro` sees it move
+    (fix round 1: built once, it held the constructor's gain and a walk read
+    a 0.010 dB spread)."""
 
     NAME = NAME
 
+    def _gain_db(self):
+        return 10.0 * np.log10(self._synthesis()[0] / 0.05)
+
     def _fault(self, node):
-        return kit_faults.HiddenGain(
-            node, 10.0 * np.log10(self._synthesis()[0] / 0.05))
+        return kit_faults.HiddenGain(node, self._gain_db())
+
+    def _refresh(self):
+        ConvolutionReverb._refresh(self)
+        planted = getattr(self, "_planted", None)
+        if planted is not None:
+            planted.gain_db = self._gain_db()
+            planted._gain = 10.0 ** (planted.gain_db / 20.0)
+
+
+class HotRoom(_After):
+    """D6's absolute clause: a room a constant +3 dB hot at every setting.
+    The spread and rho clauses both pass it; only |wet/dry| <= 0.5 dB sees
+    it."""
+
+    NAME = NAME
+    GAIN_DB = 3.0
+
+    def _fault(self, node):
+        return kit_faults.HiddenGain(node, self.GAIN_DB)
+
+
+class AllocatedSeconds(ConvolutionReverb):
+    """D5's control for a law that shares the class's inputs: the class
+    keeps the allocation it holds (partitions x 256 / fs) as `seconds`, so
+    every law over the allocation stretches to the partition edge. A law
+    read from `effect.seconds` moves with it and stays green; a law from
+    the seconds the test handed the constructor goes red (at 0.06 s: 64-Room
+    mean +6.62 / +6.39 / +16.18 % at 48 / 44.1 / 22.05 kHz, audit round 1).
+    It is inert at 0.08 s at 48 kHz, where 3 840 taps is a whole number of
+    partitions."""
+
+    NAME = NAME
+
+    def _check_allocation(self, taps, seconds=None):
+        ConvolutionReverb._check_allocation(self, taps, seconds)
+        if seconds is not None:
+            self._stretched = (self._partitions(taps) * 256
+                               / float(self._sample_rate))
+
+    def _refresh(self):
+        stretched = getattr(self, "_stretched", None)
+        if stretched is not None and not self._measured:
+            self._seconds = stretched
+        ConvolutionReverb._refresh(self)
 
 
 class LongDecay(ConvolutionReverb):
@@ -527,6 +596,27 @@ class TheSurface(unittest.TestCase):
         self.assertEqual((effect.node.taps, effect.latency_samples), (0, 0))
         effect.deinit()
 
+    def test_a_two_dimensional_impulse_raises_naming_the_class(self):
+        # It used to reach the trim's slice and raise Python's bare
+        # NotImplementedError (surface refuter, item 9).
+        for start_ms in (0.0, 5.0):
+            with self.assertRaises(TypeError) as caught:
+                build(impulse=make_impulse(1000, 2), impulse_channels=2,
+                      start_ms=start_ms)
+            self.assertIn(NAME, str(caught.exception))
+            self.assertIn("one-dimensional", str(caught.exception))
+        effect = build(impulse=make_impulse(1000, 2).reshape(-1),
+                       impulse_channels=2)
+        self.assertEqual(effect.node.taps, 1024)
+        effect.deinit()
+
+    def test_damping_under_the_span_is_the_span_bottom(self):
+        # Disclosed in the docstring: no error, the 500 Hz stop.
+        for hz in (100.0, 499.0, 500.0):
+            effect = build(damping_hz=hz)
+            self.assertAlmostEqual(effect._synthesis()[1], 500.0, places=6)
+            effect.deinit()
+
     def test_an_int16_array_is_trimmed_by_frames(self):
         from array import array
         h = make_impulse(1000, 2)
@@ -601,6 +691,43 @@ class ResynthesisIsDeduplicated(unittest.TestCase):
                 self.assertGreater(int(np.max(np.abs(after))), 1000)
             effect.deinit()
         clean.deinit()
+
+    def test_a_mix_move_lands_a_partition_late_and_reset_drops_one(self):
+        # The docstring's mid-stream lines (fix round 1, audit item 7): a
+        # Mix move before block 10 leaves the 256 frames in flight
+        # (2 560..2 815) at the old Mix and the wire exact after; reset()
+        # mid-stream zeroes that partition, dry included.
+        frames = 32 * 256
+        pcm = white(frames, peak_dbfs=-1.0)
+        wire = np.vstack([silence(LATENCY), pcm[:frames - LATENCY]])
+
+        def pull(effect, action):
+            effect._source.swap(probes.ArraySource(pcm, rate=RATE,
+                                                   channels=2))
+            audiocore.reset_buffer(effect.node)
+            out = bytearray()
+            for block in range(32):
+                if block == 10:
+                    action(effect)
+                out += bytes(audiocore.get_buffer(effect.output)[1])
+            return np.frombuffer(bytes(out), dtype=np.int16).reshape(-1, 2)
+
+        effect = build()
+        out = pull(effect, lambda e: e.set_macro(MIX_I, 0))
+        effect.deinit()
+        late = np.any(out != wire, axis=1)
+        self.assertEqual(int(np.sum(late[2560:])), 256)
+        self.assertTrue(np.all(late[2560:2816]))
+        effect = build(mix=0.0)
+
+        def reset_then_wire(e):
+            e.reset()
+            e.set_macro(MIX_I, 0)
+
+        out = pull(effect, reset_then_wire)
+        effect.deinit()
+        self.assertEqual(int(np.max(np.abs(out[2560:2816]))), 0)
+        self.assertEqual(digest(out[2816:]), digest(wire[2816:]))
 
     def test_a_room_move_drops_the_partition_in_flight_dry_included(self):
         # The docstring's other half, measured: the reset at the end of
@@ -688,6 +815,28 @@ class D1ExactConvolution(unittest.TestCase):
                                  8000.0, 0.0, start_ms)
                 self.assertLessEqual(error, 1.0, (rate, start_ms))
 
+    def test_an_interior_trim_where_truncation_and_rounding_differ(self):
+        # The row's trims 0 and 10 ms are whole-frame at every rate, where a
+        # rounded trim equals a truncated one, so they cannot carry the
+        # truncation clause (audit round 1). 41.7 ms at 48 kHz is 2 001.6
+        # frames and 3.3 ms at 44.1 / 22.05 kHz is 145.53 / 72.765: the
+        # class keeps 2 001 / 145 / 72, a rounded trim 2 002 / 146 / 73.
+        h = make_impulse(3840)
+        for rate, start_ms in ((48000, 41.7), (44100, 3.3), (22050, 3.3)):
+            self.assertNotEqual(trim_frames(start_ms, rate),
+                                int(round(start_ms * rate / 1000.0)))
+            clean = m1_error(ConvolutionReverb, rate, 1, 2, "noise", 8000.0,
+                             0.0, start_ms, h_full=h)
+            planted = m1_error(TrimRounded, rate, 1, 2, "noise", 8000.0,
+                               0.0, start_ms, h_full=h)
+            self.assertLessEqual(clean, 1.0, (rate, start_ms))
+            self.assertGreater(planted, 1000.0, (rate, start_ms))
+        # And the control is invisible at the row's own trims.
+        for start_ms in (0.0, 10.0):
+            self.assertLessEqual(m1_error(TrimRounded, RATE, 1, 2, "noise",
+                                          8000.0, 0.0, start_ms, h_full=h),
+                                 1.0)
+
     def test_trim_one_frame_late_is_red_at_the_measured_defaults(self):
         # The measured-mode defaults: Mix 0.6 (grid 38), ir_gain_db 0,
         # start_ms 0. M1 through the Mix law, and at Mix 2.
@@ -730,8 +879,30 @@ class D1ExactConvolution(unittest.TestCase):
 # D2 - the allocation has a ceiling and a floor, and the class names both
 # --------------------------------------------------------------------------
 
-def m2(cls, cells):
-    """Red entries over (label, seconds, rate, impulse frames, expect)."""
+def capacity(node):
+    """The node's allocation in taps, read as a board would: the longest
+    impulse its `load()` accepts (the native binding refuses more,
+    `Convolver.c:183-186` at 1c89b03; the twin at `audioconvolve.py:127`).
+    `node.taps` cannot stand in for it: in measured mode it reports the
+    loaded length rounded to a partition, which is the law whatever the
+    allocation (audit round 1). Destructive - it replaces the room - so it
+    is the last thing read off an instance."""
+    taps = max(256, (int(node.taps) + 255) // 256 * 256)
+    while taps <= 131072 + 256:
+        try:
+            node.load(bytes(2 * (taps + 1)), 1, 1.0)
+        except ValueError:
+            return taps
+        taps += 256
+    return taps
+
+
+def m2(cls, cells, reading=None):
+    """Red entries over (label, seconds, rate, impulse frames, expect).
+
+    A build reads both `node.taps` and the capacity against the law;
+    `reading="taps"` reads `node.taps` alone, the frozen reading, kept so
+    the test can show what it missed."""
     reds = []
     for label, seconds, rate, frames, expect in cells:
         taps = int(round(seconds * rate)) if frames is None else frames
@@ -756,11 +927,15 @@ def m2(cls, cells):
                 reds.append("%s: %r lacks %s" % (label, text, missing))
             continue
         got = effect.node.taps
+        held = got if reading == "taps" else capacity(effect.node)
         effect.deinit()
         if expect != "build":
             reds.append("%s: built" % label)
         elif got != law:
             reds.append("%s: %d taps, the law says %d" % (label, got, law))
+        elif held != law:
+            reds.append("%s: capacity %d taps, the law says %d"
+                        % (label, held, law))
     return reds
 
 
@@ -779,7 +954,14 @@ def d2_cells():
                   ("default 0.08 %d" % rate, 0.08, rate, None, "build")]
     cells += [("measured 131072", 0.0, RATE, 131072, "build"),
               ("measured 131073", 0.0, RATE, 131073, "raise")]
+    cells += MEASURED_BELOW
     return cells
+
+
+#: Measured mode below the ceiling (fix round 1): lengths off, on and one
+#: past a partition edge, and a one-second room.
+MEASURED_BELOW = [("measured %d" % frames, 0.0, RATE, frames, "build")
+                  for frames in (1000, 3840, 3841, 48000)]
 
 
 class D2Allocation(unittest.TestCase):
@@ -812,6 +994,19 @@ class D2Allocation(unittest.TestCase):
             self.assertEqual(effect.node.taps, law + 256)
             effect.deinit()
         self.assertTrue(m2(ExtraPartition, d2_cells()))
+
+    def test_one_partition_too_many_is_red_in_measured_mode(self):
+        # node.taps reads the law on the planted class too (1 024 / 3 840 /
+        # 4 096 / 48 128), so the frozen reading is green there; the
+        # capacity reads 1 280 / 4 096 / 4 352 / 48 384 and is red.
+        self.assertEqual(m2(ExtraPartition, MEASURED_BELOW, reading="taps"),
+                         [])
+        reds = m2(ExtraPartition, MEASURED_BELOW)
+        self.assertEqual(len(reds), 4, reds)
+        for (label, _, _, frames, _), red in zip(MEASURED_BELOW, reds):
+            law = (frames + 255) // 256 * 256
+            self.assertIn("capacity %d taps" % (law + 256), red)
+        self.assertEqual(m2(ConvolutionReverb, MEASURED_BELOW), [])
 
     def test_the_plant_is_not_on_the_surface(self):
         result = reach(ExtraPartition, lambda e: e.node.taps)
@@ -976,6 +1171,10 @@ class D4DelayedWire(unittest.TestCase):
 
 class D5DecayLaw(unittest.TestCase):
     def errors_over_rooms(self, cls=None, rate=RATE, **options):
+        # The law takes the seconds this test hands the constructor, never
+        # `effect.seconds`: a class that stretched its own allocation would
+        # move a law read back from it (AllocatedSeconds, below).
+        seconds = options.get("seconds", 0.08)
         effect = build(cls, rate, **options)
         errors = []
         for room in range(0, 128, 2):
@@ -984,7 +1183,7 @@ class D5DecayLaw(unittest.TestCase):
             self.assertTrue(floor, room)
             self.assertIsNotNone(t60, room)
             law = law_t60(effect._macros[DECAY_I], effect._macros[PREDELAY_I],
-                          effect.seconds)
+                          seconds)
             errors.append(t60 / law - 1.0)
         effect.deinit()
         return np.array(errors)
@@ -1025,6 +1224,33 @@ class D5DecayLaw(unittest.TestCase):
         errors = self.errors_over_rooms(LongDecay)
         self.assertGreater(float(np.mean(errors)), 0.02)
 
+    def test_a_stretched_allocation_is_red_on_the_handed_law(self):
+        # At 0.06 s the allocation rounds up to a whole partition (2 880 ->
+        # 3 072 taps at 48 kHz, 0.064 s; 0.0639 s at 44.1 kHz, 0.0697 s at
+        # 22.05 kHz); a class keeping that as `seconds` puts every Room long
+        # against the law of the seconds it was handed.
+        for rate in RATES:
+            errors = self.errors_over_rooms(AllocatedSeconds, rate,
+                                            seconds=0.06, damping_hz=0.0,
+                                            diffusion=0.0)
+            self.assertGreater(float(np.max(np.abs(errors))), 0.03, rate)
+            self.assertGreater(float(np.mean(errors)), 0.05, rate)
+            clean = self.errors_over_rooms(rate=rate, seconds=0.06,
+                                           damping_hz=0.0, diffusion=0.0)
+            self.assertLessEqual(float(np.max(np.abs(clean))), 0.03, rate)
+        # The frozen reading, the law from `effect.seconds`, stays green on
+        # the plant: that is the hole the handed law closes.
+        effect = build(AllocatedSeconds, RATE, seconds=0.06, damping_hz=0.0,
+                       diffusion=0.0)
+        self.assertAlmostEqual(effect.seconds, 0.064, places=12)
+        read_back = []
+        for room in range(0, 128, 2):
+            effect.set_macro(ROOM_I, room)
+            t60, _ = m5_cell(effect)
+            read_back.append(t60 / law_t60(1.0, 0.0, effect.seconds) - 1.0)
+        effect.deinit()
+        self.assertLessEqual(float(np.max(np.abs(read_back))), 0.03)
+
     def test_stuck_dc_turns_the_floor_red(self):
         effect = build(StuckDcAfter)
         t60, floor = m5_cell(effect)
@@ -1034,7 +1260,7 @@ class D5DecayLaw(unittest.TestCase):
     def test_the_plants_are_not_on_the_surface(self):
         def handed(effect):
             law = law_t60(effect._macros[DECAY_I],
-                          effect._macros[PREDELAY_I], effect.seconds)
+                          effect._macros[PREDELAY_I], 0.08)
             return effect._loaded[0] / law
 
         result = reach(LongDecay, handed, tolerance=0.01)
@@ -1064,44 +1290,65 @@ class D5DecayLaw(unittest.TestCase):
 # --------------------------------------------------------------------------
 
 class D6UnitEnergy(unittest.TestCase):
+    """Three clauses since fix round 1: the pooled wet/dry spread <= 0.5 dB,
+    |wet/dry| <= 0.5 dB at every cell (the absolute level, which the null
+    test already read), and rho < 0.5. Level is both channels pooled, which
+    is what the node normalises; each side on its own is not claimed."""
+
     def spread(self, cls, index, rate=RATE, peak_dbfs=-12.0, grid=GRID):
+        """(spread dB, worst |level| dB, worst rho), walking `index` by
+        `set_macro` on one instance as a host would."""
         pcm = white(int(1.5 * rate), peak_dbfs=peak_dbfs)
         levels, rhos = [], []
+        effect = build(cls, rate)
         for position in grid:
-            effect = build(cls, rate)
             effect.set_macro(index, position)
-            if cls is UnnormalisedAfter:
-                # The plant's gain follows the room it was built for.
-                effect.deinit()
-                options = {"decay": position / 127.0}
-                effect = build(cls, rate, **options)
             level, r = m6_cell(effect, pcm)
-            effect.deinit()
             levels.append(level)
             rhos.append(r)
-        return max(levels) - min(levels), max(rhos)
+        effect.deinit()
+        return (max(levels) - min(levels), max(abs(v) for v in levels),
+                max(rhos))
+
+    def assertGreen(self, reading, label):
+        spread, level, worst = reading
+        self.assertLessEqual(spread, 0.5, label)
+        self.assertLessEqual(level, 0.5, label)
+        self.assertLess(worst, 0.5, label)
 
     def test_decay_and_damping_at_two_levels(self):
         for peak in (-12.0, -30.0):
             for index in (DECAY_I, DAMPING_I):
-                spread, worst = self.spread(ConvolutionReverb, index,
-                                            peak_dbfs=peak)
-                self.assertLessEqual(spread, 0.5, (index, peak))
-                self.assertLess(worst, 0.5, (index, peak))
+                self.assertGreen(self.spread(ConvolutionReverb, index,
+                                             peak_dbfs=peak), (index, peak))
 
     def test_predelay_diffusion_room_and_the_lower_rates(self):
         for index in (PREDELAY_I, DIFFUSION_I, ROOM_I):
-            spread, worst = self.spread(ConvolutionReverb, index)
-            self.assertLessEqual(spread, 0.5, index)
-            self.assertLess(worst, 0.5, index)
+            self.assertGreen(self.spread(ConvolutionReverb, index), index)
         for rate in (44100, 22050):
-            spread, worst = self.spread(ConvolutionReverb, DECAY_I, rate)
-            self.assertLessEqual(spread, 0.5, rate)
-            self.assertLess(worst, 0.5, rate)
+            self.assertGreen(self.spread(ConvolutionReverb, DECAY_I, rate),
+                             rate)
 
     def test_an_unnormalised_room_is_red_at_the_defaults(self):
-        spread, _ = self.spread(UnnormalisedAfter, DECAY_I)
+        # Walked by set_macro: the plant's gain follows each re-synthesis.
+        spread, _, _ = self.spread(UnnormalisedAfter, DECAY_I)
         self.assertGreater(spread, 0.5)
+
+    def test_a_constantly_hot_room_is_red_on_the_absolute_clause(self):
+        # +3 dB at every setting: the spread and rho clauses pass it (the
+        # frozen criterion's hole, audit round 1: spread 0.010 dB, rho
+        # 0.118); the absolute clause does not.
+        spread, level, worst = self.spread(HotRoom, DECAY_I)
+        self.assertLessEqual(spread, 0.5)
+        self.assertLess(worst, 0.5)
+        self.assertGreater(level, 2.5)
+
+    def test_the_hot_room_is_not_on_the_surface(self):
+        pcm = white(RATE)
+        result = reach(HotRoom, lambda e: m6_cell(e, pcm)[0], tolerance=1.0)
+        self.assertGreater(result["target"], 2.5)
+        self.assertLess(abs(result["clean"]), 0.5)
+        self.assertEqual(result["checked"], WALKED)
 
     def test_the_plant_is_not_on_the_surface(self):
         pcm = white(RATE)
@@ -1141,7 +1388,13 @@ class Tier1Fast(unittest.TestCase):
 
     def test_reset_empties_the_room(self):
         # Built at patch 0, so reset's program_change(0) finds the room it
-        # holds and does not re-synthesize: only the reset clears it.
+        # holds and does not re-synthesize: only the reset clears it. From
+        # the plain defaults NoReset would be inert: their exact Damping
+        # 6 000 Hz and Mix 0.6 are not patch 0's grid values (6 059.8 Hz,
+        # 0.598), so program_change(0) re-synthesizes, and the node empties
+        # itself on a re-synthesis (audit round 1: peak 0 after reset() for
+        # clean and planted from the defaults, 16 666 LSB planted from
+        # patch=0).
         for cls, silent in ((ConvolutionReverb, True), (NoReset, False)):
             effect = build(cls, patch=0)
             burst = np.vstack([white(1024), silence(8192)])

@@ -6,7 +6,10 @@ table was frozen at Station A before this file existed (anchor commit
 85cc2bfc9a5a3c34c6906fbf0c27b285ba1050d2, the Station A critique's
 re-freeze, 2026-09-28). The old class in `reverb.py` is consulted only for
 the six defects that dossier's section 7 names; it stays the class the
-library serves until the board runner adopts this one.
+library serves until the board runner adopts this one. After the gate
+audit's round 1 the dossier carries a dated post-build revision (fix round
+1, 2026-09-28): D6 claims the level of both channels pooled, and this
+docstring says what that leaves out.
 
 **What it sounds like.** A short room behind your dry signal. With nothing
 loaded the class synthesizes the room: noise under an exponential that
@@ -24,6 +27,11 @@ instance can ever hold, carved once at construction: 256-frame partitions,
 ceiling of **512 partitions = 131 072 taps**, which is 2.730 s at 48 kHz,
 2.972 s at 44.1 kHz and 5.944 s at 22.05 kHz. Outside those, construction
 raises `ValueError` naming this class, the taps, the rate and the limit.
+The product is taken in double precision and `round` sends a half frame
+to even, so a `seconds` a hair over half a frame past a partition edge
+builds one partition fewer than exact arithmetic would: 0.08001041666666667
+s at 48 kHz is 3 840.5 + 7/2^48 frames exactly, and builds 3 840 taps, not
+4 096. No floor or ceiling cell moves.
 Decay, Predelay and Diffusion are laws over what the allocation leaves
 (section 6): Decay is the T60, log from the node's 50 ms floor to
 `seconds - predelay`, so at its top the room reaches -60 dB exactly at the
@@ -54,7 +62,8 @@ loaded state; the synthesized room is always loaded, and only an empty
 impulse (`impulse=b""`) leaves the node a plain undelayed wire. Mix 0 is
 the source delayed by exactly `latency_samples`, byte for byte, because the
 node stays in the path at Mix 0 and a Mix move never jumps the timeline.
-The one exception is the partition a room knob moves in (below).
+The exceptions are the partition a room knob moves in and the partition
+`reset()` is called in (below).
 
 **Tail.** `tail_samples` is `latency_samples` plus the loaded impulse
 rounded up to a partition: 4 096 frames (85.3 ms) at the default at
@@ -77,14 +86,22 @@ Python (the node's `synthesize()` ends in a reset of its pending and
 output blocks; the node ask is drafted), so do not sweep a room knob under
 a signal you need unbroken. A move that lands on the room already loaded
 does nothing and drops nothing, and a patch change, the constructor and
-`reset()` synthesize once, not once per knob. Mix moves never touch the
-room.
+`reset()` synthesize once, not once per knob. `reset()` in the middle of a
+stream drops the 256 frames in flight the same way, dry included. Mix
+moves never touch the room, but a Mix move acts on the audio entering the
+node after it, so you hear it one partition later: the 256 frames already
+in flight come out at the old Mix.
 
 **What the default surrenders.** The room is normalised to unit energy
 across the whole band, so with Damping in, low material comes back louder
 than it went in: a 220 / 277 / 330 Hz chord +3.73 dB at the default
-6 kHz Damping and +13.28 dB at the 500 Hz stop; white-spectrum material
-comes back at its own level at every setting. Damping clamps at 0.159 fs,
+6 kHz Damping and +13.28 dB at the 500 Hz stop. White-spectrum material
+comes back at its own level, within 0.5 dB, at every setting, counting
+both channels together. Each side on its own does not: the node scales
+the room by the mean of its two sides' energies, so on a stereo room
+Damping and Decay move the left-right balance by up to about 1.3 dB at
+48 kHz (2.6 dB at 22.05 kHz) while the total holds. A mono room is one
+side and holds. Damping clamps at 0.159 fs,
 under the point where the node's one-pole coefficient stops moving, so at
 48 kHz every one of its 128 positions is a room of its own, while at
 22.05 kHz the positions from 92 up (the 6 kHz default among them) are one
@@ -101,7 +118,17 @@ has: either would be a room whose Mix does nothing. Decay, Damping, Predelay, Di
 `IndexError` from `set_macro` and `get_macro` in this mode: the loaded
 impulse is the room. `live_macros` says which macros an instance has. No
 impulse ships with this class; it loads yours and keeps no copy (Brad's
-ruling, 2026-09-08).
+ruling, 2026-09-08). An impulse is one-dimensional: a 2-D array (numpy's
+`(frames, channels)`) raises `TypeError`, so flatten it first.
+
+**Two readbacks that are not what they look like.** `damping_hz` under
+500 Hz is taken as 500 Hz, the span's bottom, with no error (0, or
+7 500 Hz and up, is out of circuit). And a fresh instance reports
+`patch_index` 0, the family's convention, although the constructor's exact
+defaults (Damping 6 000 Hz, Mix 0.6) sit between grid steps and patch 0 is
+those settings on the grid (6 059.8 Hz, Mix 0.598). Pass `patch=0` for
+patch 0's room exactly. `reset()` restores patch 0, so an instance built
+from the plain defaults moves onto the grid at its first reset.
 
 `capabilities = ()`: nothing here reads a beat.
 """
@@ -260,9 +287,11 @@ class ConvolutionReverb(_component.Component):
     in. audiodsp tier; 256 frames of latency whenever an impulse is loaded.
 
     **What the default surrenders:** a dark room lifts low material (a low
-    chord +3.73 dB at the default Damping, +13.28 dB at 500 Hz), moving a
-    room knob starts the room empty and drops the 256 frames in flight,
-    dry included, at every Mix, and anything longer than 0.091 s on
+    chord +3.73 dB at the default Damping, +13.28 dB at 500 Hz), Damping
+    and Decay move a stereo room's left-right balance by up to about
+    1.3 dB (2.6 dB at 22.05 kHz) while the total holds, moving a room knob
+    or calling `reset()` mid-stream drops the 256 frames in flight, dry
+    included, at every Mix, and anything longer than 0.091 s on
     an S3 or 0.219 s on a P4 is a desktop room (pending hardware).
     """
 
@@ -399,6 +428,12 @@ class ConvolutionReverb(_component.Component):
             raise ValueError("%s: start_ms=%r is outside 0..%.0f ms"
                              % (self.NAME, start_ms, START_MAX_MS))
         view = memoryview(impulse)
+        if getattr(view, "ndim", 1) != 1:
+            # A (frames, channels) array would otherwise fail at the trim's
+            # slice with Python's bare NotImplementedError.
+            raise TypeError("%s: impulse must be one-dimensional int16 "
+                            "frames; flatten a (frames, channels) array "
+                            "first" % self.NAME)
         width = _byte_width(impulse, view)
         size = len(view) * width
         if size % (2 * impulse_channels):

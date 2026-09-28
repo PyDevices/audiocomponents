@@ -52,6 +52,26 @@ there, and are recorded in its changelog.
   100 s period, the Wow and Flutter step, and where the pitch claim stops:
   the node's single-precision walk limits rising moves past 16 384 and
   32 768 frames. Board cost is unmeasured.
+- **`ConvolutionReverb` (rebuilt, Phase 5, parked under `rebuilt/`):** a
+  short room on one `audioconvolve.Convolver`, synthesized from Decay,
+  Damping, Predelay, Diffusion and one of 64 Room seeds, or loaded from
+  your own impulse (int16 frames or a 16-bit WAV at the graph's rate) with
+  only Mix live. The allocation is `seconds`, 0.08 s by default, from a
+  0.06 s floor to the node's 512-partition ceiling, and anything outside
+  raises naming the class, the taps, the rate and the limit in seconds.
+  `latency_samples` reads the node: 256 frames whenever an impulse is
+  loaded, 0 when none is, and Mix 0 is the source delayed by exactly that,
+  byte for byte. Measured mode loads at unit mean energy and refuses the
+  synthesis macros with `IndexError`; no impulse ships. It lives in
+  `lib/audioeffects/rebuilt/convolutionreverb.py`, and
+  `audioeffects.ConvolutionReverb` is still the old class. The room holds
+  its level over both channels together, but Damping and Decay move a
+  stereo room's left-right balance by up to about 1.3 dB (2.6 dB at
+  22.05 kHz); fixing that is a node change, drafted as an audiodsp ask. The
+  docstring states that, the low-material lift a dark room gives, and the
+  partition a room-knob move or a mid-stream `reset()` drops. Board cost
+  is unmeasured; by the cost table's line the default fits an S3, and
+  anything over 0.091 s there is desktop-only.
 
 ## v0.3.2 (2026-09-25)
 
