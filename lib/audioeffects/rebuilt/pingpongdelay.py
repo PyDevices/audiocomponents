@@ -47,10 +47,8 @@ identical in both channels, with Mix at 2, the two channels summed are
 that mono delay's output exactly, sample for sample, as long as no two
 repeats overlap one another: on sustained material that overlaps its own
 repeats each side rounds its own write where the mono delay rounds the sum
-once, and the two part by a few LSB. That holds with Repeat Tone never in
-since the last `reset()`; once it has been in, its out stop moves the
-Feedback a hair (below), and at Feedback 0.99 the first eight repeats part
-from a delay at the knob's Feedback in 5 samples by up to 5 LSB. With a
+once, and the two part by a few LSB. That holds whatever the loop filters
+did before: a filter taken out is out exactly (below). With a
 loop filter in, the material must also end some way before Time, because
 each side's filter meets that side's next repeat two Times later where the
 mono delay's meets the very next one: a noise burst ending one frame before
@@ -166,31 +164,19 @@ filter's group delay, more each pass. At a low rate the knob's corners
 clamp below Nyquist: at 22.05 kHz positions 111-126 all sit on the
 10 804.5 Hz clamp and do the same thing.
 
-**The filters' out stops, after a filter has been in.** The node leaves a
-loop filter's state frozen while the filter is out, and a frozen filter
-plays what it held when it comes back in, out of silence. So once Repeat
-Tone has been in since the last `reset()` (a constructor `tone_hz` or a
-patch counts), its out stop keeps the low-pass running at a coefficient of
-exactly 1, which follows the repeats. The Feedback is still handed clear
-of the stall window described under Tail, which at some Feedbacks moves it
-by up to 2.6 x 10^-5 (0.99 plays as 0.989976102; 0.85 does not move), so
-the repeats die a hair sooner than with the filter truly out. How much
-depends on Time as well as Feedback. On 2 s of 0 dBFS noise at the default
-280 ms it is 0 LSB at Feedback 0.85, 1-5 LSB at 0.5, 0.75, 0.9 and 0.95,
-and 6 LSB at 0.99. Shorter Times fit more laps into the noise: over 18
-Times from 20 to 1000 ms, at 0.99 it is up to 19 LSB during the noise
-(25.6 ms, 44.1 kHz; 16 LSB at 48 and 22.05 kHz), and at 0.95 up to 7 LSB.
-Followed through the whole tail after the noise, at 0.99, it is up to
-37 LSB at every one of those Times the node lands on the frame, the default
-280 ms included, and more at the Times it lands off the frame (above):
-50 and 49 LSB at MIDI 24 and 48 (44.1 kHz), 48 and 46 at MIDI 88 and 112
-(22.05 kHz), the four off-frame positions among those tried. No worst is
-claimed off the frame. Repeat Cut cannot do that (a high-pass at
-coefficient 1 mutes the loop), so once Repeat Cut has been in since the last `reset()`
-its bottom stop stays in circuit at the 20 Hz corner, the knob's own
-bottom, until the next `reset()`. That costs the low end of the repeats
-something a true out would not, and `tail_samples` is `None` while it
-lasts. A `reset()` brings both exact outs back.
+**The filters' out stops, after a filter has been in.** Both out stops
+hand the node exactly 0, and a filter taken out is out, whatever came
+before: on 2 s of 0 dBFS noise at Mix 2, Tone out after Tone 2 kHz was in
+renders the same bytes as Tone never in (Feedback 0.85 and 0.99), and Cut
+out after Cut 400 Hz was in the same bytes as Cut never in (Feedback 0.99),
+at 48, 44.1 and 22.05 kHz; a filter brought back in after the repeats have
+died plays nothing. Up to audiodsp v0.6.2 the node froze an out filter's
+state and played it back, and this class kept Tone's low-pass tracking the
+repeats and Cut's high-pass in at 20 Hz once they had been in (the first up
+to 50 LSB off the filter out at Feedback 0.99, the second with
+`tail_samples` `None`). Since
+v0.6.3rc1 the node keeps an out low-pass's state on the signal and an out
+high-pass's at zero (audiodsp#158, #159), and both cures came out.
 
 Each pass through a loop filter also takes something off a repeat's peak,
 so with either filter in the late repeats of a quiet bounce fade faster
@@ -202,11 +188,13 @@ reach exact zero after your input stops, and it is long: the loop rounds
 its way down from full scale, 14 laps at the default Feedback (188 174
 frames, 3.9 s, at 48 kHz) and 685 at 0.99 (11.4 minutes at Time 1000 ms).
 The cross-feed moves repeats between the sides without changing the loop
-gain, so the figure is the same at every Spread. With Repeat Tone in the
-node's loop low-pass can hold a small value for ever at a Feedback a hair
-either side of 1 - 0.5 / k, so there the class hands the node a Feedback
-just outside that window (under 3 x 10^-5 away, far inside one step of the
-knob, which still reads what you set). With Repeat Cut in circuit
+gain, so the figure is the same at every Spread. With Repeat Tone in, at a
+Feedback a hair either side of 1 - 0.5 / k, the loop low-pass can come to
+rest a hair above k LSB and hand it back; up to audiodsp v0.6.2 it did so
+for ever and the class handed the node a Feedback just outside that
+window. Since v0.6.3rc1 the node sets a stalled low-pass onto its input
+(audiodsp#157), the Feedback you set is the one the node plays, and the
+bound counts one more lap there. With Repeat Cut in circuit
 `tail_samples` is `None`: no bound is derived there.
 
 `capabilities = ("tempo_sync",)`: with Sync on, the class reads
@@ -232,11 +220,11 @@ from ..chorus import nominal_damping_hz
 # the same way in both classes. Its module moves up one level when it comes
 # home, so both homes are tried; the same for SlapbackDelay's `tone_excess`.
 try:
-    from .digitaldelay import (DIVISION_BEATS, clear_of_stalls, laps_to_zero,
-                               nominal_cut_hz, whole_frames)
+    from .digitaldelay import (DIVISION_BEATS, laps_to_zero, nominal_cut_hz,
+                               whole_frames)
 except ImportError:                     # pragma: no cover - after it lands
-    from ..digitaldelay import (DIVISION_BEATS, clear_of_stalls,
-                                laps_to_zero, nominal_cut_hz, whole_frames)
+    from ..digitaldelay import (DIVISION_BEATS, laps_to_zero,
+                                nominal_cut_hz, whole_frames)
 try:
     from .slapbackdelay import tone_excess
 except ImportError:                     # pragma: no cover - after it lands
@@ -267,13 +255,6 @@ TONE_MIN_HZ = 800.0
 TONE_MAX_HZ = 16000.0
 CUT_MIN_HZ = 20.0
 CUT_MAX_HZ = 400.0
-
-#: Repeat Tone out after it has been in: `damping_hz` at 32 x the rate,
-#: where 1 - expf(-2 pi 32) is exactly 1.0f (`one_pole_coefficient`,
-#: `audiodsp_feedback_delay.c:33-40`), so the loop low-pass's state follows
-#: the tap instead of freezing (dossier section 8.11, `SlapbackDelay`'s
-#: answer).
-TONE_TRACK_PER_RATE = 32.0
 
 #: The fixed Time walk, delay-seconds per second: 3/16, exact in float32
 #: (dossier section 8.5, `SlapbackDelay`'s section 8 answer 6).
@@ -415,11 +396,6 @@ class PingPongDelay(_component.Component):
         self._damping = 0.0
         self._cut = 0.0
         self._node_ms = 0.0
-        #: True once a loop filter has been handed an in-circuit corner
-        #: since the node was built or cleared. From then on its state is
-        #: live, and its out stop is not 0 (dossier section 8.11).
-        self._tone_used = False
-        self._cut_used = False
         #: The constructor's Time, exactly, until macro 0 moves. Seeding a
         #: log knob and reading it back is not exact, and a few ulps under a
         #: half frame lands one frame short.
@@ -482,8 +458,6 @@ class PingPongDelay(_component.Component):
     def _clear(self):
         self._delay.clear()
         self._fresh = True
-        self._tone_used = False
-        self._cut_used = False
 
     # -- the maps ------------------------------------------------------
 
@@ -608,30 +582,13 @@ class PingPongDelay(_component.Component):
         self._node_ms = self._node_time_ms(self._frames)
         if self._fresh or self._frames > self._reach:
             self._reach = self._frames
+        # Both out stops are exactly 0, and the Feedback is handed as set.
+        # Since audiodsp v0.6.3rc1 the node keeps an out low-pass's state on
+        # the tap and an out high-pass's at zero (#158, #159), and lands a
+        # low-pass that has stopped moving (#157).
         damping = self._tone_damping(self._macros[TONE_I])
-        if damping > 0.0:
-            self._tone_used = True
-        elif self._tone_used:
-            # The node updates its loop low-pass only while the coefficient
-            # is above 0 (`audiodsp_feedback_delay.c:493`), so handing 0
-            # after Tone has been in would freeze whatever the filter held.
-            # A coefficient of exactly 1 keeps the state on the tap instead.
-            damping = TONE_TRACK_PER_RATE * rate
         cut = self._cut_hz(self._macros[CUT_I])
-        if cut > 0.0:
-            self._cut_used = True
-        elif self._cut_used:
-            # The same freeze for the high-pass (`:498`), which outputs
-            # value - state and so would mute the loop at coefficient 1:
-            # once Cut has been in, its bottom stop is the 20 Hz corner.
-            cut = nominal_cut_hz(self._hz(CUT_MIN_HZ), rate)
         feedback = _between(self._value(FEEDBACK_I), 0.0, FEEDBACK_MAX)
-        if damping > 0.0 and feedback > 0.0:
-            # With Tone in, the node can hold a small value for ever at a
-            # Feedback a hair either side of 1 - 0.5 / k; the node is handed
-            # the nearer edge of that window.
-            feedback = self._loop_feedback(feedback,
-                                           tone_excess(damping, rate)[1])
         self._feedback = feedback
         self._damping = damping
         self._cut = cut
@@ -645,10 +602,6 @@ class PingPongDelay(_component.Component):
             cut_hz=cut,
             cross_feed=cross,
             input_pan=pan)
-
-    def _loop_feedback(self, feedback, excess):
-        """The Feedback handed to the node with Repeat Tone in circuit."""
-        return clear_of_stalls(feedback, excess)
 
     @property
     def tail_samples(self):
@@ -673,6 +626,4 @@ class PingPongDelay(_component.Component):
             return None
         memory, excess = tone_excess(self._damping, self._sample_rate)
         laps = laps_to_zero(self._feedback, excess)
-        if laps is None:                    # pragma: no cover - stepped clear
-            return None
         return int(laps * (self._reach + 1 + memory))

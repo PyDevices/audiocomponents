@@ -38,6 +38,8 @@ from audioeffects import _component                         # noqa: E402
 from audioeffects import rebuilt                            # noqa: E402
 from audioeffects.chorus import nominal_damping_hz          # noqa: E402
 from audioeffects.rebuilt import pingpongdelay as pp        # noqa: E402
+from audioeffects.rebuilt.digitaldelay import (             # noqa: E402
+    clear_of_stalls)
 from tools.effect_measurements import instantaneous_hz      # noqa: E402
 
 VENDOR = "PyDevices"
@@ -232,15 +234,90 @@ class NoSlewPingPong(PingPongDelay):
 
 
 class FrozenFilterPingPong(PingPongDelay):
-    """Section 8.11, as first frozen: each loop filter's out stop hands 0
-    whatever came before, which freezes the node's filter state."""
+    """Section 8.11's defect, restated at audiodsp v0.6.3rc1: once a loop
+    filter has been in, its out stop leaves it in at 0.001 Hz, where its
+    float32 coefficient is one step above 0 and its state cannot move, so
+    it holds what it held, as the node's out stop did up to v0.6.2, and
+    plays it back when the filter comes back in."""
 
     NAME = 'PingPongDelay'
 
     def _refresh(self):
-        self._tone_used = False
-        self._cut_used = False
         PingPongDelay._refresh(self)
+        if self._damping > 0.0:
+            self._tone_was_in = True
+        elif getattr(self, "_tone_was_in", False):
+            self._delay.set(damping_hz=0.001)
+        if self._cut > 0.0:
+            self._cut_was_in = True
+        elif getattr(self, "_cut_was_in", False):
+            self._delay.set(cut_hz=0.001)
+
+    def _clear(self):
+        PingPongDelay._clear(self)
+        self._tone_was_in = self._cut_was_in = False
+
+
+class SteppedPingPong(PingPongDelay):
+    """The workaround retired at audiodsp v0.6.3rc1: with Repeat Tone in,
+    the Feedback handed at the nearer edge of the stall window
+    (`clear_of_stalls`), a Feedback nobody set."""
+
+    NAME = 'PingPongDelay'
+
+    def _refresh(self):
+        PingPongDelay._refresh(self)
+        self._step()
+
+    def _step(self):
+        if self._damping > 0.0 and self._feedback > 0.0:
+            excess = pp.tone_excess(self._damping, self._sample_rate)[1]
+            stepped = clear_of_stalls(self._feedback, excess)
+            if stepped != self._feedback:
+                self._feedback = stepped
+                self._delay.set(feedback=stepped)
+
+
+class TrackingPingPong(SteppedPingPong):
+    """The class before audiodsp v0.6.3rc1: once Repeat Tone has been in,
+    its out stop hands `damping_hz` at 32 x the rate (the low-pass tracking
+    the tap), and the Feedback is stepped clear as with Tone in."""
+
+    NAME = 'PingPongDelay'
+
+    def _refresh(self):
+        PingPongDelay._refresh(self)
+        if self._damping > 0.0:
+            self._tone_was_in = True
+        elif getattr(self, "_tone_was_in", False):
+            self._damping = 32.0 * self._sample_rate
+            self._delay.set(damping_hz=self._damping)
+        self._step()
+
+    def _clear(self):
+        PingPongDelay._clear(self)
+        self._tone_was_in = False
+
+
+class HeldCutPingPong(PingPongDelay):
+    """The class before audiodsp v0.6.3rc1: once Repeat Cut has been in,
+    its bottom stop stays in circuit at the 20 Hz corner, and
+    `tail_samples` is `None` while it lasts."""
+
+    NAME = 'PingPongDelay'
+
+    def _refresh(self):
+        PingPongDelay._refresh(self)
+        if self._cut > 0.0:
+            self._cut_was_in = True
+        elif getattr(self, "_cut_was_in", False):
+            self._cut = pp.nominal_cut_hz(self._hz(pp.CUT_MIN_HZ),
+                                          self._sample_rate)
+            self._delay.set(cut_hz=self._cut)
+
+    def _clear(self):
+        PingPongDelay._clear(self)
+        self._cut_was_in = False
 
 
 # --------------------------------------------------------------------------
@@ -781,12 +858,12 @@ def reach(faulted, reading, rate, channels=2, grid=None):
                                              build, grid=grid)
 
 
-def spied(**options):
+def spied(cls=None, **options):
     rate = options.pop("rate", RATE)
     channels = options.pop("channels", 2)
     with NodeSpy():
-        effect = PingPongDelay(silence_src(512, channels, rate),
-                               sample_rate=rate, **options)
+        effect = (cls or PingPongDelay)(silence_src(512, channels, rate),
+                                        sample_rate=rate, **options)
     return effect
 
 
@@ -1001,35 +1078,47 @@ class TheSurface(unittest.TestCase):
             self.assertAlmostEqual(handed(effect, "damping_hz"),
                                    nominal_damping_hz(corner, rate),
                                    places=6)
-            # Out after in: 32 x the rate, the state on the tap.
+            # Out after in is out: since audiodsp v0.6.3rc1 the node keeps
+            # an out filter's state live (#158, #159), so both out stops
+            # hand exactly 0 whatever came before, and the bound is finite.
             effect.set_macro(TONE_I, 127)
-            self.assertEqual(handed(effect, "damping_hz"), 32.0 * rate)
-            effect.set_macro(CUT_I, 1)
-            in_circuit = handed(effect, "cut_hz")
-            self.assertGreater(in_circuit, 0.0)
-            # Out after in: the 20 Hz corner, pre-warped, still in circuit.
-            effect.set_macro(CUT_I, 0)
-            bottom = handed(effect, "cut_hz")
-            self.assertAlmostEqual(bottom,
-                                   pp.nominal_cut_hz(20.0, rate), places=9)
-            self.assertLess(bottom, in_circuit)
-            self.assertIsNone(effect.tail_samples)
-            # A reset brings both exact outs back.
-            effect.reset()
             self.assertEqual(handed(effect, "damping_hz"), 0.0)
+            effect.set_macro(CUT_I, 1)
+            self.assertGreater(handed(effect, "cut_hz"), 0.0)
+            self.assertIsNone(effect.tail_samples)
+            effect.set_macro(CUT_I, 0)
             self.assertEqual(handed(effect, "cut_hz"), 0.0)
             self.assertIsNotNone(effect.tail_samples)
+            # Planted: the retired cures (Tone tracking at 32 x the rate,
+            # Cut held in at the 20 Hz corner with no bound).
+            for cls, name, want in (
+                    (TrackingPingPong, "damping_hz", 32.0 * rate),
+                    (HeldCutPingPong, "cut_hz",
+                     pp.nominal_cut_hz(20.0, rate))):
+                old = spied(cls, rate=rate)
+                old.set_macro(TONE_I, 126)
+                old.set_macro(TONE_I, 127)
+                old.set_macro(CUT_I, 1)
+                old.set_macro(CUT_I, 0)
+                self.assertAlmostEqual(handed(old, name), want, places=9)
 
-    def test_a_constructor_filter_counts_as_having_been_in(self):
-        effect = spied(tone_hz=5000.0, cut_hz=100.0)
-        effect.program_change(0)
-        self.assertEqual(handed(effect, "damping_hz"), 32.0 * RATE)
-        self.assertAlmostEqual(handed(effect, "cut_hz"),
+    def test_a_constructor_filter_out_again_is_out(self):
+        # A constructor or patch filter, then a patch without it: both out
+        # stops hand exactly 0 since audiodsp v0.6.3rc1 (up to v0.6.2 they
+        # counted as having been in and handed the tracking stop and the
+        # 20 Hz corner). Planted: the retired cures.
+        for ctor in ({"tone_hz": 5000.0, "cut_hz": 100.0}, {"patch": 5}):
+            effect = spied(**ctor)
+            effect.program_change(0)
+            self.assertEqual(handed(effect, "damping_hz"), 0.0, ctor)
+            self.assertEqual(handed(effect, "cut_hz"), 0.0, ctor)
+            old = spied(TrackingPingPong, **ctor)
+            old.program_change(0)
+            self.assertEqual(handed(old, "damping_hz"), 32.0 * RATE, ctor)
+        old = spied(HeldCutPingPong, cut_hz=100.0)
+        old.program_change(0)
+        self.assertAlmostEqual(handed(old, "cut_hz"),
                                pp.nominal_cut_hz(20.0, RATE), places=9)
-        effect = spied(patch=5)
-        effect.program_change(0)
-        self.assertEqual(handed(effect, "damping_hz"), 32.0 * RATE)
-        self.assertEqual(handed(effect, "cut_hz"), 0.0)
 
     def test_repeat_tone_clamps_at_22k(self):
         effect = spied(rate=22050)
@@ -1059,6 +1148,39 @@ class TheSurface(unittest.TestCase):
         for patch in (3, 4, 6):
             self.assertEqual(spied(patch=patch).tail_samples, 190064)
         self.assertIsNone(spied(cut_hz=40.0).tail_samples)
+        # Cut in, then out: since audiodsp v0.6.3rc1 the out stop is out
+        # (the node holds an out high-pass at zero, #159), so the bound is
+        # the one Cut never in has. Planted: the retired held 20 Hz corner.
+        effect = spied(cut_hz=40.0)
+        effect.set_macro(CUT_I, 0)
+        self.assertEqual(handed(effect, "cut_hz"), 0.0)
+        self.assertEqual(effect.tail_samples, 14 * 13441)
+        held = HeldCutPingPong(silence_src(64), sample_rate=RATE,
+                               cut_hz=40.0)
+        held.set_macro(CUT_I, 0)
+        self.assertIsNone(held.tail_samples)
+
+    def test_the_feedback_is_handed_as_set(self):
+        # Up to audiodsp v0.6.2 the class stepped the Feedback clear of the
+        # loop low-pass's stall windows with Repeat Tone in (0.99 played as
+        # 0.989976102). Since v0.6.3rc1 the node lands a stalled low-pass
+        # (#157): with Tone in or out every Feedback position is handed as
+        # set, and the bound is finite. Planted: the retired stepping.
+        for rate in RATES:
+            for tone in (0.0, 800.0, 16000.0):
+                effect = spied(rate=rate, tone_hz=tone)
+                for midi in range(128):
+                    effect.set_macro(FEEDBACK_I, midi)
+                    want = min(0.99, effect._value(FEEDBACK_I))
+                    self.assertEqual(effect._feedback, want,
+                                     (rate, tone, midi))
+                    self.assertEqual(handed(effect, "feedback"), want)
+                    self.assertIsNotNone(effect.tail_samples)
+            stepped = SteppedPingPong(silence_src(64, rate=rate),
+                                      sample_rate=rate, tone_hz=800.0,
+                                      feedback=0.99)
+            self.assertNotEqual(stepped._feedback, 0.99, rate)
+            self.assertLess(abs(stepped._feedback - 0.99), 3e-5)
 
     def test_constructor_clamps_and_nan(self):
         nan = float("nan")
@@ -1285,27 +1407,35 @@ class T3MonoSum(unittest.TestCase):
         at_8192 = self._gap(8192, 32767, {}, cut=cut, macros=macros)
         self.assertEqual((at_8192[0], at_8192[3]), (0, 0))
 
-    def test_tone_in_then_out_is_outside_the_row(self):
-        # Fix round 1 (audit item 2, restated): once Tone has been in, its
-        # out stop hands a Feedback moved clear of the stall window
-        # (0.99 -> 0.989976102), so the row holds Tone never in since the
-        # last reset. Its own cell with Tone in then out differs in 5
-        # samples, up to 5 LSB, at three rates.
+    def _tone_in_then_out(self, cls, rate):
+        """(samples differing, largest difference) between the channels'
+        sum with Tone 5 kHz in then out and the mono reference at
+        Feedback 0.99, on a click, Time 280 ms, Mix 2."""
+        T = law_frames(280.0, rate)
+        frames = 9 * T + int(0.1 * rate)
+        x = click(frames)
+        src, _ = to_source(x, 2, rate)
+        effect = cls(src, sample_rate=rate, time_ms=280.0, feedback=0.99,
+                     mix=2.0, tone_hz=5000.0)
+        effect.set_macro(TONE_I, 127)
+        stereo = pull(effect, frames).astype(np.int32)
+        total = stereo[:, 0] + stereo[:, 1]
+        ref = reference(x, rate, T, 0.99)
+        return (int(np.count_nonzero(total != ref)),
+                int(np.abs(total - ref).max()))
+
+    def test_tone_in_then_out_is_inside_the_row(self):
+        # Fix round 1 put this cell outside the row: the out stop after
+        # Tone had been in handed a Feedback stepped clear of the stall
+        # window (0.99 -> 0.989976102), 5 samples up to 5 LSB off. Since
+        # audiodsp v0.6.3rc1 Tone out is out whatever came before, and the
+        # cell reads exact at three rates. Planted: the retired tracking
+        # stop with its stepping.
         for rate in RATES:
-            T = law_frames(280.0, rate)
-            frames = 9 * T + int(0.1 * rate)
-            x = click(frames)
-            src, _ = to_source(x, 2, rate)
-            effect = PingPongDelay(src, sample_rate=rate, time_ms=280.0,
-                                   feedback=0.99, mix=2.0, tone_hz=5000.0)
-            effect.set_macro(TONE_I, 127)
-            stereo = pull(effect, frames).astype(np.int32)
-            total = stereo[:, 0] + stereo[:, 1]
-            ref = reference(x, rate, T, 0.99)
-            self.assertEqual(int(np.count_nonzero(total != ref)), 5, rate)
-            self.assertEqual(int(np.abs(total - ref).max()), 5, rate)
-            self.assertTrue(t3_measure(PingPongDelay, rate,
-                                       feedback=0.99)["passed"], rate)
+            self.assertEqual(self._tone_in_then_out(PingPongDelay, rate),
+                             (0, 0), rate)
+            self.assertEqual(self._tone_in_then_out(TrackingPingPong, rate),
+                             (5, 5), rate)
 
     def test_the_mono_stereo_settings_are_red(self):
         for rate in RATES:
@@ -1533,19 +1663,20 @@ class Tier1Fast(unittest.TestCase):
                     PingPongDelay, TONE_I, tone_2k, 0, rate, channels), 0)
                 self.assertEqual(self._round_trip(
                     PingPongDelay, CUT_I, 127, 1, rate, channels), 0)
-        # As first frozen, handing 0 at the out stop plays the frozen state.
+        # Planted: a filter whose state cannot move (left in at 0.001 Hz,
+        # as the node's out stop behaved up to v0.6.2) plays it back.
         self.assertGreater(self._round_trip(
             FrozenFilterPingPong, TONE_I, tone_2k, 0, RATE), 10000)
         self.assertGreater(self._round_trip(
             FrozenFilterPingPong, CUT_I, 127, 1, RATE), 15000)
 
-    def _tone_out_after_in(self, x, rate, **options):
+    def _tone_out_after_in(self, x, rate, cls=PingPongDelay, **options):
         """Largest |difference| between Tone out after Tone 2 kHz was in
-        and Tone never in, on `x`, Mix 2."""
+        (on `cls`) and Tone never in, on `x`, Mix 2."""
         frames = len(x)
         source, _ = to_source(x, 2, rate)
-        touched = PingPongDelay(source, sample_rate=rate, mix=2.0,
-                                tone_hz=2000.0, **options)
+        touched = cls(source, sample_rate=rate, mix=2.0, tone_hz=2000.0,
+                      **options)
         touched.set_macro(TONE_I, 127)
         clean, _ = to_source(x, 2, rate)
         plain = PingPongDelay(clean, sample_rate=rate, mix=2.0, **options)
@@ -1553,29 +1684,25 @@ class Tier1Fast(unittest.TestCase):
         b = pull(plain, frames).astype(np.int32)
         return int(np.abs(a - b).max())
 
-    def test_tone_out_after_tone_in_is_within_the_stated_bound(self):
-        # Fix round 1 (audit item 2, restated): the out stop's
-        # coefficient-1 low-pass follows the tap, but the Feedback still
-        # goes through `clear_of_stalls`, which moves it by up to
-        # 2.6 x 10^-5 where a stall window sits (0.99 -> 0.989976102;
-        # 0.85 is in no window). At the default 280 ms: 0 at 0.85, at most
-        # 6 LSB on 2 s of 0 dBFS noise at 0.99. The old "within 1 LSB" is
-        # red at 0.99.
+    def test_tone_out_after_tone_in_is_the_filter_out(self):
+        # Up to audiodsp v0.6.2 the out stop after Tone had been in kept
+        # the low-pass tracking the tap and the Feedback stepped clear of
+        # the stall windows: 0 at 0.85, up to 6 LSB at 0.99 on 2 s of
+        # 0 dBFS noise, and at Time 20 ms up to 19 LSB during the noise and
+        # 37 through the tail. Since v0.6.3rc1 (#158, #157) it hands 0, and
+        # every one of those cells renders the same bytes as Tone never in.
+        # Planted: the retired tracking stop with its stepping (35 LSB
+        # through the 20 ms tail on the fixed node; 37 on v0.6.2's).
         for rate in RATES:
             frames = 2 * rate
             x = np.frombuffer(probes.noise_det(frames=frames, dbfs=0.0,
                                                channels=1),
                               dtype=np.int16)[:frames].astype(float)
-            self.assertEqual(self._tone_out_after_in(x, rate,
-                                                     feedback=0.85), 0, rate)
-            worst = self._tone_out_after_in(x, rate, feedback=0.99)
-            self.assertLessEqual(worst, 6, rate)
-            self.assertGreater(worst, 1, rate)
-        # Fix round 2 (audit round 2, item 3): those figures are the
-        # default Time's. At Time 20 ms more laps fit into the noise, and
-        # the docstring's worst over Time is 19 LSB during the noise and,
-        # at a Time on the frame (20 ms at 48 kHz is), 37 LSB through the
-        # tail after it; the old 6 and 32 are exceeded.
+            for feedback in (0.85, 0.99):
+                self.assertEqual(self._tone_out_after_in(
+                    x, rate, feedback=feedback), 0, (rate, feedback))
+            self.assertGreater(self._tone_out_after_in(
+                x, rate, cls=TrackingPingPong, feedback=0.99), 1, rate)
         n = 2 * RATE
         probe = PingPongDelay(silence_src(64), sample_rate=RATE,
                               time_ms=20.0, feedback=0.99)
@@ -1585,20 +1712,65 @@ class Tier1Fast(unittest.TestCase):
         x[:n] = np.frombuffer(probes.noise_det(frames=n, dbfs=0.0,
                                                channels=1),
                               dtype=np.int16)[:n]
-        source, _ = to_source(x, 2, RATE)
-        touched = PingPongDelay(source, sample_rate=RATE, mix=2.0,
-                                time_ms=20.0, feedback=0.99, tone_hz=2000.0)
-        touched.set_macro(TONE_I, 127)
-        clean, _ = to_source(x, 2, RATE)
-        plain = PingPongDelay(clean, sample_rate=RATE, mix=2.0, time_ms=20.0,
-                              feedback=0.99)
-        d = np.abs(pull(touched, frames).astype(np.int32)
-                   - pull(plain, frames).astype(np.int32)).max(axis=1)
-        during, after = int(d[:n].max()), int(d[n:].max())
-        self.assertLessEqual(during, 19)
-        self.assertGreater(during, 6)
-        self.assertLessEqual(after, 37)
-        self.assertGreater(after, 32)
+        for cls, worst in ((PingPongDelay, 0), (TrackingPingPong, 35)):
+            source, _ = to_source(x, 2, RATE)
+            touched = cls(source, sample_rate=RATE, mix=2.0, time_ms=20.0,
+                          feedback=0.99, tone_hz=2000.0)
+            touched.set_macro(TONE_I, 127)
+            clean, _ = to_source(x, 2, RATE)
+            plain = PingPongDelay(clean, sample_rate=RATE, mix=2.0,
+                                  time_ms=20.0, feedback=0.99)
+            d = np.abs(pull(touched, frames).astype(np.int32)
+                       - pull(plain, frames).astype(np.int32)).max()
+            self.assertEqual(int(d), worst, cls.__name__)
+
+    def test_cut_out_after_cut_in_is_the_filter_out(self):
+        # Up to audiodsp v0.6.2 Cut's bottom stop stayed in at 20 Hz once
+        # Cut had been in. Since v0.6.3rc1 (#159) it hands 0, and 2 s of
+        # 0 dBFS noise at Feedback 0.99 renders the same bytes as Cut never
+        # in, at three rates. Planted: the retired held corner.
+        for rate in RATES:
+            frames = 2 * rate
+            x = np.frombuffer(probes.noise_det(frames=frames, dbfs=0.0,
+                                               channels=1),
+                              dtype=np.int16)[:frames].astype(float)
+            for cls, differs in ((PingPongDelay, False),
+                                 (HeldCutPingPong, True)):
+                source, _ = to_source(x, 2, rate)
+                touched = cls(source, sample_rate=rate, mix=2.0,
+                              feedback=0.99, cut_hz=400.0)
+                touched.set_macro(CUT_I, 0)
+                clean, _ = to_source(x, 2, rate)
+                plain = PingPongDelay(clean, sample_rate=rate, mix=2.0,
+                                      feedback=0.99)
+                d = int(np.abs(pull(touched, frames).astype(np.int32)
+                               - pull(plain, frames).astype(np.int32)).max())
+                self.assertEqual(d > 0, differs, (rate, cls.__name__, d))
+
+    def test_the_stall_cell_reaches_zero_at_the_feedback_set(self):
+        # Feedback 0.5 with Repeat Tone 800 Hz in is a stall centre (k = 1):
+        # up to audiodsp v0.6.2 the node could hold 1 LSB there for ever and
+        # the class stepped the Feedback clear. Since v0.6.3rc1 (#157) 0.5
+        # is handed as set, and a 2 LSB DC for 1 s ends inside the bound.
+        for rate in RATES:
+            frames = 4 * rate
+            x = np.zeros(frames)
+            x[:rate] = 2.0
+            source, _ = to_source(x, 2, rate)
+            effect = PingPongDelay(source, sample_rate=rate, feedback=0.5,
+                                   mix=2.0, time_ms=100.0, tone_hz=800.0)
+            self.assertEqual(effect._feedback, 0.5)
+            declared = effect.tail_samples
+            y = pull(effect, frames)
+            nonzero = np.flatnonzero(y.any(axis=1))
+            self.assertGreater(len(nonzero), 0, rate)
+            last = int(nonzero[-1])
+            self.assertLess(last, frames - 1, rate)
+            self.assertLessEqual(last - rate + 1, declared, rate)
+        stepped = SteppedPingPong(silence_src(64), sample_rate=RATE,
+                                  feedback=0.5, tone_hz=800.0)
+        self.assertNotEqual(stepped._feedback, 0.5)
+        self.assertLess(abs(stepped._feedback - 0.5), 3e-5)
 
     def test_the_tail_reaches_exact_zero_inside_tail_samples(self):
         on = 200 * RATE // 1000

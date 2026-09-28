@@ -85,9 +85,13 @@ there, and are recorded in its changelog.
   `audioeffects.PingPongDelay` is still the old class. The docstring states
   the input ceiling (-3 dBFS peak at the defaults, -3.1 over the shipped
   patches, on `noise_det`; -7.96 dBFS on any material with Repeat Cut in at
-  the default Mix), that at full Spread the loop hears (L + R) / 2, and what
-  Repeat Tone's out stop costs after Tone has been in. Board cost is
-  unmeasured.
+  the default Mix), and that at full Spread the loop hears (L + R) / 2.
+  Board cost is unmeasured. At audiodsp v0.6.3rc1 both loop filters' out
+  stops hand exactly 0 and a filter taken out is out whatever came before
+  (no tracking Tone stop, no Cut held in at 20 Hz, so `tail_samples` is
+  finite once Cut is out again), and the Feedback is handed as set (no
+  stepping clear of the stall windows; the bound counts one landing lap
+  there).
 
 ### Changed
 
