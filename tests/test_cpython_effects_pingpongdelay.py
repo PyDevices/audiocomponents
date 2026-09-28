@@ -783,6 +783,48 @@ class TheSurface(unittest.TestCase):
         effect.set_macro(TIME_I, 127)
         self.assertEqual(read_frames(effect), 48000.0)
 
+    def test_where_the_node_lands_the_handed_frame(self):
+        # Section 6, restated at Station B fix round 1: the node turns the
+        # handed ms back into frames in float32
+        # (`audiodsp_feedback_delay.c:148`). At 48 kHz every grid position
+        # lands exactly; at 44.1 and 22.05 kHz these land one float32 step
+        # off, which the class cannot avoid (the node ask is drafted).
+        off_frame = {
+            48000: [],
+            44100: [2, 3, 4, 19, 20, 24, 25, 28, 38, 43, 47, 48, 50, 63, 65,
+                    67, 69, 70, 83, 92, 93, 95, 107, 108, 114],
+            22050: [2, 4, 19, 28, 38, 47, 63, 65, 67, 69, 70, 83, 88, 92, 93,
+                    95, 108, 110, 112, 114],
+        }
+        f32 = np.float32
+        for rate in RATES:
+            effect = spied(rate=rate)
+            missed = []
+            for midi in range(128):
+                effect.set_macro(TIME_I, midi)
+                ms = f32(handed(effect, "delay_ms"))
+                frames = (ms * f32(rate)) / f32(1000.0)
+                law = law_frames(law_time_ms(midi), rate)
+                self.assertEqual(read_frames(effect), law, (rate, midi))
+                if float(frames) != law:
+                    self.assertLessEqual(abs(float(frames) - law),
+                                         2.0 ** -9, (rate, midi))
+                    missed.append(midi)
+            self.assertEqual(missed, off_frame[rate], rate)
+
+    def test_an_off_frame_time_leaks_into_the_next_frame(self):
+        # The reviewer's cell: MIDI 95 at 44.1 kHz is 16 457 frames, and a
+        # 20 000 click's repeat reads 39 one frame early; at 48 kHz the same
+        # position is exact.
+        for rate, window in ((44100, [0, 39, 19961, 0]),
+                             (48000, [0, 0, 20000, 0])):
+            frames = law_frames(law_time_ms(95), rate)
+            y = render(PingPongDelay, click(frames + 64), rate=rate,
+                       macros={TIME_I: 95}, mix=2.0, feedback=0.0)
+            total = y.astype(np.int32).sum(axis=1)
+            self.assertEqual([int(v) for v in total[frames - 2:frames + 2]],
+                             window, rate)
+
     def test_a_host_echoing_time_keeps_the_frame(self):
         # 135 ms at 44.1 kHz is 5 953.5 frames, which the law lands up.
         effect = spied(rate=44100, time_ms=135.0)

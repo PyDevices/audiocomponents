@@ -76,10 +76,28 @@ falls and -359.5 cents while it rises (1200 log2(1 +- 0.1875)). 280 ->
 ping-pong's time is set to a subdivision, not played. While Time walks,
 the line is read between samples, and the two-tap read costs the top of
 the band sqrt(1 - 2 frac (1 - frac)(1 - cos 2 pi f / fs)) per pass. Every
-static Time is landed on the nearest whole frame at the running rate,
-floor(ms fs / 1000 + 0.5), where the read is lossless, so the repeats of a
-Time you have stopped turning do not darken; the knob's milliseconds and
-`get_macro(0)` stay as you set them.
+static Time is handed to the node as the nearest whole frame at the
+running rate, floor(ms fs / 1000 + 0.5); the knob's milliseconds and
+`get_macro(0)` stay as you set them. At 48 kHz the node lands every one of
+the 128 knob positions exactly on that frame, where the read is lossless,
+so the repeats of a Time you have stopped turning do not darken.
+
+At 44.1 and 22.05 kHz it does not always. The node turns the milliseconds
+back into frames in float32, and for some Times no float32 value lands on
+the whole frame, so the read sits one float32 step off it: at most 1/512
+of a frame at 44.1 kHz and 1/1024 at 22.05 kHz. That is 25 of the 128
+knob positions at 44.1 kHz (MIDI 2, 3, 4, 19, 20, 24, 25, 28, 38, 43, 47,
+48, 50, 63, 65, 67, 69, 70, 83, 92, 93, 95, 107, 108, 114) and 20 at
+22.05 kHz (MIDI 2, 4, 19, 28, 38, 47, 63, 65, 67, 69, 70, 83, 88, 92, 93,
+95, 108, 110, 112, 114). No patch's own Time is among them, nor the
+default 280 ms; a Time Sync takes from a host's tempo can be. At those
+Times each pass puts up to 0.2 % of the repeat on the frame beside it
+(a 20 000 click's first repeat reads 19 961 and 39 at MIDI 95, 44.1 kHz),
+and the repeats darken slowly: at Feedback 0.99 the 60th repeat of a
+10 kHz tone is 0.86 dB quieter than the Feedback alone makes it at
+44.1 kHz, 0.98 dB at 22.05 kHz, and a 1 kHz tone 0.01-0.02 dB. The class
+cannot hand the node a number that lands there; a node change is asked
+for.
 
 **Repeat Tone** is the corner the loop low-pass achieves (800-16 000 Hz,
 the top stop out). It is inside the loop, so repeat n has passed it n
@@ -122,7 +140,7 @@ positive number, Time stays where the knob is. A Division past the
 it.
 
 A constructor value stays on the audio path unrounded by the knob's grid;
-Time is then landed on a whole frame. A value outside a knob's span clamps
+Time is then handed as a whole frame. A value outside a knob's span clamps
 to the nearer stop, a `tone_hz` or `cut_hz` of 0 or less is that filter
 out, and NaN takes that option's default. A `max_time_ms` above 1000 or
 NaN is 1000.
