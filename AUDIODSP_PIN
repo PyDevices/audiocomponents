@@ -199,5 +199,38 @@
 # AnalogDelay (2), PingPongDelay (1) and the parked DigitalDelay (1).
 # Pending both boards, as v0.6.1 was.
 #
+# 2026-09-28: v0.6.2 -> v0.6.3rc1 (bd7d2e2), a pre-release of the next
+# patch, on Brad's ruling of the same day, "fix the node now, in parallel".
+# It is on TestPyPI only (18 wheels; pre-releases skip production PyPI and
+# MIP), so CI's `git+...@v0.6.3rc1` install is the one that reaches it.
+# What moved beneath the components, by `git log v0.6.2..v0.6.3rc1 --
+# src`: audiodsp#161, four fixes to audioecho.FeedbackDelay. A loop
+# low-pass taken out (damping_hz 0) keeps its state on the tap, and a
+# high-pass taken out (cut_hz 0) holds its state at zero, where both used
+# to freeze and play back out of silence when the filter came back (#158,
+# #159); a damping state that has stopped moving at or below 64 LSB is set
+# onto its input once a block, so a tail reaches exact zero with the
+# low-pass in (#157); a new wow_depth_ms ramps in over 20 ms instead of
+# landing at once (#160). Eight tests here pinned the old node or proved a
+# class-side workaround was needed (DigitalDelay 3, SlapbackDelay 3,
+# CombFilter 2, one of them the stall canary) and went red at the new pin,
+# nothing else did; the workarounds came out in the same change (the
+# 32 x rate tracking off stops, the stall-window stepping, the Repeat Cut
+# disclosure, SlapbackDelay's Wow step) and those tests assert the good
+# behaviour directly, each beside a planted fault. The census (every class
+# and parked rebuild at the default and every patch, 319 cells) is
+# identical to v0.6.2's on CPython, MicroPython and CircuitPython, both
+# before and after the workarounds came out; the library smoke moves 15
+# peaks on all three, all where a patch change on a playing instance moves
+# a wow depth (Chorus 1-5, Vibrato 3-6, the parked Flanger 1-6), which is
+# #160's ramp. Re-run here on Brad's workstation, with the desktop
+# interpreters rebuilt at the tag (audioecho.__revision__
+# v0.0.3-290-gbd7d2e2 on MicroPython; CircuitPython carries none, and its
+# provenance stamp names the same): the unit suite `Ran 1693 tests ... OK
+# (skipped=3)`; validate_api 55 instruments and 45 effects;
+# validate_metadata valid; flake8 clean; the smoke 45 classes, 259
+# patches, 0 failures on CPython, MicroPython and CircuitPython. Pending
+# both boards.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.2 1c89b032abb9e625390d634165a561683df81d14
+v0.6.3rc1 bd7d2e219208731cc100a1e8210ec72f8cec9af1

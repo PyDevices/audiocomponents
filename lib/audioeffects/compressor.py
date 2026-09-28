@@ -6,6 +6,11 @@ the dossier's four standouts, and they differ in **detector law, release law,
 ratio law and side-chain weighting** - not in three time constants, which is
 all the class this replaces had (dossier §7.2).
 
+Mix back up from 0 comes back as the class was built: the two stages
+cleared and the voices primed afresh. An instance built wet and moved to 0
+before it played used to keep the block its construction primed and play it
+256 frames after the input stopped (audiocomponents#113).
+
 * **`fet`** - the 1176. Peak detector, both time knobs live and *faster
   clockwise* across 800 to 20 microseconds and 1.1 seconds to 50
   milliseconds, threshold rising with ratio. Turn everything up and it
@@ -368,8 +373,18 @@ class Compressor(_component.Component):
         if not self._ready:
             return
         if self.macro(13) <= 0.0:
-            self._output = self._source
+            self._route_around(self._source)
             return
+        # Back off a bypass each voice still holds the block it had queued -
+        # on an instance built wet and moved to 0 before it played, the
+        # block `_prime` took at construction, which came out 256 frames
+        # after the input stopped. So the graph is cleared and the voices
+        # primed afresh (audiocomponents#113). The two Dynamics hold a gain
+        # and no audio, but a voice's `play()` resets what it plays, so the
+        # stage it reads restarts its gain either way: the class comes back
+        # as it was built, envelopes and all.
+        if self._rejoin():
+            self._primed = False
         if not self._primed:
             self._prime()
         self._output = self._mixer

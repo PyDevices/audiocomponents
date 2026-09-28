@@ -1030,5 +1030,75 @@ class TheTruePeakReserve(unittest.TestCase):
         self.assertEqual(digests[0], digests[1])
 
 
+# -- the stale blocks (audiocomponents#113) ------------------------------
+
+import os                                                       # noqa: E402
+import sys                                                      # noqa: E402
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+import stale_blocks as stale                                    # noqa: E402
+
+class NoStageClear(rebuilt.Limiter):
+    """Planted: the class before the fix. A stage's delay grows and nothing
+    is cleared, so the line plays what it held when it was last that
+    long."""
+
+    def _clear_nodes(self, keep=(), only=None):
+        if only is None:
+            rebuilt.Limiter._clear_nodes(self, keep, only)
+
+
+class ShapeStageOnlyClear(rebuilt.Limiter):
+    """Planted, a wrong cure: only the shape stage is cleared when its delay
+    grows. True Peak's twelve-sample reserve lives on the catch stage, and
+    that line keeps its old contents."""
+
+    def _clear_nodes(self, keep=(), only=None):
+        if only is not None and self._catch in only:
+            return
+        rebuilt.Limiter._clear_nodes(self, keep, only)
+
+
+class ALookaheadThatGrowsPlaysNothingOld(unittest.TestCase):
+    """Lookahead back up after a pause plays nothing from before the pause
+    (audiocomponents#113; Brad, 2026-09-28: "fix the stale blocks"). The
+    node writes its lookahead line only as far as its delay reaches, so the
+    rest keeps what it held the last time the delay was that long, and
+    Lookahead off and back on replayed the last note at full level (31 373
+    LSB). A stage whose delay grows is now cleared first."""
+
+    CLS = rebuilt.Limiter
+
+    def test_lookahead_back_after_silence_plays_nothing(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                for low in (0, 40):
+                    self.assertEqual(
+                        stale.blip(self.CLS, 2, 127, low, rate, channels),
+                        (0, 0), (rate, channels, low))
+        for patch in sorted(self.CLS.PATCHES):
+            self.assertEqual(stale.blip(self.CLS, 2, 127, 0, patch=patch),
+                             (0, 0), patch)
+
+    def test_true_peak_moving_its_reserve_plays_nothing(self):
+        # Patches 1, 4 and 5 turn True Peak on with lookahead.
+        for patch in (1, 4, 5):
+            for a, b in ((0, 127), (127, 0)):
+                self.assertEqual(
+                    stale.blip(self.CLS, 4, a, b, patch=patch), (0, 0),
+                    (patch, a, b))
+
+    def test_the_old_class_and_a_shape_only_clear_are_red(self):
+        before, after = stale.blip(NoStageClear, 2, 127, 0)
+        self.assertEqual(before, 0)
+        self.assertGreater(after, 15000)
+        # True Peak on during the tone fills the catch stage's reserve; off
+        # hands the twelve samples back to the shape stage and the catch
+        # line stops being written; on again after the silence reads them.
+        before, after = stale.blip(ShapeStageOnlyClear, 4, 127, 0, patch=1)
+        self.assertEqual(before, 0)
+        self.assertGreater(after, 2000)
+
+
 if __name__ == "__main__":
     unittest.main()

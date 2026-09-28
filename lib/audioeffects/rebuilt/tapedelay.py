@@ -104,11 +104,26 @@ Grid 1 is not claimed on a rising move (350 -> 450 ms reads +41 cents
 there), nor is any constructor Glide faster than those edges. Falling
 moves are claimed at every Glide, and at every ratio up to 3.33 : 1.
 
-**Turning Wow or Flutter while it plays steps.** The node takes a new
-table and depth at once (`audiodsp_feedback_delay.c:457-458` adds depth x
-table to the read head, with no ramp), so the repeats jump by the change
-in excursion wherever the wobble is. Time walks; Wow and Flutter do not,
-so set them before you play.
+**Turning Wow or Flutter while it plays.** Since audiodsp v0.6.3rc1 the
+node ramps a new wobble depth in over 20 ms (audiodsp#160), so a move that
+changes only how deep the wobble is glides: Wow with Flutter at 0, either
+knob down to 0 on its own, or both up from 0. The class keeps the last
+table handed while the depth ramps out to 0, so the old wobble leaves on
+its own shape. On a 997 Hz tone at 12 000 LSB, wet only at 48 kHz, whose
+own largest step through the loss low-pass is 728 LSB, Wow 32 -> 127 at
+Flutter 0 steps at most 731 LSB in the 2 000 frames after it (1 057 at
+v0.6.2) and Wow 127 -> 0 at most 740 (945 at v0.6.2, and 1 082 on the
+fixed node without the kept table). While the depth travels the
+extra pitch is the change over 20 ms times where the wobble is: up to
+15 % (about 240 cents) for those 20 ms on the full 3 ms move at its crest.
+
+A move that changes the balance of Wow and Flutter still steps. It changes
+the table's shape, and the node swaps a table at once, so the repeats jump
+by the depth times the change in shape: Flutter 0 -> 127 at Wow grid 32
+steps 803 LSB against the tone's 728 (786 at v0.6.2). Turning both to 0
+one after the other passes through a table of one of them alone: Wow to 0
+first, with Flutter at grid 32, steps 1 117. Set the balance before you
+play.
 
 **Input ceiling.** The dry path sits at unity and the repeats add to it,
 and there is no input gain to turn down. Measured on the kit's `noise_det`
@@ -123,10 +138,12 @@ to rail on varispeed, at -1.9; patch 4, High Intensity, on sliding-head, at
 reach exact zero after your input stops: `laps x (reach + wow + 1 +
 memory)` frames, 14 laps at the default Feedback (240 282 frames, 5.01 s,
 at 48 kHz) and 85 at patch 4's 0.8965. The loop low-pass is always in, and
-it can hold a small value for ever at a Feedback a hair either side of
-1 - 0.5 / k, so the class hands the node a Feedback just outside each of
-those windows (at most 3 x 10^-5 away, far inside one step of the knob,
-which still reads what you set).
+at a Feedback a hair either side of 1 - 0.5 / k it can come to rest a hair
+above k LSB and hand it back. Up to audiodsp v0.6.2 it did so for ever,
+and the class handed the node a Feedback just outside each such window.
+Since v0.6.3rc1 the node sets a stalled low-pass onto its input
+(audiodsp#157), the Feedback you set is the one the node plays, and the
+bound counts one more lap there: 686 laps at the 0.99 stop.
 
 `capabilities = ("tempo_sync",)`: with Sync on, the class reads
 `self._transport()` on every macro move and program change (not per block).
@@ -157,11 +174,9 @@ from ..chorus import nominal_damping_hz
 # the same node rounds the same way in both classes. Its module moves up
 # one level when it comes home, so both homes are tried.
 try:
-    from .digitaldelay import (DIVISION_BEATS, clear_of_stalls, laps_to_zero,
-                               whole_frames)
+    from .digitaldelay import DIVISION_BEATS, laps_to_zero, whole_frames
 except ImportError:                     # pragma: no cover - after it lands
-    from ..digitaldelay import (DIVISION_BEATS, clear_of_stalls,
-                                laps_to_zero, whole_frames)
+    from ..digitaldelay import DIVISION_BEATS, laps_to_zero, whole_frames
 
 try:
     import audioecho
@@ -752,12 +767,10 @@ class TapeDelay(_component.Component):
                            SPACING_MAX_UM)
         self._corner = self._corner_hz(clamped, spacing)
         self._damping = nominal_damping_hz(self._hz(self._corner), fs)
-        feedback = _between(self._value(FEEDBACK_I), 0.0, FEEDBACK_MAX)
-        # The loop low-pass is always in, and the node can hold a small value
-        # for ever at a Feedback a hair either side of 1 - 0.5 / k; the node
-        # is handed the nearer edge of that window instead.
-        self._feedback = clear_of_stalls(
-            feedback, tone_excess(self._damping, fs)[1])
+        # Handed as set: since audiodsp v0.6.3rc1 the node lands a loop
+        # low-pass that has stopped moving (#157), so no Feedback holds a
+        # small value for ever and nothing is stepped clear here.
+        self._feedback = _between(self._value(FEEDBACK_I), 0.0, FEEDBACK_MAX)
 
         wow = _between(self._value(WOW_I), 0.0, WOW_MAX_CENTS)
         flutter = _between(self._value(FLUTTER_I), 0.0, FLUTTER_MAX_CENTS)
@@ -769,8 +782,12 @@ class TapeDelay(_component.Component):
             if depth > 0.0:
                 self._table_index = spare
                 self._table = self._tables[spare]
-            else:
+            elif self._fresh:
                 self._table = None
+            # Otherwise a playing node keeps the table it has: the node ramps
+            # the old depth out over 20 ms (audiodsp#160), and without a
+            # table it would ramp it out on its own sine instead, a jump in
+            # the read offset. At depth 0 the table moves nothing.
             self._wow_ms = depth
             self._wow_key = key
 
@@ -809,7 +826,5 @@ class TapeDelay(_component.Component):
         `fget`."""
         memory, excess = tone_excess(self._damping, self._sample_rate)
         laps = laps_to_zero(self._feedback, excess)
-        if laps is None:                    # pragma: no cover - stepped clear
-            return None
         wow = int(math.ceil(self._wow_ms * self._sample_rate / 1000.0))
         return int(laps * (self._reach + wow + 1 + memory))
