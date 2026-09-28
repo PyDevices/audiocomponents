@@ -144,6 +144,17 @@ class ConstantGlideWalk(AnalogDelay):
         return 787.5 / 800.0
 
 
+class UnflooredWalk(AnalogDelay):
+    """Section 6: the clock's law with no floor. A slew under half a
+    single-precision step of the head's position rounds away in the node's
+    walk, so a small move never lands."""
+
+    NAME = 'AnalogDelay'
+
+    def _walk_rate(self, from_frames, to_frames):
+        return ad.clock_slew(from_frames, to_frames)
+
+
 class DryGainDelay(AnalogDelay):
     """T7: the output +0.1 dB (`kit_faults.HiddenGain`), a dry above
     unity, which nothing reaches: the node's dry is exactly 1 below Mix 1."""
@@ -1050,6 +1061,73 @@ class T3TimeGlidesOnTheClock(unittest.TestCase):
             self.assertFalse(result["passed"], (rate, result))
             self.assertGreater(result["walk"], 1.5 * result["k_new"])
             self.assertLess(result["whole"] - result["law"], -600.0)
+
+
+def noise_src(frames, rate, seed=5):
+    rng = np.random.RandomState(seed)
+    values = np.round(rng.uniform(-1.0, 1.0, frames) * 8000.0)
+    return probes.ArraySource(array("h", values.astype(np.int16).tobytes()),
+                              rate=rate, channels=1, block=BLOCK)
+
+
+def small_move_lands(cls, rate, t_old, t_new):
+    """(differing samples, walk floor handed) over the last 0.5 s of 3 s
+    after one move from rest `t_old -> t_new` through `set_macro`, against
+    the class built at `t_new`: 0 means the head reached the new frame."""
+    fill = int(rate / BLOCK) + 1
+    settled = int(3.0 * rate)
+    outs = []
+    for time_ms in (t_old, t_new):
+        effect = cls(noise_src(fill * BLOCK + settled + BLOCK, rate),
+                     sample_rate=rate, time_ms=time_ms, mix=2.0,
+                     feedback=0.0)
+        pull(effect, fill * BLOCK)
+        if time_ms == t_old:
+            effect.set_macro(TIME_I, midi_of_ms(t_new))
+        outs.append(pull(effect, settled))
+    last = int(0.5 * rate)
+    return int(np.count_nonzero(outs[0][-last:] != outs[1][-last:]))
+
+
+class SmallTimeMovesLand(unittest.TestCase):
+    """Section 6: every Time lands on its whole frame, a move of a few
+    frames included. The node walks in single precision, so the class
+    floors the walk rate at two single-precision steps of the furthest the
+    head may sit (written out here: 2^(e - 23) for a head under 2^e
+    frames)."""
+
+    MOVES = ((300.0, 300.1), (300.0, 299.9), (600.0, 599.5),
+             (300.0, 300.02))
+
+    def test_moves_under_eight_frames_land(self):
+        for rate in (48000, 44100):
+            for t_old, t_new in self.MOVES:
+                moved = whole(t_new, rate) - whole(t_old, rate)
+                self.assertLess(abs(moved), 25)
+                with self.subTest(rate=rate, move=(t_old, t_new)):
+                    self.assertEqual(
+                        small_move_lands(AnalogDelay, rate, t_old, t_new), 0)
+
+    def test_the_floor_as_handed(self):
+        with NodeSpy():
+            effect = AnalogDelay(silence_src(4 * BLOCK), sample_rate=RATE)
+            effect.set_macro(TIME_I, midi_of_ms(300.1))   # +5 frames
+            self.assertEqual(effect._delay._handed["delay_slew"], 2.0 ** -9)
+            effect = AnalogDelay(silence_src(4 * BLOCK), sample_rate=RATE,
+                                 time_ms=600.0)
+            effect.set_macro(TIME_I, midi_of_ms(599.5))   # -24 frames
+            self.assertEqual(effect._delay._handed["delay_slew"], 2.0 ** -8)
+            effect = AnalogDelay(silence_src(4 * BLOCK), sample_rate=RATE)
+            effect.set_macro(TIME_I, midi_of_ms(100.0))   # the law, 2.0
+            self.assertAlmostEqual(effect._delay._handed["delay_slew"], 2.0)
+
+    def test_the_unfloored_law_leaves_the_head_short(self):
+        for rate in (48000, 44100):
+            for t_old, t_new in self.MOVES[:3]:
+                with self.subTest(rate=rate, move=(t_old, t_new)):
+                    self.assertGreater(
+                        small_move_lands(UnflooredWalk, rate, t_old, t_new),
+                        1000)
 
 
 class T7DryIsAWire(unittest.TestCase):

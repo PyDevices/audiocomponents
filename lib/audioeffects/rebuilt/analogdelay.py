@@ -19,7 +19,8 @@ an octave higher and so keeps its repeats an octave brighter. Time is
 20-600 ms on both, Feedback 0-0.99, and Mix 0-2 (dry at unity up to 1, wet
 alone at 2; Mix 0 is a wire while the line keeps recording). Turn Time
 while it plays and the repeats bend in pitch the way a clock step bends
-them, and settle. Modulation (0-5 ms) and Mod Rate (0.05-8 Hz) wobble the
+them, and settle (a turn through many positions takes seconds; see
+"Turning Time" below). Modulation (0-5 ms) and Mod Rate (0.05-8 Hz) wobble the
 delay on a triangle, the Memory Man's chorus and vibrato: a blend with
 Modulation up is a chorus, the wet alone (Mix 2, patch 4) a vibrato.
 Spread feeds each side's repeats into the other. Sync locks Time to
@@ -93,10 +94,26 @@ next value up. The read then trails the frame by at most 0.00195 frames at
 `T_old` to `T_new` walks the read head at |T_new - T_old| / T_new, so it
 holds the pitch ratio T_old / T_new for exactly T_new and then returns to
 unity, without a click: 200 -> 100.4 ms bends the repeats +1193 cents for
-100.4 ms, 100 -> 300 ms -1902 cents for 300 ms. The walk's rate is taken
-from the Time last handed to the node, so a move issued while the last one
-still walks runs at a rate that no longer matches the head, and the pitch
-claim does not cover it. It is claimed for moves of up to 3 : 1 and inputs
+100.4 ms, 100 -> 300 ms -1902 cents for 300 ms. The node walks the head in
+single precision, and a rate under half a step of the head's position
+would round back to where it was and leave the head short for good, so
+the rate never goes below two single-precision steps of the furthest the
+head may sit (1/512 of a frame per frame from 8 192 to 16 384 frames,
+1/256 above). That only touches moves of under 0.4 % of T: they land in
+less than T_new, bent by at most 7 cents (300 -> 300.1 ms, 5 frames at
+48 kHz, lands in 0.053 s).
+
+**Turning Time takes seconds to settle.** The walk's rate is taken from
+the Time last handed to the node, not from where the head is, because the
+class cannot see the head. A knob turned through several positions sends
+several moves, and once the head falls behind, the last move's small rate
+carries it the rest of the way. At 48 kHz, 7-bit positions one block
+apart: MIDI 101 -> 111 (299 -> 391 ms, 10 moves) still differs from the
+same move made as one jump 3.4 s after the last move, where the jump has
+landed in 0.39 s; MIDI 64 -> 101 (111 -> 299 ms, 37 moves) 6.9 s. A
+14-bit controller's fine steps are slower still: 300 -> 400 ms in 1386
+moves takes 20 s, walking at the floor. The pitch claim covers none of
+this, only a move from rest. It is claimed for moves of up to 3 : 1 and inputs
 from -28.7 to -0.2 dBFS; quieter, int16 rounding decides the reading
 (13 cents off at -48.7 dBFS). The claim is about the walk itself: under
 feedback, each later repeat re-reads a line that was written while the
@@ -237,6 +254,17 @@ def clock_slew(from_frames, to_frames):
     walk runs |dT| / T_new delay-seconds per second, so it lasts exactly
     T_new and holds the ratio T_old / T_new (dossier section 6)."""
     return abs(float(to_frames) - float(from_frames)) / float(to_frames)
+
+
+def walk_floor(frames):
+    """The smallest `delay_slew` that still moves a read head sitting at up
+    to `frames`: two single-precision steps of `frames`. The node walks
+    `delay_current += slew` in single precision, and a slew under half a
+    step of the head's position rounds back to where it was, so the head
+    would stay put for good (a move under about T / 2048 frames)."""
+    mantissa, exponent = math.frexp(float(max(1, frames)))
+    del mantissa
+    return 2.0 ** (exponent - 23)
 
 
 def _f32(value):
@@ -456,8 +484,11 @@ class AnalogDelay(_component.Component):
         return hand_off_ms(frames, self._sample_rate)
 
     def _walk_rate(self, from_frames, to_frames):
-        """The node's `delay_slew` for a Time move: the clock's law."""
-        return clock_slew(from_frames, to_frames)
+        """The node's `delay_slew` for a Time move: the clock's law, floored
+        at two single-precision steps of the furthest the head may sit, so
+        a move too small for the law's rate still lands."""
+        return max(clock_slew(from_frames, to_frames),
+                   walk_floor(max(from_frames, to_frames, self._reach)))
 
     def _transport_state(self):
         transport = self._transport
