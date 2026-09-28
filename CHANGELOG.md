@@ -87,7 +87,10 @@ there, and are recorded in its changelog.
   cost is unmeasured. At audiodsp v0.6.3rc1 the Feedback is handed as set
   (no stepping clear of the stall windows; the bound counts one landing lap
   there), and a Modulation move glides over 20 ms instead of stepping the
-  read offset.
+  read offset. In stereo, Spread reaches the node on a grid of 4096ths
+  (within 1/8192 of the knob; 0 and 1 unchanged), because off that grid
+  the node's cross-feed sum could land a step above both sides and hold
+  9-50 LSB for ever at a Feedback a float32 step under 1 - 0.5 / k.
 
 ### Changed
 

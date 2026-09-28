@@ -79,7 +79,7 @@ and a burst's rise time does not change from repeat to repeat. And there
 is no fixed anti-alias and reconstruction pair: both pedals bound their
 wet path near 3 kHz at every Time, so at short Times this class's repeats
 are brighter than either pedal's. The line's image spectra and its clock
-noise are not modelled either. None of those has a node in audiodsp v0.6.2
+noise are not modelled either. None of those has a node in audiodsp v0.6.3rc1
 that can sit inside the loop.
 
 **Time.** Every Time is landed on the nearest whole frame at the running
@@ -132,15 +132,23 @@ depth times where the triangle stood (142 frames for 5 -> 2 ms at the
 triangle's peak, 48 kHz). While the swing travels the extra pitch is the
 change over 20 ms times where the triangle stands: 5 -> 2 ms at a peak
 bends the repeats by 15 % for those 20 ms, +242 cents at one peak and
--281 at the other. So the read moves at most |change| / 20 ms plus the
-triangle's own 4 x Mod Rate x swing of a frame per frame faster or slower
-than the tone, and no step in the output is larger than the input's own
-largest step times 1 plus that: on a 997 Hz tone at 12 000 LSB, wet only,
-Time 300 ms, five moves between 0 and 5 ms at Mod Rate 1 and 8 Hz and
-eight points of the triangle, at 48, 44.1 and 22.05 kHz, the largest step
-in the 40 ms after a move is at most 0.943 of that (1 -> 1.5 ms at 1 Hz,
-48 kHz: 1 522 LSB against 1 615, where v0.6.2's node read 7 133). Mod
-Rate moves keep the triangle's phase and do not step.
+-281 at the other. A move made while the last one's 20 ms is still
+running starts a new 20 ms from wherever the swing has got to, so the
+swing travels at (target - where it stands) / 20 ms, which a knob turned
+through several positions a block apart can make a little faster than
+any one move's own |change| / 20 ms. So the read moves at most that
+distance over 20 ms plus the triangle's own 4 x Mod Rate x swing of a
+frame per frame faster or slower than the tone. With the wet alone and
+Feedback 0, no step in the output is then larger than the input's own
+largest step times 1 plus that: on a 997 Hz tone at 12 000 LSB, Time
+300 ms, five moves between 0 and 5 ms at Mod Rate 1 and 8 Hz and eight
+points of the triangle, at 48, 44.1 and 22.05 kHz, the largest step in
+the 40 ms after a move is at most 0.943 of that (1 -> 1.5 ms at 1 Hz,
+48 kHz: 1 522 LSB against 1 615, where v0.6.2's node read 7 133). With
+the dry in or the repeats recirculating, the output's own step already
+passes that bar before any move (1.9 x at Mix 1, 1.3 x at Feedback 0.5),
+so the sentence says nothing there. Mod Rate moves keep the triangle's
+phase and do not step.
 
 **Input ceiling.** The dry path sits at unity and the repeats add to it,
 so a hot input can put the output on the int16 rail; there is no input
@@ -160,9 +168,18 @@ side of 1 - 0.5 / k it can come to rest a hair above k LSB and hand it
 back. Up to audiodsp v0.6.2 it did so for ever, and the class handed the
 node the nearer edge of that window instead. Since v0.6.3rc1 the node sets
 a stalled low-pass onto its input (audiodsp#157), the Feedback you set is
-the one the node plays, and the bound counts one more lap there. After a
-falling Time move the bound keeps the Time the head walked from until a
-reset, because the class cannot see how far the walk has got.
+the one the node plays, and the bound counts one more lap there. In
+stereo the cross-feed could do the same thing: the node's sum of the two
+sides, in single precision, can come out a step above both, and with
+Spread at 39 / 127 or any other value off a short binary grid and a
+Feedback a float32 step or two under 1 - 0.5 / k that handed k LSB back for
+ever. So Spread reaches the node on a grid of 4096ths, within 1/8192 of
+the knob, where that sum is exact on every interpreter for any side
+under 4096 LSB (above that a step is far too small to hold a repeat);
+0 and 1 are untouched. The bound then holds at every Feedback and Spread
+the constructor or a macro can hand, stereo and mono. After a falling
+Time move the bound keeps the Time the head walked from until a reset,
+because the class cannot see how far the walk has got.
 
 `capabilities = ("tempo_sync",)`: with Sync on, the class reads
 `self._transport()` on every macro move and program change (not per block).
@@ -228,6 +245,10 @@ LINE_HEADROOM_MS = SWING_MAX_MS + 1.0
 
 #: The node's own loop ceiling (`audiodsp_feedback_delay.c:157`).
 FEEDBACK_MAX = 0.99
+
+#: Spread's grid as the node is handed it: whole 4096ths, so the loop's
+#: cross-feed sum is exact for the small lanes a tail ends on.
+SPREAD_GRID = 4096
 
 #: One period of the modulation's triangle, borrowed by the node.
 TABLE_POINTS = 256
@@ -319,6 +340,19 @@ def tone_excess(damping_hz, sample_rate):
     coefficient = 1.0 - math.exp(-per_frame)
     frames = int(math.ceil(32.0 * math.log(2.0) / per_frame))
     return frames, 2.0 ** -17 + 2.0 ** -24 / coefficient
+
+
+def spread_on_grid(spread):
+    """`spread` on the 1/4096 grid the node is handed (dossier section 8,
+    R13). The node sends `own * (1 - s) + other * s` round the loop in
+    single precision; with s = 39 / 127 or any other value off a short
+    binary grid those two products can add up to one step above both
+    lanes, and at a Feedback a hair under 1 - 0.5 / k that hands a landed
+    k LSB back for ever. On the grid both products of a lane under 4096
+    LSB are exact, so the sum lies between the lanes on every interpreter,
+    whether or not a board fuses the multiply-add. The grid moves Spread
+    by at most 1/8192."""
+    return math.floor(spread * SPREAD_GRID + 0.5) / SPREAD_GRID
 
 
 def _between(value, low, high):
@@ -597,17 +631,22 @@ class AnalogDelay(_component.Component):
         self._damping = nominal_damping_hz(self._corner, fs)
 
         # Handed as set: since audiodsp v0.6.3rc1 the node lands a loop
-        # low-pass that has stopped moving (#157), so no Feedback holds a
-        # small value for ever and nothing is stepped clear here.
+        # low-pass that has stopped moving (#157), so the low-pass holds no
+        # Feedback's small value for ever and nothing is stepped clear
+        # here. The cross-feed's own stall is closed below, by Spread's
+        # grid.
         self._feedback = _between(self._value(FEEDBACK_I), 0.0, FEEDBACK_MAX)
 
         self._swing_ms = _between(self._value(MODULATION_I), 0.0,
                                   SWING_MAX_MS)
         # At one channel the node's cross-feed sends the repeat nowhere.
+        # At two, Spread goes on the 1/4096 grid, where the loop's sum of
+        # the two sides cannot land above both and hand a value back.
         if self._channel_count == 1:
             self._spread = 0.0
         else:
-            self._spread = _between(self._value(SPREAD_I), 0.0, 1.0)
+            self._spread = spread_on_grid(
+                _between(self._value(SPREAD_I), 0.0, 1.0))
         self._delay.set(
             delay_slew=self._slew,
             delay_ms=self._node_ms,
@@ -625,7 +664,8 @@ class AnalogDelay(_component.Component):
         an upper bound: `laps_to_zero(f, excess)` laps of the longest delay
         the read head may be at, plus the modulation's peak swing in frames
         rounded up, plus one frame for the interpolated read, plus the loop
-        low-pass's memory. Finite at every setting the class reaches."""
+        low-pass's memory. Finite at every setting the class reaches, and
+        with Spread on its grid it holds at every Spread in stereo."""
         self._check_live()
         return self._tail_bound()
 

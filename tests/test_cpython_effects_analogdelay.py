@@ -8,7 +8,8 @@ reads from the move's own first difference, the landing gap is read, the
 walk is read where the head lands, the binade pieces have a resolvable
 minimum, and T7's arrival clause is claimed across Mix's interior material
 by material, at every grid position and at any Mix at or above
-1.01 x 0.5 / W on the two loud materials). Four of its
+1.01 x 0.5 / W on the two loud materials; and, from re-audit fix round 2,
+R13: Spread handed on a 1/4096 grid so the stereo tail ends). Four of its
 Tier 2 rows can be demonstrated, T2a, T3, T6 and T7, and each is here as
 the measurement at a few of the row's cells beside the same measurement
 shown red on the row's planted fault at the constructor defaults. Every
@@ -400,6 +401,23 @@ class SteppedAnalog(AnalogDelay):
         if stepped != self._feedback:
             self._feedback = stepped
             self._delay.set(feedback=stepped)
+
+
+class RawSpread(AnalogDelay):
+    """The class as at 71e680b: Spread handed to the node as set, off the
+    1/4096 grid. At two channels with Spread inside (0, 1) and a Feedback
+    a float32 step or two under 1 - 0.5 / k, the node's cross-feed sum
+    lands an ulp above a landed k and hands it back for ever."""
+
+    NAME = 'AnalogDelay'
+
+    def _refresh(self):
+        AnalogDelay._refresh(self)
+        if self._channel_count == 2:
+            spread = min(1.0, max(0.0, self._value(SPREAD_I)))
+            if spread != self._spread:
+                self._spread = spread
+                self._delay.set(cross_feed=spread)
 
 
 class JumpModAnalog(AnalogDelay):
@@ -1161,6 +1179,13 @@ def read_feedback_as_set(effect):
                  - effect.macro(FEEDBACK_I), 9)
 
 
+def read_spread_on_grid(effect):
+    """Whether the `cross_feed` handed to the node is a whole number of
+    4096ths (RawSpread hands 39/127, which is not)."""
+    handed = float(effect._delay._handed["cross_feed"]) * 4096.0
+    return handed == math.floor(handed)
+
+
 def read_modulation_move(effect):
     """On a copy at these positions, one Modulation move of 16 grid steps
     after a block has been pulled: the `delay_ms` handed less the
@@ -1300,6 +1325,8 @@ REACH_WALKS = (
     ("SteppedAnalog", SteppedAnalog, read_feedback_as_set,
      {"feedback": 0.99}),
     ("JumpModAnalog", JumpModAnalog, read_modulation_move, {}),
+    ("RawSpread", RawSpread, read_spread_on_grid,
+     {"feedback": 0.9899999, "spread": 39.0 / 127.0}),
 )
 
 
@@ -2083,6 +2110,70 @@ class Tier1Fast(unittest.TestCase):
                                 time_ms=600.0, feedback=0.5, mix=2.0)
         self.assertNotEqual(stepped._feedback, 0.5)
         self.assertLess(abs(stepped._feedback - 0.5), 3e-5)
+
+    #: (feedback, spread) where the node's cross-feed sum, off the grid,
+    #: hands a landed k back: the re-refutation's three portable cells
+    #: (k = 9, 11, 50; the Feedback as its float32 value) and the typed
+    #: Feedback 0.9899999 at Spread 39/127 (analogdelay_reaudit1_refute.py).
+    CROSS_FEED_CELLS = ((0.9444443583488464, 1.0 / 127.0, 9),
+                        (0.9545453786849976, 3.0 / 127.0, 11),
+                        (0.9899999499320984, 2.0 / 127.0, 50),
+                        (0.9899999, 39.0 / 127.0, 50))
+
+    def _cross_feed_tail(self, cls, feedback, spread, k):
+        """Stereo, 48 kHz, Time 20 ms, Mix 2: a DC of 2k + 2 LSB on both
+        lanes for four laps, then silence to `tail_samples` plus a lap.
+        Returns (declared, the last non-zero frame after the fill, the
+        largest |sample| past `tail_samples`)."""
+        options = {"time_ms": 20.0, "feedback": feedback, "mix": 2.0,
+                   "spread": spread}
+        probe = cls(silence_src(64), sample_rate=RATE, **options)
+        declared = probe.tail_samples
+        probe.deinit()
+        fill = 4 * 960 // BLOCK * BLOCK + BLOCK
+        values = [2 * k + 2] * fill + [0] * (declared + 960 + BLOCK)
+        effect = cls(array_src(values), sample_rate=RATE, **options)
+        out = pull(effect, len(values), 2)
+        effect.deinit()
+        after = out[fill * 2:]
+        nonzero = np.flatnonzero(after)
+        last = 0 if nonzero.size == 0 else int(nonzero[-1]) // 2 + 1
+        past = after[declared * 2:]
+        return declared, last, int(np.max(np.abs(past.astype(np.int64))))
+
+    def test_the_cross_feed_stall_cells_reach_zero(self):
+        # Re-audit round 1's Tier 1 failure (dossier section 8, R13): with
+        # Spread handed as set these cells hold k LSB on both lanes for
+        # ever. On the 1/4096 grid the cross-feed sum is exact and each
+        # ends inside the bound. Planted: RawSpread, the class as at
+        # 71e680b, red at all four.
+        for feedback, spread, k in self.CROSS_FEED_CELLS:
+            declared, last, past = self._cross_feed_tail(
+                AnalogDelay, feedback, spread, k)
+            self.assertGreater(last, 0, (feedback, spread))
+            self.assertLessEqual(last, declared, (feedback, spread))
+            self.assertEqual(past, 0, (feedback, spread))
+            declared, last, past = self._cross_feed_tail(
+                RawSpread, feedback, spread, k)
+            self.assertEqual(past, k, (feedback, spread))
+
+    def test_spread_is_handed_on_the_grid(self):
+        for rate in RATES:
+            effect = AnalogDelay(silence_src(64, 2, rate), sample_rate=rate)
+            for midi in range(128):
+                effect.set_macro(SPREAD_I, midi)
+                knob = effect._value(SPREAD_I)
+                self.assertEqual(effect._spread * 4096.0,
+                                 math.floor(effect._spread * 4096.0), midi)
+                self.assertLessEqual(abs(effect._spread - knob),
+                                     1.0 / 8192.0, midi)
+            effect.set_macro(SPREAD_I, 0)
+            self.assertEqual(effect._spread, 0.0)
+            effect.set_macro(SPREAD_I, 127)
+            self.assertEqual(effect._spread, 1.0)
+            mono = AnalogDelay(silence_src(64, 1, rate), sample_rate=rate,
+                               spread=39.0 / 127.0)
+            self.assertEqual(mono._spread, 0.0)
 
     def _modulation_move(self, cls, start_ms, target_ms, mod_hz=1.0,
                          points=8):
