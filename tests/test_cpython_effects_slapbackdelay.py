@@ -630,14 +630,35 @@ def t3_measure(cls, rate=RATE, **options):
             "head": head, "energy_db": energy_db}
 
 
-#: T3's presence band (fix round 1, dossier revision; scoped in fix round
-#: 2): with Tone out and Repeats 0, the 4 dB bar holds on material whose
-#: energy lies below a third of the running rate. Above it the wow's
-#: fractional read (section 8.3) takes the repeat's energy further down; at
-#: Nyquist `alt_fs` reads -4.86 / -5.48 / -5.20 dB. With Tone in, its
-#: low-pass takes an in-band tone above the corner down, and with Repeats
-#: up the repeats stack on a steady tone, so no band is claimed there.
-PRESENCE_BAND = 1.0 / 3.0
+#: T3's presence on steady tones, as measured (re-audit fix round 1,
+#: dossier revision). No band is claimed: two sentences that claimed one
+#: were each disconfirmed (fix rounds 1 and 2). The 4 dB bar is the frozen
+#: row's, on `ramp_fs` and `sweep_log`. On a steady tone the repeat's level
+#: depends on the frequency (the wow's fractional read, section 8.3, takes
+#: the top of the band down) and on the level (Saturation's cubic takes a
+#: full-scale tone down), and this table is what the class reads: Level 2,
+#: `presence_db`, a 2 s tone, head 0 in every cell. Keys are (cell,
+#: options, dBFS, fraction of the rate); values are dB at 48 / 44.1 /
+#: 22.05 kHz. Any reading more than PRESENCE_PIN_DB from its entry is red,
+#: so the words cannot drift from the class either way.
+PRESENCE_TABLE = (
+    ("defaults", {}, -20.0, 1.0 / 3.0, (-2.90, -3.29, -3.01)),
+    ("Saturation 1", {"saturation": 1.0}, -20.0, 1.0 / 3.0,
+     (-2.91, -3.30, -3.02)),
+    ("patch 3", {"patch": 3}, -20.0, 1.0 / 3.0, (-2.81, -3.37, -3.11)),
+    ("defaults", {}, 0.0, 1.0 / 3.0, (-3.09, -3.47, -3.20)),
+    ("Saturation 1", {"saturation": 1.0}, 0.0, 1.0 / 3.0,
+     (-4.29, -4.57, -4.35)),
+    ("patch 3", {"patch": 3}, 0.0, 1.0 / 3.0, (-3.78, -4.24, -4.01)),
+    ("Saturation 1", {"saturation": 1.0}, 0.0, 0.30, (-3.87, -4.08, -3.92)),
+    ("Saturation 1", {"saturation": 1.0}, -3.0, 1.0 / 3.0,
+     (-3.57, -3.92, -3.66)),
+)
+PRESENCE_PIN_DB = 0.02
+
+
+def dbfs_amp(dbfs):
+    return 32767.0 * 10.0 ** (dbfs / 20.0)
 
 
 def presence_db(cls, values, rate=RATE, **options):
@@ -1273,21 +1294,38 @@ class T3Mono(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertGreater(result["lr"], 0)
 
-    def test_presence_holds_inside_the_band(self):
-        # Fix round 1: a -20 dBFS tone at a third of the rate, the band's
-        # edge, at the defaults, reads within 4 dB at every rate.
-        for rate in RATES:
-            head, energy = presence_db(SlapbackDelay,
-                                       tone(PRESENCE_BAND * rate, rate), rate)
-            self.assertEqual(head, 0, rate)
-            self.assertLessEqual(abs(energy), 4.0, (rate, energy))
+    def test_presence_on_tones_reads_the_measured_table(self):
+        # Re-audit fix round 1: the dossier reports this table instead of
+        # a band. Each cell must read within PRESENCE_PIN_DB of its entry.
+        for label, options, dbfs, fraction, table in PRESENCE_TABLE:
+            for rate, want in zip(RATES, table):
+                head, energy = presence_db(
+                    SlapbackDelay, tone(fraction * rate, rate,
+                                        amp=dbfs_amp(dbfs)),
+                    rate, **options)
+                cell = (label, dbfs, fraction, rate, round(energy, 3))
+                self.assertEqual(head, 0, cell)
+                self.assertLessEqual(abs(energy - want), PRESENCE_PIN_DB,
+                                     cell)
 
-    def test_the_band_is_scoped_to_tone_out_and_repeats_0(self):
-        # Fix round 2: the band sentence holds with Tone out and Repeats 0
-        # only. Inside fs/3, Tone at its 2 kHz stop takes a 3 kHz tone
-        # more than 4 dB down, and Repeats at its 0.6 stop stacks a 1 kHz
-        # tone more than 4 dB up, at every rate. If either comes back
-        # inside 4 dB, the scope can widen, and the words should say so.
+    def test_a_full_scale_tone_at_saturation_1_reads_past_4_db(self):
+        # Round 3 disconfirmed "with Tone out and Repeats 0, the 4 dB bar
+        # holds on material below a third of the running rate" here: Tone
+        # out, Repeats 0, Saturation 1, a 0 dBFS tone at fs/3, at every
+        # rate. If this comes back inside 4 dB, a band sentence could be
+        # written again, and it would have to be measured first.
+        for rate in RATES:
+            head, energy = presence_db(
+                SlapbackDelay, tone(rate / 3.0, rate, amp=dbfs_amp(0.0)),
+                rate, saturation=1.0)
+            self.assertEqual(head, 0, rate)
+            self.assertLess(energy, -4.0, (rate, energy))
+
+    def test_tone_in_and_repeats_take_a_tone_past_4_db(self):
+        # Fix round 2: Tone at its 2 kHz stop takes a 3 kHz tone more than
+        # 4 dB down, and Repeats at its 0.6 stop stacks a 1 kHz tone more
+        # than 4 dB up, at every rate (-20 dBFS). The low-pass and the
+        # repeats doing their jobs, not a defect.
         for rate in RATES:
             head, energy = presence_db(SlapbackDelay, tone(3000.0, rate),
                                        rate, tone_hz=2000.0)
@@ -1298,10 +1336,10 @@ class T3Mono(unittest.TestCase):
             self.assertEqual(head, 0, rate)
             self.assertGreater(energy, 4.0, (rate, energy))
 
-    def test_presence_outside_the_band_is_the_disclosed_wow_loss(self):
+    def test_presence_at_nyquist_is_the_disclosed_wow_loss(self):
         # At Nyquist the defaults read outside 4 dB, and at Wow 0 inside
         # 0.5 dB: the loss is the wow's fractional read, not the class
-        # dropping the repeat. If this moves, the band's words move too.
+        # dropping the repeat. If this moves, the dossier's words move too.
         for rate in RATES:
             alt = probes.alt_fs(frames=rate, channels=1)
             _, energy = presence_db(SlapbackDelay, alt, rate)

@@ -97,9 +97,11 @@ settings each, three rates, stereo and mono, a full-scale ramp and noise),
 5 640 of 166 430 700 samples differ, each by 1 LSB. None of those was at
 Wow 0, but that run tried three Times only (40, 135 and 250 ms). Where
 the node's single-precision `delay_ms * rate / 1000` misses the whole
-frame the class asked for (21 Time positions at 44.1 kHz, 20 at
-22.05 kHz, none at 48 kHz and none at a shipped patch's Time), Wow 0
-differs by 1 LSB as well. The defaults, and anything since a reset that
+frame the class asked for, Wow 0 differs by 1 LSB as well. That is 21
+of the 128 grid positions at 44.1 kHz and 20 at 22.05 kHz, and about one
+whole-frame Time in eight at either rate (1 159 of 9 262, 579 of 4 632;
+`time_ms=136.054` at 44.1 kHz is one); none at 48 kHz, and none at a
+shipped patch's Time. The defaults, and anything since a reset that
 has not put Tone in, hand the node exactly no filter. A Tone in the
 constructor counts: `tone_hz=5000` and then patch 0, or `patch=5` and then patch 0, is the 1 LSB case (10 of
 384 000 samples of 4 s of 0 dBFS noise at 48 kHz stereo), and a `reset()`
@@ -183,8 +185,10 @@ TONE_MAX_HZ = 20000.0
 #: float rounding, which moved 5 640 of 166 430 700 samples by 1 LSB and
 #: none by more (`slapbackdelay_fix_tone_track.py`). It can move one only
 #: where the tap is fractional: with Wow on, and at Wow 0 wherever the node's
-#: float32 `delay_ms * rate / 1000` misses the whole frame (21 Time
-#: positions at 44.1 kHz, 20 at 22.05 kHz, none at 48 kHz).
+#: float32 `delay_ms * rate / 1000` misses the whole frame: 21 of the 128
+#: grid positions at 44.1 kHz and 20 at 22.05 kHz, about one whole-frame
+#: Time in eight at either rate (1 159 of 9 262, 579 of 4 632), none at
+#: 48 kHz.
 TONE_TRACK_PER_RATE = 32.0
 
 #: The wow's fixed rate and the Wow knob's ceiling, in cents peak.
