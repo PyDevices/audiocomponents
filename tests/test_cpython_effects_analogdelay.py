@@ -1,7 +1,11 @@
 """`AnalogDelay`'s own invariant and planted-fault tests.
 
 The dossier is `workspace docs/effects-internal/dossiers/AnalogDelay.md`
-(frozen at anchor cc61011, the Station A critique revision). Four of its
+(frozen at anchor cc61011, the Station A critique revision, with the
+post-build revision of 2026-09-28 in its section 8: T3's inside no-step bar
+carries the loop low-pass's memory, the walk is read where the head lands,
+the binade pieces have a resolvable minimum, and T7's arrival clause is
+claimed across Mix's interior material by material). Four of its
 Tier 2 rows can be demonstrated, T2a, T3, T6 and T7, and each is here as
 the measurement at a few of the row's cells beside the same measurement
 shown red on the row's planted fault at the constructor defaults. Every
@@ -155,6 +159,57 @@ class UnflooredWalk(AnalogDelay):
         return ad.clock_slew(from_frames, to_frames)
 
 
+class _ReadStep(kit_faults._Node):
+    """A node in the path that, from frame `step_at` on, plays its source
+    `frames` frames late: the read stepping back that far, once, and
+    staying there."""
+
+    def __init__(self, source, frames):
+        kit_faults._Node.__init__(self, source)
+        self.frames = int(frames)
+        self.pulled = 0
+        self.step_at = None
+        self._history = np.zeros(self.frames * self.channel_count)
+
+    def _process(self, block):
+        channels = self.channel_count
+        count = len(block) // channels
+        joined = np.concatenate([self._history, block])
+        late = joined[:len(block)]
+        self._history = joined[len(block):]
+        out = block.copy()
+        if self.step_at is not None:
+            start = max(0, self.step_at - self.pulled)
+            if start < count:
+                out[start * channels:] = late[start * channels:]
+        self.pulled += count
+        return out
+
+
+class MidWalkReadStep(AnalogDelay):
+    """T3's no-step clause: halfway through a Time move's walk the read
+    steps 8 frames late, once, and walks on from there. Nothing the surface
+    reaches puts a step in the walk: every Time move is one constant-rate
+    walk (section 6)."""
+
+    NAME = 'AnalogDelay'
+    STEP_FRAMES = 8
+
+    def _build(self, *arguments, **options):
+        AnalogDelay._build(self, *arguments, **options)
+        self._step = _ReadStep(self._delay, self.STEP_FRAMES)
+        self._output = self._step
+
+    def _refresh(self):
+        before, fresh = self._frames, self._fresh
+        AnalogDelay._refresh(self)
+        step = getattr(self, "_step", None)
+        if (step is not None and not fresh and self._frames != before
+                and self._slew > 0.0):
+            walk = abs(self._frames - before) / self._slew
+            step.step_at = step.pulled + int(walk // 2)
+
+
 class DryGainDelay(AnalogDelay):
     """T7: the output +0.1 dB (`kit_faults.HiddenGain`), a dry above
     unity, which nothing reaches: the node's dry is exactly 1 below Mix 1."""
@@ -260,10 +315,10 @@ def silence_src(frames, channels=2, rate=RATE):
                               rate=rate, channels=channels, block=BLOCK)
 
 
-def sine_values(hz, frames, rate, level):
+def sine_values(hz, frames, rate, level, phase=0.0):
     n = np.arange(frames)
-    return np.round(level * np.sin(2.0 * math.pi * hz * n / rate)).astype(
-        np.int64).tolist()
+    return np.round(level * np.sin(2.0 * math.pi * hz * n / rate
+                                   + phase)).astype(np.int64).tolist()
 
 
 def pull(effect, frames, channels=None, on_block=None):
@@ -427,27 +482,42 @@ def t6_measure(cls, rate=RATE, times=(150.0, 300.0, 600.0)):
 MOVE_AT = 40960        # a block boundary 853 ms in: the line is full
 
 
-def t3_render(cls, rate, character, t_old, t_new, values, channels=1):
+def default_move_at(rate):
+    """The block boundary T3 moves on at `rate`: MOVE_AT's 853 ms, floored
+    to a block."""
+    return MOVE_AT * rate // 48000 // BLOCK * BLOCK
+
+
+def t3_render(cls, rate, character, t_old, t_new, values, channels=1,
+              move_at=None, handed=None):
     """Render `values` at Mix 2, Feedback 0, Time `t_old`, moving Time to
-    `t_new` through `set_macro(0, ...)` on the block at MOVE_AT."""
+    `t_new` through `set_macro(0, ...)` on the block at `move_at` (a block
+    boundary; MOVE_AT's by default). With a dict `handed`, the node's
+    options as handed by that move are copied into it."""
     effect = cls(array_src(values, channels, rate), sample_rate=rate,
                  character=character, time_ms=t_old, feedback=0.0, mix=2.0)
     target = midi_of_ms(t_new)
-    move_at = MOVE_AT * rate // 48000 // BLOCK * BLOCK
+    if move_at is None:
+        move_at = default_move_at(rate)
 
     def move(frame):
         if frame == move_at:
-            effect.set_macro(TIME_I, target)
+            if handed is None:
+                effect.set_macro(TIME_I, target)
+            else:
+                with NodeSpy():
+                    effect.set_macro(TIME_I, target)
+                handed.update(getattr(effect._delay, "_handed", {}))
 
     out = left(pull(effect, len(values), channels, on_block=move), channels)
     effect.deinit()
     return out, move_at
 
 
-def t3_static(cls, rate, character, time_ms, values):
-    effect = cls(array_src(values, 1, rate), sample_rate=rate,
+def t3_static(cls, rate, character, time_ms, values, channels=1):
+    effect = cls(array_src(values, channels, rate), sample_rate=rate,
                  character=character, time_ms=time_ms, feedback=0.0, mix=2.0)
-    out = left(pull(effect, len(values), 1), 1)
+    out = left(pull(effect, len(values), channels), channels)
     effect.deinit()
     return out
 
@@ -464,9 +534,11 @@ def open_loop(cls):
 
 def read_position(cls, rate, character, t_old, t_new, frames):
     """The read head's delay, frame by frame, off a slope-1 ramp render
-    through `open_loop(cls)`: `n - ramp(n) - out(n)`."""
+    through `open_loop(cls)`: `n - ramp(n) - out(n)`. Superseded for T3 by
+    `head_trace` (dossier section 8, revision 2026-09-28); kept so the
+    Station C and refutation probes still run as they were written."""
     k_old = whole(t_old, rate)
-    move_at = MOVE_AT * rate // 48000 // BLOCK * BLOCK
+    move_at = default_move_at(rate)
     origin = move_at - k_old - 2000
     n = np.arange(frames)
     ramp = ((n - origin) % 65536) - 32768
@@ -478,7 +550,9 @@ def read_position(cls, rate, character, t_old, t_new, frames):
 def walk_end(delay, move_at, k_new):
     """The first frame after the move at which the read position, and the
     frame after it, sit within 2 frames of `k_new` (the Station A probe's
-    rule), or the end of the render if it never does."""
+    rule), or the end of the render if it never does. Superseded for T3 by
+    `landing` (revision 2026-09-28): it reads a walk 2 / slew frames early,
+    which is 10-21 % of a one-grid-step move from the 20 ms stop."""
     near = np.abs(delay[move_at:] - k_new) <= 2.0
     both = np.nonzero(near[:-1] & near[1:])[0]
     if both.size == 0:
@@ -489,8 +563,10 @@ def walk_end(delay, move_at, k_new):
 def binade_pieces(delay, move_at, end, law):
     """Each piece of the walk between powers of two of the read position,
     at least 1000 frames long, as (pitch ratio off a least-squares slope,
-    frames); the node walks the head in single precision, so each binade
-    plays at its own rate."""
+    frames). Superseded for T3 by `walk_pieces` (revision 2026-09-28): it
+    found no piece on 60 -> 20 and 40 -> 20 ms at 48 and 22.05 kHz, and T3
+    then passed with nothing read; kept so the refutation probes still
+    run as they were written."""
     span = delay[move_at:end]
     powers = np.floor(np.log2(np.maximum(span, 1.0)))
     pieces = []
@@ -506,59 +582,211 @@ def binade_pieces(delay, move_at, end, law):
     return pieces
 
 
+def ramp_slope(k_old, k_new):
+    """The steepest power-of-two ramp slope, up to 64 LSB per frame, whose
+    period still holds the longer delay twice over with room for the walk:
+    the head then reads to 1 / slope frame."""
+    kmax = max(k_old, k_new)
+    slope = 1
+    while slope < 64 and 65536 // (2 * slope) > 1.25 * kmax + 64:
+        slope *= 2
+    return slope
+
+
+def head_trace(cls, rate, character, t_old, t_new, frames, move_at=None,
+               channels=1):
+    """The read head's delay off one steep ramp render through
+    `open_loop(cls)`: (delay per frame to 1 / slope frame, the frames whose
+    read straddles the ramp's wrap marked False, slope, move frame)."""
+    k_old, k_new = whole(t_old, rate), whole(t_new, rate)
+    slope = ramp_slope(k_old, k_new)
+    n = np.arange(frames)
+    ramp = ((n * slope) % 65536) - 32768
+    out, move_at = t3_render(open_loop(cls), rate, character, t_old, t_new,
+                             ramp.tolist(), channels, move_at=move_at)
+    period = 65536.0 / slope
+    delay = np.mod(n - (out + 32768.0) / slope, period)
+    bad = np.abs(np.diff(out, prepend=out[0])) > 4 * slope
+    for k in (1, 2):
+        bad[:-k] |= bad[k:].copy()
+        bad[k:] |= bad[:-k].copy()
+    return delay, ~bad, slope, move_at
+
+
+def landing(delay, valid, slope, move_at, k_new):
+    """The frame after the last one, from the move on, at which the head
+    is more than one ramp step (1 / slope frame) off `k_new`: where the
+    walk lands, at the ramp's resolution. The end of the render if the
+    head is still off there."""
+    off = (np.abs(delay[move_at:] - k_new) > 1.0 / slope) & valid[move_at:]
+    idx = np.nonzero(off)[0]
+    if idx.size == 0:
+        return move_at
+    last = move_at + int(idx[-1]) + 1
+    return len(delay) if last >= len(delay) - 3 else last
+
+
+def min_piece(slope, k_old, k_new):
+    """The shortest piece whose rate the ramp resolves to 1 cent: one ramp
+    step of position (1 / slope frame) over the piece moves its rate by at
+    most (2^(1/1200) - 1) of the law's pitch ratio k_old / k_new."""
+    ratio = float(k_old) / k_new
+    return int(math.ceil(1.0 / (slope * ratio * (2.0 ** (1.0 / 1200.0)
+                                                 - 1.0))))
+
+
+def walk_pieces(delay, valid, slope, move_at, end, k_old, k_new):
+    """The walk cut where the head crosses each power of two between the
+    two Times (the node walks the head in single precision, so each binade
+    plays at its own rate), each piece's pitch ratio 1 - dD/dn by least
+    squares over its valid frames, as (ratio, frames). A piece shorter than
+    `min_piece` is left out; if none is left, the whole walk is one piece,
+    and if that is short too, the list is empty and the clause is red."""
+    shortest = min_piece(slope, k_old, k_new)
+    lo_k, hi_k = sorted((k_old, k_new))
+    edges = [2 ** e for e in range(1, 20) if lo_k < 2 ** e < hi_k]
+    cuts = [move_at]
+    for edge in sorted(edges, reverse=k_new < k_old):
+        seg = delay[move_at:end]
+        hit = (seg >= edge) if k_new > k_old else (seg < edge)
+        idx = np.nonzero(hit & valid[move_at:end])[0]
+        if idx.size:
+            cuts.append(move_at + int(idx[0]))
+    cuts.append(end)
+
+    def fit(a, b):
+        m = np.arange(a + 2, b - 2)
+        m = m[valid[m]]
+        if len(m) < shortest:
+            return None
+        return (1.0 - np.polyfit(m.astype(float), delay[m], 1)[0], len(m))
+
+    pieces = [p for p in (fit(a, b) for a, b in zip(cuts, cuts[1:]))
+              if p is not None]
+    if not pieces:
+        whole_walk = fit(move_at, end)
+        if whole_walk is not None:
+            pieces = [whole_walk]
+    return pieces
+
+
+def memory_bars(bar, pre_bar, damping_hz, rate, frames):
+    """T3's inside no-step bar, frame by frame from the move (dossier
+    section 8, revision 2026-09-28): the shifted tone's own largest first
+    difference, plus what the loop low-pass can still carry of the pre-move
+    tone's slope `k` frames on, `pre_bar * (1 - a)^(k + 1)`, with `a` the
+    one-pole's coefficient `1 - exp(-2 pi damping_hz / fs)` for the
+    `damping_hz` the move handed the node. The one-pole's first difference
+    obeys d(k) = (1 - a) d(k - 1) + a x'(k), so this is its memory, not a
+    fitted allowance."""
+    if damping_hz > 0.0:
+        keep = math.exp(-2.0 * math.pi * damping_hz / rate)
+    else:
+        keep = 0.0
+    k = np.arange(frames, dtype=np.float64)
+    return bar + pre_bar * keep ** (k + 1.0)
+
+
+def inside_clause(diff, move_at, walk, bar, pre_bar, damping_hz, rate):
+    """T3's inside no-step statistic, revised 2026-09-28: the largest
+    first difference over the walk as read, each frame against its
+    `memory_bars` bar, as (largest ratio, its frame from the move, the
+    settle, the largest first difference in the same window with no
+    memory term, which is the frozen statistic's numerator). The walk's
+    frames are the move's to the landing's; the last
+    difference, into the landed frame, is the head's last partial step,
+    where the pitch goes back to unity as the law says, and is the after
+    clause's. The window runs at least `settle` frames, the frames until
+    the low-pass's memory of the pre-move slope is under 5 % of the bar,
+    so a move with no walk (the jump) is still read."""
+    keep = (math.exp(-2.0 * math.pi * damping_hz / rate)
+            if damping_hz > 0.0 else 0.0)
+    settle = 1
+    if keep > 0.0 and pre_bar > 0.05 * bar:
+        settle = max(1, int(math.ceil(
+            math.log(0.05 * bar / pre_bar) / math.log(keep))))
+    span = min(max(walk - 1, settle, 1), len(diff) - move_at)
+    window = diff[move_at:move_at + span]
+    ratios = window / memory_bars(bar, pre_bar, damping_hz, rate, span)
+    worst = int(np.argmax(ratios))
+    return float(ratios[worst]), worst, settle, float(np.max(window))
+
+
 def t3_measure(cls, rate=RATE, character=SINGLE, t_old=200.0, t_new=100.4,
-               level=12000):
-    """T3's four clauses on one move: the pitch over the whole walk and on
-    each binade piece within 10 cents of 1200 log2(T_old / T_new), the walk
-    within 5 % of T_new, the residual 50-250 ms after it within 1 cent, and
-    the two no-step statistics within 5 % of their bars."""
+               level=12000, channels=1, phase=0.0, move_at=None):
+    """T3's clauses on one move: the pitch over the whole walk and on each
+    binade piece within 10 cents of 1200 log2(T_old / T_new), the walk
+    within 5 % of T_new (read where the head lands, off a steep ramp), the
+    residual 50-250 ms after it within 1 cent, and the two no-step
+    statistics within 5 % of their bars (the inside one against
+    `memory_bars`). `inside_from_move` over `inside_bar` is the frozen
+    statistic (the largest first difference from the move frame against
+    the shifted tone's bar, no memory term) over the same window, kept
+    beside the revision."""
     k_old, k_new = whole(t_old, rate), whole(t_new, rate)
     law = cents(float(k_old) / k_new)
-    move_at = MOVE_AT * rate // 48000 // BLOCK * BLOCK
+    if move_at is None:
+        move_at = default_move_at(rate)
     frames = move_at + int(1.25 * k_new) + 400 + int(0.3 * rate) + 4096
-    delay, _ = read_position(cls, rate, character, t_old, t_new, frames)
-    end = walk_end(delay, move_at, k_new)
+    delay, valid, slope, _ = head_trace(cls, rate, character, t_old, t_new,
+                                        frames, move_at, channels)
+    end = landing(delay, valid, slope, move_at, k_new)
     walk = end - move_at
     walk_ok = abs(walk - k_new) <= 0.05 * k_new
 
-    tone = sine_values(997.0, frames, rate, level)
-    out, _ = t3_render(cls, rate, character, t_old, t_new, tone)
-    hz = inst_hz(out, rate)
-    result = {"walk": walk, "k_new": k_new, "law": law}
+    handed = {}
+    tone = sine_values(997.0, frames, rate, level, phase)
+    out, _ = t3_render(cls, rate, character, t_old, t_new, tone, channels,
+                       move_at=move_at, handed=handed)
+    diff = np.abs(np.diff(out))
+
+    shifted = 997.0 * k_old / k_new
+    ref = t3_static(cls, rate, character, t_new,
+                    sine_values(shifted, k_new + 8192, rate, level), channels)
+    inside_bar = float(np.max(np.abs(np.diff(ref[k_new + 2048:]))))
+    ref = t3_static(cls, rate, character, t_old,
+                    sine_values(997.0, k_old + 8192, rate, level), channels)
+    pre_bar = float(np.max(np.abs(np.diff(ref[k_old + 2048:]))))
+    ref = t3_static(cls, rate, character, t_new,
+                    sine_values(997.0, k_new + 8192, rate, level), channels)
+    later_bar = float(np.max(np.abs(np.diff(ref[k_new + 2048:]))))
+
+    damping = float(handed.get("damping_hz", 0.0))
+    inside_ratio, worst, settle, inside_from_move = inside_clause(
+        diff, move_at, walk, inside_bar, pre_bar, damping, rate)
+    inside_ok = inside_ratio <= 1.05
+
+    result = {"walk": walk, "k_new": k_new, "law": law, "slope": slope,
+              "inside_ratio": inside_ratio, "inside_at": worst,
+              "inside_ok": inside_ok, "inside_from_move": inside_from_move,
+              "inside_bar": inside_bar, "pre_bar": pre_bar,
+              "damping_hz": damping, "settle": settle,
+              "later_bar": later_bar, "walk_ok": walk_ok}
     if walk < 64 or end + int(0.25 * rate) + 1 > frames:
         # No walk at all, or one that never lands on T_new inside the
-        # render: the walk clause is red and the rest has nothing to read.
-        result.update(passed=False, whole=None)
+        # render: the walk clause is red and the pitch has nothing to read.
+        result.update(passed=False, whole=None, pieces=[], residual=None,
+                      later=None)
         return result
+    hz = inst_hz(out, rate)
     margin = min(400, walk // 10)
     whole_cents = cents(float(np.median(hz[move_at + margin:end - margin]))
                         / 997.0)
     pieces = [cents(ratio) for ratio, _ in
-              binade_pieces(delay, move_at, end, law)]
+              walk_pieces(delay, valid, slope, move_at, end, k_old, k_new)]
     after = hz[end + int(0.05 * rate):end + int(0.25 * rate)]
     residual = cents(float(np.median(after)) / 997.0)
-
-    diff = np.abs(np.diff(out))
-    inside = float(np.max(diff[move_at:end]))
-    shifted = 997.0 * k_old / k_new
-    reference_values = sine_values(shifted, k_new + 8192, rate, level)
-    ref = t3_static(cls, rate, character, t_new, reference_values)
-    inside_bar = float(np.max(np.abs(np.diff(ref[k_new + 2048:]))))
     later = float(np.max(diff[end + 64:end + 4064]))
-    ref = t3_static(cls, rate, character, t_new,
-                    sine_values(997.0, k_new + 8192, rate, level))
-    later_bar = float(np.max(np.abs(np.diff(ref[k_new + 2048:]))))
 
-    result.update(
-        whole=whole_cents, pieces=pieces, residual=residual,
-        inside=inside, inside_bar=inside_bar, later=later,
-        later_bar=later_bar)
+    result.update(whole=whole_cents, pieces=pieces, residual=residual,
+                  later=later)
     result["passed"] = (
         walk_ok
         and abs(whole_cents - law) <= 10.0
+        and len(pieces) > 0
         and all(abs(p - law) <= 10.0 for p in pieces)
         and abs(residual) <= 1.0
-        and inside <= 1.05 * inside_bar
+        and inside_ok
         and later <= 1.05 * later_bar)
     return result
 
@@ -726,6 +954,48 @@ def read_landing(effect):
     return frames >= effect._frames
 
 
+def read_step(effect):
+    """On an open-loop copy at these positions, read with Mix 2, Feedback 0
+    and Modulation 0, one Time move of 32 grid steps once the line has
+    filled, off a slope-1 ramp: whether the read head jumps, in any one
+    frame of the walk, by more than the walk's own rate rounded up plus
+    one frame."""
+    rate = effect._sample_rate
+    now = effect.get_macro(TIME_I)
+    new = now + 32.0 if now < 64 else now - 32.0
+    k_old = effect._frames
+    k_new = whole(grid_ms(new), rate)
+    fill = (k_old + 2 * BLOCK) // BLOCK * BLOCK
+    frames = fill + int(1.3 * k_new) + 2 * BLOCK
+    n = np.arange(frames)
+    ramp = (n % 65536) - 32768
+    other = open_loop(type(effect))(array_src(ramp.tolist(), 1, rate),
+                                    sample_rate=rate,
+                                    character=effect._character)
+    for index in range(len(type(effect).MACRO_LABELS)):
+        other.set_macro(index, effect.get_macro(index))
+    other.set_macro(MIX_I, 127)
+    other.set_macro(FEEDBACK_I, 0)
+    other.set_macro(MODULATION_I, 0)
+
+    def move(frame):
+        if frame == fill:
+            other.set_macro(TIME_I, new)
+
+    out = left(pull(other, frames, 1, on_block=move), 1)
+    slew = other._slew
+    other.deinit()
+    delay = np.mod(n - (out + 32768.0), 65536.0)
+    # A read that straddles the ramp's wrap is not a jump of the head.
+    bad = np.abs(np.diff(out, prepend=out[0])) > 64.0
+    for k in (1, 2):
+        bad[:-k] |= bad[k:].copy()
+        bad[k:] |= bad[:-k].copy()
+    good = ~bad
+    jumps = np.abs(np.diff(delay[fill:]))[good[fill + 1:]]
+    return bool(np.max(jumps) > math.ceil(slew) + 1.0)
+
+
 #: (name, fault, reading, constructor options for both builds).
 REACH_WALKS = (
     ("CornerN6144", CornerN6144, read_corner_law, {}),
@@ -736,6 +1006,7 @@ REACH_WALKS = (
     ("JumpAnalogDelay", JumpAnalogDelay, read_walk_law, {}),
     ("ConstantGlideWalk", ConstantGlideWalk, read_walk_law, {}),
     ("DryGainDelay", DryGainDelay, read_dry_gain, {}),
+    ("MidWalkReadStep", MidWalkReadStep, read_step, {}),
 )
 
 
@@ -1051,9 +1322,19 @@ class T3TimeGlidesOnTheClock(unittest.TestCase):
         self.assertTrue(result["passed"], result)
 
     def test_the_jump_is_red(self):
-        result = t3_measure(JumpAnalogDelay, RATE, SINGLE)
-        self.assertFalse(result["passed"], result)
-        self.assertLess(result["walk"], 64)
+        # The walk clause reds a jump at every boundary: there is no walk.
+        # The inside clause sees the step itself at 15 of these 16; at the
+        # other the jump lands on nearly the same sample value (0.964 of
+        # its bar), which no first-difference statistic can see.
+        base = default_move_at(RATE)
+        seen = 0
+        for j in range(16):
+            result = t3_measure(JumpAnalogDelay, RATE, SINGLE, 20.0, 60.0,
+                                move_at=base + BLOCK * j)
+            self.assertFalse(result["passed"], (j, result))
+            self.assertLess(result["walk"], 64, j)
+            seen += 0 if result["inside_ok"] else 1
+        self.assertGreaterEqual(seen, 15)
 
     def test_the_constant_glide_is_red(self):
         for rate in RATES:
@@ -1061,6 +1342,91 @@ class T3TimeGlidesOnTheClock(unittest.TestCase):
             self.assertFalse(result["passed"], (rate, result))
             self.assertGreater(result["walk"], 1.5 * result["k_new"])
             self.assertLess(result["whole"] - result["law"], -600.0)
+            self.assertTrue(all(p - result["law"] < -600.0
+                                for p in result["pieces"]), result)
+
+
+class T3NoStepRevision(unittest.TestCase):
+    """Dossier section 8, revision 2026-09-28: the inside no-step bar
+    carries the loop low-pass's memory of the pre-move slope, derived from
+    the handed `damping_hz`; the walk is read where the head lands; the
+    binade pieces have a minimum the ramp resolves, and a walk with none
+    left is read whole."""
+
+    def test_the_one_pole_memory_is_not_a_step(self):
+        # 20 -> 60 ms moved ten blocks later than the pack's boundary: the
+        # frozen statistic reads 551 against a 522 bar (1.0556) at the
+        # walk's first frame; the revised bar there is 522 + 1562 (1 - a).
+        move_at = default_move_at(RATE) + 10 * BLOCK
+        for character in (SINGLE, DOUBLE):
+            result = t3_measure(AnalogDelay, RATE, character, 20.0, 60.0,
+                                move_at=move_at)
+            self.assertGreater(result["inside_from_move"],
+                               1.05 * result["inside_bar"], character)
+            self.assertTrue(result["inside_ok"], (character, result))
+            self.assertTrue(result["passed"], (character, result))
+            result = t3_measure(open_loop(AnalogDelay), RATE, character,
+                                20.0, 60.0, move_at=move_at)
+            self.assertLessEqual(result["inside_from_move"],
+                                 1.05 * result["inside_bar"], character)
+
+    def test_the_memory_is_the_handed_coefficient(self):
+        bars = memory_bars(522.0, 1562.0, 11606.7651, RATE, 3)
+        keep = math.exp(-2.0 * math.pi * 11606.7651 / RATE)
+        self.assertAlmostEqual(bars[0], 522.0 + 1562.0 * keep)
+        self.assertAlmostEqual(bars[2], 522.0 + 1562.0 * keep ** 3)
+        self.assertEqual(list(memory_bars(522.0, 1562.0, 0.0, RATE, 2)),
+                         [522.0, 522.0])
+
+    def test_a_mid_walk_read_step_is_red(self):
+        result = t3_measure(MidWalkReadStep, RATE, SINGLE)
+        self.assertFalse(result["inside_ok"], result)
+        self.assertLess(abs(result["inside_at"] - result["k_new"] // 2), 4,
+                        result)
+        self.assertFalse(result["passed"])
+
+    def test_one_grid_step_from_the_stop_lands(self):
+        # The frozen walk_end read this 9.6 / 10.5 / 21.0 % short.
+        for rate in RATES:
+            k_new = whole(grid_ms(1), rate)
+            move_at = default_move_at(rate)
+            frames = move_at + 2 * k_new + 4096
+            delay, valid, slope, _ = head_trace(AnalogDelay, rate, SINGLE,
+                                                20.0, grid_ms(1), frames)
+            walk = landing(delay, valid, slope, move_at, k_new) - move_at
+            self.assertLess(abs(walk - k_new), 0.02 * k_new, (rate, walk))
+            old, _ = read_position(AnalogDelay, rate, SINGLE, 20.0,
+                                   grid_ms(1), frames)
+            walk = walk_end(old, move_at, k_new) - move_at
+            self.assertGreater(abs(walk - k_new), 0.05 * k_new, (rate, walk))
+
+    def test_every_named_move_reads_a_piece(self):
+        # The frozen binade_pieces found none on 60 -> 20 and 40 -> 20 ms
+        # at 48 and 22.05 kHz, or on 20 -> 60 ms at 22.05 kHz.
+        for rate in (48000, 22050):
+            for t_old, t_new in ((60.0, 20.0), (40.0, 20.0), (20.0, 60.0),
+                                 (20.0, 40.0)):
+                result = t3_measure(AnalogDelay, rate, SINGLE, t_old, t_new)
+                self.assertGreater(len(result["pieces"]), 0,
+                                   (rate, t_old, t_new))
+                self.assertTrue(result["passed"], (rate, t_old, t_new))
+
+    def test_a_sliver_under_the_minimum_is_not_read(self):
+        # 3 : 1 from 8 182 frames crosses 8 192 in a 16-frame sliver the
+        # frozen reading put at -31.77 cents; the ramp cannot resolve it.
+        k_old = 8182
+        result = t3_measure(AnalogDelay, RATE, SINGLE, k_old * 1000.0 / RATE,
+                            3 * k_old * 1000.0 / RATE)
+        self.assertEqual(len(result["pieces"]), 2, result)
+        self.assertTrue(result["passed"], result)
+        self.assertGreater(min_piece(1, k_old, 3 * k_old), 16)
+
+    def test_no_piece_is_red(self):
+        # A walk too short for any piece to resolve reads no piece, which
+        # is red rather than a pass with nothing read.
+        delay = np.full(100, 960.0)
+        pieces = walk_pieces(delay, np.ones(100, bool), 1, 0, 50, 2880, 960)
+        self.assertEqual(pieces, [])
 
 
 def noise_src(frames, rate, seed=5):
@@ -1166,6 +1532,26 @@ class T7DryIsAWire(unittest.TestCase):
             result = t7_measure(AnalogDelay, RATE, 2, "tones_step",
                                 patch=patch)
             self.assertTrue(result["passed"], (patch, result))
+
+    def test_the_mix_interior(self):
+        # Dossier section 8, revision 2026-09-28: arrival is claimed on
+        # ramp_fs and tones_step at every Mix above 0, and on sweep_log from
+        # grid 17 at 48 kHz, where the wet's ~2 LSB times Mix first clears
+        # the node's round to nearest. The null build reds at grid 1.
+        for name, grids in (("ramp_fs", (1, 2, 8, 16, 17, 40, 63)),
+                            ("tones_step", (1, 2, 8, 16, 17, 40, 63)),
+                            ("sweep_log", (17, 24, 40, 63))):
+            for grid in grids:
+                result = t7_measure(AnalogDelay, RATE, 2, name,
+                                    mix=2.0 * grid / 127.0)
+                self.assertTrue(result["passed"], (name, grid, result))
+        result = t7_measure(AnalogDelay, RATE, 2, "sweep_log",
+                            mix=2.0 * 16 / 127.0)
+        self.assertEqual(result["arrived"], 0)       # the unclaimed edge
+        wire = kit_faults.wire_build(AnalogDelay)
+        result = t7_measure(wire, RATE, 2, "ramp_fs", mix=2.0 / 127.0)
+        self.assertFalse(result["passed"], result)
+        self.assertEqual(result["differing"], 0)
 
     def test_a_dry_above_unity_is_red_at_every_level(self):
         for name in ("ramp_fs", "tones_step", "sweep_log"):

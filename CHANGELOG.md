@@ -36,6 +36,22 @@ there, and are recorded in its changelog.
   shipped patches, on `noise_det`), the 15 kHz swing the wow costs the
   repeat, the Wow step, and Tone's flat top at 22.05 kHz. Board cost is
   unmeasured.
+- **`AnalogDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** a
+  bucket-brigade delay on one `audioecho.FeedbackDelay`, with the Boss
+  DM-2's one 4096-stage line (`"single-line"`, the default) and the Deluxe
+  Memory Man's two in series (`"double-line"`) as characters. The Time knob
+  is the line's clock: the repeats' high-frequency corner tracks it as
+  0.2211 N / T, so they darken as Time grows, and a Time move bends their
+  pitch by T_old / T_new for exactly T_new instead of clicking. Every Time
+  lands on a whole frame at every rate, and Mix 0 is a wire while the line
+  keeps recording. Modulation is a triangle of fixed millisecond swing, and
+  Sync follows a host's beat by Division. There is no sample-and-hold, no
+  compander and no fixed ~3 kHz pair, so short Times are brighter than
+  either pedal. It lives in `lib/audioeffects/rebuilt/analogdelay.py`, and
+  `audioeffects.AnalogDelay` is still the old class. The docstring states
+  the input ceiling (-4.4 dBFS peak at the default Mix 0.4) and that
+  turning Time through several positions takes seconds to settle. Board
+  cost is unmeasured.
 
 ## v0.3.2 (2026-09-25)
 
