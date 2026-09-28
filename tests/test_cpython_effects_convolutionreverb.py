@@ -505,6 +505,28 @@ class TheSurface(unittest.TestCase):
         with self.assertRaises(ValueError):
             build(impulse=make_impulse().tobytes(), start_ms=200.5)
 
+    def test_a_trim_past_the_impulse_raises(self):
+        # A clamped trim would build the unloaded wire, whose Mix does
+        # nothing, with no error (review probe
+        # convolutionreverb_review_trimall.py; ruling (o)). 100 frames is
+        # 2.083 ms at 48 kHz: 2.0 ms trims 96 and builds a 256-tap room.
+        h = make_impulse(100).tobytes()
+        effect = build(impulse=h, start_ms=2.0)
+        self.assertEqual(effect.node.taps, 256)
+        self.assertEqual(effect.latency_samples, LATENCY)
+        effect.deinit()
+        for start_ms, trim in ((2.1, 100), (10.0, 480)):
+            with self.assertRaises(ValueError) as caught:
+                build(impulse=h, start_ms=start_ms)
+            text = str(caught.exception)
+            for field in (NAME, "start_ms=%r" % start_ms, "%d frames" % trim,
+                          "48000 Hz", "has 100"):
+                self.assertIn(field, text)
+        # The deliberate empty room stays the undelayed wire (D3).
+        effect = build(impulse=b"", start_ms=10.0)
+        self.assertEqual((effect.node.taps, effect.latency_samples), (0, 0))
+        effect.deinit()
+
     def test_an_int16_array_is_trimmed_by_frames(self):
         from array import array
         h = make_impulse(1000, 2)
@@ -579,6 +601,61 @@ class ResynthesisIsDeduplicated(unittest.TestCase):
                 self.assertGreater(int(np.max(np.abs(after))), 1000)
             effect.deinit()
         clean.deinit()
+
+    def test_a_room_move_drops_the_partition_in_flight_dry_included(self):
+        # The docstring's other half, measured: the reset at the end of
+        # synthesize() (audiodsp_convolve.c:254) zeroes the pending and
+        # output blocks too, so at Mix 0 the source frames in flight at the
+        # move (2304..2559 for a move before block 10) come out as exact
+        # zero, and every other frame is the source 256 late. A move onto
+        # the room already loaded, and a Mix move that stays at 0, drop
+        # nothing (review probe convolutionreverb_review_movedrop.py).
+        frames = 40 * 256
+        moves = ((DECAY_I, 64), (DAMPING_I, 30), (PREDELAY_I, 40),
+                 (DIFFUSION_I, 100), (ROOM_I, 50), (DECAY_I, None),
+                 (MIX_I, 0))
+        for rate in RATES:
+            for channels in (2, 1):
+                pcm = ((np.arange(frames) * 7) % 20001 - 10000).astype(
+                    np.int16)
+                pcm = np.repeat(pcm[:, None], channels, axis=1)
+                for index, value in moves:
+                    effect = build(rate=rate, channels=channels, mix=0.0)
+                    effect._source.swap(probes.ArraySource(
+                        pcm, rate=rate, channels=channels))
+                    audiocore.reset_buffer(effect.node)
+                    out = bytearray()
+                    for block in range(40):
+                        if block == 10:
+                            effect.set_macro(index, effect.get_macro(index)
+                                             if value is None else value)
+                        out += bytes(audiocore.get_buffer(effect.output)[1])
+                    out = np.frombuffer(bytes(out), dtype=np.int16).reshape(
+                        -1, channels)
+                    want = np.vstack([silence(LATENCY, channels),
+                                      pcm[:frames - LATENCY]])
+                    cut = index != MIX_I and value is not None
+                    if cut:
+                        want[2560:2816] = 0
+                    self.assertEqual(digest(out), digest(want),
+                                     (rate, channels, index, value))
+                    self.assertEqual(bool(np.any(pcm[2304:2560] != 0)), True)
+                    effect.deinit()
+        # At the constructor's Mix 0.6 the same partition reads exact zero.
+        effect = build(channels=2)
+        pcm = white(frames)
+        effect._source.swap(probes.ArraySource(pcm, rate=RATE, channels=2))
+        audiocore.reset_buffer(effect.node)
+        out = bytearray()
+        for block in range(40):
+            if block == 10:
+                effect.set_macro(DECAY_I, 64)
+            out += bytes(audiocore.get_buffer(effect.output)[1])
+        out = np.frombuffer(bytes(out), dtype=np.int16).reshape(-1, 2)
+        self.assertGreater(int(np.max(np.abs(out[2304:2560]))), 1000)
+        self.assertEqual(int(np.max(np.abs(out[2560:2816]))), 0)
+        self.assertGreater(int(np.max(np.abs(out[2816:3072]))), 1000)
+        effect.deinit()
 
 
 # --------------------------------------------------------------------------

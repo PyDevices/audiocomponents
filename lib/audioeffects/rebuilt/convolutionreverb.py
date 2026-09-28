@@ -54,6 +54,7 @@ loaded state; the synthesized room is always loaded, and only an empty
 impulse (`impulse=b""`) leaves the node a plain undelayed wire. Mix 0 is
 the source delayed by exactly `latency_samples`, byte for byte, because the
 node stays in the path at Mix 0 and a Mix move never jumps the timeline.
+The one exception is the partition a room knob moves in (below).
 
 **Tail.** `tail_samples` is `latency_samples` plus the loaded impulse
 rounded up to a partition: 4 096 frames (85.3 ms) at the default at
@@ -65,12 +66,19 @@ partition plus 18 440 B fixed), 110 960 B with a mono one; 133 576 B at
 44.1 kHz and 76 008 B at 22.05 kHz. A measured impulse is read once at
 construction, handed to the node and dropped; the class keeps no copy.
 
-**Moving a room knob starts the room empty.** Decay, Damping, Predelay,
-Diffusion and Room re-synthesize the impulse, and the node empties its
-history when it does, so a tail ringing at that moment stops dead. A move
-that lands on the room already loaded does nothing, and a patch change,
-the constructor and `reset()` synthesize once, not once per knob. Mix moves
-never touch the room.
+**Moving a room knob starts the room empty and drops one partition of
+everything.** Decay, Damping, Predelay, Diffusion and Room re-synthesize
+the impulse, and the node empties itself when it does: a tail ringing at
+that moment stops dead, and the 256 frames in flight (5.333 ms at 48 kHz),
+dry and wet alike, come out as exact zero. That is a gap in your dry
+signal at every Mix, Mix 0 included; after it, Mix 0 is the source delayed
+by `latency_samples` again, byte for byte. The class cannot avoid it from
+Python (the node's `synthesize()` ends in a reset of its pending and
+output blocks; the node ask is drafted), so do not sweep a room knob under
+a signal you need unbroken. A move that lands on the room already loaded
+does nothing and drops nothing, and a patch change, the constructor and
+`reset()` synthesize once, not once per knob. Mix moves never touch the
+room.
 
 **What the default surrenders.** The room is normalised to unit energy
 across the whole band, so with Damping in, low material comes back louder
@@ -88,7 +96,8 @@ off the Decay law; the 64 Rooms' mean holds within 2 %.
 nothing on a board, then loaded at unit mean energy across the channels
 the room holds, trimmed by `ir_gain_db` (-24 to +12 dB). A stereo impulse
 over a mono source keeps its left channel. An impulse with frames but no
-energy raises. Decay, Damping, Predelay, Diffusion and Room raise
+energy raises, and so does a `start_ms` that trims away every frame it
+has: either would be a room whose Mix does nothing. Decay, Damping, Predelay, Diffusion and Room raise
 `IndexError` from `set_macro` and `get_macro` in this mode: the loaded
 impulse is the room. `live_macros` says which macros an instance has. No
 impulse ships with this class; it loads yours and keeps no copy (Brad's
@@ -252,7 +261,8 @@ class ConvolutionReverb(_component.Component):
 
     **What the default surrenders:** a dark room lifts low material (a low
     chord +3.73 dB at the default Damping, +13.28 dB at 500 Hz), moving a
-    room knob starts the room empty, and anything longer than 0.091 s on
+    room knob starts the room empty and drops the 256 frames in flight,
+    dry included, at every Mix, and anything longer than 0.091 s on
     an S3 or 0.219 s on a P4 is a desktop room (pending hardware).
     """
 
@@ -395,7 +405,17 @@ class ConvolutionReverb(_component.Component):
             raise ValueError("%s: impulse length must be whole int16 frames"
                              % self.NAME)
         frames = size // (2 * impulse_channels)
-        trim = min(frames, self._trim_frames(start_ms))
+        trim = self._trim_frames(start_ms)
+        if frames and trim >= frames:
+            # Clamping would build the unloaded wire, a Mix that does
+            # nothing, with no error (ruling (o)). Only `impulse=b""` is
+            # the deliberate empty room.
+            raise ValueError(
+                "%s: start_ms=%r trims %d frames at %d Hz and the impulse "
+                "has %d; the trim leaves no room, and a Mix that does "
+                "nothing" % (self.NAME, start_ms, trim, rate, frames))
+        if trim > frames:
+            trim = frames
         frames -= trim
         per_frame = impulse_channels * (2 // width)
         view = view[trim * per_frame:]
