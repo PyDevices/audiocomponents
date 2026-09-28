@@ -47,10 +47,13 @@ there, and are recorded in its changelog.
   `lib/audioeffects/rebuilt/multitapdelay.py`, and
   `audioeffects.MultiTapDelay` is still the old class. The tap node reads
   its input one block behind the dry, so settings made before the first
-  pull or after `reset()` land on the grid in both lanes, a reset leaves
-  the output on time, and any number of Repeat Tone crossings between
+  pull or after `reset()` land on the grid in both lanes, the dry stays at
+  +0 and every head at +k n1 after any number of resets and returns from
+  Mix 0 between two pulls, and any number of Repeat Tone crossings between
   pulls leave the wet where it was; the output ends in a width-1 MidSide,
   so a host resetting the output keeps the source's first block. The
+  constructor refuses a sample rate below 12 825 Hz with a `ValueError`,
+  where the one-block lag could not place the 20 ms head. The
   docstring states the input ceiling, the click and channel crossing of a
   Time or Heads move while audio plays, and that on CircuitPython alone
   the stereo dry's right lane is one LSB hot within 32 LSB of the rails.

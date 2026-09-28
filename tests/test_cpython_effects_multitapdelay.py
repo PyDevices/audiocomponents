@@ -16,12 +16,13 @@ clamp, S1's head sets, Tilt's line and the lap node's float32 hand-off.
 The rebuild is parked (not in `rebuilt.ADOPTED`), so the class is reached by
 `rebuilt.module_class("MultiTapDelay")`.
 
-Two plants are built for real here that Station A emulated: T4's per-head
-6 kHz low-pass (a second tap node for head 2 behind an
-`audiofilters.Filter`) and T5 clause 2's compose-first build (a front
-Filter into the tap node's own decay). T5 clause 1's plant, head 2
-darkening on its own each lap, is still the dossier's emulation on the
-rendered windows, said where it is.
+Three plants are built for real here that Station A emulated: T4's
+per-head 6 kHz low-pass (a second tap node for head 2 behind an
+`audiofilters.Filter`), T5 clause 2's compose-first build (a front Filter
+into the tap node's own decay) and, since fix round 2, T5 clause 1's
+(`Head2OwnLoop`: head 2 read through its own, darker lap node, Station C's
+plant ported to the fix round 1 graph). The dossier's emulation of clause
+1's plant on the rendered windows stays beside it.
 """
 
 import math
@@ -37,6 +38,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import audiocore                                            # noqa: E402
 import audiodelays                                          # noqa: E402
+import audioecho                                            # noqa: E402
 import audiofilters                                         # noqa: E402
 import audiomixer                                           # noqa: E402
 import audioroute                                           # noqa: E402
@@ -714,6 +716,114 @@ class ToneHalf(MultiTapDelay):
                                   self._sample_rate)
 
 
+class PullingResync(MultiTapDelay):
+    """Gate audit round 2, item 1, planted: fix round 1's `_resync`
+    (d419ac4), which drops tap 1's pending block with a pull and primes the
+    tap node with zeros. A second call before the next pull takes a block
+    of the source's future, and every later head sounds a block early."""
+
+    NAME = 'MultiTapDelay'
+    _plant_pulling_resync = True
+
+    def _resync(self):
+        pull = getattr(audiocore, "get_buffer", None)
+        self._fd.clear()
+        audiocore.reset_buffer(self._tapnode)
+        if pull is not None:
+            pull(self._tap1)
+        self._feed.play(self._hush)
+        self._tapnode.play(self._feed, loop=False)
+        self._feed.play(self._target(self._lean))
+        self._plugged = self._lean
+
+
+class NoRateFloor(MultiTapDelay):
+    """Gate audit round 2, item 2, planted: the class without its rate
+    floor (d419ac4). At 12 800 Hz Time 20 ms lands on 256 frames, head 1 is
+    handed an offset of 0, which reads a whole lap back, and every head
+    sounds 256 frames late; below it the constructor's own Time raises
+    from the node."""
+
+    NAME = 'MultiTapDelay'
+
+    def _check_rate(self, rate):
+        del rate
+
+
+class Head2OwnLoop(MultiTapDelay):
+    """T5 clause 1, built for real (Station C's plant, ported to the fix
+    round 1 graph): head 2 is read by a second tap node behind a second
+    lap node whose loop low-pass sits at half Repeat Tone's corner
+    (pre-warped the class's way), so on every lap after the first head 2
+    darkens more than heads 1 and 3; lap 1, the lap nodes' dry pass, is the
+    same for every head. Both lap nodes are fed from a second Splitter on
+    tap 1, and head 2 is a third voice of the output Mixer. Both tap nodes
+    are wired the class's way, a block of zeros first and one block behind
+    the dry. Full graph only; read at Repeat Tone in."""
+
+    NAME = 'MultiTapDelay'
+
+    def _damping2(self):
+        if self._macros[TONE_I] >= 1.0:
+            return 0.0
+        return nominal_damping_hz(0.5 * self._hz(self._value(TONE_I)),
+                                  self._sample_rate)
+
+    def _others(self):
+        return tuple(t for k, t in zip(self._selected, self._taps) if k != 2)
+
+    def _mine(self):
+        return tuple(t for k, t in zip(self._selected, self._taps) if k == 2)
+
+    def _wire(self, quiet=False):
+        rate, channels = self._sample_rate, self._channel_count
+        self._plant_head2_loop = True
+        split = audioroute.Splitter(self._tap1, taps=2)
+        self._fd.play(split.tap(0))
+        self._fd2 = audioecho.FeedbackDelay(
+            sample_rate=rate, channel_count=channels,
+            max_delay_ms=self._max_lap_ms + 1.0, delay_ms=self._lap_ms,
+            feedback=self._feedback, mix=self._feedback,
+            damping_hz=self._damping2(), cut_hz=0.0, delay_slew=0.0)
+        self._fd2.play(split.tap(1))
+        self._head2 = audiodelays.MultiTapDelay(
+            max_delay_ms=int(math.ceil(self._max_lap_ms)) + 1,
+            delay_ms=self._tap_ms, decay=0.0, mix=1.0, taps=self._mine(),
+            buffer_size=BLOCK * channels * 2, sample_rate=rate,
+            channel_count=channels)
+        self._feed2 = audioroute.Port(self._hush)
+        self._head2.play(self._feed2)
+        self._tapnode.taps = self._others()
+        self._feed.play(self._hush)
+        self._tapnode.play(self._feed)
+        mix = self._value(MIX_I)
+        self._mixer = audiomixer.Mixer(
+            voice_count=3, buffer_size=BLOCK * channels * 4,
+            channel_count=channels, sample_rate=rate)
+        self._mixer.voice[0].level = min(1.0, 2.0 - mix)
+        self._mixer.voice[1].level = min(1.0, mix)
+        self._mixer.voice[2].level = min(1.0, mix)
+        _component.open_level_gates(self._mixer, self._mixer.voice,
+                                    self._silence)
+        self._mixer.voice[0].play(self._dry)
+        self._mixer.voice[1].play(self._tapnode)
+        self._mixer.voice[2].play(self._head2)
+        self._feed.play(self._fd)
+        self._feed2.play(self._fd2)
+        self._tail.play(self._mixer)
+        self._plugged = False
+
+    def _refresh(self):
+        MultiTapDelay._refresh(self)
+        if getattr(self, "_head2", None) is not None:
+            self._tapnode.taps = self._others()
+            self._head2.taps = self._mine()
+            self._fd2.set(delay_ms=self._lap_ms, feedback=self._feedback,
+                          mix=self._feedback, damping_hz=self._damping2(),
+                          cut_hz=0.0, delay_slew=0.0)
+            self._mixer.voice[2].level = self._mixer.voice[1].level
+
+
 class Counting(Endless):
     """`Endless` that counts the blocks it has handed out."""
 
@@ -966,6 +1076,70 @@ def crossing_route(cls, crossings, rate=RATE, channels=2):
     return {"passed": all(h == law for h in hits),
             "hits": [[f - origin for f in h] for h in hits],
             "law": [f - origin for f in law]}
+
+
+#: Round 2, item 1: two clicks after an event made between two pulls at
+#: 30 blocks, A in the first block after it and B in the second, at
+#: different levels so their heads cannot be mistaken for each other.
+RESYNC_CLICKS = ((30 * BLOCK + 10, 20000), (31 * BLOCK + 100, 10000))
+
+
+def resync_route(cls, steps, start="full", rate=RATE, channels=2):
+    """Gate audit round 2, item 1: 30 blocks from the defaults (the full
+    graph) or patch 1 (the lean graph), then `steps` between two pulls
+    ("reset" is `reset()`, "mix0" is Mix to 0 and back), then Feedback 0
+    and Mix 1.0: every lane's non-zero frames against each click and its
+    heads at +k n1, n1 and the heads from the dossier's laws at the knob
+    positions."""
+    total = 32 * BLOCK + 40000
+    data = array("h", [0] * (total * channels))
+    for at, level in RESYNC_CLICKS:
+        for ch in range(channels):
+            data[at * channels + ch] = level
+    source = Endless(data, rate, channels)
+    if start == "lean":
+        effect = cls(source, sample_rate=rate, patch=1)
+    else:
+        effect = cls(source, sample_rate=rate)
+    head = pull(effect, 30 * BLOCK)
+    for step in steps:
+        if step == "reset":
+            effect.reset()
+        else:
+            effect.set_macro(MIX_I, 0)
+            effect.set_macro(MIX_I, 63.5)
+    effect.set_macro(FEEDBACK_I, 0)
+    effect.set_macro(MIX_I, 63.5)
+    heads = law_heads(effect._pattern_mode(), effect._heads)
+    n1, lap = law_landed(effect.macro(TIME_I), effect._heads, rate)
+    rest = pull(effect, 2 * BLOCK + 100 + lap + 512)
+    reported = effect.latency_samples
+    effect.deinit()
+    out = np.concatenate([head, rest])
+    law = sorted(at + k * n1 for at, _level in RESYNC_CLICKS
+                 for k in (0,) + heads)
+    hits = lane_hits(out)
+    return {"passed": all(h == law for h in hits) and reported == 0,
+            "hits": hits, "law": law}
+
+
+def low_rate_first_lap(cls, rate, how, channels=2):
+    """Gate audit round 2, item 2: Time 20 ms by the constructor
+    (`time_ms=20`) or by `set_macro(0, 0)`, Feedback 0, Mix 2, a 20 000
+    click in frame 0: every lane's non-zero frames against {k n1}."""
+    if how == "ctor":
+        effect = cls(Endless(click(channels=channels), rate, channels),
+                     sample_rate=rate, feedback=0.0, mix=2.0, time_ms=20.0)
+    else:
+        effect = cls(Endless(click(channels=channels), rate, channels),
+                     sample_rate=rate, feedback=0.0, mix=2.0)
+        effect.set_macro(TIME_I, 0)
+    n1, lap = law_landed(20.0, 3, rate)
+    law = [k * n1 for k in law_heads(7, 3)]
+    hits = lane_hits(pull(effect, lap + 512))
+    effect.deinit()
+    return {"passed": all(h == law for h in hits), "hits": hits,
+            "law": law}
 
 
 def level_reading(cls, rate=RATE, tone=4000.0):
@@ -1737,6 +1911,105 @@ class RoundOneSurfaceLaws(unittest.TestCase):
             MultiTapDelay, lambda cls: level_reading(cls), label="levels")
         kit_faults.null_build_red(
             MultiTapDelay, lambda cls: corner_reading(cls), label="corner")
+
+
+class RoundTwo(unittest.TestCase):
+    """Gate audit round 2: a second `_resync` between two pulls, the rate
+    floor, and T5 clause 1's plant built on the fix round 1 graph."""
+
+    ROUTES = (("reset", "reset"), ("reset", "mix0"), ("mix0", "mix0"),
+              ("reset", "reset", "reset"))
+
+    def test_a_second_resync_in_one_gap_keeps_the_heads_on_time(self):
+        # Red on d419ac4 (PullingResync below): click A's heads missing and
+        # B's 256 frames early at two, 512 at three.
+        for steps in self.ROUTES:
+            for rate, channels in ((RATE, 2), (44100, 2), (22050, 2),
+                                   (RATE, 1)):
+                result = resync_route(MultiTapDelay, steps, rate=rate,
+                                      channels=channels)
+                self.assertTrue(result["passed"],
+                                (steps, rate, channels, result))
+            result = resync_route(MultiTapDelay, steps, start="lean")
+            self.assertTrue(result["passed"], (steps, "lean", result))
+
+    def test_pulling_resync_plant_is_red(self):
+        # The control: one reset, and one return from Mix 0, are green on
+        # the plant too; that is all fix round 1 tested.
+        for steps in (("reset",), ("mix0",)):
+            self.assertTrue(resync_route(PullingResync, steps)["passed"],
+                            steps)
+            self.assertTrue(resync_route(MultiTapDelay, steps)["passed"],
+                            steps)
+        for steps in self.ROUTES:
+            for rate, channels in ((RATE, 2), (44100, 2), (22050, 2),
+                                   (RATE, 1)):
+                result = resync_route(PullingResync, steps, rate=rate,
+                                      channels=channels)
+                self.assertFalse(result["passed"],
+                                 (steps, rate, channels, result))
+        result = resync_route(PullingResync, ("reset", "reset"))
+        # A (7 690) sounds dry only; B (8 036) and its heads 256 early.
+        # reset() restores patch 0: Time MIDI 85, n1 7 129 at 48 kHz.
+        n1 = law_landed(law_time_ms(85), 3, RATE)[0]
+        self.assertEqual(n1, 7129)
+        self.assertEqual(result["hits"][0],
+                         [7690, 8036] + [8036 + k * n1 - 256
+                                         for k in (1, 2, 3)])
+        result = reach_flag(PullingResync, "_plant_pulling_resync")
+        self.assertEqual(result["checked"], 9 * 17 + 7)
+
+    def test_rates_below_the_floor_are_refused(self):
+        for rate in (8000, 11025, 12000, 12800, 12824):
+            for channels in (2, 1):
+                for options in ({}, {"time_ms": 20.0}):
+                    with self.assertRaises(ValueError) as caught:
+                        MultiTapDelay(Endless(silence(), rate, channels),
+                                      sample_rate=rate, **options)
+                    self.assertIn("12825 Hz", str(caught.exception))
+            with self.assertRaises(ValueError):
+                MultiTapDelay.create(Endless(silence(), rate, 2), rate)
+
+    def test_time_20_ms_lands_on_the_grid_at_the_floor(self):
+        for rate in (12825, 16000):
+            for channels in (2, 1):
+                for how in ("ctor", "macro"):
+                    result = low_rate_first_lap(MultiTapDelay, rate, how,
+                                                channels)
+                    self.assertTrue(result["passed"],
+                                    (rate, channels, how, result))
+        self.assertEqual(low_rate_first_lap(MultiTapDelay, 12825, "ctor")
+                         ["law"], [257, 514, 771])
+
+    def test_no_rate_floor_plant_is_red(self):
+        # d419ac4 at 12 800 Hz: heads at [512, 768, 1 024] for
+        # [256, 512, 768]; at 12 000 Hz Time's low end raises from the node.
+        for how in ("ctor", "macro"):
+            result = low_rate_first_lap(NoRateFloor, 12800, how)
+            self.assertFalse(result["passed"], (how, result))
+            self.assertEqual(result["hits"], [[512, 768, 1024]] * 2)
+            self.assertEqual(result["law"], [256, 512, 768])
+            with self.assertRaises(ValueError) as caught:
+                low_rate_first_lap(NoRateFloor, 12000, how)
+            self.assertNotIn("12825 Hz", str(caught.exception))
+        self.assertTrue(low_rate_first_lap(NoRateFloor, 16000,
+                                           "ctor")["passed"])
+
+    def test_head2_own_loop_is_red_on_clause_1(self):
+        # Built, not emulated: lap 1 is the same for every head (the lap
+        # nodes' dry pass), and head 2 darkens on its own after it.
+        for rate in RATES:
+            result = t45_reading(Head2OwnLoop, rate=rate)
+            for lane in result["lanes"]:
+                self.assertTrue(lane["present"], (rate, lane))
+                self.assertEqual(lane["lap1"], [24000.0] * 3, rate)
+                self.assertGreater(lane["t5"], 0.5, (rate, lane))
+            self.assertFalse(t5_green(result, 4000.0, RATE), rate)
+            self.assertTrue(t5_green(t45_reading(MultiTapDelay, rate=rate),
+                                     4000.0, rate), rate)
+        result = reach_flag(Head2OwnLoop, "_plant_head2_loop")
+        self.assertIs(result["target"], True)
+        self.assertEqual(result["checked"], 9 * 17 + 7)
 
 
 if __name__ == "__main__":
