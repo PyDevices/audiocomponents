@@ -42,6 +42,10 @@ VENDOR = "PyDevices"
 import audiofilters
 import synthio
 from audioeffects import _core
+# The STATE faults below are written against the old `_core.Effect` delay,
+# which `delay.py` keeps until the rebuilt `DigitalDelay` (adopted
+# 2026-09-28) comes home; `audioeffects.DigitalDelay` is the rebuild now.
+from audioeffects.delay import DigitalDelay as _OldDigitalDelay
 
 #: `_component` reads VENDOR off the module a class is defined in, and the
 #: CLICK fault below is a subclass of a rebuilt class. Without this the fault
@@ -239,7 +243,7 @@ def under_reporting_limiter(samples):
                  "latency_samples": property(reported)})
 
 
-class NoResetDelay(audioeffects.DigitalDelay):
+class NoResetDelay(_OldDigitalDelay):
     """STATE's first fault: a delay line left full after `reset()`.
 
     The base class resets the node's buffer; this one keeps everything else
@@ -251,7 +255,7 @@ class NoResetDelay(audioeffects.DigitalDelay):
         self.program_change(0)
 
 
-class LiveIntermediateDelay(audioeffects.DigitalDelay):
+class LiveIntermediateDelay(_OldDigitalDelay):
     """STATE's second fault: an intermediate node left live after
     `deinit()`.
 
@@ -265,7 +269,7 @@ class LiveIntermediateDelay(audioeffects.DigitalDelay):
             filter=synthio.Biquad(synthio.FilterMode.LOW_PASS, 8000.0,
                                   Q=0.707), **_core.pcm())
         self.pre.play(source)
-        audioeffects.DigitalDelay.__init__(self, self.pre, **options)
+        _OldDigitalDelay.__init__(self, self.pre, **options)
 
 
 class UnreleasableSectionLowPass(LowPass):

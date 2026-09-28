@@ -4,8 +4,8 @@ Rebuilt from scratch for Phase 5 against
 `workspace docs/effects-internal/dossiers/DigitalDelay.md`, whose trait
 table was frozen at Station A before this file existed (anchor commit
 51207b8, 2026-09-27). The old class in `delay.py` is consulted only for the
-seven defects that dossier's section 7 names; it stays the class the
-library serves until the auditor adopts this one.
+seven defects that dossier's section 7 names. This class was adopted on
+2026-09-28, and `audioeffects.DigitalDelay` serves it.
 
 **What it sounds like.** Your dry signal passes untouched, and one clean
 repeat follows it, fed back for more. Time (12.5-800 ms) is the DD-2's
@@ -46,7 +46,17 @@ that ceiling and `get_macro(0)` shows where it stopped.
 **Cost.** One `audioecho.FeedbackDelay` with `delay_slew` on; no mixer.
 Palette row FeedbackDelay +options (the nearest not-cheaper row; there is
 no row for the slew alone), glue 0: **P4 <= 9 %, S3 <= 15 %** of a
-5.333 ms stereo block. The board measurement is pending hardware.
+5.333 ms stereo block. Measured on both boards on 2026-09-27 at every
+shipped patch: the P4 at most 0.372 ms, 7.0 % (patch 5, rt 5.49); the S3
+at most 0.631 ms as the tool reads it, and about 0.78 ms, 14.6 %, at
+patch 5 once the tool's control is measured in the same conditions as the
+palette row (the dearest patch, the one with both loop filters in; rt
+3.11). Alone on an S3 it leaves about 85 % of the block for everything
+else. Six of the seven patch digests are identical on both boards and the
+desktop; patch 5's is identical on both boards and differs from the
+desktop's because `nominal_cut_hz` and `nominal_damping_hz` are worked out
+in Python, in a board's single precision: `cut_hz` lands 0.035 % high
+(39.44766 Hz against 39.43366) and `damping_hz` one float32 step off.
 
 **What the default surrenders.** It is a clean line, so it does not darken
 on its own: the DD-2's 7 kHz band limit and its compander are not in the
@@ -64,8 +74,30 @@ a rising one nearly stalls the read head.
 While Time moves, the line is read between samples, and the two-tap read
 costs the top of the band sqrt(1 - 2 frac (1 - frac)(1 - cos 2 pi f / fs))
 per pass: 5.1 dB at 15 kHz at a half frame, 48 kHz. Every static Time is
-landed on the nearest whole frame at the running rate, where the read is
-lossless, so the repeats of a Time you have stopped turning do not darken.
+handed to the node as the nearest whole frame at the running rate,
+floor(ms fs / 1000 + 0.5); the knob's milliseconds and `get_macro(0)` stay
+as you set them. At 48 kHz the node lands every one of the 128 knob
+positions exactly on that frame, where the read is lossless, so the
+repeats of a Time you have stopped turning do not darken.
+
+At 44.1 and 22.05 kHz it does not always. The node turns the milliseconds
+back into frames in float32, and for some Times no float32 value lands on
+the whole frame, so the read sits one float32 step off it. Among the 128
+knob positions that is 18 at 44.1 kHz (MIDI 8, 9, 13, 19, 29, 34, 52, 57,
+61, 74, 75, 78, 80, 94, 101, 104, 118, 125) and 18 at 22.05 kHz (MIDI 8,
+9, 13, 16, 34, 39, 51, 52, 57, 74, 75, 78, 80, 94, 101, 104, 118, 123), at
+most 1/256 of a frame off at 44.1 kHz and 1/1024 at 22.05 kHz. A
+constructor `time_ms` or a Time Sync takes from a host's tempo reaches
+every whole frame from 12.5 to 800 ms, and 5 600 of those 34 730 frames
+land off at 44.1 kHz and 2 809 of 17 365 at 22.05 kHz, up to 1/256 and
+1/512 of a frame off. None do at 48 kHz, nor the default 350 ms at any
+rate. One shipped patch does: patch 4 (Long Ambient, MIDI 125) at
+44.1 kHz. At an off-frame Time each pass puts part of the repeat on the
+frame beside it, and the repeats darken slowly: a 20 000 click's first
+repeat reads 19 922 and 78 at patch 4's Time, 44.1 kHz (19 980 and 20 at
+MIDI 104, 22.05 kHz, the worst there). The class cannot hand the node a
+number that lands there; a node change is asked for.
+
 Above Mix 1 the dry falls as 2 - Mix, by `audiodelays.Echo`'s convention.
 
 **Repeat Tone at a low rate.** The knob's corners clamp below Nyquist at
@@ -74,6 +106,18 @@ top of the knob goes flat. At 22.05 kHz positions 111-126 (labelled
 10 970-15 627 Hz) all sit on the 10 804.5 Hz clamp and do the same thing,
 and position 127 takes the filter out. At 44.1 and 48 kHz every position
 moves.
+
+**Repeat Tone and Repeat Cut back in, after they have been out.** Take
+either filter out while the repeats play and bring it back in after they
+have died away, and nothing plays: 0 LSB at 48, 44.1 and 22.05 kHz,
+stereo and mono, after a 300 Hz tone at 30 000 LSB, Mix 2 (Tone at
+2 kHz, Cut at 400 Hz). Both out stops hand the node exactly 0, which is
+the filter out whatever came before. Up to audiodsp v0.6.2 the node froze
+an out filter's state and played it back here (26 443 LSB for Tone, which
+this class cured with a tracking out stop, and 20 858 for Cut, which it
+could only disclose); since v0.6.3rc1 the node keeps the low-pass's state
+on the signal and the high-pass's at zero while out (audiodsp#158, #159),
+and the cure came out.
 
 A constructor `glide_ms` faster than the knob's fastest walk (under
 814.6 ms, down to the 0.99 pin) stays on the audio path, and the knob
@@ -138,18 +182,17 @@ round its way down from full scale, 11 laps at the default Feedback and
 685 at 0.99 (nine minutes at Time 800 ms). Since audiodsp v0.6.2 the node
 steps a repeat toward zero wherever rounding would hand it back
 unchanged, so with both filters out the bound holds at every Feedback.
-With Repeat Tone in circuit each lap is a little longer, and the node
-has a second floor of its own: wherever 0.5 / (1 - Feedback) is within a
-hair of a whole number k (0.5, 0.75, 0.83, 0.875, 0.9 and on up to the
-knob's top, 0.99), its loop low-pass can come to rest a hair above k LSB
-and send it round for ever (a 2 LSB DC at Feedback 0.5, Tone 800 Hz,
-used to leave 1 LSB going round; at 0.9, 5 LSB). So with Repeat Tone in
-the class hands the node a Feedback just outside each of those windows,
-at the nearer edge, at most 0.00003 from the one you set (0.99 plays as
-about 0.98998 and 0.5 as 0.49999), far inside one step of the knob,
-which still reads what you set. The tail then reaches exact zero there too, inside
-a finite `tail_samples`. With Repeat Cut in circuit `tail_samples` is
-`None`: no bound is derived there.
+With Repeat Tone in circuit each lap is a little longer. Wherever
+0.5 / (1 - Feedback) is within a hair of a whole number k (0.5, 0.75,
+0.83, 0.875, 0.9 and on up to the knob's top, 0.99), the loop low-pass
+can come to rest a hair above k LSB and hand it back; up to audiodsp
+v0.6.2 it did so for ever, and this class moved the Feedback it handed
+the node clear of those windows. Since v0.6.3rc1 the node sets a stalled
+low-pass onto its input (audiodsp#157), the Feedback you set is the one
+the node plays, and `tail_samples` counts one more lap there: every window
+centre, on a 2 LSB DC and on full scale, reaches exact zero inside it.
+With Repeat Cut in circuit `tail_samples` is `None`: no bound is derived
+there.
 
 `capabilities = ("tempo_sync",)`: with Sync on, the class reads
 `self._transport()` on every macro move and program change (not per block).
@@ -215,7 +258,9 @@ FEEDBACK_MARGIN = 2.0 ** -16
 #: Feedback it hands the node, relative to the window's edge: many times a
 #: single-precision float's step (2^-24), so a board's arithmetic lands on
 #: the same side, and far under the window's own width (2-4 x 10^-5) and
-#: the knob's 7-bit step (0.0078).
+#: the knob's 7-bit step (0.0078). This class stopped stepping at audiodsp
+#: v0.6.3rc1, whose node lands a stalled damping state (audiodsp#157); the
+#: helper stays for the classes still built at v0.6.2.
 STALL_CLEARANCE = 2.0 ** -20
 
 #: `stall_window` widens each window by this much, relatively, either side,
@@ -290,7 +335,7 @@ def whole_frames(time_ms, sample_rate):
 
 def laps_to_zero(feedback, excess=0.0):
     """How many laps of the line can still hold a non-zero sample once the
-    input stops, or `None` where a lap could hand a sample back unchanged.
+    input stops. Finite at every Feedback since audiodsp v0.6.3rc1.
 
     Once the input stops, the node writes `to_s16(recirculated(s, f))` for
     each value s it sends round (`audiodsp_feedback_delay.c:529`). Since
@@ -309,9 +354,19 @@ def laps_to_zero(feedback, excess=0.0):
     above the line's peak by up to `excess` times it (`DigitalDelay`'s
     `_tone_excess`). Then a lap maps x to the node's write at
     s = x (1 + excess), whichever branch it takes, and the guarantee is
-    gone: where that write is still x, the peak can stay there for ever.
-    The node does that (1 LSB at Feedback 0.5, 5 at 0.9, Tone 800 Hz, on
-    a DC input), so the count is `None` wherever the reckoning allows it.
+    gone: where that write is still x, the peak is handed back. Up to
+    audiodsp v0.6.2 it stayed there for ever (1 LSB at Feedback 0.5, 5 at
+    0.9, Tone 800 Hz, on a DC input), and this count was `None` there.
+    From v0.6.3rc1 (audiodsp#157) the node sets a damping state that has
+    stopped moving onto its input, once a block, at or below 64 LSB, which
+    covers every such x (at most 50, at the node's 0.99). So the peak is
+    counted one more lap there and then leaves as with the filter out,
+    min(x - 1, floor(f x + 0.5)). The extra lap is measured, not derived
+    (the landing waits for a block's end, and a host picks the block):
+    at every window centre k = 1 ... 50, Repeat Tone grid 0, 64 and 126,
+    on a 2 LSB DC and on full scale, in blocks of 64 to 4 096 frames at
+    Time 12.5 ms, each tail ends inside the count with the extra lap left
+    out, 239 frames or more short of it (`pin063_stall_landing.py`).
     """
     feedback = float(feedback)
     if feedback < 0.0:
@@ -335,7 +390,12 @@ def laps_to_zero(feedback, excess=0.0):
             else:
                 image = int(math.floor(up * sent))
             if image >= peak:
-                return None
+                # The node's landing (audiodsp#157): one more lap, then the
+                # peak leaves as it does with the filter out.
+                laps += 1
+                image = int(math.floor(up * peak + 0.5))
+                if image >= peak:
+                    image = peak - 1
         peak = image
     return laps
 
@@ -344,8 +404,8 @@ def stall_window(feedback, excess):
     """The Repeat Tone stall window `feedback` sits in, as (low, high), or
     `None` outside every window.
 
-    `laps_to_zero(f, excess)` is `None` exactly when some whole peak x it
-    reaches is handed back: the rounding branch taken,
+    `laps_to_zero(f, excess)` takes its extra landing lap exactly when
+    some whole peak x it reaches is handed back: the rounding branch taken,
     x (1 + excess)(1 - f (1 - m)) > 0.5, and the image not below x,
     f (1 + m) x (1 + excess) + 0.5 >= x, m being `FEEDBACK_MARGIN`. For
     each x that is one window, [(1 - 0.5 / x) / ((1 + m)(1 + excess)),
@@ -375,7 +435,11 @@ def clear_of_stalls(feedback, excess):
     every window. The top window's upper edge is above the node's 0.99, so
     there it always moves down. Every move is under 3 x 10^-5 of Feedback
     (2.6 x 10^-5 at the 0.99 stop), far inside one step of the 7-bit knob,
-    so `get_macro(1)` still names the setting that plays."""
+    so `get_macro(1)` still names the setting that plays.
+
+    Not called by this class since audiodsp v0.6.3rc1 (the node lands a
+    stalled damping state, audiodsp#157); kept for the classes that import
+    it and are still built at v0.6.2."""
     window = stall_window(feedback, excess)
     if window is None:
         return feedback
@@ -468,6 +532,7 @@ class DigitalDelay(_component.Component):
         #: time; the node is refreshed once, after the last.
         self._deferred = False
         self._feedback = 0.0
+        self._damping = 0.0
         self._node_ms = 0.0
         # 0 (or less) is how the node spells a filter out of circuit, so
         # Repeat Tone and Repeat Cut at 0 are their out stops; Time at 0
@@ -651,24 +716,19 @@ class DigitalDelay(_component.Component):
             feedback = FEEDBACK_MAX
         if feedback < 0.0:
             feedback = 0.0
-        if self._macros[TONE_I] < 1.0:
-            # With Repeat Tone in, the node can hold a small value for ever
-            # at Feedback values a hair either side of 1 - 0.5 / k; the node
-            # is handed the nearer edge of that window instead.
-            feedback = self._loop_feedback(feedback)
+        # Both out stops are exactly 0. Since audiodsp v0.6.3rc1 the node
+        # keeps an out filter's state live (#158, #159), and lands a damping
+        # state that has stopped moving (#157), so nothing is moved here.
+        damping = self._tone_damping(self._macros[TONE_I])
+        self._damping = damping
         self._feedback = feedback
         self._delay.set(
             delay_slew=slew,
             delay_ms=self._node_ms,
             feedback=feedback,
             mix=self._value(MIX_I),
-            damping_hz=self._tone_damping(self._macros[TONE_I]),
+            damping_hz=damping,
             cut_hz=self._cut_hz(self._macros[CUT_I]))
-
-    def _loop_feedback(self, feedback):
-        """The Feedback handed to the node with Repeat Tone in circuit:
-        `clear_of_stalls` at this Tone's excess."""
-        return clear_of_stalls(feedback, self._tone_excess()[1])
 
     @property
     def tail_samples(self):
@@ -682,10 +742,10 @@ class DigitalDelay(_component.Component):
         a Glide-0 move or a reset lands the head, because the class cannot
         see how far the walk has got.
 
-        Finite at every Feedback with both filters out. With Repeat Tone
-        in, each lap is `memory` frames longer, the time the low-pass takes
-        to forget the lap before, and the count is `None` near the Feedback
-        values where the node can hold a small value for ever
+        Finite at every Feedback with Repeat Cut out. With Repeat Tone in,
+        each lap is `memory` frames longer, the time the low-pass takes to
+        forget the lap before, and near the Feedback values where the node
+        once held a small value for ever the count takes one more lap
         (`laps_to_zero`). `None` with Repeat Cut in circuit, whose
         high-pass can more than double a peak in one pass, so the per-lap
         argument does not hold; the node measures that case rather than
@@ -702,8 +762,6 @@ class DigitalDelay(_component.Component):
             return None
         memory, excess = self._tone_excess()
         laps = laps_to_zero(self._feedback, excess)
-        if laps is None:
-            return None
         return int(laps * (self._reach + 1 + memory))
 
     def _tone_excess(self):
@@ -712,11 +770,9 @@ class DigitalDelay(_component.Component):
         most, weighs under 2^-17 LSB, which is under 2^-17 of any non-zero
         peak; and the single-precision state can rest up to 2^-24 / a of
         the peak above it, a being the coefficient, because a step
-        a (v - y) under half an ulp rounds away. (0, 0.0) with Repeat Tone
-        out."""
-        if self._macros[TONE_I] >= 1.0:
-            return 0, 0.0
-        damping = self._tone_damping(self._macros[TONE_I])
+        a (v - y) under half an ulp rounds away. Read from the `damping_hz`
+        the node was handed. (0, 0.0) with the filter out."""
+        damping = self._damping
         if damping <= 0.0:
             return 0, 0.0
         per_frame = 2.0 * math.pi * damping / self._sample_rate
