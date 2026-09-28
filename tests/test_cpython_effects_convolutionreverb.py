@@ -38,6 +38,15 @@ on the handed law at Predelay 64/127 and green read back), a NaN
 which pins the widest per-side balance the docstring prints to the room at
 the cell the walk named (the fix-round-2 docstring, a figure 0.1 dB narrow
 and `SideTilt` are red on it).
+
+The re-audit's fix round 2 (gate audit, re-audit round 1) added three
+more, each shown red: `D5SingleRoom`, which pins the single-Room figures
+the docstring prints as floors to their named cells (the `1c9308b` words
+"up to about 22 %" and a figure half a point off are red on it);
+`D6OneSided`, which reads the one-sided example at the Rooms it names (red
+with its seed 36 changed to 1); and a `set_macro` leg for D5's Predelay
+control (`PredelayMidiSquared`, which passed the constructor-only test).
+`D6Balance` now wants the class summary's floor with its rates.
 """
 
 import os
@@ -563,6 +572,26 @@ class PredelayKeptSquared(ConvolutionReverb):
         values = list(values)
         values[PREDELAY_I] = values[PREDELAY_I] ** 2
         ConvolutionReverb._init_macros(self, tuple(values), patch)
+
+
+class PredelayMidiSquared(ConvolutionReverb):
+    """The same control through `set_macro` (re-audit fix round 2, from
+    the re-audit round-1 audit's item 5): a Predelay move is kept squared,
+    the constructor's Predelay held exactly. At `set_macro` Predelay 64,
+    Decay 127, Damping out, Diffusion 0 the auditor read worst +6.518 % on
+    the handed law at 48 kHz (+7.244 % at 22.05 kHz), and it passed the
+    Predelay test while that test's clean leg went through the
+    constructor."""
+
+    NAME = NAME
+
+    def set_macro(self, index, value, channel=0, note_id=-1,
+                  sample_position=0):
+        ConvolutionReverb.set_macro(self, index, value, channel, note_id,
+                                    sample_position)
+        if index == PREDELAY_I:
+            self._macros[PREDELAY_I] = self._macros[PREDELAY_I] ** 2
+            self._apply_macro(PREDELAY_I, self._macros[PREDELAY_I])
 
 
 class NanIsSpanBottom(ConvolutionReverb):
@@ -1488,6 +1517,24 @@ class D5DecayLaw(unittest.TestCase):
             self.assertLessEqual(float(np.max(np.abs(held))), 0.03, rate)
             clean = self.errors_over_rooms(rate=rate, **options)
             self.assertLessEqual(float(np.max(np.abs(clean))), 0.03, rate)
+            # Re-audit fix round 2: the same by `set_macro`, Predelay 64
+            # handed after construction, with PredelayMidiSquared as the
+            # control. The clean leg goes through `set_macro` too, so a
+            # class that held a moved Predelay wrong fails it.
+            moved = dict(decay=1.0, damping_hz=0.0, diffusion=0.0)
+            planted = self.errors_over_rooms(PredelayMidiSquared, rate,
+                                             moves=((PREDELAY_I, 64),),
+                                             **moved)
+            self.assertGreater(float(np.max(np.abs(planted))), 0.03, rate)
+            self.assertGreater(float(np.mean(planted)), 0.03, rate)
+            held = self.errors_over_rooms(PredelayMidiSquared, rate,
+                                          moves=((PREDELAY_I, 64),),
+                                          read_back=True, **moved)
+            self.assertLessEqual(float(np.max(np.abs(held))), 0.03, rate)
+            clean = self.errors_over_rooms(rate=rate,
+                                           moves=((PREDELAY_I, 64),),
+                                           **moved)
+            self.assertLessEqual(float(np.max(np.abs(clean))), 0.03, rate)
 
     def test_stuck_dc_turns_the_floor_red(self):
         effect = build(StuckDcAfter)
@@ -1521,6 +1568,109 @@ class D5DecayLaw(unittest.TestCase):
         result = kit_faults.null_build_red(ConvolutionReverb, measure,
                                            label="ConvolutionReverb D5")
         self.assertFalse(result["null"]["passed"])
+
+
+#: The docstring's single-Room sentences (re-audit fix round 2): a floor
+#: ("at least about"), then each figure with its cell in brackets.
+SINGLE_MONO_RE = re.compile(
+    r"at\s+least\s+about\s+(\d+(?:\.\d+)?)\s+%\s+off\s+on\s+a\s+mono\s+room:"
+    r"\s+\+(\d+\.\d\d)\s+%\s+at\s+44\.1\s+kHz\s+\(([^)]*)\),"
+    r"\s+\+(\d+\.\d\d)\s+%\s+there\s+with\s+a\s+-20\s+dBFS\s+click"
+    r"\s+\(([^)]*)\),"
+    r"\s+\+(\d+\.\d\d)\s+%\s+at\s+48\s+kHz\s+\(([^)]*)\)"
+    r"\s+and\s+\+(\d+\.\d\d)\s+%\s+at\s+22\.05\s+kHz\s+\(([^)]*)\)")
+SINGLE_STEREO_RE = re.compile(
+    r"On\s+a\s+stereo\s+room\s+it\s+is\s+at\s+least\s+about"
+    r"\s+(\d+(?:\.\d+)?)\s+%:"
+    r"\s+\+(\d+\.\d\d)\s+%\s+at\s+48\s+kHz\s+\(([^)]*)\)"
+    r"\s+and\s+\+(\d+\.\d\d)\s+%\s+at\s+22\.05\s+kHz\s+with\s+a\s+-20\s+dBFS"
+    r"\s+click\s+\(([^)]*)\)")
+
+#: The cell behind each figure, in the sentences' order: (rate, channels,
+#: click LSB, Decay MIDI, Predelay MIDI, Diffusion MIDI, Room seed), all at
+#: Damping 500 Hz and 0.08 s. The walk behind them is the re-audit round-1
+#: audit's (`convolutionreverb_reaudit1_audit.py mono stereo monowalk`).
+SINGLE_MONO_CELLS = (
+    (44100, 1, 32767, 0, 0, 32, 43),
+    (44100, 1, 3277, 0, 127, 28, 43),
+    (48000, 1, 32767, 0, 0, 10, 43),
+    (22050, 1, 32767, 0, 0, 46, 61),
+)
+SINGLE_STEREO_CELLS = (
+    (48000, 2, 32767, 16, 127, 32, 43),
+    (22050, 2, 3277, 127, 0, 0, 27),
+)
+
+
+def documented_single_rooms(doc):
+    """((mono floor, [(figure, words)...]), (stereo floor, [...])) as the
+    module docstring states them, or None where a sentence is missing."""
+    text = " ".join((doc or "").split())
+    found = []
+    for pattern in (SINGLE_MONO_RE, SINGLE_STEREO_RE):
+        match = pattern.search(text)
+        if match is None:
+            found.append(None)
+            continue
+        groups = match.groups()
+        pairs = [(float(groups[i]), groups[i + 1])
+                 for i in range(1, len(groups), 2)]
+        found.append((float(groups[0]), pairs))
+    return tuple(found)
+
+
+def cell_words(cell):
+    """The words a cell's brackets must carry."""
+    _, _, _, decay, predelay, diffusion, seed = cell
+    return ("Decay %d" % decay, "Damping 500 Hz", "Predelay %d" % predelay,
+            "Diffusion %d" % diffusion, "seed %d" % seed)
+
+
+def single_room_error(cell, cls=None):
+    """(% off the Decay law, floor clean) of one Room at `cell`: a click at
+    Mix 2, the Schroeder fit on the sum of the channels' energy, the law
+    from the positions this test hands the constructor."""
+    rate, channels, value, decay, predelay, diffusion, seed = cell
+    effect = build(cls, rate, channels, decay=decay / 127.0,
+                   damping_hz=500.0, predelay=predelay / 127.0,
+                   diffusion=diffusion / 127.0, room=seed)
+    taps = effect.node.taps
+    out = at_mix(effect, 127, click(LATENCY + taps + 1024, channels,
+                                    value=value))
+    effect.deinit()
+    ir = out[LATENCY:LATENCY + taps].astype(np.float64)
+    t60 = schroeder_t60(np.sum(ir ** 2, axis=1), rate)
+    law = law_t60(decay / 127.0, predelay / 127.0, 0.08)
+    return 100.0 * (t60 / law - 1.0), not np.any(out[LATENCY + taps:])
+
+
+class D5SingleRoom(unittest.TestCase):
+    """D5's Not claimed line, a single Room with Damping in: nothing is
+    claimed, but the docstring tells a player how far one was found off the
+    law, and twice a figure written as a bound was exceeded (the re-audit
+    round-1 audit). This pins each printed figure to the Room it names,
+    to the printed hundredth, and wants each "at least about" within half a
+    point of its sentence's widest figure. It does not make a figure a
+    bound (re-audit fix round 2)."""
+
+    def test_the_documented_single_rooms_are_what_the_room_reads(self):
+        mono, stereo = documented_single_rooms(rebuilt.__doc__)
+        for label, found, cells in (("mono", mono, SINGLE_MONO_CELLS),
+                                    ("stereo", stereo, SINGLE_STEREO_CELLS)):
+            self.assertIsNotNone(found, "no %s single-Room floor" % label)
+            floor, pairs = found
+            self.assertEqual(len(pairs), len(cells), label)
+            self.assertLessEqual(abs(floor - max(f for f, _ in pairs)), 0.5,
+                                 (label, floor))
+            for (figure, words), cell in zip(pairs, cells):
+                for word in cell_words(cell):
+                    self.assertIsNotNone(
+                        re.search(r"\b%s\b" % re.escape(word), words),
+                        (label, cell, word, words))
+                error, floor_clean = single_room_error(cell)
+                self.assertTrue(floor_clean, cell)
+                self.assertLessEqual(abs(error - figure), 0.006,
+                                     (label, cell, error, figure))
 
 
 # --------------------------------------------------------------------------
@@ -1690,8 +1840,11 @@ class D6Balance(unittest.TestCase):
             effect.deinit()
             self.assertLessEqual(abs(side - other[rate]), 0.005,
                                  (rate, side))
-        # The class's own summary gives the floor too.
-        self.assertIn("at least about %.1f dB" % abs(documented[48000]),
+        # The class's own summary gives the floor too, with its rates (the
+        # re-audit fix round 2: the round-1 sentence named none).
+        self.assertIn("at least about %.1f dB at 48 and 44.1 kHz (%.1f dB at "
+                      "22.05 kHz" % (abs(documented[48000]),
+                                     abs(documented[22050])),
                       " ".join(ConvolutionReverb.__doc__.split()))
 
     def test_no_cell_of_the_slice_is_wider_than_documented(self):
@@ -1711,6 +1864,66 @@ class D6Balance(unittest.TestCase):
             effect.deinit()
             self.assertGreaterEqual(min(readings), documented[rate] - 0.005,
                                     rate)
+
+
+#: The docstring's one-sided example (re-audit fix round 2): the Room of
+#: each reading is named, since the sign turns with it.
+ONE_SIDED_RE = re.compile(
+    r"At\s+48\s+kHz\s+with\s+Decay\s+0,\s+Damping\s+500\s+Hz\s+and\s+"
+    r"Diffusion\s+0,\s+white\s+noise\s+hard\s+left\s+comes\s+back\s+"
+    r"(\d+\.\d)\s+dB\s+down\s+and\s+hard\s+right\s+(\d+\.\d)\s+dB\s+up\s+at\s+"
+    r"Room\s+seed\s+(\d+),\s+and\s+at\s+the\s+default\s+Room,\s+seed\s+(\d+),"
+    r"\s+hard\s+left\s+comes\s+back\s+(\d+\.\d)\s+dB\s+up\s+and\s+hard\s+"
+    r"right\s+(\d+\.\d)\s+dB\s+down\s+\(at\s+seed\s+(\d+),\s+Decay\s+1\.0,\s+"
+    r"Diffusion\s+0\.5\s+and\s+Damping\s+500\s+Hz,\s+about\s+(\d+\.\d)\s+dB\s+"
+    r"down\s+and\s+(\d+\.\d)\s+dB\s+up\)")
+
+
+def documented_one_sided(doc):
+    """[(options, left dB, right dB)] as the docstring states them, signs
+    applied, or None."""
+    found = ONE_SIDED_RE.search(" ".join((doc or "").split()))
+    if found is None:
+        return None
+    g = found.groups()
+    corner = dict(decay=0.0, damping_hz=500.0, diffusion=0.0)
+    return [(dict(corner, room=int(g[2])), -float(g[0]), float(g[1])),
+            (dict(corner, room=int(g[3])), float(g[4]), -float(g[5])),
+            (dict(decay=1.0, damping_hz=500.0, diffusion=0.5,
+                  room=int(g[6])), -float(g[7]), float(g[8]))]
+
+
+def one_sided_level(side, cls=None, rate=RATE, **options):
+    """Pooled wet/dry dB at Mix 2 of the kit's white noise (seed 12345,
+    -12 dBFS peak, 3 s) on `side` alone, the other side silent, read after
+    the room has built."""
+    effect = build(cls, rate, predelay=0.0, **options)
+    pcm = white(3 * rate)
+    pcm[:, 1 - side] = 0
+    out = at_mix(effect, 127, pcm)
+    start = LATENCY + effect.node.taps
+    effect.deinit()
+    wet = out[start:].astype(np.float64)
+    dry = pcm[start - LATENCY:len(pcm) - LATENCY].astype(np.float64)
+    return float(10 * np.log10(np.mean(wet ** 2) / np.mean(dry ** 2)))
+
+
+class D6OneSided(unittest.TestCase):
+    """The docstring's one-sided example, read at the Rooms it names: the
+    sign of each side turns with the Room (seed 36 and the default seed 1
+    read the other way round), so a sentence that named no Room was false
+    at the default one (re-audit round-1 audit). Each printed figure is
+    held to its printed tenth."""
+
+    def test_the_documented_one_sided_example_is_what_the_room_reads(self):
+        cells = documented_one_sided(rebuilt.__doc__)
+        self.assertIsNotNone(cells, "no one-sided example naming its Rooms")
+        self.assertEqual(cells[1][0]["room"], 1)    # "the default Room"
+        for options, left, right in cells:
+            for side, printed in ((0, left), (1, right)):
+                level = one_sided_level(side, **options)
+                self.assertLessEqual(abs(level - printed), 0.051,
+                                     (options, side, level, printed))
 
 
 # --------------------------------------------------------------------------
