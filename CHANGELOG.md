@@ -61,9 +61,14 @@ there, and are recorded in its changelog.
   `audioeffects.TapeDelay` is still the old class. The docstring states the
   input ceiling (-1.1 dBFS peak at the defaults, -2.0 over the shipped
   patches, on `noise_det`), the band the loss law holds in, the wobble's
-  100 s period, the Wow and Flutter step, and where the pitch claim stops:
-  the node's single-precision walk limits rising moves past 16 384 and
-  32 768 frames. Board cost is unmeasured.
+  100 s period, where the pitch claim stops (the node's single-precision
+  walk limits rising moves past 16 384 and 32 768 frames), and which Wow
+  and Flutter moves still step. Board cost is unmeasured. At audiodsp
+  v0.6.3rc1 its Feedback is handed as set (no stepping clear of the stall
+  windows; the bound counts one landing lap there), a Wow or Flutter move
+  that changes only the wobble's depth glides over 20 ms, and a knob turned
+  down to 0 keeps the last wow table while the depth ramps out; a move
+  that changes the balance of Wow and Flutter still steps, disclosed.
 
 ### Changed
 
