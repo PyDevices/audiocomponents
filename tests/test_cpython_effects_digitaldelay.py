@@ -504,6 +504,34 @@ class StallWindowToneDelay(DigitalDelay):
         return feedback
 
 
+class FrozenToneDelay(DigitalDelay):
+    """Tier 1's silence clause after a Repeat Tone move: the out stop hands
+    the node exactly 0 even after Tone has been in, so the loop low-pass
+    freezes on whatever it held and a later Tone move plays it out of
+    silence. The class up to the housekeeping round (2026-09-28), and
+    `FrozenToneSlapback`'s defect."""
+
+    NAME = 'DigitalDelay'
+
+    def _refresh(self):
+        DigitalDelay._refresh(self)
+        if self._macros[TONE_I] >= 1.0:
+            self._delay.set(damping_hz=0.0)
+
+
+class LeakyTrackDelay(DigitalDelay):
+    """The out stop after Repeat Tone has been in, tracking the tap at a
+    coefficient under 1: `damping_hz` at half the rate (a = 1 - e^-pi,
+    0.957), a low-pass left in circuit where the knob says out."""
+
+    NAME = 'DigitalDelay'
+
+    def _refresh(self):
+        DigitalDelay._refresh(self)
+        if self._tone_used and self._macros[TONE_I] >= 1.0:
+            self._delay.set(damping_hz=0.5 * self._sample_rate)
+
+
 class SlowSeedGlideDelay(DigitalDelay):
     """The seeding up to re-audit fix round 1: a constructor Glide slower
     than 8 s stayed on the audio path while the knob read 8 s, so handing
@@ -1495,9 +1523,21 @@ class TheSurface(unittest.TestCase):
         laps = dd.laps_to_zero(effect._feedback, effect._tone_excess()[1])
         self.assertIsNotNone(laps)
         self.assertEqual(effect.tail_samples, laps * (601 + 22))
+        # Tone back out after it has been in: the low-pass tracks the tap
+        # at a coefficient of 1 (one frame of memory), so the Feedback stays
+        # clear of the stall window as with Tone in (housekeeping,
+        # 2026-09-28). An instance that never had Tone in hands 0.99 and
+        # one lap per frame of the line.
         effect.set_macro(TONE_I, 127)
-        self.assertEqual(effect._feedback, 0.99)
-        self.assertEqual(effect.tail_samples, 685 * 601)
+        self.assertEqual(effect._damping, dd.TONE_TRACK_PER_RATE * RATE)
+        self.assertLess(effect._feedback, 0.99)
+        self.assertEqual(effect._tone_excess()[0], 1)
+        laps = dd.laps_to_zero(effect._feedback, effect._tone_excess()[1])
+        self.assertEqual(effect.tail_samples, laps * (601 + 1))
+        fresh = copy_of(effect, silence_src(512))
+        self.assertEqual(fresh._feedback, 0.99)
+        self.assertEqual(fresh.tail_samples, 685 * 601)
+        fresh.deinit()
         self.assertEqual(dd.laps_to_zero(0.99, 1e-5), None)
         self.assertEqual(dd.laps_to_zero(0.5, 1e-5), None)
         self.assertEqual(dd.laps_to_zero(0.7, 1e-5), 29)
@@ -1798,6 +1838,121 @@ class Tier1Fast(unittest.TestCase):
                               feedback=0.99, mix=2.0, tone_hz=800.0,
                               cut_hz=400.0)
         self.assertEqual(int(np.max(np.abs(pull(effect, RATE)))), 0)
+
+    def _tone_back_in(self, cls, rate=RATE, channels=2, mix=2.0):
+        """300 Hz at 30 000 LSB for 0.5 s with Repeat Tone 2 kHz and
+        Feedback 0, Tone to its out stop as the input stops, 2 s of silence,
+        then Tone to MIDI 0: the output's peak after that move."""
+        loud = (rate // 2) // BLOCK * BLOCK
+        back = (loud + 2 * rate) // BLOCK * BLOCK
+        values = [0] * (back + rate // 4)
+        values[:loud] = sine_values(300.0, loud, rate, 30000)
+        effect = cls(array_src(values, channels, rate), sample_rate=rate,
+                     tone_hz=2000.0, feedback=0.0, mix=mix)
+
+        def move(frame):
+            if frame == loud:
+                effect.set_macro(TONE_I, 127)
+            elif frame == back:
+                effect.set_macro(TONE_I, 0)
+
+        y = pull(effect, len(values), channels, on_block=move)
+        effect.deinit()
+        return int(np.abs(y[back * channels:]).max())
+
+    def test_tone_back_in_after_silence_stays_silent(self):
+        # The node freezes a loop filter's state while its corner is 0
+        # (`audiodsp_feedback_delay.c:493-497`), so the out stop keeps the
+        # low-pass tracking the tap once Tone has been in.
+        for rate in (48000, 44100, 22050):
+            for channels in (2, 1):
+                self.assertEqual(self._tone_back_in(DigitalDelay, rate,
+                                                    channels), 0,
+                                 (rate, channels))
+        self.assertEqual(self._tone_back_in(DigitalDelay, mix=0.3), 0)
+        # Planted: the out stop frozen at 0 plays the held state back
+        # (26 443 LSB at Mix 2, 48 kHz, when this test was written).
+        self.assertGreater(self._tone_back_in(FrozenToneDelay), 20000)
+        self.assertGreater(self._tone_back_in(FrozenToneDelay, mix=0.3),
+                           3000)
+
+    def test_cut_back_in_after_silence_is_the_disclosed_node_defect(self):
+        # Repeat Cut's frozen state has no class-side cure (its high-pass
+        # subtracts the state), so the docstring discloses what it plays.
+        # When the node keeps a filter's state live while out, this goes
+        # red and the docstring's paragraph comes out with it.
+        peaks = []
+        for rate in (48000, 44100, 22050):
+            loud = (rate // 2) // BLOCK * BLOCK
+            back = (loud + 2 * rate) // BLOCK * BLOCK
+            values = [0] * (back + rate // 4)
+            values[:loud] = sine_values(300.0, loud, rate, 30000)
+            effect = DigitalDelay(array_src(values, 2, rate),
+                                  sample_rate=rate, cut_hz=400.0,
+                                  feedback=0.0, mix=2.0)
+
+            def move(frame, effect=effect, loud=loud, back=back):
+                if frame == loud:
+                    effect.set_macro(CUT_I, 0)
+                elif frame == back:
+                    effect.set_macro(CUT_I, 127)
+
+            y = pull(effect, len(values), 2, on_block=move)
+            effect.deinit()
+            peaks.append(int(np.abs(y[back * 2:]).max()))
+        self.assertEqual(peaks, [20858, 18699, 16352])
+
+    def test_tone_out_hands_no_filter_until_tone_has_been_in(self):
+        with NodeSpy():
+            for rate in (48000, 44100, 22050):
+                effect = DigitalDelay(silence_src(64, 2, rate),
+                                      sample_rate=rate)
+                self.assertEqual(effect._delay._handed["damping_hz"], 0.0)
+                effect.set_macro(TONE_I, 0)
+                effect.set_macro(TONE_I, 127)
+                self.assertEqual(effect._delay._handed["damping_hz"],
+                                 dd.TONE_TRACK_PER_RATE * rate)
+                self.assertIsNotNone(effect.tail_samples)
+                effect.reset()
+                self.assertEqual(effect._delay._handed["damping_hz"], 0.0)
+                effect.deinit()
+                effect = DigitalDelay(silence_src(64, 2, rate),
+                                      sample_rate=rate, patch=5)
+                effect.program_change(0)
+                self.assertEqual(effect._delay._handed["damping_hz"],
+                                 dd.TONE_TRACK_PER_RATE * rate)
+                effect.deinit()
+
+    def _out_after_tone(self, cls, rate=RATE, channels=2, **options):
+        """Samples and worst LSB by which the out stop after Tone has been
+        in differs from a fresh instance's out stop, on 2 s of noise."""
+        frames = 2 * rate
+        values = [int(v) for v in
+                  np.random.default_rng(5).integers(-32768, 32768, frames)]
+        tracked = cls(array_src(values, channels, rate), sample_rate=rate,
+                      **options)
+        tracked.set_macro(TONE_I, 0)
+        tracked.set_macro(TONE_I, 127)
+        fresh = DigitalDelay(array_src(values, channels, rate),
+                             sample_rate=rate, **options)
+        diff = np.abs(pull(tracked, frames, channels).astype(int)
+                      - pull(fresh, frames, channels).astype(int))
+        tracked.deinit()
+        fresh.deinit()
+        return int((diff > 0).sum()), int(diff.max())
+
+    def test_tone_out_after_tone_tracks_the_tap(self):
+        # Outside a stall window, a coefficient of exactly 1 is the filter
+        # out up to float rounding: 0 at whole-frame reads, 1 LSB where the
+        # node's float32 delay misses the frame (Time 136.054 at 44.1 kHz).
+        self.assertEqual(self._out_after_tone(DigitalDelay), (0, 0))
+        self.assertEqual(self._out_after_tone(DigitalDelay, patch=4), (0, 0))
+        _count, worst = self._out_after_tone(DigitalDelay, rate=44100,
+                                             time_ms=136.054, feedback=0.6)
+        self.assertLessEqual(worst, 1)
+        # Planted: a coefficient of 0.957 is a low-pass left in circuit.
+        _count, worst = self._out_after_tone(LeakyTrackDelay)
+        self.assertGreater(worst, 1000)
 
     def _kit_tail(self, cls, seconds, **options):
         data, on = probes.burst_silence(total_s=seconds, rate=RATE)

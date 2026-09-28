@@ -75,6 +75,34 @@ top of the knob goes flat. At 22.05 kHz positions 111-126 (labelled
 and position 127 takes the filter out. At 44.1 and 48 kHz every position
 moves.
 
+**Repeat Tone out, after it has been in.** The node leaves a loop filter
+frozen while it is out, and a frozen low-pass would play what it held,
+out of silence, when Tone came back in (26 443 LSB at Mix 2, 48 kHz,
+before this was fixed on 2026-09-28). So once Tone has been in circuit
+since the last `reset()`, the out stop keeps the low-pass running at a
+coefficient of exactly 1, which follows the repeat sample for sample, and
+Tone back in after silence is silent. Against the filter truly out that is
+exact at a whole-frame read and 1 LSB where the read is fractional (while
+Time glides, and where the node's single-precision delay misses the whole
+frame, as `time_ms=136.054` at 44.1 kHz does). At a Feedback inside one of
+Repeat Tone's stall windows (0.5, 0.75, 0.9 and on up to the 0.99 stop)
+the out stop also hands the Feedback that Tone in hands, moved clear by
+at most 0.00003, and the repeats differ from the filter truly out by a few
+LSB: 51 at most in the runs at the 0.99 stop (8 s of -18 dBFS noise, Time
+12.5 ms). The defaults, and anything since a reset that has not put Tone
+in, hand the node exactly no filter; a `reset()` makes the out stop exact
+again.
+
+**Repeat Cut back in, after it has been out.** Repeat Cut has the same
+node defect and no such cure: its high-pass subtracts its state, so no
+corner keeps that state live without cutting. Take Cut out while the
+repeats play and bring it back in after they have died away, and the
+frozen state plays out of silence: 20 858 LSB at its peak over 428
+samples at Mix 2, 48 kHz stereo, after a 300 Hz tone at 30 000 LSB with
+Cut at 400 Hz (18 699 at 44.1 kHz, 16 352 at 22.05). A `reset()` clears
+it. The fix is the node's (audiodsp's loop filters keeping their state
+live while out), due after Phase 5.
+
 A constructor `glide_ms` faster than the knob's fastest walk (under
 814.6 ms, down to the 0.99 pin) stays on the audio path, and the knob
 reads back at grid 1, the fastest walk it has, never at grid 0, the jump:
@@ -224,6 +252,16 @@ STALL_CLEARANCE = 2.0 ** -20
 #: moved too. Four times under `STALL_CLEARANCE`, so a moved value is
 #: never itself on the widened edge.
 STALL_FUZZ = 2.0 ** -22
+
+#: Repeat Tone out after it has been in: `damping_hz` at 32 x the rate,
+#: where 1 - expf(-2 pi 32) is exactly 1.0f (`one_pole_coefficient`,
+#: `audiodsp_feedback_delay.c:33-40`), so the loop low-pass's state follows
+#: the tap sample for sample instead of freezing on what it held
+#: (`:493-497`). `SlapbackDelay`'s constant, for the same node defect. It
+#: can differ from the filter truly out by 1 LSB only where the read is
+#: fractional: while Time glides, and wherever the node's float32
+#: `delay_ms * rate / 1000` misses the whole frame the class asked for.
+TONE_TRACK_PER_RATE = 32.0
 
 #: Division's sixteen note values, in quarter-note beats, rising: 1/32,
 #: 1/16T, 1/32., 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/2T, 1/4., 1/2,
@@ -468,6 +506,12 @@ class DigitalDelay(_component.Component):
         #: time; the node is refreshed once, after the last.
         self._deferred = False
         self._feedback = 0.0
+        self._damping = 0.0
+        #: True once Repeat Tone has been handed an in-circuit corner since
+        #: the node was built or cleared. From then on the loop low-pass's
+        #: state is live, and the out stop hands `TONE_TRACK_PER_RATE` x the
+        #: rate, not 0.
+        self._tone_used = False
         self._node_ms = 0.0
         # 0 (or less) is how the node spells a filter out of circuit, so
         # Repeat Tone and Repeat Cut at 0 are their out stops; Time at 0
@@ -528,6 +572,7 @@ class DigitalDelay(_component.Component):
     def _clear(self):
         self._delay.clear()
         self._fresh = True
+        self._tone_used = False
 
     # -- the maps ------------------------------------------------------
 
@@ -651,7 +696,18 @@ class DigitalDelay(_component.Component):
             feedback = FEEDBACK_MAX
         if feedback < 0.0:
             feedback = 0.0
-        if self._macros[TONE_I] < 1.0:
+        damping = self._tone_damping(self._macros[TONE_I])
+        if damping > 0.0:
+            self._tone_used = True
+        elif self._tone_used:
+            # The node updates its loop low-pass only while the coefficient
+            # is above 0 (`audiodsp_feedback_delay.c:493-497`), so handing 0
+            # after Repeat Tone has been in would freeze whatever the filter
+            # held, and a later Tone move would play it out of silence. A
+            # coefficient of exactly 1 keeps the state on the tap instead.
+            damping = TONE_TRACK_PER_RATE * self._sample_rate
+        self._damping = damping
+        if damping > 0.0:
             # With Repeat Tone in, the node can hold a small value for ever
             # at Feedback values a hair either side of 1 - 0.5 / k; the node
             # is handed the nearer edge of that window instead.
@@ -662,7 +718,7 @@ class DigitalDelay(_component.Component):
             delay_ms=self._node_ms,
             feedback=feedback,
             mix=self._value(MIX_I),
-            damping_hz=self._tone_damping(self._macros[TONE_I]),
+            damping_hz=damping,
             cut_hz=self._cut_hz(self._macros[CUT_I]))
 
     def _loop_feedback(self, feedback):
@@ -712,11 +768,11 @@ class DigitalDelay(_component.Component):
         most, weighs under 2^-17 LSB, which is under 2^-17 of any non-zero
         peak; and the single-precision state can rest up to 2^-24 / a of
         the peak above it, a being the coefficient, because a step
-        a (v - y) under half an ulp rounds away. (0, 0.0) with Repeat Tone
-        out."""
-        if self._macros[TONE_I] >= 1.0:
-            return 0, 0.0
-        damping = self._tone_damping(self._macros[TONE_I])
+        a (v - y) under half an ulp rounds away. Read from the `damping_hz`
+        the node was handed, so the out stop after Tone has been in (the
+        low-pass tracking the tap at a coefficient of 1) counts one frame
+        of memory. (0, 0.0) with the filter truly out."""
+        damping = self._damping
         if damping <= 0.0:
             return 0, 0.0
         per_frame = 2.0 * math.pi * damping / self._sample_rate

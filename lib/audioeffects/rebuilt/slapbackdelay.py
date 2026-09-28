@@ -101,8 +101,12 @@ frame the class asked for, Wow 0 differs by 1 LSB as well. That is 21
 of the 128 grid positions at 44.1 kHz and 20 at 22.05 kHz, and about one
 whole-frame Time in eight at either rate (1 159 of 9 262, 579 of 4 632;
 `time_ms=136.054` at 44.1 kHz is one); none at 48 kHz, and none at a
-shipped patch's Time. The defaults, and anything since a reset that
-has not put Tone in, hand the node exactly no filter. A Tone in the
+shipped patch's Time. At Repeats 0.5, the centre of the one stall window
+Repeats reaches (see Tail), the out stop also hands the Feedback that
+Tone in hands, moved clear by under 2.5 x 10^-5, and there it differs by
+1 LSB at every Wow and rate: 28 624 of 384 000 samples at Wow 0, 48 kHz
+(4 s of 0 dBFS noise, Level 0.35; 2026-09-28). The defaults, and anything
+since a reset that has not put Tone in, hand the node exactly no filter. A Tone in the
 constructor counts: `tone_hz=5000` and then patch 0, or `patch=5` and then patch 0, is the 1 LSB case (10 of
 384 000 samples of 4 s of 0 dBFS noise at 48 kHz stereo), and a `reset()`
 makes it exact again.
