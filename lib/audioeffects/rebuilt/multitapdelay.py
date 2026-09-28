@@ -78,14 +78,19 @@ but the laps in flight are dropped or doubled once (up to half the click's
 level at Feedback 0.5).
 
 **Mix 0 hands your source straight through**, the class's output port
-pointed at the source itself, so it is byte for byte a wire on every
-interpreter. It departs from the dossier's section 6 there, which kept
-both lines recording at Mix 0 through the Mixer: CircuitPython's stock
-`audiomixer` scales a voice at level 1.0 by 32768 / 32767, so on
-CircuitPython that route put every sample at |value| >= 32736 one LSB out
-(audiodsp's own Mixer, the one MicroPython and the boards run, passes
-unity through). The price is that the lines are not fed while Mix is 0,
-and turning Mix up from 0 starts the echoes from empty lines. The same
+pointed at its input adapter (through one more width-1 MidSide), an
+`audioroute.MidSide` at width 1 that passes the source byte for byte in
+256-frame blocks, so it is a wire on every interpreter. Going through the adapter, not round it, keeps the
+source's timeline whole: a switch to Mix 0 and back mid-stream neither
+skips nor repeats a frame, whatever size of buffer your source hands out,
+a bare `audiocore.RawSample` included. It departs from the dossier's
+section 6 there, which kept both lines recording at Mix 0 through the
+Mixer: CircuitPython's stock `audiomixer` scales a voice at level 1.0 by
+32768 / 32767, so on CircuitPython that route put every sample at
+|value| >= 32736 one LSB out (audiodsp's own Mixer, the one MicroPython
+and the boards run, passes unity through). The price is that the lines
+are not fed while Mix is 0, and turning Mix up from 0 starts the echoes
+from empty lines. The same
 stock Mixer is on the dry path above Mix 0. At one channel the class hands
 the dry's unity as 1 - 2^-15, which every Mixer here passes exactly; at two
 the stock Mixer's pan law leaves no level that is exact in both lanes, so
@@ -99,7 +104,8 @@ the grid is claimed while Time or Heads moves with audio playing. A move
 made before the first pull, or after `reset()` and before the next pull,
 is not a move of that kind: the tap node's line holds only zeros then, so
 the first lap lands on the grid in both lanes. That holds however many
-times you call `reset()`, or take Mix to 0 and back, between two pulls.
+times you call `reset()`, or take Mix to 0 and back, before the first
+pull or between two pulls.
 
 **Portability tier: audiodsp** (`REQUIRES = ("audioecho", "audioroute")`).
 The laps are `audioecho.FeedbackDelay` and the dry fan-out is
@@ -114,15 +120,34 @@ head must land on more than 256 frames for that to place it. Below
 than build a class whose Time knob cannot reach its low end.
 
 **Latency: zero samples, at every setting and patch, at every rate the
-class accepts**, and after `reset()` from any graph, however many resets
-and returns from Mix 0 land between two pulls: the dry stays at +0 and
-every head at +k n1 against it. The dry is a Splitter tap into a Mixer
-voice, a wire, and nothing looks ahead. The heads are the effect, not latency, and
-no option adds any. The output ends in an `audioroute.MidSide` at width 1,
-the identity, whose reset forwards nothing: a host that resets the output
-(a mixer voice's `play()` does) no longer reaches the Mixer, whose voices
-would re-prime from the Splitter and drop the source's first block. That
-reset leaves the lines as they are; call `reset()` to empty them.
+class accepts.** The dry is a Splitter tap into a Mixer voice, a wire,
+and nothing looks ahead; the heads are the effect, not latency, and no
+option adds any. The first pull after construction plays your source's
+first frame. Any number of `reset()` calls and returns from Mix 0, before
+the first pull or between two pulls, leave the dry at +0 against your
+source and every head at +k n1 against the dry, for audio that arrives
+after them: `reset()` empties the lines, so audio from before it has no
+heads, and a return from Mix 0 starts the heads from empty lines. None of
+it takes a frame from your source or plays one twice, whatever size of
+buffer your source hands out: the input adapter keeps the unread part of
+a buffer across a reset and a Mix 0 switch, and the next pull plays it.
+
+That rests on `audiocore.get_buffer`, which every desktop build and the
+MicroPython boards carry and a patched CircuitPython board build may not.
+Without it a class that wires its graph inside `reset()` (one built at
+Mix 0 and never turned up) opens with one silent 256-frame block and
+plays your source 256 frames late from then on, and a reset or a return
+from Mix 0 lets the one block the tap node had not read into the lines.
+
+The output ends in an `audioroute.MidSide` at width 1, the identity, whose
+reset forwards nothing, above Mix 0 and at it: a host that resets the
+output (a mixer voice's `play()` does) reaches neither the Mixer, whose
+voices would empty the tap node's line (the heads of what was playing
+would go) and, on a build without `get_buffer`, re-prime from the
+Splitter and drop the source's first block, nor the input adapter, which
+would drop the part of a source buffer it holds. That reset leaves the
+lines and your source's timeline as they are; call `reset()` to empty the
+lines.
 
 **Mono.** A one-channel source gets the same effect on its one channel.
 There is no Spread: the tap node applies one set of heads to every
@@ -162,11 +187,15 @@ at patch 0 from -9 dBFS.
 echoes take to reach exact zero once your input stops, recomputed on every
 Time, Heads, Feedback or Repeat Tone move. With Repeat Tone in it is
 `DigitalDelay`'s bound for the lap node plus one lap for the tap node's
-line, and the lap node is handed a Feedback just outside the windows where
-its loop low-pass could hold a small value for ever (at most 0.00003 from
-the one you set; 0.95 plays as 0.950016). With Repeat Tone out the tap node
-truncates every lap toward zero, so the bound is (laps + 1) x P. At patch 0
-it is 321 435 frames at 48 kHz (6.7 s).
+line. At a Feedback a hair either side of 1 - 0.5 / k the lap node's loop
+low-pass can come to rest a hair above k LSB and hand it back; up to
+audiodsp v0.6.2 it did so for ever, and this class handed the node a
+Feedback just outside each such window (0.95 played as 0.950016). Since
+v0.6.3rc1 the node sets a stalled low-pass onto its input (audiodsp#157),
+the Feedback you set is the one the node plays, and the bound counts one
+more lap there: 167 laps at 0.95, Repeat Tone at the default. With Repeat
+Tone out the tap node truncates every lap toward zero, so the bound is
+(laps + 1) x P. At patch 0 it is 321 435 frames at 48 kHz (6.7 s).
 
 `capabilities = ("tempo_sync",)`: with Sync on, the class reads
 `self._transport()` on every macro move and program change (not per
@@ -188,9 +217,9 @@ from ..chorus import nominal_damping_hz
 # is the same node and rounds the same way. Its module moves up one level
 # when it comes home, so both homes are tried.
 try:
-    from .digitaldelay import clear_of_stalls, laps_to_zero, whole_frames
+    from .digitaldelay import laps_to_zero, whole_frames
 except ImportError:                     # pragma: no cover - after it lands
-    from ..digitaldelay import clear_of_stalls, laps_to_zero, whole_frames
+    from ..digitaldelay import laps_to_zero, whole_frames
 
 import audiocore
 
@@ -280,7 +309,7 @@ def _f32_step(value, up):
 def lap_node_frames(value_ms, sample_rate):
     """The lap node's own arithmetic for a `delay_ms` it is handed,
     `value * rate / 1000.0f` in single precision
-    (`audiodsp_feedback_delay.c:148` at v0.6.2)."""
+    (`audiodsp_feedback_delay.c:148` at v0.6.3rc1)."""
     return f32(f32(f32(value_ms) * f32(sample_rate)) / f32(1000.0))
 
 
@@ -335,7 +364,7 @@ def landed(time_ms, heads, sample_rate, max_lap_ms):
 def trunc_laps(decay):
     """Laps of the tap node's own loop to exact zero from full scale. Once
     the input stops it writes `(int32_t)(delayed * decay)`
-    (`audiodsp_multitap.c:32`), which truncates toward zero, so a peak x
+    (`audiodsp_multitap.c:32` at v0.6.3rc1), which truncates toward zero, so a peak x
     goes to floor(x d) < x and the count is finite at every decay."""
     decay = min(max(float(decay), 0.0), 1.0) * (1.0 + DECAY_MARGIN)
     laps = 0
@@ -498,20 +527,23 @@ class MultiTapDelay(_component.Component):
 
         # The input adapter re-blocks whatever the app hands the class into
         # the palette's own blocks, which `audioroute.Splitter` needs: a
-        # bare `audiocore.RawSample` hands back its whole array at once.
+        # bare `audiocore.RawSample` hands back its whole array at once. It
+        # is also what Mix 0 hands out (`_route`), so the source is read
+        # through it, and only through it, at every Mix: whatever part of a
+        # source buffer it holds plays next, whichever way the output goes.
         adapter = audioroute.MidSide(width=1.0, sample_rate=rate,
                                      channel_count=channels)
         adapter.play(self._source)
         # A MidSide with no source hands out one block of zeros per pull and
-        # never finishes: what the tap node primes from, what the input
-        # adapter reads while a reset wires the graph, and what the Splitter
-        # reads while `_resync` swaps tap 1's pending block for zeros
-        # (`_route`).
+        # never finishes: what the tap node primes from, and what the
+        # Splitter reads while the graph is wired and while `_resync` swaps
+        # tap 1's pending block for zeros (`_route`).
         self._hush = audioroute.MidSide(width=1.0, sample_rate=rate,
                                         channel_count=channels)
-        # The Splitter reads the adapter through a port, so `_resync` can
-        # point it at `_hush` for two pulls without touching the adapter
-        # (whose unread rest of a long source buffer stays where it is).
+        # The Splitter reads the adapter through a port, so `_wire` and
+        # `_resync` can point it at `_hush` without touching the adapter:
+        # a MidSide's `play()` drops the frames it holds, and the unread
+        # rest of a long source buffer has to stay where it is.
         self._in = audioroute.Port(adapter)
         split = audioroute.Splitter(self._in, taps=2)
         dry = split.tap(0)
@@ -552,6 +584,14 @@ class MultiTapDelay(_component.Component):
         self._tail = audioroute.MidSide(width=1.0, sample_rate=rate,
                                         channel_count=channels)
         self._tail.play(self._mixer)
+        # What Mix 0 hands out (`_bypass`): the input adapter behind one
+        # more width-1 MidSide, byte for byte, whose reset forwards nothing,
+        # so a host resetting the output at Mix 0 leaves the adapter's
+        # unread frames where they are, as the tail does above Mix 0. The
+        # adapter hands it whole 256-frame blocks, so it never holds any.
+        self._through = audioroute.MidSide(width=1.0, sample_rate=rate,
+                                           channel_count=channels)
+        self._through.play(adapter)
 
         self._adapter = adapter
         self._split = split
@@ -563,7 +603,13 @@ class MultiTapDelay(_component.Component):
         # source. The tap node's reset empties its line through
         # `audiocore.reset_buffer`; the lap node's `clear` empties its line
         # and loop filters. The feed port is not reset either: it would
-        # forward the reset to whatever it points at.
+        # forward the reset to whatever it points at. Nor is the input
+        # adapter: what it holds is the source's own audio, not yet heard,
+        # and a reset that dropped it would put every later frame early (a
+        # source in 512-frame buffers, 256 frames) or play a bare
+        # `RawSample` again from its first frame (`DeEsser` owns its
+        # adapter the same way).
+        self._own(self._through)
         self._own(self._tail)
         self._own(self._mixer, reset=False)
         self._own(self._tapnode)
@@ -573,7 +619,7 @@ class MultiTapDelay(_component.Component):
         self._own(tap1, reset=False)
         self._own(split, reset=False)
         self._own(self._in, reset=False)
-        self._own(adapter)
+        self._own(adapter, reset=False)
         self._own(self._hush, reset=False)
         self._own(self._silence, reset=False)
         self._output = self._tail
@@ -700,16 +746,14 @@ class MultiTapDelay(_component.Component):
         feedback = min(FEEDBACK_MAX, max(0.0, feedback))
         lean = self._macros[TONE_I] >= 1.0
         damping = self._tone_damping()
-        if lean:
-            loop = feedback
-            decay = feedback
-        else:
-            # With Repeat Tone in, the lap node can hold a small value for
-            # ever at Feedback values a hair either side of 1 - 0.5 / k; it
-            # is handed the nearer edge of that window instead.
-            loop = clear_of_stalls(feedback,
-                                   tone_excess(damping, rate)[1])
-            decay = 0.0
+        # The Feedback is handed as set. Up to audiodsp v0.6.2 the lap
+        # node's loop low-pass could hold a small value for ever a hair
+        # either side of 1 - 0.5 / k, and this class stepped the Feedback
+        # clear of those windows; since v0.6.3rc1 the node lands a damping
+        # state that has stopped moving (audiodsp#157), and `laps_to_zero`
+        # counts that landing's one extra lap.
+        loop = feedback
+        decay = feedback if lean else 0.0
 
         tap_ms = self._tap_node_ms(lap)
         lap_ms = self._lap_node_ms(lap)
@@ -757,14 +801,20 @@ class MultiTapDelay(_component.Component):
     def _route(self):
         """Where the output port points, and what the tap node reads.
 
-        Mix 0 hands the borrowed source straight back through the port, so
-        it is a wire on every interpreter: CircuitPython's stock
-        `audiomixer` scales a voice at level 1.0 by 32768 / 32767, which
-        puts every sample at |value| >= 32736 one LSB out (audiodsp's own
-        Mixer passes unity through). Nothing is pulled through the graph
-        while the port is on the source, so nothing here may prime a node
-        then: a `play()` would take a block of the source away from the
-        port.
+        Mix 0 hands the input adapter out through the port (`_bypass`, by
+        way of `_through`), a width-1 MidSide that passes the source byte
+        for byte, so it is a
+        wire on every interpreter: CircuitPython's stock `audiomixer`
+        scales a voice at level 1.0 by 32768 / 32767, which puts every
+        sample at |value| >= 32736 one LSB out (audiodsp's own Mixer passes
+        unity through). The source is read through the adapter at every
+        Mix, so whatever part of a buffer it holds plays next either way.
+        Nothing is pulled through the graph while the port is on the
+        adapter, so nothing here may prime from it then: a `play()` would
+        take a block away from the port. `_route_around` marks the graph
+        stranded, and the return clears it through `_rejoin` (the base's
+        stale-block helper) before `_resync`; the adapter is not reset by
+        either, since it is registered without one.
 
         **The tap node runs one block behind the dry.** A Mixer voice's
         `play()` primes one block from its source, and the voices hand
@@ -793,26 +843,37 @@ class MultiTapDelay(_component.Component):
         the source, and a second or third `_resync` before the next pull
         leaves exactly what the first did.
 
-        A reset that has to wire the graph (a class never wired at Mix 0)
-        must not pull the source either: the input adapter plays `_hush`
-        while the voices prime, so the dry's primed block and tap 1's
-        pending block are zeros, and one pull of the Mixer then hands the
-        dry's zeros out, so the next pull reads the source's next block on
-        time. That pull needs `audiocore.get_buffer`; where a build leaves
-        it out, the output after such a reset opens with that one silent
-        block, and a reset or a return from Mix 0 lets tap 1's pending block
-        into the lines.
+        **Every wiring is quiet** where `audiocore.get_buffer` exists
+        (`_wire`): the Splitter reads `_hush` while the voices prime, and
+        one pull of the Mixer hands the primed zeros out, so the graph is
+        left as it is between two pulls mid-stream and nothing is taken
+        from the source. Up to re-audit fix round 1 a wiring outside
+        `reset()` primed the dry voice with the source's first block, and
+        a `_resync` before the first pull then dropped that block's heads
+        (tap 1 held it, not yet heard) and, in mono on a native build,
+        refilled the tap's own buffer the voice was pointing into, so the
+        dry's first 256 samples played as zeros. Inside `reset()` the
+        wiring is quiet on every build, because a reset must take nothing
+        from the source. Where `get_buffer` is left out, a wiring outside
+        `reset()` primes the source (and plays it on time, since `_resync`
+        cannot pull there either), a wiring inside `reset()` opens the
+        output with that one silent block, and a reset or a return from
+        Mix 0 lets tap 1's pending block into the lines.
         """
         if not self._ready:
             return
         if self._macros[MIX_I] <= 0.0:
-            self._output = self._source
+            self._route_around(self._bypass())
             self._at_source = True
             return
         if not self._wired:
-            self._wire(self._resetting)
+            self._wire(self._quiet_wiring())
             self._wired = True
         elif self._at_source or self._resetting:
+            # The base's stale-block helper clears what `_route_around`
+            # left (both lines and the tail); `_resync` clears the lines
+            # again, which changes nothing, and swaps tap 1's block.
+            self._rejoin()
             self._resync()
         elif self._lean != self._plugged:
             self._plug(self._lean)
@@ -835,15 +896,41 @@ class MultiTapDelay(_component.Component):
         node."""
         return self._tap1 if lean else self._fd
 
+    def _bypass(self):
+        """What Mix 0 hands out: the input adapter, a width-1 MidSide that
+        passes the source byte for byte in the palette's blocks, behind
+        `_through`, which keeps a host's reset off it. Pointing the output
+        at the source itself would skip whatever part of a source buffer
+        the adapter holds (a source in 512-frame buffers jumps 256 frames
+        ahead) and hand a bare `RawSample` out again from its first
+        frame."""
+        return self._through
+
+    def _quiet_wiring(self):
+        """Whether `_wire` primes the voices from `_hush`: wherever
+        `audiocore.get_buffer` can hand the primed zeros out, and always
+        inside `reset()`, which must take nothing from the source."""
+        return self._resetting or \
+            getattr(audiocore, "get_buffer", None) is not None
+
     def _wire(self, quiet=False):
         """Play every node once, the first time Mix is above 0 (`_route`).
-        `quiet` inside `reset()`: nothing is taken from the source."""
+
+        `quiet`: the Splitter reads `_hush` while the voices prime, so the
+        dry voice primes zeros and tap 1's pending block is zeros, and one
+        pull of the Mixer hands those zeros out. Nothing is taken from the
+        source, and the graph is left as it is between two pulls
+        mid-stream: no voice holds a block, the dry tap is caught up, and
+        tap 1 is one block behind it. A voice that still held its primed
+        block would point into a mono `SplitterTap`'s own buffer, which
+        `_resync` refills, and tap 1 would hold audio whose dry had not
+        played yet, which `_resync` drops."""
         pull = getattr(audiocore, "get_buffer", None)
         self._fd.play(self._tap1)
         self._feed.play(self._hush)
         self._tapnode.play(self._feed, loop=False)
         if quiet:
-            self._adapter.play(self._hush)
+            self._in.play(self._hush)
         _component.open_level_gates(self._mixer, self._mixer.voice,
                                     self._silence)
         self._mixer.voice[0].play(self._dry, loop=False)
@@ -851,7 +938,7 @@ class MultiTapDelay(_component.Component):
         self._feed.play(self._target(self._lean))
         self._plugged = self._lean
         if quiet:
-            self._adapter.play(self._source)
+            self._in.play(self._adapter)
             if pull is not None:
                 pull(self._mixer)
 
@@ -866,7 +953,11 @@ class MultiTapDelay(_component.Component):
         block, tap 0 caught up) the first pull drops that block and the
         second writes the zeros. From the state this leaves, a second call
         reads those zeros back and writes them again, so nothing of the
-        source is taken and the tap node stays one block behind the dry."""
+        source is taken and the tap node stays one block behind the dry.
+        A quiet wiring (`_wire`) leaves tap 1 holding zeros and no voice
+        holding a block, so right after construction this is that state
+        too: the dry tap's pull refills no buffer a voice still points
+        into, and what tap 1 drops was never audio."""
         pull = getattr(audiocore, "get_buffer", None)
         self._fd.clear()
         audiocore.reset_buffer(self._tapnode)
@@ -916,6 +1007,4 @@ class MultiTapDelay(_component.Component):
             return int((trunc_laps(self._decay) + 1) * lap)
         memory, excess = tone_excess(self._damping, self._sample_rate)
         laps = laps_to_zero(self._feedback, excess)
-        if laps is None:                # pragma: no cover - cleared above
-            return None
         return int(laps * (lap + 1 + memory) + lap)

@@ -23,11 +23,23 @@ into the tap node's own decay) and, since fix round 2, T5 clause 1's
 (`Head2OwnLoop`: head 2 read through its own, darker lap node, Station C's
 plant ported to the fix round 1 graph). The dossier's emulation of clause
 1's plant on the rendered windows stays beside it.
+
+Re-audit fix round 1 (2026-09-28) moved the class to audiodsp v0.6.3rc1,
+whose lap node lands a stalled loop low-pass (audiodsp#157): the Feedback is
+handed as set, and `ReauditRoundOne` holds that beside the retired stepping.
+Its route tests run one numpy-free script (`ROUTES_MODULE`) under CPython
+and under the workspace's desktop MicroPython and CircuitPython where they
+are present and current for `AUDIODSP_PIN`: a mono dry block lost after a
+reset shows only on a native interpreter, whose mixer voice points into the
+tap's own buffer where the CPython shim copies.
 """
 
 import math
 import os
+import subprocess
 import sys
+import tempfile
+import types
 import unittest
 from array import array
 
@@ -49,6 +61,9 @@ import audioeffects                                         # noqa: E402
 from audioeffects import _component                         # noqa: E402
 from audioeffects import rebuilt                            # noqa: E402
 from audioeffects.chorus import nominal_damping_hz          # noqa: E402
+from audioeffects.rebuilt import multitapdelay as mtd       # noqa: E402
+from audioeffects.rebuilt.digitaldelay import (             # noqa: E402
+    clear_of_stalls, laps_to_zero)
 from tools import effect_measurements as kit                # noqa: E402
 
 VENDOR = "PyDevices"
@@ -579,6 +594,11 @@ class PrimingReset(MultiTapDelay):
     def reset(self):
         _component.Component.reset(self)
 
+    def _quiet_wiring(self):
+        # The base's reset never sets `_resetting`, and before re-audit fix
+        # round 1 a wiring outside `reset()` primed the source.
+        return self._resetting
+
 
 class StaleReset(MultiTapDelay):
     """Tier 1 STATE, planted: `reset()` empties both lines but leaves the
@@ -1050,6 +1070,29 @@ def host_reset_route(cls, patch=None, rate=RATE, channels=2):
                      for k in (0,) + law_heads(effect._pattern_mode(),
                                                effect._heads)))
     hits = lane_hits(out)
+    return {"passed": all(h == law for h in hits), "hits": hits,
+            "law": law}
+
+
+def host_reset_lines_route(cls, rate=RATE, channels=2):
+    """Item 3 mid-stream (re-audit fix round 1): a click at source frame
+    7 000, 30 blocks, the host resets the output, Feedback 0, Mix 1.0: the
+    host's reset leaves the lines as they are, so the click's heads sound
+    at +k n1 after it."""
+    at = 7000
+    data = array("h", [0] * (40000 * channels))
+    for ch in range(channels):
+        data[at * channels + ch] = 20000
+    effect = cls(Endless(data, rate, channels), sample_rate=rate,
+                 feedback=0.0, mix=1.0)
+    n1, lap = law_landed(effect.macro(TIME_I), effect._heads, rate)
+    head = pull(effect, 30 * BLOCK)
+    audiocore.reset_buffer(effect.output)
+    rest = pull(effect, at + lap + 512 - 30 * BLOCK)
+    effect.deinit()
+    law = [at + k * n1 for k in (0,) + law_heads(effect._pattern_mode(),
+                                                 effect._heads)]
+    hits = lane_hits(np.concatenate([head, rest]))
     return {"passed": all(h == law for h in hits), "hits": hits,
             "law": law}
 
@@ -1816,11 +1859,21 @@ class RoundOneRoutes(unittest.TestCase):
                                               channels)
                     self.assertTrue(result["passed"],
                                     (rate, channels, patch, result))
+                result = host_reset_lines_route(MultiTapDelay, rate,
+                                                channels)
+                self.assertTrue(result["passed"], (rate, channels, result))
 
     def test_mixer_tail_plant_is_red(self):
-        result = host_reset_route(MixerTail)
-        self.assertFalse(result["passed"], result)
-        self.assertEqual(result["hits"][0][0], 2744)
+        # Since re-audit fix round 1 every wiring is quiet, so no voice
+        # holds the source's first block at construction and a host reset
+        # that reaches the Mixer drops nothing there (c80ca59 put the 3 000
+        # click at 2 744). Mid-stream it still empties both lines: the
+        # click's heads are gone where the tail leaves them sounding.
+        self.assertTrue(host_reset_route(MixerTail)["passed"])
+        for channels in (2, 1):
+            result = host_reset_lines_route(MixerTail, channels=channels)
+            self.assertFalse(result["passed"], result)
+            self.assertEqual(result["hits"], [[7000]] * channels)
         result = reach_flag(MixerTail, "_plant_mixer_tail")
         self.assertEqual(result["checked"], 9 * 17 + 7)
 
@@ -2008,6 +2061,584 @@ class RoundTwo(unittest.TestCase):
             self.assertTrue(t5_green(t45_reading(MultiTapDelay, rate=rate),
                                      4000.0, rate), rate)
         result = reach_flag(Head2OwnLoop, "_plant_head2_loop")
+        self.assertIs(result["target"], True)
+        self.assertEqual(result["checked"], 9 * 17 + 7)
+
+
+# --------------------------------------------------------------------------
+# Re-audit fix round 1: the pin at v0.6.3rc1, and the first block, the
+# source's own buffers and Mix 0 (audit round 3's items 1-4)
+
+
+class SteppedLaps(MultiTapDelay):
+    """The cure retired at audiodsp v0.6.3rc1: with Repeat Tone in, the lap
+    node handed the nearer edge of the stall window its Feedback sits in
+    (`clear_of_stalls`), a Feedback nobody set (0.95 played as 0.950016)."""
+
+    NAME = 'MultiTapDelay'
+
+    def _refresh(self):
+        MultiTapDelay._refresh(self)
+        if self._lean:
+            return
+        excess = mtd.tone_excess(self._damping, self._sample_rate)[1]
+        stepped = clear_of_stalls(self._feedback, excess)
+        if stepped != self._feedback:
+            self._feedback = stepped
+            self._lap_mix = stepped
+            self._fd.set(feedback=stepped, mix=stepped)
+
+
+class BareAdapter(MultiTapDelay):
+    """Mix 0 on the input adapter itself, without `_through`: a host's
+    reset of the output reaches the adapter and drops what it holds."""
+
+    NAME = 'MultiTapDelay'
+
+    def _bypass(self):
+        return self._adapter
+
+
+#: One numpy-free script, run under CPython, MicroPython and CircuitPython:
+#: the class after a route of calls made before the first pull, and after
+#: an event between two pulls with sources whose buffers are not 256 frames,
+#: every lane against the source and the dossier's head law. Three plants
+#: put back ac2181f's code for the three causes. Each output line is
+#: `PART|plant|route|rate|channels|samples wrong`.
+ROUTES_MODULE = """from array import array
+
+import audiocore                                    # noqa: E402
+from audioeffects import rebuilt                    # noqa: E402
+
+VENDOR = "PyDevices"
+
+M = rebuilt.module_class("MultiTapDelay")
+BLOCK = 256
+FB_I = 3
+MIX_I = 4
+RATES = (48000, 44100, 22050)
+
+
+class OldWiring(M):
+    '''ac2181f's wiring: quiet only inside reset(), so a class wired at
+    construction or by a Mix move holds the source's first block in the dry
+    voice and on tap 1 until the first pull.'''
+
+    NAME = 'MultiTapDelay'
+
+    def _quiet_wiring(self):
+        return self._resetting
+
+
+class AdapterReset(M):
+    '''ac2181f's reset: the input adapter owned with a reset, which drops
+    what it holds of a source buffer.'''
+
+    NAME = 'MultiTapDelay'
+
+    def _build(self, *args, **kwargs):
+        M._build(self, *args, **kwargs)
+        self._resets[self._nodes.index(self._adapter)] = True
+
+
+class SourceBypass(M):
+    '''ac2181f's Mix 0: the output port on the borrowed source itself, past
+    whatever the input adapter holds.'''
+
+    NAME = 'MultiTapDelay'
+
+    def _bypass(self):
+        return self._source
+
+
+PLANTS = {"clean": M, "oldwiring": OldWiring, "adapterreset": AdapterReset,
+          "sourcebypass": SourceBypass}
+
+
+def noise(channels, total):
+    values = array("h", bytes(2 * total * channels))
+    state = 987654
+    for i in range(total):
+        for c in range(channels):
+            state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+            tri = (i * (37 + 29 * c)) % 16001 - 8000
+            values[i * channels + c] = tri + (state >> 8) % 8001 - 4000
+    return values
+
+
+def clicks(channels, total, where):
+    values = array("h", bytes(2 * total * channels))
+    for s, v in where:
+        for c in range(channels):
+            values[s * channels + c] = v
+    return values
+
+
+def source(values, rate, channels, frames):
+    raw = audiocore.RawSample(values, sample_rate=rate,
+                              channel_count=channels)
+    if frames is None:
+        return raw
+    import audiofilters
+    block = audiofilters.Filter(filter=None, mix=1.0,
+                                buffer_size=frames * channels * 2,
+                                sample_rate=rate, channel_count=channels)
+    block.play(raw)
+    return block
+
+
+def samples(data):
+    out = array("h")
+    try:
+        out.extend(memoryview(data).cast("h"))
+    except (AttributeError, TypeError):
+        import struct
+        out.extend(struct.unpack("<%dh" % (len(data) // 2), data))
+    return out
+
+
+def pull_frames(e, frames):
+    ch = e.channel_count
+    out = array("h")
+    while len(out) < frames * ch:
+        out.extend(samples(bytes(audiocore.get_buffer(e.output)[1])))
+    return out
+
+
+#: Routes between construction and the first pull. "mix0 up" is a class
+#: built at Mix 0 and turned up, which wires it.
+ROUTES = ("none", "program_change(1)", "reset", "reset x2",
+          "Mix 0 and back", "reset, Mix 0 and back", "mix0 up, reset")
+
+
+def build(cls, src, rate, name):
+    if name.startswith("mix0 up"):
+        e = cls(src, sample_rate=rate, mix=0.0)
+        e.set_macro(MIX_I, 22)
+    else:
+        e = cls(src, sample_rate=rate)
+    for step in name.split(", "):
+        if step in ("none", "mix0 up"):
+            continue
+        if step == "reset":
+            e.reset()
+        elif step == "reset x2":
+            e.reset()
+            e.reset()
+        elif step == "Mix 0 and back":
+            e.set_macro(MIX_I, 0)
+            e.set_macro(MIX_I, 22)
+        elif step == "program_change(1)":
+            e.program_change(1)
+        else:
+            raise ValueError(step)
+    return e
+
+
+def law(where, n1, heads, unfed_before=0):
+    want = {}
+    for s, v in where:
+        want[s] = v
+        if s < unfed_before:
+            continue
+        for k in heads:
+            want[s + k * n1] = want.get(s + k * n1, 0) + v
+    return want
+
+
+def judge(out, channels, frames, want):
+    '''Samples wrong, over every lane: missing or wrong law frames plus
+    non-zero frames the law does not name.'''
+    wrong = 0
+    for c in range(channels):
+        got = {}
+        for f in range(frames):
+            v = out[f * channels + c]
+            if v:
+                got[f] = v
+        wrong += len([s for s in want if s < frames and got.get(s) != want[s]])
+        wrong += len([s for s in got if s not in want])
+    return wrong
+
+
+def part_firstdry(cls, label):
+    for rate in RATES:
+        for channels in (2, 1):
+            values = noise(channels, 8 * BLOCK)
+            for name in ROUTES:
+                e = build(cls, source(values, rate, channels, BLOCK), rate,
+                          name)
+                window = min(e._n1, 2 * BLOCK)
+                out = pull_frames(e, window)
+                e.deinit()
+                diff = len([i for i in range(window * channels)
+                            if out[i] != values[i]])
+                print("FIRSTDRY|%s|%s|%d|%d|%d" % (label, name, rate,
+                                                   channels, diff))
+
+
+def part_firstheads(cls, label):
+    where = ((10, 20000), (300, 10000), (700, 5000))
+    for rate in RATES:
+        for channels in (2, 1):
+            for name in ROUTES:
+                total = 700 + 3 * (rate * 150 // 1000 + 1) + 4 * BLOCK
+                values = clicks(channels, total, where)
+                e = build(cls, source(values, rate, channels, BLOCK), rate,
+                          name)
+                e.set_macro(FB_I, 0)
+                e.set_macro(MIX_I, 63.5)
+                n1 = e._n1
+                frames = 700 + 3 * n1 + 2 * BLOCK
+                out = pull_frames(e, frames)
+                e.deinit()
+                wrong = judge(out, channels, frames,
+                              law(where, n1, (1, 2, 3)))
+                print("FIRSTHEADS|%s|%s|%d|%d|%d" % (label, name, rate,
+                                                     channels, wrong))
+
+
+def part_blocks(cls, label):
+    where = ((8400, 20000), (8900, 10000), (10100, 5000))
+    for rate, channels in ((48000, 2), (48000, 1), (22050, 1)):
+        for frames_in in (256, 512, 100, None):
+            for pulls in (31, 32):
+                for event in ("none", "reset", "Mix 0 and back",
+                              "Mix-0 run"):
+                    total = 10100 + 3 * (rate * 150 // 1000 + 1) + 6 * BLOCK
+                    values = clicks(channels, total, where)
+                    e = cls(source(values, rate, channels, frames_in),
+                            sample_rate=rate)
+                    out = pull_frames(e, pulls * BLOCK)
+                    if event == "reset":
+                        e.reset()
+                    elif event == "Mix 0 and back":
+                        e.set_macro(MIX_I, 0)
+                        e.set_macro(MIX_I, 22)
+                    elif event == "Mix-0 run":
+                        e.set_macro(MIX_I, 0)
+                        out.extend(pull_frames(e, 4 * BLOCK))
+                    e.set_macro(FB_I, 0)
+                    e.set_macro(MIX_I, 63.5)
+                    n1 = e._n1
+                    span = 10100 + 3 * n1 + BLOCK - len(out) // channels
+                    out.extend(pull_frames(e, span))
+                    e.deinit()
+                    frames = len(out) // channels
+                    unfed = (pulls + 4) * BLOCK if event == "Mix-0 run" else 0
+                    wrong = judge(out, channels, frames,
+                                  law(where, n1, (1, 2, 3), unfed))
+                    print("BLOCKS|%s|%s %d %s|%d|%d|%d"
+                          % (label, frames_in or "raw", pulls, event, rate,
+                             channels, wrong))
+
+
+def main(args):
+    '''Each argument is `plant,plant=part,part`.'''
+    parts = {"firstdry": part_firstdry, "firstheads": part_firstheads,
+             "blocks": part_blocks}
+    for group in args:
+        plants, names = group.split("=")
+        for plant in plants.split(","):
+            for part in names.split(","):
+                parts[part](PLANTS[plant], plant)
+    print("DONE")
+"""
+
+ROUTES_RUNNER = """import sys
+sys.path.insert(0, "lib")
+sys.path.insert(0, sys.argv[1])
+import mtd_routes
+mtd_routes.main(sys.argv[2:])
+"""
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+#: The routes before the first pull that `_resync` or a wiring takes, and
+#: the two that take neither (the controls).
+RESYNC_ROUTES = ("reset", "reset x2", "Mix 0 and back",
+                 "reset, Mix 0 and back", "mix0 up, reset")
+ROUTE_CONTROLS = ("none", "program_change(1)")
+ROUTE_RATES = (48000, 44100, 22050)
+BLOCK_CASES = ((48000, 2), (48000, 1), (22050, 1))
+#: Where a source's buffers leave the adapter holding frames at the event:
+#: 512 after 31 blocks (256 held), 100 and one RawSample after 31 or 32.
+HELD = (("512", 31), ("100", 31), ("100", 32), ("raw", 31), ("raw", 32))
+
+
+def run_routes(binary, groups):
+    """{(part, plant, route, rate, channels): samples wrong} from one run
+    of `ROUTES_MODULE` under `binary`."""
+    with tempfile.TemporaryDirectory() as directory:
+        with open(os.path.join(directory, "mtd_routes.py"), "w") as handle:
+            handle.write(ROUTES_MODULE)
+        runner = os.path.join(directory, "run.py")
+        with open(runner, "w") as handle:
+            handle.write(ROUTES_RUNNER)
+        env = dict(os.environ, MICROPYPATH="lib", GCOV_PREFIX=directory,
+                   PYTHONDONTWRITEBYTECODE="1")
+        argv = [binary] + ([] if binary == sys.executable
+                           else ["-X", "heapsize=256M"])
+        done = subprocess.run(argv + [runner, directory] + list(groups),
+                              capture_output=True, text=True, cwd=ROOT,
+                              env=env)
+    lines = done.stdout.splitlines()
+    if done.returncode != 0 or not lines or lines[-1] != "DONE":
+        raise AssertionError("%s: %s" % (binary, done.stderr[-2000:]))
+    out = {}
+    for line in lines[:-1]:
+        part, plant, name, rate, channels, wrong = line.split("|")
+        out[(part, plant, name, int(rate), int(channels))] = int(wrong)
+    return out
+
+
+def red_cells(results, part, plant):
+    return sorted(key[2:] for key, wrong in results.items()
+                  if key[0] == part and key[1] == plant and wrong)
+
+
+def current_native_interpreters():
+    """{"micropython": path, "circuitpython": path} from the workspace's
+    `bin/`, each the first whose provenance stamp contains `AUDIODSP_PIN`'s
+    commit (None where no binary does), or None where there is no
+    workspace `bin/` with its provenance tool above this checkout."""
+    from tools import provenance_gate
+    here = ROOT
+    workspace = None
+    for _up in range(5):
+        here = os.path.dirname(here)
+        if os.path.isdir(os.path.join(here, "bin")) and os.path.isfile(
+                os.path.join(here, "tools", "provenance.py")):
+            workspace = here
+            break
+    if workspace is None:
+        return None
+    bindir = os.path.join(workspace, "bin")
+    tool = os.path.join(workspace, "tools", "provenance.py")
+    pin = provenance_gate.audiodsp_pin()
+    found = {}
+    for family in ("micropython", "circuitpython"):
+        found[family] = None
+        names = sorted(name for name in os.listdir(bindir)
+                       if name.startswith(family) and "." not in name)
+        for name in names:
+            path = os.path.join(bindir, name)
+            done = subprocess.run(
+                [sys.executable, tool, "check", path, "--source", "audiodsp",
+                 "--contains", "audiodsp=%s" % pin], capture_output=True)
+            if done.returncode == 0:
+                found[family] = path
+                break
+    return found
+
+
+def routes_module():
+    """`ROUTES_MODULE` imported in this process, for its plants."""
+    module = sys.modules.get("mtd_routes")
+    if module is None:
+        module = types.ModuleType("mtd_routes")
+        sys.modules["mtd_routes"] = module
+        exec(ROUTES_MODULE, module.__dict__)
+    return module
+
+
+def stall_cell(cls, rate=RATE, channels=2):
+    """Feedback 0.5 by the constructor (Repeat Tone 800 Hz's k = 1 window),
+    Time 20 ms, Mix 2, a 2 LSB DC for 1 s, then silence: (the Feedback the
+    lap node is handed, the knob's own Feedback, tail_samples, frames from
+    the input's end to the last non-zero sample, whether the last frame
+    rendered is non-zero)."""
+    frames = rate
+    data = array("h", [2] * (frames * channels))
+    effect = cls(Endless(data, rate, channels), sample_rate=rate,
+                 feedback=0.5, tone_hz=800.0, time_ms=20.0, mix=2.0)
+    declared = effect.tail_samples
+    total = frames + declared + 8 * effect._lap
+    out = pull(effect, total)
+    handed = effect._feedback
+    knob = effect.macro(FEEDBACK_I)
+    effect.deinit()
+    nz = np.nonzero(np.any(out != 0, axis=1))[0]
+    last = int(nz[-1]) if len(nz) else -1
+    return handed, knob, declared, last - frames + 1, last == total - 1
+
+
+class ReauditRoundOne(unittest.TestCase):
+    """Re-audit fix round 1 (2026-09-28): the class at audiodsp v0.6.3rc1,
+    and the gate audit's round 3 items 1-4."""
+
+    def test_the_feedback_is_handed_as_set(self):
+        # Up to audiodsp v0.6.2 the lap node's loop low-pass could hold a
+        # small value for ever a hair either side of 1 - 0.5 / k, and the
+        # class handed it the nearer edge of the window instead: only
+        # Feedback 127 (0.95, k = 10) ever moved, at every Repeat Tone
+        # position and rate, to 0.950016. Since v0.6.3rc1 (#157) every
+        # position is handed as set and the bound counts the landing's lap:
+        # 167 laps at 0.95, Repeat Tone at the default (166 stepped).
+        for rate in RATES:
+            effect = MultiTapDelay(Endless(silence(), rate), sample_rate=rate)
+            for midi in range(128):
+                effect.set_macro(FEEDBACK_I, midi)
+                want = min(0.95, effect.macro(FEEDBACK_I))
+                self.assertEqual(effect._feedback, want, (rate, midi))
+                self.assertEqual(effect._lap_mix, want, (rate, midi))
+                self.assertIsInstance(effect.tail_samples, int)
+            excess = mtd.tone_excess(effect._damping, rate)[1]
+            self.assertEqual(effect._feedback, 0.95)
+            self.assertEqual(laps_to_zero(0.95, excess), 167)
+            # Planted: the retired stepping hands a Feedback nobody set.
+            stepped = SteppedLaps(Endless(silence(), rate), sample_rate=rate)
+            stepped.set_macro(FEEDBACK_I, 127)
+            self.assertNotEqual(stepped._feedback, 0.95, rate)
+            self.assertLess(abs(stepped._feedback - 0.95), 3e-5)
+            self.assertEqual(laps_to_zero(stepped._feedback, excess), 166)
+            memory = mtd.tone_excess(effect._damping, rate)[0]
+            self.assertEqual(effect.tail_samples - stepped.tail_samples,
+                             effect._lap + 1 + memory)
+
+    def test_a_stall_window_cell_reaches_zero_at_the_feedback_set(self):
+        # Feedback 0.5 with Repeat Tone at 800 Hz is inside a stall window
+        # (the retired stepping moves it), and up to v0.6.2 the node held
+        # this cell for ever there. Since v0.6.3rc1 it is handed as set and
+        # the tail ends inside the bound. At v0.6.2 the same cell holds
+        # past it (the pack's re-audit fix round 1 section, on
+        # bin/micropython and bin/circuitpython at v0.6.2).
+        for rate, channels in ((RATE, 2), (RATE, 1), (44100, 2),
+                               (22050, 2)):
+            handed, knob, declared, tail, held = stall_cell(
+                MultiTapDelay, rate, channels)
+            # The knob's 0.5 (0.49999999999999994 through the position) is
+            # inside the window: the retired stepping moves it.
+            self.assertLess(abs(knob - 0.5), 1e-15)
+            self.assertNotEqual(clear_of_stalls(knob, mtd.tone_excess(
+                nominal_damping_hz(800.0, rate), rate)[1]), knob)
+            self.assertEqual(handed, knob, (rate, channels))
+            self.assertFalse(held, (rate, channels))
+            self.assertGreater(tail, 0, (rate, channels))
+            self.assertLessEqual(tail, declared, (rate, channels))
+        stepped = SteppedLaps(Endless(silence()), sample_rate=RATE,
+                              feedback=0.5, tone_hz=800.0)
+        self.assertNotEqual(stepped._feedback, stepped.macro(FEEDBACK_I))
+        self.assertLess(abs(stepped._feedback - 0.5), 3e-5)
+
+    def _judge_routes(self, results, native):
+        """Items 1 and 2 on one interpreter's run."""
+        for part in ("FIRSTDRY", "FIRSTHEADS"):
+            self.assertEqual(red_cells(results, part, "clean"), [], part)
+            cells = [key for key in results
+                     if key[0] == part and key[1] == "clean"]
+            self.assertEqual(len(cells), 7 * 3 * 2, part)
+        # The plant: ac2181f's wiring. Every route that resyncs or wires
+        # before the first pull loses the first block's heads, in every
+        # lane; the controls stay green.
+        self.assertEqual(
+            red_cells(results, "FIRSTHEADS", "oldwiring"),
+            sorted((name, rate, channels) for name in RESYNC_ROUTES
+                   for rate in ROUTE_RATES for channels in (2, 1)))
+        # And on a native interpreter, in mono, the dry's first block: all
+        # 256 samples zero. The CPython shim copies the primed block, so
+        # there the dry is kept (which is why this runs natively).
+        dry = red_cells(results, "FIRSTDRY", "oldwiring")
+        if native:
+            self.assertEqual(dry, sorted(
+                (name, rate, 1) for name in RESYNC_ROUTES
+                for rate in ROUTE_RATES))
+            for name, rate, channels in dry:
+                self.assertEqual(results[("FIRSTDRY", "oldwiring", name,
+                                          rate, channels)], 256)
+        else:
+            self.assertEqual(dry, [])
+
+    def _judge_blocks(self, results):
+        """Items 3 and 4 on one interpreter's run."""
+        self.assertEqual(red_cells(results, "BLOCKS", "clean"), [])
+        cells = [key for key in results
+                 if key[0] == "BLOCKS" and key[1] == "clean"]
+        self.assertEqual(len(cells), 3 * 4 * 2 * 4)
+        # The adapter registered for a reset drops its frames at reset() and,
+        # through the base's `_rejoin`, at every return from Mix 0 as well;
+        # ac2181f, which had no `_rejoin`, lost them at reset() only. Mix 0
+        # on the source itself skips them while Mix is 0. The 256-frame
+        # control, which leaves the adapter holding nothing, stays green.
+        for plant, events in (("adapterreset",
+                               ("reset", "Mix 0 and back", "Mix-0 run")),
+                              ("sourcebypass", ("Mix-0 run",))):
+            want = sorted(("%s %d %s" % (buffers, pulls, event), rate,
+                           channels)
+                          for buffers, pulls in HELD for event in events
+                          for rate, channels in BLOCK_CASES)
+            self.assertEqual(red_cells(results, "BLOCKS", plant), want,
+                             plant)
+
+    def test_routes_before_the_first_pull_and_source_buffers_cpython(self):
+        results = run_routes(sys.executable, (
+            "clean,oldwiring=firstdry,firstheads",
+            "clean,adapterreset,sourcebypass=blocks"))
+        self._judge_routes(results, native=False)
+        self._judge_blocks(results)
+
+    def test_routes_before_the_first_pull_and_source_buffers_native(self):
+        found = current_native_interpreters()
+        if found is None:
+            self.skipTest("no workspace bin/ above this checkout")
+        for family, binary in sorted(found.items()):
+            # A binary present but built before the pin renders a node the
+            # pin does not name; that is a failure, not a skip.
+            self.assertIsNotNone(binary, "no %s in the workspace bin/ "
+                                 "contains AUDIODSP_PIN's audiodsp" % family)
+            results = run_routes(binary, (
+                "clean,oldwiring=firstdry,firstheads",
+                "clean,adapterreset,sourcebypass=blocks"))
+            self._judge_routes(results, native=True)
+            self._judge_blocks(results)
+
+    def test_the_route_plants_are_not_on_the_surface(self):
+        module = routes_module()
+        for faulted, reading, target in (
+                (module.OldWiring, lambda e: e._quiet_wiring(), False),
+                (module.AdapterReset,
+                 lambda e: e._resets[e._nodes.index(e._adapter)], True),
+                (module.SourceBypass, lambda e: e._bypass() is e._source,
+                 True)):
+            result = reach(faulted, reading)
+            self.assertIs(result["target"], target, faulted.__name__)
+            self.assertEqual(result["checked"], 9 * 17 + 7)
+
+    def test_mix_zero_hands_out_the_input_adapter(self):
+        # A wire at Mix 0 through the adapter (behind `_through`): a bare
+        # RawSample, byte for byte from the first frame, on the three rates
+        # and both channel counts.
+        for rate in RATES:
+            for channels in (2, 1):
+                data = probes.ramp_fs(4096, channels)
+                raw = audiocore.RawSample(data, sample_rate=rate,
+                                          channel_count=channels)
+                effect = MultiTapDelay(raw, sample_rate=rate, mix=0.0)
+                self.assertIs(_component.port_target(effect._output),
+                              effect._through)
+                out = pull(effect, 4096).reshape(-1)
+                self.assertTrue(np.array_equal(
+                    out, np.array(data, dtype=np.int64)), (rate, channels))
+                effect.deinit()
+
+    def test_a_host_reset_at_mix_zero_keeps_the_timeline(self):
+        # 31 blocks at Mix 0 from a source in 512-frame buffers, so the
+        # adapter holds 256 frames, then the host resets the output: the
+        # click at 8 400 stays at 8 400 (the adapter itself as the port's
+        # target puts it at 8 144).
+        module = routes_module()
+        for channels in (2, 1):
+            values = module.clicks(channels, 20000, ((8400, 20000),))
+            for cls, want in ((MultiTapDelay, 8400), (BareAdapter, 8144)):
+                effect = cls(module.source(values, RATE, channels, 512),
+                             sample_rate=RATE, mix=0.0)
+                head = pull(effect, 31 * BLOCK)
+                audiocore.reset_buffer(effect.output)
+                out = np.concatenate([head, pull(effect, 2000)])
+                effect.deinit()
+                self.assertEqual(lane_hits(out), [[want]] * channels,
+                                 (cls.__name__, channels))
+        result = reach(BareAdapter, lambda e: e._bypass() is e._adapter)
         self.assertIs(result["target"], True)
         self.assertEqual(result["checked"], 9 * 17 + 7)
 
