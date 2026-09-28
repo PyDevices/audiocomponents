@@ -46,6 +46,7 @@ import kit_probes as probes                                 # noqa: E402
 import audioeffects                                         # noqa: E402
 from audioeffects import _component                         # noqa: E402
 from audioeffects import rebuilt                            # noqa: E402
+from audioeffects.chorus import nominal_damping_hz          # noqa: E402
 from tools import effect_measurements as kit                # noqa: E402
 
 VENDOR = "PyDevices"
@@ -83,6 +84,12 @@ def law_landed(time_ms, heads, rate, max_lap_ms=1600.0):
     n1 = max(1, law_frames(time_ms, rate))
     n1 = min(n1, int(math.floor(max_lap_ms * rate / 1000.0)) // heads)
     return n1, heads * n1
+
+
+#: Section 4 (revised in fix round 1): the tap node reads its input one
+#: block after the dry has played it, so each head is handed k n1 - LAG
+#: frames and sounds at k n1 against the dry.
+LAW_LAG = 256
 
 
 def law_time_ms(midi):
@@ -244,7 +251,9 @@ def nonzero(out, channel=0):
 
 def first_lap(cls, rate=RATE, channels=2, tone=4000.0, midi=None, **opts):
     """T1's first-lap reading: (non-zero frames, their values, law set).
-    Click 20 000, Feedback 0, Mix 2, Tilt 0, P + 512 frames."""
+    Click 20 000, Feedback 0, Mix 2, Tilt 0, P + 512 frames. Lane 0's
+    frames and values; a lane whose frames or values differ from lane 0's
+    appends minus its number, so every lane is read."""
     midi = dict(midi or {})
     midi.setdefault(MIX_I, 127)
     opts.setdefault("feedback", 0.0)
@@ -257,8 +266,10 @@ def first_lap(cls, rate=RATE, channels=2, tone=4000.0, midi=None, **opts):
     out = pull(effect, lap + 512)
     frames = nonzero(out, 0)
     values = [int(out[i, 0]) for i in frames]
-    if channels == 2 and nonzero(out, 1) != frames:
-        frames = frames + [-1]
+    for lane in range(1, channels):
+        if nonzero(out, lane) != frames or \
+                [int(out[i, lane]) for i in frames] != values:
+            frames = frames + [-lane]
     expected = [k * n1 for k in law_heads(mode, heads)]
     effect.deinit()
     return frames, values, expected
@@ -282,8 +293,9 @@ def lap_arrivals(n1, lap, heads, laps, window):
 
 def laps_reading(cls, rate=RATE, tone=4000.0, feedback=0.45, midi=None,
                  channels=2, **opts):
-    """T1's lap clause: lean, the non-zero set against every arrival
-    inside 4P + 512, exact; full, the onset pair at every arrival."""
+    """T1's lap clause, every lane: lean, the non-zero set against every
+    arrival inside 4P + 512, exact; full, the onset pair at every
+    arrival. `late` lists every miss, lane by lane."""
     midi = dict(midi or {})
     midi.setdefault(MIX_I, 127)
     effect = build(cls, rate=rate, channels=channels, midi=midi,
@@ -295,22 +307,26 @@ def laps_reading(cls, rate=RATE, tone=4000.0, feedback=0.45, midi=None,
     out = pull(effect, window)
     effect.deinit()
     arrivals = lap_arrivals(n1, lap, heads, 5, window)
+    lanes = range(out.shape[1])
     if tone <= 0.0:
-        return {"passed": nonzero(out, 0) == arrivals,
-                "arrivals": len(arrivals), "late": []}
-    late = [a for a in arrivals
-            if out[a, 0] == 0 or out[a - 1, 0] != 0]
+        off = [(lane, sorted(set(nonzero(out, lane)) ^ set(arrivals)))
+               for lane in lanes]
+        off = [item for item in off if item[1]]
+        return {"passed": not off and len(arrivals) > 0,
+                "arrivals": len(arrivals), "late": off}
+    late = [a for lane in lanes for a in arrivals
+            if out[a, lane] == 0 or out[a - 1, lane] != 0]
     return {"passed": not late and len(arrivals) > 0, "late": late,
             "arrivals": len(arrivals)}
 
 
-def spectra(out, n1, lap, heads, laps=4, size=4096):
+def spectra(out, n1, lap, heads, laps=4, size=4096, lane=0):
     win = np.hanning(size)
     res = {}
     for n in range(1, laps + 1):
         for k in heads:
             a = (n - 1) * lap + k * n1
-            seg = out[a - size // 2:a + size // 2, 0].astype(float)
+            seg = out[a - size // 2:a + size // 2, lane].astype(float)
             peak = float(np.abs(seg).max())
             mag = np.abs(np.fft.rfft(seg * win))
             res[(n, k)] = (20.0 * np.log10(np.maximum(mag, 1e-9)), peak, seg)
@@ -318,53 +334,59 @@ def spectra(out, n1, lap, heads, laps=4, size=4096):
 
 
 def t45_reading(cls, rate=RATE, feedback=0.45, tone=4000.0, heads=3,
-                mode=7, midi=None, emulate=None):
+                mode=7, midi=None, emulate=None, data=None, time_ms=200.0):
     """T4 and T5 at one cell: click 24 000, Mix 2, Tilt 0, t1 200 ms,
-    4096-point Hann windows at every arrival of laps 1-4. Returns the
-    worst pairwise T4 spread, the worst clause-1 increment spread, the
-    corner and 8/5 kHz D2/D4 of head 1, and whether every head sounded
-    (every window non-zero), with the lap-1 peaks."""
+    4096-point Hann windows at every arrival of laps 1-4, on every lane.
+    Returns lane 0's worst pairwise T4 spread, worst clause-1 increment
+    spread, corner and 8/5 kHz D2/D4 of head 1, whether every head sounded
+    (every window non-zero) and the lap-1 peaks, with the same for every
+    lane under "lanes"; `t4_green` and `t5_green` judge every lane."""
     midi = dict(midi or {})
     midi.setdefault(MIX_I, 127)
     size = 4096
-    effect = build(cls, data=click(24000), rate=rate, midi=midi,
-                   time_ms=200.0, heads=heads, pattern=mode,
-                   feedback=feedback, tone_hz=tone)
+    effect = build(cls, data=click(24000) if data is None else data,
+                   rate=rate, midi=midi, time_ms=time_ms, heads=heads,
+                   pattern=mode, feedback=feedback, tone_hz=tone)
     selected = law_heads(mode, heads)
-    n1, lap = law_landed(200.0, heads, rate)
+    n1, lap = law_landed(time_ms, heads, rate)
     out = pull(effect, 4 * lap + size)
     effect.deinit()
-    res = spectra(out, n1, lap, selected, size=size)
-    if emulate is not None:
-        res = emulate(res, rate)
     freqs = np.fft.rfftfreq(size, 1.0 / rate)
     band = (freqs >= 100.0) & (freqs <= 10000.0)
     i100 = int(np.argmin(np.abs(freqs - 100.0)))
-    present = all(res[(n, k)][1] > 0 for n in range(1, 5)
-                  for k in selected)
-    t4 = 0.0
-    t5 = 0.0
-    for n in range(1, 5):
-        norm = np.array([res[(n, k)][0] - 20.0 * math.log10(
-            max(res[(n, k)][1], 1.0)) for k in selected])
-        if len(selected) > 1:
-            t4 = max(t4, float(np.max(np.ptp(norm[:, band], axis=0))))
-        if n > 1 and len(selected) > 1:
-            inc = np.array([res[(n, k)][0] - res[(1, k)][0]
-                            for k in selected])
-            t5 = max(t5, float(np.max(np.ptp(inc[:, band], axis=0))))
-    h = selected[0]
-
-    def dark(n, f):
-        iq = int(np.argmin(np.abs(freqs - f)))
-        inc = res[(n, h)][0] - res[(1, h)][0]
-        return -float(inc[iq] - inc[i100])
     corner = min(tone, rate * 0.5 * _component.NYQUIST_MARGIN)
     top = 8000.0 if rate > 30000 else 5000.0
-    return {"t4": t4, "t5": t5, "present": present,
-            "lap1": [res[(1, k)][1] for k in selected],
-            "c2": dark(2, corner), "c4": dark(4, corner),
-            "q2": dark(2, top), "q4": dark(4, top)}
+    lanes = []
+    for lane in range(out.shape[1]):
+        res = spectra(out, n1, lap, selected, size=size, lane=lane)
+        if emulate is not None:
+            res = emulate(res, rate)
+        present = all(res[(n, k)][1] > 0 for n in range(1, 5)
+                      for k in selected)
+        t4 = 0.0
+        t5 = 0.0
+        for n in range(1, 5):
+            norm = np.array([res[(n, k)][0] - 20.0 * math.log10(
+                max(res[(n, k)][1], 1.0)) for k in selected])
+            if len(selected) > 1:
+                t4 = max(t4, float(np.max(np.ptp(norm[:, band], axis=0))))
+            if n > 1 and len(selected) > 1:
+                inc = np.array([res[(n, k)][0] - res[(1, k)][0]
+                                for k in selected])
+                t5 = max(t5, float(np.max(np.ptp(inc[:, band], axis=0))))
+        h = selected[0]
+
+        def dark(n, f, res=res, h=h):
+            iq = int(np.argmin(np.abs(freqs - f)))
+            inc = res[(n, h)][0] - res[(1, h)][0]
+            return -float(inc[iq] - inc[i100])
+        lanes.append({"t4": t4, "t5": t5, "present": present,
+                      "lap1": [res[(1, k)][1] for k in selected],
+                      "c2": dark(2, corner), "c4": dark(4, corner),
+                      "q2": dark(2, top), "q4": dark(4, top)})
+    result = dict(lanes[0])
+    result["lanes"] = lanes
+    return result
 
 
 def one_pole(seg, hz, rate, passes=1):
@@ -403,13 +425,13 @@ def darken_head2_per_lap(res, rate, size=4096):
 
 class LateHeads(MultiTapDelay):
     """T1 (1): every head below K handed one frame late,
-    (k n1 + 1.5) / P."""
+    (k n1 - LAG + 1.5) / P."""
 
     NAME = 'MultiTapDelay'
 
     def _tap_positions(self, selected, n1, lap):
         heads = lap // n1
-        return tuple(1.0 if k == heads else (k * n1 + 1.5) / lap
+        return tuple((k * n1 - LAW_LAG + (0.5 if k == heads else 1.5)) / lap
                      for k in selected)
 
 
@@ -455,13 +477,14 @@ class FilteredHead(MultiTapDelay):
     """T4: head 2 read by a second tap node behind a 6 kHz low-pass, built
     for real: the lap node's output split into two tap nodes, head 2's
     behind the filter, summed as a third voice of the output Mixer (a
-    nested Mixer would reset the tap nodes' lines when it is played).
-    Full graph only; the plant is read at Tone in."""
+    nested Mixer would reset the tap nodes' lines when it is played). Both
+    tap nodes are wired the class's way, a block of zeros first and one
+    block behind the dry. Full graph only; the plant is read at Tone in."""
 
     NAME = 'MultiTapDelay'
     CORNER_HZ = 6000.0
 
-    def _wire(self):
+    def _wire(self, quiet=False):
         rate, channels = self._sample_rate, self._channel_count
         self._plant_filtered_head = True
         self._fd.play(self._tap1)
@@ -476,10 +499,11 @@ class FilteredHead(MultiTapDelay):
             max_delay_ms=1601, delay_ms=self._tap_ms, decay=0.0, mix=1.0,
             taps=self._head2_taps(), buffer_size=BLOCK * channels * 2,
             sample_rate=rate, channel_count=channels)
-        self._head2.play(self._filter)
+        self._feed2 = audioroute.Port(self._hush)
+        self._head2.play(self._feed2)
         self._tapnode.taps = self._other_taps()
-        self._tapnode.play(split.tap(0))
-        self._plugged = False
+        self._feed.play(self._hush)
+        self._tapnode.play(self._feed)
         mix = self._value(MIX_I)
         self._mixer = audiomixer.Mixer(
             voice_count=3, buffer_size=BLOCK * channels * 4,
@@ -492,6 +516,10 @@ class FilteredHead(MultiTapDelay):
         self._mixer.voice[0].play(self._dry)
         self._mixer.voice[1].play(self._tapnode)
         self._mixer.voice[2].play(self._head2)
+        self._feed.play(split.tap(0))
+        self._feed2.play(self._filter)
+        self._tail.play(self._mixer)
+        self._plugged = False
 
     def _other_taps(self):
         return tuple(t for k, t in zip(self._selected, self._taps) if k != 2)
@@ -509,11 +537,13 @@ class FilteredHead(MultiTapDelay):
 class FrontFilter(MultiTapDelay):
     """T5 clause 2: the seed's compose-first build, built for real - a
     front `audiofilters.Filter` (low-pass at the Tone value) into the tap
-    node, whose own decay makes the laps. It decays and never darkens."""
+    node, whose own decay makes the laps. It decays and never darkens. The
+    filter holds the source's first block from its own prime, which is the
+    one block the tap node runs behind the dry."""
 
     NAME = 'MultiTapDelay'
 
-    def _wire(self):
+    def _wire(self, quiet=False):
         rate, channels = self._sample_rate, self._channel_count
         self._plant_front_filter = True
         self._filter = audiofilters.Filter(
@@ -523,12 +553,14 @@ class FrontFilter(MultiTapDelay):
             channel_count=channels)
         self._filter.play(self._tap1)
         self._tapnode.decay = self._value(FEEDBACK_I)
-        self._tapnode.play(self._filter)
-        self._plugged = False
+        self._feed.play(self._hush)
+        self._tapnode.play(self._feed)
         _component.open_level_gates(self._mixer, self._mixer.voice,
                                     self._silence)
         self._mixer.voice[0].play(self._dry)
         self._mixer.voice[1].play(self._tapnode)
+        self._feed.play(self._filter)
+        self._plugged = False
 
     def _refresh(self):
         MultiTapDelay._refresh(self)
@@ -536,14 +568,150 @@ class FrontFilter(MultiTapDelay):
 
 
 class PrimingReset(MultiTapDelay):
-    """The review's finding, planted: the base's `reset()`, whose patch-0
-    restore re-plugs (or wires) the graph by priming a block of the
-    borrowed source into the Splitter."""
+    """Station B review's finding, planted: the base's `reset()`, which
+    wires a never-wired graph by priming a block of the borrowed source
+    and restores patch 0 without dropping the block tap 1 holds."""
 
     NAME = 'MultiTapDelay'
 
     def reset(self):
         _component.Component.reset(self)
+
+
+class StaleReset(MultiTapDelay):
+    """Tier 1 STATE, planted: `reset()` empties both lines but leaves the
+    one block tap 1 holds for the tap node, audio from before the reset."""
+
+    NAME = 'MultiTapDelay'
+
+    def _resync(self):
+        self._fd.clear()
+        audiocore.reset_buffer(self._tapnode)
+        self._feed.play(self._target(self._lean))
+        self._plugged = self._lean
+
+
+class PrimedWire(MultiTapDelay):
+    """Gate audit round 1, item 1, planted: Station B's wiring. The tap
+    node primes the source's first block and renders it into its planar
+    line for the wet voice's prime, level with the dry, heads handed at
+    (k n1 + 0.5) / P with head K at 1.0, so a Time or Heads move before
+    the first pull re-bases that block."""
+
+    NAME = 'MultiTapDelay'
+
+    def _tap_positions(self, selected, n1, lap):
+        heads = lap // n1
+        return tuple(1.0 if k == heads else (k * n1 + 0.5) / lap
+                     for k in selected)
+
+    def _wire(self, quiet=False):
+        self._plant_primed_wire = True
+        self._fd.play(self._tap1)
+        self._feed.play(self._target(self._lean))
+        self._tapnode.play(self._feed, loop=False)
+        _component.open_level_gates(self._mixer, self._mixer.voice,
+                                    self._silence)
+        self._mixer.voice[0].play(self._dry, loop=False)
+        self._mixer.voice[1].play(self._tapnode, loop=False)
+        self._plugged = self._lean
+
+
+class LateReset(MultiTapDelay):
+    """Item 2, planted: a reset that puts a silent block in front of the
+    source (fix round c80ca59's quiet prime did), so every later frame is
+    a block late against a reported 0."""
+
+    NAME = 'MultiTapDelay'
+    _plant_late_reset = True
+
+    def _resync(self):
+        MultiTapDelay._resync(self)
+        if self._resetting:
+            self._adapter.play(self._hush)
+            self._mixer.voice[0].play(self._dry, loop=False)
+            self._adapter.play(self._source)
+
+
+class MixerTail(MultiTapDelay):
+    """Item 3, planted: the output port on the Mixer, as before the tail.
+    A host's reset reaches the Mixer, whose voices re-prime from the
+    Splitter's taps and drop the block they hold."""
+
+    NAME = 'MultiTapDelay'
+
+    def _route(self):
+        MultiTapDelay._route(self)
+        if self._ready and not self._at_source:
+            self._plant_mixer_tail = True
+            self._output = self._mixer
+
+
+class PrimingPlug(MultiTapDelay):
+    """Item 4, planted: a Repeat Tone crossing that re-plays the tap node
+    (Station B's `_plug`), which primes a block from its new source; two
+    crossings between pulls take two."""
+
+    NAME = 'MultiTapDelay'
+    _plant_priming_plug = True
+
+    def _plug(self, lean):
+        if not lean:
+            self._fd.clear()
+        self._feed.play(self._target(lean))
+        self._tapnode.play(self._feed, loop=False)
+        self._plugged = lean
+
+
+class PannedLaps(MultiTapDelay):
+    """Item 5, the lane-1 plant (the material refuter's): the lap node's
+    input steered to the left line (`input_pan` -1), so the right lane
+    keeps lap 1 (the lap node's dry pass) and loses every later lap."""
+
+    NAME = 'MultiTapDelay'
+
+    def _refresh(self):
+        MultiTapDelay._refresh(self)
+        self._plant_panned_laps = True
+        self._fd.set(input_pan=-1.0)
+
+
+class CrossedLaps(MultiTapDelay):
+    """Item 5 (the material refuter's): the lap node's cross-feed at 1,
+    so every lap swaps lanes."""
+
+    NAME = 'MultiTapDelay'
+
+    def _refresh(self):
+        MultiTapDelay._refresh(self)
+        self._plant_crossed_laps = True
+        self._fd.set(cross_feed=1.0)
+
+
+class LapMixOne(MultiTapDelay):
+    """Item 6 (the material refuter's): the lap node's `mix` at 1.0, not
+    the Feedback (dossier section 4's correction undone), so lap 2 is at
+    unity against lap 1."""
+
+    NAME = 'MultiTapDelay'
+
+    def _refresh(self):
+        MultiTapDelay._refresh(self)
+        self._lap_mix = 1.0
+        self._fd.set(mix=1.0)
+
+
+class ToneHalf(MultiTapDelay):
+    """Item 6 (the material refuter's): Repeat Tone's corner at half the
+    knob, one pass about -7 dB at the knob's frequency, not -3."""
+
+    NAME = 'MultiTapDelay'
+
+    def _tone_damping(self):
+        if self._macros[TONE_I] >= 1.0:
+            return 0.0
+        return nominal_damping_hz(0.5 * self._hz(self._value(TONE_I)),
+                                  self._sample_rate)
 
 
 class Counting(Endless):
@@ -621,10 +789,10 @@ def reach(faulted, reading, **kw):
 def head_offset_error(effect):
     """What the tap node does with what the class hands it: each sounding
     head's offset, the node's way (the lap truncated from `delay_ms`, the
-    offset truncated from the position), less k n1."""
+    offset truncated from the position), less k n1 - LAG."""
     rate = effect._sample_rate
     lap = int(rate / 1000.0 * effect._tap_ms)
-    return tuple(int(lap * position) - k * effect._n1
+    return tuple(int(lap * position) - (k * effect._n1 - LAW_LAG)
                  for k, (position, _level) in zip(effect._selected,
                                                   effect._taps))
 
@@ -654,6 +822,229 @@ def time_span_landed(effect):
 
 def head_table(effect):
     return tuple(effect._head_set(mode) for mode in range(1, 13))
+
+
+def click_at(frame, channels=2, level=20000, tail=BLOCK * 4, lanes=None):
+    """A click at `frame` (every lane, or the lanes named), then silence."""
+    data = array("h", [0] * ((frame + tail) * channels))
+    for ch in (range(channels) if lanes is None else lanes):
+        data[frame * channels + ch] = level
+    return data
+
+
+def lane_hits(out):
+    return [nonzero(out, lane) for lane in range(out.shape[1])]
+
+
+def ctor_route(cls, move, rate=RATE, channels=2, at=0, pattern=None):
+    """Gate audit round 1, item 1: the plain constructor (`mix=2.0,
+    feedback=0.0`), then one setting before the first pull, a click at
+    frame `at` of every lane; every lane's non-zero frames against the
+    law for the knob positions."""
+    opts = dict(sample_rate=rate, mix=2.0, feedback=0.0)
+    if pattern is not None:
+        opts["pattern"] = pattern
+    effect = cls(Endless(click_at(at, channels), rate, channels), **opts)
+    if move is not None:
+        effect.set_macro(*move)
+    n1, lap = law_landed(effect.macro(TIME_I), effect._heads, rate,
+                         effect._max_lap_ms)
+    law = [at + k * n1 for k in law_heads(effect._pattern_mode(),
+                                          effect._heads)]
+    hits = lane_hits(pull(effect, at + lap + 512))
+    effect.deinit()
+    return {"passed": all(h == law for h in hits), "hits": hits,
+            "law": law}
+
+
+def patch_route(cls, patch, rate=RATE, channels=2):
+    """Item 1's program_change route: the constructor's defaults,
+    `program_change(patch)`, Feedback 0 and Mix 127 before the first pull.
+    Read from frame 1: a Mix move after wiring leaves frame 0 at the old
+    dry level in stereo (the surface record's item 4)."""
+    effect = cls(Endless(click(channels=channels), rate, channels),
+                 sample_rate=rate)
+    effect.program_change(patch)
+    effect.set_macro(FEEDBACK_I, 0)
+    effect.set_macro(MIX_I, 127)
+    n1, lap = law_landed(effect.macro(TIME_I), effect._heads, rate,
+                         effect._max_lap_ms)
+    law = [k * n1 for k in law_heads(effect._pattern_mode(),
+                                     effect._heads)]
+    hits = [[f for f in h if f > 0]
+            for h in lane_hits(pull(effect, lap + 512))]
+    effect.deinit()
+    return {"passed": all(h == law for h in hits), "hits": hits,
+            "law": law}
+
+
+RESET_ORIGIN = 60 * BLOCK + 101     # source frame 15 461
+
+
+def reset_route(cls, start, rate=RATE, channels=2):
+    """Item 2: 30 blocks from `start`, then `reset()`, Feedback 0 and Mix
+    1.0 (MIDI 63.5), a click at source frame 15 461: where the dry click
+    lands against the source, and the heads against the dry."""
+    source = Endless(click_at(RESET_ORIGIN, channels), rate, channels)
+    if start == "patch1":
+        effect = cls(source, sample_rate=rate, patch=1)
+    elif start == "mix0":
+        effect = cls(source, sample_rate=rate, mix=0.0)
+    else:
+        effect = cls(source, sample_rate=rate)
+        if start == "tone127":
+            effect.set_macro(TONE_I, 127)
+    head = pull(effect, 30 * BLOCK)
+    effect.reset()
+    effect.set_macro(FEEDBACK_I, 0)
+    effect.set_macro(MIX_I, 63.5)
+    n1, lap = law_landed(effect.macro(TIME_I), effect._heads, rate)
+    law = [k * n1 for k in law_heads(effect._pattern_mode(),
+                                     effect._heads)]
+    rest = pull(effect, RESET_ORIGIN - 30 * BLOCK + lap + 1024)
+    reported = effect.latency_samples
+    effect.deinit()
+    out = np.concatenate([head, rest])
+    hits = lane_hits(out)
+    dry = hits[0][0] if hits[0] else None
+    heads = [f - dry for f in hits[0][1:]] if hits[0] else []
+    same = all(h == hits[0] for h in hits)
+    return {"passed": dry == RESET_ORIGIN and heads == law and same
+            and reported == 0, "dry": None if dry is None
+            else dry - RESET_ORIGIN, "heads": heads, "law": law}
+
+
+HOST_CLICKS = (0, 3000)
+
+
+def host_reset_route(cls, patch=None, rate=RATE, channels=2):
+    """Item 3: clicks at source frames 0 and 3 000, the host resets the
+    output before its first pull (`tools/render_effect.py` does, and so
+    does a mixer voice's `play()`), Feedback 0: each click's dry at its own
+    frame and its heads at +k n1."""
+    data = array("h", [0] * (12000 * channels))
+    for at in HOST_CLICKS:
+        for ch in range(channels):
+            data[at * channels + ch] = 20000
+    effect = cls(Endless(data, rate, channels), sample_rate=rate,
+                 feedback=0.0, mix=1.0)
+    if patch is not None:
+        effect.program_change(patch)
+        effect.set_macro(FEEDBACK_I, 0)
+        effect.set_macro(MIX_I, 63.5)
+    n1, lap = law_landed(effect.macro(TIME_I), effect._heads, rate)
+    audiocore.reset_buffer(effect.output)
+    out = pull(effect, 3000 + lap + 512)
+    effect.deinit()
+    law = sorted(set(at + k * n1 for at in HOST_CLICKS
+                     for k in (0,) + law_heads(effect._pattern_mode(),
+                                               effect._heads)))
+    hits = lane_hits(out)
+    return {"passed": all(h == law for h in hits), "hits": hits,
+            "law": law}
+
+
+def crossing_route(cls, crossings, rate=RATE, channels=2):
+    """Item 4: 40 blocks at Mix 1, Feedback 0, Time MIDI 64, then Repeat
+    Tone across its out stop and back `crossings` times in one gap, then
+    a click: the dry at its frame and the heads at +k n1 on every lane."""
+    origin = 100 * BLOCK + 29
+    effect = build(data=click_at(origin, channels), cls=cls, rate=rate,
+                   channels=channels, midi={MIX_I: 63.5, TIME_I: 64},
+                   feedback=0.0)
+    head = pull(effect, 40 * BLOCK)
+    lean = False
+    for _ in range(crossings):
+        lean = not lean
+        effect.set_macro(TONE_I, 127 if lean else 68)
+    n1, lap = law_landed(effect.macro(TIME_I), effect._heads, rate)
+    law = [origin + k * n1 for k in (0,) + law_heads(
+        effect._pattern_mode(), effect._heads)]
+    rest = pull(effect, origin - 40 * BLOCK + lap + 1024)
+    effect.deinit()
+    hits = lane_hits(np.concatenate([head, rest]))
+    return {"passed": all(h == law for h in hits),
+            "hits": [[f - origin for f in h] for h in hits],
+            "law": [f - origin for f in law]}
+
+
+def level_reading(cls, rate=RATE, tone=4000.0):
+    """Item 6, section 6 row 3's Feedback law (the material refuter's
+    reading): click 20 000, the defaults' cell (150 ms, mode 7, K 3),
+    Feedback MIDI 60; on every lane head 1's lap-n response summed over
+    one head spacing, against lap 1's, is the Feedback to the n - 1 within
+    2 % (the loop low-pass has unity gain at DC); and at Feedback 0 nothing
+    sounds after the first lap."""
+    f = 0.95 * 60 / 127.0
+    midi = {FEEDBACK_I: 60, MIX_I: 127}
+    effect = build(cls, rate=rate, midi=midi, tone_hz=tone)
+    n1, lap = law_landed(effect.macro(TIME_I), effect._heads, rate)
+    out = pull(effect, 4 * lap + 512)
+    effect.deinit()
+    ratios = []
+    err = 0.0
+    for lane in range(out.shape[1]):
+        sums = [float(out[(n - 1) * lap + n1:(n - 1) * lap + 2 * n1,
+                          lane].sum()) for n in range(1, 5)]
+        if sums[0] == 0.0:
+            return {"passed": False, "ratios": [], "err": 1.0, "after": 0}
+        lane_ratios = [value / sums[0] for value in sums]
+        ratios.append([round(value, 4) for value in lane_ratios])
+        err = max([err] + [abs(lane_ratios[n] / f ** n - 1.0)
+                           for n in range(1, 4)])
+    zero = build(cls, rate=rate, midi={FEEDBACK_I: 0, MIX_I: 127},
+                 tone_hz=tone)
+    out = pull(zero, 2 * lap + n1 + 512)
+    zero.deinit()
+    after = int(np.count_nonzero(out[lap + 1:, :]))
+    return {"passed": err <= 0.02 and after == 0, "ratios": ratios,
+            "err": err, "after": after}
+
+
+def corner_reading(cls, rate=RATE, tone=4000.0):
+    """Item 6, section 6 row 6's corner (the material refuter's reading):
+    one pass at Repeat Tone's corner, head 1's lap 2 against lap 1 there
+    less the same at 100 Hz, is 3 dB within 0.5 dB on every lane."""
+    result = t45_reading(cls, rate=rate, tone=tone)
+    worst = max(abs(lane["c2"] - 3.0) for lane in result["lanes"])
+    return {"passed": worst <= 0.5, "c2": [round(lane["c2"], 2)
+                                           for lane in result["lanes"]]}
+
+
+def left_only_reading(cls, rate=RATE):
+    """Item 5, channel-different material: a click in the left lane only,
+    the full graph at the defaults, Feedback 0.45: the right lane stays
+    exactly zero, and the left lane has every lap's onset."""
+    effect = build(cls, data=click_at(0, 2, lanes=(0,)), rate=rate,
+                   midi={MIX_I: 127}, feedback=0.45)
+    n1, lap = law_landed(effect.macro(TIME_I), effect._heads, rate)
+    window = 4 * lap + 512
+    out = pull(effect, window)
+    effect.deinit()
+    arrivals = lap_arrivals(n1, lap, (1, 2, 3), 5, window)
+    late = [a for a in arrivals if out[a, 0] == 0 or out[a - 1, 0] != 0]
+    right = int(np.count_nonzero(out[:, 1]))
+    return {"passed": right == 0 and not late, "right": right,
+            "right_peak": int(np.abs(out[:, 1]).max()), "late": late}
+
+
+def damping_error(effect):
+    """The lap node's corner against the knob's own pre-warped corner,
+    as a ratio (1 on the clean class, 0 at the out stop)."""
+    if effect._damping <= 0.0:
+        return 0.0
+    law = nominal_damping_hz(effect._hz(effect.macro(TONE_I)),
+                             effect._sample_rate)
+    return round(effect._damping / law, 6)
+
+
+def lap_mix_error(effect):
+    """The lap node's `mix` less its Feedback: 0 on the clean class."""
+    return round(effect._lap_mix - effect._feedback, 6)
+
+
+def flag(name):
+    return lambda effect: getattr(effect, name, False)
 
 
 # --------------------------------------------------------------------------
@@ -848,8 +1239,10 @@ class Tier1(unittest.TestCase):
                                  (start, channels))
 
     def test_reset_priming_plant_is_red(self):
-        for start in ("patch1", "tone127", "mix0"):
-            self.assertGreater(reset_pulls(PrimingReset, start), 0, start)
+        # The base's reset wires a never-wired class by priming the source.
+        # From a wired class a re-plug is a store and takes nothing, so the
+        # plant's other half is read by STATE below.
+        self.assertGreater(reset_pulls(PrimingReset, "mix0"), 0)
 
     def test_state_from_the_lean_graph(self):
         for channels in (2, 1):
@@ -861,6 +1254,14 @@ class Tier1(unittest.TestCase):
     def test_state_priming_plant_is_red(self):
         result = state_reading(PrimingReset, 1)
         self.assertGreater(result["values"]["reset_residual_lsb"], 0)
+
+    def test_state_stale_block_plant_is_red(self):
+        for patch in (0, 1):
+            result = state_reading(StaleReset, patch)
+            self.assertGreater(result["values"]["reset_residual_lsb"], 0,
+                               patch)
+        result = state_reading(MultiTapDelay, 0)
+        self.assertEqual(result["values"]["reset_residual_lsb"], 0)
 
     def test_deinit_leaves_the_source(self):
         source = probes.ArraySource(probes.sine(440.0, 0.1, -6.0),
@@ -925,7 +1326,8 @@ class T1Grid(unittest.TestCase):
         for rate in RATES:
             result = laps_reading(LongLap, rate=rate)
             self.assertFalse(result["passed"], rate)
-            self.assertEqual(len(result["late"]), 9, rate)
+            # Nine of twelve onsets late, in each lane.
+            self.assertEqual(len(result["late"]), 18, rate)
 
     def test_the_t1_faults_are_not_on_the_surface(self):
         result = reach(LateHeads, head_offset_error)
@@ -1071,16 +1473,20 @@ class T3Selector(unittest.TestCase):
 
 
 def t4_green(result):
-    return result["present"] and result["t4"] <= 0.5
+    return all(lane["present"] and lane["t4"] <= 0.5
+               for lane in result.get("lanes", [result]))
 
 
 def t5_green(result, tone, rate):
-    clause1 = result["present"] and result["t5"] <= 0.5
-    clause2a = result["c2"] >= 1.0 and abs(result["c4"] - 3 * result["c2"]) \
-        <= 2.0
     top = 3620.0 if rate > 30000 else 2482.0
-    clause2b = tone > top + 1.0 or result["q4"] >= 15.0
-    return clause1 and clause2a and clause2b
+    for lane in result.get("lanes", [result]):
+        clause1 = lane["present"] and lane["t5"] <= 0.5
+        clause2a = lane["c2"] >= 1.0 and \
+            abs(lane["c4"] - 3 * lane["c2"]) <= 2.0
+        clause2b = tone > top + 1.0 or lane["q4"] >= 15.0
+        if not (clause1 and clause2a and clause2b):
+            return False
+    return True
 
 
 def tone_of(midi):
@@ -1157,6 +1563,180 @@ class T4T5Laps(unittest.TestCase):
             MultiTapDelay,
             lambda cls: t5_green(t45_reading(cls), 4000.0, RATE),
             label="T5")
+
+
+# --------------------------------------------------------------------------
+# Gate audit round 1: the routes the pack did not take, and both lanes
+
+
+def reach_flag(faulted, name):
+    return reach(faulted, flag(name))
+
+
+class RoundOneRoutes(unittest.TestCase):
+    """Items 1-4: a setting made on the wired instance before the first
+    pull, a reset from the lean graph, a host's reset of the output, and
+    several Repeat Tone crossings in one gap. Each is red on its plant,
+    which reproduces the code of c80ca59."""
+
+    def test_setting_before_the_first_pull_keeps_both_lanes_on_the_law(self):
+        # Red on c80ca59: left [3 118, 9 241, 12 359, 18 482], right none.
+        result = ctor_route(MultiTapDelay, (TIME_I, 96))
+        self.assertEqual(result["law"], [9241, 18482, 27723])
+        self.assertTrue(result["passed"], result)
+        for rate in RATES:
+            for move, pattern in (((TIME_I, 0), None), ((TIME_I, 127), None),
+                                  ((HEADS_I, 127), 12)):
+                result = ctor_route(MultiTapDelay, move, rate=rate,
+                                    pattern=pattern)
+                self.assertTrue(result["passed"], (rate, move, result))
+        self.assertTrue(ctor_route(MultiTapDelay, (TIME_I, 96),
+                                   channels=1)["passed"])
+
+    def test_program_change_before_the_first_pull(self):
+        for rate in RATES:
+            for patch in (0, 2, 4):
+                result = patch_route(MultiTapDelay, patch, rate=rate)
+                self.assertTrue(result["passed"], (rate, patch, result))
+
+    def test_primed_wire_plant_is_red_on_the_route_only(self):
+        result = ctor_route(PrimedWire, (TIME_I, 96))
+        self.assertFalse(result["passed"], result)
+        self.assertEqual(result["hits"][0][:4], [3118, 9241, 12359, 18482])
+        self.assertEqual(result["hits"][1], [])
+        self.assertFalse(patch_route(PrimedWire, 0)["passed"])
+        # The control: from frame 256 the plant is on the law, as c80ca59
+        # was, and so is the pack's build.
+        self.assertTrue(ctor_route(PrimedWire, (TIME_I, 96),
+                                   at=256)["passed"])
+        self.assertTrue(ctor_route(MultiTapDelay, (TIME_I, 96),
+                                   at=256)["passed"])
+        self.assertTrue(first_lap_green(PrimedWire)["passed"])
+        result = reach_flag(PrimedWire, "_plant_primed_wire")
+        self.assertEqual(result["checked"], 9 * 17 + 7)
+
+    def test_reset_leaves_the_output_on_time(self):
+        # Red on c80ca59 from patch 1, Tone at its out stop and a class
+        # never wired: the dry at +256.
+        for start in ("patch1", "tone127", "mix0", "full"):
+            for rate, channels in ((RATE, 2), (RATE, 1), (44100, 2),
+                                   (22050, 2)):
+                result = reset_route(MultiTapDelay, start, rate, channels)
+                self.assertTrue(result["passed"],
+                                (start, rate, channels, result))
+
+    def test_late_reset_plant_is_red(self):
+        result = reset_route(LateReset, "patch1")
+        self.assertFalse(result["passed"], result)
+        self.assertEqual(result["dry"], 256)
+        result = reach_flag(LateReset, "_plant_late_reset")
+        self.assertEqual(result["checked"], 9 * 17 + 7)
+
+    def test_a_host_reset_keeps_the_first_block(self):
+        # Red on c80ca59: the 3 000 click at 2 744 on all three
+        # interpreters (multitapdelay_stationC_hostreset.py).
+        for rate in RATES:
+            for channels in (2, 1):
+                for patch in (None, 1):
+                    result = host_reset_route(MultiTapDelay, patch, rate,
+                                              channels)
+                    self.assertTrue(result["passed"],
+                                    (rate, channels, patch, result))
+
+    def test_mixer_tail_plant_is_red(self):
+        result = host_reset_route(MixerTail)
+        self.assertFalse(result["passed"], result)
+        self.assertEqual(result["hits"][0][0], 2744)
+        result = reach_flag(MixerTail, "_plant_mixer_tail")
+        self.assertEqual(result["checked"], 9 * 17 + 7)
+
+    def test_tone_crossings_in_one_gap(self):
+        # Red on c80ca59 at two crossings: heads at +4 088 for +4 344.
+        for rate in RATES:
+            for crossings in (1, 2, 3, 4):
+                result = crossing_route(MultiTapDelay, crossings, rate)
+                self.assertTrue(result["passed"], (rate, crossings, result))
+        self.assertTrue(crossing_route(MultiTapDelay, 2,
+                                       channels=1)["passed"])
+
+    def test_priming_plug_plant_is_red(self):
+        self.assertTrue(crossing_route(PrimingPlug, 1)["passed"])
+        result = crossing_route(PrimingPlug, 2)
+        self.assertFalse(result["passed"], result)
+        self.assertEqual(result["hits"][0], [0, 4088, 8432, 12776])
+        result = reach_flag(PrimingPlug, "_plant_priming_plug")
+        self.assertEqual(result["checked"], 9 * 17 + 7)
+
+
+class RoundOneLanes(unittest.TestCase):
+    """Item 5: the lap and spectral readings read every lane, with a
+    lane-1 plant and channel-different material."""
+
+    def test_panned_laps_is_red_on_every_lane_reading(self):
+        for rate in RATES:
+            result = laps_reading(PannedLaps, rate=rate)
+            self.assertFalse(result["passed"], (rate, result))
+            self.assertEqual(len(result["late"]), 9, rate)
+            self.assertFalse(t4_green(t45_reading(PannedLaps, rate=rate)))
+            self.assertTrue(laps_reading(PannedLaps, rate=rate,
+                                         channels=1)["passed"])
+        result = reach_flag(PannedLaps, "_plant_panned_laps")
+        self.assertEqual(result["checked"], 9 * 17 + 7)
+
+    def test_left_only_click(self):
+        for rate in RATES:
+            result = left_only_reading(MultiTapDelay, rate)
+            self.assertTrue(result["passed"], (rate, result))
+        result = left_only_reading(CrossedLaps)
+        self.assertFalse(result["passed"], result)
+        self.assertGreater(result["right"], 0)
+        result = reach_flag(CrossedLaps, "_plant_crossed_laps")
+        self.assertEqual(result["checked"], 9 * 17 + 7)
+
+    def test_null_build_is_red(self):
+        kit_faults.null_build_red(
+            MultiTapDelay, lambda cls: left_only_reading(cls),
+            label="left-only")
+
+
+class RoundOneSurfaceLaws(unittest.TestCase):
+    """Item 6: section 6's Feedback law and Repeat Tone's corner, each
+    with a plant."""
+
+    def test_lap_levels_follow_feedback(self):
+        for rate in RATES:
+            for tone in (4000.0, 0.0):
+                result = level_reading(MultiTapDelay, rate, tone)
+                self.assertTrue(result["passed"], (rate, tone, result))
+
+    def test_lap_mix_one_is_red(self):
+        for rate in RATES:
+            result = level_reading(LapMixOne, rate)
+            self.assertFalse(result["passed"], (rate, result))
+            self.assertGreater(result["ratios"][0][1], 0.99)
+        result = reach(LapMixOne, lap_mix_error)
+        self.assertEqual(result["checked"], 9 * 17 + 7)
+
+    def test_repeat_tone_corner_is_3_db(self):
+        for rate in RATES:
+            for midi in (0, 64, 126):
+                result = corner_reading(MultiTapDelay, rate, tone_of(midi))
+                self.assertTrue(result["passed"], (rate, midi, result))
+            self.assertTrue(corner_reading(MultiTapDelay, rate)["passed"])
+
+    def test_tone_half_is_red(self):
+        for rate in RATES:
+            result = corner_reading(ToneHalf, rate)
+            self.assertFalse(result["passed"], (rate, result))
+            self.assertGreater(min(result["c2"]), 6.0)
+        result = reach(ToneHalf, damping_error)
+        self.assertEqual(result["checked"], 9 * 17 + 7)
+
+    def test_null_build_is_red(self):
+        kit_faults.null_build_red(
+            MultiTapDelay, lambda cls: level_reading(cls), label="levels")
+        kit_faults.null_build_red(
+            MultiTapDelay, lambda cls: corner_reading(cls), label="corner")
 
 
 if __name__ == "__main__":

@@ -36,6 +36,25 @@ there, and are recorded in its changelog.
   shipped patches, on `noise_det`), the 15 kHz swing the wow costs the
   repeat, the Wow step, and Tone's flat top at 22.05 kHz. Board cost is
   unmeasured.
+- **`MultiTapDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** the
+  RE-201's multi-head modes, with the Echorec as a second reference. Heads
+  sit on a grid of whole multiples of one base time, exactly, at every
+  rate; Pattern is the RE-202's twelve head sets over that grid (mode 12
+  the plain grid, not Roland's unpublished one); the laps go round an
+  `audioecho.FeedbackDelay` whose loop low-pass darkens once per lap, and
+  Repeat Tone's out stop swaps to a lighter graph (patch 1, the one to
+  stack on an S3). Mix 0 is a wire. It lives in
+  `lib/audioeffects/rebuilt/multitapdelay.py`, and
+  `audioeffects.MultiTapDelay` is still the old class. The tap node reads
+  its input one block behind the dry, so settings made before the first
+  pull or after `reset()` land on the grid in both lanes, a reset leaves
+  the output on time, and any number of Repeat Tone crossings between
+  pulls leave the wet where it was; the output ends in a width-1 MidSide,
+  so a host resetting the output keeps the source's first block. The
+  docstring states the input ceiling, the click and channel crossing of a
+  Time or Heads move while audio plays, and that on CircuitPython alone
+  the stereo dry's right lane is one LSB hot within 32 LSB of the rails.
+  Board cost is unmeasured.
 
 ## v0.3.2 (2026-09-25)
 
