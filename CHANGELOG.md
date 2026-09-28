@@ -84,7 +84,10 @@ there, and are recorded in its changelog.
   `audioeffects.AnalogDelay` is still the old class. The docstring states
   the input ceiling (-4.4 dBFS peak at the default Mix 0.4) and that
   turning Time through several positions takes seconds to settle. Board
-  cost is unmeasured.
+  cost is unmeasured. At audiodsp v0.6.3rc1 the Feedback is handed as set
+  (no stepping clear of the stall windows; the bound counts one landing lap
+  there), and a Modulation move glides over 20 ms instead of stepping the
+  read offset.
 
 ### Changed
 

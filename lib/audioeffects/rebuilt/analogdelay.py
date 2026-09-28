@@ -125,10 +125,17 @@ Time, so a Time move never steps the read offset and equal Modulation
 bends equally at every Time (+-20.7 cents at patch 3's 3 ms and 1 Hz,
 +257 / -302 at the stops). The shape is a plain triangle, the clock law's
 first order; it differs from the exact reciprocal by up to S / T of the
-swing (1.7 % at 300 ms and full depth, 25 % at 20 ms). **A Modulation move
-does step the read offset**, by the change in depth times where the
-triangle stands: 5 -> 2 ms at the triangle's peak jumps the read 142
-frames at 48 kHz. Mod Rate moves keep the triangle's phase and do not step.
+swing (1.7 % at 300 ms and full depth, 25 % at 20 ms). A Modulation move
+glides: since audiodsp v0.6.3rc1 the node ramps a new swing in over 20 ms
+(audiodsp#160), where up to v0.6.2 it jumped the read by the change in
+depth times where the triangle stood (142 frames for 5 -> 2 ms at the
+triangle's peak, 48 kHz). While the swing travels the extra pitch is the
+change over 20 ms times where the triangle stands: 5 -> 2 ms at the peak
+bends the repeats 15 % (about 240 cents) for those 20 ms. On a 997 Hz tone
+at 12 000 LSB, wet only, Time 300 ms, Mod Rate 1 Hz, 48 kHz, a move from
+1 to 1.5 ms steps at most 1 522 LSB over the 2 000 frames after it, where
+the tone's own largest step is 1 491 and the ramp allows 1 528 (7 337 at
+v0.6.2). Mod Rate moves keep the triangle's phase and do not step.
 
 **Input ceiling.** The dry path sits at unity and the repeats add to it,
 so a hot input can put the output on the int16 rail; there is no input
@@ -143,10 +150,12 @@ reach exact zero after your input stops: DigitalDelay's lap count at the
 Feedback the node is handed, each lap the longest delay the head may be at
 plus the swing, one frame for the interpolated read and the low-pass's
 memory. 187 954 frames (3.9 s) at the defaults; 26.5 s at patch 5, the
-longest. The loop low-pass is always in, and the node can hold a small
-value for ever at a Feedback a hair either side of 1 - 0.5 / k, so the
-class hands the node the nearer edge of that window instead, at most
-3 x 10^-5 from the Feedback you set, which the knob still reads. After a
+longest. The loop low-pass is always in, and at a Feedback a hair either
+side of 1 - 0.5 / k it can come to rest a hair above k LSB and hand it
+back. Up to audiodsp v0.6.2 it did so for ever, and the class handed the
+node the nearer edge of that window instead. Since v0.6.3rc1 the node sets
+a stalled low-pass onto its input (audiodsp#157), the Feedback you set is
+the one the node plays, and the bound counts one more lap there. After a
 falling Time move the bound keeps the Time the head walked from until a
 reset, because the class cannot see how far the walk has got.
 
@@ -177,11 +186,9 @@ from ..chorus import nominal_damping_hz
 # the same node rounds the same way in both classes. Its module moves up
 # one level when it comes home, so both homes are tried.
 try:
-    from .digitaldelay import (DIVISION_BEATS, clear_of_stalls, laps_to_zero,
-                               whole_frames)
+    from .digitaldelay import DIVISION_BEATS, laps_to_zero, whole_frames
 except ImportError:                     # pragma: no cover - after it lands
-    from ..digitaldelay import (DIVISION_BEATS, clear_of_stalls,
-                                laps_to_zero, whole_frames)
+    from ..digitaldelay import DIVISION_BEATS, laps_to_zero, whole_frames
 
 try:
     import audioecho
@@ -584,12 +591,10 @@ class AnalogDelay(_component.Component):
         self._corner = self._hz(self._corner_for(clamped))
         self._damping = nominal_damping_hz(self._corner, fs)
 
-        feedback = _between(self._value(FEEDBACK_I), 0.0, FEEDBACK_MAX)
-        # The loop low-pass is always in, and the node can hold a small value
-        # for ever at a Feedback a hair either side of 1 - 0.5 / k; the node
-        # is handed the nearer edge of that window instead.
-        self._feedback = clear_of_stalls(
-            feedback, tone_excess(self._damping, fs)[1])
+        # Handed as set: since audiodsp v0.6.3rc1 the node lands a loop
+        # low-pass that has stopped moving (#157), so no Feedback holds a
+        # small value for ever and nothing is stepped clear here.
+        self._feedback = _between(self._value(FEEDBACK_I), 0.0, FEEDBACK_MAX)
 
         self._swing_ms = _between(self._value(MODULATION_I), 0.0,
                                   SWING_MAX_MS)
@@ -625,7 +630,5 @@ class AnalogDelay(_component.Component):
         `fget`."""
         memory, excess = tone_excess(self._damping, self._sample_rate)
         laps = laps_to_zero(self._feedback, excess)
-        if laps is None:                    # pragma: no cover - stepped clear
-            return None
         swing = int(math.ceil(self._swing_ms * self._sample_rate / 1000.0))
         return int(laps * (self._reach + swing + 1 + memory))

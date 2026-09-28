@@ -47,6 +47,8 @@ from audioeffects import _component                         # noqa: E402
 from audioeffects import rebuilt                            # noqa: E402
 from audioeffects.chorus import nominal_damping_hz          # noqa: E402
 from audioeffects.rebuilt import analogdelay as ad          # noqa: E402
+from audioeffects.rebuilt.digitaldelay import (             # noqa: E402
+    clear_of_stalls)
 from tools import effect_measurements as kit                # noqa: E402
 
 VENDOR = "PyDevices"
@@ -363,16 +365,38 @@ class HalfTail(AnalogDelay):
         return AnalogDelay._tail_bound(self) // 2
 
 
-class RawFeedback(AnalogDelay):
-    """Tail: the Feedback handed as set, inside a stall window."""
+class SteppedAnalog(AnalogDelay):
+    """The workaround retired at audiodsp v0.6.3rc1: the Feedback handed
+    to the node at the nearer edge of the loop low-pass's stall window
+    (`clear_of_stalls`), a Feedback nobody set. (Up to v0.6.2 the fault
+    here was the opposite, `RawFeedback`: the Feedback handed as set, which
+    held 1 LSB for ever inside a window.)"""
 
     NAME = 'AnalogDelay'
 
     def _refresh(self):
         AnalogDelay._refresh(self)
-        feedback = min(0.99, self._value(FEEDBACK_I))
-        self._feedback = feedback
-        self._delay.set(feedback=feedback)
+        excess = ad.tone_excess(self._damping, self._sample_rate)[1]
+        stepped = clear_of_stalls(self._feedback, excess)
+        if stepped != self._feedback:
+            self._feedback = stepped
+            self._delay.set(feedback=stepped)
+
+
+class JumpModAnalog(AnalogDelay):
+    """A Modulation move that moves the read head by the whole change in
+    swing at once, as the node did at the triangle's peak up to v0.6.2 (it
+    added depth x triangle with no ramp)."""
+
+    NAME = 'AnalogDelay'
+
+    def _refresh(self):
+        old = self._swing_ms
+        AnalogDelay._refresh(self)
+        if (not getattr(self, "_seeding", False)
+                and not self._deferred and self._swing_ms != old):
+            self._delay.set(delay_slew=0.0,
+                            delay_ms=self._node_ms + self._swing_ms - old)
 
 
 class PerMacroPatch(AnalogDelay):
@@ -1315,8 +1339,16 @@ class TheSurface(unittest.TestCase):
                         self.assertIsNotNone(effect.tail_samples,
                                              (character, rate, time_midi,
                                               fb_midi))
-                        self.assertLess(abs(effect._feedback
-                                            - 0.99 * fb_midi / 127.0), 3e-5)
+                        # Handed as set since audiodsp v0.6.3rc1 (#157);
+                        # it was stepped clear, 3 x 10^-5 at most.
+                        self.assertEqual(effect._feedback,
+                                         min(0.99, effect._value(FEEDBACK_I)))
+                # Planted: the retired stepping moves the 0.99 stop.
+                stepped = SteppedAnalog(silence_src(64, 2, rate),
+                                        sample_rate=rate,
+                                        character=character, feedback=0.99)
+                self.assertNotEqual(stepped._feedback, 0.99)
+                self.assertLess(abs(stepped._feedback - 0.99), 3e-5)
 
     def test_constructor_edges(self):
         effect = AnalogDelay(silence_src(64), sample_rate=RATE, time_ms=0.0,
@@ -1923,21 +1955,66 @@ class Tier1Fast(unittest.TestCase):
             self.assertTrue(result["passed"], (options, result))
             self.assertGreater(result["last"], 0)
 
-    def test_a_raw_feedback_in_a_stall_window_never_ends(self):
+    def test_the_stall_cell_reaches_zero_at_the_feedback_set(self):
         # Feedback 0.5 at 600 ms, where the low-pass is slow enough to rest
-        # a hair above 1 LSB: handed raw, 1 LSB goes round for ever on a
-        # 2 LSB DC; stepped clear of the window, it ends inside the bound.
+        # a hair above 1 LSB. Up to audiodsp v0.6.2, handed raw, 1 LSB went
+        # round for ever on a 2 LSB DC, and the class stepped the Feedback
+        # clear. Since v0.6.3rc1 (#157) 0.5 is handed as set and the tail
+        # ends inside the bound. Planted: the retired stepping.
         probe = AnalogDelay(silence_src(64), sample_rate=RATE, time_ms=600.0,
                             feedback=0.5, mix=2.0)
+        self.assertEqual(probe._feedback, 0.5)
         declared = probe.tail_samples
         fill = 4 * 28800 // BLOCK * BLOCK
         values = [2] * fill + [0] * (declared + RATE)
-        for cls, ends in ((AnalogDelay, True), (RawFeedback, False)):
+        effect = AnalogDelay(array_src(values, 1), sample_rate=RATE,
+                             time_ms=600.0, feedback=0.5, mix=2.0)
+        out = pull(effect, len(values), 1)
+        nonzero = np.flatnonzero(out)
+        self.assertGreater(len(nonzero), 0)
+        self.assertLessEqual(int(nonzero[-1]) - fill + 1, declared)
+        stepped = SteppedAnalog(silence_src(64), sample_rate=RATE,
+                                time_ms=600.0, feedback=0.5, mix=2.0)
+        self.assertNotEqual(stepped._feedback, 0.5)
+        self.assertLess(abs(stepped._feedback - 0.5), 3e-5)
+
+    def _modulation_move(self, cls, start_ms, target_ms, points=8):
+        """(the tone's own largest step before the move, the largest step in
+        the 2 000 frames after it) over `points` moves a quarter of the 1 Hz
+        triangle apart: 997 Hz at 12 000 LSB, mono, wet only, Time 300 ms,
+        48 kHz (`pin063cls_ad_modmove.py`)."""
+        first = (14400 + 9600) // BLOCK * BLOCK
+        steadies, worsts = [], []
+        for k in range(points):
+            at = first + k * 47 * BLOCK
+            values = sine_values(997.0, at + 2400, RATE, 12000)
             effect = cls(array_src(values, 1), sample_rate=RATE,
-                         time_ms=600.0, feedback=0.5, mix=2.0)
-            out = pull(effect, len(values), 1)
-            self.assertEqual(int(np.max(np.abs(out[-RATE:]))) == 0, ends,
-                             cls.__name__)
+                         time_ms=300.0, feedback=0.0, mix=2.0, spread=0.0,
+                         modulation_ms=start_ms, mod_rate_hz=1.0)
+
+            def move(frame, at=at, effect=effect):
+                if frame == at:
+                    effect.set_macro(MODULATION_I, target_ms * 127.0 / 5.0)
+
+            y = pull(effect, at + 2000 + BLOCK, 1,
+                     on_block=move).astype(float)
+            steadies.append(float(np.abs(np.diff(y[at - 3000:at - 1])).max()))
+            worsts.append(float(np.abs(np.diff(y[at - 1:at + 2000])).max()))
+        return max(steadies), max(worsts)
+
+    def test_a_modulation_move_does_not_step(self):
+        # Since audiodsp v0.6.3rc1 the node ramps a new swing in over 20 ms
+        # (#160). While it travels the read offset may move |change| / 20 ms
+        # of a frame per frame on top of the triangle, so the tone may slope
+        # up to its own largest step times 1 + |change| / 20 ms, and no more.
+        # Up to v0.6.2 the same moves read 7 337 (1 -> 1.5 ms) and 2 107
+        # (5 -> 0 ms). Planted: the read head moved by the whole change.
+        for start, target in ((1.0, 1.5), (5.0, 0.0), (5.0, 2.0)):
+            bar = 1.0 + abs(target - start) / 20.0
+            steady, worst = self._modulation_move(AnalogDelay, start, target)
+            self.assertLessEqual(worst, steady * bar, (start, target))
+        steady, worst = self._modulation_move(JumpModAnalog, 1.0, 1.5)
+        self.assertGreater(worst, steady * 1.025)
 
     def _walk_tail(self, cls):
         """600 ms of 997 Hz, Feedback 0, Mix 2; as the tone stops, Time
