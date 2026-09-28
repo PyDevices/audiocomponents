@@ -104,20 +104,28 @@ there, and are recorded in its changelog.
   byte for byte. Measured mode loads at unit mean energy and refuses the
   synthesis macros with `IndexError`; no impulse ships. It lives in
   `lib/audioeffects/rebuilt/convolutionreverb.py`, and
-  `audioeffects.ConvolutionReverb` is still the old class. The room holds
-  its level over both channels together (for material about equally loud
-  on both sides), but Diffusion, Room, Damping, Decay and Predelay move
-  a stereo room's left-right balance, by at least about 5.3 dB at 48 and
-  44.1 kHz and 4.7 dB at 22.05 kHz (the widest found; how far it can go
-  is not known); fixing that is a node change, drafted as an audiodsp
-  ask. The docstring states that, the low-material lift a dark room
-  gives, and the partition a room-knob move or a mid-stream `reset()`
-  drops. Board cost
-  is unmeasured; by the cost table's line the default fits an S3, and
+  `audioeffects.ConvolutionReverb` is still the old class. It stands on
+  audiodsp v0.6.3rc2: moving a room knob changes the room over the block
+  in flight, with no frame of the dry dropped or repeated at any Mix and
+  the tail ringing on into the new room, and each side of a stereo room
+  is unit energy on its own, so the room sits in the middle (the two
+  sides within 0.001 dB on the room's own impulse over the settings
+  walked). The docstring states the low-material lift a dark room gives
+  and the partition a mid-stream `reset()` drops. Board cost is unmeasured;
+  by the cost table's line the default fits an S3, and
   anything over 0.091 s there is desktop-only.
 
 ### Changed
 
+- **The audiodsp pin moves to v0.6.3rc2.** The release adds audiodsp#165 to
+  rc1: `audioconvolve.Convolver` keeps the audio in flight when a room is
+  re-synthesized (#163: the block on its way out crossfades from the old
+  room to the new, nothing drops, the tail rings on) and normalises each
+  side of a stereo room on its own (#164: the room no longer leans, and
+  the pair's level holds). Mono rooms and measured impulses render the
+  bytes they did. `ConvolutionReverb`, rebuilt and old, synthesizes
+  stereo rooms, so its stereo renders move; nothing else here uses the
+  node.
 - **The audiodsp pin moves to v0.6.3rc1, and three workarounds come out.**
   The release carries audiodsp#161: `audioecho.FeedbackDelay` keeps an out
   loop filter's state live (#158, #159), lands a stalled damping state so a

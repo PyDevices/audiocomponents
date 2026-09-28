@@ -6,18 +6,15 @@ table was frozen at Station A before this file existed (anchor commit
 85cc2bfc9a5a3c34c6906fbf0c27b285ba1050d2, the Station A critique's
 re-freeze, 2026-09-28). The old class in `reverb.py` is consulted only for
 the six defects that dossier's section 7 names; it stays the class the
-library serves until the board runner adopts this one. After the gate
-audit's round 1 the dossier carries a dated post-build revision (fix round
-1, 2026-09-28): D6 claims the level of both channels pooled, and this
-docstring says what that leaves out. Fix round 2 (the same day, after the
-round-2 audit) corrected the left-right balance figure it gives, from
-about 1.3 dB to about 4.5 dB, and three edges; the audio did not change.
-The re-audit's fix round 1 (after the round-3 audit) replaced that bound
-with the widest balance a walk over Diffusion's every position found,
-stated as a floor on the swing, not a bound; the audio did not change.
-The re-audit's fix round 2 did the same for a single Room's distance from
-the Decay law, named the Room behind the one-sided example below, and
-added Predelay to what moves the balance; the audio did not change.
+library serves until the board runner adopts this one. The dossier's dated
+post-build revisions (2026-09-28) record what each audit round changed in
+the words and tests; the audio did not change in any of them. Since the
+re-audit at audiodsp v0.6.3rc2 the class stands on the fixed convolution
+node (audiodsp#165): a room-knob move no longer drops the block in flight
+or stops the tail (#163), and each side of a stereo room is normalised on
+its own, so the room no longer leans (#164). The two sentences that
+disclosed those defects are gone, and every stereo figure below was read
+again on the fixed node.
 
 **What it sounds like.** A short room behind your dry signal. With nothing
 loaded the class synthesizes the room: noise under an exponential that
@@ -74,7 +71,7 @@ loaded state; the synthesized room is always loaded, and only an empty
 impulse (`impulse=b""`) leaves the node a plain undelayed wire. Mix 0 is
 the source delayed by exactly `latency_samples`, byte for byte, because the
 node stays in the path at Mix 0 and a Mix move never jumps the timeline.
-The exceptions are the partition a room knob moves in and the partition
+A room-knob move keeps it too; the one exception is the partition
 `reset()` is called in (below).
 
 **Tail.** `tail_samples` is `latency_samples` plus the loaded impulse
@@ -87,53 +84,48 @@ partition plus 18 440 B fixed), 110 960 B with a mono one; 133 576 B at
 44.1 kHz and 76 008 B at 22.05 kHz. A measured impulse is read once at
 construction, handed to the node and dropped; the class keeps no copy.
 
-**Moving a room knob starts the room empty and drops one partition of
-everything.** Decay, Damping, Predelay, Diffusion and Room re-synthesize
-the impulse, and the node empties itself when it does: a tail ringing at
-that moment stops dead, and the 256 frames in flight (5.333 ms at 48 kHz),
-dry and wet alike, come out as exact zero. That is a gap in your dry
-signal at every Mix, Mix 0 included; after it, Mix 0 is the source delayed
-by `latency_samples` again, byte for byte. The class cannot avoid it from
-Python (the node's `synthesize()` ends in a reset of its pending and
-output blocks; the node ask is drafted), so do not sweep a room knob under
-a signal you need unbroken. A move that lands on the room already loaded
-does nothing and drops nothing, and a patch change, the constructor and
-`reset()` synthesize once, not once per knob. `reset()` in the middle of a
-stream drops the 256 frames in flight the same way, dry included. Mix
-moves never touch the room, but a Mix move acts on the audio entering the
-node after it, so you hear it one partition later: the 256 frames already
-in flight come out at the old Mix.
+**Moving a room knob changes the room over the block in flight.** Decay,
+Damping, Predelay, Diffusion and Room re-synthesize the impulse, and the
+node keeps what it holds: no frame of your dry signal drops or repeats, at
+any Mix (at Mix 0 the output stays the source delayed by
+`latency_samples`, byte for byte, across the move), and a tail ringing at
+that moment rings on into the new room. Over the 256 frames already on
+their way out (5.333 ms at 48 kHz) the old room fades into the new one in
+a straight line, within 1 LSB (a sample at full scale in either room is
+clipped after the fade), and in every move measured the fade stepped no
+further from one frame to the next than the larger of the two rooms does
+on its own over the same frames; from the next block the output is exactly
+that of an instance that always had the new room. A move that lands on the room already loaded does
+nothing, and a patch change, the constructor and `reset()` synthesize
+once, not once per knob. The synthesis itself runs on the thread that
+moves the knob; on a board it can race the audio pump (audiodsp#166,
+open), which a desktop cannot show. `reset()` in the middle of a stream is
+a reset: it empties the room, and the 256 frames in flight come out as
+exact zero, dry included. Mix moves never touch the room, but a Mix move
+acts on the audio entering the node after it, so you hear it one partition
+later: the 256 frames already in flight come out at the old Mix.
 
 **What the default surrenders.** The room is normalised to unit energy
 across the whole band, so with Damping in, low material comes back louder
-than it went in: a 220 / 277 / 330 Hz chord +3.73 dB at the default
-6 kHz Damping and +13.28 dB at the 500 Hz stop. White-spectrum material
-about equally loud on both sides comes back at its own level, within
-0.5 dB, at every setting, counting both channels together. Material on
-one side only does not, and which side comes back louder depends on the
-Room. At 48 kHz with Decay 0, Damping 500 Hz and Diffusion 0, white noise
-hard left comes back 2.7 dB down and hard right 1.8 dB up at Room seed 36,
-and at the default Room, seed 1, hard left comes back 1.3 dB up and hard
-right 2.1 dB down (at seed 1, Decay 1.0, Diffusion 0.5 and Damping 500 Hz,
-about 0.8 dB down and 0.5 dB up). That noise is one draw, the kit's
-uniform seed 12345 at -12 dBFS peak; another draw reads a few tenths of a
-dB off it. Each side on its own does not hold either: the node scales the
-room by the mean of its two sides' energies, so on a stereo room the
-left-right balance moves while the total holds, and Diffusion, Room,
-Damping, Decay and Predelay all move it. It moves by at least about
-5.3 dB at 48 and 44.1 kHz and 4.7 dB at 22.05 kHz, and how far it can go
-is not known: no walk covers every setting. The widest found on the
-room's own impulse is L - R -5.30 dB at 48 kHz, -5.26 dB at 44.1 kHz and
--4.67 dB at 22.05 kHz, all at Decay 0, Damping 500 Hz and Room seed 36,
-with Diffusion at 12, 13 and 22 of 127. The other way, the widest found
-is +4.49, +4.55 and +4.05 dB (Decay 0, Damping 500 Hz, Diffusion 0,
-seed 4). Those are the impulse's own figures, which is what white noise
-reads per side on average; any one noise draw reads a little off them.
-A mono room is one side and holds. Damping clamps at 0.159 fs, under the
-point where the node's one-pole coefficient stops moving, so at 48 kHz
-every one of its 128 positions is a room of its own, while at 22.05 kHz
-the positions from 92 up (the 6 kHz default among them) are one 3 506 Hz
-room.
+than it went in: a 220 / 277 / 330 Hz chord (the three sines summed, at
+an 8 000 LSB peak) +3.83 dB at the default 6 kHz Damping and +13.40 dB at
+the 500 Hz stop, at 48 kHz. White-spectrum material comes back at its own
+level, within 0.5 dB, at every setting measured, and that holds on each
+side of a stereo room on its own, not only for the two together: each side is
+normalised on its own, so the room sits in the middle. On the room's own
+impulse the two sides read within 0.001 dB of each other at every setting
+walked (the widest found, L - R +0.0005 dB at 44.1 kHz, Decay 66,
+Damping 18, Predelay 34 and Diffusion 62 of 127, Room seed 48); what is
+left is the rounding of the impulse to int16. So material on one side only comes back
+at its own level too: at 48 kHz with Decay 0, Damping 500 Hz and
+Diffusion 0, white noise hard left comes back at -0.06 dB and hard right
+at +0.15 dB at Room seed 36, and at +0.02 and -0.21 dB at the default
+Room, seed 1 (the kit's uniform noise, seed 12345, at -12 dBFS peak; the
+tenths of a dB are that draw against that room). A mono room is one side
+and holds. Damping clamps at 0.159 fs, under the point where the node's
+one-pole coefficient stops moving, so at 48 kHz every one of its 128
+positions is a room of its own, while at 22.05 kHz the positions from 92
+up (the 6 kHz default among them) are one 3 506 Hz room.
 
 A single Room's decay with Damping in is not held to the Decay law, and
 how far one can read off it is not known: no walk covers every setting.
@@ -143,9 +135,9 @@ It reads at least about 24 % off on a mono room: +23.70 % at 44.1 kHz
 Predelay 127, Diffusion 28, seed 43), +22.83 % at 48 kHz (Decay 0,
 Damping 500 Hz, Predelay 0, Diffusion 10, seed 43) and +21.00 % at
 22.05 kHz (Decay 0, Damping 500 Hz, Predelay 0, Diffusion 46, seed 61).
-On a stereo room it is at least about 16.5 %: +16.20 % at 48 kHz
-(Decay 16, Damping 500 Hz, Predelay 127, Diffusion 32, seed 43) and
-+16.47 % at 22.05 kHz with a -20 dBFS click (Decay 127, Damping 500 Hz,
+On a stereo room it is at least about 16.5 %: +16.56 % at 48 kHz
+(Decay 8, Damping 500 Hz, Predelay 0, Diffusion 32, seed 43) and
++16.05 % at 22.05 kHz with a -20 dBFS click (Decay 127, Damping 500 Hz,
 Predelay 0, Diffusion 0, seed 27). The 64 Rooms' mean holds within 2 %.
 
 **Measured mode.** The impulse is trimmed by `start_ms`
@@ -161,9 +153,12 @@ impulse ships with this class; it loads yours and keeps no copy (Brad's
 ruling, 2026-09-08). An impulse is one-dimensional: a 2-D array (numpy's
 `(frames, channels)`) raises `TypeError`, so flatten it first.
 
-An empty impulse (`impulse=b""`) reports no taps and no latency, but its
-node is built with one partition: measured mode's allocation starts at
-one frame, and zero frames is that one partition.
+An empty impulse (`impulse=b""`) reports no taps and no latency: it is an
+undelayed wire, and its Mix does nothing. Its node is built with one
+partition: measured mode's allocation starts at one frame, and zero frames
+is that one partition. The class loads a measured impulse once, at
+construction. Loading another into its node mid-stream (`node.load()`)
+empties the room, because the node's `load()` resets.
 
 **Two readbacks that are not what they look like.** A `damping_hz`
 between 0 and 500 Hz is taken as 500 Hz, the span's bottom, with no
@@ -333,14 +328,11 @@ class ConvolutionReverb(_component.Component):
     in. audiodsp tier; 256 frames of latency whenever an impulse is loaded.
 
     **What the default surrenders:** a dark room lifts low material (a low
-    chord +3.73 dB at the default Damping, +13.28 dB at 500 Hz),
-    Diffusion, Room, Damping, Decay and Predelay move a stereo room's
-    left-right balance by at least about 5.3 dB at 48 and 44.1 kHz
-    (4.7 dB at 22.05 kHz; the widest setting is not known) while the
-    total holds, moving a room knob
-    or calling `reset()` mid-stream drops the 256 frames in flight, dry
-    included, at every Mix, and anything longer than 0.091 s on
-    an S3 or 0.219 s on a P4 is a desktop room (pending hardware).
+    chord +3.83 dB at the default Damping, +13.40 dB at 500 Hz, 48 kHz),
+    calling `reset()` mid-stream drops the 256 frames in flight, dry
+    included, at every Mix, and anything longer than 0.091 s on an S3 or
+    0.219 s on a P4 is a desktop room (pending hardware). A room-knob move
+    drops nothing: the room changes over the block in flight.
     """
 
     NAME = 'ConvolutionReverb'

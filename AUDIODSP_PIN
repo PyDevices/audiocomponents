@@ -232,5 +232,34 @@
 # patches, 0 failures on CPython, MicroPython and CircuitPython. Pending
 # both boards.
 #
+# 2026-09-28: v0.6.3rc1 -> v0.6.3rc2 (0d35a90), on this class branch
+# (effects/phase5-convolutionreverb) first, so ConvolutionReverb is audited
+# once, on the fixed node (Brad, the same day). A pre-release of the next
+# patch, on TestPyPI only, like rc1. What moved beneath the components, by
+# `git log v0.6.3rc1..v0.6.3rc2 -- src`: audiodsp#165, two fixes to
+# audioconvolve.Convolver. A re-synthesis on a node that holds an impulse
+# keeps the node's state: the block in flight is recomputed against the
+# old room and the new and crossfaded over its unplayed frames, no frame
+# of the dry drops at any mix, and from the next block the node is a node
+# built with the new room (#163; load() still resets, and a first
+# synthesis on an empty node still does). A stereo synthesized room gets
+# one energy and one scale per side, so it no longer leans (#164). Mono
+# rooms and measured impulses render the bytes they did; every stereo
+# synthesized room moved. Five ConvolutionReverb tests pinned a defect or
+# a figure of the old node and went red at the new pin, nothing else did;
+# each is restated to the good behaviour beside a planted copy of the old
+# (ResetOnMove renders the v0.6.3rc1 node's bytes on a mono room). Station
+# C's 60 digests agree on CPython, MicroPython and CircuitPython built at
+# the tag (bin/micropython-063rc2, audioecho.__revision__
+# v0.0.3-295-g0d35a90, and bin/circuitpython-063rc2, whose provenance
+# stamp names the same): the 30 stereo cells moved, the 30 mono cells did
+# not. Gates here: the unit suite `Ran 1966 tests ... OK (skipped=3)`
+# (no Flanger F8 failure: effects/phase5 restated F8); validate_api 55 instruments and 45 effects;
+# validate_metadata valid; flake8 clean; the smoke 45 classes, 259
+# patches, 0 failures on CPython and the two new binaries. The old
+# reverb.ConvolutionReverb synthesizes stereo rooms too, so its renders
+# move; no test holds them. Pending both boards, and the pump race on a
+# board (audiodsp#166, open).
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.3rc1 bd7d2e219208731cc100a1e8210ec72f8cec9af1
+v0.6.3rc2 0d35a90c82c106c5bc3f18c7af976aac412aa904

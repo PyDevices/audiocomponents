@@ -47,6 +47,17 @@ the docstring prints as floors to their named cells (the `1c9308b` words
 with its seed 36 changed to 1); and a `set_macro` leg for D5's Predelay
 control (`PredelayMidiSquared`, which passed the constructor-only test).
 `D6Balance` now wants the class summary's floor with its rates.
+
+The re-audit at audiodsp v0.6.3rc2 moved the class to the fixed
+convolution node (audiodsp#165), and five tests that pinned a defect or a
+figure of the old node went red there. Each is restated to assert the good
+behaviour and shown red on a planted copy of the old one: the two room-move
+tests on `ResetOnMove` (the node cleared after every re-synthesis, which
+renders the v0.6.3rc1 node's bytes); `D6Balance` and `D6OneSided`, which
+now pin each side's level (D6's clause 4, dossier section 3.6), on
+`SideTilt`, `SideNudge` and the v0.6.2 words; and `D5SingleRoom` on the
+v0.6.2 stereo figures. The reset test now covers the plain defaults too,
+where `NoReset` was inert while the node emptied itself on a re-synthesis.
 """
 
 import os
@@ -503,6 +514,33 @@ class SideTilt(_After):
         return _LeftGain(node, self.GAIN_DB)
 
 
+class SideNudge(SideTilt):
+    """D6 (4)'s fine control: the left side 0.05 dB hot after the node, ten
+    times narrower than SideTilt and five times the 0.01 dB bar (re-audit
+    fix round 1, audiodsp v0.6.3rc2)."""
+
+    NAME = NAME
+    GAIN_DB = 0.05
+
+
+class ResetOnMove(ConvolutionReverb):
+    """The v0.6.3rc1 node's room move, planted from the class side
+    (re-audit fix round 1, audiodsp#163): the node cleared after every
+    re-synthesis on a playing node, so the tail stops dead and the 256
+    frames in flight come out as exact zero, dry included, at every Mix.
+    `clear()` drops the history and the block in flight, which is what the
+    old node's `synthesize()` ended in; the pack shows this plant renders
+    the old node's bytes."""
+
+    NAME = NAME
+
+    def _refresh(self):
+        before = self._loaded
+        ConvolutionReverb._refresh(self)
+        if before is not None and self._loaded != before:
+            self._node.clear()
+
+
 class AllocatedSeconds(ConvolutionReverb):
     """D5's control for a law that shares the class's inputs: the class
     keeps the allocation it holds (partitions x 256 / fs) as `seconds`, so
@@ -872,33 +910,109 @@ class ResynthesisIsDeduplicated(unittest.TestCase):
         self.assertEqual(effect.patch_index, 0)
         effect.deinit()
 
-    def test_a_room_move_starts_the_room_empty_and_a_mix_move_does_not(self):
-        # The docstring's claim, measured: the node empties its history on
-        # a re-synthesis (audiodsp_convolve.c:254).
-        burst = np.vstack([white(2400), silence(20000)])
-        clean = build(mix=2.0)
-        ref = run(clean, burst)
-        for move, expect_cut in (((DECAY_I, 100), True),
-                                 ((MIX_I, 126), False)):
-            effect = build(mix=2.0)
-            channels = effect.channel_count
-            effect._source.swap(probes.ArraySource(burst, rate=RATE,
-                                                   channels=channels))
-            audiocore.reset_buffer(effect.node)
-            out = bytearray()
-            for block in range(40):
-                if block == 10:
-                    effect.set_macro(*move)
-                out += bytes(audiocore.get_buffer(effect.output)[1])
-            out = np.frombuffer(bytes(out), dtype=np.int16).reshape(-1, 2)
-            after = out[10 * 256:]
-            if expect_cut:
-                self.assertEqual(int(np.max(np.abs(after))), 0)
-                self.assertGreater(int(np.max(np.abs(ref[2560:10240]))), 1000)
-            else:
-                self.assertGreater(int(np.max(np.abs(after))), 1000)
-            effect.deinit()
-        clean.deinit()
+    def pull(self, effect, pcm, action=None, block=256, blocks=40):
+        """`blocks` output pulls over `pcm` from a source handing `block`
+        frames a call; `action(effect)` runs before pull 10."""
+        channels = effect.channel_count
+        effect._source.swap(probes.ArraySource(
+            pcm, rate=effect.sample_rate, channels=channels, block=block))
+        audiocore.reset_buffer(effect.node)
+        out = bytearray()
+        for number in range(blocks):
+            if number == 10 and action is not None:
+                action(effect)
+            out += bytes(audiocore.get_buffer(effect.output)[1])
+        return np.frombuffer(bytes(out), dtype=np.int16).reshape(
+            -1, channels)
+
+    def test_a_room_move_keeps_the_room_ringing_and_lands_on_the_new_room(
+            self, cls=None):
+        # Restated at audiodsp v0.6.3rc2 (audiodsp#163; re-audit fix round
+        # 1). Up to v0.6.3rc1 the node emptied itself on a re-synthesis, so
+        # a tail ringing at a room-knob move stopped dead; this test pinned
+        # that (13 561 LSB where it asserted 0 at the fix). Now: before the
+        # block in flight the output is the old room's; the block in flight
+        # (frames 2 560..2 815 for a move before pull 10) runs in a straight
+        # line from the old room's frames to the new room's, within 1 LSB;
+        # from the next block on it is, byte for byte, an instance that had
+        # the new room from the start; and the tail rings on across the
+        # move. ResetOnMove (the old node's behaviour, planted) is red.
+        moves = ((DECAY_I, 64), (DAMPING_I, 30), (PREDELAY_I, 40),
+                 (DIFFUSION_I, 100), (ROOM_I, 50))
+        k = (np.arange(1, 257, dtype=np.float64) / 256.0)[:, None]
+        for rate in RATES:
+            for channels in (2, 1):
+                burst = np.vstack([white(8 * 256 + 37, channels,
+                                         peak_dbfs=-12.0),
+                                   silence(32 * 256, channels)])
+                for mix in (2.0, 0.6):
+                    old = self.pull(build(cls, rate, channels, mix=mix),
+                                    burst)
+                    for index, value in moves:
+                        fresh = build(cls, rate, channels, mix=mix)
+                        fresh.set_macro(index, value)
+                        new = self.pull(fresh, burst)
+                        fresh.deinit()
+                        effect = build(cls, rate, channels, mix=mix)
+                        out = self.pull(effect, burst,
+                                        lambda e: e.set_macro(index, value))
+                        effect.deinit()
+                        label = (rate, channels, mix, index)
+                        self.assertEqual(digest(out[:2560]),
+                                         digest(old[:2560]), label)
+                        self.assertEqual(digest(out[2816:]),
+                                         digest(new[2816:]), label)
+                        line = old[2560:2816] + k * (
+                            new[2560:2816].astype(np.float64)
+                            - old[2560:2816])
+                        # The node fades in float and clips after, so a
+                        # sample at full scale in either room is off the
+                        # line by design; at -12 dBFS none is.
+                        self.assertLess(int(max(np.max(np.abs(old)),
+                                                np.max(np.abs(new)))),
+                                        32767, label)
+                        self.assertLessEqual(
+                            float(np.max(np.abs(out[2560:2816] - line))),
+                            1.0, label)
+                        self.assertGreater(
+                            int(np.max(np.abs(out[2560:4096]))), 1000, label)
+
+    def test_a_room_move_drops_no_dry_frame(self, cls=None):
+        # Restated at audiodsp v0.6.3rc2 (audiodsp#163; re-audit fix round
+        # 1). Up to v0.6.3rc1 the reset at the end of the node's
+        # synthesize() zeroed the frames in flight too, so at Mix 0 the
+        # source frames 2 304..2 559 came out as exact zero at a move
+        # before pull 10, and this test pinned that gap. Now Mix 0 is the
+        # source delayed by `latency_samples`, byte for byte, across every
+        # room knob's move, at three rates, stereo and mono, from a source
+        # in 256-frame blocks and from one in 100-frame blocks; so is a
+        # move onto the room already loaded, and a Mix move that stays at
+        # 0. ResetOnMove is red.
+        frames = 40 * 256
+        moves = ((DECAY_I, 64), (DAMPING_I, 30), (PREDELAY_I, 40),
+                 (DIFFUSION_I, 100), (ROOM_I, 50), (DECAY_I, None),
+                 (MIX_I, 0))
+        for rate in RATES:
+            for channels in (2, 1):
+                pcm = ((np.arange(frames) * 7) % 20001 - 10000).astype(
+                    np.int16)
+                pcm = np.repeat(pcm[:, None], channels, axis=1)
+                want = np.vstack([silence(LATENCY, channels),
+                                  pcm[:frames - LATENCY]])
+                self.assertTrue(np.any(pcm[2304:2560] != 0))
+                for block in (256, 100):
+                    for index, value in moves:
+                        effect = build(cls, rate, channels, mix=0.0)
+                        out = self.pull(
+                            effect, pcm,
+                            lambda e: e.set_macro(index, e.get_macro(index)
+                                                  if value is None
+                                                  else value),
+                            block=block)
+                        effect.deinit()
+                        self.assertEqual(
+                            digest(out), digest(want),
+                            (rate, channels, block, index, value))
 
     def test_a_mix_move_lands_a_partition_late_and_reset_drops_one(self):
         # The docstring's mid-stream lines (fix round 1, audit item 7): a
@@ -936,61 +1050,6 @@ class ResynthesisIsDeduplicated(unittest.TestCase):
         effect.deinit()
         self.assertEqual(int(np.max(np.abs(out[2560:2816]))), 0)
         self.assertEqual(digest(out[2816:]), digest(wire[2816:]))
-
-    def test_a_room_move_drops_the_partition_in_flight_dry_included(self):
-        # The docstring's other half, measured: the reset at the end of
-        # synthesize() (audiodsp_convolve.c:254) zeroes the pending and
-        # output blocks too, so at Mix 0 the source frames in flight at the
-        # move (2304..2559 for a move before block 10) come out as exact
-        # zero, and every other frame is the source 256 late. A move onto
-        # the room already loaded, and a Mix move that stays at 0, drop
-        # nothing (review probe convolutionreverb_review_movedrop.py).
-        frames = 40 * 256
-        moves = ((DECAY_I, 64), (DAMPING_I, 30), (PREDELAY_I, 40),
-                 (DIFFUSION_I, 100), (ROOM_I, 50), (DECAY_I, None),
-                 (MIX_I, 0))
-        for rate in RATES:
-            for channels in (2, 1):
-                pcm = ((np.arange(frames) * 7) % 20001 - 10000).astype(
-                    np.int16)
-                pcm = np.repeat(pcm[:, None], channels, axis=1)
-                for index, value in moves:
-                    effect = build(rate=rate, channels=channels, mix=0.0)
-                    effect._source.swap(probes.ArraySource(
-                        pcm, rate=rate, channels=channels))
-                    audiocore.reset_buffer(effect.node)
-                    out = bytearray()
-                    for block in range(40):
-                        if block == 10:
-                            effect.set_macro(index, effect.get_macro(index)
-                                             if value is None else value)
-                        out += bytes(audiocore.get_buffer(effect.output)[1])
-                    out = np.frombuffer(bytes(out), dtype=np.int16).reshape(
-                        -1, channels)
-                    want = np.vstack([silence(LATENCY, channels),
-                                      pcm[:frames - LATENCY]])
-                    cut = index != MIX_I and value is not None
-                    if cut:
-                        want[2560:2816] = 0
-                    self.assertEqual(digest(out), digest(want),
-                                     (rate, channels, index, value))
-                    self.assertEqual(bool(np.any(pcm[2304:2560] != 0)), True)
-                    effect.deinit()
-        # At the constructor's Mix 0.6 the same partition reads exact zero.
-        effect = build(channels=2)
-        pcm = white(frames)
-        effect._source.swap(probes.ArraySource(pcm, rate=RATE, channels=2))
-        audiocore.reset_buffer(effect.node)
-        out = bytearray()
-        for block in range(40):
-            if block == 10:
-                effect.set_macro(DECAY_I, 64)
-            out += bytes(audiocore.get_buffer(effect.output)[1])
-        out = np.frombuffer(bytes(out), dtype=np.int16).reshape(-1, 2)
-        self.assertGreater(int(np.max(np.abs(out[2304:2560]))), 1000)
-        self.assertEqual(int(np.max(np.abs(out[2560:2816]))), 0)
-        self.assertGreater(int(np.max(np.abs(out[2816:3072]))), 1000)
-        effect.deinit()
 
 
 # --------------------------------------------------------------------------
@@ -1588,8 +1647,12 @@ SINGLE_STEREO_RE = re.compile(
 
 #: The cell behind each figure, in the sentences' order: (rate, channels,
 #: click LSB, Decay MIDI, Predelay MIDI, Diffusion MIDI, Room seed), all at
-#: Damping 500 Hz and 0.08 s. The walk behind them is the re-audit round-1
-#: audit's (`convolutionreverb_reaudit1_audit.py mono stereo monowalk`).
+#: Damping 500 Hz and 0.08 s. The walk behind the mono cells is the
+#: re-audit round-1 audit's (`convolutionreverb_reaudit1_audit.py mono
+#: monowalk`); the stereo cells are its re-refuter's walk
+#: (`convolutionreverb_reaudit1_refute.py single`) re-run on the fixed node
+#: at audiodsp v0.6.3rc2, where every stereo room moved (re-audit fix round
+#: 1: v0.6.2's +16.20 % cell reads otherwise there).
 SINGLE_MONO_CELLS = (
     (44100, 1, 32767, 0, 0, 32, 43),
     (44100, 1, 3277, 0, 127, 28, 43),
@@ -1597,7 +1660,7 @@ SINGLE_MONO_CELLS = (
     (22050, 1, 32767, 0, 0, 46, 61),
 )
 SINGLE_STEREO_CELLS = (
-    (48000, 2, 32767, 16, 127, 32, 43),
+    (48000, 2, 32767, 8, 0, 32, 43),
     (22050, 2, 3277, 127, 0, 0, 27),
 )
 
@@ -1680,8 +1743,9 @@ class D5SingleRoom(unittest.TestCase):
 class D6UnitEnergy(unittest.TestCase):
     """Three clauses since fix round 1: the pooled wet/dry spread <= 0.5 dB,
     |wet/dry| <= 0.5 dB at every cell (the absolute level, which the null
-    test already read), and rho < 0.5. Level is both channels pooled, which
-    is what the node normalises; each side on its own is not claimed."""
+    test already read), and rho < 0.5. Level is both channels pooled. Since
+    audiodsp v0.6.3rc2 each side is normalised on its own, and D6's clause
+    4 claims it (re-audit fix round 1): `D6Balance` and `D6OneSided`."""
 
     def spread(self, cls, index, rate=RATE, peak_dbfs=-12.0, grid=GRID):
         """(spread dB, worst |level| dB, worst rho), walking `index` by
@@ -1760,99 +1824,97 @@ class D6UnitEnergy(unittest.TestCase):
         self.assertFalse(result["null"]["passed"])
 
 
-#: The sentence in the module docstring that gives the widest per-side
-#: balance found, one figure per rate, two decimals (re-audit fix round 1).
+#: The module docstring's balance sentence (re-audit fix round 1, audiodsp
+#: v0.6.3rc2): the bound over the walk, then the widest setting found.
 BALANCE_RE = re.compile(
-    r"widest\s+found\s+on\s+the\s+room's\s+own\s+impulse\s+is\s+L\s+-\s+R\s+"
-    r"(-\d+\.\d\d)\s+dB\s+at\s+48\s+kHz,\s+(-\d+\.\d\d)\s+dB\s+at\s+44\.1\s+"
-    r"kHz\s+and\s+(-\d+\.\d\d)\s+dB\s+at\s+22\.05\s+kHz")
+    r"On\s+the\s+room's\s+own\s+impulse\s+the\s+two\s+sides\s+read\s+within"
+    r"\s+(\d+\.\d+)\s+dB\s+of\s+each\s+other\s+at\s+every\s+setting\s+walked"
+    r"\s+\(the\s+widest\s+found,\s+L\s+-\s+R\s+([+-]\d+\.\d{4})\s+dB\s+at"
+    r"\s+(48|44\.1|22\.05)\s+kHz,\s+Decay\s+(\d+),\s+Damping\s+(\d+),"
+    r"\s+Predelay\s+(\d+)\s+and\s+Diffusion\s+(\d+)\s+of\s+127,\s+Room"
+    r"\s+seed\s+(\d+)\)")
 
-#: The sentence after it: the widest found the other way.
-BALANCE_OTHER_RE = re.compile(
-    r"The\s+other\s+way,\s+the\s+widest\s+found\s+is\s+\+(\d+\.\d\d),\s+"
-    r"\+(\d+\.\d\d)\s+and\s+\+(\d+\.\d\d)\s+dB")
+#: D6 (4)'s bar: each side of a stereo room within 0.01 dB of the other on
+#: the room's own impulse (dossier section 3.6).
+BALANCE_BAR_DB = 0.01
 
-#: Where the walk found the widest the other way, at every rate.
-WIDEST_OTHER_CELL = (0, 0, 0, 0, 6)
-
-#: Where the walk behind that sentence found each rate's widest (evidence
-#: pack, "Re-audit fix round 1"): (Decay, Damping, Predelay, Diffusion,
-#: Room) as MIDI positions, 0.08 s.
-WIDEST_BALANCE_CELL = {
+#: Where v0.6.2's node leaned widest (re-audit fix round 1 at v0.6.2):
+#: (Decay, Damping, Predelay, Diffusion, Room) as MIDI positions, 0.08 s;
+#: the fixed node is held to the bar there too, and on a slice through it.
+OLD_WIDEST_CELL = {
     48000: (0, 0, 0, 12, 70),
     44100: (0, 0, 0, 13, 70),
     22050: (0, 0, 0, 22, 70),
 }
+OLD_WIDEST_OTHER_CELL = (0, 0, 0, 0, 6)
 
 
 def documented_balance(doc):
-    """{rate: L - R dB} as the module docstring states it, or None."""
-    found = BALANCE_RE.search(doc or "")
+    """(bound dB, widest L - R dB, rate, (Decay, Damping, Predelay,
+    Diffusion MIDI), Room seed) as the module docstring states it, or
+    None."""
+    found = BALANCE_RE.search(" ".join((doc or "").split()))
     if found is None:
         return None
-    return dict(zip(RATES, (float(v) for v in found.groups())))
+    g = found.groups()
+    rate = {"48": 48000, "44.1": 44100, "22.05": 22050}[g[2]]
+    return (float(g[0]), float(g[1]), rate,
+            tuple(int(v) for v in g[3:7]), int(g[7]))
 
 
-def documented_other_way(doc):
-    """{rate: L - R dB} the other way, as the module docstring states it,
-    or None."""
-    found = BALANCE_OTHER_RE.search(doc or "")
-    if found is None:
-        return None
-    return dict(zip(RATES, (float(v) for v in found.groups())))
-
-
-def build_at_cell(rate, cell):
-    effect = build(rate=rate)
+def build_at_cell(rate, cell, cls=None):
+    effect = build(cls, rate=rate)
     for index, midi in zip((DECAY_I, DAMPING_I, PREDELAY_I, DIFFUSION_I,
                             ROOM_I), cell):
         effect.set_macro(index, midi)
     return effect
 
 
+def room_midi(seed):
+    """The Room MIDI position whose seed is `seed` (1 + round(m/127*63))."""
+    for midi in range(128):
+        if 1 + int(round(midi / 127.0 * 63)) == seed:
+            return midi
+    raise ValueError(seed)
+
+
 class D6Balance(unittest.TestCase):
-    """D6's Not claimed line, each side on its own: the node scales a
-    stereo room by the mean of its sides' energies, so the left-right
-    balance moves. Nothing is claimed about it, but the docstring tells a
-    player how far it was found to move, and twice that figure was too
-    small (gate audits rounds 2 and 3). These tests pin the figure the
-    docstring prints to the room at the cell the walk named, and check no
-    cell of a slice through it (Diffusion's every position at that
-    setting, and the 64 Rooms at that Diffusion) reads wider. They do not
-    make the figure a bound: the walk is a floor on the swing
-    (re-audit fix round 1)."""
+    """D6 (4), each side on its own (re-audit fix round 1, audiodsp
+    v0.6.3rc2). Up to v0.6.3rc1 the node scaled a stereo room by the mean
+    of its two sides' energies, so the left-right balance moved by at
+    least 5.3 dB, and these tests pinned that disclosure. Since audiodsp#164
+    each side is unit energy on its own. They now pin the docstring's
+    bound and its widest setting to the room, hold v0.6.2's widest cells
+    and a slice through them to the bar, and show a side tilted after the
+    node red and out of reach of the surface (SideTilt, 0.5 dB; SideNudge,
+    0.05 dB)."""
 
     def test_the_documented_balance_is_what_the_room_reads(self):
         documented = documented_balance(rebuilt.__doc__)
-        self.assertIsNotNone(documented, "no widest-balance sentence")
+        self.assertIsNotNone(documented, "no balance sentence")
+        bound, widest, rate, cell, seed = documented
+        self.assertLessEqual(bound, BALANCE_BAR_DB)
+        self.assertLessEqual(abs(widest), bound)
+        effect = build_at_cell(rate, cell + (room_midi(seed),))
+        side, pooled = balance(effect)
+        effect.deinit()
+        self.assertLessEqual(abs(side - widest), 0.00006, (rate, side))
+        self.assertLessEqual(abs(pooled), 0.01, rate)
         for rate in RATES:
-            effect = build_at_cell(rate, WIDEST_BALANCE_CELL[rate])
-            side, pooled = balance(effect)
-            effect.deinit()
-            self.assertLessEqual(abs(side - documented[rate]), 0.005,
-                                 (rate, side))
-            self.assertLessEqual(abs(pooled), 0.01, rate)
-        other = documented_other_way(rebuilt.__doc__)
-        self.assertIsNotNone(other, "no widest-the-other-way sentence")
-        for rate in RATES:
-            effect = build_at_cell(rate, WIDEST_OTHER_CELL)
-            side, _ = balance(effect)
-            effect.deinit()
-            self.assertLessEqual(abs(side - other[rate]), 0.005,
-                                 (rate, side))
-        # The class's own summary gives the floor too, with its rates (the
-        # re-audit fix round 2: the round-1 sentence named none).
-        self.assertIn("at least about %.1f dB at 48 and 44.1 kHz (%.1f dB at "
-                      "22.05 kHz" % (abs(documented[48000]),
-                                     abs(documented[22050])),
-                      " ".join(ConvolutionReverb.__doc__.split()))
+            for cell in (OLD_WIDEST_CELL[rate], OLD_WIDEST_OTHER_CELL):
+                effect = build_at_cell(rate, cell)
+                side, pooled = balance(effect)
+                effect.deinit()
+                self.assertLessEqual(abs(side), bound, (rate, cell, side))
+                self.assertLessEqual(abs(pooled), 0.01, (rate, cell))
 
-    def test_no_cell_of_the_slice_is_wider_than_documented(self):
+    def test_no_cell_of_the_slice_is_past_the_bound(self):
         documented = documented_balance(rebuilt.__doc__)
-        self.assertIsNotNone(documented, "no widest-balance sentence")
+        self.assertIsNotNone(documented, "no balance sentence")
+        bound = documented[0]
         for rate in RATES:
-            diffusion = WIDEST_BALANCE_CELL[rate][3]
-            effect = build_at_cell(rate, WIDEST_BALANCE_CELL[rate])
+            diffusion = OLD_WIDEST_CELL[rate][3]
+            effect = build_at_cell(rate, OLD_WIDEST_CELL[rate])
             readings = []
             for position in range(128):
                 effect.set_macro(DIFFUSION_I, position)
@@ -1862,35 +1924,43 @@ class D6Balance(unittest.TestCase):
                 effect.set_macro(ROOM_I, position)
                 readings.append(balance(effect)[0])
             effect.deinit()
-            self.assertGreaterEqual(min(readings), documented[rate] - 0.005,
-                                    rate)
+            self.assertLessEqual(max(abs(v) for v in readings), bound, rate)
+
+    def test_a_tilted_side_is_red_and_not_on_the_surface(self):
+        for plant, gain in ((SideTilt, 0.5), (SideNudge, 0.05)):
+            for rate in RATES:
+                effect = build(plant, rate)
+                side, _ = balance(effect)
+                effect.deinit()
+                self.assertGreater(abs(side), BALANCE_BAR_DB, (plant, rate))
+                self.assertAlmostEqual(side, gain, delta=0.002)
+        result = reach(SideNudge, lambda e: balance(e)[0], tolerance=0.02)
+        self.assertAlmostEqual(result["target"], 0.05, delta=0.002)
+        self.assertLessEqual(abs(result["clean"]), BALANCE_BAR_DB)
+        self.assertEqual(result["checked"], WALKED)
 
 
-#: The docstring's one-sided example (re-audit fix round 2): the Room of
-#: each reading is named, since the sign turns with it.
+#: The docstring's one-sided example (re-audit fix round 1, audiodsp
+#: v0.6.3rc2): white noise on one side only, at two Rooms, each figure to
+#: the hundredth of a dB.
 ONE_SIDED_RE = re.compile(
-    r"At\s+48\s+kHz\s+with\s+Decay\s+0,\s+Damping\s+500\s+Hz\s+and\s+"
-    r"Diffusion\s+0,\s+white\s+noise\s+hard\s+left\s+comes\s+back\s+"
-    r"(\d+\.\d)\s+dB\s+down\s+and\s+hard\s+right\s+(\d+\.\d)\s+dB\s+up\s+at\s+"
-    r"Room\s+seed\s+(\d+),\s+and\s+at\s+the\s+default\s+Room,\s+seed\s+(\d+),"
-    r"\s+hard\s+left\s+comes\s+back\s+(\d+\.\d)\s+dB\s+up\s+and\s+hard\s+"
-    r"right\s+(\d+\.\d)\s+dB\s+down\s+\(at\s+seed\s+(\d+),\s+Decay\s+1\.0,\s+"
-    r"Diffusion\s+0\.5\s+and\s+Damping\s+500\s+Hz,\s+about\s+(\d+\.\d)\s+dB\s+"
-    r"down\s+and\s+(\d+\.\d)\s+dB\s+up\)")
+    r"at\s+48\s+kHz\s+with\s+Decay\s+0,\s+Damping\s+500\s+Hz\s+and\s+"
+    r"Diffusion\s+0,\s+white\s+noise\s+hard\s+left\s+comes\s+back\s+at\s+"
+    r"([+-]\d+\.\d\d)\s+dB\s+and\s+hard\s+right\s+at\s+([+-]\d+\.\d\d)\s+dB"
+    r"\s+at\s+Room\s+seed\s+(\d+),\s+and\s+at\s+([+-]\d+\.\d\d)\s+and\s+"
+    r"([+-]\d+\.\d\d)\s+dB\s+at\s+the\s+default\s+Room,\s+seed\s+(\d+)")
 
 
 def documented_one_sided(doc):
-    """[(options, left dB, right dB)] as the docstring states them, signs
-    applied, or None."""
+    """[(options, left dB, right dB)] as the docstring states them, or
+    None."""
     found = ONE_SIDED_RE.search(" ".join((doc or "").split()))
     if found is None:
         return None
     g = found.groups()
     corner = dict(decay=0.0, damping_hz=500.0, diffusion=0.0)
-    return [(dict(corner, room=int(g[2])), -float(g[0]), float(g[1])),
-            (dict(corner, room=int(g[3])), float(g[4]), -float(g[5])),
-            (dict(decay=1.0, damping_hz=500.0, diffusion=0.5,
-                  room=int(g[6])), -float(g[7]), float(g[8]))]
+    return [(dict(corner, room=int(g[2])), float(g[0]), float(g[1])),
+            (dict(corner, room=int(g[5])), float(g[3]), float(g[4]))]
 
 
 def one_sided_level(side, cls=None, rate=RATE, **options):
@@ -1909,11 +1979,12 @@ def one_sided_level(side, cls=None, rate=RATE, **options):
 
 
 class D6OneSided(unittest.TestCase):
-    """The docstring's one-sided example, read at the Rooms it names: the
-    sign of each side turns with the Room (seed 36 and the default seed 1
-    read the other way round), so a sentence that named no Room was false
-    at the default one (re-audit round-1 audit). Each printed figure is
-    held to its printed tenth."""
+    """The docstring's one-sided example, read at the Rooms it names (re-
+    audit fix round 1, audiodsp v0.6.3rc2). Up to v0.6.3rc1 white noise on
+    one side came back up to 2.7 dB off its level, with a sign that turned
+    with the Room; since each side is normalised on its own it comes back
+    within a few tenths. Each printed figure is held to its printed
+    hundredth, and each within D6's 0.5 dB."""
 
     def test_the_documented_one_sided_example_is_what_the_room_reads(self):
         cells = documented_one_sided(rebuilt.__doc__)
@@ -1922,8 +1993,9 @@ class D6OneSided(unittest.TestCase):
         for options, left, right in cells:
             for side, printed in ((0, left), (1, right)):
                 level = one_sided_level(side, **options)
-                self.assertLessEqual(abs(level - printed), 0.051,
+                self.assertLessEqual(abs(level - printed), 0.006,
                                      (options, side, level, printed))
+                self.assertLessEqual(abs(level), 0.5, (options, side))
 
 
 # --------------------------------------------------------------------------
@@ -1941,33 +2013,35 @@ class Tier1Fast(unittest.TestCase):
             effect.deinit()
 
     def test_reset_empties_the_room(self):
-        # Built at patch 0, so reset's program_change(0) finds the room it
-        # holds and does not re-synthesize: only the reset clears it. From
-        # the plain defaults NoReset would be inert: their exact Damping
-        # 6 000 Hz and Mix 0.6 are not patch 0's grid values (6 059.8 Hz,
-        # 0.598), so program_change(0) re-synthesizes, and the node empties
-        # itself on a re-synthesis (audit round 1: peak 0 after reset() for
-        # clean and planted from the defaults, 16 666 LSB planted from
-        # patch=0).
-        for cls, silent in ((ConvolutionReverb, True), (NoReset, False)):
-            effect = build(cls, patch=0)
-            burst = np.vstack([white(1024), silence(8192)])
-            effect._source.swap(probes.ArraySource(burst, rate=RATE,
-                                                   channels=2))
-            audiocore.reset_buffer(effect.node)
-            for _ in range(6):
-                audiocore.get_buffer(effect.output)
-            effect.reset()
-            out = bytearray()
-            for _ in range(8):
-                out += bytes(audiocore.get_buffer(effect.output)[1])
-            peak = int(np.max(np.abs(np.frombuffer(bytes(out),
-                                                   dtype=np.int16))))
-            if silent:
-                self.assertEqual(peak, 0)
-            else:
-                self.assertGreater(peak, 0)
-            effect.deinit()
+        # Built at patch 0, reset's program_change(0) finds the room it
+        # holds and does not re-synthesize, so only the reset clears it.
+        # Built from the plain defaults, whose exact Damping 6 000 Hz and
+        # Mix 0.6 are not patch 0's grid values (6 059.8 Hz, 0.598), it
+        # re-synthesizes. Up to audiodsp v0.6.3rc1 the node emptied itself
+        # on that re-synthesis and NoReset was inert there (audit round 1:
+        # peak 0 clean and planted); since v0.6.3rc2 (#163) a re-synthesis
+        # keeps the history, so NoReset is red from both (re-audit fix
+        # round 1).
+        for options in (dict(patch=0), {}):
+            for cls, silent in ((ConvolutionReverb, True), (NoReset, False)):
+                effect = build(cls, **options)
+                burst = np.vstack([white(1024), silence(8192)])
+                effect._source.swap(probes.ArraySource(burst, rate=RATE,
+                                                       channels=2))
+                audiocore.reset_buffer(effect.node)
+                for _ in range(6):
+                    audiocore.get_buffer(effect.output)
+                effect.reset()
+                out = bytearray()
+                for _ in range(8):
+                    out += bytes(audiocore.get_buffer(effect.output)[1])
+                peak = int(np.max(np.abs(np.frombuffer(bytes(out),
+                                                       dtype=np.int16))))
+                if silent:
+                    self.assertEqual(peak, 0, options)
+                else:
+                    self.assertGreater(peak, 0, options)
+                effect.deinit()
 
     def test_deinit_leaves_the_source(self):
         pcm = white(2048)
