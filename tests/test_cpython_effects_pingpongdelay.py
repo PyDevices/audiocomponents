@@ -1229,21 +1229,23 @@ class T3MonoSum(unittest.TestCase):
                             cut=cut)
         self.assertTrue(result["passed"], result)
 
-    def _gap(self, k, peak, opts, damping=0.0, cut=0.0):
+    def _gap(self, k, peak, opts, damping=0.0, cut=0.0, macros=None):
         """The row's burst lengthened to end `k` frames before T (280 ms,
-        f 0.6, 48 kHz): (sum differing, max LSB, first differing frame,
-        mono differing)."""
+        f 0.6, 48 kHz), `macros` set after construction: (sum differing,
+        max LSB, first differing frame, mono differing)."""
         T = law_frames(280.0, RATE)
         frames = 9 * T + int(0.1 * RATE)
         n = T - k
         x = np.zeros(frames)
         x[:n] = np.round(np.random.RandomState(12345)
                          .uniform(-peak, peak, n))
-        stereo = render(PingPongDelay, x, RATE, 2, time_ms=280.0,
-                        feedback=0.6, mix=2.0, **opts).astype(np.int32)
+        stereo = render(PingPongDelay, x, RATE, 2, macros=macros,
+                        time_ms=280.0, feedback=0.6, mix=2.0,
+                        **opts).astype(np.int32)
         total = stereo[:, 0] + stereo[:, 1]
-        mono = render(PingPongDelay, x, RATE, 1, time_ms=280.0,
-                      feedback=0.6, mix=2.0, **opts)[:, 0].astype(np.int32)
+        mono = render(PingPongDelay, x, RATE, 1, macros=macros,
+                      time_ms=280.0, feedback=0.6, mix=2.0,
+                      **opts)[:, 0].astype(np.int32)
         ref = reference(x, RATE, T, 0.6, damping, cut)
         where = np.flatnonzero(total != ref)
         return (len(where), int(np.abs(total - ref).max()),
@@ -1266,6 +1268,22 @@ class T3MonoSum(unittest.TestCase):
         # At 0 dBFS 256 frames is not enough for Cut 400 Hz.
         self.assertEqual(self._gap(256, 32767, {"cut_hz": 400.0},
                                    cut=cut)[0], 16)
+
+    def test_the_gap_grows_as_repeat_cut_goes_down(self):
+        # Fix round 2 (audit round 2, item 4): 512 frames is the three
+        # named cells' gap, not any loop filter's. At Cut MIDI 1 (the knob
+        # at 20 x 20^(1/127) Hz) and 0 dBFS a burst ending 4 096 frames
+        # before T still differs in 511 samples, and 8 192 is exact; the
+        # mono build is exact at both. The old "512 frames" is red there.
+        cut = pp.nominal_cut_hz(20.0 * 20.0 ** (1.0 / 127.0), RATE)
+        macros = {CUT_I: 1}
+        at_512 = self._gap(512, 32767, {}, cut=cut, macros=macros)
+        self.assertGreater(at_512[0], 0)
+        self.assertEqual(at_512[3], 0)
+        at_4096 = self._gap(4096, 32767, {}, cut=cut, macros=macros)
+        self.assertEqual((at_4096[0], at_4096[3]), (511, 0))
+        at_8192 = self._gap(8192, 32767, {}, cut=cut, macros=macros)
+        self.assertEqual((at_8192[0], at_8192[3]), (0, 0))
 
     def test_tone_in_then_out_is_outside_the_row(self):
         # Fix round 1 (audit item 2, restated): once Tone has been in, its
@@ -1332,6 +1350,36 @@ class T4SpreadLaw(unittest.TestCase):
                                     time_ms=law_time_ms(midi),
                                     feedback=0.99)
                 self.assertTrue(result["passed"], (rate, midi))
+
+    def test_a_constructor_time_off_the_frame_is_outside_the_law(self):
+        # Fix round 2 (audit round 2, item 1): T4's exclusion is a
+        # condition, any Time the node lands off the frame, not a list of
+        # knob positions. A constructor or Sync Time reaches every whole
+        # frame; at 44.1 kHz 750.0227 ms (n 33 076) is the worst band,
+        # 1/256 of a frame off, where the old docstring said at most 1/512.
+        rate = 44100
+        f32 = np.float32
+        for n, miss, readback, worst in ((33076, 2.0 ** -8, [19922, 78],
+                                          575.31),
+                                         (33077, 0.0, [20000, 0], 0.69)):
+            time_ms = n * 1000.0 / rate
+            effect = spied(rate=rate, time_ms=time_ms)
+            self.assertEqual(read_frames(effect), float(n))
+            ms = f32(handed(effect, "delay_ms"))
+            landed = float((ms * f32(rate)) / f32(1000.0))
+            self.assertEqual(abs(landed - n), miss, n)
+            y = render(PingPongDelay, click(n + 8), rate=rate,
+                       time_ms=time_ms, mix=2.0, feedback=0.0, spread=0.0)
+            self.assertEqual([int(v) for v in y[n:n + 2, 0]], readback, n)
+            result = t4_measure(PingPongDelay, rate, spreads=(0.0, 0.5, 1.0),
+                                time_ms=time_ms, feedback=0.99)
+            self.assertAlmostEqual(result["worst"], worst, 2)
+            self.assertEqual(result["passed"], miss == 0.0, n)
+        # The old bound, 1/512 of a frame, is red on n 33 076.
+        effect = spied(rate=rate, time_ms=33076 * 1000.0 / rate)
+        ms = f32(handed(effect, "delay_ms"))
+        self.assertGreater(abs(float((ms * f32(rate)) / f32(1000.0))
+                               - 33076), 2.0 ** -9)
 
     def test_the_panless_spread_is_red(self):
         for rate in RATES:
@@ -1413,6 +1461,20 @@ class T5DryPath(unittest.TestCase):
             y = render_pcm(PingPongDelay, anti, rate, spread=0.5)
             self.assertGreater(int(np.count_nonzero(y[T:] != anti[T:])), 0,
                                rate)
+            # Fix round 2 (audit round 2, item 5): where the source
+            # saturates R cannot be -L (L is -32 768), so the full-scale
+            # ramp leaves 1 LSB at Mix 2, not the silence the old sentence
+            # said: the exact-zero assertion above is red on it.
+            left = material("ramp_fs", rate, 1)[:, 0].astype(np.int32)
+            sat = np.stack([left, np.clip(-left, -32768, 32767)],
+                           axis=1).astype(np.int16)
+            self.assertGreater(int(np.count_nonzero(left == -32768)), 0)
+            y = render_pcm(PingPongDelay, sat, rate)
+            self.assertEqual(int(np.count_nonzero(y != sat)), 0, rate)
+            y = render_pcm(PingPongDelay, sat, rate, mix=2.0)
+            self.assertEqual(int(np.abs(y[T:].astype(np.int32)).max()), 1,
+                             rate)
+            self.assertGreater(int(np.count_nonzero(y[T:])), 0, rate)
 
 
 # --------------------------------------------------------------------------
@@ -1496,10 +1558,9 @@ class Tier1Fast(unittest.TestCase):
         # coefficient-1 low-pass follows the tap, but the Feedback still
         # goes through `clear_of_stalls`, which moves it by up to
         # 2.6 x 10^-5 where a stall window sits (0.99 -> 0.989976102;
-        # 0.85 is in no window). The docstring's bound: 0 at 0.85, at most
-        # 6 LSB on 2 s of 0 dBFS noise at 0.99, and at most 32 LSB on a
-        # full-scale click through the whole tail. The old "within 1 LSB"
-        # is red at 0.99.
+        # 0.85 is in no window). At the default 280 ms: 0 at 0.85, at most
+        # 6 LSB on 2 s of 0 dBFS noise at 0.99. The old "within 1 LSB" is
+        # red at 0.99.
         for rate in RATES:
             frames = 2 * rate
             x = np.frombuffer(probes.noise_det(frames=frames, dbfs=0.0,
@@ -1510,10 +1571,34 @@ class Tier1Fast(unittest.TestCase):
             worst = self._tone_out_after_in(x, rate, feedback=0.99)
             self.assertLessEqual(worst, 6, rate)
             self.assertGreater(worst, 1, rate)
-        x = click(700 * law_frames(20.0, RATE), 32767)
-        worst = self._tone_out_after_in(x, RATE, time_ms=20.0, feedback=0.99)
-        self.assertLessEqual(worst, 32)
-        self.assertGreater(worst, 1)
+        # Fix round 2 (audit round 2, item 3): those figures are the
+        # default Time's. At Time 20 ms more laps fit into the noise, and
+        # the docstring's worst over Time is 19 LSB during the noise and,
+        # at a Time on the frame (20 ms at 48 kHz is), 37 LSB through the
+        # tail after it; the old 6 and 32 are exceeded.
+        n = 2 * RATE
+        probe = PingPongDelay(silence_src(64), sample_rate=RATE,
+                              time_ms=20.0, feedback=0.99)
+        frames = n + probe.tail_samples + law_frames(20.0, RATE)
+        probe.deinit()
+        x = np.zeros(frames)
+        x[:n] = np.frombuffer(probes.noise_det(frames=n, dbfs=0.0,
+                                               channels=1),
+                              dtype=np.int16)[:n]
+        source, _ = to_source(x, 2, RATE)
+        touched = PingPongDelay(source, sample_rate=RATE, mix=2.0,
+                                time_ms=20.0, feedback=0.99, tone_hz=2000.0)
+        touched.set_macro(TONE_I, 127)
+        clean, _ = to_source(x, 2, RATE)
+        plain = PingPongDelay(clean, sample_rate=RATE, mix=2.0, time_ms=20.0,
+                              feedback=0.99)
+        d = np.abs(pull(touched, frames).astype(np.int32)
+                   - pull(plain, frames).astype(np.int32)).max(axis=1)
+        during, after = int(d[:n].max()), int(d[n:].max())
+        self.assertLessEqual(during, 19)
+        self.assertGreater(during, 6)
+        self.assertLessEqual(after, 37)
+        self.assertGreater(after, 32)
 
     def test_the_tail_reaches_exact_zero_inside_tail_samples(self):
         on = 200 * RATE // 1000
@@ -1665,21 +1750,50 @@ class InputCeiling(unittest.TestCase):
 
     def test_repeat_cut_needs_more_room(self):
         # The loop high-pass overshoots a square's edges: at the defaults'
-        # Mix a 40 Hz square wave rails at -3.1 dBFS with Cut in, and is
-        # clean from -4 dBFS.
-        t = np.arange(int(self.SECONDS * RATE)) / RATE
+        # Mix a 40 Hz square wave rails at -3.1 dBFS with Cut in, and not
+        # with Cut out.
+        t = np.arange(int(4 * RATE)) / RATE
         wave_ = np.sign(np.sin(2.0 * math.pi * 40.0 * t + 1e-9))
+        loud = 32767.0 * 10.0 ** (-3.1 / 20.0) * wave_
         for cut_hz in (40.0, 400.0):
-            loud = 32767.0 * 10.0 ** (-3.1 / 20.0) * wave_
-            quiet = 32767.0 * 10.0 ** (-4.0 / 20.0) * wave_
-            self.assertGreater(railed_samples(PingPongDelay, None,
-                                              self.SECONDS, values=loud,
-                                              cut_hz=cut_hz), 0, cut_hz)
-            self.assertEqual(railed_samples(PingPongDelay, None,
-                                            self.SECONDS, values=quiet,
-                                            cut_hz=cut_hz), 0, cut_hz)
-            self.assertEqual(railed_samples(PingPongDelay, None,
-                                            self.SECONDS, values=loud), 0)
+            self.assertGreater(railed_samples(PingPongDelay, None, 4.0,
+                                              values=loud, cut_hz=cut_hz), 0,
+                               cut_hz)
+        self.assertEqual(railed_samples(PingPongDelay, None, 4.0,
+                                        values=loud), 0)
+
+    def test_the_cut_in_ceiling(self):
+        # Fix round 2 (audit round 2, item 2): "clean from -4 dBFS" was the
+        # 40 Hz square at the defaults only. The worst cell tried, a 5 Hz
+        # square with Cut at 40 Hz at Feedback 0.99, is clean at the stated
+        # -5.5 dBFS and rails 1 dB over; at -4 dBFS it rails, so the old
+        # sentence is red on it. Under the arithmetic bound,
+        # floor(32767 - 65535 Mix) - 1 = 13 105 LSB at Mix 0.3, it and the
+        # defaults' 5 Hz square at Cut MIDI 1 are clean.
+        t = np.arange(int(4 * RATE)) / RATE
+        wave_ = np.sign(np.sin(2.0 * math.pi * 5.0 * t + 1e-9))
+
+        def railed(dbfs=None, peak=None, macros=None, **options):
+            level = peak if peak is not None else 32767.0 * 10.0 ** (
+                dbfs / 20.0)
+            values = level * wave_
+            x = np.round(values).astype(np.int32)
+            y = render(PingPongDelay, values, RATE, 2, macros=macros,
+                       **options).astype(np.int32)
+            source = ((x >= 32767) | (x <= -32768))[:, None]
+            return int(np.count_nonzero(((y >= 32767) | (y <= -32768))
+                                        & ~source))
+
+        corner = {"cut_hz": 40.0, "feedback": 0.99}
+        self.assertEqual(railed(-5.5, **corner), 0)
+        self.assertGreater(railed(-4.5, **corner), 0)
+        self.assertGreater(railed(-4.0, **corner), 0)
+        edge = int(math.floor(32767 - 65535 * 0.3)) - 1
+        self.assertEqual(edge, 13105)
+        self.assertEqual(railed(peak=edge, **corner), 0)
+        self.assertEqual(railed(peak=edge, macros={CUT_I: 1}), 0)
+        self.assertGreater(railed(-4.0, macros={CUT_I: 1}), 0)
+        self.assertEqual(railed(-4.5, macros={CUT_I: 1}), 0)
 
 
 # --------------------------------------------------------------------------

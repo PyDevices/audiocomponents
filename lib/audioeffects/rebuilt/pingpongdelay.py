@@ -51,27 +51,37 @@ once, and the two part by a few LSB. That holds with Repeat Tone never in
 since the last `reset()`; once it has been in, its out stop moves the
 Feedback a hair (below), and at Feedback 0.99 the first eight repeats part
 from a delay at the knob's Feedback in 5 samples by up to 5 LSB. With a
-loop filter in, the material
-must also end at least 512 frames before Time at 48 kHz, because each
-side's filter meets that side's next repeat two Times later where the mono
-delay's meets the very next one: a noise burst ending one frame before
+loop filter in, the material must also end some way before Time, because
+each side's filter meets that side's next repeat two Times later where the
+mono delay's meets the very next one: a noise burst ending one frame before
 Time parts them in 295 samples by 1 LSB (Repeat Tone 800 Hz) and in 680 by
-up to 2 LSB (Repeat Cut 400 Hz).
+up to 2 LSB (Repeat Cut 400 Hz). How far before depends on the filter.
+Measured at 48 kHz, Time 280 ms, Feedback 0.6, on noise up to 0 dBFS, the
+gap after which every longer gap tried is exact: 512 frames for Repeat
+Tone at 800 and 2500 Hz and Repeat Cut at 400 Hz; for Repeat Cut lower
+down, 1024 frames at MIDI 96 (188 Hz), 2048 at MIDI 64 (89 Hz), 4096 at
+MIDI 32 (42 Hz), and 8192 (171 ms) at MIDI 16 (29 Hz) and at MIDI 1
+(20.4 Hz), where 4096 still leaves 511 samples. MIDI 1 needs 8192 at
+Feedback 0.99 too, 6144 at 44.1 kHz and 3072 at 22.05 kHz.
 
 **Spread's law.** Spread s hands the node `cross_feed` s and `input_pan`
 -s (First Side left) or +s (right). On a click identical in both channels,
 repeat n reads f^(n-1) [(1 - s/2) + (s/2)(1 - 2s)^(n-1)] of the click on
 the First Side channel and f^(n-1) [(1 - s/2) - (s/2)(1 - 2s)^(n-1)] on
 the other. At Spread 0 the two channels are identical; at Spread 1 each
-repeat is on one side only and the other side is exact zero. At the Times
-the node lands off the frame (below) the law misses by up to 289 LSB on a
-20 000 click at Feedback 0.99 (44.1 kHz, MIDI 95; 145 LSB at 22.05 kHz).
+repeat is on one side only and the other side is exact zero. The law is
+not claimed at any Time the node lands off the frame (below). There it
+misses a 20 000 click at Feedback 0.99 by up to 289 LSB at a knob position
+(MIDI 95; 145 LSB at 22.05 kHz), and by up to 575 LSB at a constructor or
+Sync Time (750.0227 ms at 44.1 kHz; 289 LSB at 22.05 kHz).
 
 **What the loop hears.** At Spread 1 the loop is fed the average of the
 two input channels, (L + R) / 2, into one line, so what the two channels
 share bounces and what differs between them never repeats. A source whose
 right channel is the left one upside down puts nothing in the loop: the
-defaults pass it through untouched and Mix 2 is silence. The dry path is
+defaults pass it through untouched, and at Mix 2 the output from Time on
+is silence, or within 1 LSB of it where the source saturates (R cannot be
+-L where L is -32768: a full-scale ramp leaves 1 LSB). The dry path is
 always each channel's own signal, never swapped or summed.
 
 **Input ceiling.** The dry path sits at unity and the repeats add to it,
@@ -88,8 +98,16 @@ hold int16 and so the repeats never exceed Mix x full scale: -3.1 dBFS at
 the default Mix 0.3 and at every patch. At exactly (1 - Mix) of full scale
 the sum can round onto 32767, the rail value, though nothing is clipped.
 Repeat Cut's high-pass overshoots a square wave's edges, so with it in
-leave more room: a 40 Hz square wave at -3.1 dBFS rails with Cut at 40 or
-400 Hz, and is clean from -4 dBFS.
+leave more room. Its output is the line's value less its own state, both
+inside the int16 line, so a repeat can reach twice full scale: an input at
+or below floor(32767 - 65535 Mix) - 1 cannot reach the rail at any Time,
+Feedback, Spread or Cut, which is 13 105 LSB, -7.96 dBFS, at the default
+Mix 0.3 (rendered on 108 square-wave cells and on noise at that level,
+none railed). Measured below that bound, the worst cell tried is a 5 Hz
+square at Feedback 0.99 with Cut at 40 Hz: it rails 148 samples at
+-4.5 dBFS and 40 at -5, and is clean from -5.5 dBFS. At the defaults a
+5 Hz square rails at -4 dBFS (396 samples with Cut at MIDI 1, 158 at
+40 Hz) and is clean from -4.5.
 
 **RAM.** The line is `max_time_ms + 1` ms of two int16 lanes whatever the
 channel count: 192 192 B at 48 kHz for the default 1000 ms (176 576 B at
@@ -119,18 +137,24 @@ so the repeats of a Time you have stopped turning do not darken.
 
 At 44.1 and 22.05 kHz it does not always. The node turns the milliseconds
 back into frames in float32, and for some Times no float32 value lands on
-the whole frame, so the read sits one float32 step off it: at most 1/512
-of a frame at 44.1 kHz and 1/1024 at 22.05 kHz. That is 25 of the 128
-knob positions at 44.1 kHz (MIDI 2, 3, 4, 19, 20, 24, 25, 28, 38, 43, 47,
-48, 50, 63, 65, 67, 69, 70, 83, 92, 93, 95, 107, 108, 114) and 20 at
-22.05 kHz (MIDI 2, 4, 19, 28, 38, 47, 63, 65, 67, 69, 70, 83, 88, 92, 93,
-95, 108, 110, 112, 114). No patch's own Time is among them, nor the
-default 280 ms; a Time Sync takes from a host's tempo can be. At those
-Times each pass puts up to 0.2 % of the repeat on the frame beside it
-(a 20 000 click's first repeat reads 19 961 and 39 at MIDI 95, 44.1 kHz),
-and the repeats darken slowly: at Feedback 0.99 the 60th repeat of a
-10 kHz tone is 0.86 dB quieter than the Feedback alone makes it at
-44.1 kHz, 0.98 dB at 22.05 kHz, and a 1 kHz tone 0.01-0.02 dB. The class
+the whole frame, so the read sits one float32 step off it. Among the 128
+knob positions that is 25 at 44.1 kHz (MIDI 2, 3, 4, 19, 20, 24, 25, 28,
+38, 43, 47, 48, 50, 63, 65, 67, 69, 70, 83, 92, 93, 95, 107, 108, 114)
+and 20 at 22.05 kHz (MIDI 2, 4, 19, 28, 38, 47, 63, 65, 67, 69, 70, 83,
+88, 92, 93, 95, 108, 110, 112, 114), at most 1/512 of a frame off at
+44.1 kHz and 1/1024 at 22.05 kHz. A constructor `time_ms` or a Time Sync
+takes from a host's tempo reaches every whole frame from 20 to 1000 ms,
+and 5554 of those 43 219 frames land off at 44.1 kHz and 2785 of 21 610
+at 22.05 kHz, up to 1/256 and 1/512 of a frame off (743.04-760.73 ms).
+None do at 48 kHz. No patch's own Time is off, nor the default 280 ms. At
+an off-frame Time each pass puts part of the repeat on the frame beside
+it, and the repeats darken slowly. At a knob position that is up to 0.2 %
+a pass (a 20 000 click's first repeat reads 19 961 and 39 at MIDI 95,
+44.1 kHz), and at Feedback 0.99 the 60th repeat of a 10 kHz tone is
+0.86 dB quieter than the Feedback alone makes it at 44.1 kHz and 0.98 dB
+at 22.05 kHz (a 1 kHz tone 0.01-0.02 dB). At a constructor or Sync Time it
+is up to 0.39 % a pass (19 922 and 78 at 750.0227 ms, 44.1 kHz) and
+1.71 dB (44.1 kHz) and 1.96 dB (22.05 kHz) at the 60th repeat. The class
 cannot hand the node a number that lands there; a node change is asked
 for.
 
@@ -150,12 +174,19 @@ patch counts), its out stop keeps the low-pass running at a coefficient of
 exactly 1, which follows the repeats. The Feedback is still handed clear
 of the stall window described under Tail, which at some Feedbacks moves it
 by up to 2.6 x 10^-5 (0.99 plays as 0.989976102; 0.85 does not move), so
-the repeats die a hair sooner than with the filter truly out. On 2 s of
-0 dBFS noise that is 0 LSB at Feedback 0.85, 1-5 LSB at 0.5, 0.75, 0.9 and
-0.95, and 6 LSB at 0.99; a full-scale click at 0.99 followed through its
-whole tail differs by up to 32 LSB, around its 70th repeat. Repeat Cut
-cannot do that (a high-pass at coefficient 1
-mutes the loop), so once Repeat Cut has been in since the last `reset()`
+the repeats die a hair sooner than with the filter truly out. How much
+depends on Time as well as Feedback. On 2 s of 0 dBFS noise at the default
+280 ms it is 0 LSB at Feedback 0.85, 1-5 LSB at 0.5, 0.75, 0.9 and 0.95,
+and 6 LSB at 0.99. Shorter Times fit more laps into the noise: over 18
+Times from 20 to 1000 ms, at 0.99 it is up to 19 LSB during the noise
+(25.6 ms, 44.1 kHz; 16 LSB at 48 and 22.05 kHz), and at 0.95 up to 7 LSB.
+Followed through the whole tail after the noise, at 0.99, it is up to
+37 LSB at every one of those Times the node lands on the frame, the default
+280 ms included, and more at the Times it lands off the frame (above):
+50 and 49 LSB at MIDI 24 and 48 (44.1 kHz), 48 and 46 at MIDI 88 and 112
+(22.05 kHz), the four off-frame positions among those tried. No worst is
+claimed off the frame. Repeat Cut cannot do that (a high-pass at
+coefficient 1 mutes the loop), so once Repeat Cut has been in since the last `reset()`
 its bottom stop stays in circuit at the 20 Hz corner, the knob's own
 bottom, until the next `reset()`. That costs the low end of the repeats
 something a true out would not, and `tail_samples` is `None` while it

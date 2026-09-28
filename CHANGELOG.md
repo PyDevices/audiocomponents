@@ -42,17 +42,19 @@ there, and are recorded in its changelog.
   the full bounce, by a stated law. The dry path is each channel's own
   signal, the mono sum is an ordinary feedback delay exactly, and the class
   hands a one-channel node the settings that keep its loop alive (the old
-  class silenced it). Every static Time lands on a whole frame at 48 kHz;
-  at 44.1 and 22.05 kHz 25 and 20 knob positions land one float32 step off,
-  which needs a node option. Time walks rather than clicks, Sync follows the
-  host's beat, and Repeat Tone and Repeat Cut put a low-pass and a
-  high-pass in the loop, defaulting out. It lives in
+  class silenced it). Every static Time lands on a whole frame at 48 kHz; at
+  44.1 and 22.05 kHz 25 and 20 knob positions land one float32 step off, and
+  so can a constructor or Sync Time (5554 and 2785 of the whole frames from
+  20 to 1000 ms), which needs a node option. Time walks rather than clicks,
+  Sync follows the host's beat, and Repeat Tone and Repeat Cut put a
+  low-pass and a high-pass in the loop, defaulting out. It lives in
   `lib/audioeffects/rebuilt/pingpongdelay.py`, and
   `audioeffects.PingPongDelay` is still the old class. The docstring states
   the input ceiling (-3 dBFS peak at the defaults, -3.1 over the shipped
-  patches, on `noise_det`), that at full Spread the loop hears (L + R) / 2,
-  and what Repeat Tone's out stop costs after Tone has been in. Board cost
-  is unmeasured.
+  patches, on `noise_det`; -7.96 dBFS on any material with Repeat Cut in at
+  the default Mix), that at full Spread the loop hears (L + R) / 2, and what
+  Repeat Tone's out stop costs after Tone has been in. Board cost is
+  unmeasured.
 
 ## v0.3.2 (2026-09-25)
 
