@@ -76,10 +76,16 @@ even step backward a little as the label rises. Above the *ceiling knee*,
 which a low Damping corner brings down on the room, chamber and hall, the
 class holds the bass to 1.5 x Decay and T60 at 500 Hz lands short of the
 label. Both knees are tabled per character and Size in the dossier's
-section 8.9, read on the 0-127 grid at each character's reference patch;
-the plate has no ceiling knee on the span, and the chamber at Size 1.5 has
-no floor knee at or under 2 s (its 2 s position reads 10 to 13 % long,
-depending on the noise it is measured with).
+section 8.9, read on the 0-127 grid at each character's reference patch.
+Where the floor knee sits depends on the noise it is measured with, so it
+is tabled as a band: the lowest and the highest knee read on four sets of
+eight noise seeds. The bands' tops run from 0.45 s (the room at Size 0.5)
+to 2 s (the plate at Size 1.25, the hall at Size 1.5), and the widest band
+spans four Decay stops (the plate at Size 0.5, 0.3 to 1 s). From a band's
+top up the label held on every set measured; inside the band it holds on
+some sets and not others. The plate has no ceiling knee on the span, and
+the chamber at Size 1.5 has no floor knee at or under 2 s on one set of
+the four (its 2 s position reads 10 to 13 % long).
 
 **A sparse, quiet input decays sooner than the knob.** The tank's lines are
 16-bit and truncate toward zero, which is what lets the tail reach exact
@@ -95,7 +101,8 @@ under their character's floor knee and ring longer than their Decay reads.
 Small Room's Decay reads 0.454 s and it rings 0.576 s at 500 Hz; it ships
 so because the rooms must stay that much shorter than the hall. Damped
 Plate's reads 1.011 s and it rings 1.228 s, because at Size 1.25 the
-plate's own ringing sets the time until Decay 1.5 s.
+plate's own ringing sets the time until somewhere between Decay 1.5 and
+2 s, depending on the noise it is measured with.
 
 **Latency: zero samples, at every setting, character and rate.** Nothing
 looks ahead. Predelay is the wet path, not latency on the dry.
@@ -108,9 +115,14 @@ lane, halved (`audiodsp_tank.c:571-580`).
 into sidebands depends on the exact lines Size cuts. At 0.1 ms and 1 Hz on
 Steel Plate the sidebands of a 1 kHz tone sit 18.4 dB under it at Size 1.0
 and 27.2 dB under it at patch 0's Size (1.0039), and over the nine Size
-steps around it they range from 27.2 dB under to 12.5 dB over. From
-0.27 ms up they measure within 20 dB of the tone on Steel Plate and
-Concert Hall, for tones from 300 Hz to 3 kHz at every Mod Rate.
+steps around it they range from 27.2 dB under to 12.5 dB over. Concert
+Hall is no steadier there: at 0.1 ms and 1 Hz a 1 kHz tone's sidebands sit
+2.3 dB under it and a 533.5 Hz tone's 32.5 dB under. From 0.27 ms up they
+measure within 20 dB of the tone on Steel Plate and Concert Hall at every
+Mod Rate for tones at 300 Hz, 1 kHz and 3 kHz, the three measured on the
+grid. That is three tones, not the band between them: at 0.27 ms and 5 Hz
+a 317.8 Hz tone on Concert Hall reads 23.9 dB under, and a 1004.9 Hz tone
+on Steel Plate 21.2 dB under.
 
 **Tone** spans +/-12 dB of end-to-end tilt, which the node puts half at
 each end: +12 is about -6 dB at 40 Hz and +6 dB at 16 kHz. At the centre
