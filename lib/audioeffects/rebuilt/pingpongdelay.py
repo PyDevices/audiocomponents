@@ -47,8 +47,9 @@ identical in both channels, with Mix at 2, the two channels summed are
 that mono delay's output exactly, sample for sample, as long as no two
 repeats overlap one another: on sustained material that overlaps its own
 repeats each side rounds its own write where the mono delay rounds the sum
-once, and the two part by a few LSB. That holds whatever the loop filters
-did before: a filter taken out is out exactly (below). With a
+once, and the two part by a few LSB. That holds with both loop filters out
+while the material and its repeats go round, whether or not a filter was
+in before: a filter taken out is out exactly (below). With a
 loop filter in, the material must also end some way before Time, because
 each side's filter meets that side's next repeat two Times later where the
 mono delay's meets the very next one: a noise burst ending one frame before
@@ -56,11 +57,12 @@ Time parts them in 295 samples by 1 LSB (Repeat Tone 800 Hz) and in 680 by
 up to 2 LSB (Repeat Cut 400 Hz). How far before depends on the filter.
 Measured at 48 kHz, Time 280 ms, Feedback 0.6, on noise up to 0 dBFS, the
 gap after which every longer gap tried is exact: 512 frames for Repeat
-Tone at 800 and 2500 Hz and Repeat Cut at 400 Hz; for Repeat Cut lower
-down, 1024 frames at MIDI 96 (188 Hz), 2048 at MIDI 64 (89 Hz), 4096 at
-MIDI 32 (42 Hz), and 8192 (171 ms) at MIDI 16 (29 Hz) and at MIDI 1
-(20.4 Hz), where 4096 still leaves 511 samples. MIDI 1 needs 8192 at
-Feedback 0.99 too, 6144 at 44.1 kHz and 3072 at 22.05 kHz.
+Tone at 800 and 2500 Hz and Repeat Cut at 400 Hz (MIDI 127); for Repeat
+Cut lower down, 1024 frames at MIDI 96 (the knob's 192.5 Hz), 2048 at
+MIDI 64 (90.5 Hz), 4096 at MIDI 32 (42.5 Hz), and 8192 (171 ms) at MIDI 16
+(29.2 Hz) and at MIDI 1 (20.5 Hz), where 4096 still leaves 511 samples.
+MIDI 1 needs 8192 at Feedback 0.99 too, 6144 at 44.1 kHz and 3072 at
+22.05 kHz.
 
 **Spread's law.** Spread s hands the node `cross_feed` s and `input_pan`
 -s (First Side left) or +s (right). On a click identical in both channels,
@@ -101,7 +103,7 @@ inside the int16 line, so a repeat can reach twice full scale: an input at
 or below floor(32767 - 65535 Mix) - 1 cannot reach the rail at any Time,
 Feedback, Spread or Cut, which is 13 105 LSB, -7.96 dBFS, at the default
 Mix 0.3 (rendered on 108 square-wave cells and on noise at that level,
-none railed). Measured below that bound, the worst cell tried is a 5 Hz
+none railed). At louder inputs than that bound, the worst cell tried is a 5 Hz
 square at Feedback 0.99 with Cut at 40 Hz: it rails 148 samples at
 -4.5 dBFS and 40 at -5, and is clean from -5.5 dBFS. At the defaults a
 5 Hz square rails at -4 dBFS (396 samples with Cut at MIDI 1, 158 at
@@ -165,18 +167,29 @@ clamp below Nyquist: at 22.05 kHz positions 111-126 all sit on the
 10 804.5 Hz clamp and do the same thing.
 
 **The filters' out stops, after a filter has been in.** Both out stops
-hand the node exactly 0, and a filter taken out is out, whatever came
-before: on 2 s of 0 dBFS noise at Mix 2, Tone out after Tone 2 kHz was in
-renders the same bytes as Tone never in (Feedback 0.85 and 0.99), and Cut
-out after Cut 400 Hz was in the same bytes as Cut never in (Feedback 0.99),
-at 48, 44.1 and 22.05 kHz; a filter brought back in after the repeats have
-died plays nothing. Up to audiodsp v0.6.2 the node froze an out filter's
-state and played it back, and this class kept Tone's low-pass tracking the
-repeats and Cut's high-pass in at 20 Hz once they had been in (the first up
-to 50 LSB off the filter out at Feedback 0.99, the second with
-`tail_samples` `None`). Since
-v0.6.3rc1 the node keeps an out low-pass's state on the signal and an out
-high-pass's at zero (audiodsp#158, #159), and both cures came out.
+hand the node exactly 0 and the Feedback as set, whatever came before, and
+a filter taken out is out. Taking it out does not undo what it already did
+to the repeats going round; those stay filtered. Once they have died, the
+instance plays exactly as one whose filter was never in: 1 s of 0 dBFS
+noise with Tone 2 kHz or Cut 400 Hz in, the filter out as the noise stops,
+then fresh noise once the loop is empty, renders the same bytes from the
+fresh noise on as an instance that never had the filter (Time 20 ms,
+Feedback 0.5 and 0.85, Mix 2, at 48, 44.1 and 22.05 kHz, stereo and mono).
+Put straight to its out stop before any audio, a filter that has been in
+renders the same bytes as one never in (Tone: 2 s of 0 dBFS noise at
+Feedback 0.85 and 0.99 at the three rates, and at Time 20 ms and Feedback
+0.99 through the whole tail at 48 kHz; Cut: 2 s at 0.99, three rates).
+A filter brought back in after the repeats have died plays nothing. Up to
+audiodsp v0.6.2 the node froze an out filter's state and played it back,
+and this class kept Tone's low-pass tracking the repeats and Cut's
+high-pass in at 20 Hz once they had been in (the first up to 50 LSB off
+the filter out at Feedback 0.99, the second with `tail_samples` `None`).
+Since v0.6.3rc1 the node keeps an out low-pass's state on the signal and
+an out high-pass's at zero (audiodsp#158, #159), and both cures came out.
+With Cut out again, `tail_samples` is the bound Cut never in has, and a
+tail after Cut was in ends inside it (full-scale noise with Cut at 400 Hz
+or MIDI 1, Cut out as it stops: at most 0.9990 of the bound, Feedback
+0.45, 0.85 and 0.99, Spread 1, 0.5 and 0, three rates).
 
 Each pass through a loop filter also takes something off a repeat's peak,
 so with either filter in the late repeats of a quiet bounce fade faster
@@ -437,7 +450,7 @@ class PingPongDelay(_component.Component):
             input_pan=0.0,
             delay_slew=0.0)
         # `clear()` empties both lanes and the loop filters and re-primes the
-        # read head (`audiodsp_feedback_delay.c:291-299`, `:286-288`), so a
+        # read head (`audiodsp_feedback_delay.c:295-303`, `:286-288`), so a
         # reset is silent and snaps onto patch 0's Time.
         self._own(self._delay, reset=self._clear)
         self._delay.play(self._source)
@@ -613,7 +626,7 @@ class PingPongDelay(_component.Component):
         towards the next older frame), plus the Tone low-pass's memory.
         While a walk falls, that is the Time it is walking from, until a
         reset lands the head. The cross-feed hands each lane a convex mix
-        of the two lanes' loop values (`audiodsp_feedback_delay.c:520-529`),
+        of the two lanes' loop values (`audiodsp_feedback_delay.c:581-589`),
         so the per-lap argument holds at every Spread."""
         self._check_live()
         return self._tail_bound()

@@ -1772,6 +1772,104 @@ class Tier1Fast(unittest.TestCase):
         self.assertNotEqual(stepped._feedback, 0.5)
         self.assertLess(abs(stepped._feedback - 0.5), 3e-5)
 
+    def _in_then_out(self, cls, which, rate):
+        """(samples differing, largest difference) from the fresh noise on:
+        1 s of 0 dBFS noise with Tone 2 kHz or Cut 400 Hz really in, the
+        filter out as the noise stops, silence past `tail_samples`, then
+        1 s of fresh noise, against an instance whose filter was never in.
+        Time 20 ms, Feedback 0.5 (a stall window centre), Mix 2."""
+        loud = rate // BLOCK * BLOCK
+        bound = PingPongDelay(silence_src(64, rate=rate), sample_rate=rate,
+                              time_ms=20.0, feedback=0.5).tail_samples
+        fresh = (loud + bound + rate // 4) // BLOCK * BLOCK
+        frames = fresh + rate + bound + rate // 4
+        x = np.zeros(frames)
+        x[:loud] = np.random.RandomState(12345).uniform(-32767, 32767, loud)
+        x[fresh:fresh + rate] = np.random.RandomState(777).uniform(
+            -32767, 32767, rate)
+        ctor = {"time_ms": 20.0, "feedback": 0.5, "mix": 2.0}
+        filt = {"tone_hz": 2000.0} if which == TONE_I else {"cut_hz": 400.0}
+        source, _ = to_source(x, 2, rate)
+        touched = cls(source, sample_rate=rate, **dict(ctor, **filt))
+
+        def move(frame):
+            if frame == loud:
+                touched.set_macro(which, 127 if which == TONE_I else 0)
+
+        a = pull(touched, frames, 2, move).astype(np.int32)
+        clean, _ = to_source(x, 2, rate)
+        b = pull(PingPongDelay(clean, sample_rate=rate, **ctor),
+                 frames).astype(np.int32)
+        d = np.abs(a[fresh:] - b[fresh:])
+        return int(np.count_nonzero(d)), int(d.max())
+
+    def test_a_filter_really_in_then_out_is_out(self):
+        # The out-stop tests above hand the out stop before any audio.
+        # Here the filter plays 1 s of noise first: once those repeats have
+        # died, the instance renders the same bytes as one whose filter was
+        # never in, at three rates. Planted: the retired cures, the Tone
+        # stop tracking with the Feedback stepped, and Cut held at 20 Hz.
+        for rate in RATES:
+            for which in (TONE_I, CUT_I):
+                self.assertEqual(self._in_then_out(PingPongDelay, which,
+                                                   rate), (0, 0),
+                                 (rate, which))
+            self.assertGreater(self._in_then_out(TrackingPingPong, TONE_I,
+                                                 rate)[0], 0, rate)
+            self.assertGreater(self._in_then_out(HeldCutPingPong, CUT_I,
+                                                 rate)[0], 0, rate)
+
+    def test_the_tail_after_cut_in_then_out_is_inside_the_bound(self):
+        # Since audiodsp v0.6.3rc1 the bound is finite once Cut is out,
+        # whatever came before. Full-scale noise with Cut in (400 Hz and
+        # MIDI 1), Cut out as it stops: the tail ends inside the bound read
+        # after the move. Planted: the retired held Cut (no bound) and the
+        # bound one lap short.
+
+        class OneLapShort(PingPongDelay):
+            NAME = 'PingPongDelay'
+
+            def _tail_bound(self):
+                laps = pp.laps_to_zero(self._feedback, 0.0)
+                return int((laps - 1) * (self._reach + 1))
+
+        def cell(cls, cut_midi, feedback, spread):
+            loud = RATE // 2 // BLOCK * BLOCK
+            bound = PingPongDelay(silence_src(64), sample_rate=RATE,
+                                  time_ms=20.0, feedback=feedback,
+                                  spread=spread).tail_samples
+            frames = loud + bound + RATE // 4
+            x = np.zeros(frames)
+            x[:loud] = np.random.RandomState(4242).uniform(-32767, 32767,
+                                                           loud)
+            source, _ = to_source(x, 2)
+            effect = cls(source, sample_rate=RATE, time_ms=20.0,
+                         feedback=feedback, spread=spread, mix=2.0)
+            effect.set_macro(CUT_I, cut_midi)
+            seen = {}
+
+            def move(frame):
+                if frame == loud:
+                    effect.set_macro(CUT_I, 0)
+                    seen["declared"] = effect.tail_samples
+
+            y = pull(effect, frames, 2, move)
+            last = int(np.flatnonzero(y.any(axis=1))[-1]) - loud + 1
+            return seen["declared"], last
+
+        for cut_midi in (127, 1):
+            for feedback in (0.45, 0.85):
+                for spread in (1.0, 0.0):
+                    declared, tail = cell(PingPongDelay, cut_midi, feedback,
+                                          spread)
+                    self.assertIsNotNone(declared)
+                    self.assertLessEqual(tail, declared,
+                                         (cut_midi, feedback, spread))
+                    self.assertGreater(tail, declared // 2)
+        self.assertIsNone(cell(HeldCutPingPong, 127, 0.45, 1.0)[0])
+        declared, tail = cell(OneLapShort, 127, 0.45, 1.0)
+        self.assertGreater(tail, declared)
+
     def test_the_tail_reaches_exact_zero_inside_tail_samples(self):
         on = 200 * RATE // 1000
         for options in ({}, {"patch": 0}, {"patch": 4}, {"patch": 5},
