@@ -69,6 +69,29 @@ there, and are recorded in its changelog.
   that changes only the wobble's depth glides over 20 ms, and a knob turned
   down to 0 keeps the last wow table while the depth ramps out; a move
   that changes the balance of Wow and Flutter still steps, disclosed.
+- **`PingPongDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** repeats
+  that alternate between the speakers, on one `audioecho.FeedbackDelay`
+  whose cross-feed and input pan Spread moves between two plain delays and
+  the full bounce, by a stated law. The dry path is each channel's own
+  signal, the mono sum is an ordinary feedback delay exactly, and the class
+  hands a one-channel node the settings that keep its loop alive (the old
+  class silenced it). Every static Time lands on a whole frame at 48 kHz; at
+  44.1 and 22.05 kHz 25 and 20 knob positions land one float32 step off, and
+  so can a constructor or Sync Time (5554 and 2785 of the whole frames from
+  20 to 1000 ms), which needs a node option. Time walks rather than clicks,
+  Sync follows the host's beat, and Repeat Tone and Repeat Cut put a
+  low-pass and a high-pass in the loop, defaulting out. It lives in
+  `lib/audioeffects/rebuilt/pingpongdelay.py`, and
+  `audioeffects.PingPongDelay` is still the old class. The docstring states
+  the input ceiling (-3 dBFS peak at the defaults, -3.1 over the shipped
+  patches, on `noise_det`; -7.96 dBFS on any material with Repeat Cut in at
+  the default Mix), and that at full Spread the loop hears (L + R) / 2.
+  Board cost is unmeasured. At audiodsp v0.6.3rc1 both loop filters' out
+  stops hand exactly 0 and a filter taken out is out whatever came before
+  (no tracking Tone stop, no Cut held in at 20 Hz, so `tail_samples` is
+  finite once Cut is out again), and the Feedback is handed as set (no
+  stepping clear of the stall windows; the bound counts one landing lap
+  there).
 
 ### Changed
 
