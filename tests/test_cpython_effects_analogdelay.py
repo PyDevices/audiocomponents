@@ -169,6 +169,8 @@ class _ReadStep(kit_faults._Node):
     `frames` frames late: the read stepping back that far, once, and
     staying there."""
 
+    right_only = False
+
     def __init__(self, source, frames):
         kit_faults._Node.__init__(self, source)
         self.frames = int(frames)
@@ -186,7 +188,11 @@ class _ReadStep(kit_faults._Node):
         if self.step_at is not None:
             start = max(0, self.step_at - self.pulled)
             if start < count:
-                out[start * channels:] = late[start * channels:]
+                if self.right_only and channels > 1:
+                    first = start * channels + 1
+                    out[first::channels] = late[first::channels]
+                else:
+                    out[start * channels:] = late[start * channels:]
         self.pulled += count
         return out
 
@@ -213,6 +219,19 @@ class MidWalkReadStep(AnalogDelay):
                 and self._slew > 0.0):
             walk = abs(self._frames - before) / self._slew
             step.step_at = step.pulled + int(walk // 2)
+
+
+class RightReadStep(MidWalkReadStep):
+    """T3's stereo identity (dossier section 8, R10): `MidWalkReadStep` on
+    the right channel alone, so the left, which every T3 clause reads, walks
+    clean. Nothing the surface reaches treats the two lanes differently at
+    Spread 0."""
+
+    NAME = 'AnalogDelay'
+
+    def _build(self, *arguments, **options):
+        MidWalkReadStep._build(self, *arguments, **options)
+        self._step.right_only = True
 
 
 class EarlyStepWalk(AnalogDelay):
@@ -631,7 +650,13 @@ def t3_render(cls, rate, character, t_old, t_new, values, channels=1,
                     effect.set_macro(TIME_I, target)
                 handed.update(getattr(effect._delay, "_handed", {}))
 
-    out = left(pull(effect, len(values), channels, on_block=move), channels)
+    interleaved = pull(effect, len(values), channels, on_block=move)
+    if handed is not None and channels > 1:
+        # Every clause reads the left channel; the right is held to it byte
+        # for byte (dossier section 8, R10), so the left clauses read both.
+        lanes = interleaved.reshape(-1, channels).astype(np.int64)
+        handed["lr"] = int(np.max(np.abs(lanes - lanes[:, :1])))
+    out = left(interleaved, channels)
     effect.deinit()
     return out, move_at
 
@@ -934,7 +959,8 @@ def t3_measure(cls, rate=RATE, character=SINGLE, t_old=200.0, t_new=100.4,
               "inside_bar": inside_bar, "pre_bar": pre_bar,
               "damping_hz": damping, "damping_before": damping_before,
               "settle": settle, "inside_r1": inside_r1,
-              "later_bar": later_bar, "walk_ok": walk_ok}
+              "later_bar": later_bar, "walk_ok": walk_ok,
+              "lr": int(handed.get("lr", 0))}
     if walk < 64 or end + int(0.25 * rate) + 1 > frames:
         # No walk at all, or one that never lands on T_new inside the
         # render: the walk clause is red and the pitch has nothing to read.
@@ -963,7 +989,8 @@ def t3_measure(cls, rate=RATE, character=SINGLE, t_old=200.0, t_new=100.4,
         and abs(residual) <= 1.0
         and inside_ok
         and gap_ok
-        and later <= 1.05 * later_bar)
+        and later <= 1.05 * later_bar
+        and result["lr"] == 0)
     return result
 
 
@@ -1127,6 +1154,28 @@ def read_walk_law(effect):
     return round(slew / law, 4)
 
 
+def read_feedback_as_set(effect):
+    """The Feedback handed to the node less the knob's (since audiodsp
+    v0.6.3rc1 the class hands the Feedback as set)."""
+    return round(effect._delay._handed["feedback"]
+                 - effect.macro(FEEDBACK_I), 9)
+
+
+def read_modulation_move(effect):
+    """On a copy at these positions, one Modulation move of 16 grid steps
+    after a block has been pulled: the `delay_ms` handed less the
+    whole-frame Time's hand-off (a Modulation move changes the depth, not
+    the delay)."""
+    rate = effect._sample_rate
+    other = copy_of(effect, silence_src(4 * BLOCK, 2, rate))
+    pull(other, BLOCK, 2)
+    now = other.get_macro(MODULATION_I)
+    other.set_macro(MODULATION_I, now + 16.0 if now < 64 else now - 16.0)
+    offset = other._delay._handed["delay_ms"] - other._node_ms
+    other.deinit()
+    return round(offset, 6)
+
+
 def read_dry_gain(effect):
     """The dry path's gain before the first repeat: a copy at these
     positions on a 256-frame full-scale ramp, least-squares out / in."""
@@ -1145,6 +1194,36 @@ def read_landing(effect):
     ms = np.float32(effect._delay._handed["delay_ms"])
     frames = float(ms * np.float32(effect._sample_rate) / np.float32(1000.0))
     return frames >= effect._frames
+
+
+def read_lanes(effect):
+    """At these positions, stereo, with Mix 2, Feedback 0 and Modulation 0,
+    one Time move of 32 grid steps once the line has filled, on a slope-1
+    ramp in both lanes: the largest |L - R| over the render."""
+    rate = effect._sample_rate
+    now = effect.get_macro(TIME_I)
+    new = now + 32.0 if now < 64 else now - 32.0
+    k_old = effect._frames
+    k_new = whole(grid_ms(new), rate)
+    fill = (k_old + 2 * BLOCK) // BLOCK * BLOCK
+    frames = fill + int(1.3 * k_new) + 2 * BLOCK
+    ramp = (np.arange(frames) % 65536) - 32768
+    other = type(effect)(array_src(ramp.tolist(), 2, rate), sample_rate=rate,
+                         character=effect._character)
+    for index in range(len(type(effect).MACRO_LABELS)):
+        other.set_macro(index, effect.get_macro(index))
+    other.set_macro(MIX_I, 127)
+    other.set_macro(FEEDBACK_I, 0)
+    other.set_macro(MODULATION_I, 0)
+
+    def move(frame):
+        if frame == fill:
+            other.set_macro(TIME_I, new)
+
+    lanes = pull(other, frames, 2, on_block=move).reshape(-1, 2)
+    other.deinit()
+    lanes = lanes.astype(np.int64)
+    return int(np.max(np.abs(lanes[:, 1] - lanes[:, 0])))
 
 
 def read_step(effect):
@@ -1217,6 +1296,10 @@ REACH_WALKS = (
     ("MidWalkReadStep", MidWalkReadStep, read_step, {}),
     ("EarlyStepWalk", EarlyStepWalk, read_early, {}),
     ("LandingBlip", LandingBlip, read_step, {}),
+    ("RightReadStep", RightReadStep, read_lanes, {}),
+    ("SteppedAnalog", SteppedAnalog, read_feedback_as_set,
+     {"feedback": 0.99}),
+    ("JumpModAnalog", JumpModAnalog, read_modulation_move, {}),
 )
 
 
@@ -1667,6 +1750,29 @@ class T3NoStepRevision(unittest.TestCase):
                             and result["later"] <= 1.05 * result["later_bar"],
                             result)
 
+    def test_stereo_is_the_left_channel_and_the_right_held_to_it(self):
+        # Revision R10: every clause reads the left channel, and on a
+        # stereo render the right must equal it byte for byte. A step on
+        # the right channel alone passes every left clause and is red on
+        # the identity only (the gate audit's round 3: 60 of 60 passed the
+        # row before this).
+        for rate, t_old, t_new in ((48000, 200.0, 100.4),
+                                   (48000, 100.0, 300.0),
+                                   (44100, 20.0, 60.0),
+                                   (22050, 60.0, 20.0)):
+            for character in (SINGLE, DOUBLE):
+                result = t3_measure(AnalogDelay, rate, character, t_old,
+                                    t_new, channels=2)
+                self.assertEqual(result["lr"], 0, (rate, t_old, character))
+                self.assertTrue(result["passed"], (rate, t_old, result))
+        for t_old, t_new in ((200.0, 100.4), (100.4, 200.0)):
+            result = t3_measure(RightReadStep, RATE, SINGLE, t_old, t_new,
+                                channels=2)
+            self.assertGreater(result["lr"], 0, (t_old, result))
+            self.assertFalse(result["passed"], (t_old, result))
+            self.assertTrue(result["walk_ok"] and result["inside_ok"]
+                            and result["gap_ok"], (t_old, result))
+
     def test_the_landing_gap_holds_on_the_class(self):
         for t_old, t_new in ((300.0, 100.0), (100.0, 300.0), (20.0, 60.0),
                              (60.0, 20.0)):
@@ -1978,43 +2084,62 @@ class Tier1Fast(unittest.TestCase):
         self.assertNotEqual(stepped._feedback, 0.5)
         self.assertLess(abs(stepped._feedback - 0.5), 3e-5)
 
-    def _modulation_move(self, cls, start_ms, target_ms, points=8):
-        """(the tone's own largest step before the move, the largest step in
-        the 2 000 frames after it) over `points` moves a quarter of the 1 Hz
-        triangle apart: 997 Hz at 12 000 LSB, mono, wet only, Time 300 ms,
-        48 kHz (`pin063cls_ad_modmove.py`)."""
-        first = (14400 + 9600) // BLOCK * BLOCK
-        steadies, worsts = [], []
+    def _modulation_move(self, cls, start_ms, target_ms, mod_hz=1.0,
+                         points=8):
+        """Per move, (the largest first difference in the 40 ms after it,
+        its bar) at `points` moves an eighth of the triangle's period
+        apart: 997 Hz at 12 000 LSB, mono, wet only, Time 300 ms, 48 kHz
+        (`analogdelay_refix1.py modmove`). The read offset is S(t) u(t)
+        fs / 1000 frames; while the node ramps the swing (20 ms, audiodsp
+        #160) |dD/dn| <= |change| / 20 + 0.004 r max(S_old, S_new), and
+        neither the linear-interpolated read nor the one-pole can raise a
+        first difference, so the bar is the source's own largest step times
+        1 plus that, plus 1 for the output's rounding."""
+        first = (14400 + RATE // 5) // BLOCK * BLOCK
+        spacing = int(RATE / mod_hz / 8.0) // BLOCK * BLOCK
+        change = abs(target_ms - start_ms)
+        rows = []
         for k in range(points):
-            at = first + k * 47 * BLOCK
+            at = first + k * spacing
             values = sine_values(997.0, at + 2400, RATE, 12000)
             effect = cls(array_src(values, 1), sample_rate=RATE,
                          time_ms=300.0, feedback=0.0, mix=2.0, spread=0.0,
-                         modulation_ms=start_ms, mod_rate_hz=1.0)
+                         modulation_ms=start_ms, mod_rate_hz=mod_hz)
 
             def move(frame, at=at, effect=effect):
                 if frame == at:
                     effect.set_macro(MODULATION_I, target_ms * 127.0 / 5.0)
 
-            y = pull(effect, at + 2000 + BLOCK, 1,
+            y = pull(effect, at + 1920 + BLOCK, 1,
                      on_block=move).astype(float)
-            steadies.append(float(np.abs(np.diff(y[at - 3000:at - 1])).max()))
-            worsts.append(float(np.abs(np.diff(y[at - 1:at + 2000])).max()))
-        return max(steadies), max(worsts)
+            effect.deinit()
+            source = float(np.abs(np.diff(np.array(values, float))).max())
+            bar = source * (1.0 + change / 20.0
+                            + 0.004 * mod_hz * max(start_ms, target_ms)) + 1
+            rows.append((float(np.abs(np.diff(y[at - 1:at + 1920])).max()),
+                         bar))
+        return rows
 
     def test_a_modulation_move_does_not_step(self):
         # Since audiodsp v0.6.3rc1 the node ramps a new swing in over 20 ms
-        # (#160). While it travels the read offset may move |change| / 20 ms
-        # of a frame per frame on top of the triangle, so the tone may slope
-        # up to its own largest step times 1 + |change| / 20 ms, and no more.
-        # Up to v0.6.2 the same moves read 7 337 (1 -> 1.5 ms) and 2 107
-        # (5 -> 0 ms). Planted: the read head moved by the whole change.
-        for start, target in ((1.0, 1.5), (5.0, 0.0), (5.0, 2.0)):
-            bar = 1.0 + abs(target - start) / 20.0
-            steady, worst = self._modulation_move(AnalogDelay, start, target)
-            self.assertLessEqual(worst, steady * bar, (start, target))
-        steady, worst = self._modulation_move(JumpModAnalog, 1.0, 1.5)
-        self.assertGreater(worst, steady * 1.025)
+        # (#160), so a Modulation move glides; at every phase each first
+        # difference stays under the ramp-and-triangle bar (worst 0.943 of
+        # it over 240 cells, three rates). On v0.6.2's node, which jumped
+        # the read, the same bar is red at 133 of those 240 cells, 4.42 x
+        # at worst (7 133 on 1 -> 1.5 ms). The bar at ba7948b, the output's own step before the move
+        # times 1 + |change| / 20, left out the triangle's slope after the
+        # move and was red on the clean class at 16 of those 240 cells.
+        # Planted: the read head moved by the whole change, half a period of
+        # the tone for 1 -> 1.5 ms (a 3 ms change is 2.99 periods, which no
+        # first difference sees).
+        for start, target in ((1.0, 1.5), (5.0, 0.0), (5.0, 2.0),
+                              (0.0, 5.0)):
+            for mod_hz in (1.0, 8.0):
+                for worst, bar in self._modulation_move(
+                        AnalogDelay, start, target, mod_hz):
+                    self.assertLessEqual(worst, bar, (start, target, mod_hz))
+        rows = self._modulation_move(JumpModAnalog, 1.0, 1.5)
+        self.assertEqual(sum(1 for worst, bar in rows if worst > bar), 8)
 
     def _walk_tail(self, cls):
         """600 ms of 997 Hz, Feedback 0, Mix 2; as the tone stops, Time

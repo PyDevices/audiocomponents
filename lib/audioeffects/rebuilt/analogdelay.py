@@ -130,12 +130,17 @@ glides: since audiodsp v0.6.3rc1 the node ramps a new swing in over 20 ms
 (audiodsp#160), where up to v0.6.2 it jumped the read by the change in
 depth times where the triangle stood (142 frames for 5 -> 2 ms at the
 triangle's peak, 48 kHz). While the swing travels the extra pitch is the
-change over 20 ms times where the triangle stands: 5 -> 2 ms at the peak
-bends the repeats 15 % (about 240 cents) for those 20 ms. On a 997 Hz tone
-at 12 000 LSB, wet only, Time 300 ms, Mod Rate 1 Hz, 48 kHz, a move from
-1 to 1.5 ms steps at most 1 522 LSB over the 2 000 frames after it, where
-the tone's own largest step is 1 491 and the ramp allows 1 528 (7 337 at
-v0.6.2). Mod Rate moves keep the triangle's phase and do not step.
+change over 20 ms times where the triangle stands: 5 -> 2 ms at a peak
+bends the repeats by 15 % for those 20 ms, +242 cents at one peak and
+-281 at the other. So the read moves at most |change| / 20 ms plus the
+triangle's own 4 x Mod Rate x swing of a frame per frame faster or slower
+than the tone, and no step in the output is larger than the input's own
+largest step times 1 plus that: on a 997 Hz tone at 12 000 LSB, wet only,
+Time 300 ms, five moves between 0 and 5 ms at Mod Rate 1 and 8 Hz and
+eight points of the triangle, at 48, 44.1 and 22.05 kHz, the largest step
+in the 40 ms after a move is at most 0.943 of that (1 -> 1.5 ms at 1 Hz,
+48 kHz: 1 522 LSB against 1 615, where v0.6.2's node read 7 133). Mod
+Rate moves keep the triangle's phase and do not step.
 
 **Input ceiling.** The dry path sits at unity and the repeats add to it,
 so a hot input can put the output on the int16 rail; there is no input
