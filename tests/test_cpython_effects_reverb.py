@@ -229,6 +229,45 @@ class OneMultiply(Reverb):
         return d * d, capped, 0.5 * t_lf
 
 
+class LongDiffusers(Reverb):
+    """The floor knee (dossier section 8.9): every character's four input
+    diffusers at 1.5 x its own, the direction Station A tried and dropped
+    because longer diffusers ring on their own and lift the floor under
+    Decay (App. A8.8)."""
+
+    NAME = 'Reverb'
+
+    def _cut(self, index, size):
+        ratios = tuple(1.5 * r for r in rv.RATIOS[index][:4]) + \
+            rv.RATIOS[index][4:]
+        return _cut_with(self._sample_rate, index, size, ratios)
+
+
+def capped_law(kappa, lines, sample_rate, decay_s, loop_hz, cap):
+    """The dossier's section 4 Decay law with its low-frequency cap at
+    `cap` x Decay, written out here rather than read off the class."""
+    a, b = rv.half_periods(lines)
+    p = 0.5 * (a + b)
+    fs = float(sample_rate)
+    mag = rv.one_pole_mag(loop_hz, 500.0, fs)
+    d = 10.0 ** (-3.0 * kappa * p / (2.0 * decay_s * fs)) / math.sqrt(mag)
+    ceiling = 10.0 ** (-3.0 * kappa * p / (2.0 * cap * decay_s * fs))
+    capped = d > ceiling
+    d = min(d, ceiling, 0.999)
+    return d, capped, -3.0 * kappa * p / (2.0 * fs * math.log10(d))
+
+
+class LooseCeiling(Reverb):
+    """The ceiling knee (dossier section 8.9): the law's low-frequency cap
+    at 2 x Decay instead of 1.5 x, so every ceiling knee moves up."""
+
+    NAME = 'Reverb'
+
+    def _decay(self, index, lines, decay_s, loop_hz):
+        return capped_law(rv.KAPPA[index], lines, self._sample_rate, decay_s,
+                          loop_hz, 2.0)
+
+
 # -- probes and rendering ----------------------------------------------------
 
 def interleave(mono, channels, frames):
@@ -1096,7 +1135,7 @@ class T7LowCut(unittest.TestCase):
 
     def test_the_dry_is_flat(self):
         for name in ("Steel Plate", "Concert Hall"):
-            for mix in (0.35, 1.0, 1.5):
+            for mix in (0.35, 1.0, 1.5, 1.9):
                 self.assertLessEqual(dry_deviation(name, mix), 0.1,
                                      (name, mix))
 
@@ -1238,10 +1277,22 @@ class T10Modulation(unittest.TestCase):
     def test_the_patches_modulation_spreads_it(self):
         self.assertTrue(t10_on(Reverb))
 
-    def test_the_low_corner_of_the_claim(self):
+    def test_the_lowest_claimed_depth(self):
         v = sidebands_db(Reverb, "Steel Plate", 1000.0, 1.0,
-                         mod_depth_ms=0.1, mod_rate_hz=1.0)
+                         mod_depth_ms=0.27, mod_rate_hz=1.0)
         self.assertGreaterEqual(v, -20.0)
+
+    def test_0_1_ms_is_not_claimed_it_follows_the_line_set(self):
+        # dossier section 8, R2: at Mod Depth 0.1 ms on Steel Plate the
+        # reading depends on the exact lines; green at Size 1.0 (-18.4 dB),
+        # red on patch 0's grid Size 64 = 1.0039 (-27.2 dB)
+        at_1 = sidebands_db(Reverb, "Steel Plate", 1000.0, 1.0,
+                            mod_depth_ms=0.1, mod_rate_hz=1.0)
+        at_grid = sidebands_db(Reverb, "Steel Plate", 1000.0, 1.0,
+                               mod_depth_ms=0.1, mod_rate_hz=1.0,
+                               size=0.5 + 64 / 127.0)
+        self.assertGreaterEqual(at_1, -20.0)
+        self.assertLess(at_grid, -20.0)
 
     def test_mod_rate_as_its_reciprocal_is_red(self):
         self.assertFalse(t10_on(RateReciprocal))
@@ -1306,6 +1357,253 @@ class T11DecayIsT60(unittest.TestCase):
         kit_faults.null_build_red(
             Reverb, lambda cls: {"passed": t11_verdict(
                 t11_errors(cls, "plate"))}, label="Reverb T11")
+
+
+# -- the Decay knees (dossier section 8.9, audit-3 ruling (o)) ----------------
+
+def midi_for(index, value):
+    """The fractional MIDI position that lands macro `index` on `value`."""
+    return _component.midi_of_position(
+        Reverb.MACRO_MODES.get(index, "UNIPOLAR"),
+        _component.macro_position(Reverb._MACRO_RANGES[index], value))
+
+
+PATCH_INDEX = {name: index for index, (name, _) in enumerate(PATCH_SETTINGS)}
+
+
+def t500_mean(build, decay, seeds=SEEDS, rate=RATE, hint=None):
+    """M3 at 500 Hz on interrupted noise (2 s at 8 000 LSB RMS, then
+    silence), the mono sum, Mix 2, the mean over `seeds`; `build(src)`
+    makes the instance. The render runs 1.3 x max(`hint` or Decay, 1 s)
+    past the burst, which reaches past -35 dB at every cell here."""
+    t = decay if hint is None else hint
+    frames = int((BURST_S + 1.3 * max(t, 1.0) + 0.8) * rate)
+    vals = []
+    for seed in seeds:
+        src = probes.ArraySource(interleave(noise_burst(rate, seed), 2,
+                                            frames),
+                                 rate=rate, channels=2, block=256)
+        effect = build(src)
+        try:
+            y = render(effect, frames)
+        finally:
+            effect.deinit()
+        m = y.astype(np.float64).sum(axis=1)
+        vals.append(t60_slope(band(m, rate, 500)[int(BURST_S * rate):],
+                              rate))
+    return None if None in vals else float(np.mean(vals))
+
+
+def knee_t500(cls, character, size, decay, seeds=SEEDS):
+    """The floor-knee cell: the character's reference patch on the grid
+    (`program_change`), Size and Decay set on the macros, Mix 2."""
+    key = ("floor", cls, character, size, decay, seeds)
+    if key not in _MEMO:
+        def build(src):
+            effect = cls(src, sample_rate=RATE)
+            effect.program_change(PATCH_INDEX[REFERENCE[character]])
+            effect.set_macro(rv.SIZE_I, midi_for(rv.SIZE_I, size))
+            effect.set_macro(rv.DECAY_I, midi_for(rv.DECAY_I, decay))
+            effect.set_macro(rv.MIX_I, 127)
+            return effect
+        _MEMO[key] = t500_mean(build, decay, seeds)
+    return _MEMO[key]
+
+
+FLOOR_STOPS = (0.3, 0.45, 0.6, 0.8, 1.0, 1.25, 1.5, 2.0)
+KNEE_SIZES = (0.5, 0.75, 1.0, 1.25, 1.5)
+
+#: Section 8.9's floor-knee table on the grid, as revised 2026-09-28 (R5):
+#: the lowest Decay from which every position up to 2 s lands within
+#: +/-12 % at 500 Hz. The chamber at Size 1.5 has none at or under 2 s:
+#: its 2 s cell sits on the bar (T11, R7).
+FLOOR_KNEES = {
+    "plate": (0.3, 0.45, 1.0, 1.5, 1.5),
+    "room": (0.45, 0.8, 0.8, 1.0, 1.0),
+    "chamber": (0.6, 0.8, 1.0, 1.5, None),
+    "hall": (0.6, 1.0, 1.5, 1.25, 2.0),
+}
+
+
+def predicted_t500(character, size, decay, damping=1000.0, rate=RATE,
+                   cap=1.5):
+    """T60 at 500 Hz the dossier's capped law gives on the room, chamber
+    or hall (their loop corner is Damping): (seconds, capped)."""
+    index = rv.CHARACTERS.index(character)
+    lines = rv.line_set(index, size, rate)
+    a, b = rv.half_periods(lines)
+    p = 0.5 * (a + b)
+    d, capped, _ = capped_law(rv.KAPPA[index], lines, rate, decay, damping,
+                              cap)
+    g = d * d * rv.one_pole_mag(damping, 500.0, rate)
+    return 3.0 * rv.KAPPA[index] * p / (-rate * math.log10(g)), capped
+
+
+def capped_cells():
+    """The constructor defaults (Damping 1 kHz) on the room, chamber and
+    hall at Size 0.5 / 1.0 / 1.5 and Decay 2 / 4 / 8 / 10 s where the
+    dossier's law caps the bass."""
+    out = []
+    for character in ("room", "chamber", "hall"):
+        for size in (0.5, 1.0, 1.5):
+            for t in (2.0, 4.0, 8.0, 10.0):
+                pred, capped = predicted_t500(character, size, t)
+                if capped:
+                    out.append((character, size, t, pred))
+    return out
+
+
+def ceiling_t500(cls, character, size, decay, hint):
+    key = ("ceiling", cls, character, size, decay)
+    if key not in _MEMO:
+        _MEMO[key] = t500_mean(
+            lambda src: cls(src, sample_rate=RATE, character=character,
+                            size=size, decay=decay, mix=2.0),
+            decay, hint=hint)
+    return _MEMO[key]
+
+
+class DecayKnees(unittest.TestCase):
+    """Section 8.9's promise: a test that fails if a knee moves."""
+
+    def _floor(self, character):
+        for size, knee in zip(KNEE_SIZES, FLOOR_KNEES[character]):
+            if knee is None:
+                continue
+            i = FLOOR_STOPS.index(knee)
+            for t in FLOOR_STOPS[i:]:
+                e = knee_t500(Reverb, character, size, t) / t - 1.0
+                self.assertLessEqual(abs(e), 0.12, (character, size, t, e))
+            if i:
+                t = FLOOR_STOPS[i - 1]
+                e = knee_t500(Reverb, character, size, t) / t - 1.0
+                self.assertGreater(abs(e), 0.12, (character, size, t, e))
+
+    def test_the_plates_floor_knees(self):
+        self._floor("plate")
+
+    def test_the_rooms_floor_knees(self):
+        self._floor("room")
+
+    def test_the_chambers_floor_knees(self):
+        self._floor("chamber")
+
+    def test_the_halls_floor_knees(self):
+        self._floor("hall")
+
+    def test_the_chamber_at_size_1_5_has_no_knee_under_2_s(self):
+        # T11's cell, Not claimed (R7): 1.5 s is outside, and 2 s reads
+        # inside on seeds 7-14 but outside on seeds 23-30
+        e15 = knee_t500(Reverb, "chamber", 1.5, 1.5) / 1.5 - 1.0
+        self.assertGreater(abs(e15), 0.12, e15)
+        e2 = knee_t500(Reverb, "chamber", 1.5, 2.0) / 2.0 - 1.0
+        self.assertTrue(0.08 <= e2 <= 0.12, e2)
+        e2b = knee_t500(Reverb, "chamber", 1.5, 2.0,
+                        tuple(range(23, 31))) / 2.0 - 1.0
+        self.assertGreater(e2b, 0.12, e2b)
+
+    def test_longer_diffusers_move_the_floor_knee(self):
+        # the plate's, room's and chamber's knee position at Size 1.0 lands
+        # outside +/-12 % once their diffusers are 1.5 x longer (the hall's
+        # does not move: it reads +7.3 % at its 1.5 s knee, and the plant
+        # is recorded as blind there)
+        for character in ("plate", "room", "chamber"):
+            knee = FLOOR_KNEES[character][KNEE_SIZES.index(1.0)]
+            e = knee_t500(LongDiffusers, character, 1.0, knee) / knee - 1.0
+            self.assertGreater(abs(e), 0.12, (character, knee, e))
+
+    def test_the_longer_diffusers_are_not_on_the_surface(self):
+        result = reach(LongDiffusers, handed_cut)
+        self.assertEqual(result["checked"], WALK)
+
+    def test_the_ceiling_knees(self):
+        cells = capped_cells()
+        self.assertEqual(len(cells), 19)
+        misses = []
+        for character, size, t, pred in cells:
+            got = ceiling_t500(Reverb, character, size, t, pred)
+            self.assertLessEqual(abs(got / pred - 1.0), 0.12,
+                                 (character, size, t, got, pred))
+            misses.append(1.0 - got / t)
+        # while the label there misses by up to about 60 %
+        self.assertGreater(max(misses), 0.5, misses)
+
+    def test_a_loose_ceiling_is_red(self):
+        # the two cells where a cap at 2.0 moves 500 Hz most (+14.6 and
+        # +15.0 % measured); at most cells it moves under 12 %
+        for character, size, t in (("chamber", 1.0, 8.0),
+                                   ("room", 1.5, 8.0)):
+            pred, capped = predicted_t500(character, size, t)
+            self.assertTrue(capped)
+            got = ceiling_t500(LooseCeiling, character, size, t, 1.4 * pred)
+            self.assertGreater(abs(got / pred - 1.0), 0.12,
+                               (character, size, t, got, pred))
+
+    def test_the_loose_ceiling_is_not_on_the_surface(self):
+        result = reach(LooseCeiling, lambda e: (
+            e._index, tuple(e._lines), round(e.macro(rv.DECAY_I), 9),
+            e._handed["decay"]), character="room", size=0.5, decay=10.0)
+        self.assertEqual(result["checked"], WALK)
+
+
+# -- the input ceiling (audit-3 rulings (m) and (o)) -------------------------
+
+def railed(name, rms, rate=RATE, channels=2, mix=1.0, **override):
+    """Samples on the int16 rail over 2 s of uniform noise at `rms` LSB RMS
+    (seed 11) and 0.5 s after, at Mix 1 by default."""
+    rng = np.random.RandomState(11)
+    n = 2 * rate
+    x = np.round(np.clip(rng.uniform(-1, 1, n) * rms * math.sqrt(3),
+                         -32768, 32767)).astype(np.int16)
+    frames = n + rate // 2
+    effect = make(Reverb, name, rate, channels, x, frames, mix=mix,
+                  **override)
+    try:
+        y = render(effect, frames)
+    finally:
+        effect.deinit()
+    return int(np.count_nonzero(np.abs(y) >= 32767))
+
+
+def sine_wet_gain(hz, rms, rate=RATE):
+    """The wet's carrier gain on a steady sine at `rms` LSB RMS at the
+    constructor defaults, Mix 2: the last 2 s of 6 s, one Hann FFT."""
+    n = 6 * rate
+    x = np.round(rms * math.sqrt(2) * np.sin(
+        2 * np.pi * hz * np.arange(n) / rate)).astype(np.int16)
+    effect = make(Reverb, None, rate, 2, x, n, mix=2.0)
+    try:
+        y = render(effect, n)
+    finally:
+        effect.deinit()
+    seg = y.astype(np.float64).sum(axis=1)[-2 * rate:] / 2.0
+    xin = x.astype(np.float64)[-2 * rate:]
+    win = np.hanning(len(seg))
+    f = np.fft.rfftfreq(len(seg), 1.0 / rate)
+    k = int(np.argmin(np.abs(f - hz)))
+    a = np.abs(np.fft.rfft(seg * win))[k - 2:k + 3].max()
+    b = np.abs(np.fft.rfft(xin * win))[k - 2:k + 3].max()
+    return 20 * math.log10(a / b)
+
+
+class InputCeiling(unittest.TestCase):
+    def test_no_patch_reaches_the_rail_at_4000_lsb_rms(self):
+        for name, _ in PATCH_SETTINGS:
+            self.assertEqual(railed(name, 4000.0), 0, name)
+
+    def test_6_db_more_reaches_it(self):
+        # the same reading, the input planted 6 dB hotter
+        hot = [name for name, _ in PATCH_SETTINGS
+               if railed(name, 8000.0) > 0]
+        self.assertGreaterEqual(len(hot), 6, hot)
+
+    def test_the_tanks_lines_compress_from_8000_lsb_rms(self):
+        # the docstring: flat to 4 000 LSB RMS, about 1.3 dB down at 8 000
+        # on a 362 Hz sine at the defaults, with the output under the rail
+        g1, g4, g8 = (sine_wet_gain(362.0, r) for r in (1000.0, 4000.0,
+                                                        8000.0))
+        self.assertLessEqual(abs(g4 - g1), 0.1, (g1, g4))
+        self.assertLess(g8 - g4, -1.0, (g4, g8))
 
 
 if __name__ == "__main__":

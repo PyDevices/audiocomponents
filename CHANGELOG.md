@@ -52,6 +52,20 @@ there, and are recorded in its changelog.
   100 s period, the Wow and Flutter step, and where the pitch claim stops:
   the node's single-precision walk limits rising moves past 16 384 and
   32 768 frames. Board cost is unmeasured.
+- **`Reverb` (rebuilt, Phase 5, parked under `rebuilt/`):** Dattorro's plate
+  network on one `audioverb.Tank`, cut four ways as a Character macro: an
+  EMT 140 plate that is dense at once and darkens as Decay shortens, and a
+  room, a chamber and a hall that build. Decay is T60 at 500 Hz between a
+  floor knee and a ceiling knee, both tabled in the dossier and held by the
+  class tests; Size and Character rebuild the tank and cut the tail; Mix 0
+  is a byte-exact wire while the tank keeps ringing; latency is zero. It
+  lives in `lib/audioeffects/rebuilt/reverb.py`, and `audioeffects.Reverb`
+  is still the old class. The Fender 6G15 spring character is parked until
+  the node carries a dispersive chain. The docstring names the two patches
+  that ring longer than their Decay reads, where Mod Depth under 0.27 ms
+  stops spreading a tone, and the input ceiling: the tank's lines compress
+  from about -12 dBFS RMS at any Mix, and no shipped patch reaches the rail
+  at -18 dBFS RMS at Mix 1. Board cost is unmeasured.
 
 ## v0.3.2 (2026-09-25)
 

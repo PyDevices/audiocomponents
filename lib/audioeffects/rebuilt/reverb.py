@@ -76,7 +76,10 @@ even step backward a little as the label rises. Above the *ceiling knee*,
 which a low Damping corner brings down on the room, chamber and hall, the
 class holds the bass to 1.5 x Decay and T60 at 500 Hz lands short of the
 label. Both knees are tabled per character and Size in the dossier's
-section 8.9; the plate has no ceiling knee on the span.
+section 8.9, read on the 0-127 grid at each character's reference patch;
+the plate has no ceiling knee on the span, and the chamber at Size 1.5 has
+no floor knee at or under 2 s (its 2 s position reads 10 to 13 % long,
+depending on the noise it is measured with).
 
 **A sparse, quiet input decays sooner than the knob.** The tank's lines are
 16-bit and truncate toward zero, which is what lets the tail reach exact
@@ -87,10 +90,12 @@ noise at 8 000 LSB RMS.
 
 **The patches.** Steel Plate (the defaults), Short Plate, Damped Plate,
 Bass-Free Plate (Low Cut at the 6G15's 360 Hz), Small Room, Live Room,
-Concert Hall, Dark Chamber, Bright Chamber, Slow Bloom. Small Room's Decay
-reads 0.45 s and it rings 0.55 s at 500 Hz: it sits under the room's floor
-knee, and ships so because the rooms must stay that much shorter than the
-hall.
+Concert Hall, Dark Chamber, Bright Chamber, Slow Bloom. Two of them sit
+under their character's floor knee and ring longer than their Decay reads.
+Small Room's Decay reads 0.454 s and it rings 0.576 s at 500 Hz; it ships
+so because the rooms must stay that much shorter than the hall. Damped
+Plate's reads 1.011 s and it rings 1.228 s, because at Size 1.25 the
+plate's own ringing sets the time until Decay 1.5 s.
 
 **Latency: zero samples, at every setting, character and rate.** Nothing
 looks ahead. Predelay is the wet path, not latency on the dry.
@@ -99,16 +104,31 @@ looks ahead. Predelay is the wet path, not latency on the dry.
 source gets the mono fold-down of the stereo tank, both tap sets in the one
 lane, halved (`audiodsp_tank.c:571-580`).
 
+**Mod Depth under 0.27 ms.** Whether a small depth spreads a steady tone
+into sidebands depends on the exact lines Size cuts. At 0.1 ms and 1 Hz on
+Steel Plate the sidebands of a 1 kHz tone sit 18.4 dB under it at Size 1.0
+and 27.2 dB under it at patch 0's Size (1.0039), and over the nine Size
+steps around it they range from 27.2 dB under to 12.5 dB over. From
+0.27 ms up they measure within 20 dB of the tone on Steel Plate and
+Concert Hall, for tones from 300 Hz to 3 kHz at every Mod Rate.
+
 **Tone** spans +/-12 dB of end-to-end tilt, which the node puts half at
 each end: +12 is about -6 dB at 40 Hz and +6 dB at 16 kHz. At the centre
 the class hands 2^-24 dB rather than 0, so the tilt's filter keeps
 following the tail and a later Tone move out of silence stays silent.
 
-**Input ceiling.** The tank adds dry and wet before it rounds and clamps
-at the int16 rail. On 2 s of uniform noise at Mix 1, nothing reaches the
-rail at 4 000 LSB RMS (-18.3 dBFS) at any patch; at 8 000 LSB RMS
-(-12.3 dBFS) eight of the ten patches do, up to 446 samples in 2 s on
-Bright Chamber. There is no input gain to turn down.
+**Input ceiling.** Two things limit how hard you can drive it, and there
+is no input gain to turn down. First, the tank's 16-bit lines clamp at the
+rail on every write, whatever Mix is, so the tail compresses before the
+output clips: at the defaults a steady 362 Hz sine comes back 1.3 dB
+quieter in the tail at 8 000 LSB RMS (-12.3 dBFS) than at 1 000 to 4 000,
+and 7.5 dB quieter at 16 000, with the output still under the rail. Second,
+the tank adds dry and wet before it rounds and clamps the output. On 2 s of
+uniform noise at Mix 1 no shipped patch reaches the rail at 4 000 LSB RMS
+(-18.3 dBFS), at 48, 44.1 or 22.05 kHz; at 8 000 LSB RMS most of them do,
+up to 482 samples in 2 s on Bright Chamber. The 4 000 LSB RMS figure is the
+patches', not every setting's: with Decay 10 s, Size 1.5 and Diffusion 0.9
+at Mix 1, Live Room puts 12 samples on the rail at 22.05 kHz.
 
 **RAM.** One int16 allocation: the twelve lines plus 200 ms of predelay.
 89 714 B for Steel Plate at 48 kHz; 146 914 B for the hall at Size 1.5, the
