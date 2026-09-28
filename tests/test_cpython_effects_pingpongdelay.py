@@ -176,6 +176,50 @@ class DryGainPingPong(PingPongDelay):
         self._output = kit_faults.HiddenGain(self._delay, 0.1)
 
 
+class _Steer(kit_faults._Node):
+    """Between the source and the node: `mode` "avg" hands both channels
+    (L + R) / 2, "swap" hands them exchanged. On a channel-identical source
+    both are the identity, byte for byte, which is why T5's kit materials
+    cannot see them (fix round 1; the material refuter's faults)."""
+
+    def __init__(self, source, mode):
+        kit_faults._Node.__init__(self, source)
+        self.mode = mode
+
+    def _process(self, frames):
+        if self.channel_count != 2:
+            return frames
+        x = frames.reshape(-1, 2)
+        if self.mode == "avg":
+            m = (x[:, 0] + x[:, 1]) / 2.0
+            return np.repeat(m[:, None], 2, axis=1).reshape(-1)
+        return x[:, ::-1].reshape(-1)
+
+
+class MonoInPingPong(PingPongDelay):
+    """T5's "never spread": the node fed (L + R) / 2 on both channels. At
+    Spread 1 the loop hears the average anyway, so only the dry changes."""
+
+    NAME = 'PingPongDelay'
+
+    def _build(self, *arguments, **options):
+        PingPongDelay._build(self, *arguments, **options)
+        self._steer = _Steer(self._source, "avg")
+        self._delay.play(self._steer)
+
+
+class SwapInPingPong(PingPongDelay):
+    """T5's "never spread": the node fed the source with its channels
+    exchanged, so the dry comes out on the wrong side."""
+
+    NAME = 'PingPongDelay'
+
+    def _build(self, *arguments, **options):
+        PingPongDelay._build(self, *arguments, **options)
+        self._steer = _Steer(self._source, "swap")
+        self._delay.play(self._steer)
+
+
 class NoSlewPingPong(PingPongDelay):
     """Section 8.5's walk: the slew off, so a Time move jumps. Red on the
     pitch clause, and on the step bar on a rising move only."""
@@ -535,11 +579,53 @@ def t4_default(cls):
 T5_MATERIALS = ("ramp_fs", "tones_step", "sweep_log")
 
 
+def lr_material(rate):
+    """Fix round 1: channel-different stereo, independent L and R noise
+    (`RandomState(7)`, uniform, peak 16 000 LSB = -6.2 dBFS), 2 T at
+    280 ms long. Every kit probe is channel-identical, and on those a dry
+    that is mono-summed or swapped is byte-identical to the source."""
+    n = 2 * law_frames(280.0, rate)
+    rs = np.random.RandomState(7)
+    left = rs.uniform(-16000, 16000, n)
+    right = rs.uniform(-16000, 16000, n)
+    return np.round(np.stack([left, right], axis=1)).astype(np.int16)
+
+
+def antiphase_material(rate):
+    """R = -L: `lr_material`'s left channel against its own negative."""
+    left = lr_material(rate)[:, 0]
+    return np.stack([left, -left], axis=1)
+
+
+def read_dry_crosstalk(effect):
+    """How much of the right input reaches the left output before the first
+    repeat, at this instance's macro positions: two copies on 256 frames,
+    (L = ramp, R = 0) and (L = ramp, R = -ramp), and the count of left
+    output samples that differ. 0 for a dry that is each channel's own
+    signal, at every Mix: the first repeat is never inside 256 frames
+    (the material refuter's reading)."""
+    rate = effect._sample_rate
+    n = 256
+    ramp = np.linspace(-30000, 30000, n)
+    outs = []
+    for right in (np.zeros(n), -ramp):
+        pcm = np.stack([ramp, right], axis=1).round().astype(np.int16)
+        other = type(effect)(probes.ArraySource(
+            array("h", pcm.reshape(-1).tobytes()), rate=rate, channels=2,
+            block=BLOCK), sample_rate=rate)
+        for index in range(len(type(effect).MACRO_LABELS)):
+            other.set_macro(index, effect.get_macro(index))
+        outs.append(pull(other, n, 2))
+        other.deinit()
+    return int(np.count_nonzero(outs[0][:, 0] != outs[1][:, 0]))
+
+
 def t5_measure(cls, rate=RATE, channels=2, materials=T5_MATERIALS,
-               macros=None, **options):
+               macros=None, pcm=None, **options):
     """WIRE over the first T - 1 frames on each material, and, where Mix is
     above 0, the output not the source somewhere in the T frames from
-    frame T."""
+    frame T. `pcm`, when given, is the one material, as (frames,
+    channels) int16."""
     T = cell_frames(options, macros, rate)
     probe = cls(silence_src(64, channels, rate), sample_rate=rate,
                 **options)
@@ -549,8 +635,9 @@ def t5_measure(cls, rate=RATE, channels=2, materials=T5_MATERIALS,
     probe.deinit()
     differing = 0
     absent = []
-    for name in materials:
-        pcm = material(name, rate, channels)
+    given = pcm
+    for name in (("given",) if given is not None else materials):
+        pcm = given if given is not None else material(name, rate, channels)
         end = min(len(pcm), 2 * T)
         y = render_pcm(cls, pcm[:end], rate, macros=macros, **options)
         differing += int(np.count_nonzero(y[:T - 1] != pcm[:T - 1]))
@@ -563,6 +650,10 @@ def t5_measure(cls, rate=RATE, channels=2, materials=T5_MATERIALS,
 
 def t5_default(cls):
     return t5_measure(cls, materials=("tones_step",))
+
+
+def t5_lr_default(cls):
+    return t5_measure(cls, pcm=lr_material(RATE))
 
 
 # --------------------------------------------------------------------------
@@ -1038,6 +1129,26 @@ class T1RepeatsAlternate(unittest.TestCase):
         self.assertEqual(result["weak"][0], 4)
         self.assertTrue(result["late"])
 
+    def test_presence_is_not_claimed_with_a_loop_filter_in(self):
+        # Fix round 1 (audit item 4): presence is claimed with both loop
+        # filters out. At the Feedback floor with Cut at its 400 Hz stop a
+        # repeat falls under 200 LSB, and the exclusion, the peak and the
+        # swap still hold on the same render.
+        weak = {48000: [8], 44100: [8], 22050: [7, 8]}
+        for rate in RATES:
+            result = t1_measure(PingPongDelay, rate, time_ms=280.0,
+                                macros={FEEDBACK_I: 67, CUT_I: 127})
+            self.assertEqual(result["weak"], weak[rate], rate)
+            self.assertEqual(result["leaks"], 0, rate)
+            self.assertEqual(result["late"], [], rate)
+            self.assertEqual(result["swapped"], 0, rate)
+            # Tone near its top loses repeat 8 at f 0.6.
+            result = t1_measure(PingPongDelay, rate, feedback=0.6,
+                                macros={TONE_I: 126}, peak_clause=False)
+            self.assertEqual(result["weak"], [8], rate)
+            self.assertEqual(result["leaks"], 0, rate)
+            self.assertEqual(result["swapped"], 0, rate)
+
     def test_a_lossy_cross_is_red(self):
         for rate in RATES:
             result = t1_measure(LossyCrossPingPong, rate, feedback=0.6)
@@ -1118,6 +1229,66 @@ class T3MonoSum(unittest.TestCase):
                             cut=cut)
         self.assertTrue(result["passed"], result)
 
+    def _gap(self, k, peak, opts, damping=0.0, cut=0.0):
+        """The row's burst lengthened to end `k` frames before T (280 ms,
+        f 0.6, 48 kHz): (sum differing, max LSB, first differing frame,
+        mono differing)."""
+        T = law_frames(280.0, RATE)
+        frames = 9 * T + int(0.1 * RATE)
+        n = T - k
+        x = np.zeros(frames)
+        x[:n] = np.round(np.random.RandomState(12345)
+                         .uniform(-peak, peak, n))
+        stereo = render(PingPongDelay, x, RATE, 2, time_ms=280.0,
+                        feedback=0.6, mix=2.0, **opts).astype(np.int32)
+        total = stereo[:, 0] + stereo[:, 1]
+        mono = render(PingPongDelay, x, RATE, 1, time_ms=280.0,
+                      feedback=0.6, mix=2.0, **opts)[:, 0].astype(np.int32)
+        ref = reference(x, RATE, T, 0.6, damping, cut)
+        where = np.flatnonzero(total != ref)
+        return (len(where), int(np.abs(total - ref).max()),
+                int(where[0]) if len(where) else None,
+                int(np.count_nonzero(mono != ref)))
+
+    def test_the_filter_cells_need_material_ending_512_frames_before_t(self):
+        # Fix round 1 (audit item 5): each lane's loop filter meets its
+        # own lane's next repeat 2 T later, the reference's the very next,
+        # so a burst ending close to T parts them. The filter cells are
+        # claimed on material ending at least 512 frames before T.
+        damping = nominal_damping_hz(800.0, RATE)
+        self.assertEqual(self._gap(1, 8192, {"tone_hz": 800.0}, damping),
+                         (295, 1, 2 * law_frames(280.0, RATE), 0))
+        self.assertEqual(self._gap(1, 8192, {}), (0, 0, None, 0))
+        cut = pp.nominal_cut_hz(400.0, RATE)
+        for peak in (8192, 32767):
+            self.assertEqual(self._gap(512, peak, {"cut_hz": 400.0},
+                                       cut=cut)[0], 0, peak)
+        # At 0 dBFS 256 frames is not enough for Cut 400 Hz.
+        self.assertEqual(self._gap(256, 32767, {"cut_hz": 400.0},
+                                   cut=cut)[0], 16)
+
+    def test_tone_in_then_out_is_outside_the_row(self):
+        # Fix round 1 (audit item 2, restated): once Tone has been in, its
+        # out stop hands a Feedback moved clear of the stall window
+        # (0.99 -> 0.989976102), so the row holds Tone never in since the
+        # last reset. Its own cell with Tone in then out differs in 5
+        # samples, up to 5 LSB, at three rates.
+        for rate in RATES:
+            T = law_frames(280.0, rate)
+            frames = 9 * T + int(0.1 * rate)
+            x = click(frames)
+            src, _ = to_source(x, 2, rate)
+            effect = PingPongDelay(src, sample_rate=rate, time_ms=280.0,
+                                   feedback=0.99, mix=2.0, tone_hz=5000.0)
+            effect.set_macro(TONE_I, 127)
+            stereo = pull(effect, frames).astype(np.int32)
+            total = stereo[:, 0] + stereo[:, 1]
+            ref = reference(x, rate, T, 0.99)
+            self.assertEqual(int(np.count_nonzero(total != ref)), 5, rate)
+            self.assertEqual(int(np.abs(total - ref).max()), 5, rate)
+            self.assertTrue(t3_measure(PingPongDelay, rate,
+                                       feedback=0.99)["passed"], rate)
+
     def test_the_mono_stereo_settings_are_red(self):
         for rate in RATES:
             result = t3_measure(MonoStereoSettingsPingPong, rate,
@@ -1144,6 +1315,23 @@ class T4SpreadLaw(unittest.TestCase):
     def test_first_side_right_is_the_swap_at_every_position(self):
         result = t4_measure(PingPongDelay, swap=True)
         self.assertTrue(result["passed"], result["red"])
+
+    def test_the_law_misses_off_the_frame(self):
+        # Fix round 1 (audit item 3): at the Times the node lands one
+        # float32 step off the frame the two-tap read leaks each pass into
+        # the frame beside it, and the law is not claimed there. MIDI 95
+        # misses at 44.1 and 22.05 kHz; MIDI 86 and 127 hold.
+        miss = {44100: 289.0, 22050: 145.0}
+        for rate in (44100, 22050):
+            result = t4_measure(PingPongDelay, rate, spreads=(1.0,),
+                                time_ms=law_time_ms(95), feedback=0.99)
+            self.assertFalse(result["passed"], rate)
+            self.assertGreater(result["worst"], miss[rate], rate)
+            for midi in (86, 127):
+                result = t4_measure(PingPongDelay, rate, spreads=(1.0,),
+                                    time_ms=law_time_ms(midi),
+                                    feedback=0.99)
+                self.assertTrue(result["passed"], (rate, midi))
 
     def test_the_panless_spread_is_red(self):
         for rate in RATES:
@@ -1190,6 +1378,41 @@ class T5DryPath(unittest.TestCase):
                     self.assertFalse(result["passed"],
                                      (rate, channels, options))
                     self.assertGreater(result["differing"], 0)
+
+    def test_never_spread_on_independent_channels(self):
+        # Fix round 1 (audit item 6): the kit's materials are
+        # channel-identical, so a dry that is mono-summed or swapped reads
+        # green on them. On independent L and R the window still reads 0,
+        # and both faults read red.
+        for rate in RATES:
+            pcm = lr_material(rate)
+            for options in ({}, {"mix": 0.2}, {"spread": 0.5},
+                            {"first_side": "right"}):
+                result = t5_measure(PingPongDelay, rate, pcm=pcm, **options)
+                self.assertTrue(result["passed"], (rate, options, result))
+            for cls in (MonoInPingPong, SwapInPingPong):
+                for options in ({}, {"mix": 0.2}):
+                    self.assertTrue(t5_measure(cls, rate, **options)
+                                    ["passed"], (rate, cls, options))
+                    result = t5_measure(cls, rate, pcm=pcm, **options)
+                    self.assertFalse(result["passed"], (rate, cls, options))
+                    self.assertGreater(result["differing"], 0)
+
+    def test_an_antiphase_source_does_not_repeat_at_spread_1(self):
+        # Disclosed, not a row: at Spread 1 the loop hears (L + R) / 2
+        # (`input_pan` hard over), so R = -L puts nothing in the loop. The
+        # defaults are a byte wire on it and Mix 2 is silence; at Spread
+        # 0.5 it repeats.
+        for rate in RATES:
+            T = law_frames(280.0, rate)
+            anti = antiphase_material(rate)
+            y = render_pcm(PingPongDelay, anti, rate)
+            self.assertEqual(int(np.count_nonzero(y != anti)), 0, rate)
+            y = render_pcm(PingPongDelay, anti, rate, mix=2.0)
+            self.assertEqual(int(np.count_nonzero(y[T:])), 0, rate)
+            y = render_pcm(PingPongDelay, anti, rate, spread=0.5)
+            self.assertGreater(int(np.count_nonzero(y[T:] != anti[T:])), 0,
+                               rate)
 
 
 # --------------------------------------------------------------------------
@@ -1254,22 +1477,43 @@ class Tier1Fast(unittest.TestCase):
         self.assertGreater(self._round_trip(
             FrozenFilterPingPong, CUT_I, 127, 1, RATE), 15000)
 
-    def test_tone_out_after_tone_in_is_within_1_lsb_of_out(self):
+    def _tone_out_after_in(self, x, rate, **options):
+        """Largest |difference| between Tone out after Tone 2 kHz was in
+        and Tone never in, on `x`, Mix 2."""
+        frames = len(x)
+        source, _ = to_source(x, 2, rate)
+        touched = PingPongDelay(source, sample_rate=rate, mix=2.0,
+                                tone_hz=2000.0, **options)
+        touched.set_macro(TONE_I, 127)
+        clean, _ = to_source(x, 2, rate)
+        plain = PingPongDelay(clean, sample_rate=rate, mix=2.0, **options)
+        a = pull(touched, frames).astype(np.int32)
+        b = pull(plain, frames).astype(np.int32)
+        return int(np.abs(a - b).max())
+
+    def test_tone_out_after_tone_in_is_within_the_stated_bound(self):
+        # Fix round 1 (audit item 2, restated): the out stop's
+        # coefficient-1 low-pass follows the tap, but the Feedback still
+        # goes through `clear_of_stalls`, which moves it by up to
+        # 2.6 x 10^-5 where a stall window sits (0.99 -> 0.989976102;
+        # 0.85 is in no window). The docstring's bound: 0 at 0.85, at most
+        # 6 LSB on 2 s of 0 dBFS noise at 0.99, and at most 32 LSB on a
+        # full-scale click through the whole tail. The old "within 1 LSB"
+        # is red at 0.99.
         for rate in RATES:
             frames = 2 * rate
             x = np.frombuffer(probes.noise_det(frames=frames, dbfs=0.0,
                                                channels=1),
                               dtype=np.int16)[:frames].astype(float)
-            source, _ = to_source(x, 2, rate)
-            touched = PingPongDelay(source, sample_rate=rate,
-                                    feedback=0.85, mix=2.0, tone_hz=2000.0)
-            touched.set_macro(TONE_I, 127)
-            clean, _ = to_source(x, 2, rate)
-            plain = PingPongDelay(clean, sample_rate=rate, feedback=0.85,
-                                  mix=2.0)
-            a = pull(touched, frames).astype(np.int32)
-            b = pull(plain, frames).astype(np.int32)
-            self.assertLessEqual(int(np.abs(a - b).max()), 1, rate)
+            self.assertEqual(self._tone_out_after_in(x, rate,
+                                                     feedback=0.85), 0, rate)
+            worst = self._tone_out_after_in(x, rate, feedback=0.99)
+            self.assertLessEqual(worst, 6, rate)
+            self.assertGreater(worst, 1, rate)
+        x = click(700 * law_frames(20.0, RATE), 32767)
+        worst = self._tone_out_after_in(x, RATE, time_ms=20.0, feedback=0.99)
+        self.assertLessEqual(worst, 32)
+        self.assertGreater(worst, 1)
 
     def test_the_tail_reaches_exact_zero_inside_tail_samples(self):
         on = 200 * RATE // 1000
@@ -1372,6 +1616,72 @@ class Tier1Fast(unittest.TestCase):
         self.assertEqual(len(calls), 1)
 
 
+def railed_samples(cls, dbfs, seconds, values=None, **options):
+    """Output samples on the int16 rail that the source did not put there:
+    the kit's `noise_det` at `dbfs` peak (or `values`), 48 kHz stereo."""
+    frames = int(seconds * RATE)
+    if values is None:
+        values = np.frombuffer(probes.noise_det(frames=frames, dbfs=dbfs,
+                                                channels=1),
+                               dtype=np.int16)[:frames].astype(float)
+    x = np.round(values).astype(np.int32)
+    y = render(cls, values, RATE, 2, **options).astype(np.int32)
+    source = ((x >= 32767) | (x <= -32768))[:, None]
+    out = (y >= 32767) | (y <= -32768)
+    return int(np.count_nonzero(out & ~source))
+
+
+class InputCeiling(unittest.TestCase):
+    """Fix round 1 (audit-3 ruling (o)): the docstring's ceiling on
+    `noise_det`, 48 kHz stereo, over 20 s. The defaults are clean at
+    -3 dBFS peak and patch 4 (Spread 0, the first shipped patch to rail)
+    at -3.1; each is red 1 dB over."""
+
+    SECONDS = 20.0
+
+    def test_the_stated_ceiling_is_clean_and_1_db_over_is_not(self):
+        for options, ceiling in (({}, -3.0), ({"patch": 4}, -3.1)):
+            self.assertEqual(railed_samples(PingPongDelay, ceiling,
+                                            self.SECONDS, **options), 0,
+                             options)
+            self.assertGreater(railed_samples(PingPongDelay, ceiling + 1.0,
+                                              self.SECONDS, **options), 0,
+                               options)
+
+    def test_the_any_material_bound(self):
+        # With Repeat Cut out, a DC one LSB under floor(32767 (1 - Mix))
+        # never reaches the rail at Feedback 0.99, at any Spread; at
+        # floor(32767 (1 - Mix)) itself the sum can round onto 32767.
+        for mix in (0.5, 0.3):
+            edge = int(math.floor(32767 * (1.0 - mix)))
+            for spread in (1.0, 0.0):
+                for level, reaches in ((edge - 1, False),
+                                       (edge, mix == 0.5)):
+                    y = render(PingPongDelay, [level] * (RATE // 2), RATE, 2,
+                               time_ms=12.5, feedback=0.99, mix=mix,
+                               spread=spread)
+                    self.assertEqual(bool(np.any(y >= 32767)), reaches,
+                                     (mix, spread, level))
+
+    def test_repeat_cut_needs_more_room(self):
+        # The loop high-pass overshoots a square's edges: at the defaults'
+        # Mix a 40 Hz square wave rails at -3.1 dBFS with Cut in, and is
+        # clean from -4 dBFS.
+        t = np.arange(int(self.SECONDS * RATE)) / RATE
+        wave_ = np.sign(np.sin(2.0 * math.pi * 40.0 * t + 1e-9))
+        for cut_hz in (40.0, 400.0):
+            loud = 32767.0 * 10.0 ** (-3.1 / 20.0) * wave_
+            quiet = 32767.0 * 10.0 ** (-4.0 / 20.0) * wave_
+            self.assertGreater(railed_samples(PingPongDelay, None,
+                                              self.SECONDS, values=loud,
+                                              cut_hz=cut_hz), 0, cut_hz)
+            self.assertEqual(railed_samples(PingPongDelay, None,
+                                            self.SECONDS, values=quiet,
+                                            cut_hz=cut_hz), 0, cut_hz)
+            self.assertEqual(railed_samples(PingPongDelay, None,
+                                            self.SECONDS, values=loud), 0)
+
+
 # --------------------------------------------------------------------------
 # The gate's two checks on every fault
 
@@ -1407,6 +1717,16 @@ class FaultsAreUnreachable(unittest.TestCase):
                                channels)
                 self.assertEqual(result["checked"], self.CHECKED)
 
+    def test_the_spread_dry_is_off_the_surface(self):
+        # Fix round 1: T5's "never spread" faults, read as the right input
+        # reaching the left output before the first repeat.
+        for cls in (MonoInPingPong, SwapInPingPong):
+            for rate in RATES:
+                with self.subTest(fault=cls.__name__, rate=rate):
+                    result = reach(cls, read_dry_crosstalk, rate)
+                    self.assertEqual(result["checked"], self.CHECKED)
+                    self.assertEqual(result["clean"], 0)
+
 
 class NullBuildRed(unittest.TestCase):
     """Every demonstrated row goes red on the class built as a wire, beside
@@ -1415,7 +1735,8 @@ class NullBuildRed(unittest.TestCase):
     def test_every_row_is_red_on_a_wire(self):
         for name, measure in (("T1", t1_default), ("T2", t2_default),
                               ("T3", t3_default), ("T4", t4_default),
-                              ("T5", t5_default)):
+                              ("T5", t5_default),
+                              ("T5 independent L/R", t5_lr_default)):
             with self.subTest(row=name):
                 result = kit_faults.null_build_red(
                     PingPongDelay, measure, label="PingPongDelay %s" % name)

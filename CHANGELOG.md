@@ -36,6 +36,23 @@ there, and are recorded in its changelog.
   shipped patches, on `noise_det`), the 15 kHz swing the wow costs the
   repeat, the Wow step, and Tone's flat top at 22.05 kHz. Board cost is
   unmeasured.
+- **`PingPongDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** repeats
+  that alternate between the speakers, on one `audioecho.FeedbackDelay`
+  whose cross-feed and input pan Spread moves between two plain delays and
+  the full bounce, by a stated law. The dry path is each channel's own
+  signal, the mono sum is an ordinary feedback delay exactly, and the class
+  hands a one-channel node the settings that keep its loop alive (the old
+  class silenced it). Every static Time lands on a whole frame at 48 kHz;
+  at 44.1 and 22.05 kHz 25 and 20 knob positions land one float32 step off,
+  which needs a node option. Time walks rather than clicks, Sync follows the
+  host's beat, and Repeat Tone and Repeat Cut put a low-pass and a
+  high-pass in the loop, defaulting out. It lives in
+  `lib/audioeffects/rebuilt/pingpongdelay.py`, and
+  `audioeffects.PingPongDelay` is still the old class. The docstring states
+  the input ceiling (-3 dBFS peak at the defaults, -3.1 over the shipped
+  patches, on `noise_det`), that at full Spread the loop hears (L + R) / 2,
+  and what Repeat Tone's out stop costs after Tone has been in. Board cost
+  is unmeasured.
 
 ## v0.3.2 (2026-09-25)
 

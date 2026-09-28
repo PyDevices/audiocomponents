@@ -47,14 +47,49 @@ identical in both channels, with Mix at 2, the two channels summed are
 that mono delay's output exactly, sample for sample, as long as no two
 repeats overlap one another: on sustained material that overlaps its own
 repeats each side rounds its own write where the mono delay rounds the sum
-once, and the two part by a few LSB.
+once, and the two part by a few LSB. That holds with Repeat Tone never in
+since the last `reset()`; once it has been in, its out stop moves the
+Feedback a hair (below), and at Feedback 0.99 the first eight repeats part
+from a delay at the knob's Feedback in 5 samples by up to 5 LSB. With a
+loop filter in, the material
+must also end at least 512 frames before Time at 48 kHz, because each
+side's filter meets that side's next repeat two Times later where the mono
+delay's meets the very next one: a noise burst ending one frame before
+Time parts them in 295 samples by 1 LSB (Repeat Tone 800 Hz) and in 680 by
+up to 2 LSB (Repeat Cut 400 Hz).
 
 **Spread's law.** Spread s hands the node `cross_feed` s and `input_pan`
 -s (First Side left) or +s (right). On a click identical in both channels,
 repeat n reads f^(n-1) [(1 - s/2) + (s/2)(1 - 2s)^(n-1)] of the click on
 the First Side channel and f^(n-1) [(1 - s/2) - (s/2)(1 - 2s)^(n-1)] on
 the other. At Spread 0 the two channels are identical; at Spread 1 each
-repeat is on one side only and the other side is exact zero.
+repeat is on one side only and the other side is exact zero. At the Times
+the node lands off the frame (below) the law misses by up to 289 LSB on a
+20 000 click at Feedback 0.99 (44.1 kHz, MIDI 95; 145 LSB at 22.05 kHz).
+
+**What the loop hears.** At Spread 1 the loop is fed the average of the
+two input channels, (L + R) / 2, into one line, so what the two channels
+share bounces and what differs between them never repeats. A source whose
+right channel is the left one upside down puts nothing in the loop: the
+defaults pass it through untouched and Mix 2 is silence. The dry path is
+always each channel's own signal, never swapped or summed.
+
+**Input ceiling.** The dry path sits at unity and the repeats add to it,
+so a hot input can put the output on the int16 rail, and there is no input
+gain to turn down. Measured on the kit's `noise_det` at 48 kHz over 20 s,
+the defaults are clean up to -3 dBFS peak (at -2 they rail 2331 samples)
+and every shipped patch up to -3.1 dBFS. Patch 4 (Spread 0, where each
+side repeats every Time rather than every two) rails first: 76 samples at
+-3 dBFS, and 167 902 on a 997 Hz sine there; patch 3 rails 4. On any
+material, with Repeat Cut out and Mix below 1, an input peaking at or
+below one LSB under (1 - Mix) of full scale, floor(32767 (1 - Mix)) - 1,
+cannot reach the rail at any Time, Feedback or Spread, because the lines
+hold int16 and so the repeats never exceed Mix x full scale: -3.1 dBFS at
+the default Mix 0.3 and at every patch. At exactly (1 - Mix) of full scale
+the sum can round onto 32767, the rail value, though nothing is clipped.
+Repeat Cut's high-pass overshoots a square wave's edges, so with it in
+leave more room: a 40 Hz square wave at -3.1 dBFS rails with Cut at 40 or
+400 Hz, and is clean from -4 dBFS.
 
 **RAM.** The line is `max_time_ms + 1` ms of two int16 lanes whatever the
 channel count: 192 192 B at 48 kHz for the default 1000 ms (176 576 B at
@@ -112,13 +147,24 @@ loop filter's state frozen while the filter is out, and a frozen filter
 plays what it held when it comes back in, out of silence. So once Repeat
 Tone has been in since the last `reset()` (a constructor `tone_hz` or a
 patch counts), its out stop keeps the low-pass running at a coefficient of
-exactly 1, which follows the repeats; against the filter truly out that
-is within 1 LSB. Repeat Cut cannot do that (a high-pass at coefficient 1
+exactly 1, which follows the repeats. The Feedback is still handed clear
+of the stall window described under Tail, which at some Feedbacks moves it
+by up to 2.6 x 10^-5 (0.99 plays as 0.989976102; 0.85 does not move), so
+the repeats die a hair sooner than with the filter truly out. On 2 s of
+0 dBFS noise that is 0 LSB at Feedback 0.85, 1-5 LSB at 0.5, 0.75, 0.9 and
+0.95, and 6 LSB at 0.99; a full-scale click at 0.99 followed through its
+whole tail differs by up to 32 LSB, around its 70th repeat. Repeat Cut
+cannot do that (a high-pass at coefficient 1
 mutes the loop), so once Repeat Cut has been in since the last `reset()`
 its bottom stop stays in circuit at the 20 Hz corner, the knob's own
 bottom, until the next `reset()`. That costs the low end of the repeats
 something a true out would not, and `tail_samples` is `None` while it
 lasts. A `reset()` brings both exact outs back.
+
+Each pass through a loop filter also takes something off a repeat's peak,
+so with either filter in the late repeats of a quiet bounce fade faster
+than Feedback alone says: at Feedback 0.52 (MIDI 67) with Repeat Cut at
+400 Hz the 8th repeat of a 20 000 click is 143 LSB at 48 kHz.
 
 **Tail.** `tail_samples` is an upper bound on how long the output takes to
 reach exact zero after your input stops, and it is long: the loop rounds
@@ -255,8 +301,10 @@ class PingPongDelay(_component.Component):
 
     **What the default surrenders:** both loop filters are out, so the
     bounce does not darken on its own; Time walks rather than jumps, and a
-    walk bends the repeats' pitch while it moves; and on a mono source
-    Spread and First Side do nothing.
+    walk bends the repeats' pitch while it moves; at full Spread what
+    differs between the two input channels never repeats; on a mono source
+    Spread and First Side do nothing; and there is no input gain, so an
+    input above -3 dBFS peak can reach the rail.
     """
 
     NAME = 'PingPongDelay'
