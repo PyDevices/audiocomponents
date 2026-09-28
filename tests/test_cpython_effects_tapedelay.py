@@ -1725,6 +1725,22 @@ class T4Fluctuation(unittest.TestCase):
         got = t4_verdict(*delay_trace(TapeDelay, wow=8.0, flutter=0.005))
         self.assertFalse(got["two_lines"], got)
 
+    def test_wow_under_grid_1_is_red_and_not_claimed(self):
+        # Fix round 2: Wow above 0 and under grid 1 (0.063 c) is added to
+        # Not claimed, as Flutter's was. At 1.2e-4 c (Flutter 1 c, 48 kHz)
+        # the slow band still reads well over 40 dB above its own floor but
+        # carries under T4_FLOOR_MS of delay (8.21e-6 ms), so the absolute
+        # clause is what fails it: the exclusion is needed, and grid 1
+        # (test_the_weakest_claimed_lines_clear_the_absolute_floor) is not
+        # in it.
+        got = t4_verdict(*delay_trace(TapeDelay, wow=1.2e-4, flutter=1.0))
+        self.assertFalse(got["passed"], got)
+        self.assertFalse(got["drift_ok"], got)
+        self.assertGreaterEqual(got["drift"], 40.0, got)
+        self.assertLess(got["slow_ms"], T4_FLOOR_MS, got)
+        self.assertTrue(got["two_lines"], got)
+        self.assertTrue(got["ratio_ok"], got)
+
 
 # -- T5: disconfirmed by design -------------------------------------------
 
