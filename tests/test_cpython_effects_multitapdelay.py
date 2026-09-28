@@ -32,6 +32,13 @@ and under the workspace's desktop MicroPython and CircuitPython where they
 are present and current for `AUDIODSP_PIN`: a mono dry block lost after a
 reset shows only on a native interpreter, whose mixer voice points into the
 tap's own buffer where the CPython shim copies.
+
+Re-audit fix round 2 (2026-09-28) adds `ReauditRoundTwo`: the same script
+with `audiocore.get_buffer` withheld from the class (a stand-in module, so
+it runs natively too), every route held to what the docstring says such a
+build plays, beside a plant that moves the first block; and `NoTapLap`, a
+tail bound one lap short, red on the tail reading at a cell where the tail
+comes within a lap.
 """
 
 import math
@@ -2333,10 +2340,163 @@ def part_blocks(cls, label):
                              channels, wrong))
 
 
+class QuietAlways(M):
+    '''A wiring that primes zeros on every build, get_buffer or not: where
+    get_buffer is left out nothing hands the primed zeros out, so the
+    output opens with a silent block. It moves the first block, which is
+    what the no-get_buffer words describe.'''
+
+    NAME = 'MultiTapDelay'
+
+    def _quiet_wiring(self):
+        return True
+
+
+PLANTS["quietalways"] = QuietAlways
+
+
+class NoGetBuffer:
+    '''audiocore without get_buffer, every other name passed through: what
+    a patched CircuitPython board build that leaves it out gives the class.
+    Installed in the two modules that look it up; the pulls below keep the
+    real one.'''
+
+    def __getattr__(self, name):
+        if name == "get_buffer":
+            raise AttributeError(name)
+        return getattr(audiocore, name)
+
+
+def use_audiocore(module):
+    from audioeffects import _component
+    top = __import__("audioeffects.rebuilt.multitapdelay")
+    _component.audiocore = module
+    top.rebuilt.multitapdelay.audiocore = module
+
+
+#: Clicks for the no-get_buffer routes: two in the first block, one in
+#: block 23 (the block before an event at block 24), two after block 24.
+NG_CLICKS = ((10, 20000), (700, 9000), (6000, 8000), (6500, 7000),
+             (9000, 5000))
+NG_AT = 24 * BLOCK
+#: route -> (constructor Mix, {block: [actions]}).
+NG_ROUTES = (
+    ("constructed", 1.0, {}),
+    ("Mix 0 first, back at 24", 1.0, {0: ["mix0"], 24: ["back"]}),
+    ("Mix 0 first, reset at 24", 1.0, {0: ["mix0"], 24: ["reset"]}),
+    ("Mix 0 and back first", 1.0, {0: ["mix0", "back"]}),
+    ("built at Mix 0, reset first", 0.0, {0: ["reset"]}),
+    ("reset at 24", 1.0, {24: ["reset"]}),
+    ("Mix 0 at 24, back at 48", 1.0, {24: ["mix0"], 48: ["back"]}),
+)
+
+
+def ng_act(e, action):
+    if action == "mix0":
+        e.set_macro(MIX_I, 0)
+    elif action == "back":
+        e.set_macro(MIX_I, 63.5)
+    else:
+        e.reset()
+        e.set_macro(FB_I, 0)
+        e.set_macro(MIX_I, 63.5)
+
+
+def ng_law(route, pulls, n1a, n1b, frames):
+    '''What the docstring says each route plays, every lane: `pulls` False
+    is a build without get_buffer. n1a is the base as built, n1b after the
+    route's events (a reset restores patch 0's Time).'''
+    want = {}
+
+    def put(f, v):
+        if f < frames:
+            want[f] = want.get(f, 0) + v
+
+    def heads(o, v, n1, stop=frames):
+        for k in (1, 2, 3):
+            if o + k * n1 < stop:
+                put(o + k * n1, v)
+
+    late = not pulls
+    for s, v in NG_CLICKS:
+        block = s // BLOCK
+        if route in ("constructed", "Mix 0 and back first"):
+            put(s, v)
+            heads(s, v, n1a)
+        elif route.startswith("Mix 0 first"):
+            if not late:
+                put(s, v)
+                if s >= NG_AT:
+                    heads(s, v, n1b)
+            elif block == 0:
+                # the first block, held in the dry, plays at the return
+                put(s + NG_AT, v)
+                heads(s + NG_AT, v, n1b)
+            elif block <= 24:
+                # the Mix-0 run: one block early, no heads
+                put(s - BLOCK, v)
+            else:
+                put(s, v)
+                heads(s, v, n1b)
+        elif route == "built at Mix 0, reset first":
+            o = s + BLOCK if late else s
+            put(o, v)
+            heads(o, v, n1b)
+        elif route == "reset at 24":
+            put(s, v)
+            if s >= NG_AT or (late and block == 23):
+                heads(s, v, n1b)
+            else:
+                heads(s, v, n1a, NG_AT)
+        else:                   # Mix 0 at 24, back at 48
+            put(s, v)
+            if s < NG_AT:
+                heads(s, v, n1a, NG_AT)
+                if late and block == 23:
+                    heads(s + NG_AT, v, n1a)
+            elif s >= 2 * NG_AT:
+                heads(s, v, n1a)
+    return want
+
+
+def ng_run(cls, route, mix, plan, rate, channels, pulls):
+    n1 = (rate * 150 + 500) // 1000
+    frames = 2 * NG_AT + 3 * n1 + 2 * BLOCK
+    values = clicks(channels, frames + 16 * BLOCK, NG_CLICKS)
+    use_audiocore(audiocore if pulls else NoGetBuffer())
+    try:
+        e = cls(source(values, rate, channels, BLOCK), sample_rate=rate,
+                feedback=0.0, mix=mix)
+        n1a = e._n1
+        out = array("h")
+        block = 0
+        while len(out) < frames * channels:
+            for action in plan.get(block, ()):
+                ng_act(e, action)
+            out.extend(samples(bytes(audiocore.get_buffer(e.output)[1])))
+            block += 1
+        n1b = e._n1
+        e.deinit()
+    finally:
+        use_audiocore(audiocore)
+    return judge(out, channels, frames,
+                 ng_law(route, pulls, n1a, n1b, frames))
+
+
+def part_ng(cls, label, pulls):
+    for route, mix, plan in NG_ROUTES:
+        for rate, channels in ((48000, 2), (48000, 1), (22050, 1)):
+            wrong = ng_run(cls, route, mix, plan, rate, channels, pulls)
+            print("%s|%s|%s|%d|%d|%d" % ("GB" if pulls else "NOGB", label,
+                                         route, rate, channels, wrong))
+
+
 def main(args):
     '''Each argument is `plant,plant=part,part`.'''
     parts = {"firstdry": part_firstdry, "firstheads": part_firstheads,
-             "blocks": part_blocks}
+             "blocks": part_blocks,
+             "gb": lambda cls, label: part_ng(cls, label, True),
+             "nogb": lambda cls, label: part_ng(cls, label, False)}
     for group in args:
         plants, names = group.split("=")
         for plant in plants.split(","):
@@ -2502,7 +2662,10 @@ class ReauditRoundOne(unittest.TestCase):
         # this cell for ever there. Since v0.6.3rc1 it is handed as set and
         # the tail ends inside the bound. At v0.6.2 the same cell holds
         # past it (the pack's re-audit fix round 1 section, on
-        # bin/micropython and bin/circuitpython at v0.6.2).
+        # bin/micropython-062 and bin/circuitpython-062). SteppedLaps below
+        # is red on the handed Feedback only: this cell's tail is far
+        # inside the bound, and the tail reading's plant (NoTapLap) is in
+        # ReauditRoundTwo, at a cell where the tail comes within a lap.
         for rate, channels in ((RATE, 2), (RATE, 1), (44100, 2),
                                (22050, 2)):
             handed, knob, declared, tail, held = stall_cell(
@@ -2641,6 +2804,126 @@ class ReauditRoundOne(unittest.TestCase):
         result = reach(BareAdapter, lambda e: e._bypass() is e._adapter)
         self.assertIs(result["target"], True)
         self.assertEqual(result["checked"], 9 * 17 + 7)
+
+
+# --------------------------------------------------------------------------
+# Re-audit fix round 2: the words for a build without get_buffer, and a
+# plant for the tail reading
+
+
+class NoTapLap(MultiTapDelay):
+    """A tail bound one lap short: `tail_samples` leaves out the lap the
+    tap node needs to read its line out (the re-refuter's plant)."""
+
+    NAME = 'MultiTapDelay'
+
+    def _tail_bound(self):
+        bound = MultiTapDelay._tail_bound(self)
+        return bound - self._lap if bound else bound
+
+
+def tail_reading(cls, rate, channels, settings, level=32767):
+    """DC at `level` for max(rate / 2, two laps), then silence: (tail_samples,
+    frames from the input's end to the last non-zero sample, whether the
+    last frame rendered is non-zero)."""
+    probe = cls(Endless(silence(channels=channels), rate, channels),
+                sample_rate=rate)
+    for index, midi in settings:
+        probe.set_macro(index, midi)
+    hold = max(rate // 2, 2 * probe._lap)
+    probe.deinit()
+    effect = cls(Endless(array("h", [level] * (hold * channels)), rate,
+                         channels), sample_rate=rate)
+    for index, midi in settings:
+        effect.set_macro(index, midi)
+    declared = effect.tail_samples
+    total = hold + declared + 3 * effect._lap + 2 * BLOCK
+    out = pull(effect, total)
+    effect.deinit()
+    nz = np.nonzero(np.any(out != 0, axis=1))[0]
+    last = int(nz[-1]) if len(nz) else -1
+    return declared, max(0, last - hold + 1), last == total - 1
+
+
+#: The route cells of `ROUTES_MODULE`'s gb / nogb parts.
+NG_ROUTE_NAMES = ("constructed", "Mix 0 first, back at 24",
+                  "Mix 0 first, reset at 24", "Mix 0 and back first",
+                  "built at Mix 0, reset first", "reset at 24",
+                  "Mix 0 at 24, back at 48")
+NG_CASES = ((48000, 2), (48000, 1), (22050, 1))
+NG_GROUPS = ("clean=gb,nogb", "oldwiring=gb", "quietalways=nogb")
+
+
+class ReauditRoundTwo(unittest.TestCase):
+    """Re-audit fix round 2 (2026-09-28): the gate audit's re-audit round 1
+    items 1 and 2."""
+
+    def _judge_ng(self, results):
+        def cells(names):
+            return sorted((name, rate, channels) for name in names
+                          for rate, channels in NG_CASES)
+
+        # The clean class plays what the docstring says, with get_buffer
+        # and without it, on every route and in every lane.
+        for part in ("GB", "NOGB"):
+            self.assertEqual(len([key for key in results if key[0] == part
+                                  and key[1] == "clean"]), 7 * 3, part)
+            self.assertEqual(red_cells(results, part, "clean"), [], part)
+        # With get_buffer the law is the source on time: ac2181f's wiring
+        # breaks it wherever Mix goes to 0 before the first pull.
+        self.assertEqual(red_cells(results, "GB", "oldwiring"), cells(
+            ("Mix 0 first, back at 24", "Mix 0 first, reset at 24",
+             "Mix 0 and back first")))
+        # Without it the law is the one the words state (the Mix-0 run one
+        # block early, the first block at the return with its heads, the
+        # pending block's heads after a reset or a Mix-0 run): a wiring
+        # that primes zeros on every build moves the first block, and is
+        # red wherever the class was built above Mix 0.
+        self.assertEqual(red_cells(results, "NOGB", "quietalways"), cells(
+            name for name in NG_ROUTE_NAMES
+            if name != "built at Mix 0, reset first"))
+
+    def test_the_no_get_buffer_words_cpython(self):
+        self._judge_ng(run_routes(sys.executable, NG_GROUPS))
+
+    def test_the_no_get_buffer_words_native(self):
+        found = current_native_interpreters()
+        if found is None:
+            self.skipTest("no workspace bin/ above this checkout")
+        for family, binary in sorted(found.items()):
+            self.assertIsNotNone(binary, "no %s in the workspace bin/ "
+                                 "contains AUDIODSP_PIN's audiodsp" % family)
+            self._judge_ng(run_routes(binary, NG_GROUPS))
+
+    def test_quiet_always_is_not_on_the_surface(self):
+        # Where get_buffer is left out, no macro position or patch makes
+        # the clean class's wiring outside reset() quiet.
+        module = routes_module()
+        module.use_audiocore(module.NoGetBuffer())
+        try:
+            result = reach(module.QuietAlways, lambda e: e._quiet_wiring())
+        finally:
+            module.use_audiocore(audiocore)
+        self.assertIs(result["target"], True)
+        self.assertEqual(result["checked"], 9 * 17 + 7)
+
+    def test_the_tail_reading_is_red_on_a_bound_one_lap_short(self):
+        # The stall cell's tail sits far inside its bound, so the stall
+        # test's tail half cannot see a bound one lap short. Full-scale DC
+        # at the shortest lap, Feedback MIDI 96, Repeat Tone MIDI 126, comes
+        # within one lap of it: inside the bound, and over it on NoTapLap.
+        settings = ((TIME_I, 0), (FEEDBACK_I, 96), (MIX_I, 127),
+                    (TONE_I, 126))
+        for rate, channels in ((RATE, 2), (22050, 1)):
+            declared, tail, held = tail_reading(MultiTapDelay, rate,
+                                                channels, settings)
+            self.assertFalse(held, (rate, channels))
+            self.assertLessEqual(tail, declared, (rate, channels))
+            short, planted, held = tail_reading(NoTapLap, rate, channels,
+                                                settings)
+            self.assertFalse(held, (rate, channels))
+            self.assertEqual(planted, tail, (rate, channels))
+            self.assertGreater(planted, short, (rate, channels))
 
 
 if __name__ == "__main__":

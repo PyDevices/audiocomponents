@@ -91,7 +91,12 @@ there, and are recorded in its changelog.
   in a width-1 MidSide, so a host resetting the output leaves the lines as
   they are. On a build without `audiocore.get_buffer` (a patched
   CircuitPython board may leave it out), a class built at Mix 0 and reset
-  before it was ever turned up plays its source 256 frames late. The
+  before it was ever turned up plays its source 256 frames late; a class
+  built above Mix 0 and taken to Mix 0 before the first pull plays the
+  Mix-0 run 256 frames early without the source's first block, then plays
+  that block, with its heads, when Mix comes back up or `reset()` is
+  called; and a reset or a return from Mix 0 lets the block the tap node
+  had not read into the lines, its heads late by any Mix-0 run between. The
   constructor refuses a sample rate below 12 825 Hz with a `ValueError`,
   where the one-block lag could not place the 20 ms head. At audiodsp
   v0.6.3rc1 the Feedback is handed to the lap node as set (no stepping

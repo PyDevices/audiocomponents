@@ -134,10 +134,20 @@ a buffer across a reset and a Mix 0 switch, and the next pull plays it.
 
 That rests on `audiocore.get_buffer`, which every desktop build and the
 MicroPython boards carry and a patched CircuitPython board build may not.
-Without it a class that wires its graph inside `reset()` (one built at
-Mix 0 and never turned up) opens with one silent 256-frame block and
-plays your source 256 frames late from then on, and a reset or a return
-from Mix 0 lets the one block the tap node had not read into the lines.
+Without it the class cannot pull its own graph, so a class built above
+Mix 0 holds your source's first block in the dry until the first pull, and
+three things differ. If you take it to Mix 0 before that pull, the Mix-0
+run plays your source from its second block, 256 frames early, without the
+first; when Mix comes back up, or you call `reset()`, that first block
+plays then, with its heads after it, as late as the run was long, and
+everything after it is on time (after a 24-block run at 48 kHz, a click in
+the first block sounds 6 144 frames late). A class built at Mix 0 and reset
+before it was ever turned up opens with one silent 256-frame block and
+plays your source 256 frames late from then on. And a reset or a return
+from Mix 0 lets the one block the tap node had not read into the lines:
+its heads sound, as late as any Mix-0 run between was long. Taking Mix to
+0 and back before the first pull, with nothing played between, is on
+time.
 
 The output ends in an `audioroute.MidSide` at width 1, the identity, whose
 reset forwards nothing, above Mix 0 and at it: a host that resets the
@@ -854,11 +864,20 @@ class MultiTapDelay(_component.Component):
         refilled the tap's own buffer the voice was pointing into, so the
         dry's first 256 samples played as zeros. Inside `reset()` the
         wiring is quiet on every build, because a reset must take nothing
-        from the source. Where `get_buffer` is left out, a wiring outside
-        `reset()` primes the source (and plays it on time, since `_resync`
-        cannot pull there either), a wiring inside `reset()` opens the
-        output with that one silent block, and a reset or a return from
-        Mix 0 lets tap 1's pending block into the lines.
+        from the source.
+
+        Where `get_buffer` is left out, a wiring outside `reset()` primes
+        the source's first block into the dry voice, and nothing here can
+        pull it out. The first pull plays it on time. A Mix-0 route before
+        that pull hands out the adapter, which has already given that block
+        away, so the run plays the source one block early without it; the
+        voice keeps the block, and plays it at the return (or the reset)
+        with tap 1's copy going into the lines, since `_resync` cannot swap
+        it, so its heads follow it. A wiring inside `reset()` opens the
+        output with the one silent block it primed, and a reset or a return
+        from Mix 0 lets tap 1's pending block into the lines, its heads
+        late by any Mix-0 run between. The module docstring says all of
+        this in a host's terms.
         """
         if not self._ready:
             return
