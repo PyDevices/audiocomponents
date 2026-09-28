@@ -32,6 +32,18 @@ reports what it is set to the moment it moves - `floor(ms x rate / 1000)`, up
 to 480 samples (10 ms) at 48 kHz. True Peak adds **no latency at all**: the 4x
 reconstruction runs on the detector signal and never reaches the audio path.
 
+**A lookahead that grows starts from silence.** The node writes its line
+only as far as its delay reaches, so lengthening it used to expose what
+the line held the last time it was that long: Lookahead off and back on
+after a pause replayed the last note at full level (31 373 LSB), and True
+Peak moving its twelve-sample reserve between the stages did the same. A
+stage whose delay grows is now reset first (audiocomponents#113). The node
+cannot clear its line alone, so that stage's gain restarts too: with the
+shape stage's zero attack it catches the next peak on its first sample, and
+the catch stage holds the ceiling throughout. Lengthening the lookahead
+while audio plays therefore inserts that much silence, where it used to
+insert old audio.
+
 **True Peak costs real time, and it costs lookahead.** The palette prices
 each `Dynamics` with `true_peak=2` at the +options row: **1.611 ms / 3.461 ms**
 marginal on the P4 / S3. This class lights it on *both* stages, so the
@@ -230,6 +242,10 @@ class Limiter(_component.Component):
         low material - see the class docstring."""
         self._latency = 0
         self._true_peak = bool(true_peak)
+        #: The delay each stage was last handed, in samples. See
+        #: `_apply_lookahead` for why a stage's growth clears it. Made there
+        #: if a subclass's `_build` did not, so a planted build still runs.
+        self._held = {}
         self._shape = self._own(audiodynamics.Dynamics(
             audiodynamics.DYN_COMPRESS,
             sample_rate=self._sample_rate,
@@ -337,6 +353,23 @@ class Limiter(_component.Component):
         reserve = (min(samples, type(self).TRUE_PEAK_RESERVE_SAMPLES)
                    if self._true_peak else 0)
         shape = samples - reserve
+        # A stage whose delay GROWS is cleared first. The node writes its
+        # lookahead line only as far as the delay it is set to, so the rest
+        # of the line keeps whatever it held the last time the delay reached
+        # that far; lengthen it again and that plays - Lookahead off and
+        # back on after a pause replayed the last note at full level, 31 373
+        # LSB, and True Peak's twelve-sample reserve moving between the
+        # stages did the same (audiocomponents#113). The node has no way to
+        # clear the line alone, so the stage is reset: the line goes to
+        # silence and the stage's gain starts afresh. A delay that shrinks
+        # or stays keeps its line.
+        held = getattr(self, "_held", None)
+        if held is None:
+            held = self._held = {}
+        for stage, frames in ((self._shape, shape), (self._catch, reserve)):
+            if frames > held.get(stage, 0) and not self._constructing:
+                self._clear_nodes(only=(stage,))
+            held[stage] = frames
         self._shape.set(lookahead_ms=(0.0 if shape == 0
                                       else (shape + 0.5) * 1000.0 / rate))
         release_ms = _CATCH_RELEASE_MS

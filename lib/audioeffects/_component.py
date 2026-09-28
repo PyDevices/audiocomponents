@@ -661,6 +661,9 @@ class Component:
         self._macros = []
         self._patch_index = 0
         self._deinited = False
+        #: Whether a control has routed the output around the graph since the
+        #: graph last played. See `_route_around` and `_rejoin`.
+        self._stranded = False
         #: True only while `_build` is running.
         #:
         #: `_init_macros` applies a constructor `patch=` from inside
@@ -739,6 +742,67 @@ class Component:
         self._resets.append(reset)
         self._deinits.append(deinit)
         return node
+
+    def _clear_nodes(self, keep=(), only=None):
+        """Clear the nodes this class registered, tail first, the way
+        `reset()` does, and leave the macros and the patch alone.
+
+        Each node is cleared by what it was registered with: `reset=True` is
+        `audiocore.reset_buffer`, a callable is called, `False` is skipped.
+        `keep` names nodes to leave untouched (a node the bypass itself
+        reads, which is still live). `only`, when given, limits the walk to
+        those nodes - a sub-branch that a control takes out and puts back.
+        """
+        for position in range(len(self._nodes) - 1, -1, -1):
+            node = self._nodes[position]
+            if only is not None and not _named(node, only):
+                continue
+            if _named(node, keep):
+                continue
+            clear = self._resets[position]
+            if clear is False:
+                continue
+            if clear is True:
+                audiocore.reset_buffer(node)
+            else:
+                clear()
+
+    def _route_around(self, bypass):
+        """Point the output at `bypass` - the borrowed source, or the node
+        a bypass hands back - and remember that the graph behind it has
+        stopped being pulled.
+
+        The stale-block defect (audiocomponents#113): a graph nobody pulls
+        keeps whatever it held when the control moved - its filters' and
+        shapers' memory, a lookahead line, the block a mixer voice had
+        queued. Bring the control back after a pause and that plays out of
+        silence: a 5 ms fragment of whatever was sounding when the knob went
+        down. `_rejoin` is the other half. During `_build` nothing has
+        played yet, so nothing is stranded.
+        """
+        if not self._constructing:
+            self._stranded = True
+        self._output = bypass
+
+    def _rejoin(self, keep=()):
+        """The graph `_route_around` left is about to be pulled again.
+
+        If it was routed around since it last played, every node it
+        registered is cleared (`_clear_nodes`, `keep` passed through) and
+        this returns True: the caller then arms it the way its constructor
+        does - the level gates, the voices, a coupling capacitor charged on
+        the bias - so the graph comes back as it was built rather than as it
+        was left. Clearing is the state silence would have decayed to for
+        every node whose silence answer is zero; a node that answers silence
+        with a constant (a biased shaper's coupling pole) is exactly what
+        the constructor's charge settles, which is why re-arming is the
+        caller's half. Returns False, and touches nothing, otherwise.
+        """
+        if not self._stranded:
+            return False
+        self._stranded = False
+        self._clear_nodes(keep)
+        return True
 
     def _pcm(self, buffer_size=2048):
         """The keyword bundle an audiodsp node wants, at this instance's
@@ -940,14 +1004,10 @@ class Component:
         """Clear every node this class built, tail first, and restore patch
         0. The borrowed source is never named here."""
         self._check_live()
-        for position in range(len(self._nodes) - 1, -1, -1):
-            clear = self._resets[position]
-            if clear is False:
-                continue
-            if clear is True:
-                audiocore.reset_buffer(self._nodes[position])
-            else:
-                clear()
+        self._clear_nodes()
+        # Everything is clear now, so nothing is stranded: patch 0 coming
+        # back off a bypass is the reset's own re-arm, not a second clear.
+        self._stranded = False
         self.program_change(0)
 
     def deinit(self):
@@ -977,6 +1037,16 @@ class Component:
         self._deinits = []
         self._output = None
         self._deinited = True
+
+
+def _named(node, nodes):
+    """Whether `node` is one of `nodes`, by identity. A node may define
+    `__eq__`, and a walk over the graph means this object, not an equal
+    one."""
+    for other in nodes:
+        if other is node:
+            return True
+    return False
 
 
 # --------------------------------------------------------------------------

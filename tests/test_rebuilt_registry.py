@@ -861,10 +861,16 @@ class TheAdoptionGate(unittest.TestCase):
         # `Exciter` last, under Brad's G6 ruling that the cost gate is a
         # real-time ceiling, 80 % of a stereo block, which all three are
         # inside on both boards at every shipped patch. `drive.py` is
-        # deleted, so ADOPTED is empty again and the substitution machinery
-        # stays for Flanger and the phases to come.
-        self.assertEqual(rebuilt.ADOPTED, ())
+        # deleted, so ADOPTED emptied and the substitution machinery stayed
+        # for Flanger and the phases to come. Phase 5's first two,
+        # `DigitalDelay` and `SlapbackDelay`, were adopted on 2026-09-28 on
+        # Brad's rulings, and are served from here until they come home.
+        self.assertEqual(rebuilt.ADOPTED, ("DigitalDelay", "SlapbackDelay"))
         self.assertEqual(rebuilt.adopted(), rebuilt.ADOPTED)
+        for name in rebuilt.ADOPTED:
+            self.assertIs(rebuilt.load(name), rebuilt.module_class(name))
+            self.assertIs(getattr(audioeffects, name),
+                          rebuilt.module_class(name))
         parked = set(rebuilt.parked())
         known = set(rebuilt.known())
         self.assertTrue(set(FIXTURES) <= parked)

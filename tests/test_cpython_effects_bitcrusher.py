@@ -1083,3 +1083,122 @@ class TheTierOneRowsAtEveryShippedPatch(unittest.TestCase):
                 self.assertEqual(peak, 0,
                                  "program_change(%d) on silence emitted %d "
                                  "LSB" % (patch, peak))
+
+
+# -- the stale blocks (audiocomponents#113) ------------------------------
+
+import os                                                       # noqa: E402
+import sys                                                      # noqa: E402
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+import stale_blocks as stale                                    # noqa: E402
+
+class TheBypassComesBackAsBuilt(unittest.TestCase):
+    """Mix back up from 0 after a pause plays nothing that was there before
+    the pause (audiocomponents#113; Brad, 2026-09-28: "fix the stale
+    blocks"). At Mix 0 the class hands back its source and nothing behind
+    it is pulled, so the graph kept its filters' memory and the block each
+    mixer voice had queued; bringing Mix back played that out of silence.
+    `_component.Component._rejoin` clears the graph and the class re-arms
+    it the way its constructor does.
+
+    No in-step check here: the hold's accumulator restarts with the graph,
+    so the returning tone is held on a different grid from an instance
+    that never moved - hundreds of LSB apart before the fix as well.
+    """
+
+    CLS = rebuilt.Bitcrusher
+    MIX = 4
+
+    def test_mix_back_after_silence_plays_nothing(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                self.assertEqual(
+                    stale.blip(self.CLS, self.MIX, 127, 0, rate, channels),
+                    (0, 0), (rate, channels))
+        self.assertEqual(stale.blip(self.CLS, self.MIX, 64, 0), (0, 0))
+
+    def test_at_every_patch(self):
+        for patch in sorted(self.CLS.PATCHES):
+            before, after = stale.blip(self.CLS, self.MIX, 127, 0,
+                                       patch=patch)
+            self.assertEqual(before, 0, patch)
+            self.assertLessEqual(
+                after, max(stale.twin(self.CLS, self.MIX, 127, patch=patch),
+                           getattr(self, "BOUNDED", {}).get(patch, 0)),
+                patch)
+
+    def test_a_block_primed_at_construction_is_not_replayed(self):
+        for channels in (2, 1):
+            self.assertEqual(
+                stale.first_blip(self.CLS, self.MIX, channels=channels), 0)
+
+    def test_the_old_rejoin_and_a_clear_without_rearming_are_red(self):
+        # The class before the fix: the graph taken back untouched.
+        before, after = stale.blip(
+            stale.planted(self.CLS, stale.StaleRejoin), self.MIX, 127, 0,
+            )
+        self.assertEqual(before, 0)
+        self.assertGreater(after, 1000)
+        # A wrong cure: cleared but not re-armed, so the voices keep the
+        # block they queued at construction.
+        self.assertGreater(stale.first_blip(
+            stale.planted(self.CLS, stale.ClearOnlyRejoin), self.MIX), 1000)
+
+
+class NoBranchClear(rebuilt.Bitcrusher):
+    """Planted: the class before the fix. Band Limit or Dither back on and
+    nothing is cleared."""
+
+    def _clear_nodes(self, keep=(), only=None):
+        if only is None:
+            rebuilt.Bitcrusher._clear_nodes(self, keep, only)
+
+
+class FirstSectionClear(rebuilt.Bitcrusher):
+    """Planted, a wrong cure: Band Limit back on clears the first section of
+    the low-pass and leaves the rest holding what they held."""
+
+    def _clear_nodes(self, keep=(), only=None):
+        if only is not None and only is self._sections:
+            only = self._sections[:1]
+        rebuilt.Bitcrusher._clear_nodes(self, keep, only)
+
+
+class TheBandLimitAndTheDitherComeBackClean(unittest.TestCase):
+    """Band Limit and Dither back on after a pause play nothing from before
+    it (audiocomponents#113). The band-limit sections and the dither gate
+    are not pulled while their switch is off; the sections kept their
+    memory (13 646 LSB out of silence) and the gate stayed open on the
+    dither (32). Each is cleared when it comes back."""
+
+    CLS = rebuilt.Bitcrusher
+
+    def test_band_limit_back_on_plays_nothing(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                self.assertEqual(stale.blip(self.CLS, 3, 127, 0, rate,
+                                            channels), (0, 0),
+                                 (rate, channels))
+        for patch in sorted(self.CLS.PATCHES):
+            self.assertEqual(stale.blip(self.CLS, 3, 127, 0, patch=patch),
+                             (0, 0), patch)
+
+    def test_dither_back_on_plays_nothing_it_did_not_already(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                self.assertEqual(stale.blip(self.CLS, 2, 127, 0, rate,
+                                            channels), (0, 0),
+                                 (rate, channels))
+        # At the low-bit patches the dither is never silent at 127,
+        # moved or not: the move adds nothing to what the class plays.
+        for patch in sorted(self.CLS.PATCHES):
+            before, after = stale.blip(self.CLS, 2, 127, 0, patch=patch)
+            self.assertEqual(before, 0, patch)
+            self.assertLessEqual(
+                after, stale.twin(self.CLS, 2, 127, patch=patch), patch)
+
+    def test_the_old_class_and_a_partial_clear_are_red(self):
+        self.assertGreater(stale.blip(NoBranchClear, 3, 127, 0)[1], 5000)
+        self.assertGreater(stale.blip(NoBranchClear, 2, 127, 0)[1], 0)
+        self.assertGreater(stale.blip(FirstSectionClear, 3, 127, 0)[1], 100)

@@ -31,6 +31,7 @@ from effects_measure import SAMPLE_RATE                # noqa: E402
 
 from audioeffects import _component                    # noqa: E402
 from audioeffects import combfilter            # noqa: E402
+from audioeffects.rebuilt.digitaldelay import clear_of_stalls  # noqa: E402
 #: The subject is named directly. `CombFilter` has come home to
 #: `audioeffects/combfilter.py`. These tests still import the home module so
 #: a planted-fault subclass is measured against this file, not only
@@ -185,6 +186,66 @@ class ShortLatencyCombFilter(combfilter.CombFilter):
     LATENCY_SAMPLES = 256
 
 
+class FrozenToneCombFilter(combfilter.CombFilter):
+    """Tone's off stop leaving the low-pass in at 0.001 Hz, where its
+    float32 coefficient is one step above 0 and its state cannot move: it
+    holds what it held, as the node's off stop did up to audiodsp v0.6.2
+    (15 070 LSB at 48 kHz on `TheToneOffStopIsTheFilterOut`'s move then),
+    and plays it out of silence."""
+
+    NAME = 'CombFilter'
+
+    def _tone_damping(self, tone):
+        if tone >= combfilter.TONE_OFF_HZ:
+            return 0.001
+        return self._hz(tone)
+
+
+class _ToneMemory:
+    """Remembers whether Tone has been in since the last reset, for the
+    off-stop faults below (the class itself no longer needs to)."""
+
+    def _tone_damping(self, tone):
+        if tone < combfilter.TONE_OFF_HZ:
+            self._was_in = True
+        return combfilter.CombFilter._tone_damping(self, tone)
+
+    def reset(self):
+        self._was_in = False
+        combfilter.CombFilter.reset(self)
+
+    def _off_after_in(self, tone):
+        return getattr(self, "_was_in", False) and \
+            tone >= combfilter.TONE_OFF_HZ
+
+
+class TrackingCombFilter(_ToneMemory, combfilter.CombFilter):
+    """The workaround retired at audiodsp v0.6.3rc1: once Tone has been in,
+    the off stop hands `damping_hz` at 32 x the rate instead of 0."""
+
+    NAME = 'CombFilter'
+
+    def _tone_damping(self, tone):
+        damping = _ToneMemory._tone_damping(self, tone)
+        if self._off_after_in(tone):
+            return 32.0 * self._sample_rate
+        return damping
+
+
+class LeakyTrackCombFilter(_ToneMemory, combfilter.CombFilter):
+    """The off stop after Tone has been in, tracking the tap at a
+    coefficient under 1: `damping_hz` at half the rate (a = 1 - e^-pi,
+    0.957), a low-pass left in the loop where the knob says off."""
+
+    NAME = 'CombFilter'
+
+    def _tone_damping(self, tone):
+        damping = _ToneMemory._tone_damping(self, tone)
+        if self._off_after_in(tone):
+            return 0.5 * self._sample_rate
+        return damping
+
+
 # -- helpers ----------------------------------------------------------------
 
 def silence(frames, rate=SAMPLE_RATE, channels=CHANNELS):
@@ -218,6 +279,11 @@ def pull(node, frames, channels=CHANNELS):
             break
         out.extend(data)
     return out[:frames * channels]
+
+
+def silence_source(rate=SAMPLE_RATE, channels=CHANNELS, frames=512):
+    return audiocore.RawSample(silence(frames, rate, channels),
+                               sample_rate=rate, channel_count=channels)
 
 
 def left(values, channels=CHANNELS):
@@ -728,6 +794,293 @@ class TheTailReachesExactZero(unittest.TestCase):
             with self.subTest(feedback=feedback):
                 self.assertEqual(self.residue(feedback,
                                               tuned=self.DRAINS_HZ), 0)
+
+
+class LapShortCombFilter(combfilter.CombFilter):
+    """`tail_samples` one lap short. On full-scale DC at 20 Hz / Feedback
+    0.7, the bound's tightest cell, the tail outlives it."""
+
+    NAME = 'CombFilter'
+
+    @property
+    def tail_samples(self):
+        memory = combfilter._tone_excess(self._damping,
+                                         self._sample_rate)[0]
+        return (combfilter.CombFilter._tail_bound(self)
+                - (self._reach + 1 + memory))
+
+
+class NoTrimTermCombFilter(combfilter.CombFilter):
+    """`tail_samples` without the trim's term: the comb's laps only, while
+    the fixed-point shelf in front is still letting its last LSB out."""
+
+    NAME = 'CombFilter'
+
+    @property
+    def tail_samples(self):
+        bound = combfilter.CombFilter._tail_bound(self)
+        if self._trim.mix > 0.0:
+            bound -= int(math.ceil(combfilter.TRIM_TAIL_S
+                                   * self._sample_rate))
+        return bound
+
+
+class SteppedCombFilter(combfilter.CombFilter):
+    """The workaround retired at audiodsp v0.6.3rc1: with Tone in, the
+    Feedback handed at the nearer edge of a stall window
+    (`clear_of_stalls`), a Feedback nobody set."""
+
+    NAME = 'CombFilter'
+
+    def _refresh(self):
+        combfilter.CombFilter._refresh(self)
+        if self._damping > 0.0 and self._feedback > 0.0:
+            excess = combfilter._tone_excess(self._damping,
+                                             self._sample_rate)[1]
+            self._feedback = clear_of_stalls(self._feedback, excess)
+            self._comb.set(feedback=self._feedback)
+
+
+class TheTailIsDeclared(unittest.TestCase):
+    """`tail_samples` is finite at every setting (housekeeping,
+    2026-09-28, Brad's ruling of that date): the comb's lap bound, each lap
+    one frame past the longest line the read head may be at plus the Tone
+    low-pass's memory, plus `TRIM_TAIL_S` while the trim is in circuit.
+    Every macro's stops and interior points, every patch, the long corners
+    and the stall centres, at three rates, stereo and mono, end inside it
+    (`housekeeping_cf_tail.py`, 900 cells); these are the cells where each
+    part of the bound is tight, each beside a bound that is short there."""
+
+    def render(self, cls, material, **options):
+        """(declared, last non-zero frame after a 50 ms burst, peak of the
+        last 0.25 s), silence running to the declared bound plus 0.5 s."""
+        rate = SAMPLE_RATE
+        probe = cls(audiocore.RawSample(array.array("h", [0] * 512),
+                                        sample_rate=rate,
+                                        channel_count=CHANNELS),
+                    **options)
+        declared = probe.tail_samples
+        probe.deinit()
+        lead = rate // 20
+        frames = lead + (rate if declared is None else declared) + rate // 2
+        values = array.array("h", [0] * (frames * CHANNELS))
+        for index in range(lead * CHANNELS):
+            values[index] = material
+        effect = cls(audiocore.RawSample(values, sample_rate=rate,
+                                         channel_count=CHANNELS),
+                     **options)
+        y = pull(effect.output, frames)
+        effect.deinit()
+        last = 0
+        for index in range(len(y) - 1, lead * CHANNELS - 1, -1):
+            if y[index]:
+                last = index // CHANNELS - lead + 1
+                break
+        held = max(abs(v) for v in y[-(rate // 4) * CHANNELS:])
+        return declared, last, held
+
+    def test_finite_at_every_patch_and_every_stop(self):
+        effect = combfilter.CombFilter(
+            audiocore.RawSample(array.array("h", [0] * 512),
+                                sample_rate=SAMPLE_RATE,
+                                channel_count=CHANNELS))
+        for patch in range(6):
+            effect.program_change(patch)
+            self.assertIsInstance(effect.tail_samples, int, patch)
+        for index in range(6):
+            for midi in (0, 64, 127):
+                effect.program_change(0)
+                effect.set_macro(index, midi)
+                self.assertIsInstance(effect.tail_samples, int,
+                                      (index, midi))
+        effect.deinit()
+
+    def test_the_lap_bound_holds_where_it_is_tight(self):
+        # Full-scale DC at 20 Hz / Feedback 0.7: 69 600 frames against
+        # 69 629 when this test was written.
+        options = {"frequency": 20.0, "glide": 0.0}
+        declared, last, held = self.render(combfilter.CombFilter, 32767,
+                                           **options)
+        self.assertLessEqual(last, declared)
+        self.assertGreater(last, declared - 2402)
+        self.assertEqual(held, 0)
+        declared, last, _held = self.render(LapShortCombFilter, 32767,
+                                            **options)
+        self.assertGreater(last, declared)
+
+    def test_the_trim_term_covers_the_shelf(self):
+        options = {"trim_db": -18.0, "feedback": 0.0, "glide": 0.0}
+        declared, last, held = self.render(combfilter.CombFilter, 32767,
+                                           **options)
+        self.assertLessEqual(last, declared)
+        self.assertGreater(last, 20000)
+        self.assertEqual(held, 0)
+        declared, last, held = self.render(NoTrimTermCombFilter, 32767,
+                                           **options)
+        self.assertTrue(last > declared or held, (declared, last, held))
+
+    def test_the_stall_cell_reaches_zero_at_the_feedback_set(self):
+        # Feedback 0.5 with Tone at 2 kHz is a stall centre: up to audiodsp
+        # v0.6.2 the node held 1 LSB there for ever and the class stepped
+        # the Feedback clear. Since v0.6.3rc1 (#157) the node lands the
+        # stalled state: 0.5 is handed as set, and the tail ends inside the
+        # bound, which counts its landing lap.
+        options = {"frequency": 1000.0, "feedback": 0.5, "tone_hz": 2000.0,
+                   "glide": 0.0}
+        declared, last, held = self.render(combfilter.CombFilter, 2,
+                                           **options)
+        self.assertGreater(last, 0)
+        self.assertLessEqual(last, declared)
+        self.assertEqual(held, 0)
+        for cls, handed_as_set in ((combfilter.CombFilter, True),
+                                   (SteppedCombFilter, False)):
+            effect = cls(silence_source(SAMPLE_RATE), **options)
+            self.assertEqual(effect._feedback == effect._value(1),
+                             handed_as_set, cls)
+            self.assertLess(abs(effect._feedback - 0.5), 3e-5)
+            effect.deinit()
+
+
+class TheToneOffStopIsTheFilterOut(unittest.TestCase):
+    """Tone off after Tone has been in. Up to audiodsp v0.6.2 the node froze
+    its loop low-pass while `damping_hz` was 0, and from 2026-09-28 this
+    class handed 32 x the rate there instead (a coefficient of exactly 1).
+    Since v0.6.3rc1 the node keeps an off low-pass's state on the tap
+    (audiodsp#158), the off stop is exactly 0 again, and these assert what
+    that buys: silence when Tone comes back, and the same bytes and bound
+    as a fresh instance. The retired cure is planted beside each."""
+
+    def tone_back_in(self, cls, rate=SAMPLE_RATE, channels=CHANNELS,
+                     mix=2.0):
+        """300 Hz at 30 000 LSB for 0.5 s with Tone 2 kHz, Feedback 0; Tone
+        to its off stop as the input stops, 2 s of silence, Tone to MIDI 0:
+        the output's peak after that move. The source is exactly as long as
+        what is read, so it never wraps round and replays the tone."""
+        loud = (rate // 2) // 256 * 256
+        back = (loud + 2 * rate) // 256 * 256
+        frames = back + rate // 4
+        values = silence(frames, rate, channels)
+        for frame in range(loud):
+            value = int(round(30000 * math.sin(2.0 * math.pi * 300.0 * frame
+                                               / rate)))
+            for channel in range(channels):
+                values[frame * channels + channel] = value
+        effect = cls(audiocore.RawSample(values, sample_rate=rate,
+                                         channel_count=channels),
+                     sample_rate=rate, frequency=440.0, feedback=0.0,
+                     mix=mix, tone_hz=2000.0)
+        out = array.array("h")
+        while len(out) < frames * channels:
+            done = len(out) // channels
+            if done == loud:
+                effect.set_macro(3, 127)
+            elif done == back:
+                effect.set_macro(3, 0)
+            out.extend(memoryview(bytes(audiocore.get_buffer(
+                effect.output)[1])).cast("h"))
+        effect.deinit()
+        return max(abs(v) for v in out[back * channels:frames * channels])
+
+    def test_tone_back_in_after_silence_stays_silent(self):
+        for rate in (48000, 44100, 22050):
+            for channels in (2, 1):
+                self.assertEqual(self.tone_back_in(
+                    combfilter.CombFilter, rate, channels), 0,
+                    (rate, channels))
+        self.assertEqual(self.tone_back_in(combfilter.CombFilter, mix=1.0),
+                         0)
+        # Planted: a low-pass left in with a frozen state (0.001 Hz) plays
+        # what it held (at v0.6.2 the node's own off stop played 15 070 LSB
+        # at 48 kHz, 10 110 at 44.1, 8 828 at 22.05 here).
+        self.assertGreater(self.tone_back_in(FrozenToneCombFilter), 10000)
+        self.assertGreater(self.tone_back_in(FrozenToneCombFilter, 22050),
+                           5000)
+
+    def test_the_off_stop_hands_exactly_zero(self):
+        # Fresh, after Tone has been in, after a Tone in the constructor or
+        # a patch, and at the 0.95 stall centre, which is handed as set.
+        # The retired tracking cure, planted, hands 32 x the rate.
+        for rate in (48000, 44100, 22050):
+            for cls, expected in ((combfilter.CombFilter, 0.0),
+                                  (TrackingCombFilter, 32.0 * rate)):
+                effect = cls(silence_source(rate), sample_rate=rate)
+                self.assertEqual(effect._damping, 0.0)
+                effect.set_macro(1, 127)
+                effect.set_macro(3, 0)
+                effect.set_macro(3, 127)
+                self.assertEqual(effect._damping, expected, (cls, rate))
+                self.assertEqual(effect._feedback, 0.95)
+                self.assertIsInstance(effect.tail_samples, int)
+                effect.deinit()
+                for options in ({"tone_hz": 5000.0}, {"patch": 3}):
+                    effect = cls(silence_source(rate), sample_rate=rate,
+                                 **options)
+                    effect.program_change(0)
+                    self.assertEqual(effect._damping, expected,
+                                     (cls, rate, options))
+                    effect.deinit()
+
+    def off_after_tone(self, cls, rate=SAMPLE_RATE, channels=CHANNELS,
+                       **options):
+        """(samples, worst LSB) by which the off stop after Tone has been
+        in differs from a fresh instance's off stop, on 1 s of full-scale
+        noise."""
+        frames = rate
+        seed = 12345
+        values = array.array("h")
+        for _ in range(frames * channels):
+            seed = (1103515245 * seed + 12345) & 0x7FFFFFFF
+            values.append((seed >> 15) - 32768)
+        tracked = cls(audiocore.RawSample(values, sample_rate=rate,
+                                          channel_count=channels),
+                      sample_rate=rate, **options)
+        tracked.set_macro(3, 0)
+        tracked.set_macro(3, 127)
+        fresh = combfilter.CombFilter(
+            audiocore.RawSample(array.array("h", values), sample_rate=rate,
+                                channel_count=channels),
+            sample_rate=rate, **options)
+        a = pull(tracked.output, frames, channels)
+        b = pull(fresh.output, frames, channels)
+        tracked.deinit()
+        fresh.deinit()
+        diff = [abs(x - y) for x, y in zip(a, b)]
+        return sum(1 for d in diff if d), max(diff)
+
+    def test_the_off_stop_after_tone_is_the_filter_out(self):
+        # Byte for byte a fresh instance's off stop, at a whole-frame read
+        # (1000 Hz at 48 kHz) and a fractional one (440 Hz, 109.09 frames,
+        # at 48 and 22.05 kHz mono), where the retired tracking cure was
+        # within 1 LSB.
+        options = {"frequency": 1000.0, "feedback": 0.8, "mix": 2.0}
+        self.assertEqual(self.off_after_tone(combfilter.CombFilter,
+                                             **options), (0, 0))
+        for rate in (48000, 22050):
+            self.assertEqual(self.off_after_tone(combfilter.CombFilter,
+                                                 rate, 1), (0, 0), rate)
+        # Planted: the retired cure moves samples at the fractional read,
+        # and a coefficient of 0.957 is a low-pass left in the loop.
+        count, _worst = self.off_after_tone(TrackingCombFilter, 48000, 1)
+        self.assertGreater(count, 0)
+        _count, worst = self.off_after_tone(LeakyTrackCombFilter, **options)
+        self.assertGreater(worst, 1000)
+
+    def test_the_tail_bound_after_tone_is_the_fresh_one(self):
+        # Tone off after Tone is the filter off, so the bound is the fresh
+        # instance's, with no memory term; the retired cure counted one
+        # frame of memory a lap. The 0.95 stop at 20 Hz is the long corner.
+        for rate in (48000, 22050):
+            bounds = []
+            for cls in (combfilter.CombFilter, TrackingCombFilter):
+                effect = cls(silence_source(rate), sample_rate=rate,
+                             frequency=20.0, feedback=0.95, glide=0.0)
+                fresh_bound = effect.tail_samples
+                effect.set_macro(3, 0)
+                effect.set_macro(3, 127)
+                bounds.append((fresh_bound, effect.tail_samples))
+                effect.deinit()
+            self.assertEqual(bounds[0][0], bounds[0][1], rate)
+            self.assertGreater(bounds[1][1], bounds[1][0], rate)
 
 
 class TheRingIsTheAskedPitchAndEnds(unittest.TestCase):
