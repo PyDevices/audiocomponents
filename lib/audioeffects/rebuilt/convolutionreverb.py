@@ -12,6 +12,9 @@ audit's round 1 the dossier carries a dated post-build revision (fix round
 docstring says what that leaves out. Fix round 2 (the same day, after the
 round-2 audit) corrected the left-right balance figure it gives, from
 about 1.3 dB to about 4.5 dB, and three edges; the audio did not change.
+The re-audit's fix round 1 (after the round-3 audit) replaced that bound
+with the widest balance a walk over Diffusion's every position found,
+stated as a floor on the swing, not a bound; the audio did not change.
 
 **What it sounds like.** A short room behind your dry signal. With nothing
 loaded the class synthesizes the room: noise under an exponential that
@@ -109,17 +112,23 @@ hard right 1.8 dB up at 48 kHz with Decay 0, Damping 500 Hz and
 Diffusion 0 (about 0.8 / 0.5 dB at Decay 1.0, Diffusion 0.5). Each side
 on its own does not hold either: the node scales the room by the mean of
 its two sides' energies, so on a stereo room the left-right balance moves
-by up to about +/-4.5 dB at every rate while the total holds, and Room
-moves it as much as Damping and Decay do (the widest measured, with
-Damping at 500 Hz and Decay 0: -4.4 / +4.5 dB at 48 and 44.1 kHz, -4.2 /
-+4.0 dB at 22.05 kHz). A mono room is one side and holds. Damping clamps
+while the total holds, and Diffusion, Room, Damping and Decay all move it.
+It moves by at least about 5.3 dB at 48 and 44.1 kHz and 4.7 dB at
+22.05 kHz, and how far it can go is not known: no walk covers every
+setting. The widest found on the room's own impulse is L - R -5.30 dB at
+48 kHz, -5.26 dB at 44.1 kHz and -4.67 dB at 22.05 kHz, all at Decay 0,
+Damping 500 Hz and Room seed 36, with Diffusion at 12, 13 and 22 of 127;
+white noise there reads about -5.5, -5.4 and -4.6 dB. The other way, the
+widest found is +4.49, +4.55 and +4.05 dB (Decay 0, Damping 500 Hz,
+Diffusion 0, seed 4). A mono room is one side and holds. Damping clamps
 at 0.159 fs,
 under the point where the node's one-pole coefficient stops moving, so at
 48 kHz every one of its 128 positions is a room of its own, while at
 22.05 kHz the positions from 92 up (the 6 kHz default among them) are one
-3 506 Hz room. A single Room's decay with Damping in can read up to 16 %
-off the Decay law on a stereo room and up to 22 % on a mono one (48 kHz,
-Decay 0, Damping 500 Hz); the 64 Rooms' mean holds within 2 %.
+3 506 Hz room. A single Room's decay with Damping in can read up to about
+16 % off the Decay law on a stereo room (16.5 % with a quiet click) and
+up to about 22 % on a mono one (48 kHz, Decay 0, Damping 500 Hz); the 64
+Rooms' mean holds within 2 %.
 
 **Measured mode.** The impulse is trimmed by `start_ms`
 (int(start_ms * fs / 1000) frames, truncated) through a slice that copies
@@ -140,9 +149,10 @@ one frame, and zero frames is that one partition.
 
 **Two readbacks that are not what they look like.** A `damping_hz`
 between 0 and 500 Hz is taken as 500 Hz, the span's bottom, with no
-error; 0 or below, or 7 500 Hz and up, is out of circuit (-100 hands the
-node 0 Hz and `get_macro` reads 127). And a fresh instance reports
-`patch_index` 0, the family's convention, although the constructor's exact
+error; 0 or below, 7 500 Hz and up, or NaN, is out of circuit (-100 and
+NaN hand the node 0 Hz and `get_macro` reads 127). And a fresh instance
+reports `patch_index` 0, the family's convention, although the
+constructor's exact
 defaults (Damping 6 000 Hz, Mix 0.6) sit between grid steps and patch 0 is
 those settings on the grid (6 059.8 Hz, Mix 0.598). Pass `patch=0` for
 patch 0's room exactly. `reset()` restores patch 0, so an instance built
@@ -305,9 +315,10 @@ class ConvolutionReverb(_component.Component):
     in. audiodsp tier; 256 frames of latency whenever an impulse is loaded.
 
     **What the default surrenders:** a dark room lifts low material (a low
-    chord +3.73 dB at the default Damping, +13.28 dB at 500 Hz), Room,
-    Damping and Decay move a stereo room's left-right balance by up to
-    about +/-4.5 dB at every rate while the total holds, moving a room knob
+    chord +3.73 dB at the default Damping, +13.28 dB at 500 Hz),
+    Diffusion, Room, Damping and Decay move a stereo room's left-right
+    balance by at least about 5.3 dB (the widest setting is not known)
+    while the total holds, moving a room knob
     or calling `reset()` mid-stream drops the 256 frames in flight, dry
     included, at every Mix, and anything longer than 0.091 s on
     an S3 or 0.219 s on a P4 is a desktop room (pending hardware).

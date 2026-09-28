@@ -30,9 +30,18 @@ as the controls, red on the handed law at Decay 64/127 and green on the
 law read back off `effect._macros`. It also pins two edges the docstring
 now states: a negative `damping_hz` is out of circuit, and `impulse=b""`
 holds one partition.
+
+The re-audit's fix round 1 (gate audit round 3) added three checks, each
+shown red on its plant: D5's Predelay control (`PredelayKeptSquared`, red
+on the handed law at Predelay 64/127 and green read back), a NaN
+`damping_hz` pinned out of circuit (`NanIsSpanBottom`), and `D6Balance`,
+which pins the widest per-side balance the docstring prints to the room at
+the cell the walk named (the fix-round-2 docstring, a figure 0.1 dB narrow
+and `SideTilt` are red on it).
 """
 
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -270,6 +279,19 @@ def m6_cell(effect, pcm):
     return level, rho(out, pcm, LATENCY + taps)
 
 
+def balance(effect):
+    """(L - R dB, pooled dB) of the room's own impulse: a 0 dBFS click at
+    Mix 2, each side's energy summed over the loaded taps. It is what white
+    noise reads per side in expectation (D6's Not claimed line; re-audit
+    fix round 1). Mix is put back after."""
+    taps = effect.node.taps
+    out = at_mix(effect, 127, click(LATENCY + taps + 256, 2))
+    ir = out[LATENCY:LATENCY + taps].astype(np.float64) / 32767.0
+    energy = np.sum(ir * ir, axis=0)
+    return (float(10 * np.log10(energy[0] / energy[1])),
+            float(10 * np.log10(np.mean(energy))))
+
+
 # -- D1's impulse, trim and gain ------------------------------------------
 
 def make_impulse(taps=3840, channels=1, seed=7):
@@ -452,6 +474,26 @@ class HotRoom(_After):
         return kit_faults.HiddenGain(node, self.GAIN_DB)
 
 
+class _LeftGain(kit_faults.HiddenGain):
+    """`kit_faults.HiddenGain` on the left channel only."""
+
+    def _process(self, frames):
+        out = frames.copy()
+        out[0::self.channel_count] *= self._gain
+        return out
+
+
+class SideTilt(_After):
+    """D6's balance disclosure: the left side 0.5 dB hot after the node, a
+    balance fault the pooled clauses barely see (+0.25 dB)."""
+
+    NAME = NAME
+    GAIN_DB = 0.5
+
+    def _fault(self, node):
+        return _LeftGain(node, self.GAIN_DB)
+
+
 class AllocatedSeconds(ConvolutionReverb):
     """D5's control for a law that shares the class's inputs: the class
     keeps the allocation it holds (partitions x 256 / fs) as `seconds`, so
@@ -505,6 +547,36 @@ class DecayMidiSquared(ConvolutionReverb):
         if index == DECAY_I:
             self._macros[DECAY_I] = self._macros[DECAY_I] ** 2
             self._apply_macro(DECAY_I, self._macros[DECAY_I])
+
+
+class PredelayKeptSquared(ConvolutionReverb):
+    """D5's Predelay control (re-audit fix round 1, from the round-3
+    audit's item 3): the constructor's Predelay kept squared. It is
+    Predelay's shape of DecayKeptSquared: at Predelay 64/127, Decay 127,
+    Damping out, Diffusion 0 it reads worst +6.518 % on the handed law at
+    48 kHz (+7.244 % at 22.05 kHz) and +1.276 % on a law read back off the
+    class, and it passed every D5 test before this one."""
+
+    NAME = NAME
+
+    def _init_macros(self, values, patch=None):
+        values = list(values)
+        values[PREDELAY_I] = values[PREDELAY_I] ** 2
+        ConvolutionReverb._init_macros(self, tuple(values), patch)
+
+
+class NanIsSpanBottom(ConvolutionReverb):
+    """The damping pin's control: a NaN `damping_hz` taken as the 500 Hz
+    stop instead of out of circuit, which is what the docstring said of
+    NaN before it named it."""
+
+    NAME = NAME
+
+    def _build(self, *arguments, **options):
+        hz = options.get("damping_hz", 6000.0)
+        if hz != hz:
+            options["damping_hz"] = 100.0
+        ConvolutionReverb._build(self, *arguments, **options)
 
 
 class LongDecay(ConvolutionReverb):
@@ -700,10 +772,13 @@ class TheSurface(unittest.TestCase):
             effect.deinit()
         # Fix round 2 (gate audit round 2, item 7b): a negative damping_hz
         # is out of circuit, like 0, not the 500 Hz stop.
-        for hz in (-100.0, 0.0):
+        # Re-audit fix round 1 (gate audit round 3, item 6): NaN is out of
+        # circuit too, and the docstring now says so (NanIsSpanBottom is
+        # the control, red here).
+        for hz in (-100.0, 0.0, float("nan")):
             effect = build(damping_hz=hz)
-            self.assertEqual(effect._synthesis()[1], 0.0)
-            self.assertEqual(effect.get_macro(DAMPING_I), 127)
+            self.assertEqual(effect._synthesis()[1], 0.0, hz)
+            self.assertEqual(effect.get_macro(DAMPING_I), 127, hz)
             effect.deinit()
 
     def test_an_empty_impulse_holds_one_partition(self):
@@ -1393,6 +1468,27 @@ class D5DecayLaw(unittest.TestCase):
                                            damping_hz=0.0, diffusion=0.0)
             self.assertLessEqual(float(np.max(np.abs(clean))), 0.03, rate)
 
+    def test_a_predelay_held_off_the_handed_position_is_red(self):
+        # Re-audit fix round 1 (gate audit round 3, item 3). The law takes
+        # the Predelay position the test handed too, and until this test no
+        # D5 cell sat at an interior Predelay at 0.08 s, where the law
+        # depends on it most: PredelayKeptSquared passed every D5 test. At
+        # Predelay 64/127, Decay 127, Damping out, Diffusion 0 it is red on
+        # the handed law and green on the law read back off the class;
+        # the clean class is green on the handed law.
+        for rate in (48000, 22050):
+            options = dict(predelay=64 / 127.0, decay=1.0, damping_hz=0.0,
+                           diffusion=0.0)
+            planted = self.errors_over_rooms(PredelayKeptSquared, rate,
+                                             **options)
+            self.assertGreater(float(np.max(np.abs(planted))), 0.03, rate)
+            self.assertGreater(float(np.mean(planted)), 0.03, rate)
+            held = self.errors_over_rooms(PredelayKeptSquared, rate,
+                                          read_back=True, **options)
+            self.assertLessEqual(float(np.max(np.abs(held))), 0.03, rate)
+            clean = self.errors_over_rooms(rate=rate, **options)
+            self.assertLessEqual(float(np.max(np.abs(clean))), 0.03, rate)
+
     def test_stuck_dc_turns_the_floor_red(self):
         effect = build(StuckDcAfter)
         t60, floor = m5_cell(effect)
@@ -1512,6 +1608,109 @@ class D6UnitEnergy(unittest.TestCase):
         result = kit_faults.null_build_red(ConvolutionReverb, measure,
                                            label="ConvolutionReverb D6")
         self.assertFalse(result["null"]["passed"])
+
+
+#: The sentence in the module docstring that gives the widest per-side
+#: balance found, one figure per rate, two decimals (re-audit fix round 1).
+BALANCE_RE = re.compile(
+    r"widest\s+found\s+on\s+the\s+room's\s+own\s+impulse\s+is\s+L\s+-\s+R\s+"
+    r"(-\d+\.\d\d)\s+dB\s+at\s+48\s+kHz,\s+(-\d+\.\d\d)\s+dB\s+at\s+44\.1\s+"
+    r"kHz\s+and\s+(-\d+\.\d\d)\s+dB\s+at\s+22\.05\s+kHz")
+
+#: The sentence after it: the widest found the other way.
+BALANCE_OTHER_RE = re.compile(
+    r"The\s+other\s+way,\s+the\s+widest\s+found\s+is\s+\+(\d+\.\d\d),\s+"
+    r"\+(\d+\.\d\d)\s+and\s+\+(\d+\.\d\d)\s+dB")
+
+#: Where the walk found the widest the other way, at every rate.
+WIDEST_OTHER_CELL = (0, 0, 0, 0, 6)
+
+#: Where the walk behind that sentence found each rate's widest (evidence
+#: pack, "Re-audit fix round 1"): (Decay, Damping, Predelay, Diffusion,
+#: Room) as MIDI positions, 0.08 s.
+WIDEST_BALANCE_CELL = {
+    48000: (0, 0, 0, 12, 70),
+    44100: (0, 0, 0, 13, 70),
+    22050: (0, 0, 0, 22, 70),
+}
+
+
+def documented_balance(doc):
+    """{rate: L - R dB} as the module docstring states it, or None."""
+    found = BALANCE_RE.search(doc or "")
+    if found is None:
+        return None
+    return dict(zip(RATES, (float(v) for v in found.groups())))
+
+
+def documented_other_way(doc):
+    """{rate: L - R dB} the other way, as the module docstring states it,
+    or None."""
+    found = BALANCE_OTHER_RE.search(doc or "")
+    if found is None:
+        return None
+    return dict(zip(RATES, (float(v) for v in found.groups())))
+
+
+def build_at_cell(rate, cell):
+    effect = build(rate=rate)
+    for index, midi in zip((DECAY_I, DAMPING_I, PREDELAY_I, DIFFUSION_I,
+                            ROOM_I), cell):
+        effect.set_macro(index, midi)
+    return effect
+
+
+class D6Balance(unittest.TestCase):
+    """D6's Not claimed line, each side on its own: the node scales a
+    stereo room by the mean of its sides' energies, so the left-right
+    balance moves. Nothing is claimed about it, but the docstring tells a
+    player how far it was found to move, and twice that figure was too
+    small (gate audits rounds 2 and 3). These tests pin the figure the
+    docstring prints to the room at the cell the walk named, and check no
+    cell of a slice through it (Diffusion's every position at that
+    setting, and the 64 Rooms at that Diffusion) reads wider. They do not
+    make the figure a bound: the walk is a floor on the swing
+    (re-audit fix round 1)."""
+
+    def test_the_documented_balance_is_what_the_room_reads(self):
+        documented = documented_balance(rebuilt.__doc__)
+        self.assertIsNotNone(documented, "no widest-balance sentence")
+        for rate in RATES:
+            effect = build_at_cell(rate, WIDEST_BALANCE_CELL[rate])
+            side, pooled = balance(effect)
+            effect.deinit()
+            self.assertLessEqual(abs(side - documented[rate]), 0.005,
+                                 (rate, side))
+            self.assertLessEqual(abs(pooled), 0.01, rate)
+        other = documented_other_way(rebuilt.__doc__)
+        self.assertIsNotNone(other, "no widest-the-other-way sentence")
+        for rate in RATES:
+            effect = build_at_cell(rate, WIDEST_OTHER_CELL)
+            side, _ = balance(effect)
+            effect.deinit()
+            self.assertLessEqual(abs(side - other[rate]), 0.005,
+                                 (rate, side))
+        # The class's own summary gives the floor too.
+        self.assertIn("at least about %.1f dB" % abs(documented[48000]),
+                      " ".join(ConvolutionReverb.__doc__.split()))
+
+    def test_no_cell_of_the_slice_is_wider_than_documented(self):
+        documented = documented_balance(rebuilt.__doc__)
+        self.assertIsNotNone(documented, "no widest-balance sentence")
+        for rate in RATES:
+            diffusion = WIDEST_BALANCE_CELL[rate][3]
+            effect = build_at_cell(rate, WIDEST_BALANCE_CELL[rate])
+            readings = []
+            for position in range(128):
+                effect.set_macro(DIFFUSION_I, position)
+                readings.append(balance(effect)[0])
+            effect.set_macro(DIFFUSION_I, diffusion)
+            for position in range(0, 128, 2):
+                effect.set_macro(ROOM_I, position)
+                readings.append(balance(effect)[0])
+            effect.deinit()
+            self.assertGreaterEqual(min(readings), documented[rate] - 0.005,
+                                    rate)
 
 
 # --------------------------------------------------------------------------
