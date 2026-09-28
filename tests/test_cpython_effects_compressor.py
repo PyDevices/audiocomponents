@@ -239,5 +239,47 @@ class CompressorFaultsTest(unittest.TestCase):
         self.assertFalse(result["null"]["passed"])
 
 
+# -- the stale blocks (audiocomponents#113) ------------------------------
+
+import os                                                       # noqa: E402
+import sys                                                      # noqa: E402
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+import stale_blocks as stale                                    # noqa: E402
+
+from audioeffects import compressor                             # noqa: E402
+
+
+class TheBypassComesBackAsBuilt(unittest.TestCase):
+    """Mix up from 0 plays nothing from before (audiocomponents#113; Brad,
+    2026-09-28: "fix the stale blocks"). An instance built wet primes its
+    mixer voices with the first block of the source; moved to 0 before it
+    played, and back up after the input stopped, that block came out 256
+    frames later. `_component.Component._rejoin` clears the graph and the
+    voices are primed afresh."""
+
+    CLS = compressor.Compressor
+    MIX = 13
+
+    def test_the_block_primed_at_construction_is_not_replayed(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                self.assertEqual(stale.first_blip(
+                    self.CLS, self.MIX, rate, channels), 0, (rate, channels))
+        for patch in sorted(self.CLS.PATCHES):
+            self.assertEqual(stale.first_blip(
+                self.CLS, self.MIX, patch=patch), 0, patch)
+
+    def test_mix_back_after_silence_plays_nothing(self):
+        for channels in (2, 1):
+            self.assertEqual(stale.blip(self.CLS, self.MIX, 127, 0,
+                                        channels=channels), (0, 0))
+
+    def test_the_old_rejoin_and_a_clear_without_rearming_are_red(self):
+        for fault in (stale.StaleRejoin, stale.ClearOnlyRejoin):
+            self.assertGreater(stale.first_blip(
+                stale.planted(self.CLS, fault), self.MIX), 10000)
+
+
 if __name__ == "__main__":
     unittest.main()

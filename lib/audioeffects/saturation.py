@@ -17,6 +17,20 @@ All three are AC-coupled after the shaping, at 20 Hz — the plate coupling
 capacitor, the playback head that cannot see DC, the flux high-pass. That
 is where Bias's operating-point shift goes instead of onto the output.
 
+**Controls moved and moved back play nothing out of silence**
+(audiocomponents#113). Mix back up from 0 comes back as the class was
+built - cleared, the pole charged on the bias, the voices re-armed - where
+it used to play what it held, up to 7 927 LSB. Off centre the pole holds
+`curve(bias) * post_gain`, so Bias back to the centre now drains it (it bled
+out as a 29 058 LSB thump), and Drive, Output, Headroom and Hysteresis
+re-charge it as Bias does. Hysteresis back in starts its play operator at
+the centre instead of where it froze (314 LSB). Off centre each charge
+leaves at most 1 LSB, as the constructor's does. And a Bias re-charge no
+longer pulls a block off the dry tap: that put the dry leg 256 frames ahead
+of the wet one after every `program_change`, a comb at patch 7 (Mix 44),
+and left a block of old audio in the Splitter for the next Mix move off 0
+to play (13 071 LSB).
+
 **What the default surrenders.** Mix 1, Drive 0 dB, Headroom 0, Bias 0,
 Tilt 0, Hysteresis 0, Speed 15 ips (inert on tube).
 
@@ -711,6 +725,15 @@ class Saturation(_component.Component):
         self._ready = False
         self._attached = False
         self._bias = 0.0
+        #: Whether the plate pole was last charged on an offset, so a Bias
+        #: move back to the centre drains it rather than leaving it to
+        #: bleed out as a thump (audiocomponents#113).
+        self._charged = False
+        #: The Hysteresis the shapers were last handed; see `_apply_macro`.
+        self._hysteresis = 0.0
+        #: The shapers' `post_gain`, and what it was at the last charge.
+        self._post = 1.0
+        self._charged_post = 1.0
         self._wet_head = 1.0
         self._group_delay = _group_delay_samples(oversample,
                                                  self._extra_delay)
@@ -866,10 +889,28 @@ class Saturation(_component.Component):
         stops as soon as a whole block comes back zero.
 
         A **live** Bias move - a `program_change` onto silence, most of
-        all - re-charges with `rewire=True`. That costs one block: the
-        re-point takes a block from the wet tap, so the dry tap is pulled
-        once to match it, and the split stays level. Without it a change
-        onto patch 4 banged 8 489 LSB out of nothing.
+        all - re-charges with `rewire=True`. Without it a change onto patch
+        4 banged 8 489 LSB out of nothing.
+
+        **The re-point costs no block, so nothing is pulled to level the
+        split.** This used to pull one block off the dry tap after the
+        re-point, on the belief that `Waveshaper.play()` takes one from the
+        wet tap. It does not - measured on CPython, desktop MicroPython and
+        CircuitPython, a `play()` onto a source takes nothing from it (only
+        `audiofilters.Filter.play` and `MixerVoice.play` do) - so the pull
+        put the dry leg a block **ahead** of the wet one at every
+        `program_change` and every Bias move, and left the wet tap a block
+        behind in the Splitter's ring. The dry leg's impulse came out 256
+        frames early at patch 4, 512 after one more Bias move; at shipped
+        patch 7 (Mix 44), where the dry leg is heard, that is a comb; and
+        the block left behind in the ring is old audio that the next Mix
+        move off 0 played out of silence, 13 071 LSB (audiocomponents#113).
+
+        A Bias move **back to the centre** drains the pole the same way:
+        the shaper then answers silence with zero, and the charge the pole
+        holds from the old offset would otherwise bleed out of silence as a
+        thump - 29 058 LSB after Bias went to its bottom stop and back
+        (audiocomponents#113).
 
         On a build with no `audiocore.get_buffer` this does nothing and the
         bang is back.
@@ -877,13 +918,14 @@ class Saturation(_component.Component):
         pull = getattr(audiocore, "get_buffer", None)
         if pull is None or self._after is None:
             return False
-        if not self._bias:
+        if not self._bias and not self._charged:
             if rewire:
                 for shaper in self._shapers():
                     shaper.play(self._quiet)
                     shaper.play(self._shaper_head)
-                pull(self._dry)
             return False
+        self._charged = bool(self._bias)
+        self._charged_post = self._post
         for index in range(CHARGE_BLOCKS):
             for shaper in self._shapers():
                 shaper.play(self._quiet)
@@ -897,9 +939,6 @@ class Saturation(_component.Component):
         if rewire:
             for shaper in self._shapers():
                 shaper.play(self._shaper_head)
-            # One block from the dry tap, so the split stays level: the
-            # re-point above took one from the wet one.
-            pull(self._dry)
         return True
 
     def _attach(self):
@@ -955,6 +994,15 @@ class Saturation(_component.Component):
         value = _component.macro_value(self._MACRO_RANGES[index], position)
         if index in (0, 1, 3):
             self._push_gains()
+            # Drive, Output and Headroom move `post_gain`, and off centre
+            # the offset the plate pole holds is `curve(bias) * post_gain`,
+            # so they move it as much as Bias does: Headroom at patch 4 and
+            # back banged 4 885 LSB out of silence. Re-charged the way a
+            # Bias move is (audiocomponents#113). At the centre there is no
+            # offset and nothing runs.
+            if self._ready and (self._bias or self._charged) \
+                    and self._post != self._charged_post:
+                self._charge_coupling(rewire=True)
         elif index == 2:
             self._push_mix()
             self._refresh_output()
@@ -978,8 +1026,33 @@ class Saturation(_component.Component):
         elif index == 6:
             self._tilt.gain_db = round(value * 8.0) / 8.0
         elif index == 7:
+            back_in = (value > 0.0 and self._hysteresis <= 0.0
+                       and not self._constructing)
+            moved = value != self._hysteresis
+            self._hysteresis = value
             for shaper in self._shapers():
                 shaper.set(hysteresis=value)
+            if back_in:
+                # Hysteresis back in: the node skips its play operator
+                # outright while Hysteresis is 0, so the operator's position
+                # is frozen where it was when the knob went down and the
+                # first sample back steps from there - an offset out of
+                # silence, 314 LSB through the plate pole. Cleared, it
+                # starts at the centre, which is where silence would have
+                # left it (audiocomponents#113). Clearing a shaper clears
+                # its oversampler too, and off centre the offset then has to
+                # climb back through the half-band - a dip the charged pole
+                # passes as a thump, 7 560 LSB at patch 4 - so off centre
+                # the pole is re-charged behind it, as a Bias move does,
+                # with the operator already engaged so the charge settles
+                # where it will sit.
+                self._clear_nodes(only=self._shapers())
+            if moved and self._ready and (self._bias or self._charged):
+                # Off centre the operator rests a half-width below the bias,
+                # so any Hysteresis move - off included - moves the offset
+                # the pole holds: 14 LSB out of silence at patch 4 after
+                # Hysteresis went off and came back.
+                self._charge_coupling(rewire=True)
 
     def _curve_at(self, x):
         """The table at `x`, interpolated the way the node interpolates."""
@@ -1053,6 +1126,7 @@ class Saturation(_component.Component):
             self._wet_head = 1.0
         for shaper in self._shapers():
             shaper.set(pre_gain=pre, post_gain=post)
+        self._post = post
         self._push_mix()
 
     def _push_mix(self):
@@ -1087,12 +1161,34 @@ class Saturation(_component.Component):
         if not self._ready:
             return
         if self._value(2) <= 0.0:
-            self._output = self._source
+            self._route_around(self._source)
             self._latency = 0
         else:
+            if self._rejoin(keep=(self._mix,)):
+                self._rearm()
             self._attach()
             self._output = self._mix
             self._latency = self._wet_delay
+
+    def _rearm(self):
+        """Arm a graph Mix 0 left un-pulled, the way `_build` arms it.
+
+        Back off a bypass every node still holds what it held when Mix went
+        to 0 - the plate pole, the tilt and makeup shelves, the shapers'
+        oversamplers - and each voice the block it had queued; `_rejoin` has
+        cleared the nodes. The mixer is left out of that walk on purpose:
+        its registered reset re-plays the voices there and then, through a
+        pole not yet charged. So the order is `_build`'s: the pole charged
+        on the bias with the shapers on the zero sample, the shapers pointed
+        back at the chain, the gates opened at the levels, and the voices
+        re-played (audiocomponents#113).
+        """
+        self._charged = False
+        self._charge_coupling(rewire=True)
+        _component.open_level_gates(
+            self._mix, [self._mix.voice[0], self._mix.voice[1]],
+            self._silence)
+        self._attached = False
 
     def program_change(self, index, channel=0, note_id=-1,
                        sample_position=0):
