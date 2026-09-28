@@ -36,6 +36,22 @@ there, and are recorded in its changelog.
   shipped patches, on `noise_det`), the 15 kHz swing the wow costs the
   repeat, the Wow step, and Tone's flat top at 22.05 kHz. Board cost is
   unmeasured.
+- **`TapeDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** a tape loop
+  on one `audioecho.FeedbackDelay` with two transports as characters: the
+  RE-201's motor (`"varispeed"`, the default), where a Time move bends the
+  pitch by the ratio of the two times for exactly the new time, and the
+  EP-3's sliding head (`"sliding-head"`), where the pitch bends only while
+  the head moves, at a rate Glide sets. Each repeat darkens by a playback
+  loss law whose corner follows Spacing and the tape speed; Wow and Flutter
+  drive one periodic wow table with a slow drift; Record Level is the
+  loop's cubic squash, without memory. Mix 0 is a wire while the loop keeps
+  recording. It lives in `lib/audioeffects/rebuilt/tapedelay.py`, and
+  `audioeffects.TapeDelay` is still the old class. The docstring states the
+  input ceiling (-1.1 dBFS peak at the defaults, -2.0 over the shipped
+  patches, on `noise_det`), the band the loss law holds in, the wobble's
+  100 s period, the Wow and Flutter step, and where the pitch claim stops:
+  the node's single-precision walk limits rising moves past 16 384 and
+  32 768 frames. Board cost is unmeasured.
 
 ## v0.3.2 (2026-09-25)
 

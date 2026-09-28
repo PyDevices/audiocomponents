@@ -85,13 +85,24 @@ and Spacing own the repeats' tone.
 **Where the pitch claim stops.** A varispeed move takes its rate from the
 last Time handed to the node and runs once, so a Time move issued while the
 last one is still gliding does not telescope as a real motor would: its
-bend is written into the loop and stays there. On sliding-head the node
-walks the read head in single precision, and a rising move at the Glide
-knob's fastest positions, strictly between grid 1 and grid 4 (1 222.0 to
-1 290.3 ms), can read up to 23.5 cents off the glide law past the power
-of two it crosses. That part of the knob is not claimed on a rising move,
-nor is a constructor Glide in the same range. Grid 1 itself and everything
-from grid 4 up are.
+bend is written into the loop and stays there.
+
+The node walks the read head in single precision
+(`audiodsp_feedback_delay.c:444`), so each step lands on the head's
+rounding grid, and that grid doubles every time the head passes a power of
+two in frames: 16 384 (341.3 ms at 48 kHz, 371.5 ms at 44.1, 743.0 ms at
+22.05) and 32 768 (682.7 ms at 48 kHz, 743.0 ms at 44.1; never at
+22.05 kHz, where 1 200 ms is 26 460 frames). On a rising move the pitch
+error this makes grows as the pitch falls, so the claim stops where it
+could pass 10 cents. On varispeed, a rising move whose walk passes 32 768
+frames is claimed up to a ratio of 2.95 : 1; past that the last part of
+the walk can read 11 cents off (333 -> 1 100 ms reads -11.2 cents there).
+On sliding-head, a rising move is claimed from Glide grid 4 (1 290.3 ms)
+while the head stays under 16 384 frames, from grid 10 (1 438.5 ms) once
+it passes 16 384, and from grid 22 (1 788.2 ms) once it passes 32 768.
+Grid 1 is not claimed on a rising move (350 -> 450 ms reads +41 cents
+there), nor is any constructor Glide faster than those edges. Falling
+moves are claimed at every Glide, and at every ratio up to 3.33 : 1.
 
 **Turning Wow or Flutter while it plays steps.** The node takes a new
 table and depth at once (`audiodsp_feedback_delay.c:457-458` adds depth x

@@ -79,8 +79,12 @@ class GlideScaledVarispeed(TapeDelay):
 
 
 class WalkAtZeroTape(TapeDelay):
-    """T1b's step: Glide 0 handed slew 0.98 instead of the jump (grid 1 is
-    0.966, grid 0 the jump)."""
+    """Station B's step fault, Glide 0 handed slew 0.98 instead of the
+    jump. Fix round 1: no longer a planted fault. The clean class built with
+    `glide_ms=1180/0.98` (1 204.08 ms) hands the node the same 0.98 and
+    renders the same bytes, so the state is a constructor value; it is kept
+    as the control that shows the constructor walk can call a fault
+    reachable."""
 
     NAME = 'TapeDelay'
 
@@ -88,6 +92,21 @@ class WalkAtZeroTape(TapeDelay):
         rate = TapeDelay._walk_rate(self, from_ms, to_ms)
         if self._character == tape.SLIDING_HEAD and rate <= 0.0:
             return 0.98
+        return rate
+
+
+class FastWalkAtZeroTape(TapeDelay):
+    """T1b's step (fix round 1): Glide 0 handed slew 8 instead of the jump,
+    so the read head walks between the two Times (598 frames for
+    200 -> 100.4 ms at 48 kHz) where the class jumps. Sliding-head never
+    hands more than the 0.99 pin, from the knob or the constructor."""
+
+    NAME = 'TapeDelay'
+
+    def _walk_rate(self, from_ms, to_ms):
+        rate = TapeDelay._walk_rate(self, from_ms, to_ms)
+        if self._character == tape.SLIDING_HEAD and rate <= 0.0:
+            return 8.0
         return rate
 
 
@@ -732,6 +751,23 @@ class T1aVarispeed(unittest.TestCase):
             self.assertFalse(got["passed"], got)
             self.assertGreater(abs(got["err"]), 400.0)
 
+    def test_the_top_binade_per_piece(self):
+        # Fix round 1 (dossier T1a, revised under vision 7.2): a rising
+        # move from rest whose walk passes 32 768 frames is claimed to a
+        # ratio of 2.95 : 1. The node rounds each step of its float32 walk
+        # to the read head's ulp (2^-8 frames up there), and past that
+        # ratio the top piece can read over 10 c. The claimed edge cell is
+        # the float32 model's worst claimed move (408.90 -> 1 196.31 ms,
+        # ratio 2.926, model -9.92 c); 333 -> 1 100 ms (ratio 3.30) is the
+        # span refuter's excluded cell, red on its top piece.
+        for a, b, red in ((19627 / 48.0, 57423 / 48.0, False),
+                          (333.0, 1100.0, True)):
+            law = TONE * frames_of(a) / float(frames_of(b))
+            got = walk_cell(TapeDelay, a, b, RATE, tape.VARISPEED, law)
+            self.assertEqual(got["unread"], 0, got)
+            self.assertEqual(got["passed"], not red, (a, b, got))
+        self.assertAlmostEqual(got["worst"], -11.16, delta=0.05)
+
 
 class GlideIsInertOnVarispeed(unittest.TestCase):
     """Section 8.9: one varispeed Time move at Glide grid 1, grid 127 and
@@ -884,20 +920,201 @@ def ramp_cell(cls, rate=RATE, amp=12000.0):
                 law=cents(law / TONE), end=end - start, walk=walk)
 
 
-def step_cell(cls, rate=RATE, amp=12000.0):
-    """T1b's step: sliding-head at Glide 0, 200 -> 100.4 ms. The jump read
-    on the read recovered through the inverted loss low-pass against the
-    unfiltered tone's own slope, and the pitch 2-50 ms after."""
-    y, start, effect = move(cls, 200.0, 100.4, rate, tape.SLIDING_HEAD, amp,
-                            glide_ms=0.0)
-    coef = 1.0 - math.exp(-2.0 * math.pi * effect._damping / rate)
-    x = y[:-1] + np.diff(y) / coef
-    jump = float(np.max(np.abs(np.diff(x))[start - 3:start + 3]))
-    raw = 2.0 * math.pi * TONE / rate * amp
+#: Fix round 1: a binade piece counts only when its two readings - the
+#: read head's slope off the ramp render and the least-squares sine on the
+#: tone - both exist and agree within PIECE_AGREE cents. The span refuter
+#: read -215.6 c off the ramp slope alone on a 45-frame piece (grid 1,
+#: 41.7 -> 55.7 ms), where no sine fits; such a piece is reported unread.
+PIECE_AGREE = 1.0
+
+#: The sine is fitted on at most this many frames from the middle of a
+#: piece: the pitch is constant inside a binade, and a long piece costs
+#: time and says nothing more.
+PIECE_FIT_MAX = 24000
+
+
+def binade_pieces(y, d, ok, start, end, fa, fb, law_hz, rate):
+    """The walk start..end cut where the read head crosses a power of two
+    (inside a binade the node rounds each step to the head's float32 ulp,
+    so each binade plays its own rate), each piece read two ways in cents
+    off `law_hz`. Returns [(frames, ramp cents, sine cents, read)], `read`
+    True when both readings exist and agree within PIECE_AGREE."""
+    edges = [start]
+    lo_f, hi_f = min(fa, fb), max(fa, fb)
+    p = 1
+    while p <= hi_f:
+        if lo_f < p < hi_f:
+            seg = d[start:end]
+            idx = np.nonzero(((seg - p) * np.sign(fb - fa) >= 0)
+                             & ok[start:end])[0]
+            if len(idx):
+                edges.append(start + int(idx[0]))
+        p <<= 1
+    edges.append(end)
+    edges = sorted(set(edges))
+    out = []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        n = hi - lo
+        ramp_c = float("nan")
+        if n > 8:
+            idx = np.arange(lo + 2, hi - 2)
+            idx = idx[ok[idx]]
+            if len(idx) > 4:
+                slope = np.polyfit(idx.astype(float),
+                                   d[idx].astype(float), 1)[0]
+                if 1.0 - slope > 0.0:
+                    ramp_c = cents((1.0 - slope) * TONE / law_hz)
+        trim = min(400, n // 10)
+        a, b = lo + trim, hi - trim
+        if b - a > PIECE_FIT_MAX:
+            mid = (a + b) // 2
+            a, b = mid - PIECE_FIT_MAX // 2, mid + PIECE_FIT_MAX // 2
+        sine_c = float("nan")
+        if b - a >= max(64, rate / law_hz):
+            got = lsq_hz(y[a:b], rate)
+            if got == got:
+                sine_c = cents(got / law_hz)
+        read = (ramp_c == ramp_c and sine_c == sine_c
+                and abs(ramp_c - sine_c) <= PIECE_AGREE)
+        out.append((n, ramp_c, sine_c, read))
+    return out
+
+
+def walk_cell(cls, a, b, rate, character, law_hz, amp=12000.0, setup=None,
+              after_ms=300.0, **options):
+    """One Time move a -> b read per binade piece with the guard above:
+    the tone render and the ramp render of the same move, the walk's end
+    off the read position. `law_hz` is the pitch the law says the walk
+    plays. Returns dict(pieces, worst (over read pieces), unread (pieces
+    not read), read_frames, walk, passed (no read piece over 10 c))."""
+    fa, fb = frames_of(a, rate), frames_of(b, rate)
+    start = start_of(a, rate)
+    rate_of_walk = abs(1.0 - law_hz / TONE)
+    walk_est = int(abs(fb - fa) / rate_of_walk) if rate_of_walk > 0 else 0
+    frames = start + int(1.1 * walk_est) + int(after_ms * rate / 1000.0)
+    opts = dict(HELD)
+    opts.update(options)
+    effect = cls(src_of(sine(TONE, amp, frames, rate), 1, rate), time_ms=a,
+                 character=character, **opts)
+    if setup is not None:
+        setup(effect)
+    y = render(effect, frames, {start: set_time(b)})[:, 0]
+    effect.deinit()
+    d, ok = read_position(cls, a, b, rate, character, start, frames, setup,
+                          **options)
+    walking = np.nonzero((d[start:] != fb) & ok[start:])[0]
+    end = start + (int(walking[-1]) + 1 if len(walking) else 0)
+    pieces = binade_pieces(y, d, ok, start, end, fa, fb, law_hz, rate)
+    read = [p for p in pieces if p[3]]
+    worst = max((max(p[1], p[2], key=abs) for p in read), key=abs,
+                default=float("nan"))
+    return dict(pieces=pieces, worst=worst,
+                unread=sum(1 for p in pieces if not p[3]),
+                read_frames=sum(p[0] for p in read), walk=end - start,
+                passed=bool(read) and abs(worst) <= 10.0)
+
+
+def glide_law_hz(glide_ms, a, b):
+    """Sliding-head's pitch while the head walks a -> b at Glide
+    `glide_ms`, from the Glide asked (1 180 ms / Glide), never from the
+    class's slew function."""
+    law = FULL_RANGE_LAW / glide_ms
+    return TONE * (1.0 + law if b < a else 1.0 - law)
+
+
+#: 1 180 ms, sliding-head's full-range Time move, written from the numbers.
+FULL_RANGE_LAW = 1200.0 - 20.0
+
+
+def glide_ms_of(grid):
+    return _component.macro_value(TapeDelay._MACRO_RANGES[GLIDE_I],
+                                  grid / 127.0)
+
+
+_READ_HEADS = {}
+
+
+def read_head(cls):
+    """`cls` with its loop low-pass handed 0 after every refresh: an
+    instrument for reading where the read head is, never a subject. The
+    walk is the node's `delay_slew` (`audiodsp_feedback_delay.c:444`,
+    `:449`) and never sees the filter, which filters what was read, so the
+    positions are the class's (Station C's `read_head_class`)."""
+    if cls not in _READ_HEADS:
+        def _refresh(self):
+            cls._refresh(self)
+            self._delay.set(damping_hz=0.0)
+        _READ_HEADS[cls] = type("ReadHead" + cls.__name__, (cls,),
+                                {"_refresh": _refresh})
+    return _READ_HEADS[cls]
+
+
+def read_position(cls, a, b, rate, character, start, frames, setup=None,
+                  **options):
+    """The read position D[n], in frames, off a render of the move a -> b
+    issued at `start`, with a wrapping 1-LSB-per-frame ramp as the source
+    (the wet sample is n - D[n], so D is exact on a whole frame and the
+    interpolated position rounded between them), on `read_head(cls)`.
+    `ok` is False next to the ramp's wrap and before the line has filled.
+    `setup(effect)` runs after construction (a Glide grid position).
+    Returns (D, ok)."""
+    opts = dict(HELD)
+    opts.update(options)
+    n = np.arange(frames)
+    x = (n % 65536) - 32768.0
+    effect = read_head(cls)(src_of(x, 1, rate), time_ms=a,
+                            character=character, **opts)
+    if setup is not None:
+        setup(effect)
+    y = render(effect, frames, {start: set_time(b)})[:, 0]
+    d = (n - (y.astype(np.int64) + 32768)) % 65536
+    wrap = np.abs(np.diff(y)) > 30000
+    ok = np.ones(frames, bool)
+    ok[1:] &= ~wrap
+    ok[:-1] &= ~wrap
+    ok[:start // 2] = False
+    return d, ok
+
+
+def step_cell(cls, rate=RATE, amp=12000.0, start=None):
+    """T1b's step (fix round 1): sliding-head at Glide 0, 200 -> 100.4 ms.
+    The read position off a ramp render sits on T_old's whole frame before
+    the move and on T_new's after it, and no frame reads a position between
+    the two: the node jumps, where any walk, however fast, reads the
+    positions between. The pitch 2-50 ms after the move is within 10 cents
+    of the tone. `start` is the frame the move is issued on (a block
+    boundary; the default is the other T1 cells' frame).
+
+    The round-0 clause (a jump on the read recovered through the inverted
+    loss low-pass of at least 5x the unfiltered tone's slope) is struck: it
+    reads the tone's two phases across the jump, so it moves with the frame
+    the move lands on (x1.00-x13.03 over 16 block boundaries at 48 kHz)."""
+    fa, fb = frames_of(200.0, rate), frames_of(100.4, rate)
+    if start is None:
+        start = start_of(200.0, rate)
+    frames = start + rate // 2
+    opts = dict(HELD)
+    effect = cls(src_of(sine(TONE, amp, frames, rate), 1, rate),
+                 time_ms=200.0, character=tape.SLIDING_HEAD, glide_ms=0.0,
+                 **opts)
+    y = render(effect, frames, {start: set_time(100.4)})[:, 0]
     got = lsq_hz(y[start + int(0.002 * rate):start + int(0.05 * rate)], rate)
     offset = cents(got / TONE) if got == got else float("inf")
-    return dict(passed=jump >= 5.0 * raw and abs(offset) <= 10.0,
-                ratio=jump / raw, offset=offset)
+    d, ok = read_position(cls, 200.0, 100.4, rate, tape.SLIDING_HEAD, start,
+                          frames, glide_ms=0.0)
+    lo = start - 2000
+    window = np.arange(lo, frames)
+    window = window[ok[lo:frames]]
+    pos = d[window]
+    between = int(np.sum((pos != fa) & (pos != fb)))
+    before = bool(np.all(d[lo:start][ok[lo:start]] == fa))
+    tail = start + rate // 10
+    after = bool(np.all(d[tail:frames][ok[tail:frames]] == fb))
+    landed = window[pos == fb]
+    first = int(landed[0]) - start if len(landed) else None
+    return dict(passed=before and after and between == 0
+                and abs(offset) <= 10.0, between=between, before=before,
+                after=after, offset=offset, landed=first, fa=fa, fb=fb)
 
 
 G_START = 9472
@@ -1012,14 +1229,58 @@ class T1bSlidingHead(unittest.TestCase):
         self.assertFalse(got["passed"], got)
         self.assertGreater(got["step"], 1.0, got)
 
-    def test_the_step_at_glide_0(self):
-        got = step_cell(TapeDelay)
-        self.assertTrue(got["passed"], got)
-        self.assertGreater(got["ratio"], 8.0)
+    def test_the_glide_binades(self):
+        # Fix round 1 (dossier T1b, revised under vision 7.2): a rising move
+        # is claimed from grid 4 while the head stays under 16 384 frames,
+        # from grid 10 past 16 384 and from grid 22 past 32 768 (48 kHz:
+        # 341.3 and 682.7 ms). The claimed edge grids read green inside
+        # their binades; grid 1 at the default Time's 350 -> 450 ms, no
+        # longer claimed, reads +40.98 c; falling moves are claimed at
+        # every grid, grid 1 included.
+        cells = ((4, 200.0, 330.0, False), (10, 400.0, 650.0, False),
+                 (22, 750.0, 1150.0, False), (1, 350.0, 450.0, True),
+                 (1, 650.0, 400.0, False))
+        for grid, a, b, red in cells:
+            got = walk_cell(TapeDelay, a, b, RATE, tape.SLIDING_HEAD,
+                            glide_law_hz(glide_ms_of(grid), a, b),
+                            setup=lambda e, g=grid: e.set_macro(GLIDE_I, g))
+            self.assertEqual(got["unread"], 0, (grid, a, b, got))
+            self.assertEqual(got["passed"], not red, (grid, a, b, got))
+            if red:
+                self.assertAlmostEqual(got["worst"], 40.98, delta=0.05)
 
-    def test_a_walk_at_glide_0_is_red(self):
-        got = step_cell(WalkAtZeroTape)
+    def test_a_short_piece_is_not_read(self):
+        # Fix round 1: a piece whose two readings do not both exist and
+        # agree within 1 c is reported unread, not green or red. The span
+        # refuter's cell, grid 1, 41.75 -> 55.66 ms (Time MIDI 31.75 and
+        # 0.75 of it), cuts a 45-frame piece and a 646-frame one; the
+        # shifted tone (34 Hz) has no period in either, so neither is read
+        # (Station C's ramp-slope-only reader put -215.6 c on the first).
+        grid = 1
+        b = _component.macro_value(TapeDelay._MACRO_RANGES[TIME_I], 0.25)
+        a = 0.75 * b
+        got = walk_cell(TapeDelay, a, b, RATE, tape.SLIDING_HEAD,
+                        glide_law_hz(glide_ms_of(grid), a, b),
+                        setup=lambda e: e.set_macro(GLIDE_I, grid))
+        self.assertEqual(got["unread"], len(got["pieces"]), got)
         self.assertFalse(got["passed"], got)
+        self.assertLess(min(p[0] for p in got["pieces"]), 64, got)
+
+    def test_the_step_at_glide_0(self):
+        # Fix round 1: the read position jumps between two frames, at three
+        # rates and on four block boundaries each; no pitch offset after.
+        for rate in (48000, 44100, 22050):
+            base = start_of(200.0, rate)
+            for k in (0, 2, 5, 13):
+                got = step_cell(TapeDelay, rate, start=base + k * BLOCK)
+                self.assertTrue(got["passed"], (rate, k, got))
+                self.assertEqual(got["landed"], 0, (rate, k, got))
+
+    def test_a_fast_walk_at_glide_0_is_red(self):
+        for rate in (48000, 22050):
+            got = step_cell(FastWalkAtZeroTape, rate)
+            self.assertFalse(got["passed"], got)
+            self.assertGreater(got["between"], 200, got)
 
     def test_the_gesture(self):
         got = gesture_verdict(TapeDelay)
@@ -1098,7 +1359,29 @@ def t2_one_pass(cls, time_ms, spacing_um, character, rate=RATE,
                                amp), rate, f)
     err = got - eq13_db(f, v, spacing_um * 1e-6)
     worst = float(np.max(np.abs(err)))
-    return dict(passed=worst <= 2.0, worst=worst, top=top)
+    return dict(passed=worst <= 2.0, worst=worst, top=top,
+                at=float(f[int(np.argmax(np.abs(err)))]))
+
+
+def tone_db_off_eq13(time_ms, spacing_um, character, hz, rate=RATE,
+                     amp=30000.0):
+    """One pass on a steady tone at `hz`: the least-squares amplitude of
+    the wet tone once the loop low-pass has settled, over the input's, in
+    dB, less eq. (13) there (the material refuter's `tone_level_db`)."""
+    t = frames_of(time_ms, rate)
+    frames = t + int(0.3 * rate)
+    effect = TapeDelay(src_of(sine(hz, amp, frames, rate), 2, rate),
+                       time_ms=time_ms, spacing_um=spacing_um,
+                       character=character, **HELD)
+    y = render(effect, frames)[:, 0]
+    seg = y[t + 2000:t + 2000 + int(0.2 * rate)]
+    n = np.arange(len(seg))
+    a = np.stack([np.cos(2 * np.pi * hz * n / rate),
+                  np.sin(2 * np.pi * hz * n / rate), np.ones(len(seg))], 1)
+    coef, *_ = np.linalg.lstsq(a, seg, rcond=None)
+    level = 20 * math.log10(math.hypot(coef[0], coef[1]) / amp)
+    v = tape.speed(character, time_ms)
+    return level - float(eq13_db([hz], v, spacing_um * 1e-6)[0])
 
 
 def t2_npass(cls, time_ms=350.0, spacing_um=5.0, character=tape.VARISPEED,
@@ -1161,9 +1444,24 @@ class T2LossLaw(unittest.TestCase):
             self.assertTrue(got["passed"],
                             (rate, character, time_ms, spacing, got))
 
-    def test_one_pass_at_minus_20_dbfs(self):
-        got = t2_one_pass(TapeDelay, 350.0, 5.0, tape.VARISPEED, amp=3277.0)
-        self.assertTrue(got["passed"], got)
+    def test_below_0_dbfs_the_impulse_reads_high_not_the_class(self):
+        # Fix round 1 (dossier T2, revised under vision 7.2): the one-pass
+        # clause is stated at 0 dBFS. At -20 dBFS the impulse's int16-
+        # rounded tail carries this cell's reading over the bar (2.052 dB,
+        # sliding-head 350 ms, Spacing MIDI 39, 48 kHz), while a steady tone
+        # at the frequency it reads worst sits inside at both levels, so the
+        # -20 dBFS impulse is no longer a claim of the row.
+        spacing = _component.macro_value(
+            TapeDelay._MACRO_RANGES[SPACING_I], 39 / 127.0)
+        low = t2_one_pass(TapeDelay, 350.0, spacing, tape.SLIDING_HEAD,
+                          amp=3277.0)
+        full = t2_one_pass(TapeDelay, 350.0, spacing, tape.SLIDING_HEAD)
+        self.assertGreater(low["worst"], 2.0, low)
+        self.assertTrue(full["passed"], full)
+        for amp in (3277.0, 30000.0):
+            off = tone_db_off_eq13(350.0, spacing, tape.SLIDING_HEAD,
+                                   low["at"], amp=amp)
+            self.assertLess(abs(off), 2.0, (amp, off))
 
     def test_a_doubled_corner_is_red(self):
         for rate in (48000, 22050):
@@ -1186,19 +1484,30 @@ class T2LossLaw(unittest.TestCase):
 
 
 def corner_and_10k(seg, rate):
-    """The first -3.01 dB crossing of a one-pass response, interpolated in
-    log frequency on a 20 000-point grid, and its level at 10 kHz."""
+    """The first crossing 3.01 dB under the one-pass response's own DC
+    level, interpolated in log frequency on a 20 000-point grid, and its
+    level at 10 kHz (against unity).
+
+    Fix round 1: the crossing was read against unity. As the impulse falls
+    its int16-rounded tail loses DC, which moved the corner ratio with level
+    (+0.734 % at -20 dBFS against unity, +0.125 % against the response's
+    DC; Spacing MIDI 51, 48 kHz). A response with no DC has no corner."""
+    dc = float(np.sum(seg))
+    level_10k = float(response_db(seg, rate, [10000.0])[0])
+    if not dc > 0.0:
+        return float("nan"), level_10k
+    ref = 20.0 * math.log10(dc) - 3.0103
     f = np.geomspace(20.0, min(20000.0, 0.49 * rate), 20000)
     db = response_db(seg, rate, f)
-    below = np.nonzero(db <= -3.0103)[0]
+    below = np.nonzero(db <= ref)[0]
     if not len(below) or below[0] == 0:
-        return float("nan"), float(response_db(seg, rate, [10000.0])[0])
+        return float("nan"), level_10k
     i = below[0]
     a, b = db[i - 1], db[i]
-    frac = (a + 3.0103) / (a - b)
+    frac = (a - ref) / (a - b)
     corner = math.exp(math.log(f[i - 1]) + frac
                       * (math.log(f[i]) - math.log(f[i - 1])))
-    return corner, float(response_db(seg, rate, [10000.0])[0])
+    return corner, level_10k
 
 
 def t3_cell(cls, spacing_um=5.0, rate=RATE, amp=32767.0):
@@ -1250,20 +1559,21 @@ def bh4(n):
 
 
 def delay_trace(cls, rate=RATE, wow=2.0, flutter=1.0, amp=12000.0,
-                seconds=60.0, time_ms=350.0):
-    """The delay recovered from a steady 997 Hz tone's analytic phase over
-    `seconds`, averaged to 200 Hz, mean removed; one channel."""
+                seconds=60.0, time_ms=350.0, tone=TONE):
+    """The delay recovered from a steady tone's analytic phase (997 Hz, the
+    row's) over `seconds`, averaged to 200 Hz, mean removed; one
+    channel."""
     frames = int(seconds * rate) + int(time_ms / 1000 * rate) + rate
     opts = dict(HELD)
     opts.update(wow_cents=wow, flutter_cents=flutter)
-    effect = cls(src_of(sine(TONE, amp, frames, rate), 1, rate),
+    effect = cls(src_of(sine(tone, amp, frames, rate), 1, rate),
                  time_ms=time_ms, **opts)
     y = render(effect, frames)[:, 0]
     start = int(time_ms / 1000 * rate) + rate // 2
     y = y[start:start + int(seconds * rate)]
     ph = np.unwrap(np.angle(analytic(y)))
     t = (np.arange(len(y)) + start) / float(rate)
-    trace = t - ph / (2 * np.pi * TONE)
+    trace = t - ph / (2 * np.pi * tone)
     step = int(round(rate / 200.0))
     m = len(trace) // step
     trace = trace[:m * step].reshape(m, step).mean(axis=1) * 1000.0
@@ -1271,6 +1581,8 @@ def delay_trace(cls, rate=RATE, wow=2.0, flutter=1.0, amp=12000.0,
 
 
 def _fit_line(trace, t, f0):
+    """The least-squares sinusoid near `f0`: (frequency, the fit, its
+    amplitude in the trace's units)."""
     best = None
     for f in np.linspace(f0 - 0.005, f0 + 0.005, 101):
         a = np.stack([np.sin(2 * np.pi * f * t), np.cos(2 * np.pi * f * t)],
@@ -1279,15 +1591,26 @@ def _fit_line(trace, t, f0):
         fit = a @ coef
         err = float(np.sum((trace - fit) ** 2))
         if best is None or err < best[0]:
-            best = (err, f, fit)
-    return best[1], best[2]
+            best = (err, f, fit, math.hypot(*coef))
+    return best[1], best[2], best[3]
+
+
+#: Fix round 1: every T4 clause also needs what it reads to be there in
+#: absolute terms, each line's fitted amplitude and the slow band's at least
+#: this many ms of delay. The weakest claimed line, Flutter grid 1
+#: (0.0315 c), is 5.66e-4 ms peak by the wow law; the class built as a wire
+#: has a whole delay trace of 3e-7 ms rms. Read in dB over its own floor
+#: alone, the detector could not tell the two apart.
+T4_FLOOR_MS = 1e-5
 
 
 def t4_verdict(trace, rate):
     """T4's clauses: two lines in 0.2-12 Hz each >= 40 dB over the median
     floor between them, their ratio not within 1 % of p/q (p, q <= 8), and
     the 0.017-0.1 Hz band of the residual after both lines are fitted out
-    >= 40 dB over that residual's floor."""
+    >= 40 dB over that residual's floor. Fix round 1: each clause also
+    needs its lines, or its band, at least T4_FLOOR_MS in amplitude; the
+    ratio clause reads two lines, so it needs both there."""
     n = len(trace)
     w = bh4(n)
     f = np.fft.rfftfreq(n, 1.0 / rate)
@@ -1305,29 +1628,38 @@ def t4_verdict(trace, rate):
     a, b = lines
     between = sdb[a + 8:b - 8]
     if len(between) < 8:
-        return dict(passed=False, why="lines adjacent")
+        return dict(passed=False, why="lines adjacent", two_lines=False,
+                    ratio_ok=False, drift_ok=False)
     floor = float(np.median(between))
 
     def parabolic(i):
         p, q, r = sdb[i - 1], sdb[i], sdb[i + 1]
         return (i + 0.5 * (p - r) / (p - 2 * q + r)) * df
     t = np.arange(n) / rate
-    f1, fit1 = _fit_line(trace, t, parabolic(a))
-    f2, fit2 = _fit_line(trace - fit1, t, parabolic(b))
+    f1, fit1, a1 = _fit_line(trace, t, parabolic(a))
+    f2, fit2, a2 = _fit_line(trace - fit1, t, parabolic(b))
     r = trace - fit1 - fit2
     r = r - np.sum(r * w) / np.sum(w)
-    rdb = 10 * np.log10(np.abs(np.fft.rfft(r * w)) ** 2 + 1e-300)
+    spec = np.abs(np.fft.rfft(r * w))
+    rdb = 10 * np.log10(spec ** 2 + 1e-300)
     rfloor = float(np.median(rdb[a + 8:b - 8]))
     ratio = f2 / f1
     near = min(abs(ratio - p / float(q)) / (p / float(q))
                for p in range(1, 9) for q in range(1, 9))
     top = np.searchsorted(f, 0.1)
     drift = float(rdb[1:top].max()) - rfloor
+    # The band's largest bin as a sinusoid's amplitude (the window's
+    # coherent gain is its sum).
+    slow_ms = 2.0 * float(spec[1:top].max()) / float(np.sum(w))
     d1, d2 = sdb[a] - floor, sdb[b] - floor
-    two = d1 >= 40.0 and d2 >= 40.0
-    return dict(passed=two and near > 0.01 and drift >= 40.0,
-                two_lines=two, ratio_ok=near > 0.01, drift_ok=drift >= 40.0,
-                f1=f1, f2=f2, d1=d1, d2=d2, ratio=ratio, drift=drift)
+    there = a1 >= T4_FLOOR_MS and a2 >= T4_FLOOR_MS
+    two = d1 >= 40.0 and d2 >= 40.0 and there
+    ratio_ok = near > 0.01 and there
+    drift_ok = drift >= 40.0 and slow_ms >= T4_FLOOR_MS
+    return dict(passed=two and ratio_ok and drift_ok,
+                two_lines=two, ratio_ok=ratio_ok, drift_ok=drift_ok,
+                f1=f1, f2=f2, d1=d1, d2=d2, a1=a1, a2=a2, slow_ms=slow_ms,
+                ratio=ratio, drift=drift)
 
 
 class T4Fluctuation(unittest.TestCase):
@@ -1357,6 +1689,34 @@ class T4Fluctuation(unittest.TestCase):
         self.assertFalse(got["passed"], got)
         self.assertFalse(got["drift_ok"], got)
         self.assertTrue(got["two_lines"], got)
+
+    def test_the_weakest_claimed_lines_clear_the_absolute_floor(self):
+        # Fix round 1: Wow grid 1 x Flutter grid 1 at the row's lower level,
+        # where the flutter line is 5.66e-4 ms by the wow law.
+        got = t4_verdict(*delay_trace(TapeDelay, wow=8.0 / 127,
+                                      flutter=4.0 / 127, amp=1200.0))
+        self.assertTrue(got["passed"], got)
+        self.assertGreater(min(got["a1"], got["a2"], got["slow_ms"]),
+                           10 * T4_FLOOR_MS, got)
+
+    def test_the_wire_is_red_on_every_clause(self):
+        # Fix round 1: the class built as a wire, at the probe tones where
+        # the round-0 detector read it green on every clause (996 Hz) or on
+        # all but the ratio (997 Hz, 1 000 Hz). The absolute clause is what
+        # turns each red; the pack runs 990-1 004 Hz at three rates.
+        wire = kit_faults.wire_build(TapeDelay)
+        for tone in (996.0, 997.0, 1000.0):
+            got = t4_verdict(*delay_trace(wire, tone=tone))
+            self.assertFalse(got["two_lines"], (tone, got))
+            self.assertFalse(got["ratio_ok"], (tone, got))
+            self.assertFalse(got["drift_ok"], (tone, got))
+
+    def test_flutter_under_grid_1_is_red_and_not_claimed(self):
+        # Fix round 1: Flutter above 0 and under grid 1 (0.0315 c) is added
+        # to Not claimed; at 0.005 c (Wow 8 c) the flutter line reads under
+        # 40 dB over its floor.
+        got = t4_verdict(*delay_trace(TapeDelay, wow=8.0, flutter=0.005))
+        self.assertFalse(got["two_lines"], got)
 
 
 # -- T5: disconfirmed by design -------------------------------------------
@@ -1610,10 +1970,24 @@ class NodeSpy:
 
 def copy_of(effect):
     """A fresh instance of the same class and character at `effect`'s macro
-    positions, on silence at its rate."""
+    positions, on silence at its rate. Fix round 1: it also carries the
+    constructor values the knobs cannot hold - an exact Glide off the grid
+    (under grid 1 down to the 0.99 pin, or the jump), an exact Time and the
+    line's `max_time_ms` - so a reading taken on the copy sees what the
+    node is handed; the round-0 copy dropped them."""
+    ctor = {"character": effect._character,
+            "max_time_ms": effect._max_time_ms}
+    if effect._glide_exact is not None:
+        ctor["glide_ms"] = effect._glide_exact
+    if effect._time_exact is not None:
+        ctor["time_ms"] = effect._time_exact
     other = type(effect)(src_of(np.zeros(4096), 2, effect._sample_rate),
-                         character=effect._character)
+                         **ctor)
     for index in range(len(type(effect).MACRO_LABELS)):
+        if index == GLIDE_I and effect._glide_exact is not None:
+            continue
+        if index == TIME_I and effect._time_exact is not None:
+            continue
         other.set_macro(index, effect.get_macro(index))
     return other
 
@@ -1721,6 +2095,18 @@ def read_walk(effect):
     return (round(float(handed), 6), round(float(law), 6))
 
 
+def read_handed_slew(effect):
+    """The `delay_slew` handed for one Time move, on a copy at these
+    positions and constructor values: the node's walk alone, whatever the
+    knob's label says. It is what T1b's step fault changes, and a
+    constructor Glide reaches every slew up to the 0.99 pin."""
+    other = copy_of(effect)
+    nudge_time(other)
+    handed = other._delay._handed["delay_slew"]
+    other.deinit()
+    return round(float(handed), 9)
+
+
 def read_python_steps(effect):
     """How many times `delay_ms` is handed while eight blocks are pulled
     after one Time move, on a copy at these positions: the class hands it
@@ -1739,13 +2125,15 @@ def read_python_steps(effect):
 #: whose law is live only away from the defaults is built where it is live
 #: (DigitalDelay's corner-cell precedent): `GlideScaledVarispeed` is the
 #: clean class at Glide 6 000 ms, so it is built at grid 1's 1 222 ms;
-#: `WalkAtZeroTape` differs only at Glide 0.
+#: `FastWalkAtZeroTape` differs only at Glide 0. Fix round 1: T1b's step
+#: fault is `FastWalkAtZeroTape`, read by the handed slew alone;
+#: `WalkAtZeroTape` was a constructor value (1 204.08 ms).
 SLIDE = {"character": tape.SLIDING_HEAD}
 REACH_WALKS = (
     ("DoubleWalkTape", DoubleWalkTape, read_walk, {}),
     ("GlideScaledVarispeed", GlideScaledVarispeed, read_walk,
      {"glide_ms": 1222.0}),
-    ("WalkAtZeroTape", WalkAtZeroTape, read_walk,
+    ("FastWalkAtZeroTape", FastWalkAtZeroTape, read_handed_slew,
      dict(SLIDE, glide_ms=0.0)),
     ("StaircaseTape", StaircaseTape, read_python_steps, SLIDE),
     ("LoopShiftTape", LoopShiftTape, read_loop_shift, {}),
@@ -1773,6 +2161,56 @@ def reach(faulted, reading, rate, ctor):
                                              build)
 
 
+#: Fix round 1: the constructor values the reachability walk visits beside
+#: the macro grid and the patches - the ones a knob cannot hold. Glide: the
+#: jump, under the 0.99 pin, the pin's edge (1 191.9 ms), between the pin
+#: and grid 1 (1 204.08 ms is slew 0.98 exactly), grid 1 itself, the
+#: defaults and past the 12 s top. Time: 0 (20 ms), off-grid values, past
+#: the top. The line: a lowered `max_time_ms`.
+CTOR_VALUES = (
+    ("glide_ms", (0.0, 500.0, 1000.0, 1191.9, 1195.0, 1200.0,
+                  1180.0 / 0.98, 1210.0, 1221.0, 1221.96, 1250.0, 2950.0,
+                  6000.0, 12000.0, 30000.0)),
+    ("time_ms", (0.0, 20.0, 100.4, 351.0, 1199.9, 5000.0)),
+    ("max_time_ms", (300.0, 1200.0)),
+)
+
+
+def _same(a, b, tolerance):
+    if isinstance(a, (tuple, list)) and isinstance(b, (tuple, list)):
+        return len(a) == len(b) and all(_same(x, y, tolerance)
+                                        for x, y in zip(a, b))
+    if a is None or b is None:
+        return a is b
+    return abs(float(a) - float(b)) <= tolerance
+
+
+def reach_ctor(faulted, reading, rate, ctor, tolerance=1e-9):
+    """The fault's reading against the clean class built at every value in
+    CTOR_VALUES, one option at a time on top of `ctor`, the node watched.
+    Raises `kit_faults.FaultReachable` on a match; returns the number of
+    constructions checked."""
+    checked = 0
+    with NodeSpy():
+        subject = faulted(src_of(np.zeros(512), 2, rate), **ctor)
+        target = reading(subject)
+        subject.deinit()
+        for name, values in CTOR_VALUES:
+            for value in values:
+                opts = dict(ctor)
+                opts[name] = value
+                clean = TapeDelay(src_of(np.zeros(512), 2, rate), **opts)
+                got = reading(clean)
+                clean.deinit()
+                checked += 1
+                if _same(got, target, tolerance):
+                    raise kit_faults.FaultReachable(
+                        "%s: the clean class built with %s=%r reads %r, the "
+                        "state the fault forces" % (
+                            faulted.__name__, name, value, got))
+    return checked
+
+
 class FaultsAreUnreachable(unittest.TestCase):
     """Every planted fault's reachability walk, at 48, 44.1 and 22.05 kHz,
     reading what the node is handed at each position (11 macros x 17
@@ -1787,6 +2225,26 @@ class FaultsAreUnreachable(unittest.TestCase):
                 with self.subTest(fault=name, rate=rate):
                     result = reach(faulted, reading, rate, ctor)
                     self.assertEqual(result["checked"], self.CHECKED)
+
+    def test_every_fault_is_off_the_constructor_values(self):
+        # Fix round 1: the walk also visits the constructor values a knob
+        # cannot hold (CTOR_VALUES, 23 constructions per fault).
+        for rate in (48000, 44100, 22050):
+            for name, faulted, reading, ctor in REACH_WALKS:
+                with self.subTest(fault=name, rate=rate):
+                    self.assertEqual(
+                        reach_ctor(faulted, reading, rate, ctor),
+                        sum(len(v) for _, v in CTOR_VALUES))
+
+    def test_a_constructor_value_fault_is_called_reachable(self):
+        # Station B's step fault, slew 0.98 at Glide 0, is the clean class
+        # built at glide_ms 1 204.08: the constructor walk must say so,
+        # and the macro walk alone cannot.
+        ctor = dict(SLIDE, glide_ms=0.0)
+        with self.assertRaises(kit_faults.FaultReachable):
+            reach_ctor(WalkAtZeroTape, read_handed_slew, RATE, ctor)
+        self.assertEqual(reach(WalkAtZeroTape, read_handed_slew, RATE,
+                               ctor)["checked"], self.CHECKED)
 
     def test_a_dialable_fault_is_called_reachable(self):
         # Spacing forced to 20 um: Spacing MIDI 127 plays it.
@@ -1832,12 +2290,26 @@ class NullBuildRed(unittest.TestCase):
             ("T2", lambda cls: t2_one_pass(cls, 350.0, 5.0, tape.VARISPEED)),
             ("T3", lambda cls: t3_cell(cls)),
             ("T4", lambda cls: t4_verdict(*delay_trace(cls, seconds=60.0))),
+            # Fix round 1: the step's read-position clause and the
+            # per-piece reader.
+            ("T1b step", lambda cls: step_cell(cls)),
+            ("T1a per piece", lambda cls: walk_cell(
+                cls, 600.0, 1200.0, RATE, tape.VARISPEED, TONE * 0.5)),
+            ("T1b per piece", lambda cls: walk_cell(
+                cls, 400.0, 650.0, RATE, tape.SLIDING_HEAD,
+                glide_law_hz(glide_ms_of(10), 400.0, 650.0),
+                setup=lambda e: e.set_macro(GLIDE_I, 10))),
         )
         for name, measure in rows:
             result = kit_faults.null_build_red(TapeDelay, measure,
                                                label="TapeDelay %s" % name)
             self.assertFalse(result["null"]["passed"], name)
             self.assertTrue(result["control"]["passed"], name)
+            if name == "T4":
+                # Fix round 1: red on every clause, not on the ratio alone.
+                null = result["null"]
+                self.assertFalse(null["two_lines"] or null["ratio_ok"]
+                                 or null["drift_ok"], null)
 
 
 if __name__ == "__main__":
