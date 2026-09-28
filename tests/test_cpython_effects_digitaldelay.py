@@ -9,8 +9,8 @@ every row's measurement is shown red on the class built as a wire. The full
 spans, the three interpreters and the rates live in the evidence pack, not
 in this file.
 
-The rebuild is parked (not in `rebuilt.ADOPTED`), so the class is reached by
-`rebuilt.module_class("DigitalDelay")`.
+The class is reached by `rebuilt.module_class("DigitalDelay")`, which is also what
+`audioeffects.DigitalDelay` serves since its adoption on 2026-09-28.
 
 Fix round 1 (2026-09-27, after gate audit round 1): T2's pitch is read by a
 local least-squares fit against the dossier's own law (787.5 / glide_ms,
@@ -1471,11 +1471,17 @@ class TheSurface(unittest.TestCase):
         effect.program_change(3)
         self.assertEqual(effect.patch_index, 3)
 
-    def test_parked_not_served(self):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-09-28, so `create()` serves this one. It was the
+        reverse assertion while the class was parked; revert
+        `rebuilt.ADOPTED` and this goes red."""
         import audioeffects
-        self.assertNotIn("DigitalDelay", rebuilt.ADOPTED)
-        self.assertIn("DigitalDelay", rebuilt.parked())
-        self.assertIsNot(audioeffects.DigitalDelay, DigitalDelay)
+        self.assertIn("DigitalDelay", rebuilt.ADOPTED)
+        self.assertNotIn("DigitalDelay", rebuilt.parked())
+        self.assertIs(audioeffects.DigitalDelay, DigitalDelay)
+        served = audioeffects.create("DigitalDelay", silence_src(64), RATE)
+        self.assertIsInstance(served, DigitalDelay)
+        served.deinit()
 
     def test_patch_0_is_the_constructor_grid(self):
         effect = DigitalDelay(silence_src(512), sample_rate=RATE)

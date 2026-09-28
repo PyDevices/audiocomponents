@@ -10,32 +10,43 @@ there, and are recorded in its changelog.
 
 ### Added
 
-- **`DigitalDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** a clean
+- **`DigitalDelay` (rebuilt, Phase 5; adopted 2026-09-28):** a clean
   interpolated line with the Boss DD-2's control law on one
-  `audioecho.FeedbackDelay`. Turning Time pitch-bends the repeats at a rate
-  Glide sets instead of clicking, every static Time lands on a whole frame,
-  Mix 0 is a wire while the line keeps recording, and Repeat Tone and Repeat
-  Cut put the pedal's 7 kHz and 40 Hz corners into the loop as knobs that
-  default out. It lives in `lib/audioeffects/rebuilt/digitaldelay.py`, and
-  `audioeffects.DigitalDelay` is still the old class. It is parked on a
-  floor bug in the node: from Feedback 0.5 up the feedback write can hold
-  1 LSB (50 at 0.99) going round for ever, which needs an audiodsp release.
-  The docstring states the input ceiling (-3 dBFS peak at the defaults, -4
-  over the shipped patches, on `noise_det`) and Repeat Tone's flat top at
-  22.05 kHz. Board cost is unmeasured.
-- **`SlapbackDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** the Sun
-  Studio tape slap on one `audioecho.FeedbackDelay`: one mono repeat at
-  135 ms, landed on a whole frame at every rate, with Saturation, Tone and
-  Wow as the tape's colours and Repeats defaulting to 0. Level 0 is a wire
-  while the line keeps recording, Time walks rather than clicks, and a host
-  echoing Time back keeps the constructor's exact frame. Tone out is
-  byte-identical to no filter until Tone has been in since a reset, and
-  within 1 LSB after. It lives in `lib/audioeffects/rebuilt/slapbackdelay.py`,
-  and `audioeffects.SlapbackDelay` is still the old class. The docstring
-  states the input ceiling (-2.5 dBFS peak at the defaults, -3.4 over the
-  shipped patches, on `noise_det`), the 15 kHz swing the wow costs the
-  repeat, the Wow step, and Tone's flat top at 22.05 kHz. Board cost is
-  unmeasured.
+  `audioecho.FeedbackDelay`, and what `audioeffects.DigitalDelay` and
+  `create()` now serve. Turning Time pitch-bends the repeats at a rate Glide
+  sets instead of clicking, every static Time lands on a whole frame, Mix 0
+  is a wire while the line keeps recording, and Repeat Tone and Repeat Cut
+  put the pedal's 7 kHz and 40 Hz corners into the loop as knobs that
+  default out. `tail_samples` is finite with Repeat Cut out, and with Repeat
+  Tone in the Feedback is stepped clear of the node's stall windows
+  (audiodsp#157). Repeat Tone out after it has been in keeps the loop
+  low-pass tracking the tap (fixed at adoption: Tone back in after silence
+  played 26 443 LSB); Repeat Cut back in after silence still plays its
+  frozen state, a node defect the docstring states. On the boards: at most
+  7.0 % of a block on the P4 and about 14.6 % on the S3 (patch 5,
+  same-conditions reading), passed by Brad; patch 5's digest is identical
+  board to board and differs from the desktop through single-precision
+  Python floats in two derived settings (audiocomponents#75). The old
+  `delay.DigitalDelay` and its `set_time` / `set_mix` stay in `delay.py`
+  until the class comes home. It lives in
+  `lib/audioeffects/rebuilt/digitaldelay.py` until then.
+- **`SlapbackDelay` (rebuilt, Phase 5; adopted 2026-09-28):** the Sun
+  Studio tape slap on one `audioecho.FeedbackDelay`, and what
+  `audioeffects.SlapbackDelay` now serves: one mono repeat at 135 ms, landed
+  on a whole frame at every rate, with Saturation, Tone and Wow as the
+  tape's colours and Repeats defaulting to 0. Level 0 is a wire while the
+  line keeps recording, Time walks rather than clicks, and a host echoing
+  Time back keeps the constructor's exact frame. Tone out is byte-identical
+  to no filter until Tone has been in since a reset, and within 1 LSB after.
+  On the boards: at most 7.4 % of a block on the P4; on the S3 14.6-14.7 %,
+  and 15.2 % at patch 5 (Tone in), which Brad passed against the 15 % bar;
+  every patch digest is identical board to board and differs from the
+  desktop through the Wow depth worked out in single precision
+  (audiocomponents#75). The docstring states the input ceiling (-2.5 dBFS
+  peak at the defaults, -3.4 over the shipped patches, on `noise_det`), the
+  15 kHz swing the wow costs the repeat, the Wow step, and Tone's flat top
+  at 22.05 kHz. It lives in `lib/audioeffects/rebuilt/slapbackdelay.py`
+  until it comes home.
 
 ### Changed
 

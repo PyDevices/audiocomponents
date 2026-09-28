@@ -4,8 +4,8 @@ Rebuilt from scratch for Phase 5 against
 `workspace docs/effects-internal/dossiers/DigitalDelay.md`, whose trait
 table was frozen at Station A before this file existed (anchor commit
 51207b8, 2026-09-27). The old class in `delay.py` is consulted only for the
-seven defects that dossier's section 7 names; it stays the class the
-library serves until the auditor adopts this one.
+seven defects that dossier's section 7 names. This class was adopted on
+2026-09-28, and `audioeffects.DigitalDelay` serves it.
 
 **What it sounds like.** Your dry signal passes untouched, and one clean
 repeat follows it, fed back for more. Time (12.5-800 ms) is the DD-2's
@@ -46,7 +46,17 @@ that ceiling and `get_macro(0)` shows where it stopped.
 **Cost.** One `audioecho.FeedbackDelay` with `delay_slew` on; no mixer.
 Palette row FeedbackDelay +options (the nearest not-cheaper row; there is
 no row for the slew alone), glue 0: **P4 <= 9 %, S3 <= 15 %** of a
-5.333 ms stereo block. The board measurement is pending hardware.
+5.333 ms stereo block. Measured on both boards on 2026-09-27 at every
+shipped patch: the P4 at most 0.372 ms, 7.0 % (patch 5, rt 5.49); the S3
+at most 0.631 ms as the tool reads it, and about 0.78 ms, 14.6 %, at
+patch 5 once the tool's control is measured in the same conditions as the
+palette row (the dearest patch, the one with both loop filters in; rt
+3.11). Alone on an S3 it leaves about 85 % of the block for everything
+else. Six of the seven patch digests are identical on both boards and the
+desktop; patch 5's is identical on both boards and differs from the
+desktop's because `nominal_cut_hz` and `nominal_damping_hz` are worked out
+in Python, in a board's single precision: `cut_hz` lands 0.035 % high
+(39.44766 Hz against 39.43366) and `damping_hz` one float32 step off.
 
 **What the default surrenders.** It is a clean line, so it does not darken
 on its own: the DD-2's 7 kHz band limit and its compander are not in the

@@ -15,8 +15,8 @@ Every law a measurement checks against is written out here from the
 dossier, never taken from the class: the whole-frame landing, the Wow map,
 the Time span.
 
-The rebuild is parked (not in `rebuilt.ADOPTED`), so the class is reached by
-`rebuilt.module_class("SlapbackDelay")`.
+The class is reached by `rebuilt.module_class("SlapbackDelay")`, which is also what
+`audioeffects.SlapbackDelay` serves since its adoption on 2026-09-28.
 """
 
 import math
@@ -1009,11 +1009,17 @@ class TheSurface(unittest.TestCase):
         effect.program_change(3)
         self.assertEqual(effect.patch_index, 3)
 
-    def test_parked_not_served(self):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-09-28, so `create()` serves this one. It was the
+        reverse assertion while the class was parked; revert
+        `rebuilt.ADOPTED` and this goes red."""
         import audioeffects
-        self.assertNotIn("SlapbackDelay", rebuilt.ADOPTED)
-        self.assertIn("SlapbackDelay", rebuilt.parked())
-        self.assertIsNot(audioeffects.SlapbackDelay, SlapbackDelay)
+        self.assertIn("SlapbackDelay", rebuilt.ADOPTED)
+        self.assertNotIn("SlapbackDelay", rebuilt.parked())
+        self.assertIs(audioeffects.SlapbackDelay, SlapbackDelay)
+        served = audioeffects.create("SlapbackDelay", silence_src(64), RATE)
+        self.assertIsInstance(served, SlapbackDelay)
+        served.deinit()
 
     def test_patches_are_the_dossier_settings_on_the_grid(self):
         for index, (name, values) in enumerate(DOSSIER_PATCHES):

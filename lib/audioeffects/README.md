@@ -24,7 +24,7 @@ Every class takes its audio source as the first argument - a synthesizer, an
 `.output` - and exposes its chain tail as `.output`. The underlying nodes are
 kept as attributes (`.node`, `.mixer`, `.cutoff`, ...) so applications can
 bind parameters straight to them; the classes with a natural swept control
-also expose `set_*` helpers (`DigitalDelay.set_time`, ...). A class that
+also expose `set_*` helpers (`TapeDelay.set_time`, ...). A class that
 has been rebuilt on the component contract drops those helpers for its macro
 surface: `LadderFilter` is the first, and its cutoff is macro 0.
 
@@ -129,25 +129,39 @@ marginal share of one block on each board at construction defaults.
 | `Notch` | audiodsp (`audiobiquad`) | 5 | 0 samples | 5.6 % P4 / 9.6 % S3 of a block, **over** its 1.5 % / 5 % budget; a `" - lean"` patch is still owed and none was invented | none (the Twin-T was weighed and dropped on scope) - a band-stop whose `Width` is a bandwidth and not a depth, with a Harmonics toggle for mains hum. A `float` coefficient set cannot put the zeros exactly on the unit circle, so at 60 Hz it is a hum *reducer*, not an eliminator |
 | `LadderFilter` | audiodsp (`audioladder`) | 7 | 0 samples | 16.2 % P4 / 26.7 % S3 of a block at patch 4 against the palette-derived 17 % / 28 %; lean patch 6 is 8.6 % / 14.7 %. T5 and T1's stopband slope stay disconfirmed | the Moog transistor ladder - four one-pole stages round one global feedback loop with an odd saturator **inside** it, so the passband sinks as `Resonance` rises. That droop is the circuit |
 | `CombFilter` | audiodsp (`audioecho`, `audiobiquad`) | 6 | 0 samples | 7.4 % P4 / 12.2 % S3 of a block at patch 0 against the palette-derived 8 % / 13 %. The tail reaches exact zero at every Feedback and tuning since audiodsp v0.6.2 (#154; up to v0.6.1 it parked for ever above Feedback 0.5, +17.4 cents at 1760 Hz / 0.8): at most 7.8 s measured at 20 Hz / 0.95. Since 2026-09-28 `tail_samples` is finite at every setting: the lap bound on the longest line the read head may be at, plus Tone's memory, plus 1.5 s while the Trim (a fixed-point shelf, measured at up to 0.834 s) is in circuit; 900 renders over the surface end inside it. With Tone in, Feedback is stepped under 0.00003 clear of the node's stall windows (audiodsp#157; the 0.95 stop is one). Tone off after Tone has been in freezes the loop low-pass, and Tone back in from silence plays it (15 070 LSB at 48 kHz); `reset()` clears it. The ring plays the asked fractional delay, 0.7 cents at 1760 Hz / 0.8, and the first-repeat tap lands within 0.01 cents. T2/T5 miss at fractional tunings | none - the naked textbook feedback comb `y(n) = x(n) + g·y(n−M)`: a delay short enough to be a pitch, fed back, so noise grows resonances on that note's harmonic series |
-### Time and space - `reverb.py`, `delay.py`
+### Time and space - two adopted, the rest in `reverb.py`, `delay.py`
+
+Phase 5's first two classes, `DigitalDelay` and `SlapbackDelay`, were
+**adopted on 2026-09-28**: `audioeffects.create()` serves the rebuilds, from
+`lib/audioeffects/rebuilt/`, until they come home. Both are **audiodsp** tier
+(one `audioecho.FeedbackDelay` each), zero latency at every setting, and
+neither runs on a stock CircuitPython board. Cost is the class's own share of
+one 256-frame stereo block at 48 kHz, measured on both boards at every
+shipped patch; the S3 figures are the same-conditions reading (the class
+measured beside the palette row it was priced from).
+
+| Class | Tier | Macros | Latency | Cost | Standout |
+|---|---|---|---|---|---|
+| `DigitalDelay` | audiodsp (`audioecho`) | 8 | 0 samples | **P4 at most 7.0 %** (0.372 ms, patch 5, rt 5.49) **/ S3 about 14.6 %** at patch 5 (about 0.78 ms corrected; 11.8 % as the tool reads it; rt 3.11), against palette **9 % / 15 %** (FeedbackDelay +options); Brad passed the S3 figure on 2026-09-28. No lean patch. RAM 155 584 B at the default 800 ms line (48 kHz); `max_time_ms` spends less | Boss DD-2 (1983), light touch: its control law and dry/wet discipline, Mix 0 a wire, Time bends the repeats in pitch at a rate Glide sets instead of clicking, every static Time on a whole frame. Repeat Tone and Repeat Cut put the pedal's 7 kHz and 40 Hz corners in the loop as knobs that default out; patch 5 is the pedal's own corners. `tail_samples` is finite with Repeat Cut out; with Repeat Tone in, Feedback is stepped at most 0.00003 clear of the node's stall windows (audiodsp#157). Repeat Tone out after it has been in keeps the loop low-pass tracking the tap (fixed 2026-09-28; within 1 LSB of the filter out, up to 51 LSB inside a stall window at the 0.99 stop); Repeat Cut back in after silence still plays its frozen state (20 858 LSB at Mix 2), a node defect, and `reset()` clears it. **Digests:** six of seven patches identical on the P4, the S3 and the desktop; patch 5 identical board to board, and different from the desktop through single-precision Python floats in two derived settings (audiocomponents#75): `cut_hz` 0.035 % high (39.44766 Hz against 39.43366) and `damping_hz` one float32 step. **What the default surrenders:** no band limit and no compander, no HOLD, and Glide 0's instant knob clicks. |
+| `SlapbackDelay` | audiodsp (`audioecho`) | 6 | 0 samples | **P4 at most 7.4 %** (0.396 ms corrected; 6.4 % as the tool reads it; rt 5.82) **/ S3 14.6-14.7 %** at the default and patches 0-4 and **15.2 % at patch 5** (0.813 ms corrected, the one patch with Tone in; 11.6 % as the tool reads it; rt 3.08), against palette **9 % / 15 %** (FeedbackDelay +options); Brad passed patch 5 on 2026-09-28 ("It passes"). No lean patch. RAM about 50 KB (a fixed 251 ms line) | Sam Phillips' two-Ampex-350 slap at Sun Studio: one mono repeat at 135 ms, landed on a whole frame at every rate, with Saturation, Tone and Wow as the tape's colours and Repeats defaulting to 0. Level 0 is a wire; Time walks rather than clicks. Tone out stays byte-identical to no filter until Tone has been in since a reset, and within 1 LSB after. **Digests:** all seven patches identical on the P4 and the S3, and different from the desktop through single-precision Python floats in a derived setting (audiocomponents#75): `wow_depth_ms` 2.1 x 10^-5 to 6.8 x 10^-5 ms high, under 0.0001 cent (patch 4's Feedback also one float32 step). **What the default surrenders:** Tone out, so the repeat is as bright as the dry, and Wow at 1 cent makes a 15 kHz repeat breathe down to -5.11 dB at 48 kHz. |
+
 | Class | Notes |
 |---|---|
 | `Reverb` | presets `room` `chamber` `hall` `plate` `spring` (spring adds pre-flutter) |
 | `ConvolutionReverb` | a real impulse response, measured or synthesized; **patches** |
-| `DigitalDelay` `SlapbackDelay` | clean repeats |
 | `TapeDelay` | in-loop low-pass, soft-clip and per-sample wow; **patches** |
 | `AnalogDelay` | BBD: band-limited both ends, `age` over the lot; **patches** |
 | `PingPongDelay` | true cross-feed - repeats alternate sides; **patches** |
 | `MultiTapDelay` | `(position, level)` tap patterns |
 
-The delays split two ways. `DigitalDelay`, `SlapbackDelay` and
-`MultiTapDelay` are clean and run on `audiodelays`, whose feedback path is
+`MultiTapDelay` is clean and runs on `audiodelays`, whose feedback path is
 the echo times a decay. The other three are named after something that
 happens *inside* that path - a filter taking a little more off each pass, a
 soft-clip rounding it, a cross-feed sending it to the other speaker - so they
-run on `audioecho.FeedbackDelay`, which is where audiodsp puts those. A
-coloured delay's `max_time_ms` sizes its line and cannot change afterwards;
-at 48 kHz a second of stereo line is 192 KB, so ask for what will be used.
+run on `audioecho.FeedbackDelay`, which is where audiodsp puts those, as do
+the two adopted delays above. A delay's `max_time_ms` sizes its line and
+cannot change afterwards; at 48 kHz a second of stereo line is 192 KB, so
+ask for what will be used.
 
 The two reverbs are not the same kind of thing. `Reverb` is `audiofreeverb`:
 a fixed network of delay lines that costs the same on a Cortex-M0 as on a

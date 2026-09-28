@@ -5,8 +5,8 @@ Rebuilt from scratch for Phase 5 against
 table was frozen at Station A before this file existed (anchor commit
 7a5a4cbd8a734ea3df6ae8b8b04e32e763a15b5a, the Station A critique's
 re-freeze, 2026-09-27). The old class in `delay.py` is consulted only for
-the seven defects that dossier's section 7 names; it stays the class the
-library serves until the board runner adopts this one.
+the seven defects that dossier's section 7 names. This class was adopted
+on 2026-09-28, and `audioeffects.SlapbackDelay` serves it.
 
 **What it sounds like.** Your dry signal passes untouched, and one copy of
 it comes back 135 ms later, from the same place, a little quieter: the
@@ -47,8 +47,18 @@ whatever the channel count: 48 192 B at 48 kHz, 44 276 B at 44.1 kHz,
 **Cost.** One `audioecho.FeedbackDelay` with `delay_slew`, wow and
 `loop_drive` on; no mixer. Palette row FeedbackDelay +options (the nearest
 not-cheaper row; no row prices `loop_drive`), glue 0: **P4 <= 9 %,
-S3 <= 15 %** of a 5.333 ms stereo block. The board measurement is pending
-hardware.
+S3 <= 15 %** of a 5.333 ms stereo block. Measured on both boards on
+2026-09-28 at every shipped patch, with the tool's control in the same
+conditions as the palette row: the P4 at most 0.396 ms, 7.4 % (rt 5.82 or
+better); the S3 0.781-0.783 ms, 14.6-14.7 %, at the default and patches
+0-4, and 0.813 ms, 15.2 %, at patch 5, the one patch with Tone in
+circuit (rt 3.08 or better). Brad passed patch 5 against the 15 % bar on
+2026-09-28; alone on an S3 the class leaves about 85 % of the block for
+everything else. All seven patch digests are identical on both boards and
+differ from the desktop's, because the Wow depth is worked out in Python
+in a board's single precision (`wow_depth_ms` 2.1 x 10^-5 to
+6.8 x 10^-5 ms high, under 0.0001 cent; patch 4's Feedback also one
+float32 step off).
 
 **What the default surrenders.** The default is Tone out, so the repeat is
 as bright as the dry: an Ampex 350 at 15 ips rolls off at 15 kHz and at

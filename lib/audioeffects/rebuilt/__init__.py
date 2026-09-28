@@ -90,7 +90,24 @@ def _present():
 #: there is nothing left here to arbitrate for any of them.
 #:
 #: What stays parked under this directory: Phase 3's `Flanger`.
-ADOPTED = ()
+#:
+#: Phase 5's first two, adopted 2026-09-28 on Brad's rulings of that date:
+#: `DigitalDelay` and `SlapbackDelay`. Both are THROUGH on the desktop half
+#: (`audit-DigitalDelay-reaudit2.md`, `audit-SlapbackDelay-reaudit1.md`),
+#: and their board rows met the bars (board-test-plan.md, section 2), each
+#: S3 patch 5 at the corrected cost Brad passed (DigitalDelay about
+#: 0.78 ms, 14.6 % of a block; SlapbackDelay 0.813 ms, 15.2 % against the
+#: 15 % bar) and each patch digest identical board to board, differing
+#: from the desktop only through single-precision Python floats in a
+#: derived setting (audiocomponents#75). They stay under this directory for
+#: now: `digitaldelay.py`'s loop-tail arithmetic is imported from here by
+#: `SlapbackDelay`, `CombFilter` and the FeedbackDelay classes Phase 5 is
+#: still building, and coming home moves it. That is a separate step, after
+#: those classes land.
+ADOPTED = (
+    "DigitalDelay",
+    "SlapbackDelay",
+)
 
 
 def load(name):
