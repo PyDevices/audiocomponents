@@ -101,36 +101,23 @@ on full-scale DC, noise and a 2 LSB DC, 900 renders end inside it; the
 tightest, 20 Hz at Feedback 0.7 on full-scale DC, ends 29 frames short of
 69 629.
 
-**With Tone in, the node has a floor of its own** (audiodsp#157): wherever
-0.5 / (1 - Feedback) is within a hair of a whole number k, its loop
-low-pass can rest a hair above k LSB and send it round for ever (1 LSB at
-Feedback 0.5 and 2 at 0.75 with Tone at 2 kHz, on a 2 LSB DC). The
-Feedback knob's top, 0.95, is one of those centres. So with Tone in, the
-class hands the node a Feedback just outside each window, at the nearer
-edge, at most 0.00003 from the one you set, and the knob still reads what
-you set; the tail then reaches zero inside the bound. With Tone off, on
-an instance that has not had Tone in since it was built or reset, nothing
-is moved.
+**With Tone in, the Feedback you set is the one the node plays.** Wherever
+0.5 / (1 - Feedback) is within a hair of a whole number k (0.5, 0.75, and
+the knob's top, 0.95, among them), the loop low-pass can rest a hair above
+k LSB and hand it back. Up to audiodsp v0.6.2 it did so for ever (1 LSB at
+Feedback 0.5 and 2 at 0.75 with Tone at 2 kHz, on a 2 LSB DC), and this
+class handed the node a Feedback just clear of each window. Since
+v0.6.3rc1 the node sets a stalled low-pass onto its input (audiodsp#157),
+nothing is moved, and the bound counts one more lap there.
 
-**Tone off, after Tone has been in.** The node leaves its loop low-pass
-frozen while it is out (`audiodsp_feedback_delay.c:493-497` at v0.6.2), and
-up to 2026-09-28 this class's off stop handed it exactly that: bring Tone
-back after the ring had died and it played what it held, out of silence,
-15 070 LSB at 48 kHz (10 110 at 44.1, 8 828 at 22.05) after a 300 Hz tone
-at 30 000 LSB, Feedback 0, Mix 2. So once Tone has been in circuit since
-the last `reset()`, the off stop keeps the low-pass running at a
-coefficient of exactly 1, which follows the line's tap sample for sample,
-and Tone back in after silence is silent at every rate, stereo and mono
-(the same cure as `DigitalDelay` and `SlapbackDelay`). Against the filter
-truly out that is exact where the read lands on a whole frame (1000 Hz at
-48 kHz) and within 1 LSB where it is fractional (440 Hz at every rate).
-At a Feedback inside one of the node's stall windows (0.5, 0.75, 0.9 and
-on up to the 0.95 stop) the off stop also hands the Feedback that Tone in
-hands, moved clear by at most 0.00003, and there the ring differs from the
-filter truly out by a few LSB: 7 at most in 2 s runs of noise at -30 to
-0 dBFS, 20 / 440 / 4000 Hz, 48 and 44.1 kHz (2026-09-28). A fresh
-instance, and one since a `reset()` that has not put Tone in, hands the
-node exactly no filter, and a `reset()` makes the off stop exact again.
+**Tone off is off, after Tone has been in too.** Bring Tone back after the
+ring has died and nothing plays: 0 LSB at 48, 44.1 and 22.05 kHz, stereo
+and mono, after a 300 Hz tone at 30 000 LSB, Feedback 0, Mix 2. The off
+stop hands the node exactly 0, and since audiodsp v0.6.3rc1 the node keeps
+an off low-pass's state on the signal (audiodsp#158). Up to v0.6.2 it froze
+that state and played it back here (15 070 LSB at 48 kHz); this class
+cured it with a tracking off stop on 2026-09-28, and the cure came out
+when the node was fixed.
 
 **Two traits this class does not have.** The *negative* comb, whose peaks sit
 on the odd half-multiples and which sounds hollow rather than pitched, is
@@ -167,11 +154,9 @@ from . import _component
 # node rounds the same way here. Its module moves up one level when it comes
 # home, so both homes are tried.
 try:
-    from .rebuilt.digitaldelay import (TONE_TRACK_PER_RATE,
-                                       clear_of_stalls, laps_to_zero)
+    from .rebuilt.digitaldelay import laps_to_zero
 except ImportError:                     # pragma: no cover - after it lands
-    from .digitaldelay import (TONE_TRACK_PER_RATE, clear_of_stalls,
-                               laps_to_zero)
+    from .digitaldelay import laps_to_zero
 
 
 #: The line, in milliseconds. 20 Hz wants 50 ms and the node keeps one frame
@@ -332,11 +317,6 @@ class CombFilter(_component.Component):
         self._fresh = True
         self._feedback = 0.0
         self._damping = 0.0
-        #: True once Tone has been handed an in-circuit corner since the
-        #: node was built or cleared. From then on the loop low-pass's
-        #: state is live, and the off stop hands `TONE_TRACK_PER_RATE` x
-        #: the rate, not 0.
-        self._tone_used = False
         self._init_macros(
             (frequency, feedback, mix, tone_hz, trim_db, glide), patch)
         self._fresh = False
@@ -365,14 +345,9 @@ class CombFilter(_component.Component):
         frames = int(math.ceil(self._sample_rate / frequency))
         if self._fresh or slew <= 0.0 or frames > self._reach:
             self._reach = frames
+        # Handed as set: since audiodsp v0.6.3rc1 the node lands a stalled
+        # loop low-pass (#157), so no Feedback is moved clear of a window.
         feedback = self._value(1)
-        if damping > 0.0 and feedback > 0.0:
-            # With Tone in, the node's loop low-pass can hold a small value
-            # for ever at a Feedback a hair either side of 1 - 0.5 / k
-            # (audiodsp#157; 0.5, 0.75 and the 0.95 stop are centres), so
-            # the node is handed the nearer edge of that window instead.
-            feedback = self._loop_feedback(
-                feedback, _tone_excess(damping, self._sample_rate)[1])
         self._feedback = feedback
         self._damping = damping
 
@@ -388,33 +363,20 @@ class CombFilter(_component.Component):
                           else 0.0)
 
     def _tone_damping(self, tone):
-        """The `damping_hz` handed to the node for a Tone of `tone` Hz.
-
-        The node updates its loop low-pass only while the coefficient is
-        above 0 (`audiodsp_feedback_delay.c:493-497` at v0.6.2), so handing
-        0 after Tone has been in would freeze whatever the filter held, and
-        a later Tone move would play it out of silence. At 32 x the rate the
-        coefficient is exactly 1.0f and the state follows the tap. On a node
-        whose loop filters track the signal while out this is the same
-        state, so the cure is right on both."""
+        """The `damping_hz` handed to the node for a Tone of `tone` Hz: the
+        top of the travel is exactly 0, the filter off. Since audiodsp
+        v0.6.3rc1 the node keeps an off low-pass's state on the signal
+        (audiodsp#158), so off is off whatever came before."""
         if tone < TONE_OFF_HZ:
-            self._tone_used = True
             return self._hz(tone)
-        if self._tone_used:
-            return TONE_TRACK_PER_RATE * self._sample_rate
         return 0.0
 
     def _apply_macro(self, index, position):
         del index, position
         self._refresh()
 
-    def _loop_feedback(self, feedback, excess):
-        """The Feedback handed to the node with Tone in circuit."""
-        return clear_of_stalls(feedback, excess)
-
     def reset(self):
         self._fresh = True
-        self._tone_used = False
         _component.Component.reset(self)
         self._fresh = False
 
@@ -434,8 +396,6 @@ class CombFilter(_component.Component):
         MicroPython `property` has no `fget`)."""
         memory, excess = _tone_excess(self._damping, self._sample_rate)
         laps = laps_to_zero(self._feedback, excess)
-        if laps is None:                    # pragma: no cover - stepped clear
-            return None
         trim = 0
         if self._trim.mix > 0.0:
             trim = int(math.ceil(TRIM_TAIL_S * self._sample_rate))

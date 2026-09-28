@@ -17,6 +17,14 @@ the Time span.
 
 The class is reached by `rebuilt.module_class("SlapbackDelay")`, which is also what
 `audioeffects.SlapbackDelay` serves since its adoption on 2026-09-28.
+
+The pin's move to audiodsp v0.6.3rc1 (2026-09-28) took out the tracking
+Tone stop and the stall-window stepping: Tone out hands exactly 0 and is
+byte-identical to no filter (planted: the retired tracking stop), Repeats
+0.5 with Tone in reaches zero as set (planted: the retired stepping), and a
+Wow move no longer steps (planted: the read head moved by the whole change
+at once). Two surface tests pin the Times the node lands off the whole
+frame at 44.1 and 22.05 kHz.
 """
 
 import math
@@ -39,6 +47,8 @@ from audioeffects import _component                         # noqa: E402
 from audioeffects import rebuilt                            # noqa: E402
 from audioeffects.chorus import nominal_damping_hz          # noqa: E402
 from audioeffects.rebuilt import slapbackdelay as sd        # noqa: E402
+from audioeffects.rebuilt.digitaldelay import (             # noqa: E402
+    clear_of_stalls as dd_clear_of_stalls)
 from tools.effect_measurements import instantaneous_hz      # noqa: E402
 
 VENDOR = "PyDevices"
@@ -139,6 +149,16 @@ class FloorSlapback(SlapbackDelay):
 #: The second node's mix: at Level 0.35 the 2T copy is 0.35 x 0.0614 of the
 #: click against a first repeat of 0.35 + 0.0614, about -26 dB.
 SECOND_MIX = 0.0614
+
+
+class HalfFrameSlapback(SlapbackDelay):
+    """The whole-frame landing's surface test: Time handed half a frame
+    over the whole frame, so the repeat splits across two frames."""
+
+    NAME = 'SlapbackDelay'
+
+    def _node_time_ms(self, frames):
+        return (frames + 0.5) * 1000.0 / self._sample_rate
 
 
 class SecondRepeatSlapback(SlapbackDelay):
@@ -316,29 +336,67 @@ class NoWowTailSlapback(SlapbackDelay):
         return int(laps * (self._reach + 1 + memory))
 
 
-class RawFeedbackSlapback(SlapbackDelay):
-    """Tier 1's tail with Tone in: Repeats handed to the node as set, inside
-    the stall window at 0.5, where the loop low-pass holds 1 LSB for
-    ever."""
+class SteppedSlapback(SlapbackDelay):
+    """The workaround retired at audiodsp v0.6.3rc1: with Tone in, Repeats
+    handed to the node at the nearer edge of the stall window at 0.5
+    (`clear_of_stalls`), a Feedback nobody set."""
 
     NAME = 'SlapbackDelay'
 
-    def _loop_feedback(self, feedback, excess):
-        return feedback
+    def _refresh(self):
+        SlapbackDelay._refresh(self)
+        if self._damping > 0.0 and self._feedback > 0.0:
+            excess = sd.tone_excess(self._damping, self._sample_rate)[1]
+            self._feedback = dd_clear_of_stalls(self._feedback, excess)
+            self._delay.set(feedback=self._feedback)
 
 
 class FrozenToneSlapback(SlapbackDelay):
-    """Tier 1's silence clause after a Tone move: the out stop hands the
-    node exactly 0 even after Tone has been in, so the loop low-pass
-    freezes on whatever it held and a later Tone move plays it out of
-    silence (the review's stale-state defect)."""
+    """Tier 1's silence clause after a Tone move: the out stop leaves the
+    low-pass in at 0.001 Hz, where its float32 coefficient is one step
+    above 0 and its state cannot move, so it holds what it held, as the
+    node's out stop did up to v0.6.2 (the review's stale-state defect),
+    and plays it out of silence."""
 
     NAME = 'SlapbackDelay'
 
     def _refresh(self):
         SlapbackDelay._refresh(self)
         if self._macros[TONE_I] >= 1.0:
-            self._delay.set(damping_hz=0.0)
+            self._delay.set(damping_hz=0.001)
+
+
+class TrackingSlapback(SlapbackDelay):
+    """The workaround retired at audiodsp v0.6.3rc1: once Tone has been in,
+    the out stop hands `damping_hz` at 32 x the rate instead of 0."""
+
+    NAME = 'SlapbackDelay'
+
+    def _refresh(self):
+        SlapbackDelay._refresh(self)
+        if self._damping > 0.0:
+            self._was_in = True
+        elif getattr(self, "_was_in", False):
+            self._delay.set(damping_hz=32.0 * self._sample_rate)
+
+    def _clear(self):
+        SlapbackDelay._clear(self)
+        self._was_in = False
+
+
+class JumpWowSlapback(SlapbackDelay):
+    """Tier 1's click-free Wow: a Wow move that moves the read head by the
+    whole change in depth at once, as the node did at the wow's crest up to
+    v0.6.2 (it added depth x wow with no ramp)."""
+
+    NAME = 'SlapbackDelay'
+
+    def _refresh(self):
+        old = self._wow_ms
+        SlapbackDelay._refresh(self)
+        if not self._seeding and not self._deferred and self._wow_ms != old:
+            self._delay.set(delay_slew=0.0,
+                            delay_ms=self._node_ms + self._wow_ms - old)
 
 
 class TargetOnlyTailSlapback(SlapbackDelay):
@@ -1055,6 +1113,54 @@ class TheSurface(unittest.TestCase):
                 self.assertEqual(effect._node_ms,
                                  effect._frames * 1000.0 / rate)
 
+    def test_where_the_node_lands_the_handed_frame(self):
+        # The node turns the handed ms back into frames in float32
+        # (`audiodsp_feedback_delay.c:148`). At 48 kHz every Time position
+        # lands exactly; at 44.1 and 22.05 kHz these land one float32 step
+        # off, which the class cannot avoid (the node ask is drafted).
+        # Goes red when the node lands every whole frame.
+        off_frame = {
+            48000: [],
+            44100: [4, 8, 9, 10, 11, 38, 39, 40, 41, 49, 50, 53, 55, 60, 83,
+                    86, 91, 93, 96, 99, 102],
+            22050: [8, 10, 34, 38, 39, 40, 41, 45, 53, 60, 81, 83, 86, 91,
+                    93, 96, 97, 98, 99, 102],
+        }
+        f32 = np.float32
+        for rate, worst in ((48000, 0.0), (44100, 2.0 ** -11),
+                            (22050, 2.0 ** -12)):
+            effect = SlapbackDelay(silence_src(64, 2, rate), sample_rate=rate)
+            missed = []
+            for midi in range(128):
+                effect.set_macro(TIME_I, midi)
+                ms = f32(effect._node_ms)
+                frames = float((ms * f32(rate)) / f32(1000.0))
+                if frames != effect._frames:
+                    self.assertLessEqual(abs(frames - effect._frames), worst,
+                                         (rate, midi))
+                    missed.append(midi)
+            self.assertEqual(missed, off_frame[rate], rate)
+
+    def test_an_off_frame_time_leaks_into_the_next_frame(self):
+        # MIDI 60 at 44.1 kHz is 4 193 frames, landed 1/2048 of a frame
+        # late: a 20 000 click's repeat (Wow 0, Level 2) reads 19 618 and
+        # 10 in the frame after; at 48 kHz the same position reads 19 627 alone
+        # (the default Saturation's loss). A half frame, planted, leaks.
+        def window(cls, rate):
+            probe = cls(silence_src(64, 2, rate), sample_rate=rate)
+            probe.set_macro(TIME_I, 60)
+            frames = probe._frames
+            values = np.zeros(frames + 64)
+            values[0] = 20000
+            y = render(cls, values, rate, macros={TIME_I: 60}, level=2.0,
+                       wow_cents=0.0)[:, 0]
+            return [int(v) for v in y[frames - 1:frames + 2]]
+
+        self.assertEqual(window(SlapbackDelay, 44100), [0, 19618, 10])
+        self.assertEqual(window(SlapbackDelay, 48000), [0, 19627, 0])
+        self.assertNotEqual(window(HalfFrameSlapback, 48000),
+                            [0, 19627, 0])
+
     def test_a_host_echoing_time_keeps_the_frame(self):
         # Fix round 1: set_macro(0, get_macro(0)) on the constructor's
         # 135.0 ms keeps 5 954 frames at 44.1 kHz; the old behaviour,
@@ -1126,14 +1232,14 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(effect.tail_samples,
                          law_frames(law_time_ms(84), RATE)
                          + law_wow_frames(3.5 * 36 / 127.0, RATE) + 1)
-        # Tone in at Repeats 0.5: the node is handed the stall window's
-        # nearer edge, and the bound is finite.
+        # Tone in at Repeats 0.5, a stall centre: since audiodsp v0.6.3rc1
+        # the node is handed 0.5 itself, and the bound takes its landing
+        # lap there (111 758 frames; 105 184 with the retired stepping).
         effect = SlapbackDelay(silence_src(64), sample_rate=RATE,
                                tone_hz=2000.0, repeats=0.5)
-        self.assertLess(effect._feedback, 0.5)
-        self.assertGreater(effect._feedback, 0.5 - 2.5e-5)
+        self.assertEqual(effect._feedback, 0.5)
         self.assertAlmostEqual(effect.get_macro(REPEATS_I), 127 * 0.5 / 0.6)
-        self.assertEqual(effect.tail_samples, 105184)
+        self.assertEqual(effect.tail_samples, 111758)
 
     def test_constructor_clamps_and_nan(self):
         nan = float("nan")
@@ -1381,45 +1487,38 @@ class T4Tone(unittest.TestCase):
             self.assertFalse(t4_measure(RawTopSlapback, rate)["passed"])
             self.assertFalse(t4_measure(OpenTopSlapback, rate)["passed"])
 
-    def test_out_after_tone_has_been_in_is_within_1_lsb(self):
-        # The restated out clause (fix round 1, restated again in fix
-        # round 2): once Tone has handed an in-circuit value since the
-        # last reset (the constructor counts), the out stop is within
-        # 1 LSB of the node given no `damping_hz`, and byte-identical at
-        # Wow 0 where the node's float32 landing of Time is whole: every
-        # Time at 48 kHz, and every shipped patch's Time at every rate.
+    def test_out_after_tone_has_been_in_is_the_filter_out(self):
+        # Since audiodsp v0.6.3rc1 the node keeps an out low-pass on the
+        # tap (#158), so the out stop hands exactly 0 whatever came before
+        # (the constructor and a patch count as Tone in) and the output is
+        # byte-identical to the node given no `damping_hz`: with Wow on,
+        # and at Wow 0 on a Time whose float32 landing leaves a fraction
+        # (44.1 kHz grid 8, 1 980 frames asked) as on one it lands whole
+        # (grid 84). The tracking cure this replaced moved samples by 1 LSB
+        # on those cells; planted, it is red on every one.
         for rate in RATES:
             for channels in (2, 1):
-                for ctor, steps in (({"tone_hz": 5000.0}, (0,)),
-                                    ({"patch": 5}, (0,))):
+                for ctor in ({"tone_hz": 5000.0}, {"patch": 5}):
                     differing, peak, damping = t4_out_history(
-                        SlapbackDelay, rate, channels, steps=steps, **ctor)
-                    self.assertLessEqual(peak, 1, (rate, channels, ctor))
-                    self.assertGreater(differing, 0, (rate, channels, ctor))
-                    # The pack's old reading, "patches 0-4 hand 0.0", is
-                    # true of a fresh history only.
+                        SlapbackDelay, rate, channels, steps=(0,), **ctor)
+                    self.assertEqual((differing, peak, damping),
+                                     (0, 0, 0.0), (rate, channels, ctor))
+                    differing, _peak, damping = t4_out_history(
+                        TrackingSlapback, rate, channels, steps=(0,),
+                        **ctor)
                     self.assertEqual(damping, 32.0 * rate)
-                    differing, _, _ = t4_out_history(
-                        SlapbackDelay, rate, channels,
-                        steps=steps + ((WOW_I, 0),), **ctor)
-                    self.assertEqual(differing, 0, (rate, channels, ctor))
-        # Fix round 2: at Wow 0 on a Time whose float32 landing
-        # (`audiodsp_feedback_delay.c:148`) leaves a fraction, the tap is
-        # fractional and the coefficient-1 stop moves samples by 1 LSB.
-        # 44.1 kHz grid 8 (1 980 frames asked, no float32 `delay_ms` lands
-        # it whole) is such a cell; grid 84 lands whole and reads 0. The
-        # non-zero assertion is the one the old words ("byte-identical at
-        # Wow 0") fail.
+                    self.assertGreater(differing, 0, (rate, channels, ctor))
         for channels in (2, 1):
-            for midi, fractional in ((8, True), (84, False)):
+            for midi in (8, 84):
+                steps = (0, (WOW_I, 0), (TIME_I, midi))
                 differing, peak, _ = t4_out_history(
-                    SlapbackDelay, 44100, channels,
-                    steps=(0, (WOW_I, 0), (TIME_I, midi)), tone_hz=5000.0)
-                self.assertLessEqual(peak, 1, (channels, midi))
-                if fractional:
-                    self.assertGreater(differing, 0, (channels, midi))
-                else:
-                    self.assertEqual(differing, 0, (channels, midi))
+                    SlapbackDelay, 44100, channels, steps=steps,
+                    tone_hz=5000.0)
+                self.assertEqual((differing, peak), (0, 0), (channels, midi))
+            differing, _peak, _ = t4_out_history(
+                TrackingSlapback, 44100, channels,
+                steps=(0, (WOW_I, 0), (TIME_I, 8)), tone_hz=5000.0)
+            self.assertGreater(differing, 0, channels)
 
     def test_out_on_a_fresh_history_is_byte_identical(self):
         for rate in RATES:
@@ -1567,12 +1666,23 @@ class Tier1Fast(unittest.TestCase):
         last = int(nonzero[-1]) + 1 if len(nonzero) else 0
         return declared, last, int(np.abs(y[-RATE // 4:]).max())
 
-    def test_the_stall_window_is_stepped_clear(self):
+    def test_the_stall_cell_reaches_zero_at_the_repeats_set(self):
+        # Repeats 0.5 with Tone in is a stall centre: up to audiodsp v0.6.2
+        # the node held 1 LSB there for ever and the class moved Repeats
+        # clear of it. Since v0.6.3rc1 (#157) the node lands the stalled
+        # state, so 0.5 is handed as set and the tail ends inside the bound.
         declared, last, held = self._stall(SlapbackDelay)
         self.assertEqual(held, 0)
+        self.assertGreater(last, 0)
         self.assertLessEqual(last, declared)
-        _declared, _last, held = self._stall(RawFeedbackSlapback)
-        self.assertEqual(held, 1)
+        effect = SlapbackDelay(silence_src(64), sample_rate=RATE,
+                               repeats=0.5, tone_hz=2000.0)
+        self.assertEqual(effect._feedback, 0.5)
+        # Planted: the retired stepping hands a Repeats nobody set.
+        stepped = SteppedSlapback(silence_src(64), sample_rate=RATE,
+                                  repeats=0.5, tone_hz=2000.0)
+        self.assertNotEqual(stepped._feedback, 0.5)
+        self.assertLess(abs(stepped._feedback - 0.5), 2.5e-5)
 
     def _tone_back_in(self, cls, rate=RATE, channels=2, level=2.0):
         """300 Hz at 30 000 LSB for 0.5 s with Tone 2 kHz, Tone out, 2 s of
@@ -1601,50 +1711,60 @@ class Tier1Fast(unittest.TestCase):
                                                     channels), 0,
                                  (rate, channels))
         self.assertEqual(self._tone_back_in(SlapbackDelay, level=0.35), 0)
-        # Planted: the out stop frozen at 0 plays the held state back.
+        # Planted: a low-pass left in with a frozen state (0.001 Hz) plays
+        # what it held back out of silence.
         self.assertGreater(self._tone_back_in(FrozenToneSlapback), 20000)
         self.assertGreater(self._tone_back_in(FrozenToneSlapback,
                                               level=0.35), 5000)
 
-    def test_tone_out_hands_no_filter_until_tone_has_been_in(self):
+    def test_tone_out_hands_exactly_zero(self):
+        # After Tone has been in, after a patch with Tone in, and fresh.
+        # The retired tracking cure, planted, hands 32 x the rate.
         with NodeSpy():
             for rate in RATES:
-                effect = SlapbackDelay(silence_src(64, 2, rate),
-                                       sample_rate=rate)
-                self.assertEqual(effect._delay._handed["damping_hz"], 0.0)
-                effect.set_macro(TONE_I, 0)
-                effect.set_macro(TONE_I, 127)
-                self.assertEqual(effect._delay._handed["damping_hz"],
-                                 32.0 * rate)
-                self.assertIsNotNone(effect.tail_samples)
-                effect.reset()
-                self.assertEqual(effect._delay._handed["damping_hz"], 0.0)
-                effect = SlapbackDelay(silence_src(64, 2, rate),
-                                       sample_rate=rate, patch=5)
-                effect.program_change(0)
-                self.assertEqual(effect._delay._handed["damping_hz"],
-                                 32.0 * rate)
+                for cls, expected in ((SlapbackDelay, 0.0),
+                                      (TrackingSlapback, 32.0 * rate)):
+                    effect = cls(silence_src(64, 2, rate), sample_rate=rate)
+                    self.assertEqual(effect._delay._handed["damping_hz"],
+                                     0.0)
+                    effect.set_macro(TONE_I, 0)
+                    effect.set_macro(TONE_I, 127)
+                    self.assertEqual(effect._delay._handed["damping_hz"],
+                                     expected, (cls, rate))
+                    effect = cls(silence_src(64, 2, rate), sample_rate=rate,
+                                 patch=5)
+                    effect.program_change(0)
+                    self.assertEqual(effect._delay._handed["damping_hz"],
+                                     expected, (cls, rate))
 
-    def test_a_wow_move_steps_as_the_docstring_says(self):
-        # The node takes a new wow depth at once; the docstring states the
-        # step. 997 Hz at 12 000 LSB, Level 2, Wow 36 -> 73 at frame 15 616.
+    def _wow_move(self, cls, start, target):
+        """(the tone's own largest step before the move, the largest step
+        over the 2 000 frames from the move) for a Wow move at frame
+        15 616 on 997 Hz at 12 000 LSB, Level 2, 48 kHz."""
         at = 15616
         values = 12000 * np.sin(2 * math.pi * 997.0 * np.arange(RATE) / RATE)
-        steps = []
-        for target in (73, 127):
-            source, _ = to_source(values)
-            effect = SlapbackDelay(source, sample_rate=RATE, level=2.0)
-            effect.set_macro(WOW_I, 36 if target == 73 else 0)
+        source, _ = to_source(values)
+        effect = cls(source, sample_rate=RATE, level=2.0)
+        effect.set_macro(WOW_I, start)
 
-            def move(frame, target=target, effect=effect):
-                if frame == at:
-                    effect.set_macro(WOW_I, target)
+        def move(frame):
+            if frame == at:
+                effect.set_macro(WOW_I, target)
 
-            y = pull(effect, RATE, on_block=move)[:, 0].astype(int)
-            steady = int(np.abs(np.diff(y[at - 3000:at - 1])).max())
-            steps.append((steady, int(np.abs(y[at] - y[at - 1]))))
-        self.assertEqual(steps[0], (1565, 7684))
-        self.assertEqual(steps[1][1], 23037)
+        y = pull(effect, RATE, on_block=move)[:, 0].astype(int)
+        steady = int(np.abs(np.diff(y[at - 3000:at - 1])).max())
+        return steady, int(np.abs(np.diff(y[at - 1:at + 2000])).max())
+
+    def test_a_wow_move_does_not_step(self):
+        # Since audiodsp v0.6.3rc1 the node ramps a new depth in over 20 ms
+        # (#160): no step larger than the tone's own (1 565 LSB) after a
+        # move 36 -> 73 or 0 -> 127, where v0.6.2 stepped 7 684 and 23 037.
+        for start, target in ((36, 73), (0, 127)):
+            steady, worst = self._wow_move(SlapbackDelay, start, target)
+            self.assertLessEqual(worst, steady, (start, target))
+            # Planted: the read head moved by the whole change at once.
+            steady, worst = self._wow_move(JumpWowSlapback, start, target)
+            self.assertGreater(worst, 4 * steady, (start, target))
 
     def _walk_tail(self, cls):
         """250 ms of 997 Hz, then Time 250 -> 40 ms on the tone's last

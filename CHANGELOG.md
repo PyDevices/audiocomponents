@@ -14,15 +14,14 @@ there, and are recorded in its changelog.
   interpolated line with the Boss DD-2's control law on one
   `audioecho.FeedbackDelay`, and what `audioeffects.DigitalDelay` and
   `create()` now serve. Turning Time pitch-bends the repeats at a rate Glide
-  sets instead of clicking, every static Time lands on a whole frame, Mix 0
-  is a wire while the line keeps recording, and Repeat Tone and Repeat Cut
-  put the pedal's 7 kHz and 40 Hz corners into the loop as knobs that
-  default out. `tail_samples` is finite with Repeat Cut out, and with Repeat
-  Tone in the Feedback is stepped clear of the node's stall windows
-  (audiodsp#157). Repeat Tone out after it has been in keeps the loop
-  low-pass tracking the tap (fixed at adoption: Tone back in after silence
-  played 26 443 LSB); Repeat Cut back in after silence still plays its
-  frozen state, a node defect the docstring states. On the boards: at most
+  sets instead of clicking, every static Time is handed as a whole frame
+  (the node lands 18 of the 128 knob positions one float32 step off it at
+  44.1 and at 22.05 kHz, none at 48 kHz), Mix 0 is a wire while the line
+  keeps recording, and Repeat Tone and Repeat Cut put the pedal's 7 kHz and
+  40 Hz corners into the loop as knobs that default out. `tail_samples` is
+  finite with Repeat Cut out, and either filter back in after silence plays
+  nothing (at audiodsp v0.6.3rc1, whose node keeps an out filter's state
+  live). On the boards: at most
   7.0 % of a block on the P4 and about 14.6 % on the S3 (patch 5,
   same-conditions reading), passed by Brad; patch 5's digest is identical
   board to board and differs from the desktop through single-precision
@@ -33,23 +32,40 @@ there, and are recorded in its changelog.
 - **`SlapbackDelay` (rebuilt, Phase 5; adopted 2026-09-28):** the Sun
   Studio tape slap on one `audioecho.FeedbackDelay`, and what
   `audioeffects.SlapbackDelay` now serves: one mono repeat at 135 ms, landed
-  on a whole frame at every rate, with Saturation, Tone and Wow as the
+  as a whole frame at every rate, with Saturation, Tone and Wow as the
   tape's colours and Repeats defaulting to 0. Level 0 is a wire while the
   line keeps recording, Time walks rather than clicks, and a host echoing
   Time back keeps the constructor's exact frame. Tone out is byte-identical
-  to no filter until Tone has been in since a reset, and within 1 LSB after.
+  to no filter whatever came before, and a Wow move glides over 20 ms (both
+  at audiodsp v0.6.3rc1).
   On the boards: at most 7.4 % of a block on the P4; on the S3 14.6-14.7 %,
   and 15.2 % at patch 5 (Tone in), which Brad passed against the 15 % bar;
   every patch digest is identical board to board and differs from the
   desktop through the Wow depth worked out in single precision
   (audiocomponents#75). The docstring states the input ceiling (-2.5 dBFS
   peak at the defaults, -3.4 over the shipped patches, on `noise_det`), the
-  15 kHz swing the wow costs the repeat, the Wow step, and Tone's flat top
+  15 kHz swing the wow costs the repeat, the Times the node lands off the
+  frame at 44.1 and 22.05 kHz, and Tone's flat top
   at 22.05 kHz. It lives in `lib/audioeffects/rebuilt/slapbackdelay.py`
   until it comes home.
 
 ### Changed
 
+- **The audiodsp pin moves to v0.6.3rc1, and three workarounds come out.**
+  The release carries audiodsp#161: `audioecho.FeedbackDelay` keeps an out
+  loop filter's state live (#158, #159), lands a stalled damping state so a
+  tail reaches zero with the low-pass in (#157), and ramps a new wow depth
+  over 20 ms (#160). `DigitalDelay`, `SlapbackDelay` and `CombFilter` now
+  hand exactly 0 at a filter's out stop (no more 32 x rate tracking stop,
+  which was 1 LSB off the filter out in places) and hand the Feedback you
+  set (no more stepping clear of the stall windows, up to 3 x 10^-5 away);
+  `tail_samples` counts one landing lap at a window centre and stays finite.
+  `DigitalDelay`'s Repeat Cut back in after silence is silent (it played
+  20 858 LSB, disclosed), and `SlapbackDelay`'s Wow no longer steps (7 684
+  LSB at a 36 -> 73 move). Both docstrings now say which static Times the
+  node lands one float32 step off the whole frame at 44.1 and 22.05 kHz, as
+  `PingPongDelay`'s does. No shipped patch's render moved (the census,
+  three interpreters).
 - **`Flanger` (parked under `rebuilt/`): F8 restated, the sound unchanged.**
   At Color max (0.99, 3 ms, Filter Matrix on) the ring to -60 dB is about
   1.9 s after a 440 Hz burst and 2.1 s after a 200 Hz one (1.91 / 2.13 s

@@ -66,11 +66,29 @@ as bright as the dry: an Ampex 350 at 15 ips rolls off at 15 kHz and at
 there. Wow is on at 1 cent, and wow moves the read head between samples, so
 the repeat's top end breathes: at 48 kHz a 15 kHz tone in the repeat swings
 between -0.03 and -5.11 dB (mean -2.61 dB) about 25 times a second; at
-44.1 kHz between -0.02 and -6.38 dB (mean -3.35 dB). With Wow at 0 the
-repeat loses nothing: every static Time is landed on the nearest whole frame
-at the running rate, so the default 135 ms is 6 480 frames at 48 kHz and
-5 954 frames (135.011 ms) at 44.1 kHz, not the 5 953.5 that would cost the
-repeat 6.35 dB at 15 kHz for as long as it played.
+44.1 kHz between -0.02 and -6.38 dB (mean -3.35 dB). With Wow at 0 every
+static Time is handed to the node as the nearest whole frame at the
+running rate, so the default 135 ms is 6 480 frames at 48 kHz and 5 954
+frames (135.011 ms) at 44.1 kHz, not the 5 953.5 that would cost the
+repeat 6.35 dB at 15 kHz for as long as it played. At 48 kHz the node
+lands every one of the 128 Time positions exactly on that frame, and the
+repeat loses nothing.
+
+At 44.1 and 22.05 kHz it does not always. The node turns the milliseconds
+back into frames in float32, and for some Times no float32 value lands on
+the whole frame, so the read sits one float32 step off it. Among the 128
+Time positions that is 21 at 44.1 kHz (MIDI 4, 8, 9, 10, 11, 38, 39, 40,
+41, 49, 50, 53, 55, 60, 83, 86, 91, 93, 96, 99, 102) and 20 at 22.05 kHz
+(MIDI 8, 10, 34, 38, 39, 40, 41, 45, 53, 60, 81, 83, 86, 91, 93, 96, 97,
+98, 99, 102), at most 1/2048 of a frame off at 44.1 kHz and 1/4096 at
+22.05 kHz. Of the 9 262 whole frames a constructor `time_ms` reaches
+from 40 to 250 ms, 1 159 land off at 44.1 kHz, and 579 of 4 632 at
+22.05 kHz, up to 1/1024 and 1/2048 of a frame. None do at 48 kHz, nor the
+default 135 ms or any shipped patch's Time at any rate. There the repeat
+puts a sliver on the frame beside it: a 20 000 click's repeat reads
+19 618 and 10 at MIDI 60, 44.1 kHz (19 623 and 5 at 22.05 kHz), against
+19 627 on the frame (the default Saturation's own loss). The class cannot
+hand the node a number that lands there; a node change is asked for.
 
 **Saturation** is the node's cubic soft clip on the repeat, applied again on
 each pass when Repeats is up. On the repeat of a -6 dBFS tone the default
@@ -84,42 +102,30 @@ fundamental at -0.56 dB. There is no second harmonic.
 135 -> 85 ms takes 267 ms. There is no Glide knob; a slap's time is set,
 not played.
 
-**Turning Wow while it plays steps.** The node takes a new wow depth at
-once (`audiodsp_feedback_delay.c:457-458` adds depth x wow to the read
-head, with no ramp), so the repeat jumps by the change in depth times
-wherever the 0.7 Hz cycle is. On a 997 Hz tone at 12 000 LSB, Level 2,
-48 kHz, a Wow move from grid 36 to 73 steps the output 7 684 LSB where the
-tone's own largest step is 1 565, and 0 to 127 steps 23 037; near a zero of
-the cycle the same moves barely show. A patch change that moves Wow does
-the same: patch 0 to patch 2 (Doubling, the one patch with a different
-Wow), tried on every block boundary of that tone, steps up to 5 503 LSB
-against patch 0's own 2 107 at 48 kHz (5 680 against 2 293 at 44.1 kHz).
-Time walks; Wow does not, so set it before you play.
+**Turning Wow while it plays glides.** Since audiodsp v0.6.3rc1 the node
+ramps a new wow depth in over 20 ms (audiodsp#160), so the repeat bends
+for those 20 ms instead of jumping. On a 997 Hz tone at 12 000 LSB,
+Level 2, 48 kHz, a Wow move from grid 36 to 73 or from 0 to 127 steps the
+output by no more than the tone's own largest step, 1 564 LSB, anywhere
+in the 2 000 frames after it (up to v0.6.2 the same moves stepped 7 684
+and 23 037). While the depth travels, the extra pitch is the change over
+20 ms times where the 0.7 Hz cycle is: 0 to 127 is 0.46 ms, up to 2.3 %
+at the cycle's crest for those 20 ms. A patch change that moves Wow is a
+click only as far as its Level jump makes it: patch 0 to patch 2
+(Doubling), tried on every block boundary of that tone, steps up to 3 416
+LSB against patch 0's own 2 106 at 48 kHz (3 569 against 2 292 at
+44.1 kHz; 5 503 and 5 680 at v0.6.2), and 3 414 with Wow held at patch 0's,
+so what is left is the Level moving at once, not the Wow.
 
-**Tone out, after Tone has been in.** The node leaves its loop low-pass
-frozen while the filter is out, and a frozen filter would play what it
-held when Tone came back in, out of silence. So once Tone has been in
-circuit since the last `reset()`, the out stop keeps the filter running at
-a coefficient of exactly 1, which follows the repeat sample for sample.
-That is the out stop up to float rounding: against the filter truly out,
-over 2 916 cells (Time, Wow, Saturation, Repeats and Level at three
-settings each, three rates, stereo and mono, a full-scale ramp and noise),
-5 640 of 166 430 700 samples differ, each by 1 LSB. None of those was at
-Wow 0, but that run tried three Times only (40, 135 and 250 ms). Where
-the node's single-precision `delay_ms * rate / 1000` misses the whole
-frame the class asked for, Wow 0 differs by 1 LSB as well. That is 21
-of the 128 grid positions at 44.1 kHz and 20 at 22.05 kHz, and about one
-whole-frame Time in eight at either rate (1 159 of 9 262, 579 of 4 632;
-`time_ms=136.054` at 44.1 kHz is one); none at 48 kHz, and none at a
-shipped patch's Time. At Repeats 0.5, the centre of the one stall window
-Repeats reaches (see Tail), the out stop also hands the Feedback that
-Tone in hands, moved clear by under 2.5 x 10^-5, and there it differs by
-1 LSB at every Wow and rate: 28 624 of 384 000 samples at Wow 0, 48 kHz
-(4 s of 0 dBFS noise, Level 0.35; 2026-09-28). The defaults, and anything
-since a reset that has not put Tone in, hand the node exactly no filter. A Tone in the
-constructor counts: `tone_hz=5000` and then patch 0, or `patch=5` and then patch 0, is the 1 LSB case (10 of
-384 000 samples of 4 s of 0 dBFS noise at 48 kHz stereo), and a `reset()`
-makes it exact again.
+**Tone out is out, after Tone has been in too.** Bring Tone back in after
+the repeat has died away and nothing plays: 0 LSB at 48, 44.1 and
+22.05 kHz, stereo and mono, after a 300 Hz tone at 30 000 LSB with Tone at
+2 kHz. The out stop hands the node exactly 0, and since audiodsp v0.6.3rc1
+the node keeps an out low-pass's state on the signal (audiodsp#158), so
+Tone out after Tone in renders the same bytes as a fresh instance's Tone
+out. Up to v0.6.2 the node froze that state and played it back; this class
+cured it with a tracking out stop, 1 LSB off the filter truly out in
+places, and the cure came out when the node was fixed.
 
 **A host that echoes Time back** (`set_macro(0, get_macro(0))`) keeps the
 constructor's exact Time: the 44.1 kHz default stays on 5 954 frames.
@@ -141,11 +147,12 @@ peak down (at -2.4 they rail 14 samples), and the shipped patches from
 **Tail.** `tail_samples` is an upper bound on how long the output takes to
 reach exact zero after your input stops: one lap of the line at Repeats 0
 (6 488 frames at the defaults, 48 kHz), 11 laps at 0.35, 21 at the 0.6
-stop. With Tone in circuit the node's loop low-pass can hold a small value
-for ever at a Feedback a hair either side of 0.5, which Repeats' span
-reaches, so there the class hands the node a Feedback just outside that
-window (under 2.5 x 10^-5 away, far inside one step of the knob, which still
-reads what you set) and the tail reaches zero inside the bound.
+stop. With Tone in circuit, at a Repeats a hair either side of 0.5 (which
+the span reaches), the loop low-pass can rest a hair above 1 LSB and hand
+it back; up to audiodsp v0.6.2 it did so for ever and the class moved
+Repeats clear of it. Since v0.6.3rc1 the node sets a stalled low-pass onto
+its input (audiodsp#157), Repeats is handed as set, the bound counts one
+more lap there, and the tail reaches exact zero inside it.
 
 `capabilities = ()`: a slapback's time is a fixed distance over a fixed
 tape speed, with no musical relationship to a tempo, so the class never
@@ -168,9 +175,9 @@ from ..chorus import nominal_damping_hz
 # rounds the same way in both classes. Its module moves up one level when
 # it comes home, so both homes are tried.
 try:
-    from .digitaldelay import clear_of_stalls, laps_to_zero, whole_frames
+    from .digitaldelay import laps_to_zero, whole_frames
 except ImportError:                     # pragma: no cover - after it lands
-    from ..digitaldelay import clear_of_stalls, laps_to_zero, whole_frames
+    from ..digitaldelay import laps_to_zero, whole_frames
 
 try:
     import audioecho
@@ -191,19 +198,6 @@ LINE_MS = TIME_MAX_MS + 1.0
 #: The Tone span's corners; the top stop is exactly `damping_hz = 0`.
 TONE_MIN_HZ = 2000.0
 TONE_MAX_HZ = 20000.0
-
-#: Tone out after Tone has been in: `damping_hz` at 32 x the rate, where
-#: 1 - expf(-2 pi 32) is exactly 1.0f (`one_pole_coefficient`,
-#: `audiodsp_feedback_delay.c:33-40`), so the loop low-pass's state follows
-#: the tap sample for sample instead of freezing. That is the identity up to
-#: float rounding, which moved 5 640 of 166 430 700 samples by 1 LSB and
-#: none by more (`slapbackdelay_fix_tone_track.py`). It can move one only
-#: where the tap is fractional: with Wow on, and at Wow 0 wherever the node's
-#: float32 `delay_ms * rate / 1000` misses the whole frame: 21 of the 128
-#: grid positions at 44.1 kHz and 20 at 22.05 kHz, about one whole-frame
-#: Time in eight at either rate (1 159 of 9 262, 579 of 4 632), none at
-#: 48 kHz.
-TONE_TRACK_PER_RATE = 32.0
 
 #: The wow's fixed rate and the Wow knob's ceiling, in cents peak.
 WOW_HZ = 0.7
@@ -342,10 +336,6 @@ class SlapbackDelay(_component.Component):
         self._deferred = False
         self._feedback = 0.0
         self._damping = 0.0
-        #: True once the loop low-pass has been handed an in-circuit corner
-        #: since the node was built or cleared. From then on its state is
-        #: live, and Tone out hands `TONE_TRACK_PER_RATE` x the rate, not 0.
-        self._tone_used = False
         self._wow_ms = 0.0
         self._node_ms = 0.0
         #: The constructor's Time, exactly, until macro 0 moves. Seeding a
@@ -403,7 +393,6 @@ class SlapbackDelay(_component.Component):
     def _clear(self):
         self._delay.clear()
         self._fresh = True
-        self._tone_used = False
 
     # -- the maps ------------------------------------------------------
 
@@ -468,23 +457,11 @@ class SlapbackDelay(_component.Component):
         self._node_ms = self._node_time_ms(self._frames)
         if self._fresh or self._frames > self._reach:
             self._reach = self._frames
+        # Tone out is exactly 0, and Repeats is handed as set: since
+        # audiodsp v0.6.3rc1 the node keeps an out low-pass on the signal
+        # (#158) and lands a stalled one (#157).
         damping = self._tone_damping(self._macros[TONE_I])
-        if damping > 0.0:
-            self._tone_used = True
-        elif self._tone_used:
-            # The node updates its loop low-pass only while the coefficient
-            # is above 0 (`audiodsp_feedback_delay.c:493-497`), so handing 0
-            # after Tone has been in would freeze whatever the filter held,
-            # and a later Tone move would play it out of silence. A
-            # coefficient of exactly 1 keeps the state on the tap instead.
-            damping = TONE_TRACK_PER_RATE * self._sample_rate
         feedback = _between(self._value(REPEATS_I), 0.0, REPEATS_MAX)
-        if damping > 0.0 and feedback > 0.0:
-            # With Tone in, the node can hold a small value for ever at a
-            # Feedback a hair either side of 1 - 0.5 / k (0.5 is inside the
-            # span); the node is handed the nearer edge of that window.
-            feedback = self._loop_feedback(
-                feedback, tone_excess(damping, self._sample_rate)[1])
         self._feedback = feedback
         self._damping = damping
         self._wow_ms = self._wow_depth_ms(self._value(WOW_I))
@@ -498,10 +475,6 @@ class SlapbackDelay(_component.Component):
             cut_hz=0.0,
             wow_hz=WOW_HZ,
             wow_depth_ms=self._wow_ms)
-
-    def _loop_feedback(self, feedback, excess):
-        """The Feedback handed to the node with Tone in circuit."""
-        return clear_of_stalls(feedback, excess)
 
     @property
     def tail_samples(self):
@@ -520,7 +493,5 @@ class SlapbackDelay(_component.Component):
         `fget`."""
         memory, excess = tone_excess(self._damping, self._sample_rate)
         laps = laps_to_zero(self._feedback, excess)
-        if laps is None:                    # pragma: no cover - stepped clear
-            return None
-        wow = int(math.ceil(self._wow_ms * self._sample_rate / 1000.0))
+        wow =int(math.ceil(self._wow_ms * self._sample_rate / 1000.0))
         return int(laps * (self._reach + wow + 1 + memory))

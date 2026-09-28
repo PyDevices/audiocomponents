@@ -51,6 +51,18 @@ a finite `tail_samples`, beside re-audit fix round 1's class, which said
 node's walk (`t2_segments`), which goes red at grid 3.0079 where the
 whole-walk fit passed, and the rising edge moves to Glide grid 4. A NaN
 `glide_ms` is the jump and a NaN `max_time_ms` is 800 ms.
+
+The pin's move to audiodsp v0.6.3rc1 (2026-09-28): the node keeps an out
+loop filter's state live and lands a stalled damping state (audiodsp#158,
+#159, #157), so the class's tracking out stop and its stall-window stepping
+came out. The tests that pinned the old node or proved a workaround was
+needed now assert the good behaviour directly: either filter back in after
+silence is silent (planted: a filter left in at 0.001 Hz, frozen), both out
+stops hand exactly 0 and render a fresh instance's bytes (planted: the
+retired tracking stop), every stall cell reaches zero at the Feedback set
+inside a finite bound (planted: the retired stepping, and the v0.6.2
+reckoning that says `None`). Two surface tests pin the Times the node lands
+off the whole frame at 44.1 and 22.05 kHz, as `PingPongDelay`'s do.
 """
 
 import math
@@ -492,43 +504,108 @@ class OneLapToneDelay(DigitalDelay):
         return int(laps * (self._reach + 1))
 
 
-class StallWindowToneDelay(DigitalDelay):
-    """Re-audit fix round 1's class with Repeat Tone in: the node handed
-    the Feedback asked for, inside the stall windows, where the class said
-    `None` and the node held 1-5 LSB for ever (1 at Feedback 0.5, 5 at
-    0.9, Tone 800 Hz, a 2 LSB DC)."""
+class SteppedToneDelay(DigitalDelay):
+    """The workaround retired at audiodsp v0.6.3rc1: with Repeat Tone in,
+    the node handed the nearer edge of a stall window (`clear_of_stalls`)
+    instead of the Feedback asked for, up to 2.6 x 10^-5 away. On the
+    fixed node it plays a Feedback nobody set."""
 
     NAME = 'DigitalDelay'
 
-    def _loop_feedback(self, feedback):
-        return feedback
+    def _refresh(self):
+        DigitalDelay._refresh(self)
+        if self._damping > 0.0:
+            self._feedback = dd.clear_of_stalls(self._feedback,
+                                                self._tone_excess()[1])
+            self._delay.set(feedback=self._feedback)
+
+
+class WindowNoneToneDelay(DigitalDelay):
+    """The v0.6.2 reckoning with the stepping gone: `None` wherever a lap
+    hands a peak back, the node's landing not counted. Declares no bound at
+    every stall cell."""
+
+    NAME = 'DigitalDelay'
+
+    @property
+    def tail_samples(self):
+        if self._macros[CUT_I] > 0.0:
+            return None
+        memory, excess = self._tone_excess()
+        if dd.stall_window(self._feedback, excess) is not None:
+            return None
+        return int(dd.laps_to_zero(self._feedback, excess)
+                   * (self._reach + 1 + memory))
+
+
+class _ToneMemory:
+    """Remembers whether Repeat Tone has been in since the last clear, for
+    the out-stop faults below (the class itself no longer needs to)."""
+
+    def _refresh(self):
+        DigitalDelay._refresh(self)
+        if self._damping > 0.0:
+            self._was_in = True
+        self._after_refresh()
+
+    def _clear(self):
+        DigitalDelay._clear(self)
+        self._was_in = False
+
+    def _out_after_in(self):
+        return getattr(self, "_was_in", False) and \
+            self._macros[TONE_I] >= 1.0
 
 
 class FrozenToneDelay(DigitalDelay):
-    """Tier 1's silence clause after a Repeat Tone move: the out stop hands
-    the node exactly 0 even after Tone has been in, so the loop low-pass
-    freezes on whatever it held and a later Tone move plays it out of
-    silence. The class up to the housekeeping round (2026-09-28), and
-    `FrozenToneSlapback`'s defect."""
+    """Tier 1's silence clause after a Repeat Tone move: the out stop
+    leaves the low-pass in at 0.001 Hz, where its float32 coefficient is
+    one step above 0 and the state cannot move, so it holds what it held,
+    as the node's out stop did up to v0.6.2, and plays it out of silence
+    (26 112 LSB after the move at Mix 2, 48 kHz, and already before it)."""
 
     NAME = 'DigitalDelay'
 
     def _refresh(self):
         DigitalDelay._refresh(self)
         if self._macros[TONE_I] >= 1.0:
-            self._delay.set(damping_hz=0.0)
+            self._delay.set(damping_hz=0.001)
 
 
-class LeakyTrackDelay(DigitalDelay):
+class FrozenCutDelay(DigitalDelay):
+    """The same for Repeat Cut: the out stop leaves the high-pass in at
+    0.001 Hz, its state frozen (20 666 LSB after the move at 48 kHz)."""
+
+    NAME = 'DigitalDelay'
+
+    def _refresh(self):
+        DigitalDelay._refresh(self)
+        if self._macros[CUT_I] <= 0.0:
+            self._delay.set(cut_hz=0.001)
+
+
+class TrackingToneDelay(_ToneMemory, DigitalDelay):
+    """The workaround retired at audiodsp v0.6.3rc1: once Repeat Tone has
+    been in, the out stop hands `damping_hz` at 32 x the rate (a
+    coefficient of exactly 1) instead of 0. On the fixed node it is the
+    filter out only up to float rounding."""
+
+    NAME = 'DigitalDelay'
+
+    def _after_refresh(self):
+        if self._out_after_in():
+            self._delay.set(damping_hz=32.0 * self._sample_rate)
+
+
+class LeakyTrackDelay(_ToneMemory, DigitalDelay):
     """The out stop after Repeat Tone has been in, tracking the tap at a
     coefficient under 1: `damping_hz` at half the rate (a = 1 - e^-pi,
     0.957), a low-pass left in circuit where the knob says out."""
 
     NAME = 'DigitalDelay'
 
-    def _refresh(self):
-        DigitalDelay._refresh(self)
-        if self._tone_used and self._macros[TONE_I] >= 1.0:
+    def _after_refresh(self):
+        if self._out_after_in():
             self._delay.set(damping_hz=0.5 * self._sample_rate)
 
 
@@ -1515,8 +1592,9 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(effect.tail_samples, 15 * 601)
         # Repeat Tone in: each lap is the low-pass's forgetting time longer
         # (22 frames at grid 100, 48 kHz). Feedback 0.99 sits in a stall
-        # window, so the node is handed the window's lower edge, a hair
-        # under 0.99, the knob still reads 127, and the bound is finite.
+        # window; since audiodsp v0.6.3rc1 the node lands a stalled state
+        # (#157), so the node is handed 0.99 itself and the count takes its
+        # one landing lap there.
         effect.set_macro(TONE_I, 100)
         self.assertEqual(effect._tone_excess()[0], 22)
         self.assertEqual(effect.tail_samples, 15 * (601 + 22))
@@ -1524,28 +1602,24 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(effect.tail_samples, 17 * (601 + 22))
         effect.set_macro(FEEDBACK_I, 127)
         self.assertEqual(effect.get_macro(FEEDBACK_I), 127.0)
-        self.assertLess(effect._feedback, 0.99)
-        self.assertGreater(effect._feedback, 0.99 - 3e-5)
+        self.assertEqual(effect._feedback, 0.99)
         laps = dd.laps_to_zero(effect._feedback, effect._tone_excess()[1])
-        self.assertIsNotNone(laps)
         self.assertEqual(effect.tail_samples, laps * (601 + 22))
-        # Tone back out after it has been in: the low-pass tracks the tap
-        # at a coefficient of 1 (one frame of memory), so the Feedback stays
-        # clear of the stall window as with Tone in (housekeeping,
-        # 2026-09-28). An instance that never had Tone in hands 0.99 and
-        # one lap per frame of the line.
+        # Tone back out after it has been in is the filter out: exactly 0
+        # handed, no memory, and the same bound as an instance that never
+        # had Tone in, 685 laps of the line at 0.99.
         effect.set_macro(TONE_I, 127)
-        self.assertEqual(effect._damping, dd.TONE_TRACK_PER_RATE * RATE)
-        self.assertLess(effect._feedback, 0.99)
-        self.assertEqual(effect._tone_excess()[0], 1)
-        laps = dd.laps_to_zero(effect._feedback, effect._tone_excess()[1])
-        self.assertEqual(effect.tail_samples, laps * (601 + 1))
+        self.assertEqual(effect._damping, 0.0)
+        self.assertEqual(effect._feedback, 0.99)
+        self.assertEqual(effect.tail_samples, 685 * 601)
         fresh = copy_of(effect, silence_src(512))
-        self.assertEqual(fresh._feedback, 0.99)
         self.assertEqual(fresh.tail_samples, 685 * 601)
         fresh.deinit()
-        self.assertEqual(dd.laps_to_zero(0.99, 1e-5), None)
-        self.assertEqual(dd.laps_to_zero(0.5, 1e-5), None)
+        # A window centre counts its landing lap: one more than the filter
+        # out at 0.5 and 0.99 (16 and 685); outside a window, 0.7, the
+        # excess alone decides.
+        self.assertEqual(dd.laps_to_zero(0.5, 1e-5), 17)
+        self.assertEqual(dd.laps_to_zero(0.99, 1e-5), 686)
         self.assertEqual(dd.laps_to_zero(0.7, 1e-5), 29)
         effect.set_macro(FEEDBACK_I, 0)
         effect.set_macro(CUT_I, 1)
@@ -1577,6 +1651,66 @@ class TheSurface(unittest.TestCase):
                                places=3)
         self.assertAlmostEqual(dd.nominal_cut_hz(400.0, 44100), 378.3309,
                                places=3)
+
+    def test_where_the_node_lands_the_handed_frame(self):
+        # The node turns the handed ms back into frames in float32
+        # (`audiodsp_feedback_delay.c:148`). At 48 kHz every knob position
+        # lands exactly; at 44.1 and 22.05 kHz these land one float32 step
+        # off, which the class cannot avoid (the node ask is drafted:
+        # `audiodsp-feedback-delay-whole-frame-landing.md`). Goes red when
+        # the node lands every whole frame.
+        off_frame = {
+            48000: [],
+            44100: [8, 9, 13, 19, 29, 34, 52, 57, 61, 74, 75, 78, 80, 94,
+                    101, 104, 118, 125],
+            22050: [8, 9, 13, 16, 34, 39, 51, 52, 57, 74, 75, 78, 80, 94,
+                    101, 104, 118, 123],
+        }
+        f32 = np.float32
+        with NodeSpy():
+            for rate, worst in ((48000, 0.0), (44100, 2.0 ** -8),
+                                (22050, 2.0 ** -10)):
+                effect = DigitalDelay(silence_src(64, 2, rate),
+                                      sample_rate=rate)
+                missed = []
+                for midi in range(128):
+                    effect.set_macro(TIME_I, midi)
+                    ms = f32(effect._delay._handed["delay_ms"])
+                    frames = float((ms * f32(rate)) / f32(1000.0))
+                    law = mapped_frames(midi / 127.0, rate)
+                    self.assertEqual(effect._frames, law, (rate, midi))
+                    if frames != law:
+                        self.assertLessEqual(abs(frames - law), worst,
+                                             (rate, midi))
+                        missed.append(midi)
+                effect.deinit()
+                self.assertEqual(missed, off_frame[rate], rate)
+
+    def test_an_off_frame_time_leaks_into_the_next_frame(self):
+        # Patch 4 (MIDI 125) at 44.1 kHz is 33 043 frames, which the node
+        # lands 1/256 of a frame short: a 20 000 click's repeat reads 78
+        # one frame early. The default 350 ms and 48 kHz are exact; a Time
+        # handed half a frame off, planted, leaks at 48 kHz.
+        def window(cls, rate, patch=None):
+            probe = cls(silence_src(64, 2, rate), sample_rate=rate,
+                        patch=patch)
+            frames = probe._frames
+            probe.deinit()
+            values = [0] * (frames + 64)
+            values[0] = 20000
+            effect = cls(array_src(values, 2, rate), sample_rate=rate,
+                         patch=patch, feedback=0.0, mix=2.0)
+            if patch is not None:
+                effect.set_macro(FEEDBACK_I, 0)
+                effect.set_macro(MIX_I, 127)
+            y = left(pull(effect, frames + 64, 2), 2)
+            effect.deinit()
+            return [int(v) for v in y[frames - 1:frames + 2]]
+
+        self.assertEqual(window(DigitalDelay, 44100, 4), [78, 19922, 0])
+        self.assertEqual(window(DigitalDelay, 48000, 4), [0, 20000, 0])
+        self.assertEqual(window(DigitalDelay, 44100), [0, 20000, 0])
+        self.assertNotEqual(window(HalfFrameDelay, 48000, 4), [0, 20000, 0])
 
 
 # --------------------------------------------------------------------------
@@ -1867,67 +2001,79 @@ class Tier1Fast(unittest.TestCase):
         return int(np.abs(y[back * channels:]).max())
 
     def test_tone_back_in_after_silence_stays_silent(self):
-        # The node freezes a loop filter's state while its corner is 0
-        # (`audiodsp_feedback_delay.c:493-497`), so the out stop keeps the
-        # low-pass tracking the tap once Tone has been in.
+        # Since audiodsp v0.6.3rc1 the node keeps an out low-pass's state
+        # on the tap (#158), so the out stop is exactly 0 and Tone back in
+        # after silence plays nothing.
         for rate in (48000, 44100, 22050):
             for channels in (2, 1):
                 self.assertEqual(self._tone_back_in(DigitalDelay, rate,
                                                     channels), 0,
                                  (rate, channels))
         self.assertEqual(self._tone_back_in(DigitalDelay, mix=0.3), 0)
-        # Planted: the out stop frozen at 0 plays the held state back
-        # (26 443 LSB at Mix 2, 48 kHz, when this test was written).
+        # Planted: a low-pass left in with a frozen state (0.001 Hz) plays
+        # what it held (26 112 LSB at Mix 2, 7 834 at Mix 0.3, 48 kHz).
         self.assertGreater(self._tone_back_in(FrozenToneDelay), 20000)
         self.assertGreater(self._tone_back_in(FrozenToneDelay, mix=0.3),
                            3000)
 
-    def test_cut_back_in_after_silence_is_the_disclosed_node_defect(self):
-        # Repeat Cut's frozen state has no class-side cure (its high-pass
-        # subtracts the state), so the docstring discloses what it plays.
-        # When the node keeps a filter's state live while out, this goes
-        # red and the docstring's paragraph comes out with it.
-        peaks = []
+    def _cut_back_in(self, cls, rate=RATE, channels=2):
+        """The same move on Repeat Cut at 400 Hz: out as the tone stops,
+        back in after 2 s of silence; the peak after the move."""
+        loud = (rate // 2) // BLOCK * BLOCK
+        back = (loud + 2 * rate) // BLOCK * BLOCK
+        values = [0] * (back + rate // 4)
+        values[:loud] = sine_values(300.0, loud, rate, 30000)
+        effect = cls(array_src(values, channels, rate), sample_rate=rate,
+                     cut_hz=400.0, feedback=0.0, mix=2.0)
+
+        def move(frame):
+            if frame == loud:
+                effect.set_macro(CUT_I, 0)
+            elif frame == back:
+                effect.set_macro(CUT_I, 127)
+
+        y = pull(effect, len(values), channels, on_block=move)
+        effect.deinit()
+        return int(np.abs(y[back * channels:]).max())
+
+    def test_cut_back_in_after_silence_stays_silent(self):
+        # Up to audiodsp v0.6.2 the node froze the high-pass state while
+        # Cut was out and this played 20 858 / 18 699 / 16 352 LSB, which
+        # the class could only disclose; since v0.6.3rc1 the node holds it
+        # at zero (#159).
         for rate in (48000, 44100, 22050):
-            loud = (rate // 2) // BLOCK * BLOCK
-            back = (loud + 2 * rate) // BLOCK * BLOCK
-            values = [0] * (back + rate // 4)
-            values[:loud] = sine_values(300.0, loud, rate, 30000)
-            effect = DigitalDelay(array_src(values, 2, rate),
-                                  sample_rate=rate, cut_hz=400.0,
-                                  feedback=0.0, mix=2.0)
+            for channels in (2, 1):
+                self.assertEqual(self._cut_back_in(DigitalDelay, rate,
+                                                   channels), 0,
+                                 (rate, channels))
+        # Planted: a high-pass left in with a frozen state (0.001 Hz).
+        for rate, floor in ((48000, 20000), (44100, 18000), (22050, 15000)):
+            self.assertGreater(self._cut_back_in(FrozenCutDelay, rate),
+                               floor, rate)
 
-            def move(frame, effect=effect, loud=loud, back=back):
-                if frame == loud:
-                    effect.set_macro(CUT_I, 0)
-                elif frame == back:
-                    effect.set_macro(CUT_I, 127)
-
-            y = pull(effect, len(values), 2, on_block=move)
-            effect.deinit()
-            peaks.append(int(np.abs(y[back * 2:]).max()))
-        self.assertEqual(peaks, [20858, 18699, 16352])
-
-    def test_tone_out_hands_no_filter_until_tone_has_been_in(self):
+    def test_the_out_stops_hand_exactly_zero(self):
+        # After Tone has been in, after a patch with Tone in, and fresh:
+        # the out stop is 0, the filter out. The retired tracking cure,
+        # planted, hands 32 x the rate there.
         with NodeSpy():
             for rate in (48000, 44100, 22050):
-                effect = DigitalDelay(silence_src(64, 2, rate),
-                                      sample_rate=rate)
-                self.assertEqual(effect._delay._handed["damping_hz"], 0.0)
-                effect.set_macro(TONE_I, 0)
-                effect.set_macro(TONE_I, 127)
-                self.assertEqual(effect._delay._handed["damping_hz"],
-                                 dd.TONE_TRACK_PER_RATE * rate)
-                self.assertIsNotNone(effect.tail_samples)
-                effect.reset()
-                self.assertEqual(effect._delay._handed["damping_hz"], 0.0)
-                effect.deinit()
-                effect = DigitalDelay(silence_src(64, 2, rate),
-                                      sample_rate=rate, patch=5)
-                effect.program_change(0)
-                self.assertEqual(effect._delay._handed["damping_hz"],
-                                 dd.TONE_TRACK_PER_RATE * rate)
-                effect.deinit()
+                for cls, expected in ((DigitalDelay, 0.0),
+                                      (TrackingToneDelay, 32.0 * rate)):
+                    effect = cls(silence_src(64, 2, rate), sample_rate=rate)
+                    self.assertEqual(effect._delay._handed["damping_hz"],
+                                     0.0)
+                    effect.set_macro(TONE_I, 0)
+                    effect.set_macro(TONE_I, 127)
+                    self.assertEqual(effect._delay._handed["damping_hz"],
+                                     expected, (cls, rate))
+                    effect.deinit()
+                    effect = cls(silence_src(64, 2, rate), sample_rate=rate,
+                                 patch=5)
+                    effect.program_change(0)
+                    self.assertEqual(effect._delay._handed["damping_hz"],
+                                     expected, (cls, rate))
+                    self.assertEqual(effect._delay._handed["cut_hz"], 0.0)
+                    effect.deinit()
 
     def _out_after_tone(self, cls, rate=RATE, channels=2, **options):
         """Samples and worst LSB by which the out stop after Tone has been
@@ -1947,16 +2093,21 @@ class Tier1Fast(unittest.TestCase):
         fresh.deinit()
         return int((diff > 0).sum()), int(diff.max())
 
-    def test_tone_out_after_tone_tracks_the_tap(self):
-        # Outside a stall window, a coefficient of exactly 1 is the filter
-        # out up to float rounding: 0 at whole-frame reads, 1 LSB where the
-        # node's float32 delay misses the frame (Time 136.054 at 44.1 kHz).
-        self.assertEqual(self._out_after_tone(DigitalDelay), (0, 0))
-        self.assertEqual(self._out_after_tone(DigitalDelay, patch=4), (0, 0))
-        _count, worst = self._out_after_tone(DigitalDelay, rate=44100,
-                                             time_ms=136.054, feedback=0.6)
-        self.assertLessEqual(worst, 1)
-        # Planted: a coefficient of 0.957 is a low-pass left in circuit.
+    def test_tone_out_after_tone_is_the_filter_out(self):
+        # Byte for byte a fresh instance's out stop, where the retired
+        # tracking cure was 1 LSB off: at a fractional read (Time 136.054
+        # at 44.1 kHz, which the node lands off the frame) and at a stall
+        # centre (Feedback 0.99).
+        cells = ({}, {"patch": 4},
+                 {"rate": 44100, "time_ms": 136.054, "feedback": 0.6},
+                 {"time_ms": 12.5, "feedback": 0.99})
+        for options in cells:
+            self.assertEqual(self._out_after_tone(DigitalDelay, **options),
+                             (0, 0), options)
+        # Planted: the retired cure is red at the fractional read, and a
+        # coefficient of 0.957 is a low-pass left in circuit.
+        count, _worst = self._out_after_tone(TrackingToneDelay, **cells[2])
+        self.assertGreater(count, 0)
         _count, worst = self._out_after_tone(LeakyTrackDelay)
         self.assertGreater(worst, 1000)
 
@@ -2020,29 +2171,37 @@ class Tier1Fast(unittest.TestCase):
         result = tail_measure(SixtyDbTailDelay, 0.7, "fullscale")
         self.assertFalse(result["passed"], result)
 
-    def test_repeat_tone_stall_windows_are_stepped_clear(self):
-        # With Repeat Tone in, the node sends its single-precision damping
-        # state round, and that state can rest a few ulps above a small
-        # value v; where 0.5 / (1 - f) is v, `recirculated` then rounds
-        # f v back up to v, and the line holds v for ever (issue draft
-        # `audiodsp-feedback-delay-damping-holds-the-line.md`). Re-audit
-        # fix round 2 hands the node the nearer edge of the class's own
-        # window instead. The stall cells on a 2 LSB DC, 20 s at least:
-        # re-audit fix round 1's class says None and holds v; this class
-        # declares a bound and reaches exact zero inside it.
-        for feedback, tone_hz, held in ((0.5, 800.0, 1), (0.75, 800.0, 2),
-                                        (1.0 - 0.5 / 3.0, 800.0, 3),
-                                        (0.875, 800.0, 4), (0.9, 800.0, 5),
-                                        (0.5, 3000.0, 1)):
+    def test_repeat_tone_stall_cells_reach_zero_at_the_feedback_set(self):
+        # With Repeat Tone in, the node's single-precision damping state
+        # can rest a few ulps above a small value v, and where
+        # 0.5 / (1 - f) is v, `recirculated` rounds f v back up to v. Up to
+        # audiodsp v0.6.2 the line held v for ever (1-5 LSB on these
+        # cells) and the class handed the node a Feedback clear of the
+        # window. Since v0.6.3rc1 (#157) the node lands a stalled state:
+        # the Feedback set is the one handed, the class declares a finite
+        # bound, and the tail reaches exact zero inside it. The stall
+        # cells on a 2 LSB DC.
+        for feedback, tone_hz in ((0.5, 800.0), (0.75, 800.0),
+                                  (1.0 - 0.5 / 3.0, 800.0), (0.875, 800.0),
+                                  (0.9, 800.0), (0.5, 3000.0)):
             result = tail_measure(DigitalDelay, feedback, "dc2",
                                   tone_hz=tone_hz)
             self.assertTrue(result["passed"], (feedback, tone_hz, result))
             self.assertEqual(result["held"], 0, (feedback, tone_hz, result))
-            old = tail_measure(StallWindowToneDelay, feedback, "dc2",
-                               tone_hz=tone_hz, budget=20 * RATE)
+            effect = DigitalDelay(silence_src(64), sample_rate=RATE,
+                                  feedback=feedback, tone_hz=tone_hz)
+            self.assertEqual(effect._feedback, feedback)
+            effect.deinit()
+            # Planted: the retired stepping plays a Feedback nobody set,
+            # and the v0.6.2 reckoning declares no bound at all.
+            stepped = SteppedToneDelay(silence_src(64), sample_rate=RATE,
+                                       feedback=feedback, tone_hz=tone_hz)
+            self.assertNotEqual(stepped._feedback, feedback)
+            stepped.deinit()
+            old = tail_measure(WindowNoneToneDelay, feedback, "dc2",
+                               tone_hz=tone_hz)
             self.assertIsNone(old["declared"], (feedback, tone_hz, old))
             self.assertFalse(old["passed"], (feedback, tone_hz, old))
-            self.assertEqual(old["held"], held, (feedback, tone_hz, old))
         # A Feedback on a window's edge: the re-refuter's k = 1 edge at
         # Tone grid 0 came back through the Feedback macro 10^-17 inside
         # `laps_to_zero`'s window and read None. Every value within a few
@@ -2068,8 +2227,26 @@ class Tier1Fast(unittest.TestCase):
         # The k = 1 ... 50 window centres, f = 1 - 0.5 / k, at Repeat Tone
         # grid 0, 64 and 126, on the 2 LSB DC (the line fills to 4k LSB and
         # decays through k): each reaches exact zero inside a finite
-        # declared tail, and the handed Feedback stays within 3e-5 of the
-        # one asked. Re-audit fix round 1's class says None at every one.
+        # declared tail, and the handed Feedback is the one asked. The
+        # v0.6.2 reckoning without the stepping says None at every one.
+        # A host's block decides when the node's landing runs, so the k = 1,
+        # 10 and 50 centres at grid 0 are also rendered in 4096-frame
+        # blocks, seven laps of the 12.5 ms line.
+        for k in (1, 10, 50):
+            feedback = 1.0 - 0.5 / k
+            data = array("h", [2] * (RATE // 2 * 2)
+                         + [0] * ((RATE * 10) * 2))
+            effect = DigitalDelay(probes.ArraySource(data, rate=RATE,
+                                                     channels=2, block=4096),
+                                  sample_rate=RATE, time_ms=12.5,
+                                  feedback=feedback, mix=2.0, tone_hz=800.0)
+            declared = effect.tail_samples
+            out = pull(effect, len(data) // 2, 2)
+            effect.deinit()
+            nonzero = np.nonzero(out[RATE // 2 * 2:])[0]
+            last = int(nonzero[-1]) // 2 + 1
+            self.assertLessEqual(last, declared, k)
+            self.assertEqual(int(np.abs(out[-RATE // 4 * 2:]).max()), 0, k)
         for grid in (0, 64, 126):
             tone_hz = 800.0 * 20.0 ** (grid / 127.0)
             for k in range(1, 51):
@@ -2080,11 +2257,13 @@ class Tier1Fast(unittest.TestCase):
                 self.assertEqual(result["held"], 0, (grid, k, result))
                 probe = DigitalDelay(silence_src(64), sample_rate=RATE,
                                      feedback=feedback, tone_hz=tone_hz)
-                self.assertLess(abs(probe._feedback - feedback), 3e-5)
-                old = StallWindowToneDelay(silence_src(64), sample_rate=RATE,
-                                           feedback=feedback,
-                                           tone_hz=tone_hz)
+                self.assertEqual(probe._feedback, feedback)
+                probe.deinit()
+                old = WindowNoneToneDelay(silence_src(64), sample_rate=RATE,
+                                          feedback=feedback,
+                                          tone_hz=tone_hz)
                 self.assertIsNone(old.tail_samples, (grid, k))
+                old.deinit()
 
     def _walk_tail(self, cls):
         """800 ms of 997 Hz, then Time 800 -> 12.5 ms at the default Glide
