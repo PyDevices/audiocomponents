@@ -24,7 +24,7 @@ Color 0→0.9 peak rise holds +15 dB at 48 / 44.1 / 22.05 kHz on noise
 −60 dB in about 1.9 s after a 440 Hz burst and 2.1 s after a 200 Hz one
 (1.91 s and 2.13 s, 20 ms RMS windows after a 50 ms burst at −6 dBFS,
 48 kHz, audiodsp v0.6.2); the default does not, and a click is not that
-measure. *Restated 2026-09-28:* this read "the 2 s ring on a 200–440 Hz
+bar. *Restated 2026-09-28:* this read "the 2 s ring on a 200–440 Hz
 burst" until audiodsp v0.6.2, where the node stopped holding a few LSB
 going round for ever (audiodsp#154) and the ring at 440 Hz fell from
 2.13 s to 1.91 s. The sound is unchanged; the claim now says what the
@@ -161,7 +161,7 @@ class Flanger(_component.Component):
     noise (held 3 ms, Matrix on). Color max (0.99, 3 ms, Matrix on) rings
     to −60 dB in about 1.9 s after a 440 Hz burst and 2.1 s after a
     200 Hz one (restated 2026-09-28 at audiodsp v0.6.2); the default does
-    not, and a click is not that measure.
+    not, and a click is not that bar.
     """
 
     NAME = 'Flanger'
