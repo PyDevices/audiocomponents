@@ -63,7 +63,11 @@ there, and are recorded in its changelog.
   patches, on `noise_det`), the band the loss law holds in, the wobble's
   100 s period, where the pitch claim stops (the node's single-precision
   walk limits rising moves past 16 384 and 32 768 frames), and which Wow
-  and Flutter moves still step. Board cost is unmeasured. At audiodsp
+  and Flutter moves still step. On the boards the full class is over its
+  budget (P4 10.3-11.4 % against 9 %, S3 19.8-20.5 % against 15 %, at
+  audiodsp v0.6.2); patch 8 `Tape Delay - lean` (patch 0 with Record
+  Level at 0) built with `max_time_ms=800` met both bars in every run, and
+  gives up the tape saturation and Time above 800 ms. At audiodsp
   v0.6.3rc1 its Feedback is handed as set (no stepping clear of the stall
   windows; the bound counts one landing lap there), a Wow or Flutter move
   that changes only the wobble's depth glides over 20 ms, and a knob turned

@@ -379,6 +379,39 @@ class NoneAtZeroTape(TapeDelay):
             self._delay.set(wow_shape=None)
 
 
+class LeanDriveOnTape(TapeDelay):
+    """The lean patch with the drive left on: patch 8 plays patch 0's
+    Record Level, so it names the saving and makes none (Brad's cost
+    ruling, 2026-09-28)."""
+
+    NAME = 'TapeDelay'
+    PATCHES = dict(TapeDelay.PATCHES)
+    PATCHES[8] = ("Tape Delay - lean", TapeDelay.PATCHES[0][1])
+
+
+class LeanMovesMoreTape(TapeDelay):
+    """A lean patch that also moves Spacing: the drive is off, but it is no
+    longer patch 0 with the drive off."""
+
+    NAME = 'TapeDelay'
+    PATCHES = dict(TapeDelay.PATCHES)
+    PATCHES[8] = ("Tape Delay - lean",
+                  (89, 58, 22, 89, 32, 32, 0, 60, 0, 0, 51))
+
+
+class DriveOffTape(TapeDelay):
+    """Not a fault: the cost study's variant D, `loop_drive` handed 0 after
+    every refresh (`tapedelay_cost_variants.py`, `DriveOff`). Built at
+    `max_time_ms=800` it is variant K, the configuration the boards
+    measured."""
+
+    NAME = 'TapeDelay'
+
+    def _refresh(self):
+        TapeDelay._refresh(self)
+        self._delay.set(loop_drive=0.0)
+
+
 class JumpWowTape(TapeDelay):
     """A Wow or Flutter move that moves the read head by the whole change in
     depth at once, as the node did at the wobble's crest up to v0.6.2 (it
@@ -595,7 +628,7 @@ class TheSurface(unittest.TestCase):
             "Time", "Feedback", "Mix", "Glide", "Wow", "Flutter",
             "Record Level", "Spacing", "Spread", "Sync", "Division"))
         self.assertEqual(TapeDelay.MACRO_MODES[SYNC_I], "TOGGLE")
-        self.assertEqual(len(TapeDelay.PATCHES), 8)
+        self.assertEqual(len(TapeDelay.PATCHES), 9)
         self.assertEqual(TapeDelay.CAPABILITIES, ("tempo_sync",))
         self.assertEqual(TapeDelay.LATENCY_SAMPLES, 0)
         self.assertEqual(TapeDelay.TIER, _component.AUDIODSP)
@@ -626,6 +659,7 @@ class TheSurface(unittest.TestCase):
             (350.0, 0.45, 0.35, 6000.0, 4.0, 3.0, 0.5, 20.0, 0.0, 0.0, 6.0),
             (350.0, 0.45, 0.35, 6000.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 6.0),
             (350.0, 0.45, 0.35, 6000.0, 2.0, 1.0, 0.2, 5.0, 0.0, 1.0, 8.0),
+            (350.0, 0.45, 0.35, 6000.0, 2.0, 1.0, 0.0, 5.0, 0.0, 0.0, 6.0),
         )
         for index, values in enumerate(settings):
             want = tuple(
@@ -732,7 +766,7 @@ class TheSurface(unittest.TestCase):
         # which is 1/16. at 120 bpm, so its 128 982 frames is not the bound
         # this patch needs; the class's is 257 418.
         want = (241990, 692550, 27336, 407322, 1671015, 245728, 240800,
-                241990)
+                241990, 241990)
         for index, frames in enumerate(want):
             effect = TapeDelay(src_of(np.zeros(512)), patch=index)
             self.assertEqual(effect.tail_samples, frames, index)
@@ -789,6 +823,94 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(mono._spread, 0.0)
         stereo = TapeDelay(src_of(np.zeros(512)), spread=1.0)
         self.assertEqual(stereo._spread, 1.0)
+
+
+LEAN = 8
+
+
+def lean_surface(cls):
+    """(the lean patch's name, the positions where it differs from patch 0
+    as {index: (patch 0, lean)})."""
+    name, lean = cls.PATCHES[LEAN]
+    full = cls.PATCHES[0][1]
+    return name, {i: (a, b) for i, (a, b) in enumerate(zip(full, lean))
+                  if a != b}
+
+
+def lean_handed(cls, **ctor):
+    """What the node is handed at the lean patch and at patch 0, as
+    {option: (patch 0, lean)} for every option that differs; a table is
+    compared point by point."""
+    def state(patch):
+        effect = cls(src_of(np.zeros(512)), patch=patch, **ctor)
+        handed = dict(effect._delay._handed)
+        effect.deinit()
+        if handed.get("wow_shape") is not None:
+            handed["wow_shape"] = tuple(handed["wow_shape"])
+        return handed
+    with NodeSpy():
+        full, lean = state(0), state(LEAN)
+    return {k: (full.get(k), lean.get(k)) for k in set(full) | set(lean)
+            if full.get(k) != lean.get(k)}
+
+
+def lean_render(cls, patch=LEAN, **ctor):
+    """A 997 Hz tone at -1 dBFS for 300 ms, then silence, through `patch`,
+    one second at 48 kHz stereo: loud enough that the drive shows on every
+    repeat."""
+    x = np.zeros(RATE)
+    x[:int(0.3 * RATE)] = sine(TONE, 29205.0, int(0.3 * RATE))
+    return render(cls(src_of(x), patch=patch, **ctor), RATE)
+
+
+class LeanPatch(unittest.TestCase):
+    """Brad's cost ruling of 2026-09-28: keep the class and add a lean
+    patch. Patch 8 `Tape Delay - lean` is patch 0 with Record Level 0, and
+    with `max_time_ms=800` it is the cost study's variant K, which met the
+    P4 and S3 bars in every run."""
+
+    def test_the_lean_patch_is_patch_0_with_the_drive_off(self):
+        name, moved = lean_surface(TapeDelay)
+        self.assertEqual(name, "Tape Delay - lean")
+        self.assertTrue(name.endswith(" - lean"))
+        self.assertEqual(moved, {RECORD_I: (25, 0)})
+        # What the node is handed: the drive off, and nothing else moved.
+        handed = lean_handed(TapeDelay)
+        self.assertEqual(set(handed), {"loop_drive"})
+        self.assertGreater(handed["loop_drive"][0], 0.19)
+        self.assertEqual(handed["loop_drive"][1], 0.0)
+        self.assertEqual(lean_handed(TapeDelay, max_time_ms=800.0),
+                         lean_handed(TapeDelay))
+        # Planted: the drive left on, and a lean patch that moves more.
+        self.assertEqual(lean_handed(LeanDriveOnTape), {})
+        self.assertNotEqual(lean_surface(LeanDriveOnTape)[1],
+                            {RECORD_I: (25, 0)})
+        self.assertIn("damping_hz", lean_handed(LeanMovesMoreTape))
+        self.assertNotEqual(lean_surface(LeanMovesMoreTape)[1],
+                            {RECORD_I: (25, 0)})
+
+    def test_the_lean_build_renders_what_the_boards_measured(self):
+        lean = lean_render(TapeDelay, max_time_ms=800.0)
+        self.assertGreater(float(np.max(np.abs(lean[int(0.4 * RATE):]))),
+                           1000.0)
+        # Variant K at patch 0 is the cell the boards timed; patch 8 at the
+        # 800 ms line renders it byte for byte, and so does patch 8 on the
+        # full line (the shorter line moves no byte at this Time).
+        k = lean_render(DriveOffTape, 0, max_time_ms=800.0)
+        self.assertEqual(lean.tobytes(), k.tobytes())
+        self.assertEqual(lean.tobytes(), lean_render(TapeDelay).tobytes())
+        # The drive is what the lean patch drops: patch 0 differs.
+        self.assertNotEqual(lean.tobytes(),
+                            lean_render(TapeDelay, 0).tobytes())
+        # Planted: the drive left on renders patch 0, not variant K.
+        on = lean_render(LeanDriveOnTape, max_time_ms=800.0)
+        self.assertNotEqual(on.tobytes(), k.tobytes())
+        # The 800 ms build stops Time there, where get_macro(0) shows it.
+        effect = TapeDelay(src_of(np.zeros(512)), patch=LEAN,
+                           max_time_ms=800.0)
+        effect.set_macro(TIME_I, 127)
+        self.assertAlmostEqual(effect.macro(TIME_I), 800.0, places=6)
+        self.assertEqual(effect._frames, frames_of(800.0))
 
 
 class T1aVarispeed(unittest.TestCase):
@@ -1099,8 +1221,8 @@ _READ_HEADS = {}
 def read_head(cls):
     """`cls` with its loop low-pass handed 0 after every refresh: an
     instrument for reading where the read head is, never a subject. The
-    walk is the node's `delay_slew` (`audiodsp_feedback_delay.c:444`,
-    `:449`) and never sees the filter, which filters what was read, so the
+    walk is the node's `delay_slew` (`audiodsp_feedback_delay.c:492`,
+    `:497` at v0.6.3rc1) and never sees the filter, which filters what was read, so the
     positions are the class's (Station C's `read_head_class`)."""
     if cls not in _READ_HEADS:
         def _refresh(self):
@@ -1879,7 +2001,7 @@ class Tier1Fast(unittest.TestCase):
 
     def test_silence_stays_silence(self):
         for character in tape.CHARACTERS:
-            for patch in range(8):
+            for patch in range(len(TapeDelay.PATCHES)):
                 effect = TapeDelay(src_of(np.zeros(RATE)),
                                    character=character, patch=patch)
                 self.assertEqual(float(np.max(np.abs(render(effect, RATE)))),
@@ -2125,7 +2247,7 @@ class InputCeiling(unittest.TestCase):
             self.assertEqual(self._rails(-1.1, channels), 0, channels)
             self.assertEqual(self._rails(-1.0, channels), over, channels)
         for character in tape.CHARACTERS:
-            for patch in range(8):
+            for patch in range(len(TapeDelay.PATCHES)):
                 self.assertEqual(self._rails(-2.0, 2, patch, character), 0,
                                  (character, patch))
         self.assertGreater(self._rails(-1.8, 2, 2), 0)
@@ -2412,10 +2534,10 @@ def reach_ctor(faulted, reading, rate, ctor, tolerance=1e-9):
 class FaultsAreUnreachable(unittest.TestCase):
     """Every planted fault's reachability walk, at 48, 44.1 and 22.05 kHz,
     reading what the node is handed at each position (11 macros x 17
-    positions + 8 patches); and two builds the walk must call reachable, so
+    positions + 9 patches); and two builds the walk must call reachable, so
     the readings are shown able to fail."""
 
-    CHECKED = 11 * 17 + 8
+    CHECKED = 11 * 17 + 9
 
     def test_every_fault_is_off_the_surface_at_three_rates(self):
         for rate in (48000, 44100, 22050):

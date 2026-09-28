@@ -63,12 +63,29 @@ two 16 KB shape tables shared by every instance, and about 1.2 KB of
 node. Pass a lower `max_time_ms` to spend less; Time then stops at that
 ceiling and `get_macro(0)` shows where it stopped.
 
-**Cost.** One `audioecho.FeedbackDelay` with `delay_slew`, a wow table,
-the loop low-pass and `loop_drive` on; no mixer. Palette row
-FeedbackDelay +options (the nearest not-cheaper row), glue 0:
-**P4 <= 9 %, S3 <= 15 %** of a 5.333 ms stereo block. The board
-measurement is pending hardware. No `" - lean"` patch: every patch runs
-the same node with the same options, so none would be cheaper.
+**Cost, and what to run on a board.** One `audioecho.FeedbackDelay` with
+`delay_slew`, a wow table, the loop low-pass and `loop_drive` on; no mixer.
+The budget, from palette row FeedbackDelay +options with no glue, is
+**P4 <= 9 % (0.480 ms), S3 <= 15 % (0.800 ms)** of a 5.333 ms stereo
+block. **The full class is over it on both boards.** Measured at audiodsp
+v0.6.2 at the default and every patch, it costs 0.551-0.608 ms a block on
+the P4 (10.3-11.4 %) and 1.056-1.093 ms on the S3 (19.8-20.5 %); patch 6
+reads 0.470 ms (8.8 %) and 0.855 ms (16.0 %). It still runs in real time on
+both.
+
+**To meet both bars, play patch 8, `Tape Delay - lean`, and build the class
+with `max_time_ms=800`.** That configuration read 0.445-0.455 ms on the P4
+(8.3-8.5 %) and 0.781-0.797 ms on the S3 (14.6-14.9 %, a thin margin) in
+each of three runs, measured at v0.6.2; the default and patch 5 built the
+same way with the drive off read 0.434-0.447 and 0.764-0.794 ms. Patch 8
+is patch 0 with Record Level at 0, and the 800 ms line is the other half
+of the saving. What you give up is the tape saturation: the repeats stay
+clean however hard you play, and chords no longer grit up as the repeats
+stack. And Time stops at 800 ms instead of 1 200 (patch 1's 789 ms still
+fits, and `get_macro(0)` shows where Time stopped). The darkening, the
+wobble and the pitch bends are patch 0's. Turning Record Level up again
+brings the drive, and its cost, back. The boards are re-measured at the
+release.
 
 **What the default surrenders.** The darkening follows the tape's loss law
 only up to a band top: one pole in the loop holds it to 2 dB from 100 Hz
@@ -88,7 +105,7 @@ last one is still gliding does not telescope as a real motor would: its
 bend is written into the loop and stays there.
 
 The node walks the read head in single precision
-(`audiodsp_feedback_delay.c:444`), so each step lands on the head's
+(`audiodsp_feedback_delay.c:492`), so each step lands on the head's
 rounding grid, and that grid doubles every time the head passes a power of
 two in frames: 16 384 (341.3 ms at 48 kHz, 371.5 ms at 44.1, 743.0 ms at
 22.05) and 32 768 (682.7 ms at 48 kHz, 743.0 ms at 44.1; never at
@@ -238,6 +255,12 @@ V_SLIDING = 0.2032
 #: the wow line at harmonic WOW_HARMONIC, the flutter line at
 #: FLUTTER_HARMONIC and the drift at harmonics 1-9, amplitude 1/k, at
 #: DRIFT_PHASES (dossier section 6; `tapedelay_stationA_common.py:59`).
+#: TABLE_POINTS is not a cost lever. The node reads any length the same way,
+#: and a shorter table silently kills the flutter: at 1 024 points harmonic
+#: 512 sits on the table's Nyquist, at 256 it folds onto DC, and the Flutter
+#: knob then writes the same table as Flutter 0 while T4 still reads two
+#: lines, an interpolation image of the wow line (the 2026-09-28 cost study,
+#: `audits/phase5/tapedelay-cost-options.md`).
 WOW_HZ = 0.01
 TABLE_POINTS = 4096
 WOW_HARMONIC = 72
@@ -487,7 +510,9 @@ class TapeDelay(_component.Component):
     )
 
     #: `_component.macro_of` of the dossier's section 6 settings; patch 0 is
-    #: the constructor's defaults on the grid.
+    #: the constructor's defaults on the grid. Patch 8 is patch 0 with Record
+    #: Level at 0, the board's lean patch (with `max_time_ms=800`; the module
+    #: docstring's Cost).
     PATCHES = {
         0: ("Warm Repeats", (89, 58, 22, 89, 32, 32, 25, 51, 0, 0, 51)),
         1: ("Long Repeats, Slow Glide",
@@ -500,6 +525,7 @@ class TapeDelay(_component.Component):
         6: ("Clean Transport", (89, 58, 22, 89, 0, 0, 0, 0, 0, 0, 51)),
         7: ("Dotted Eighth, Synced",
             (89, 58, 22, 89, 32, 32, 25, 51, 0, 127, 68)),
+        8: ("Tape Delay - lean", (89, 58, 22, 89, 32, 32, 0, 51, 0, 0, 51)),
     }
 
     def _build(self, time_ms=350.0, feedback=0.45, mix=0.35, glide_ms=6000.0,
