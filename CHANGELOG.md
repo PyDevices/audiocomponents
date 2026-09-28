@@ -37,6 +37,16 @@ there, and are recorded in its changelog.
   repeat, the Wow step, and Tone's flat top at 22.05 kHz. Board cost is
   unmeasured.
 
+### Changed
+
+- **`Flanger` (parked under `rebuilt/`): F8 restated, the sound unchanged.**
+  At Color max (0.99, 3 ms, Filter Matrix on) the ring to -60 dB is about
+  1.9 s after a 440 Hz burst and 2.1 s after a 200 Hz one (1.91 / 2.13 s
+  at audiodsp v0.6.2), not "2 s on a 200-440 Hz burst": since v0.6.2 the
+  node no longer holds a few LSB going round for ever, and part of the old
+  ring was that. The docstring and catalogue row say the measured values,
+  and the two F8 tests pin them within 0.03 s.
+
 ## v0.3.2 (2026-09-25)
 
 No change to either package's code: both packages are 0.3.1 under a new

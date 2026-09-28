@@ -18,10 +18,17 @@ and then the dry path is late by the sweep's maximum at Range max
 
 **What the default gives up.** At the constructor default (Color 0.55,
 Filter Matrix off) the comb floor is about −22 dB, not the Color-0
-−37 dB null, and the −60 dB tail is about 0.1 s, not 2 s. Color 0→0.9
-peak rise holds +15 dB at 48 / 44.1 / 22.05 kHz on noise (held 3 ms,
-Matrix on). Color max (0.99, 3 ms, Matrix on) is the 2 s ring on a
-200–440 Hz burst; the default is not, and a click is not that bar.
+−37 dB null, and the −60 dB tail is about 0.1 s, not Color max's ring.
+Color 0→0.9 peak rise holds +15 dB at 48 / 44.1 / 22.05 kHz on noise
+(held 3 ms, Matrix on). Color max (0.99, 3 ms, Matrix on) rings to
+−60 dB in about 1.9 s after a 440 Hz burst and 2.1 s after a 200 Hz one
+(1.91 s and 2.13 s, 20 ms RMS windows after a 50 ms burst at −6 dBFS,
+48 kHz, audiodsp v0.6.2); the default does not, and a click is not that
+measure. *Restated 2026-09-28:* this read "the 2 s ring on a 200–440 Hz
+burst" until audiodsp v0.6.2, where the node stopped holding a few LSB
+going round for ever (audiodsp#154) and the ring at 440 Hz fell from
+2.13 s to 1.91 s. The sound is unchanged; the claim now says what the
+node does.
 
 **Portability tier: audiodsp** (`REQUIRES = ("audioecho", "audioroute")`).
 `audioroute` is only built when Through Zero is on. On a stock
@@ -74,7 +81,9 @@ SHAPE_LEN = 256
 # 20 Hz yields Color-max audio t60 1.63 s; 1 Hz yields 2.02 s at 440 Hz
 # but a 200 Hz burst was 1.96 s (indep3). Color-max cut is 0.4 Hz so
 # the 2 s bar has margin across those bursts. Color 0 stays 20 Hz.
-# Same one-pole, not a second node.
+# Same one-pole, not a second node. (Those figures are from before
+# audiodsp v0.6.2. There, at 0.4 Hz, the ring reads 1.91 s at 440 Hz and
+# 2.13 s at 200 Hz, and F8 is restated to those values, 2026-09-28.)
 CUT_HZ = 20.0
 CUT_HZ_COLOR_MAX = 0.4
 # Color 0.9 as raw feedback misses ≥15 dB at 44.1 / 22.05 kHz on some
@@ -147,10 +156,12 @@ class Flanger(_component.Component):
 
     What the default gives up. At the constructor default (Color 0.55,
     Filter Matrix off) the comb floor is about −22 dB, not the Color-0
-    −37 dB null, and the −60 dB tail is about 0.1 s, not 2 s. Color 0→0.9
-    peak rise holds +15 dB at 48 / 44.1 / 22.05 kHz on noise (held 3 ms,
-    Matrix on). Color max (0.99, 3 ms, Matrix on) is the 2 s ring on a
-    200–440 Hz burst; the default is not, and a click is not that bar.
+    −37 dB null, and the −60 dB tail is about 0.1 s, not Color max's
+    ring. Color 0→0.9 peak rise holds +15 dB at 48 / 44.1 / 22.05 kHz on
+    noise (held 3 ms, Matrix on). Color max (0.99, 3 ms, Matrix on) rings
+    to −60 dB in about 1.9 s after a 440 Hz burst and 2.1 s after a
+    200 Hz one (restated 2026-09-28 at audiodsp v0.6.2); the default does
+    not, and a click is not that measure.
     """
 
     NAME = 'Flanger'
