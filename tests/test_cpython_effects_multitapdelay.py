@@ -46,6 +46,7 @@ import kit_probes as probes                                 # noqa: E402
 import audioeffects                                         # noqa: E402
 from audioeffects import _component                         # noqa: E402
 from audioeffects import rebuilt                            # noqa: E402
+from tools import effect_measurements as kit                # noqa: E402
 
 VENDOR = "PyDevices"
 
@@ -534,6 +535,69 @@ class FrontFilter(MultiTapDelay):
         self._tapnode.decay = self._value(FEEDBACK_I)
 
 
+class PrimingReset(MultiTapDelay):
+    """The review's finding, planted: the base's `reset()`, whose patch-0
+    restore re-plugs (or wires) the graph by priming a block of the
+    borrowed source into the Splitter."""
+
+    NAME = 'MultiTapDelay'
+
+    def reset(self):
+        _component.Component.reset(self)
+
+
+class Counting(Endless):
+    """`Endless` that counts the blocks it has handed out."""
+
+    pulls = 0
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        self.pulls += 1
+        return Endless._get_buffer(self, single_channel_output,
+                                   audio_channel)
+
+
+def reset_pulls(cls, start, channels=2):
+    """Blocks of the borrowed source `reset()` takes from each starting
+    graph: patch 1 (lean), Repeat Tone at its out stop, and a class built
+    at Mix 0 that has never wired."""
+    source = Counting(probes.noise_det(4 * BLOCK, channels=channels),
+                      RATE, channels)
+    effect = cls(source, sample_rate=RATE,
+                 mix=0.0 if start == "mix0" else 0.35)
+    if start == "patch1":
+        effect.program_change(1)
+    elif start == "tone127":
+        effect.set_macro(TONE_I, 127)
+    pull(effect, 8 * BLOCK)
+    before = source.pulls
+    effect.reset()
+    taken = source.pulls - before
+    effect.deinit()
+    return taken
+
+
+def state_reading(cls, patch, channels=2):
+    """The kit's STATE at `patch`, 48 kHz: reset with the probe still
+    sounding, then a silent source must render exact zero."""
+    data = probes.noise_det(RATE // 2, dbfs=-6.0, channels=channels)
+    holder = probes.SwitchableSource(
+        probes.ArraySource(data, rate=RATE, channels=channels, block=BLOCK))
+    effect = cls.create(holder, RATE)
+    effect.program_change(patch)
+    silent = probes.ArraySource(probes.silence(2048, channels), rate=RATE,
+                                channels=channels, block=BLOCK)
+
+    def render(blocks):
+        return probes.render(effect.output, blocks * BLOCK, rate=RATE,
+                             channels=channels, block=BLOCK,
+                             class_name="MultiTapDelay")
+
+    return kit.state(effect, pull=render, swap=holder.swap,
+                     probe_source=holder.inner, silent_source=silent,
+                     blocks=64, alloc_pulls=50)
+
+
 class NoClear(MultiTapDelay):
     """Tier 1's reset plant: `reset()` restores patch 0 and leaves both
     lines full."""
@@ -775,6 +839,28 @@ class Tier1(unittest.TestCase):
 
     def test_reset_plant_is_red(self):
         self.assertGreater(self._after_reset(NoClear), 0)
+
+    def test_reset_takes_nothing_from_the_source(self):
+        for start in ("patch1", "tone127", "mix0"):
+            for channels in (2, 1):
+                self.assertEqual(reset_pulls(MultiTapDelay, start,
+                                             channels), 0,
+                                 (start, channels))
+
+    def test_reset_priming_plant_is_red(self):
+        for start in ("patch1", "tone127", "mix0"):
+            self.assertGreater(reset_pulls(PrimingReset, start), 0, start)
+
+    def test_state_from_the_lean_graph(self):
+        for channels in (2, 1):
+            result = state_reading(MultiTapDelay, 1, channels)
+            self.assertEqual(result["values"]["reset_residual_lsb"], 0,
+                             result["red"])
+            self.assertTrue(result["values"]["resumed"])
+
+    def test_state_priming_plant_is_red(self):
+        result = state_reading(PrimingReset, 1)
+        self.assertGreater(result["values"]["reset_residual_lsb"], 0)
 
     def test_deinit_leaves_the_source(self):
         source = probes.ArraySource(probes.sine(440.0, 0.1, -6.0),

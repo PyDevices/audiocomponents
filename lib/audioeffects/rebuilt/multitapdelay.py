@@ -451,6 +451,9 @@ class MultiTapDelay(_component.Component):
         #: True while Mix 0 has the output port on the borrowed source.
         self._at_source = False
         self._deferred = False
+        #: True inside `reset()`, where a `play()` must not reach the
+        #: borrowed source (`_route`).
+        self._resetting = False
 
         # The input adapter re-blocks whatever the app hands the class into
         # the palette's own blocks, which `audioroute.Splitter` needs: a
@@ -674,6 +677,15 @@ class MultiTapDelay(_component.Component):
         block; `FeedbackDelay.play` pulls nothing), and afterwards the tap
         node is re-plugged if Repeat Tone crossed its out stop. Coming back
         from Mix 0 empties both lines, which were not fed while it was 0.
+
+        Inside `reset()` those primes would take a block of the borrowed
+        source and leave it in the Splitter for the dry, which is the last
+        take coming out after the reset: patch 0 has Repeat Tone in, so a
+        reset from the lean graph re-plugs, and one from a class never
+        wired at Mix 0 wires. There the input adapter plays a silent
+        sample for the length of the primes, so they read one block of
+        zeros on both branches and the source is not touched; the output
+        after such a reset opens with that one silent block.
         """
         if not self._ready:
             return
@@ -681,17 +693,36 @@ class MultiTapDelay(_component.Component):
             self._output = self._source
             self._at_source = True
             return
-        if not self._wired:
-            self._wire()
-            self._wired = True
-        else:
-            if self._at_source:
+        quiet = self._resetting and (not self._wired
+                                     or self._lean != self._plugged)
+        if quiet:
+            self._adapter.play(self._silence)
+        try:
+            if not self._wired:
+                self._wire()
+                self._wired = True
+            else:
+                if self._at_source:
+                    self._fd.clear()
+                    audiocore.reset_buffer(self._tapnode)
+                if self._lean != self._plugged:
+                    self._plug(self._lean)
+        finally:
+            if quiet:
+                self._adapter.play(self._source)
                 self._fd.clear()
-                audiocore.reset_buffer(self._tapnode)
-            if self._lean != self._plugged:
-                self._plug(self._lean)
         self._at_source = False
         self._output = self._mixer
+
+    def reset(self):
+        """Empty both lines and restore patch 0, without pulling the
+        borrowed source (`_route`)."""
+        self._check_live()
+        self._resetting = True
+        try:
+            _component.Component.reset(self)
+        finally:
+            self._resetting = False
 
     def _wire(self):
         """Play every node once, the first time Mix is above 0."""
