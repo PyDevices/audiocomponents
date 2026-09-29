@@ -2358,7 +2358,10 @@ class TrialClaims(unittest.TestCase):
         fill = 4 * 960 // BLOCK * BLOCK + BLOCK
         values = [2 * k + 2] * fill + [0] * (declared + 960 + BLOCK)
         source, _ = to_source(values)
-        cls.held = k
+        if cls is not PingPongDelay:
+            # never on the class itself: the attribute would outlive this
+            # test and read as a public name to every later one
+            cls.held = k
         effect = cls(source, sample_rate=RATE, **options)
         out = pull(effect, len(values), 2).astype(np.int64)
         effect.deinit()
