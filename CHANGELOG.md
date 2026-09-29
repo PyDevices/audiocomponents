@@ -10,6 +10,7 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- MultiTapDelay: the docstring says which patches need a P4-class board (patch 4 does, patch 3 may), from the boards' figures at audiodsp v0.6.3
 - **`DigitalDelay` (rebuilt, Phase 5; adopted 2026-09-28):** a clean
   interpolated line with the Boss DD-2's control law on one
   `audioecho.FeedbackDelay`, and what `audioeffects.DigitalDelay` and

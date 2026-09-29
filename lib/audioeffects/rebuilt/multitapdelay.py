@@ -252,6 +252,14 @@ class MultiTapDelay(_component.Component):
     exact zero once your input stops.
     The tail rings on while your source hands back nothing.
 
+    **On a board.**
+    Measured at v0.6.3, patch 4 costs 5.567 ms a block on the ESP32-S3,
+    where a block lasts 5.333 ms, so it needs a P4-class board: the ESP32-P4
+    runs it in 3.865 ms.
+    Patch 3 costs 4.163 ms on the ESP32-S3, inside the 4.267 ms budget, and
+    may need a P4-class board too, especially when the board is running
+    anything else.
+
     **Limits shared by the family.**
     A control that jumps makes the output step: move it in small steps from
     the host if you need it smooth.

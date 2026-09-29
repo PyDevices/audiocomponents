@@ -2933,7 +2933,26 @@ class ReauditRoundTwo(unittest.TestCase):
 #: that asserts it). Every sentence in the class docstring that makes a
 #: claim is here; one that could not be tied to a test was struck (the
 #: trial fixer's dated note in the dossier lists them).
+#: What the boards measured, marginal ms a block at 48 kHz stereo (the
+#: anchor's phase5_probes/boards_063/RESULTS.md, audiodsp v0.6.3). The
+#: budget is Brad's G6 bar, 80 % of the block.
+BOARD_COST = {
+    "measured_at": "v0.6.3",
+    "block_ms": 5.333,
+    "budget_ms": 4.267,
+    "S3": {3: 4.163, 4: 5.567},
+    "P4": {3: 2.748, 4: 3.865},
+}
+
 CLAIMS = (
+    ("Measured at v0.6.3, patch 4 costs 5.567 ms a block on the ESP32-S3, "
+     "where a block lasts 5.333 ms, so it needs a P4-class board: the "
+     "ESP32-P4 runs it in 3.865 ms.",
+     "test_the_board_figures_are_the_table"),
+    ("Patch 3 costs 4.163 ms on the ESP32-S3, inside the 4.267 ms budget, "
+     "and may need a P4-class board too, especially when the board is "
+     "running anything else.",
+     "test_the_board_figures_are_the_table"),
     ("Time is the gap to head 1, landed on a whole frame, and head k sounds "
      "at exactly k times that gap.",
      "test_first_lap_over_modes_heads_and_time_stops"),
@@ -3072,6 +3091,31 @@ class TheClaims(unittest.TestCase):
         self.assertIn("**Limits shared by the family.**", doc)
         numbers = [w for w in rest.split() if any(c.isdigit() for c in w)]
         self.assertEqual(numbers, [])
+
+    def test_the_board_figures_are_the_table(self):
+        cost = BOARD_COST
+        doc = _flat(MultiTapDelay.__doc__)
+        dense = ("Measured at %s, patch 4 costs %.3f ms a block on the "
+                 "ESP32-S3, where a block lasts %.3f ms, so it needs a "
+                 "P4-class board: the ESP32-P4 runs it in %.3f ms." % (
+                     cost["measured_at"], cost["S3"][4], cost["block_ms"],
+                     cost["P4"][4]))
+        far = ("Patch 3 costs %.3f ms on the ESP32-S3, inside the %.3f ms "
+               "budget, and may need a P4-class board too, especially when "
+               "the board is running anything else." % (
+                   cost["S3"][3], cost["budget_ms"]))
+        self.assertIn(dense, doc)
+        self.assertIn(far, doc)
+        # "needs", "runs it" and "inside" are what the table says.
+        self.assertAlmostEqual(cost["budget_ms"], 0.8 * cost["block_ms"],
+                               places=2)
+        self.assertGreater(cost["S3"][4], cost["block_ms"])
+        self.assertLess(cost["P4"][4], cost["budget_ms"])
+        self.assertLess(cost["S3"][3], cost["budget_ms"])
+        self.assertLess(cost["P4"][3], cost["budget_ms"])
+        self.assertEqual(MultiTapDelay.PATCHES[4][0], "Eight Heads, Dense")
+        self.assertEqual(MultiTapDelay.PATCHES[3][0],
+                         "Four Heads, Far Loudest")
 
     def test_the_right_lane_is_hot_only_on_circuitpython(self):
         # The stock audiomixer's pan law: 32768 / 32767 on the right lane,
