@@ -176,6 +176,61 @@ DECLARED = {
         "reset_buffer restarts the Wow wobble where a fresh instance's"
         " starts; the control never stopped, so its wobble is further along"
         " and with Wow above 0 the two never line up again (ok at Wow 0)",
+    ("MultiTapDelay", "E", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Time and Heads move every head to a new"
+        " grid, Mix, Tilt and a patch change jump a level)",
+    ("MultiTapDelay", "E1-", "P4"):
+        "reset() empties both lines where the control's hold older laps; they"
+        " die to 1 LSB inside tail_samples, and a 1-LSB rounding difference"
+        " then circulates in the loop past it (silence reaches zero inside"
+        " it)",
+    ("MultiTapDelay", "E5-", "P4"):
+        "a return from Mix 0 starts both lines empty where the control's hold"
+        " older laps; they die to 1 LSB inside tail_samples, and a 1-LSB"
+        " rounding difference then circulates in the loop past it",
+    ("MultiTapDelay", "E9-", "P4"):
+        "a return from Mix 0 starts both lines empty where the control's hold"
+        " older laps; they die to 1 LSB inside tail_samples, and a 1-LSB"
+        " rounding difference then circulates in the loop past it",
+    ("MultiTapDelay", "E4-m4=", "P4"):
+        "a return from Mix 0 starts both lines empty where the control's hold"
+        " older laps; they die to 1 LSB inside tail_samples, and a 1-LSB"
+        " rounding difference then circulates in the loop past it",
+    ("MultiTapDelay", "E4-m6=", "P4"):
+        "crossing Repeat Tone's out stop swaps the loop that makes the laps"
+        " and empties the lap node going in; the old laps die to 1 LSB inside"
+        " tail_samples, and a 1-LSB rounding difference then circulates past"
+        " it",
+    ("MultiTapDelay", "E6-", "P4"):
+        "a patch change that crosses Repeat Tone's out stop empties the lap"
+        " node going in; the old laps die to 1 LSB inside tail_samples, and a"
+        " 1-LSB rounding difference then circulates past it",
+    ("MultiTapDelay", "E11-", "P4"):
+        "Mix 0 or a crossing of Repeat Tone's out stop empties a line; the old"
+        " laps die to 1 LSB inside tail_samples, and a 1-LSB rounding"
+        " difference then circulates past it",
+    ("MultiTapDelay", "E8-dry", "P4"):
+        "the lines hold the gap the source left, where the control's hold"
+        " audio; that dies to 1 LSB inside tail_samples, and a 1-LSB rounding"
+        " difference then circulates in the loop past it, for good at some"
+        " settings",
+    ("MultiTapDelay", "E4-m0=", "P3"):
+        "CPython only, the node's twin (audiodsp#177): the CPython"
+        " audiodelays.MultiTapDelay keeps the line past a shorter delay_ms"
+        " that the C node zeroes, so a Time move and back replays it",
+    ("MultiTapDelay", "E6-", "P3"):
+        "CPython only, the node's twin (audiodsp#177): the CPython"
+        " audiodelays.MultiTapDelay keeps the line past a shorter delay_ms"
+        " that the C node zeroes, so a patch change and back replays it",
+    ("MultiTapDelay", "E11-2patch", "P3"):
+        "CPython only, the node's twin (audiodsp#177): the CPython"
+        " audiodelays.MultiTapDelay keeps the line past a shorter delay_ms"
+        " that the C node zeroes, so a patch change and back replays it",
+    ("MultiTapDelay", "E11-3moves", "P3"):
+        "CPython only, the node's twin (audiodsp#177): the CPython"
+        " audiodelays.MultiTapDelay keeps the line past a shorter delay_ms"
+        " that the C node zeroes, so a patch change and back replays it",
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")

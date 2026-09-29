@@ -175,6 +175,11 @@ there, and are recorded in its changelog.
   `lib/audioeffects/rebuilt/reverb.py`, and `audioeffects.Reverb` is still
   the old class. The Fender 6G15 spring character is parked until the node
   carries a dispersive chain. Board cost is unmeasured.
+  Board cost is unmeasured. At audiodsp v0.6.3rc3 the class plays what it
+  played at rc1; its docstring is now the player's text, each claim tied
+  to a test, with a jumping control disclosed as a family limit
+  (audiocomponents#117), and a return from Mix 0 said plainly to start
+  both lines empty.
 
 ### Changed
 

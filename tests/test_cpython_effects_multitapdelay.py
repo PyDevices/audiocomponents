@@ -2926,5 +2926,295 @@ class ReauditRoundTwo(unittest.TestCase):
             self.assertGreater(planted, short, (rate, channels))
 
 
+# --------------------------------------------------------------------------
+# The docstring's claims, each tied to the test that asserts it
+
+#: (sentence, word for word as the class docstring has it, and the test
+#: that asserts it). Every sentence in the class docstring that makes a
+#: claim is here; one that could not be tied to a test was struck (the
+#: trial fixer's dated note in the dossier lists them).
+CLAIMS = (
+    ("Time is the gap to head 1, landed on a whole frame, and head k sounds "
+     "at exactly k times that gap.",
+     "test_first_lap_over_modes_heads_and_time_stops"),
+    ("Heads is how many heads the grid has, and the pattern repeats once per "
+     "trip past the farthest of them.", "test_laps_land_on_the_grid"),
+    ("Pattern picks which heads sound, from the twelve positions of the "
+     "Roland RE-202's mode selector.", "test_s1_table_at_four_heads"),
+    ("Its last position sounds every head on the grid, not the RE-202's "
+     "unpublished positions.", "test_other_heads"),
+    ("The lap is the farthest head on the grid, sounded or not, so heads "
+     "past the ones a position sounds lengthen the lap without sounding.",
+     "test_the_lap_is_the_farthest_head"),
+    ("Feedback sends the pattern round again, each lap quieter.",
+     "test_lap_levels_follow_feedback"),
+    ("Repeat Tone darkens each lap a little more than the one before, once "
+     "per lap, never once per head.", "test_at_the_row_cells"),
+    ("Tilt leans the pattern's levels towards the near heads or the far "
+     "ones.", "test_tilt_law"),
+    ("Up to Mix 1 the dry passes at unity, and at Mix 2 the echoes play "
+     "alone.", "test_the_mix_stops"),
+    ("On CircuitPython alone, a stereo dry's right lane reads one LSB hot "
+     "on source values within 32 LSB of the rails.",
+     "test_the_right_lane_is_hot_only_on_circuitpython"),
+    ("Mix 0 is a wire.", "test_mix_zero_is_a_wire"),
+    ("Sync locks Time to Division of the host's beat, clamped to Time's "
+     "span.", "test_sync_is_division_clamped_to_the_span"),
+    ("With no host tempo, Time stays on the knob.",
+     "test_sync_reads_the_transport_only_when_on"),
+    ("Time runs from 20 to 400 ms, Heads from 3 to 8, Feedback from 0 to "
+     "0.95 and Mix from 0 to 2.", "test_the_knob_spans"),
+    ("`max_lap_ms` (1600 by default, 540 at least) caps the lap: where a "
+     "grid would pass it, Time comes down to fit.",
+     "test_constructor_options_clamp"),
+    ("A click comes out on the frame it went in: there is no latency.",
+     "test_click_latency_is_zero"),
+    ("A one-channel source gets the same effect on its one channel.",
+     "test_first_lap_at_the_defaults_three_rates_both_graphs"),
+    ("The sample rate must be at least 12 825 Hz: below it the constructor "
+     "raises `ValueError`.", "test_rates_below_the_floor_are_refused"),
+    ("The lines are not fed while Mix is 0, so a return from Mix 0 starts "
+     "both lines empty.", "test_mix_back_from_zero_starts_from_empty_lines"),
+    ("`reset()` empties both lines and returns to patch 0.",
+     "test_reset_empties_both_lines_and_returns_to_patch_0"),
+    ("Neither a reset nor a trip to Mix 0 drops a frame of your source or "
+     "plays one twice, whatever size of buffer it hands out.",
+     "test_reset_and_mix_zero_keep_the_timeline"),
+    ("`tail_samples` is an upper bound on how long the echoes take to reach "
+     "exact zero once your input stops.", "test_tail_ends_inside_tail_samples"),
+    ("The tail rings on while your source hands back nothing.",
+     "test_the_tail_rings_on_while_the_source_is_dry"),
+    ("A control that jumps makes the output step: move it in small steps "
+     "from the host if you need it smooth.",
+     "test_a_jumping_control_steps_the_output"),
+)
+
+
+#: Every source value within 64 LSB of either rail, and a few inside,
+#: through the class at Mix 1 in one run of 256-frame blocks shorter than
+#: the first head: prints `channels|left wrong|right wrong|worst|least |v|`.
+HOT_SCRIPT = """
+import audiocore
+from array import array
+from audioeffects.rebuilt.multitapdelay import MultiTapDelay
+values = list(range(-32768, -32704)) + list(range(32704, 32768)) + [
+    -20000, -1, 0, 1, 20000]
+for channels in (2, 1):
+    data = array("h", [0] * (len(values) * channels))
+    for i in range(len(values)):
+        for c in range(channels):
+            data[i * channels + c] = values[i]
+    source = audiocore.RawSample(data, sample_rate=48000,
+                                 channel_count=channels)
+    effect = MultiTapDelay(source, sample_rate=48000, mix=1.0)
+    got = array("h")
+    while len(got) < len(data):
+        got.extend(memoryview(audiocore.get_buffer(effect.output)[1]).cast(
+            "h") if hasattr(memoryview, "cast") else
+            audiocore.get_buffer(effect.output)[1])
+    lanes = [0, 0]
+    worst = 0
+    least = 99999
+    for i in range(len(values)):
+        for c in range(channels):
+            d = got[i * channels + c] - values[i]
+            if d:
+                lanes[c] += 1
+                worst = max(worst, abs(d))
+                least = min(least, abs(values[i]))
+    print("%d|%d|%d|%d|%d" % (channels, lanes[0], lanes[1], worst, least))
+    effect.deinit()
+print("DONE")
+"""
+
+
+def run_hot(binary):
+    """{channels: (left wrong, right wrong, worst, least |v| wrong)}."""
+    with tempfile.TemporaryDirectory() as directory:
+        script = os.path.join(directory, "hot.py")
+        with open(script, "w") as handle:
+            handle.write(HOT_SCRIPT)
+        env = dict(os.environ, MICROPYPATH="lib", GCOV_PREFIX=directory,
+                   PYTHONDONTWRITEBYTECODE="1",
+                   PYTHONPATH=os.path.join(ROOT, "lib"))
+        argv = [binary] + ([] if binary == sys.executable
+                           else ["-X", "heapsize=256M"])
+        done = subprocess.run(argv + [script], capture_output=True,
+                              text=True, cwd=ROOT, env=env)
+    lines = done.stdout.splitlines()
+    if done.returncode != 0 or not lines or lines[-1] != "DONE":
+        raise AssertionError("%s: %s%s" % (binary, done.stdout[-1000:],
+                                           done.stderr[-2000:]))
+    out = {}
+    for line in lines[:-1]:
+        parts = [int(v) for v in line.split("|")]
+        out[parts[0]] = tuple(parts[1:])
+    return out
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+class TheClaims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = _flat(MultiTapDelay.__doc__)
+        tests = set()
+        for value in globals().values():
+            if isinstance(value, type) and issubclass(value,
+                                                      unittest.TestCase):
+                tests.update(n for n in dir(value) if n.startswith("test_"))
+        rest = doc
+        for sentence, test in CLAIMS:
+            self.assertIn(sentence, doc, sentence)
+            self.assertIn(test, tests, sentence)
+            rest = rest.replace(sentence, " ")
+        self.assertIn("**Limits shared by the family.**", doc)
+        numbers = [w for w in rest.split() if any(c.isdigit() for c in w)]
+        self.assertEqual(numbers, [])
+
+    def test_the_right_lane_is_hot_only_on_circuitpython(self):
+        # The stock audiomixer's pan law: 32768 / 32767 on the right lane,
+        # which moves the 63 values from 32 736 up (and down from -32 736,
+        # the rail itself clipping) one LSB out. Mono and the left lane are
+        # exact, and every other interpreter is exact.
+        exact = {2: (0, 0, 0, 99999), 1: (0, 0, 0, 99999)}
+        self.assertEqual(run_hot(sys.executable), exact)
+        found = current_native_interpreters()
+        if found is None:
+            self.skipTest("no workspace bin/ above this checkout")
+        for family, binary in sorted(found.items()):
+            self.assertIsNotNone(binary, family)
+            got = run_hot(binary)
+            if family == "circuitpython":
+                self.assertEqual(got[1], exact[1])
+                left, right, worst, least = got[2]
+                self.assertEqual((left, worst, least), (0, 1, 32736))
+                self.assertEqual(right, 63)
+            else:
+                self.assertEqual(got, exact, family)
+
+    def test_the_knob_spans(self):
+        effect = MultiTapDelay(Endless(silence()), sample_rate=RATE)
+        self.assertEqual(effect._max_lap_ms, 1600.0)
+        for index, low, high in ((TIME_I, 20.0, 400.0),
+                                 (FEEDBACK_I, 0.0, 0.95),
+                                 (MIX_I, 0.0, 2.0)):
+            effect.set_macro(index, 0)
+            self.assertAlmostEqual(effect._value(index), low, places=9)
+            effect.set_macro(index, 127)
+            self.assertAlmostEqual(effect._value(index), high, places=9)
+        effect.set_macro(HEADS_I, 0)
+        self.assertEqual(effect._heads_count(), 3)
+        effect.set_macro(HEADS_I, 127)
+        self.assertEqual(effect._heads_count(), 8)
+
+    def test_the_lap_is_the_farthest_head(self):
+        # Mode 1 sounds head 1 alone. With Repeat Tone out (single-frame
+        # laps) and the echoes alone, a click at frame 10 comes back at
+        # 10 + n1 and then once per lap of K n1 (n1 = 960 at 20 ms), so the
+        # heads it does not sound lengthen the lap.
+        for heads, laps in ((3, (1, 4, 7)), (8, (1, 9))):
+            effect = build(data=click(at=10), mix=2.0, feedback=0.5,
+                           time_ms=20.0, tone_hz=0.0, pattern=1,
+                           heads=heads)
+            out = pull(effect, 10 + 960 * laps[-1] + 100)
+            self.assertEqual(nonzero(out), [10 + 960 * k for k in laps],
+                             heads)
+            effect.deinit()
+
+    def test_the_mix_stops(self):
+        for channels in (2, 1):
+            for mix in (0.35, 1.0):
+                effect = build(data=click(at=10, channels=channels),
+                               channels=channels, mix=mix)
+                out = pull(effect, 7300)
+                self.assertEqual(int(out[10, 0]), 20000, (channels, mix))
+                effect.deinit()
+            effect = build(data=click(at=10, channels=channels),
+                           channels=channels, mix=2.0)
+            out = pull(effect, 7300)
+            self.assertEqual(nonzero(out)[0], 10 + 7200, channels)
+            effect.deinit()
+
+    def test_sync_is_division_clamped_to_the_span(self):
+        # 1/1 at 30 bpm is 8 s, clamped to 400 ms; 1/32 at 600 bpm is
+        # 12.5 ms, clamped to 20 ms; 1/4 at 120 bpm is 500 ms, over the top.
+        for bpm, division, n1 in ((30.0, 15, 19200), (600.0, 0, 960),
+                                  (120.0, 9, 19200), (100.0, 6, 14400)):
+            effect = MultiTapDelay(
+                Endless(silence()), sample_rate=RATE, division=division,
+                transport=lambda bpm=bpm: (True, 0.0, bpm, 4, 4))
+            effect.set_macro(SYNC_I, 127)
+            self.assertEqual(effect._n1, n1, (bpm, division))
+            effect.deinit()
+
+    def test_reset_empties_both_lines_and_returns_to_patch_0(self):
+        effect = build(data=click(), mix=1.0, feedback=0.9, time_ms=20.0)
+        effect.program_change(3)
+        pull(effect, 3000)
+        effect.reset()
+        self.assertEqual(effect.patch_index, 0)
+        self.assertEqual(int(np.abs(pull(effect, 20000)).max()), 0)
+
+    def test_reset_and_mix_zero_keep_the_timeline(self):
+        import lifecycle
+        names = ("E1-reset@block", "E1-reset@part", "E5-mix0", "E9-src100",
+                 "E9-src512", "E9-src1000", "E9-srcraw", "E10-reset",
+                 "E10-mix0")
+        for patch in (None, 1):
+            events = dict((e.name, e) for e in
+                          lifecycle.events(MultiTapDelay, patch))
+            for channels in (2, 1):
+                for name in names:
+                    got = lifecycle.p1(MultiTapDelay, events[name], RATE,
+                                       channels, patch, {})
+                    self.assertIn(got, ("ok", "na"),
+                                  (name, patch, channels))
+
+    def test_the_tail_rings_on_while_the_source_is_dry(self):
+        # The source hands back an empty buffer, done, from the third block
+        # on; the heads and laps of a click it played before keep coming,
+        # every pull a full block, on every lap of the lean graph.
+        import lifecycle
+        values = array("h", [0] * (BLOCK * 4))
+        values[10] = 20000
+        feed = lifecycle.Feed(values, RATE, 1, "256", loop=False)
+        effect = MultiTapDelay(feed.port, sample_rate=RATE, time_ms=20.0,
+                               mix=2.0, feedback=0.5, tone_hz=0.0)
+        out = bytearray()
+        for _ in range(2):
+            out += bytes(audiocore.get_buffer(effect.output)[1])
+        feed.port.play(feed.empty)
+        for _ in range(40):
+            chunk = bytes(audiocore.get_buffer(effect.output)[1])
+            self.assertEqual(len(chunk), BLOCK * 2)
+            out += chunk
+        got = np.frombuffer(bytes(out), dtype="<i2")
+        self.assertEqual([int(i) for i in np.nonzero(got)[0]],
+                         [10 + 960 * k for k in range(1, 12)])
+        effect.deinit()
+
+    def test_a_jumping_control_steps_the_output(self):
+        # The matrix's P5 at the defaults: Time to either stop, or a patch
+        # change, steps the output past its bar within one block
+        # (audiocomponents#117), where a control left alone does not.
+        import lifecycle
+        events = dict((e.name, e) for e in
+                      lifecycle.events(MultiTapDelay, None))
+        controls = {}
+        try:
+            for name in ("E4-m0=0", "E4-m0=127", "E6-p4"):
+                got = lifecycle.p5(MultiTapDelay, events[name], RATE, 2,
+                                   None, {}, controls)
+                self.assertTrue(got.startswith("RED(step"), (name, got))
+            self.assertEqual(lifecycle.p5(MultiTapDelay, events["E4-m7=0"],
+                                          RATE, 2, None, {}, controls),
+                             "ok")
+        finally:
+            for ctl in controls.values():
+                ctl.close()
+
+
 if __name__ == "__main__":
     unittest.main()
