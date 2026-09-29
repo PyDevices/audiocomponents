@@ -1,199 +1,9 @@
 """`AnalogDelay` - a bucket-brigade delay whose Time knob is its clock.
 
-Rebuilt from scratch for Phase 5 against
-`workspace docs/effects-internal/dossiers/AnalogDelay.md`, whose trait
-table was frozen at Station A before this file existed (anchor commit
-cc61011, 2026-09-28, the Station A critique revision). The old class in
-`delay.py` is consulted only for the seven defects that dossier's section 7
-names; it stays the class the library serves until the auditor adopts this
-one.
-
-**What it sounds like.** Your dry signal passes untouched, and repeats
-follow it that get darker the longer you set Time, because in a bucket
-brigade the Time knob is a clock: the line has a fixed number of stages,
-so a longer delay is a slower clock and a lower band limit. Two characters
-pick the stage count: `"single-line"` (the default) is one 4096-stage line,
-the Boss DM-2; `"double-line"` is two in series, 8192 stages, the
-Electro-Harmonix Deluxe Memory Man, which at the same Time runs its clock
-an octave higher and so keeps its repeats an octave brighter. Time is
-20-600 ms on both, Feedback 0-0.99, and Mix 0-2 (dry at unity up to 1, wet
-alone at 2; Mix 0 is a wire while the line keeps recording). Turn Time
-while it plays and the repeats bend in pitch the way a clock step bends
-them, and settle (a turn through many positions takes seconds; see
-"Turning Time" below). Modulation (0-5 ms) and Mod Rate (0.05-8 Hz) wobble the
-delay on a triangle, the Memory Man's chorus and vibrato: a blend with
-Modulation up is a chorus, the wet alone (Mix 2, patch 4) a vibrato.
-Spread feeds each side's repeats into the other. Sync locks Time to
-Division of the host's beat.
-
-**The standouts:** the Boss DM-2 and the Deluxe Memory Man, as the two
-characters. The band limit is the one thing that separates them, so it is
-the one thing the character changes.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audioecho",)`): one
-`audioecho.FeedbackDelay`, audiodsp's own node. On a stock CircuitPython
-board this module imports cleanly and construction raises `ImportError`.
-
-**Latency: zero samples, at every setting, patch, character and rate.**
-Nothing looks ahead. The delay is the wet path, not latency on the dry
-path, and no option adds any. That is a decision: oversampling is the
-clean way to keep a bucket-brigade model free of aliasing, and its filters
-cost latency a stompbox has none to spend.
-
-**Mono.** A one-channel source gets the identical effect on its one
-channel with Spread held at 0. At one channel the node's cross-feed sends
-the repeat nowhere (Feedback 0.7 with cross-feed 1.0 leaves the dry, the
-first repeat and nothing after it), so the class hands the node 0 there
-whatever the knob says. The class never passes `input_pan`, which in mono
-would overwrite the node's mono feed.
-
-**RAM.** The line is `max_time_ms + 6` ms of two int16 lanes whatever the
-channel count: 116 352 B at 48 kHz for the default 600 ms (106 896 B at
-44.1 kHz, 53 448 B at 22.05 kHz), plus 512 B for the triangle table and
-about 1.2 KB of node. The six milliseconds are the modulation's 5 ms peak
-swing and one for the read's clamp. Pass a lower `max_time_ms` to spend
-less; Time then stops at that ceiling and `get_macro(0)` shows where.
-
-**Cost.** One `audioecho.FeedbackDelay` with `delay_slew` on, the loop
-low-pass in and a borrowed 256-point table; no mixer, the same graph for
-both characters and every patch. Palette row FeedbackDelay +options (the
-nearest not-cheaper row), glue 0: **P4 <= 9 %, S3 <= 15 %** of a 5.333 ms
-stereo block. The board measurement is pending hardware.
-
-**The band limit.** The repeats' high-frequency corner is the sinc's -3 dB
-point at the line's clock, 0.2211 N / T: 3019 Hz at 300 ms single-line,
-6038 Hz double-line, halving each time Time doubles. It is the node's one
-loop low-pass, pre-warped so its -3 dB point is that corner, so each pass
-through the loop darkens the repeat once more, as the circuit's filters
-do. Where the law passes 0.98 of Nyquist (below 38.5 ms single-line and
-77.0 ms double-line at 48 kHz; 41.9 / 83.8 ms at 44.1 kHz; 83.8 /
-167.6 ms at 22.05 kHz) the corner holds at that clamp, so there a shorter
-Time no longer brightens the repeats.
-
-**What the class surrenders, said plainly.** Three things both pedals do
-are not here. There is no sample-and-hold, so the repeats roll off on one
-pole where a bucket brigade rolls off on a sinc with a null at its clock
-(12.1 dB off the sinc's shape between 300 and 600 ms, and -7.7 dB, not a
-null, at the clock). There is no compander, so the repeats do not pump
-and a burst's rise time does not change from repeat to repeat. And there
-is no fixed anti-alias and reconstruction pair: both pedals bound their
-wet path near 3 kHz at every Time, so at short Times this class's repeats
-are brighter than either pedal's. The line's image spectra and its clock
-noise are not modelled either. None of those has a node in audiodsp v0.6.3rc1
-that can sit inside the loop.
-
-**Time.** Every Time is landed on the nearest whole frame at the running
-rate, and the node is handed a delay whose read's whole part is that frame
-on every interpreter: the node turns milliseconds into frames in single
-precision, and at 44.1 and 22.05 kHz one frame count in about seven has
-no single-precision value that lands on it exactly, so the class hands the
-next value up. The read then trails the frame by at most 0.00195 frames at
-44.1 kHz (0.00098 at 22.05; none at 48), never early.
-
-**A Time move glides in pitch on the clock's own law.** A move from
-`T_old` to `T_new` walks the read head at |T_new - T_old| / T_new, so it
-holds the pitch ratio T_old / T_new for exactly T_new and then returns to
-unity, without a click: 200 -> 100.4 ms bends the repeats +1193 cents for
-100.4 ms, 100 -> 300 ms -1902 cents for 300 ms. The node walks the head in
-single precision, and a rate under half a step of the head's position
-would round back to where it was and leave the head short for good, so
-the rate never goes below two single-precision steps of the furthest the
-head may sit (1/512 of a frame per frame from 8 192 to 16 384 frames,
-1/256 above). That only touches moves of under 0.4 % of T: they land in
-less than T_new, bent by at most 7 cents (300 -> 300.1 ms, 5 frames at
-48 kHz, lands in 0.053 s).
-
-**Turning Time takes seconds to settle.** The walk's rate is taken from
-the Time last handed to the node, not from where the head is, because the
-class cannot see the head. A knob turned through several positions sends
-several moves, and once the head falls behind, the last move's small rate
-carries it the rest of the way. At 48 kHz, 7-bit positions one block
-apart: MIDI 101 -> 111 (299 -> 391 ms, 10 moves) still differs from the
-same move made as one jump 3.4 s after the last move, where the jump has
-landed in 0.39 s; MIDI 64 -> 101 (111 -> 299 ms, 37 moves) 6.9 s. A
-14-bit controller's fine steps are slower still: 300 -> 400 ms in 1386
-moves takes 20 s, walking at the floor. The pitch claim covers none of
-this, only a move from rest. It is claimed for moves of up to 3 : 1 and inputs
-from -28.7 to -0.2 dBFS; quieter, int16 rounding decides the reading
-(13 cents off at -48.7 dBFS). The claim is about the walk itself: under
-feedback, each later repeat re-reads a line that was written while the
-head was moving, so the repeats do not telescope the way a clock step in
-a real bucket brigade makes them, and nothing here claims they do.
-
-**Modulation.** The swing is a fixed number of milliseconds whatever the
-Time, so a Time move never steps the read offset and equal Modulation
-bends equally at every Time (+-20.7 cents at patch 3's 3 ms and 1 Hz,
-+257 / -302 at the stops). The shape is a plain triangle, the clock law's
-first order; it differs from the exact reciprocal by up to S / T of the
-swing (1.7 % at 300 ms and full depth, 25 % at 20 ms). A Modulation move
-glides: since audiodsp v0.6.3rc1 the node ramps a new swing in over 20 ms
-(audiodsp#160), where up to v0.6.2 it jumped the read by the change in
-depth times where the triangle stood (142 frames for 5 -> 2 ms at the
-triangle's peak, 48 kHz). While the swing travels the extra pitch is the
-change over 20 ms times where the triangle stands: 5 -> 2 ms at a peak
-bends the repeats by 15 % for those 20 ms, +242 cents at one peak and
--281 at the other. A move made while the last one's 20 ms is still
-running starts a new 20 ms from wherever the swing has got to, so the
-swing travels at (target - where it stands) / 20 ms, which a knob turned
-through several positions a block apart can make a little faster than
-any one move's own |change| / 20 ms. So the read moves at most that
-distance over 20 ms plus the triangle's own 4 x Mod Rate x swing of a
-frame per frame faster or slower than the tone. With the wet alone and
-Feedback 0, no step in the output is then larger than the input's own
-largest step times 1 plus that: on a 997 Hz tone at 12 000 LSB, Time
-300 ms, five moves between 0 and 5 ms at Mod Rate 1 and 8 Hz and eight
-points of the triangle, at 48, 44.1 and 22.05 kHz, the largest step in
-the 40 ms after a move is at most 0.943 of that (1 -> 1.5 ms at 1 Hz,
-48 kHz: 1 522 LSB against 1 615, where v0.6.2's node read 7 133). With
-the dry in or the repeats recirculating, the output's own step already
-passes that bar before any move (1.9 x at Mix 1, 1.3 x at Feedback 0.5),
-so the sentence says nothing there. Mod Rate moves keep the triangle's
-phase and do not step.
-
-**Input ceiling.** The dry path sits at unity and the repeats add to it,
-so a hot input can put the output on the int16 rail; there is no input
-gain to turn down. The loop's low-pass, cross-feed and interpolated read
-are each a convex mix, so no repeat exceeds full scale and the wet adds at
-most Mix x full scale: below Mix 1, an input peaking at or below
-floor(32767 (1 - Mix)) - 1 cannot reach the rail at any Time, Feedback,
-Modulation or Spread (-4.4 dBFS at the default Mix 0.4).
-
-**Tail.** `tail_samples` is an upper bound on how long the repeats take to
-reach exact zero after your input stops: DigitalDelay's lap count at the
-Feedback the node is handed, each lap the longest delay the head may be at
-plus the swing, one frame for the interpolated read and the low-pass's
-memory. 187 954 frames (3.9 s) at the defaults; 26.5 s at patch 5, the
-longest. The loop low-pass is always in, and at a Feedback a hair either
-side of 1 - 0.5 / k it can come to rest a hair above k LSB and hand it
-back. Up to audiodsp v0.6.2 it did so for ever, and the class handed the
-node the nearer edge of that window instead. Since v0.6.3rc1 the node sets
-a stalled low-pass onto its input (audiodsp#157), the Feedback you set is
-the one the node plays, and the bound counts one more lap there. In
-stereo the cross-feed could do the same thing: the node's sum of the two
-sides, in single precision, can come out a step above both, and with
-Spread at 39 / 127 or any other value off a short binary grid and a
-Feedback a float32 step or two under 1 - 0.5 / k that handed k LSB back for
-ever. So Spread reaches the node on a grid of 4096ths, within 1/8192 of
-the knob, where that sum is exact on every interpreter for any side
-under 4096 LSB (above that a step is far too small to hold a repeat);
-0 and 1 are untouched. The bound then holds at every Feedback and Spread
-the constructor or a macro can hand, stereo and mono. After a falling
-Time move the bound keeps the Time the head walked from until a reset,
-because the class cannot see how far the walk has got.
-
-`capabilities = ("tempo_sync",)`: with Sync on, the class reads
-`self._transport()` on every macro move and program change (not per block).
-With no host transport, or a host whose tempo is not a finite positive
-number, Time stays where the knob is. A synced Time change walks at the
-clock's law like any other.
-
-Constructor values stay on the audio path unquantised by the grid, and a
-constructor Time plays exactly as given (not through the knob's map, whose
-round trip can move a Time that sits on a half frame to the frame below)
-until Time is moved; a host that reads the knob back and writes the same
-position keeps it. A constructor Time of 0 or less is 20 ms, a Mod Rate of 0 or less 0.05 Hz,
-a `max_time_ms` above 600 or NaN 600 ms. `character` is `"single-line"`
-or `"double-line"`; anything else raises `ValueError`.
+The player's text is the class docstring, and every sentence in it that
+makes a claim is tied to a test by the `CLAIMS` table in the class's test
+file. How it works, and why, is in the class's dossier in the workspace
+repo (`docs/effects-internal/dossiers/AnalogDelay.md`).
 """
 
 VENDOR = "PyDevices"
@@ -245,10 +55,6 @@ LINE_HEADROOM_MS = SWING_MAX_MS + 1.0
 
 #: The node's own loop ceiling (`audiodsp_feedback_delay.c:157`).
 FEEDBACK_MAX = 0.99
-
-#: Spread's grid as the node is handed it: whole 4096ths, so the loop's
-#: cross-feed sum is exact for the small lanes a tail ends on.
-SPREAD_GRID = 4096
 
 #: One period of the modulation's triangle, borrowed by the node.
 TABLE_POINTS = 256
@@ -342,19 +148,6 @@ def tone_excess(damping_hz, sample_rate):
     return frames, 2.0 ** -17 + 2.0 ** -24 / coefficient
 
 
-def spread_on_grid(spread):
-    """`spread` on the 1/4096 grid the node is handed (dossier section 8,
-    R13). The node sends `own * (1 - s) + other * s` round the loop in
-    single precision; with s = 39 / 127 or any other value off a short
-    binary grid those two products can add up to one step above both
-    lanes, and at a Feedback a hair under 1 - 0.5 / k that hands a landed
-    k LSB back for ever. On the grid both products of a lane under 4096
-    LSB are exact, so the sum lies between the lanes on every interpreter,
-    whether or not a board fuses the multiply-add. The grid moves Spread
-    by at most 1/8192."""
-    return math.floor(spread * SPREAD_GRID + 0.5) / SPREAD_GRID
-
-
 def _between(value, low, high):
     value = float(value)
     if not value >= low:
@@ -365,13 +158,63 @@ def _between(value, low, high):
 
 
 class AnalogDelay(_component.Component):
-    """A bucket-brigade delay: the Time knob is the line's clock, so the
-    repeats darken as Time grows and a Time move bends their pitch.
-    audiodsp tier; zero latency.
+    """A bucket-brigade delay whose Time knob is the line's clock.
 
-    **What the default surrenders:** no sample-and-hold (a one-pole
-    roll-off, not the sinc, and no null at the clock), no compander, no
-    fixed ~3 kHz pair, so short Times are brighter than either pedal.
+    A bucket brigade has a fixed number of stages, so a longer delay is a
+    slower clock and a lower band limit: the repeats get darker as you turn
+    Time up, and your dry signal passes untouched.
+
+    **The controls.** Time sets the delay and with it the clock. Feedback
+    sends each repeat round again. Mix blends the repeats in. Modulation
+    and Mod Rate wobble the delay, a chorus in a blend and a vibrato with
+    the repeats alone. Spread feeds each side's repeats into the other.
+    Sync locks Time to Division of the host's beat.
+    Time runs from 20 to 600 ms, Feedback from 0 to 0.99 and Mix from 0 to 2.
+    Up to Mix 1 the dry passes untouched until the first repeat arrives.
+    Mix 0 is a wire.
+    A click comes out on the frame it went in: there is no latency.
+    A one-channel source gets the same effect with Spread held at 0.
+
+    **Two characters.** `"single-line"` (the default) is one 4096-stage
+    line, the Boss DM-2; `"double-line"` is two in series, the Deluxe Memory
+    Man. Any other `character` raises `ValueError`.
+    The repeats' high-frequency corner is 0.2211 N / T for N stages and a
+    Time of T seconds, so it halves each time Time doubles.
+    At the same Time the double line's repeats are an octave brighter.
+    Where the law passes 0.98 of Nyquist the corner holds there, so a
+    shorter Time no longer brightens the repeats.
+
+    **Time.** Every Time lands on a whole frame at every rate.
+    A Time move bends the repeats' pitch by T_old / T_new for exactly T_new
+    and then returns to unity, without a click.
+    A small Time move still lands.
+    Turning Time through several positions a block apart takes seconds to
+    settle, where one jump to the same place lands within the new Time.
+
+    **Modulation.** The delay swings on a triangle by a fixed number of
+    milliseconds, whatever the Time.
+    A Time move leaves the swing as it is.
+    A Modulation move glides over 20 ms.
+
+    **Level and tail.** Below Mix 1, an input peaking at or below
+    floor(32767 (1 - Mix)) - 1 does not reach the rail.
+    `tail_samples` is an upper bound on how long the repeats take to reach
+    exact zero after your input stops.
+    `reset()` empties the line and returns to patch 0.
+    With Sync on and a host tempo, Time is Division of the host's beat.
+    With no host tempo, Time stays on the knob.
+
+    **What it leaves out.** There is no sample-and-hold, so the repeats
+    have no null at the clock.
+    There is no fixed anti-alias pair: the repeats' one corner is the one
+    that moves with Time.
+
+    **Limits shared by the family.**
+    A control that jumps makes the output step: move it in small steps from
+    the host if you need it smooth.
+    The tail rings only while the source keeps feeding: feed silence to let
+    it ring out. A tail cut short by a source that stopped carries on when
+    the source comes back.
     """
 
     NAME = 'AnalogDelay'
@@ -631,22 +474,17 @@ class AnalogDelay(_component.Component):
         self._damping = nominal_damping_hz(self._corner, fs)
 
         # Handed as set: since audiodsp v0.6.3rc1 the node lands a loop
-        # low-pass that has stopped moving (#157), so the low-pass holds no
-        # Feedback's small value for ever and nothing is stepped clear
-        # here. The cross-feed's own stall is closed below, by Spread's
-        # grid.
+        # low-pass that has stopped moving (#157), and since v0.6.3rc3 a
+        # stereo cross-feed sum too (#170), so nothing is stepped clear.
         self._feedback = _between(self._value(FEEDBACK_I), 0.0, FEEDBACK_MAX)
 
         self._swing_ms = _between(self._value(MODULATION_I), 0.0,
                                   SWING_MAX_MS)
         # At one channel the node's cross-feed sends the repeat nowhere.
-        # At two, Spread goes on the 1/4096 grid, where the loop's sum of
-        # the two sides cannot land above both and hand a value back.
         if self._channel_count == 1:
             self._spread = 0.0
         else:
-            self._spread = spread_on_grid(
-                _between(self._value(SPREAD_I), 0.0, 1.0))
+            self._spread = _between(self._value(SPREAD_I), 0.0, 1.0)
         self._delay.set(
             delay_slew=self._slew,
             delay_ms=self._node_ms,
@@ -664,8 +502,7 @@ class AnalogDelay(_component.Component):
         an upper bound: `laps_to_zero(f, excess)` laps of the longest delay
         the read head may be at, plus the modulation's peak swing in frames
         rounded up, plus one frame for the interpolated read, plus the loop
-        low-pass's memory. Finite at every setting the class reaches, and
-        with Spread on its grid it holds at every Spread in stereo."""
+        low-pass's memory. Finite at every setting the class reaches."""
         self._check_live()
         return self._tail_bound()
 

@@ -8,8 +8,8 @@ reads from the move's own first difference, the landing gap is read, the
 walk is read where the head lands, the binade pieces have a resolvable
 minimum, and T7's arrival clause is claimed across Mix's interior material
 by material, at every grid position and at any Mix at or above
-1.01 x 0.5 / W on the two loud materials; and, from re-audit fix round 2,
-R13: Spread handed on a 1/4096 grid so the stereo tail ends). Four of its
+1.01 x 0.5 / W on the two loud materials; R13's Spread grid came out at
+audiodsp v0.6.3rc3, whose node ends the stereo tail itself). Four of its
 Tier 2 rows can be demonstrated, T2a, T3, T6 and T7, and each is here as
 the measurement at a few of the row's cells beside the same measurement
 shown red on the row's planted fault at the constructor defaults. Every
@@ -403,21 +403,14 @@ class SteppedAnalog(AnalogDelay):
             self._delay.set(feedback=stepped)
 
 
-class RawSpread(AnalogDelay):
-    """The class as at 71e680b: Spread handed to the node as set, off the
-    1/4096 grid. At two channels with Spread inside (0, 1) and a Feedback
-    a float32 step or two under 1 - 0.5 / k, the node's cross-feed sum
-    lands an ulp above a landed k and hands it back for ever."""
+class OneLapTail(AnalogDelay):
+    """Tail: one lap of the longest delay, where the bound counts the laps
+    to exact zero. Red on any tail that takes more than one lap."""
 
     NAME = 'AnalogDelay'
 
-    def _refresh(self):
-        AnalogDelay._refresh(self)
-        if self._channel_count == 2:
-            spread = min(1.0, max(0.0, self._value(SPREAD_I)))
-            if spread != self._spread:
-                self._spread = spread
-                self._delay.set(cross_feed=spread)
+    def _tail_bound(self):
+        return self._reach + 1
 
 
 class JumpModAnalog(AnalogDelay):
@@ -1179,13 +1172,6 @@ def read_feedback_as_set(effect):
                  - effect.macro(FEEDBACK_I), 9)
 
 
-def read_spread_on_grid(effect):
-    """Whether the `cross_feed` handed to the node is a whole number of
-    4096ths (RawSpread hands 39/127, which is not)."""
-    handed = float(effect._delay._handed["cross_feed"]) * 4096.0
-    return handed == math.floor(handed)
-
-
 def read_modulation_move(effect):
     """On a copy at these positions, one Modulation move of 16 grid steps
     after a block has been pulled: the `delay_ms` handed less the
@@ -1325,8 +1311,6 @@ REACH_WALKS = (
     ("SteppedAnalog", SteppedAnalog, read_feedback_as_set,
      {"feedback": 0.99}),
     ("JumpModAnalog", JumpModAnalog, read_modulation_move, {}),
-    ("RawSpread", RawSpread, read_spread_on_grid,
-     {"feedback": 0.9899999, "spread": 39.0 / 127.0}),
 )
 
 
@@ -2142,11 +2126,14 @@ class Tier1Fast(unittest.TestCase):
         return declared, last, int(np.max(np.abs(past.astype(np.int64))))
 
     def test_the_cross_feed_stall_cells_reach_zero(self):
-        # Re-audit round 1's Tier 1 failure (dossier section 8, R13): with
-        # Spread handed as set these cells hold k LSB on both lanes for
-        # ever. On the 1/4096 grid the cross-feed sum is exact and each
-        # ends inside the bound. Planted: RawSpread, the class as at
-        # 71e680b, red at all four.
+        # Re-audit round 1's Tier 1 failure (dossier section 8, R13): up to
+        # audiodsp v0.6.3rc2 these cells held k LSB on both lanes for ever
+        # with Spread handed as set, and the class put Spread on a 1/4096
+        # grid. At v0.6.3rc3 the node ends them (audiodsp#170, #173), the
+        # grid is gone, and each ends inside the bound with Spread as set.
+        # The old plant (Spread off the grid) no longer goes red on this
+        # node; planted instead: OneLapTail, a bound of one lap, red at
+        # all four, so the check reads the tail.
         for feedback, spread, k in self.CROSS_FEED_CELLS:
             declared, last, past = self._cross_feed_tail(
                 AnalogDelay, feedback, spread, k)
@@ -2154,23 +2141,18 @@ class Tier1Fast(unittest.TestCase):
             self.assertLessEqual(last, declared, (feedback, spread))
             self.assertEqual(past, 0, (feedback, spread))
             declared, last, past = self._cross_feed_tail(
-                RawSpread, feedback, spread, k)
-            self.assertEqual(past, k, (feedback, spread))
+                OneLapTail, feedback, spread, k)
+            self.assertGreater(last, declared, (feedback, spread))
+            self.assertGreater(past, 0, (feedback, spread))
 
-    def test_spread_is_handed_on_the_grid(self):
+    def test_spread_is_handed_as_set(self):
+        # Since audiodsp v0.6.3rc3 the node hands Spread nothing to dodge.
         for rate in RATES:
             effect = AnalogDelay(silence_src(64, 2, rate), sample_rate=rate)
             for midi in range(128):
                 effect.set_macro(SPREAD_I, midi)
-                knob = effect._value(SPREAD_I)
-                self.assertEqual(effect._spread * 4096.0,
-                                 math.floor(effect._spread * 4096.0), midi)
-                self.assertLessEqual(abs(effect._spread - knob),
-                                     1.0 / 8192.0, midi)
-            effect.set_macro(SPREAD_I, 0)
-            self.assertEqual(effect._spread, 0.0)
-            effect.set_macro(SPREAD_I, 127)
-            self.assertEqual(effect._spread, 1.0)
+                self.assertEqual(effect._spread, effect._value(SPREAD_I),
+                                 midi)
             mono = AnalogDelay(silence_src(64, 1, rate), sample_rate=rate,
                                spread=39.0 / 127.0)
             self.assertEqual(mono._spread, 0.0)
@@ -2446,6 +2428,175 @@ class SyncAndTransport(unittest.TestCase):
             self.assertAlmostEqual(slew, 2.0)
             effect.set_macro(FEEDBACK_I, 90)
             self.assertEqual(effect._delay._handed["delay_slew"], slew)
+
+
+# --------------------------------------------------------------------------
+# The docstring's claims, each tied to the test that asserts it
+
+#: (sentence, word for word as the class docstring has it, and the test
+#: that asserts it). Every sentence in the docstring that makes a claim is
+#: here; one that could not be tied to a test was struck.
+CLAIMS = (
+    ("Time runs from 20 to 600 ms, Feedback from 0 to 0.99 and Mix from 0 "
+     "to 2.", "test_the_knob_spans"),
+    ("Up to Mix 1 the dry passes untouched until the first repeat arrives.",
+     "test_the_stops_and_the_corner"),
+    ("Mix 0 is a wire.", "test_mix_zero_is_a_wire_on_the_full_scale_ramp"),
+    ("A click comes out on the frame it went in: there is no latency.",
+     "test_click_delay_is_zero"),
+    ("A one-channel source gets the same effect with Spread held at 0.",
+     "test_mono_holds_spread_at_zero"),
+    ('`"single-line"` (the default) is one 4096-stage line, the Boss DM-2; '
+     '`"double-line"` is two in series, the Deluxe Memory Man.',
+     "test_characters"),
+    ("Any other `character` raises `ValueError`.", "test_characters"),
+    ("The repeats' high-frequency corner is 0.2211 N / T for N stages and a "
+     "Time of T seconds, so it halves each time Time doubles.",
+     "test_the_named_cells_and_octaves"),
+    ("At the same Time the double line's repeats are an octave brighter.",
+     "test_the_named_cells"),
+    ("Where the law passes 0.98 of Nyquist the corner holds there, so a "
+     "shorter Time no longer brightens the repeats.", "test_characters"),
+    ("Every Time lands on a whole frame at every rate.",
+     "test_every_frame_count_lands_whole"),
+    ("A Time move bends the repeats' pitch by T_old / T_new for exactly "
+     "T_new and then returns to unity, without a click.",
+     "test_the_row_cell"),
+    ("A small Time move still lands.", "test_moves_under_eight_frames_land"),
+    ("Turning Time through several positions a block apart takes seconds to "
+     "settle, where one jump to the same place lands within the new Time.",
+     "test_turning_time_settles_in_seconds"),
+    ("The delay swings on a triangle by a fixed number of milliseconds, "
+     "whatever the Time.", "test_the_swing_reads_as_a_triangle"),
+    ("A Time move leaves the swing as it is.",
+     "test_modulation_is_the_table_and_a_time_move_leaves_it"),
+    ("A Modulation move glides over 20 ms.",
+     "test_a_modulation_move_does_not_step"),
+    ("Below Mix 1, an input peaking at or below floor(32767 (1 - Mix)) - 1 "
+     "does not reach the rail.", "test_the_input_ceiling"),
+    ("`tail_samples` is an upper bound on how long the repeats take to "
+     "reach exact zero after your input stops.",
+     "test_the_tail_reaches_exact_zero_inside_tail_samples"),
+    ("`reset()` empties the line and returns to patch 0.",
+     "test_reset_empties_the_line"),
+    ("With Sync on and a host tempo, Time is Division of the host's beat.",
+     "test_a_host_sets_time_from_division"),
+    ("With no host tempo, Time stays on the knob.",
+     "test_no_host_or_a_bad_tempo_leaves_time_on_the_knob"),
+    ("There is no sample-and-hold, so the repeats have no null at the "
+     "clock.", "test_no_null_at_the_clock"),
+    ("There is no fixed anti-alias pair: the repeats' one corner is the one "
+     "that moves with Time.", "test_the_only_corner_moves_with_time"),
+    ("A control that jumps makes the output step: move it in small steps "
+     "from the host if you need it smooth.",
+     "test_a_jumping_control_steps_the_output"),
+    ("The tail rings only while the source keeps feeding: feed silence to "
+     "let it ring out.", "test_a_tail_cut_short_carries_on"),
+    ("A tail cut short by a source that stopped carries on when the source "
+     "comes back.", "test_a_tail_cut_short_carries_on"),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def _cell(event, patch, channels=1, rate=RATE):
+    """One lifecycle matrix cell on the class, as measured, with the class's
+    DECLARED rows lifted so the raw verdict shows."""
+    import lifecycle
+    ev = [e for e in lifecycle.events(AnalogDelay, patch)
+          if e.name == event][0]
+    saved = dict(lifecycle.DECLARED)
+    for key in list(lifecycle.DECLARED):
+        if key[0] == "AnalogDelay":
+            del lifecycle.DECLARED[key]
+    controls = {}
+    try:
+        return lifecycle.run_cell(AnalogDelay, ev, rate, channels, patch, {},
+                                  controls)
+    finally:
+        lifecycle.DECLARED.clear()
+        lifecycle.DECLARED.update(saved)
+        for ctl in controls.values():
+            ctl.close()
+
+
+class TheClaims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = _flat(AnalogDelay.__doc__)
+        tests = set()
+        for value in globals().values():
+            if isinstance(value, type) and issubclass(value,
+                                                      unittest.TestCase):
+                tests.update(n for n in dir(value) if n.startswith("test_"))
+        rest = doc
+        for sentence, test in CLAIMS:
+            self.assertIn(sentence, doc, sentence)
+            self.assertIn(test, tests, sentence)
+            rest = rest.replace(sentence, " ")
+        self.assertIn("**Limits shared by the family.**", doc)
+        numbers = [w for w in rest.split() if any(c.isdigit() for c in w)]
+        self.assertEqual(numbers, [])
+
+    def test_the_knob_spans(self):
+        effect = AnalogDelay(silence_src(64), sample_rate=RATE)
+        for index, low, high in ((TIME_I, 20.0, 600.0),
+                                 (FEEDBACK_I, 0.0, 0.99),
+                                 (MIX_I, 0.0, 2.0)):
+            effect.set_macro(index, 0)
+            self.assertAlmostEqual(effect._value(index), low, places=9)
+            effect.set_macro(index, 127)
+            self.assertAlmostEqual(effect._value(index), high, places=9)
+
+    def test_turning_time_settles_in_seconds(self):
+        # Brad's ruling of 2026-09-28 keeps the walk as it is. At 48 kHz,
+        # wet alone, Feedback 0: MIDI 101 -> 111 as ten moves a block
+        # apart against one jump made with the last of them. The jump
+        # lands on a static 111 within its Time (391 ms); the ten moves
+        # still differ from the jump a second later, and match it by eight.
+        move_at = MOVE_AT
+        last = move_at + 9 * BLOCK
+        frames = last + 8 * RATE
+        values = sine_values(997.0, frames, RATE, 12000)
+
+        def render(moves, midi=101):
+            effect = AnalogDelay(array_src(values, 1), sample_rate=RATE,
+                                 time_ms=grid_ms(midi), feedback=0.0,
+                                 mix=2.0)
+
+            def on_block(frame):
+                for at, to in moves:
+                    if frame == at:
+                        effect.set_macro(TIME_I, to)
+            out = pull(effect, frames, 1, on_block=on_block).astype(int)
+            effect.deinit()
+            return out
+
+        steps = render([(move_at + k * BLOCK, 102 + k) for k in range(10)])
+        jump = render([(last, 111)])
+        static = render([], midi=111)
+        landed = np.flatnonzero(jump != static)
+        self.assertLessEqual(int(landed[-1]) - last,
+                             whole(grid_ms(111), RATE) + BLOCK)
+        settled = np.flatnonzero(steps != jump)
+        self.assertGreater(int(settled[-1]) - last, RATE)
+        self.assertLess(int(settled[-1]), frames - RATE // 10)
+
+    def test_a_jumping_control_steps_the_output(self):
+        # The matrix's E5 cell at patch 4 (Mix 2 -> 0 and back) steps past
+        # its bar; the class declares it (audiocomponents#117).
+        res = _cell("E5-mix0", 4)
+        self.assertTrue(res["P5"].startswith("RED"), res)
+        self.assertEqual(res["P1"], "ok", res)
+
+    def test_a_tail_cut_short_carries_on(self):
+        # The matrix's E8-dry cell at patch 4: the source hands back an
+        # empty buffer once, and when it comes back the tail it cut short
+        # plays out of the silence (audiodsp#180).
+        res = _cell("E8-dry", 4)
+        self.assertTrue(res["P3"].startswith("RED(peak"), res)
+        self.assertEqual(res["P2"], "ok", res)
 
 
 # --------------------------------------------------------------------------

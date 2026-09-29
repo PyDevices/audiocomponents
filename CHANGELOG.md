@@ -87,10 +87,11 @@ there, and are recorded in its changelog.
   cost is unmeasured. At audiodsp v0.6.3rc1 the Feedback is handed as set
   (no stepping clear of the stall windows; the bound counts one landing lap
   there), and a Modulation move glides over 20 ms instead of stepping the
-  read offset. In stereo, Spread reaches the node on a grid of 4096ths
-  (within 1/8192 of the knob; 0 and 1 unchanged), because off that grid
-  the node's cross-feed sum could land a step above both sides and hold
-  9-50 LSB for ever at a Feedback a float32 step under 1 - 0.5 / k.
+  read offset. At v0.6.3rc3 Spread is handed as set: the node's stereo
+  cross-feed tail now ends on its own (audiodsp#170), so the 1/4096 grid
+  the class used to dodge it is gone. A jumping control steps the output
+  and a tail cut short by a stopped source carries on when it comes back,
+  disclosed as family limits (audiocomponents#117, audiodsp#180).
 - **`PingPongDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** repeats
   that alternate between the speakers, on one `audioecho.FeedbackDelay`
   whose cross-feed and input pan Spread moves between two plain delays and

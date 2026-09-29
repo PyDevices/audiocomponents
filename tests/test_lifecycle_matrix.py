@@ -100,15 +100,6 @@ KNOWN_RED = {
     ('MultiTapDelay', 'E9-', 'P4'): (
         70, '123b91ee', None, None,
         'Mix 0 and back leaves the class out of step with a fresh instance for good'),
-    ('AnalogDelay', 'E', 'P4'): (
-        37, '1266f888', 150, 'bb0595c6',
-        "the Modulation LFO's phase moves with the event, so a modulated patch never re-converges"),
-    ('AnalogDelay', 'E', 'P5'): (
-        74, 'b699cca1', 214, '8d248b43',
-        'Time, Mix and patch moves step the output within one block'),
-    ('AnalogDelay', 'E8-dry', 'P3'): (
-        8, 'e1967d96', 8, 'e1967d96',
-        'a source that stays dry through a pause and comes back: old audio plays out of silence'),
     ('Reverb', 'E', 'P4'): (
         322, '606b9d85', 1409, '722197fe',
         'a network move, reset or reset_buffer never re-converges to a fresh instance (modulation phase?)'),
