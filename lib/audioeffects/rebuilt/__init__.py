@@ -90,7 +90,41 @@ def _present():
 #: there is nothing left here to arbitrate for any of them.
 #:
 #: What stays parked under this directory: Phase 3's `Flanger`.
-ADOPTED = ()
+#:
+#: Phase 5's first two, adopted 2026-09-28 on Brad's rulings of that date:
+#: `DigitalDelay` and `SlapbackDelay`. Both are THROUGH on the desktop half
+#: (`audit-DigitalDelay-reaudit2.md`, `audit-SlapbackDelay-reaudit1.md`),
+#: and their board rows met the bars (board-test-plan.md, section 2), each
+#: S3 patch 5 at the corrected cost Brad passed (DigitalDelay about
+#: 0.78 ms, 14.6 % of a block; SlapbackDelay 0.813 ms, 15.2 % against the
+#: 15 % bar) and each patch digest identical board to board, differing
+#: from the desktop only through single-precision Python floats in a
+#: derived setting (audiocomponents#75). They stay under this directory for
+#: now: `digitaldelay.py`'s loop-tail arithmetic is imported from here by
+#: `SlapbackDelay`, `CombFilter` and the FeedbackDelay classes Phase 5 is
+#: still building, and coming home moves it. That is a separate step, after
+#: those classes land.
+#:
+#: Phase 5's last six, adopted 2026-09-29: `TapeDelay`, `AnalogDelay`,
+#: `PingPongDelay`, `MultiTapDelay`, `Reverb` and `ConvolutionReverb`. The
+#: board session at audiodsp v0.6.3 met the cost bar (80 % of a 5.333 ms
+#: stereo block) and real time at every cell on the ESP32-P4, and on the
+#: ESP32-S3 at every cell but MultiTapDelay's patch 4 (5.567 ms), which its
+#: docstring discloses on Brad's ruling. Each board digest equals the
+#: desktop's, or a desktop MicroPython's built with single-precision floats
+#: (audiocomponents#75); Reverb's patch 7 differs from that build by nine
+#: one-LSB samples of 65536 (audiodsp#183). They stay under this directory
+#: with the first two, for the same reason.
+ADOPTED = (
+    "DigitalDelay",
+    "SlapbackDelay",
+    "TapeDelay",
+    "AnalogDelay",
+    "PingPongDelay",
+    "MultiTapDelay",
+    "Reverb",
+    "ConvolutionReverb",
+)
 
 
 def load(name):

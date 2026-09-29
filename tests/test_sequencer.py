@@ -275,8 +275,9 @@ class TheTransportStopsCleanly(unittest.TestCase):
 class _Track:
     """A real instrument with the refusal count answered by hand.
 
-    `health()` has to carry a number the engine CI runs against cannot
-    produce -- `synthio.Synthesizer.refused` is newer than `AUDIODSP_PIN` --
+    `health()` has to carry a number the engine CI ran against could not
+    produce when this was written -- `synthio.Synthesizer.refused` was newer
+    than `AUDIODSP_PIN` until the pin passed audiodsp#137 on 2026-09-27 --
     so what is proved here is the plumbing and the separation, and the
     numbers themselves are measured on the real pump.
 

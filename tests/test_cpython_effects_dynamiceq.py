@@ -800,28 +800,27 @@ class PlantedFaults(unittest.TestCase):
         print("\n  WIRE fault: first differing sample %r" % (first,))
         self.assertIsNotNone(first)
 
-    def test_wire_goes_red_on_a_dry_voice_at_unity(self):
-        """audiodsp#95's fault, which is the wiring this class shipped with.
+    def test_the_dry_voice_at_unity_is_a_wire_since_audiodsp_v0_6_1(self):
+        """audiodsp#95's plant, kept as a control now that it cannot fire.
 
-        A mixer voice at level 1.0 is not unity - upstream's Q15 level is
-        `1.0 * 32768` and the kernel divides by 32767 - so the dry tap at
-        unity came out one LSB high at every sample from 32736 up. Three of
-        16384 on a full-scale ramp, all in the right channel, because a
-        stereo voice at pan 0 gets 32767 on the left and 32768 on the right.
-        Nothing below -6.02 dBFS can reach it, which is why the row is a
-        ramp and this fault was invisible to a -4.4 dBFS tone for a year.
+        A mixer voice at level 1.0 was not unity - upstream's Q15 level was
+        `1.0 * 32768` and the kernel divided by 32767 - so the wiring this
+        class shipped with came out one LSB high at every sample from
+        32736 up: three of 16384 on a full-scale ramp, all in the right
+        channel. audiodsp v0.6.1 (#129) made the voice at 1.0 exact and the
+        pin moved there on 2026-09-27 (`AUDIODSP_PIN`). The row above still
+        has its fault, the one-LSB voice; this is the floor's own control,
+        on the ramp because nothing below -6.02 dBFS could reach the old
+        defect. If it goes red the floor has moved back under the suite.
         """
         data = ramp_fs(8192)
         effect, _ = build(data, ThroughTheDryVoice, mix=0.0)
         out = render(effect.output, 8192)
         differ = [index for index in range(min(len(out), len(data)))
                   if out[index] != data[index]]
-        print("\n  WIRE unity fault: %d differing, first %r"
+        print("\n  WIRE unity control: %d differing, first %r"
               % (len(differ), differ[0] if differ else None))
-        self.assertTrue(differ)
-        self.assertTrue(all(abs(out[index] - data[index]) == 1
-                            for index in differ))
-        self.assertTrue(all(abs(data[index]) >= 32736 for index in differ))
+        self.assertEqual(differ, [])
 
     def test_tail_goes_red_on_a_held_dc_state(self):
         """TAIL's fault: the audiodsp#23 shape, a state that never arrives.
@@ -959,6 +958,94 @@ class PlantedFaults(unittest.TestCase):
               " leaves %d LSB" % (clean, faulted))
         self.assertLess(clean, 100)
         self.assertGreater(faulted, 1000)
+
+
+# -- the stale blocks (audiocomponents#113) ------------------------------
+
+import os                                                       # noqa: E402
+import sys                                                      # noqa: E402
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+import stale_blocks as stale                                    # noqa: E402
+
+class TheBypassComesBackAsBuilt(unittest.TestCase):
+    """Mix back up from 0 after a pause plays nothing that was there before
+    the pause (audiocomponents#113; Brad, 2026-09-28: "fix the stale
+    blocks"). At Mix 0 the class hands back its source and nothing behind
+    it is pulled, so the graph kept its filters' memory and the block each
+    mixer voice had queued; bringing Mix back played that out of silence.
+    `_component.Component._rejoin` clears the graph and the class re-arms
+    it the way its constructor does.
+    """
+
+    CLS = module.DynamicEQ
+    MIX = 6
+
+    def test_mix_back_after_silence_plays_nothing(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                self.assertEqual(
+                    stale.blip(self.CLS, self.MIX, 127, 0, rate, channels),
+                    (0, 0), (rate, channels))
+        self.assertEqual(stale.blip(self.CLS, self.MIX, 64, 0), (0, 0))
+
+    def test_at_every_patch(self):
+        for patch in sorted(self.CLS.PATCHES):
+            before, after = stale.blip(self.CLS, self.MIX, 127, 0,
+                                       patch=patch)
+            self.assertEqual(before, 0, patch)
+            self.assertLessEqual(
+                after, max(stale.twin(self.CLS, self.MIX, 127, patch=patch),
+                           getattr(self, "BOUNDED", {}).get(patch, 0)),
+                patch)
+
+    def test_it_comes_back_in_step(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                self.assertLessEqual(
+                    stale.in_step(self.CLS, self.MIX, 127, 0, rate,
+                                  channels), 3, (rate, channels))
+
+    def test_a_block_primed_at_construction_is_not_replayed(self):
+        for channels in (2, 1):
+            self.assertEqual(
+                stale.first_blip(self.CLS, self.MIX, channels=channels), 0)
+
+    def test_the_old_rejoin_and_a_clear_without_rearming_are_red(self):
+        # The class before the fix: the graph taken back untouched.
+        before, after = stale.blip(
+            stale.planted(self.CLS, stale.StaleRejoin), self.MIX, 127, 0,
+            patch=1)
+        self.assertEqual(before, 0)
+        self.assertGreater(after, 1000)
+        # A wrong cure: cleared but not re-armed, so the voices keep the
+        # block they queued at construction.
+        self.assertGreater(stale.first_blip(
+            stale.planted(self.CLS, stale.ClearOnlyRejoin), self.MIX), 1000)
+
+    def test_mono_renders_one_block_at_a_time(self):
+        # The mixer used to render 512 mono frames at a time, and the tail
+        # kept the second half queued: a Mix move to 0 between the halves
+        # skipped it, and the move back played it. Rendered a block at a
+        # time, nothing is queued, and the class comes back in step at
+        # 44.1 kHz mono, where the move lands between the halves.
+        self.assertLessEqual(stale.in_step(module.DynamicEQ, 6, 127, 0,
+                                           44100, 1), 3)
+        # Planted: the fixed 2048-byte mixer, which is two blocks mono.
+        # With the tail cleared on the way back the class comes back 256
+        # frames ahead of an instance that never moved.
+        real = module.audiomixer.Mixer
+
+        def wide(*args, **kwargs):
+            kwargs["buffer_size"] = 2048
+            return real(*args, **kwargs)
+
+        module.audiomixer.Mixer = wide
+        try:
+            self.assertGreater(stale.in_step(module.DynamicEQ, 6, 127, 0,
+                                             44100, 1), 1000)
+        finally:
+            module.audiomixer.Mixer = real
 
 
 if __name__ == '__main__':

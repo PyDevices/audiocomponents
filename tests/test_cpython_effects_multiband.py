@@ -442,17 +442,38 @@ class TierOne(unittest.TestCase):
                     self.assertEqual(
                         result["values"]["differing_samples"], 0)
 
-    def test_the_dry_voice_at_unity_is_the_fault_the_wire_catches(self):
-        """The planted fault, and it is the wiring this class used to have:
-        Mix 0 routed through the mixer's dry voice at level 1.0.
+    def test_the_dry_voice_at_unity_is_a_wire_since_audiodsp_v0_6_1(self):
+        """audiodsp#95's plant, kept as a control now that it cannot fire.
 
-        Without this the row above is a measurement nobody has shown able to
-        fail - and the difference is one LSB on 15 samples of 32768, which
-        no summarising statistic would have found either.
+        The wiring this class used to have - Mix 0 through the mixer's dry
+        voice at level 1.0 - came out one LSB high on 15 samples of 32768
+        until audiodsp v0.6.1 (#129) made the voice at 1.0 exact. The pin
+        moved there on 2026-09-27 (`AUDIODSP_PIN`); if this goes red the
+        floor has moved back under the suite.
         """
         values = probes.ramp_fs(16384)
         effect = build(ThroughTheDryVoice, probe=values, mix=0.0)
         try:
+            wet = render(effect, 16384)
+        finally:
+            effect.deinit()
+        dry = kit.Render(bytes(memoryview(values).cast("B")), RATE, 2)
+        result = kit.wire(wet, dry, latency_samples=0)
+        self.assertTrue(result["passed"], result["red"])
+        self.assertEqual(result["values"]["differing_samples"], 0)
+
+    def test_the_wire_goes_red_on_a_one_lsb_dry_path(self):
+        """The fault the WIRE row is shown catching: the dry voice at
+        32767/32768, the kit spec's own plant. Without this the row above
+        is a measurement nobody has shown able to fail - and the
+        difference is one LSB, which no summarising statistic would find.
+        It has to put the mixer back in the path to be planted at all,
+        because Mix 0 no longer runs through one.
+        """
+        values = probes.ramp_fs(16384)
+        effect = build(ThroughTheDryVoice, probe=values, mix=0.0)
+        try:
+            effect._mixer.voice[0].level = 32767.0 / 32768.0
             wet = render(effect, 16384)
         finally:
             effect.deinit()
@@ -847,6 +868,70 @@ class Traits(unittest.TestCase):
                 self.assertEqual(nonzero(cls, block), short)
         # The same material on the old ring is the silence A-M5 described.
         self.assertEqual(nonzero(CLASS, 16384, old_ring=True), 0)
+
+
+# -- the stale blocks (audiocomponents#113) ------------------------------
+
+import os                                                       # noqa: E402
+import sys                                                      # noqa: E402
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+import stale_blocks as stale                                    # noqa: E402
+
+class TheBypassComesBackAsBuilt(unittest.TestCase):
+    """Mix back up from 0 after a pause plays nothing that was there before
+    the pause (audiocomponents#113; Brad, 2026-09-28: "fix the stale
+    blocks"). At Mix 0 the class hands back its source and nothing behind
+    it is pulled, so the graph kept its filters' memory and the block each
+    mixer voice had queued; bringing Mix back played that out of silence.
+    `_component.Component._rejoin` clears the graph and the class re-arms
+    it the way its constructor does.
+    """
+
+    CLS = multibandcompressor.MultibandCompressor
+    MIX = 13
+
+    def test_mix_back_after_silence_plays_nothing(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                self.assertEqual(
+                    stale.blip(self.CLS, self.MIX, 127, 0, rate, channels),
+                    (0, 0), (rate, channels))
+        self.assertEqual(stale.blip(self.CLS, self.MIX, 64, 0), (0, 0))
+
+    def test_at_every_patch(self):
+        for patch in sorted(self.CLS.PATCHES):
+            before, after = stale.blip(self.CLS, self.MIX, 127, 0,
+                                       patch=patch)
+            self.assertEqual(before, 0, patch)
+            self.assertLessEqual(
+                after, max(stale.twin(self.CLS, self.MIX, 127, patch=patch),
+                           getattr(self, "BOUNDED", {}).get(patch, 0)),
+                patch)
+
+    def test_it_comes_back_in_step(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                self.assertLessEqual(
+                    stale.in_step(self.CLS, self.MIX, 127, 0, rate,
+                                  channels), 3, (rate, channels))
+
+    def test_a_block_primed_at_construction_is_not_replayed(self):
+        for channels in (2, 1):
+            self.assertEqual(
+                stale.first_blip(self.CLS, self.MIX, channels=channels), 0)
+
+    def test_the_old_rejoin_and_a_clear_without_rearming_are_red(self):
+        # The class before the fix: the graph taken back untouched.
+        before, after = stale.blip(
+            stale.planted(self.CLS, stale.StaleRejoin), self.MIX, 127, 0,
+            )
+        self.assertEqual(before, 0)
+        self.assertGreater(after, 1000)
+        # A wrong cure: cleared but not re-armed, so the voices keep the
+        # block they queued at construction.
+        self.assertGreater(stale.first_blip(
+            stale.planted(self.CLS, stale.ClearOnlyRejoin), self.MIX), 1000)
 
 
 if __name__ == "__main__":

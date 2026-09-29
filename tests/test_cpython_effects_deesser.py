@@ -1209,16 +1209,18 @@ class PlantedFaults(unittest.TestCase):
         effect.deinit()
         effect2.deinit()
 
-    def test_wire_goes_red_on_a_dry_voice_at_unity(self):
-        """audiodsp#95's fault, and the probe the row above cannot use.
+    def test_the_dry_voice_at_unity_is_a_wire_since_audiodsp_v0_6_1(self):
+        """audiodsp#95's plant, kept as a control now that it cannot fire.
 
-        A mixer voice at level 1.0 is not unity - upstream's Q15 level is
-        `1.0 * 32768` and the kernel divides by 32767 - so the dry voice at
-        unity came out one LSB high at every sample from 32736 up. The
-        committed `ramp_fs` probe never puts a sample strictly inside that
-        window, so the fault was invisible to it and to this whole file
-        (see `fine_ramp_fs`). On a monotone full-scale ramp it is 7 of
-        16384, all in the right channel, and the class is exact.
+        A mixer voice at level 1.0 was not unity - upstream's Q15 level was
+        `1.0 * 32768` and the kernel divided by 32767 - so the dry voice at
+        unity came out one LSB high at every sample from 32736 up, 7 of
+        16384 on `fine_ramp_fs`, all in the right channel. audiodsp v0.6.1
+        (#129) made the voice at 1.0 exact and the pin moved there on
+        2026-09-27 (`AUDIODSP_PIN`). The row above keeps its fault, the
+        one-LSB voice; this is the floor's own control, on the probe the
+        old defect was visible to. If it goes red the floor has moved back
+        under the suite.
         """
         rate = 48000
         values = fine_ramp_fs(8192)
@@ -1233,9 +1235,9 @@ class PlantedFaults(unittest.TestCase):
                                   cls=ThroughTheDryVoice, range_db=0.0)
         result = M.wire(render(effect2.output, 8192, rate), dry)
         effect2.deinit()
-        print("\n  WIRE unity fault: %s" % result["values"])
-        self.assertNotEqual(result["red"], [])
-        self.assertEqual(result["values"]["max_abs_difference_lsb"], 1)
+        print("\n  WIRE unity control: %s" % result["values"])
+        self.assertEqual(result["red"], [], result["values"])
+        self.assertEqual(result["values"]["differing_samples"], 0)
 
     def test_tail_goes_red_on_a_held_dc_state(self):
         rate = 48000

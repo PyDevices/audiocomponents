@@ -63,32 +63,61 @@ first sound then arrives one line-length late - 0.25 ms at 4 kHz, 50 ms at
 20 Hz. That is the comb, not latency; it is the delay you asked for by
 tuning it.
 
-**Above Feedback 0.5 the tail may never reach zero, and the tuning decides
-whether it does.** The node's line is int16 and `to_s16` rounds, so
-`to_s16(g*c) == c` for every `|c| <= 0.5/(1-g)`: the loop has fixed points,
-and after the music stops it can park on one for as long as the graph runs.
-Whether it parks depends on the *fractional part* of `sample_rate /
-Frequency`. Measured on ten-second renders after a 0.2 s burst, at 48 kHz:
-tuned to **1000 Hz, where 48 000/f is a whole 48 frames, it parks on 10 LSB
-at Feedback 0.95** - `floor(0.5/(1-g))`, the bound, hit exactly - and on 8
-LSB at 440 Hz and 6 at 220; tuned to **438.3 Hz, half a sample off the
-grid, it reaches exact zero at every Feedback this class offers**, because
-the interpolator averages the last LSB with a zero neighbour and rounds it
-away. Below Feedback 0.5 it always reaches zero.
+**The tail reaches exact zero at every Feedback and every tuning.** Up to
+audiodsp v0.6.1 it could not above Feedback 0.5: the node's int16 line
+rounded the feedback write to nearest, so every `|c| <= 0.5/(1-g)` was a
+fixed point of the loop, and at a tuning whose read lands near a whole
+sample the tail parked on a few LSB for as long as the graph ran (10 LSB at
+1000 Hz / Feedback 0.95), ringing at the nearest whole-sample period
+(+17.4 cents at 1760 Hz / Feedback 0.8). audiodsp v0.6.2 (#154) truncates
+the fed-back term toward zero exactly where rounding would hand it back
+unchanged, so the line empties: from full scale its loudest sample falls by
+the geometric law until it is within `floor(0.5/(1-g))` LSB, then by at
+least one LSB a lap. Measured at v0.6.2, 48 kHz, Tone off and Trim flat,
+after an impulse: 1760 Hz / 0.8 is silent after 928 frames, 1000 Hz / 0.95
+after 7 488, and 20 Hz / 0.95, the slowest corner of the surface, after
+374 400 (7.8 s), each inside that lap bound times the line (511 413 frames,
+10.7 s, at 20 Hz / 0.95). While it rings, it rings at the fractional delay
+it was asked for: 1760 Hz / 0.8 at 27.262 frames against the asked 27.273,
+0.7 cents, through its tenth repeat, and the first-repeat tap lands within
+0.01 cents. This class is a tuned resonator: Frequency is a pitch, and the
+first-repeat tap is the note it plays.
 
-**Above Feedback 0.5 the parked ring's period is the nearest whole number
-of samples to F_s/Frequency, not the fractional delay the comb was asked
-for: +17.4 cents at 1760 Hz / Feedback 0.8 (27 samples at 48 kHz) and at
-most a half-sample — about 70 cents — near 4 kHz. The first-repeat tap
-still lands within 0.01 cents. Below Feedback 0.5, and at half-sample
-tunings, the tail reaches exact zero.** Nothing on this palette removes
-the parked case — `cut_hz` is a DC blocker and this is not DC; a Tone
-low enough to drain 1760/0.8 misses the 1 kHz park and breaks the peak
-law — so `TAIL_SAMPLES` is `None`, `reset()` clears it, and the
-silence-in-silence-out invariant is demonstrated inside that bound and
-disconfirmed outside it. This class is a tuned resonator: Frequency is a
-pitch, and the first-repeat tap is the note it plays. The parked ring is
-the leftover, not the note.
+**`tail_samples` is finite at every setting** (declared 2026-09-28): an
+upper bound, for the settings as they stand, on how long the output takes
+to reach exact zero after your input stops. It is the lap law above, each
+lap one frame longer than the longest line the read head may still be at
+(after a rising Frequency move with Glide on, the line it is walking down
+from, until a Glide-0 move or a reset lands it), plus the Tone low-pass's
+memory with Tone in, plus 1.5 s while the Trim is in circuit, because the
+fixed-point shelf in front lets its last LSB out for up to 0.834 s after a
+full-scale input (measured, not derived). At the defaults it is 3 219
+frames at 48 kHz; at 20 Hz / Feedback 0.95 with Tone off and the Trim flat,
+398 566 (8.3 s; it counts laps with `DigitalDelay`'s `laps_to_zero`, which
+is tighter than the 511 413 above and still covers the 374 400 measured).
+Over every macro's stops and three interior points, every patch,
+the long corners and the stall centres, at three rates, stereo and mono,
+on full-scale DC, noise and a 2 LSB DC, 900 renders end inside it; the
+tightest, 20 Hz at Feedback 0.7 on full-scale DC, ends 29 frames short of
+69 629.
+
+**With Tone in, the Feedback you set is the one the node plays.** Wherever
+0.5 / (1 - Feedback) is within a hair of a whole number k (0.5, 0.75, and
+the knob's top, 0.95, among them), the loop low-pass can rest a hair above
+k LSB and hand it back. Up to audiodsp v0.6.2 it did so for ever (1 LSB at
+Feedback 0.5 and 2 at 0.75 with Tone at 2 kHz, on a 2 LSB DC), and this
+class handed the node a Feedback just clear of each window. Since
+v0.6.3rc1 the node sets a stalled low-pass onto its input (audiodsp#157),
+nothing is moved, and the bound counts one more lap there.
+
+**Tone off is off, after Tone has been in too.** Bring Tone back after the
+ring has died and nothing plays: 0 LSB at 48, 44.1 and 22.05 kHz, stereo
+and mono, after a 300 Hz tone at 30 000 LSB, Feedback 0, Mix 2. The off
+stop hands the node exactly 0, and since audiodsp v0.6.3rc1 the node keeps
+an off low-pass's state on the signal (audiodsp#158). Up to v0.6.2 it froze
+that state and played it back here (15 070 LSB at 48 kHz); this class
+cured it with a tracking off stop on 2026-09-28, and the cure came out
+when the node was fixed.
 
 **Two traits this class does not have.** The *negative* comb, whose peaks sit
 on the odd half-multiples and which sounds hollow rather than pitched, is
@@ -108,6 +137,8 @@ and this class never reads `self._transport()`.
 
 VENDOR = "PyDevices"
 
+import math
+
 try:
     import audioecho
 except ImportError:                     # pragma: no cover - a stock board
@@ -118,6 +149,14 @@ except ImportError:                     # pragma: no cover - a stock board
     audiobiquad = None
 
 from . import _component
+
+# `DigitalDelay`'s loop-tail arithmetic, reused rather than copied: the same
+# node rounds the same way here. Its module moves up one level when it comes
+# home, so both homes are tried.
+try:
+    from .rebuilt.digitaldelay import laps_to_zero
+except ImportError:                     # pragma: no cover - after it lands
+    from .digitaldelay import laps_to_zero
 
 
 #: The line, in milliseconds. 20 Hz wants 50 ms and the node keeps one frame
@@ -155,6 +194,32 @@ MIX_UNITY_SNAP = 0.02
 TRIM_CORNER_HZ = 5.0
 TRIM_Q = 0.7071067811865476
 
+#: How long the trim can keep a non-zero output after its input stops,
+#: in seconds, while it is in circuit. The shelf is fixed point with 12
+#: fractional state bits (`audiodsp_biquad.c:163-185` at audiodsp v0.6.2)
+#: and a pole pair near z = 1, and its rounding carries the last LSB past
+#: the linear decay its poles give, so this term is measured, not derived:
+#: over every active Trim step, DC at twelve levels and both signs, 5 and
+#: 40 Hz sines stopped at eight phases, and noise, 15 621 cells, none held
+#: and the longest ran 40 041 frames at 48 kHz (0.834 s; 0.825 s at 44.1,
+#: 0.818 s at 22.05; `housekeeping_cf_trim_tail.py`, 2026-09-28). 1.5 s is
+#: 1.8 times that. The comb's lap bound counts from where the trim stops.
+TRIM_TAIL_S = 1.5
+
+
+def _tone_excess(damping_hz, sample_rate):
+    """(frames, relative excess) for the in-loop low-pass at `damping_hz`,
+    `DigitalDelay`'s reckoning: after `frames` frames whatever its state
+    held weighs under 2^-17 of it, and its single-precision state can rest
+    up to 2^-24 / a above the line's peak, a being the coefficient.
+    (0, 0.0) with Tone off."""
+    if damping_hz <= 0.0:
+        return 0, 0.0
+    per_frame = 2.0 * math.pi * damping_hz / sample_rate
+    coefficient = 1.0 - math.exp(-per_frame)
+    frames = int(math.ceil(32.0 * math.log(2.0) / per_frame))
+    return frames, 2.0 ** -17 + 2.0 ** -24 / coefficient
+
 
 class CombFilter(_component.Component):
     """A tuned feedback comb: one delay line of 1/f seconds fed back on
@@ -172,13 +237,9 @@ class CombFilter(_component.Component):
     CAPABILITIES = ()
     LATENCY_SAMPLES = 0
 
-    #: Not finitely bounded. Above Feedback 0.5 the parked ring's period
-    #: is the nearest whole number of samples to F_s/Frequency, not the
-    #: fractional delay the comb was asked for: +17.4 cents at 1760 Hz /
-    #: Feedback 0.8 (27 samples at 48 kHz) and at most a half-sample —
-    #: about 70 cents — near 4 kHz. The first-repeat tap still lands
-    #: within 0.01 cents. Below Feedback 0.5, and at half-sample tunings,
-    #: the tail reaches exact zero.
+    #: The class-level declaration stays `None`; the instance's
+    #: `tail_samples` is finite at every setting (2026-09-28), because the
+    #: bound depends on the setting.
     TAIL_SAMPLES = None
 
     MACRO_LABELS = ("Frequency", "Feedback", "Mix", "Tone", "Trim", "Glide")
@@ -245,8 +306,20 @@ class CombFilter(_component.Component):
             upstream = node
         self._output = upstream
 
+        #: The longest line, in frames rounded up, the read head may still
+        #: sit at. A Glide walk starts from wherever the head is and the
+        #: class cannot see how far it has got, so after a rising move
+        #: (a shorter line) this keeps the old length until a jump
+        #: (Glide 0) or a reset lands the head.
+        self._reach = 1
+        #: True while the node has been built or cleared and not yet
+        #: pulled: it snaps onto the configured delay on its first block.
+        self._fresh = True
+        self._feedback = 0.0
+        self._damping = 0.0
         self._init_macros(
             (frequency, feedback, mix, tone_hz, trim_db, glide), patch)
+        self._fresh = False
 
     # -- the control laws ----------------------------------------------
 
@@ -267,18 +340,63 @@ class CombFilter(_component.Component):
             blend = 1.0
         tone = self._value(3)
         trim_db = self._value(4)
+        damping = self._tone_damping(tone)
+        slew = self._value(5)
+        frames = int(math.ceil(self._sample_rate / frequency))
+        if self._fresh or slew <= 0.0 or frames > self._reach:
+            self._reach = frames
+        # Handed as set: since audiodsp v0.6.3rc1 the node lands a stalled
+        # loop low-pass (#157), so no Feedback is moved clear of a window.
+        feedback = self._value(1)
+        self._feedback = feedback
+        self._damping = damping
 
         self._comb.set(
             delay_ms=1000.0 / frequency,
-            feedback=self._value(1),
+            feedback=feedback,
             mix=blend,
-            damping_hz=0.0 if tone >= TONE_OFF_HZ else self._hz(tone),
-            delay_slew=self._value(5))
+            damping_hz=damping,
+            delay_slew=slew)
 
         self._trim.gain_db = trim_db
         self._trim.mix = (1.0 if blend > 0.0 and abs(trim_db) >= FLAT_DB
                           else 0.0)
 
+    def _tone_damping(self, tone):
+        """The `damping_hz` handed to the node for a Tone of `tone` Hz: the
+        top of the travel is exactly 0, the filter off. Since audiodsp
+        v0.6.3rc1 the node keeps an off low-pass's state on the signal
+        (audiodsp#158), so off is off whatever came before."""
+        if tone < TONE_OFF_HZ:
+            return self._hz(tone)
+        return 0.0
+
     def _apply_macro(self, index, position):
         del index, position
         self._refresh()
+
+    def reset(self):
+        self._fresh = True
+        _component.Component.reset(self)
+        self._fresh = False
+
+    @property
+    def tail_samples(self):
+        """Frames until the output is exactly zero once the input stops, as
+        an upper bound for the settings as they stand: `laps_to_zero` laps
+        of the longest line the read head may be at, each one frame longer
+        for the interpolated read and the Tone low-pass's memory longer,
+        plus `TRIM_TAIL_S` while the trim is in circuit. Finite at every
+        setting."""
+        self._check_live()
+        return self._tail_bound()
+
+    def _tail_bound(self):
+        """`tail_samples` without the liveness check, for subclasses (a
+        MicroPython `property` has no `fget`)."""
+        memory, excess = _tone_excess(self._damping, self._sample_rate)
+        laps = laps_to_zero(self._feedback, excess)
+        trim = 0
+        if self._trim.mix > 0.0:
+            trim = int(math.ceil(TRIM_TAIL_S * self._sample_rate))
+        return int(laps * (self._reach + 1 + memory)) + trim

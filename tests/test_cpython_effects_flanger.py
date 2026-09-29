@@ -103,6 +103,34 @@ class SoftColorFlanger(Flanger):
     COLOR_CEILING = 0.5
 
 
+class _CutAtColorMaxFlanger(Flanger):
+    """F8's ring, planted: the loop high-pass at Color max moved from
+    0.4 Hz to `COLOR_MAX_CUT_HZ`, the same travel from 20 Hz at Color 0.
+    The ring's length is what moves; Color and the comb do not."""
+    NAME = 'Flanger'
+    COLOR_MAX_CUT_HZ = rebuilt.CUT_HZ_COLOR_MAX
+
+    def _refresh(self):
+        Flanger._refresh(self)
+        color = rebuilt._color_to_feedback(
+            self._value(2), type(self).COLOR_CEILING, type(self).COLOR_LAW)
+        travel = min(1.0, max(0.0, float(color) / 0.99))
+        self._wet.set(cut_hz=rebuilt.CUT_HZ + travel * (
+            type(self).COLOR_MAX_CUT_HZ - rebuilt.CUT_HZ))
+
+
+class ShortRingFlanger(_CutAtColorMaxFlanger):
+    """F8: the Color-max cut at 0.8 Hz, a ring about 0.1-0.3 s shorter."""
+    NAME = 'Flanger'
+    COLOR_MAX_CUT_HZ = 0.8
+
+
+class LongRingFlanger(_CutAtColorMaxFlanger):
+    """F8: the Color-max cut at 0.2 Hz, a ring about 0.05-0.1 s longer."""
+    NAME = 'Flanger'
+    COLOR_MAX_CUT_HZ = 0.2
+
+
 class ShortLatencyFlanger(Flanger):
     """CLICK: report 256 samples short."""
     NAME = 'Flanger'
@@ -522,6 +550,17 @@ class F8ColorCeiling(unittest.TestCase):
             lambda subject: build(subject, probe=probes.silence(2048)),
             label="Flanger F8")
 
+    def test_ring_faults_are_not_a_macro(self):
+        # The node's cut is write-only, so the reading is the Color-max
+        # corner the class keeps, as for the ceiling above.
+        for fault in (ShortRingFlanger, LongRingFlanger):
+            kit_faults.fault_reachability(
+                Flanger, fault,
+                lambda e: getattr(type(e), "COLOR_MAX_CUT_HZ",
+                                  rebuilt.CUT_HZ_COLOR_MAX),
+                lambda subject: build(subject, probe=probes.silence(2048)),
+                label="Flanger F8 ring")
+
     def test_soft_ceiling_fires_at_defaults(self):
         probe = sine(1000, frames=8192)
         clean = build(probe=probe)
@@ -559,16 +598,37 @@ class F8ColorCeiling(unittest.TestCase):
                 t60 = (start - burst) / float(rate)
         return t60
 
-    def test_audio_t60_at_color_max_is_at_least_two_seconds(self):
-        """F8 audio: Color-max cut is 0.4 Hz so the ring clears 2 s."""
-        t60 = self._audio_t60()
-        self.assertIsNotNone(t60, "never reached −60 dB")
-        self.assertGreaterEqual(t60, 2.0, t60)
+    #: F8 restated on 2026-09-28 (Brad's ruling of that date): what the
+    #: node does at audiodsp v0.6.2, measured, not the 2.0 s bar. The ring
+    #: at Color max read 2.13 s at 440 Hz and 2.35 s at 200 Hz at v0.6.1;
+    #: audiodsp#154 empties the line where rounding used to hold a few LSB
+    #: going round for ever, and part of the old ring was that floor. The
+    #: reading steps in 10 ms hops, and the tolerance is three of them:
+    #: the Color-max loop cut at 0.8 Hz or at 0.2 Hz instead of 0.4 moves
+    #: the ring out of it at both frequencies.
+    F8_RING_S = {440.0: 1.91, 200.0: 2.13}
+    F8_TOLERANCE_S = 0.03
 
-    def test_audio_t60_at_200hz_is_at_least_two_seconds(self):
-        t60 = self._audio_t60(hz=200.0)
-        self.assertIsNotNone(t60, "never reached −60 dB")
-        self.assertGreaterEqual(t60, 2.0, t60)
+    def _f8_ring_holds(self, cls, hz, listen_s=3.0):
+        t60 = self._audio_t60(cls, hz=hz, listen_s=listen_s)
+        return (t60 is not None
+                and abs(t60 - self.F8_RING_S[hz]) <= self.F8_TOLERANCE_S), t60
+
+    def _f8_row(self, hz):
+        held, t60 = self._f8_ring_holds(Flanger, hz)
+        self.assertTrue(held, (hz, t60))
+        # Planted: a ring 0.1-0.3 s shorter, and one 0.05-0.1 s longer.
+        for cls in (ShortRingFlanger, LongRingFlanger):
+            held, t60 = self._f8_ring_holds(cls, hz)
+            self.assertFalse(held, (cls.__name__, hz, t60))
+
+    def test_audio_t60_at_color_max_is_the_measured_ring(self):
+        """F8 audio at 440 Hz: 1.91 s to -60 dB at Color max."""
+        self._f8_row(440.0)
+
+    def test_audio_t60_at_200hz_is_the_measured_ring(self):
+        """F8 audio at 200 Hz: 2.13 s to -60 dB at Color max."""
+        self._f8_row(200.0)
 
     def test_soft_ceiling_audio_t60_is_under_two_seconds(self):
         t60 = self._audio_t60(SoftColorFlanger)
@@ -577,13 +637,12 @@ class F8ColorCeiling(unittest.TestCase):
 
     def test_f8_audio_null_build_is_red(self):
         def measure(cls):
-            t60 = self._audio_t60(cls, listen_s=2.5)
-            passed = t60 is not None and t60 >= 2.0
-            return {"passed": passed, "red": [{"t60": t60}]}
+            held, t60 = self._f8_ring_holds(cls, 440.0, listen_s=2.5)
+            return {"passed": held, "red": [{"t60": t60}]}
         kit_faults.null_build_red(Flanger, measure, label="Flanger F8 audio")
 
     def test_default_audio_tail_is_not_two_seconds(self):
-        """Headline: constructor Color 0.55 is ~0.1 s, not F8's Color-max 2 s."""
+        """Headline: constructor Color 0.55 is ~0.1 s, not F8's Color-max ring."""
         effect = build(probe=probes.silence(2048))
         self.assertLess(effect.tail_samples / float(RATE), 0.2)
         effect.deinit()

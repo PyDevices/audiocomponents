@@ -74,15 +74,22 @@ class MixZeroIsAWireTest(unittest.TestCase):
     16384 on a full-scale ramp, all in the right channel, because a stereo
     voice at pan 0 gets 32767 on the left and 32768 on the right. Nothing
     peaking below -6.02 dBFS reaches the mechanism.
+
+    audiodsp v0.6.1 (#129) made the voice at 1.0 exact, and the pin moved
+    there on 2026-09-27 (`AUDIODSP_PIN`). So the unity plant is a control
+    now, and the fault the row is shown catching is the kit spec's own:
+    the dry voice a hair under unity, 32767/32768.
     """
 
-    def _rendered(self, cls=None, channels=2, frames=8192):
+    def _rendered(self, cls=None, channels=2, frames=8192, dry_level=None):
         values = probes.ramp_fs(frames, channels)
         source = audiocore.RawSample(values, sample_rate=RATE,
                                      channel_count=channels)
         effect = (cls or ev.Compressor).create(source, RATE, mix=0.0)
         try:
             self.assertEqual(effect.latency_samples, 0)
+            if dry_level is not None:
+                effect._mixer.voice[1].level = dry_level
             wet = probes.render(effect.output, frames, rate=RATE,
                                 channels=channels, block=256)
         finally:
@@ -97,10 +104,28 @@ class MixZeroIsAWireTest(unittest.TestCase):
                 self.assertTrue(result["passed"], result["red"])
                 self.assertEqual(result["values"]["differing_samples"], 0)
 
-    def test_the_dry_voice_at_unity_is_the_fault_the_wire_catches(self):
+    def test_the_dry_voice_at_unity_is_a_wire_since_audiodsp_v0_6_1(self):
+        """audiodsp#95's plant, kept as a control now that it cannot fire.
+
+        The wiring this class shipped with before #95 renders byte-exact on
+        the floor the pin names. If this ever goes red, the floor has moved
+        back under the suite.
+        """
         result = self._rendered(ThroughTheDryVoice)
+        self.assertTrue(result["passed"], result["red"])
+        self.assertEqual(result["values"]["differing_samples"], 0)
+
+    def test_the_wire_goes_red_on_a_one_lsb_dry_path(self):
+        """The fault the WIRE row is shown catching: the dry voice at
+        32767/32768, inaudible, and the byte compare must still refuse it.
+        It has to put the mixer back in the path to be planted at all,
+        because Mix 0 no longer runs through one.
+        """
+        result = self._rendered(ThroughTheDryVoice,
+                                dry_level=32767.0 / 32768.0)
         self.assertFalse(result["passed"])
         self.assertEqual(result["values"]["max_abs_difference_lsb"], 1)
+        self.assertGreater(result["values"]["differing_samples"], 0)
 
     def test_the_head_of_the_render_is_not_a_hole(self):
         """The second defect the ramp found: this class opened no level
@@ -212,6 +237,48 @@ class CompressorFaultsTest(unittest.TestCase):
                                        label="V3 - the detector pair")
         self.assertTrue(result["control"]["passed"])
         self.assertFalse(result["null"]["passed"])
+
+
+# -- the stale blocks (audiocomponents#113) ------------------------------
+
+import os                                                       # noqa: E402
+import sys                                                      # noqa: E402
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+import stale_blocks as stale                                    # noqa: E402
+
+from audioeffects import compressor                             # noqa: E402
+
+
+class TheBypassComesBackAsBuilt(unittest.TestCase):
+    """Mix up from 0 plays nothing from before (audiocomponents#113; Brad,
+    2026-09-28: "fix the stale blocks"). An instance built wet primes its
+    mixer voices with the first block of the source; moved to 0 before it
+    played, and back up after the input stopped, that block came out 256
+    frames later. `_component.Component._rejoin` clears the graph and the
+    voices are primed afresh."""
+
+    CLS = compressor.Compressor
+    MIX = 13
+
+    def test_the_block_primed_at_construction_is_not_replayed(self):
+        for rate in stale.RATES:
+            for channels in (2, 1):
+                self.assertEqual(stale.first_blip(
+                    self.CLS, self.MIX, rate, channels), 0, (rate, channels))
+        for patch in sorted(self.CLS.PATCHES):
+            self.assertEqual(stale.first_blip(
+                self.CLS, self.MIX, patch=patch), 0, patch)
+
+    def test_mix_back_after_silence_plays_nothing(self):
+        for channels in (2, 1):
+            self.assertEqual(stale.blip(self.CLS, self.MIX, 127, 0,
+                                        channels=channels), (0, 0))
+
+    def test_the_old_rejoin_and_a_clear_without_rearming_are_red(self):
+        for fault in (stale.StaleRejoin, stale.ClearOnlyRejoin):
+            self.assertGreater(stale.first_blip(
+                stale.planted(self.CLS, fault), self.MIX), 10000)
 
 
 if __name__ == "__main__":
