@@ -16,9 +16,8 @@ host tempo, Time stays where the knob is.
 
 **Two characters.** `character="varispeed"`, the default, is the RE-201:
 Time moves the motor, so a Time move bends the pitch of everything on the
-tape instead of clicking, then settles. A longer Time runs the tape slower,
-and the repeats come back darker. Glide does nothing on this character.
-`character="sliding-head"` is the EP-3: Time slides a head, so the pitch
+tape instead of clicking, then settles. Glide does nothing on this
+character. `character="sliding-head"` is the EP-3: Time slides a head, so the pitch
 bends only while the head moves, at the rate Glide sets, and the tape runs
 at one speed, so the darkening does not follow Time. Glide 0 is an instant
 slide, and its price is a click.
@@ -52,10 +51,9 @@ audiodsp's `audioecho`, and on a board without it construction raises
 
 **Cost.** Measured at v0.6.2 at the default and every patch, the full class
 costs 0.551-0.608 ms a block on the P4 and 1.056-1.093 ms on the S3, over the
-budgets of 0.480 ms and 0.800 ms. Patch 8, `Tape Delay - lean`, is patch 0
-with Record Level at 0: the repeats stay clean however hard you play.
-Measured at v0.6.2, patch 8 on a class built with `max_time_ms=800` costs
-0.445-0.455 ms on the P4 and 0.781-0.797 ms on the S3, inside both budgets.
+budgets of 0.480 ms and 0.800 ms. Measured at v0.6.2, patch 8 on a class
+built with `max_time_ms=800` costs 0.445-0.455 ms on the P4 and 0.781-0.797
+ms on the S3, inside both budgets.
 `reset()` returns to patch 0, so a host that wants the lean patch sets it
 again after a reset.
 """

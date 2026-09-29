@@ -2946,8 +2946,6 @@ CLAIMS = (
      "motor, so a Time move bends the pitch of everything on the tape "
      "instead of clicking, then settles.",
      ("T1aVarispeed.test_the_named_moves",)),
-    ("A longer Time runs the tape slower, and the repeats come back darker.",
-     ("T3LossFollowsSpeed.test_the_span_at_the_named_cells",)),
     ("Glide does nothing on this character.",
      ("GlideIsInertOnVarispeed.test_three_glides_one_render",)),
     ("`character=\"sliding-head\"` is the EP-3: Time slides a head, so the "
@@ -3008,9 +3006,6 @@ CLAIMS = (
      "costs 0.551-0.608 ms a block on the P4 and 1.056-1.093 ms on the S3, "
      "over the budgets of 0.480 ms and 0.800 ms.",
      ("Claims.test_the_board_figures_are_the_table",)),
-    ("Patch 8, `Tape Delay - lean`, is patch 0 with Record Level at 0: the "
-     "repeats stay clean however hard you play.",
-     ("LeanPatch.test_the_lean_patch_is_patch_0_with_the_drive_off",)),
     ("Measured at v0.6.2, patch 8 on a class built with `max_time_ms=800` "
      "costs 0.445-0.455 ms on the P4 and 0.781-0.797 ms on the S3, inside "
      "both budgets.",
