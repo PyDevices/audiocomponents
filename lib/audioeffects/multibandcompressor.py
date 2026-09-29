@@ -43,7 +43,10 @@ that LR-2 and LR-6 need an inversion and LR-4 and LR-8 do not.
   so. Nor is the dry tap at unity enough: a mixer voice at level 1.0 scales
   by 32768/32767 on every target (audiodsp#95), so `_refresh_output` hands
   back the borrowed source itself and puts no node of this class's in the
-  path at all.
+  path at all. Mix back up from 0 comes back as the class was built: the
+  crossover and detectors cleared, the voices re-armed. It used to play what
+  the bands held when Mix went to 0, up to 22 264 LSB out of silence
+  (audiocomponents#113).
 
 * **How close the two crossovers may get.** The three-way parallel split has
   a floor that is a function of the crossover *ratio*, not of the
@@ -663,8 +666,17 @@ class MultibandCompressor(_component.Component):
         if not self._ready:
             return
         if self._mix <= 0.0:
-            self._output = self._head
+            self._route_around(self._head)
             return
+        # Back off the bypass, the crossover and the detectors still hold
+        # what they held when Mix went to 0, and each voice the block it had
+        # queued. Cleared, then the voices re-played once through the
+        # cleared nodes, as `_build` does (audiocomponents#113). The guard
+        # is the bypass's own node and still live, so it is kept; the mixer
+        # is kept out of the walk because its registered reset re-plays the
+        # voices twice over.
+        if self._rejoin(keep=(self._head, self._mixer)):
+            self._primed = False
         if not self._primed:
             self._play_voices()
         self._output = self._mixer

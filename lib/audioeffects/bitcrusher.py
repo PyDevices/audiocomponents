@@ -15,6 +15,14 @@ facts into knobs. Dither (TPDF, default off) and Band Limit (default off)
 are the measurements' controls, not the machine's. Mix 0 is the Tier 1
 wire.
 
+**What a switch leaves behind is cleared when it comes back**
+(audiocomponents#113). Mix 0 leaves the whole crusher un-pulled, Band
+Limit off leaves its low-pass, Dither off its gate; each used to keep what
+it held and play it when the switch came back - the hold's last sample and
+queued blocks (up to 16 896 LSB out of silence), the low-pass's memory
+(16 384), the gate open on the dither (32). Each is now cleared first, and
+Mix re-arms the voices the way the constructor does.
+
 **Bits stops at 12, and that is the converter, not a shortcut.** A
 `Waveshaper` reads its curve by linear interpolation, so a table whose
 spacing in input codes reaches the step it is meant to describe hands the
@@ -1561,22 +1569,49 @@ class Bitcrusher(_component.Component):
     def _prime_if_wet(self):
         mix = getattr(self, "_mix", 1.0)
         if mix <= 0.0:
-            self._output = self._source
+            self._route_around(self._source)
             return
         if not getattr(self, "_ready", False):
             self._output = self._blend
             return
+        if self._rejoin():
+            # Back off the bypass: every node is cleared - the hold's last
+            # value, the band limit's memory, the dither gate - and the
+            # voices, which still hold the blocks they had queued, are
+            # re-armed below the way `_build` arms them: levels, gates,
+            # then sources (audiocomponents#113).
+            self._set_levels()
+            _component.open_level_gates(
+                self._dither_mix, [self._dither_mix.voice[0],
+                                   self._dither_mix.voice[1],
+                                   self._dither_mix.voice[2]],
+                self._silence)
+            _component.open_level_gates(
+                self._blend, [self._blend.voice[0], self._blend.voice[1]],
+                self._silence)
+            self._dither_primed = False
+            self._blend_primed = False
         want = self._sections[-1] if getattr(self, "_band", False) \
             else self._wet_in
         if self._hold_source is not want:
             # `play()` re-arms the accumulator, so it is called when the
             # branch actually moves and not on every macro write.
+            if want is not self._wet_in:
+                # Band Limit back on: the sections were not pulled while it
+                # was off and still hold what they held when it went off.
+                # A low-pass answers silence with silence, so cleared is
+                # where they would have decayed to (audiocomponents#113).
+                self._clear_nodes(only=self._sections)
             self._hold.play(want)
             self._hold_source = want
         hold = self._hold
         dither_lsb = getattr(self, "_dither_lsb", 0.0)
         if dither_lsb > 0.0:
             if not self._dither_primed:
+                # Dither back on: the gate was not pulled while it was off,
+                # and an open gate plays the dither out of silence until it
+                # closes. Closed is what silence would have left it.
+                self._clear_nodes(only=(self._dither_gate,))
                 self._dither_mix.voice[0].play(hold)
                 self._dither_mix.voice[1].play(self._dither_a, loop=True)
                 self._dither_mix.voice[2].play(self._dither_b, loop=True)

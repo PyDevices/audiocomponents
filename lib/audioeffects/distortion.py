@@ -14,6 +14,12 @@ a 7.2 kHz cap, and a passive V-shaped tone. Mix 0 is the wire; Distortion
 The DS-1's booster is in the circuit, not on the panel, so `scoop` starts
 with Boost at 35 dB; the Rat has no booster and starts at 0.
 
+**Mix back up from 0 plays nothing from before.** At Mix 0 nothing behind
+the source is pulled, so the circuit used to keep what it held and play it
+when Mix came back - 24 589 LSB out of silence at shipped patch 1. It now
+comes back as it was built: cleared, the output capacitor charged on the
+bias at the scoop patches, the voices re-armed (audiocomponents#113).
+
 **Portability tier: audiodsp** (`REQUIRES = ("audioshaper", "audiobiquad",
 "audioroute")`). The clipper is `audioshaper.Waveshaper` with a table
 derived from the 1N4148 pair (tools/curves/distortion_curve.py). Tone and
@@ -863,15 +869,30 @@ class Distortion(_component.Component):
         volume = self.macro(VOL)
         if mix <= 0.0:
             self._latency = 0
-            self._output = self._source
+            self._route_around(self._source)
             return
+        # Back off a bypass, the graph behind the mixer has not been pulled
+        # since Mix went to 0 and still holds what it held then: its
+        # filters' memory and the block each voice had queued. `_rejoin`
+        # clears it, and it is armed below exactly as `_build` arms it -
+        # the output capacitor charged on the bias, the level gates opened
+        # at the levels just pushed, every voice re-played - before the
+        # port is pointed at it (audiocomponents#113).
+        rejoin = self._rejoin()
         # The dry leg is not delayed and the wet leg is, so the class's own
         # onset is the DRY one at every Mix that lets any dry through: a
         # click at Mix 64 arrives at sample 0, not at sample 2. Reporting
         # the wet leg's 2 there was true of one point on the axis and false
         # of the other 126.
         self._latency = self._wet_latency if mix >= 1.0 else 0
-        self._output = self._mixer
+        if not rejoin:
+            self._output = self._mixer
+        self._push_wet(mix, volume)
+        if rejoin:
+            self._connect()
+            self._output = self._mixer
+
+    def _push_wet(self, mix, volume):
         self._dry.level = 1.0 - mix
         ceiling = self.macro(CEIL)
         if self._scoop:
