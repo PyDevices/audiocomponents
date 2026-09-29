@@ -168,7 +168,7 @@ class AnalogDelay(_component.Component):
     sends each repeat round again. Mix blends the repeats in. Modulation
     and Mod Rate wobble the delay, a chorus in a blend and a vibrato with
     the repeats alone. Spread feeds each side's repeats into the other.
-    Sync locks Time to Division of the host's beat.
+    Sync locks Time to Division of the host's beat, clamped to Time's span.
     Time runs from 20 to 600 ms, Feedback from 0 to 0.99 and Mix from 0 to 2.
     Up to Mix 1 the dry passes untouched until the first repeat arrives.
     Mix 0 is a wire.
@@ -180,13 +180,10 @@ class AnalogDelay(_component.Component):
     Man. Any other `character` raises `ValueError`.
     The repeats' high-frequency corner is 0.2211 N / T for N stages and a
     Time of T seconds, so it halves each time Time doubles.
-    At the same Time the double line's repeats are an octave brighter.
     Where the law passes 0.98 of Nyquist the corner holds there, so a
     shorter Time no longer brightens the repeats.
 
     **Time.** Every Time lands on a whole frame at every rate.
-    A Time move bends the repeats' pitch by T_old / T_new for exactly T_new
-    and then returns to unity, without a click.
     A small Time move still lands.
     Turning Time through several positions a block apart takes seconds to
     settle, where one jump to the same place lands within the new Time.
@@ -201,7 +198,6 @@ class AnalogDelay(_component.Component):
     `tail_samples` is an upper bound on how long the repeats take to reach
     exact zero after your input stops.
     `reset()` empties the line and returns to patch 0.
-    With Sync on and a host tempo, Time is Division of the host's beat.
     With no host tempo, Time stays on the knob.
 
     **What it leaves out.** There is no sample-and-hold, so the repeats

@@ -2373,6 +2373,28 @@ class SyncAndTransport(unittest.TestCase):
         self.assertEqual(effect._frames, 28800)
         self.assertAlmostEqual(effect.get_macro(TIME_I), 127.0)
 
+    def test_sync_is_division_clamped_to_the_span(self):
+        # Every Division at tempos where the clamp bites at both ends. Each
+        # tempo has a Division the clamp moves, so an unclamped claim fails.
+        for rate in RATES:
+            for bpm in (30.0, 60.0, 90.0, 120.0, 400.0):
+                effect = AnalogDelay.create(
+                    silence_src(64, rate=rate), rate, patch=6,
+                    transport=lambda bpm=bpm: (True, 0.0, bpm, 4, 4))
+                clamped = 0
+                for i, beats in enumerate(ad.DIVISION_BEATS):
+                    effect.set_macro(DIVISION_I, i * 127.0 / 15.0)
+                    want = beats * 60000.0 / bpm
+                    held = min(600.0, max(20.0, want))
+                    clamped += held != want
+                    # To the nearest frame: a tie (1837.5 frames at 90 BPM,
+                    # 22.05 kHz) may land either side.
+                    self.assertLessEqual(
+                        abs(effect._frames - held * rate / 1000.0), 0.5 + 1e-9,
+                        (rate, bpm, i))
+                self.assertGreater(clamped, 0, bpm)
+                effect.deinit()
+
     def test_no_host_or_a_bad_tempo_leaves_time_on_the_knob(self):
         effect = AnalogDelay(silence_src(64), sample_rate=RATE, patch=6)
         self.assertEqual(effect._frames, whole(grid_ms(101), RATE))
@@ -2446,6 +2468,8 @@ CLAIMS = (
      "test_click_delay_is_zero"),
     ("A one-channel source gets the same effect with Spread held at 0.",
      "test_mono_holds_spread_at_zero"),
+    ("Sync locks Time to Division of the host's beat, clamped to Time's "
+     "span.", "test_sync_is_division_clamped_to_the_span"),
     ('`"single-line"` (the default) is one 4096-stage line, the Boss DM-2; '
      '`"double-line"` is two in series, the Deluxe Memory Man.',
      "test_characters"),
@@ -2453,15 +2477,10 @@ CLAIMS = (
     ("The repeats' high-frequency corner is 0.2211 N / T for N stages and a "
      "Time of T seconds, so it halves each time Time doubles.",
      "test_the_named_cells_and_octaves"),
-    ("At the same Time the double line's repeats are an octave brighter.",
-     "test_the_named_cells"),
     ("Where the law passes 0.98 of Nyquist the corner holds there, so a "
      "shorter Time no longer brightens the repeats.", "test_characters"),
     ("Every Time lands on a whole frame at every rate.",
      "test_every_frame_count_lands_whole"),
-    ("A Time move bends the repeats' pitch by T_old / T_new for exactly "
-     "T_new and then returns to unity, without a click.",
-     "test_the_row_cell"),
     ("A small Time move still lands.", "test_moves_under_eight_frames_land"),
     ("Turning Time through several positions a block apart takes seconds to "
      "settle, where one jump to the same place lands within the new Time.",
@@ -2479,8 +2498,6 @@ CLAIMS = (
      "test_the_tail_reaches_exact_zero_inside_tail_samples"),
     ("`reset()` empties the line and returns to patch 0.",
      "test_reset_empties_the_line"),
-    ("With Sync on and a host tempo, Time is Division of the host's beat.",
-     "test_a_host_sets_time_from_division"),
     ("With no host tempo, Time stays on the knob.",
      "test_no_host_or_a_bad_tempo_leaves_time_on_the_knob"),
     ("There is no sample-and-hold, so the repeats have no null at the "
