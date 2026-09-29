@@ -18,8 +18,7 @@ is zero: nothing looks ahead, and Predelay delays only the tail.
 
 On the plate, Decay also moves the tail's loss corner, the way the EMT
 140's damping panel does: open at Decay 8 s and above, at the Damping
-setting at 1 s and below. So a short plate is a darker plate: each halving
-of Decay from 8 s to 1 s shortens the upper band more than the lower one.
+setting at 1 s and below.
 
 A Character or Size move re-cuts the tank: the tail drops to nothing at the
 move, and the dry carries on without losing a frame. `reset()` empties the
@@ -32,8 +31,7 @@ Shorter Decays, other Sizes and the other patches are not claimed: Damped
 Plate, Small Room and Live Room ring longer than their Decay reads. With
 Damping at 1 kHz and Size 0.5, the room, chamber and hall at Decay 8 and
 10 s ring more than 12 % short of it: the class holds the bass to 1.5 x
-Decay. A sparse, quiet input rings out sooner than the knob: one click at
-1 000 LSB on an 8 s plate is exactly silent within 2 s.
+Decay.
 
 **Modulation.** With Mod Depth at 0, a 1 kHz tone on Steel Plate or Concert
 Hall comes out as one line, its sidebands more than 60 dB under it. On those

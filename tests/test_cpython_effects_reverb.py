@@ -1851,9 +1851,6 @@ CLAIMS = (
      "140's damping panel does: open at Decay 8 s and above, at the Damping "
      "setting at 1 s and below.",
      ("TheCut.test_the_damper_law",)),
-    ("So a short plate is a darker plate: each halving of Decay from 8 s to "
-     "1 s shortens the upper band more than the lower one.",
-     ("T3Damper.test_the_upper_band_shortens_more_as_decay_shortens",)),
     ("A Character or Size move re-cuts the tank: the tail drops to nothing "
      "at the move, and the dry carries on without losing a frame.",
      ("Recuts.test_a_recut_cuts_the_tail",
@@ -1876,9 +1873,6 @@ CLAIMS = (
      "bass to 1.5 x Decay.",
      ("TheCeiling.test_small_long_rooms_land_short_of_the_label",
       "TheCeiling.test_without_the_cap_they_do_not")),
-    ("A sparse, quiet input rings out sooner than the knob: one click at "
-     "1 000 LSB on an 8 s plate is exactly silent within 2 s.",
-     ("Tier1.test_a_sparse_quiet_click_rings_out_early",)),
     ("With Mod Depth at 0, a 1 kHz tone on Steel Plate or Concert Hall comes "
      "out as one line, its sidebands more than 60 dB under it.",
      ("T10Modulation.test_a_still_tank_is_one_line",)),
