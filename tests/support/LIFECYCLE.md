@@ -107,7 +107,10 @@ free-running LFO) adds a row to `DECLARED` in `lifecycle.py`:
 The key is (class `NAME`, event name prefix, property); the cell then prints
 `decl` and counts as a declared exception. Nothing else skips a cell. The
 test file's `KNOWN_RED` is different: it records what is red today, as
-findings, so the suite goes red when a cell changes either way.
+findings, one row per (class, event prefix, property) with the number and a
+digest of its red cells, so the suite goes red when a cell changes either
+way. The test runs the quick matrix; `LIFECYCLE_FULL=1` runs the full one,
+and `LIFECYCLE_CLASSES=DigitalDelay,TapeDelay` limits it to some classes.
 
 ## The plants
 
