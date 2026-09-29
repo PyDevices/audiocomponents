@@ -11,10 +11,20 @@ round 1: the first walk read a marker only the fault set, and could not
 fail), and the measurement red on the class built as a wire. The exhaustive grids (every Glide grid position,
 every Spacing and Time position, three rates for every cell) live in the
 evidence pack, not in this file.
+
+Re-audit fix round 2 (2026-09-28) added Tier 1's cross-feed stall: the five
+stall cells and the kit's TAIL over Spread's whole travel. The trial of the
+second process (2026-09-28, audiodsp v0.6.3rc3) hands Spread as set, since
+the node cures the stall itself (audiodsp#173), and drops the
+`RawSpreadTape` plant: it was the class as it now is, and at rc3 it ends.
+`CLAIMS` ties every sentence of the module docstring to the test that
+asserts it, and `BOARD_COST` holds the board figures the Cost paragraph
+quotes.
 """
 
 import math
 import os
+import re
 import sys
 import unittest
 from array import array
@@ -25,6 +35,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import audiocore                                            # noqa: E402
+import lifecycle                                            # noqa: E402
 import kit_faults                                           # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 from audioeffects import _component                         # noqa: E402
@@ -32,6 +43,7 @@ from audioeffects import rebuilt                            # noqa: E402
 from audioeffects.rebuilt import tapedelay as tape          # noqa: E402
 from audioeffects.rebuilt.digitaldelay import (             # noqa: E402
     clear_of_stalls)
+from tools import effect_measurements as kit                # noqa: E402
 
 VENDOR = "PyDevices"
 
@@ -379,6 +391,51 @@ class NoneAtZeroTape(TapeDelay):
             self._delay.set(wow_shape=None)
 
 
+class LeanDriveOnTape(TapeDelay):
+    """The lean patch with the drive left on: patch 8 plays patch 0's
+    Record Level, so it names the saving and makes none (Brad's cost
+    ruling, 2026-09-28)."""
+
+    NAME = 'TapeDelay'
+    PATCHES = dict(TapeDelay.PATCHES)
+    PATCHES[8] = ("Tape Delay - lean", TapeDelay.PATCHES[0][1])
+
+
+class LeanMovesMoreTape(TapeDelay):
+    """A lean patch that also moves Spacing: the drive is off, but it is no
+    longer patch 0 with the drive off."""
+
+    NAME = 'TapeDelay'
+    PATCHES = dict(TapeDelay.PATCHES)
+    PATCHES[8] = ("Tape Delay - lean",
+                  (89, 58, 22, 89, 32, 32, 0, 60, 0, 0, 51))
+
+
+class LeanResetTape(TapeDelay):
+    """Not the contract: a reset that restores the lean patch instead of
+    patch 0, so the drive stays off. The docstring says reset() brings it
+    back; this is the build that sentence would be false on."""
+
+    NAME = 'TapeDelay'
+
+    def reset(self):
+        TapeDelay.reset(self)
+        self.program_change(8)
+
+
+class DriveOffTape(TapeDelay):
+    """Not a fault: the cost study's variant D, `loop_drive` handed 0 after
+    every refresh (`tapedelay_cost_variants.py`, `DriveOff`). Built at
+    `max_time_ms=800` it is variant K, the configuration the boards
+    measured."""
+
+    NAME = 'TapeDelay'
+
+    def _refresh(self):
+        TapeDelay._refresh(self)
+        self._delay.set(loop_drive=0.0)
+
+
 class JumpWowTape(TapeDelay):
     """A Wow or Flutter move that moves the read head by the whole change in
     depth at once, as the node did at the wobble's crest up to v0.6.2 (it
@@ -595,7 +652,7 @@ class TheSurface(unittest.TestCase):
             "Time", "Feedback", "Mix", "Glide", "Wow", "Flutter",
             "Record Level", "Spacing", "Spread", "Sync", "Division"))
         self.assertEqual(TapeDelay.MACRO_MODES[SYNC_I], "TOGGLE")
-        self.assertEqual(len(TapeDelay.PATCHES), 8)
+        self.assertEqual(len(TapeDelay.PATCHES), 9)
         self.assertEqual(TapeDelay.CAPABILITIES, ("tempo_sync",))
         self.assertEqual(TapeDelay.LATENCY_SAMPLES, 0)
         self.assertEqual(TapeDelay.TIER, _component.AUDIODSP)
@@ -626,6 +683,7 @@ class TheSurface(unittest.TestCase):
             (350.0, 0.45, 0.35, 6000.0, 4.0, 3.0, 0.5, 20.0, 0.0, 0.0, 6.0),
             (350.0, 0.45, 0.35, 6000.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 6.0),
             (350.0, 0.45, 0.35, 6000.0, 2.0, 1.0, 0.2, 5.0, 0.0, 1.0, 8.0),
+            (350.0, 0.45, 0.35, 6000.0, 2.0, 1.0, 0.0, 5.0, 0.0, 0.0, 6.0),
         )
         for index, values in enumerate(settings):
             want = tuple(
@@ -732,7 +790,7 @@ class TheSurface(unittest.TestCase):
         # which is 1/16. at 120 bpm, so its 128 982 frames is not the bound
         # this patch needs; the class's is 257 418.
         want = (241990, 692550, 27336, 407322, 1671015, 245728, 240800,
-                241990)
+                241990, 241990)
         for index, frames in enumerate(want):
             effect = TapeDelay(src_of(np.zeros(512)), patch=index)
             self.assertEqual(effect.tail_samples, frames, index)
@@ -789,6 +847,122 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(mono._spread, 0.0)
         stereo = TapeDelay(src_of(np.zeros(512)), spread=1.0)
         self.assertEqual(stereo._spread, 1.0)
+
+
+LEAN = 8
+
+
+def lean_surface(cls):
+    """(the lean patch's name, the positions where it differs from patch 0
+    as {index: (patch 0, lean)})."""
+    name, lean = cls.PATCHES[LEAN]
+    full = cls.PATCHES[0][1]
+    return name, {i: (a, b) for i, (a, b) in enumerate(zip(full, lean))
+                  if a != b}
+
+
+def lean_handed(cls, **ctor):
+    """What the node is handed at the lean patch and at patch 0, as
+    {option: (patch 0, lean)} for every option that differs; a table is
+    compared point by point."""
+    def state(patch):
+        effect = cls(src_of(np.zeros(512)), patch=patch, **ctor)
+        handed = dict(effect._delay._handed)
+        effect.deinit()
+        if handed.get("wow_shape") is not None:
+            handed["wow_shape"] = tuple(handed["wow_shape"])
+        return handed
+    with NodeSpy():
+        full, lean = state(0), state(LEAN)
+    return {k: (full.get(k), lean.get(k)) for k in set(full) | set(lean)
+            if full.get(k) != lean.get(k)}
+
+
+def lean_render(cls, patch=LEAN, **ctor):
+    """A 997 Hz tone at -1 dBFS for 300 ms, then silence, through `patch`,
+    one second at 48 kHz stereo: loud enough that the drive shows on every
+    repeat."""
+    x = np.zeros(RATE)
+    x[:int(0.3 * RATE)] = sine(TONE, 29205.0, int(0.3 * RATE))
+    return render(cls(src_of(x), patch=patch, **ctor), RATE)
+
+
+class LeanPatch(unittest.TestCase):
+    """Brad's cost ruling of 2026-09-28: keep the class and add a lean
+    patch. Patch 8 `Tape Delay - lean` is patch 0 with Record Level 0, and
+    with `max_time_ms=800` it is the cost study's variant K, which met the
+    P4 and S3 bars in every run."""
+
+    def test_the_lean_patch_is_patch_0_with_the_drive_off(self):
+        name, moved = lean_surface(TapeDelay)
+        self.assertEqual(name, "Tape Delay - lean")
+        self.assertTrue(name.endswith(" - lean"))
+        self.assertEqual(moved, {RECORD_I: (25, 0)})
+        # What the node is handed: the drive off, and nothing else moved.
+        handed = lean_handed(TapeDelay)
+        self.assertEqual(set(handed), {"loop_drive"})
+        self.assertGreater(handed["loop_drive"][0], 0.19)
+        self.assertEqual(handed["loop_drive"][1], 0.0)
+        self.assertEqual(lean_handed(TapeDelay, max_time_ms=800.0),
+                         lean_handed(TapeDelay))
+        # Planted: the drive left on, and a lean patch that moves more.
+        self.assertEqual(lean_handed(LeanDriveOnTape), {})
+        self.assertNotEqual(lean_surface(LeanDriveOnTape)[1],
+                            {RECORD_I: (25, 0)})
+        self.assertIn("damping_hz", lean_handed(LeanMovesMoreTape))
+        self.assertNotEqual(lean_surface(LeanMovesMoreTape)[1],
+                            {RECORD_I: (25, 0)})
+
+    def test_the_lean_build_renders_what_the_boards_measured(self):
+        lean = lean_render(TapeDelay, max_time_ms=800.0)
+        self.assertGreater(float(np.max(np.abs(lean[int(0.4 * RATE):]))),
+                           1000.0)
+        # Variant K at patch 0 is the cell the boards timed; patch 8 at the
+        # 800 ms line renders it byte for byte, and so does patch 8 on the
+        # full line (the shorter line moves no byte at this Time).
+        k = lean_render(DriveOffTape, 0, max_time_ms=800.0)
+        self.assertEqual(lean.tobytes(), k.tobytes())
+        self.assertEqual(lean.tobytes(), lean_render(TapeDelay).tobytes())
+        # The drive is what the lean patch drops: patch 0 differs.
+        self.assertNotEqual(lean.tobytes(),
+                            lean_render(TapeDelay, 0).tobytes())
+        # Planted: the drive left on renders patch 0, not variant K.
+        on = lean_render(LeanDriveOnTape, max_time_ms=800.0)
+        self.assertNotEqual(on.tobytes(), k.tobytes())
+        # The 800 ms build stops Time there, where get_macro(0) shows it.
+        effect = TapeDelay(src_of(np.zeros(512)), patch=LEAN,
+                           max_time_ms=800.0)
+        effect.set_macro(TIME_I, 127)
+        self.assertAlmostEqual(effect.macro(TIME_I), 800.0, places=6)
+        self.assertEqual(effect._frames, frames_of(800.0))
+
+    def _drive_across_reset(self, cls):
+        """(Record Level MIDI and the drive handed) on the lean patch at the
+        800 ms build, after `reset()`, and after `program_change(8)`."""
+        readings = []
+        with NodeSpy():
+            effect = cls(src_of(np.zeros(512)), patch=LEAN,
+                         max_time_ms=800.0)
+            for step in (None, effect.reset,
+                         lambda: effect.program_change(LEAN)):
+                if step is not None:
+                    step()
+                readings.append((effect.get_macro(RECORD_I),
+                                 round(effect._delay._handed["loop_drive"],
+                                       5)))
+            effect.deinit()
+        return readings
+
+    def test_reset_brings_the_drive_back(self):
+        # Re-audit fix round 2, the docstring's restated sentence: reset()
+        # restores patch 0 (the component contract), so the drive and its
+        # cost come back and a board calls program_change(8) after it.
+        self.assertEqual(self._drive_across_reset(TapeDelay),
+                         [(0.0, 0.0), (25.0, 0.19685), (0.0, 0.0)])
+        # Planted: a reset that restored the lean patch would make the
+        # sentence false; the reading sees it.
+        self.assertEqual(self._drive_across_reset(LeanResetTape)[1],
+                         (0.0, 0.0))
 
 
 class T1aVarispeed(unittest.TestCase):
@@ -1099,8 +1273,8 @@ _READ_HEADS = {}
 def read_head(cls):
     """`cls` with its loop low-pass handed 0 after every refresh: an
     instrument for reading where the read head is, never a subject. The
-    walk is the node's `delay_slew` (`audiodsp_feedback_delay.c:444`,
-    `:449`) and never sees the filter, which filters what was read, so the
+    walk is the node's `delay_slew` (`audiodsp_feedback_delay.c:492`,
+    `:497` at v0.6.3rc1) and never sees the filter, which filters what was read, so the
     positions are the class's (Station C's `read_head_class`)."""
     if cls not in _READ_HEADS:
         def _refresh(self):
@@ -1877,9 +2051,77 @@ class Tier1Fast(unittest.TestCase):
         out = render(effect, 4096)[:, 0]
         self.assertTrue(np.array_equal(out, np.round(x)))
 
+    def test_the_control_spans(self):
+        # Time runs 20 to 1 200 ms and Feedback stops at 0.99, handed so.
+        effect = TapeDelay(src_of(np.zeros(512)))
+        effect.set_macro(TIME_I, 0)
+        self.assertAlmostEqual(effect.macro(TIME_I), 20.0, places=9)
+        self.assertEqual(effect._frames, frames_of(20.0))
+        effect.set_macro(TIME_I, 127)
+        self.assertAlmostEqual(effect.macro(TIME_I), 1200.0, places=9)
+        self.assertEqual(effect._frames, frames_of(1200.0))
+        effect.set_macro(FEEDBACK_I, 0)
+        self.assertEqual(effect._feedback, 0.0)
+        effect.set_macro(FEEDBACK_I, 127)
+        self.assertEqual(effect._feedback, 0.99)
+
+    def test_mix_2_is_the_repeats_alone(self):
+        # A click at Mix 2: nothing until the repeat, 100 ms later.
+        x = np.zeros(8192)
+        x[10] = 30000
+        out = render(TapeDelay(src_of(x), mix=2.0, time_ms=100.0,
+                               feedback=0.0), 8192)[:, 0]
+        self.assertEqual(float(np.max(np.abs(out[:4800]))), 0.0)
+        self.assertGreater(float(np.max(np.abs(out[4800:5200]))), 1000.0)
+
+    def test_construction_needs_audioecho(self):
+        saved = sys.modules.get("audioecho", False)
+        sys.modules["audioecho"] = None
+        try:
+            with self.assertRaises(ImportError):
+                TapeDelay(src_of(np.zeros(512)))
+        finally:
+            if saved is False:
+                del sys.modules["audioecho"]
+            else:
+                sys.modules["audioecho"] = saved
+        TapeDelay(src_of(np.zeros(512))).deinit()
+
+    def _tail_across_a_stop(self, stop):
+        """A 50 ms burst into Time 100 ms, Feedback 0.5, Mix 2, then
+        silence; after 24 pulls the source hands empty buffers for `stop`
+        pulls, then silence again. Returns (the bytes handed while it was
+        stopped, the 40 blocks pulled after it came back)."""
+        feed = lifecycle.Feed(array("h", np.repeat(
+            np.round(sine(TONE, 12000.0, 2400)).astype(np.int16), 2)
+            .tobytes()), RATE, 2, "256", False)
+        effect = TapeDelay(feed.port, sample_rate=RATE, time_ms=100.0,
+                           feedback=0.5, mix=2.0)
+        for _ in range(24):
+            audiocore.get_buffer(effect.output)
+        feed.point(feed.empty)
+        stopped = bytearray()
+        for _ in range(stop):
+            stopped.extend(bytes(audiocore.get_buffer(effect.output)[1]))
+        feed.point(feed.sil)
+        after = bytearray()
+        while len(after) < 40 * BLOCK * 4:
+            after.extend(bytes(audiocore.get_buffer(effect.output)[1]))
+        effect.deinit()
+        return bytes(stopped), bytes(after[:40 * BLOCK * 4])
+
+    def test_the_tail_waits_for_the_source(self):
+        # The family limit (audiocomponents#117, audiodsp#180): a source
+        # that hands empty buffers stops the tail; when it feeds again the
+        # tail carries on where it was, as if the stop had not happened.
+        stopped, after = self._tail_across_a_stop(30)
+        self.assertEqual(stopped.strip(b"\x00"), b"")
+        self.assertGreater(max(abs(v) for v in array("h", after)), 1000)
+        self.assertEqual(after, self._tail_across_a_stop(0)[1])
+
     def test_silence_stays_silence(self):
         for character in tape.CHARACTERS:
-            for patch in range(8):
+            for patch in range(len(TapeDelay.PATCHES)):
                 effect = TapeDelay(src_of(np.zeros(RATE)),
                                    character=character, patch=patch)
                 self.assertEqual(float(np.max(np.abs(render(effect, RATE)))),
@@ -1930,11 +2172,12 @@ class Tier1Fast(unittest.TestCase):
         x = np.zeros(RATE)
         x[32] = 12000
         outs = []
-        for spread in (0.0, 1.0):
+        for spread in (0.0, 37.0 / 127.0, 1.0):
             effect = TapeDelay(src_of(x, 1), time_ms=100.0, feedback=0.7,
                                mix=1.0, spread=spread)
             outs.append(render(effect, RATE).tobytes())
         self.assertEqual(outs[0], outs[1])
+        self.assertEqual(outs[0], outs[2])
 
     def test_the_transport_is_read_only_with_sync_on(self):
         reads = []
@@ -2047,6 +2290,107 @@ class Tier1Fast(unittest.TestCase):
         self.assertNotEqual(stepped._feedback, 0.5)
         self.assertLess(abs(stepped._feedback - 0.5), 3e-5)
 
+    #: Re-audit round 1's cross-feed stall cells, (label, k, the Feedback
+    #: the node is handed as float32, Spread): "knob" cells set Spread's
+    #: MIDI position and a fractional Feedback position by `set_macro`,
+    #: "ctor" cells pass both to the constructor. The first three are the
+    #: re-refuter's portable cells (k = 9, 11, 50), the fourth a constructor
+    #: Spread off every grid, and the fifth one of the 13 cells whose
+    #: hand-back survives every order a compiler may sum the cross-feed in
+    #: (separate roundings and both fused multiply-adds), so the plant holds
+    #: there on a board too (tapedelay_reaudit1_audit.mirror.out.txt).
+    CROSS_FEED_CELLS = (
+        ("knob", 9, 0.9444443583488464, 1),
+        ("knob", 11, 0.9545453786849976, 3),
+        ("knob", 50, 0.9899999499320984, 2),
+        ("ctor", 50, 0.9899998903274536, 0.1726040393114090),
+        ("knob", 15, 0.9666665792465210, 37),
+    )
+
+    @staticmethod
+    def feedback_position(target):
+        """A fractional Feedback knob position whose value reaches the node
+        as exactly `target` in float32 (0..0.99, linear)."""
+        want = np.float32(target)
+        m = float(want) * 127.0 / 0.99
+        for step in range(-400, 401):
+            cand = m + step * 1e-9
+            if np.float32(0.99 * (cand / 127.0)) == want:
+                return cand
+        raise ValueError("no Feedback position reaches %r" % target)
+
+    def _cross_feed_stall(self, cls, cell, rate=RATE, channels=2):
+        """Time 20 ms, Mix 2, Record Level 0, patch 8's wobble (Wow 2 c,
+        Flutter 1 c), the cell's Feedback and Spread: a DC of 2k + 2 LSB for
+        four laps, then silence for `tail_samples` (read after the knobs
+        move) plus a lap plus 4 096 frames. Returns (tail_samples, frames
+        from the input's end to the last non-zero frame, |the last frame|,
+        the Feedback handed)."""
+        route, k, feedback, spread = cell
+        ctor = dict(time_ms=20.0, mix=2.0, record_level=0.0, wow_cents=2.0,
+                    flutter_cents=1.0)
+        if route == "ctor":
+            ctor.update(feedback=feedback, spread=spread)
+
+        def build(src):
+            effect = cls(src, **ctor)
+            if route == "knob":
+                effect.set_macro(FEEDBACK_I, self.feedback_position(feedback))
+                effect.set_macro(SPREAD_I, spread)
+            return effect
+        probe = build(src_of(np.zeros(512), channels, rate))
+        declared = probe.tail_samples
+        lap = probe._frames
+        handed = probe._feedback
+        probe.deinit()
+        lead = 4 * lap
+        frames = lead + declared + lap + 4096
+        x = np.zeros(frames)
+        x[:lead] = 2 * k + 2
+        out = render(build(src_of(x, channels, rate)), frames)
+        nz = np.nonzero(np.any(out[lead:] != 0, axis=1))[0]
+        tail = int(nz[-1]) + 1 if len(nz) else 0
+        return declared, tail, int(np.max(np.abs(out[-1]))), handed
+
+    def test_the_cross_feed_stall_cells_reach_zero(self):
+        # Re-audit round 1's Tier 1 failure: up to audiodsp v0.6.3rc2 these
+        # cells held k LSB on both lanes for ever with Spread handed as set,
+        # and the class put Spread on a 1/4096 grid. Since v0.6.3rc3 the node
+        # ends a cross-fed tail itself (#173): Spread is handed as set and
+        # each cell ends inside the bound, in stereo and (Spread held at 0)
+        # in mono. The trial dropped the RawSpreadTape plant: it was the
+        # class as it now is, and at rc3 it ends too.
+        for cell in self.CROSS_FEED_CELLS:
+            route, k, feedback, spread = cell
+            for channels in (2, 1):
+                declared, tail, final, handed = self._cross_feed_stall(
+                    TapeDelay, cell, channels=channels)
+                self.assertEqual(np.float32(handed), np.float32(feedback),
+                                 cell)
+                self.assertEqual(final, 0, (cell, channels))
+                self.assertGreater(tail, 0, (cell, channels))
+                self.assertLessEqual(tail, declared, (cell, channels))
+
+    def test_spread_is_handed_as_set(self):
+        # At two channels Spread reaches the node as the knob sets it, the
+        # constructor's too; at one it is held at 0. The 1/4096 grid the
+        # class used up to v0.6.3rc2 is gone.
+        for rate in (48000, 44100, 22050):
+            effect = TapeDelay(src_of(np.zeros(512), 2, rate))
+            with NodeSpy():
+                for midi in [m / 4.0 for m in range(4 * 127 + 1)]:
+                    effect.set_macro(SPREAD_I, midi)
+                    knob = min(1.0, max(0.0, effect._value(SPREAD_I)))
+                    self.assertEqual(effect._delay._handed["cross_feed"],
+                                     knob, midi)
+                    self.assertEqual(effect._spread, knob, midi)
+            typed = TapeDelay(src_of(np.zeros(512), 2, rate),
+                              spread=0.1726040393114090)
+            self.assertEqual(typed._spread, 0.1726040393114090)
+            mono = TapeDelay(src_of(np.zeros(512), 1, rate),
+                             spread=37.0 / 127.0)
+            self.assertEqual(mono._spread, 0.0)
+
     def _depth_move(self, cls, start, target, points=8):
         """(the tone's own largest step before the move, the largest step in
         the 2 000 frames after it) over `points` moves a quarter of the
@@ -2107,6 +2451,62 @@ class Tier1Fast(unittest.TestCase):
                          (728.0, 1117.0))
 
 
+def spread_tail_sweep(cls, feedback, rate=RATE):
+    """The kit's TAIL through `macro_sweep` over Spread's 128 grid
+    positions, stereo, Time 20 ms, Mix 2, Record Level 0, no wobble, at
+    `feedback` (the constructor's, reaching the node as its float32): each
+    cell a 0.5 FS DC held 0.5 s (`kit_probes.dc_step`), then silence for
+    `tail_samples` plus a lap plus 4 096 frames. A cell's figure is its tail
+    over `tail_samples`, infinite when the line never empties. Returns
+    (the sweep's result, the MIDI positions whose figure is over 1)."""
+    ctor = dict(feedback=feedback, mix=2.0, time_ms=20.0, record_level=0.0,
+                wow_cents=0.0, flutter_cents=0.0)
+    subject = cls(src_of(np.zeros(512), 2, rate), **ctor)
+    step, held = probes.dc_step(level=0.5, hold_s=0.5, total_s=0.5,
+                                rate=rate, channels=2)
+    lead = np.frombuffer(step.tobytes(), dtype=np.int16).reshape(-1, 2)[:, 0]
+
+    def measure(settings):
+        declared = subject.tail_samples
+        frames = held + declared + subject._frames + 4096
+        x = np.zeros(frames)
+        x[:len(lead)] = lead
+        effect = cls(src_of(x, 2, rate), **ctor)
+        effect.set_macro(SPREAD_I, settings[SPREAD_I])
+        out = render(effect, frames).astype(np.int16)
+        effect.deinit()
+        got = kit.tail(kit.Render(out.tobytes(), rate, 2),
+                       burst_end_frame=held, declared_tail_samples=declared,
+                       settle_frames=4096)["values"]
+        if not got["returns_to_zero"]:
+            return float("inf")
+        return got["tail_samples"] / float(declared)
+
+    result = kit.macro_sweep(
+        subject, [kit.MacroSpan(SPREAD_I, 0, 127, midpoints=126)], measure,
+        worst="max", bar=1.0, name="TAIL/SPREAD")
+    red = sorted(c["settings"][SPREAD_I] for c in result["values"]["cells"]
+                 if not c["figure"] <= 1.0)
+    subject.deinit()
+    return result, red
+
+
+class CrossFeedTailSweep(unittest.TestCase):
+    """Tier 1 TAIL over Spread's whole travel at the re-refuter's two
+    Feedbacks (re-audit round 1): the class is green at all 128 positions.
+    Up to audiodsp v0.6.3rc2 Spread handed as set was red at MIDI 1 and 5
+    (0.9444443583) and 2 and 39 (0.9899999499); at rc3 the node ends those
+    tails itself (#173)."""
+
+    def test_the_tail_ends_at_every_spread(self):
+        for feedback in (0.9444443583488464, 0.9899999499320984):
+            result, red = spread_tail_sweep(TapeDelay, feedback)
+            self.assertEqual(result["values"]["points"], 128)
+            self.assertEqual(red, [], feedback)
+            self.assertFalse(result["red"], feedback)
+            self.assertLess(result["values"]["worst"], 1.0, feedback)
+
+
 class InputCeiling(unittest.TestCase):
     """The docstring's ceiling on the kit's `noise_det`, 20 s at 48 kHz:
     clean at -1.1 dBFS at the defaults (stereo and mono) and at -2.0 dBFS
@@ -2125,7 +2525,7 @@ class InputCeiling(unittest.TestCase):
             self.assertEqual(self._rails(-1.1, channels), 0, channels)
             self.assertEqual(self._rails(-1.0, channels), over, channels)
         for character in tape.CHARACTERS:
-            for patch in range(8):
+            for patch in range(len(TapeDelay.PATCHES)):
                 self.assertEqual(self._rails(-2.0, 2, patch, character), 0,
                                  (character, patch))
         self.assertGreater(self._rails(-1.8, 2, 2), 0)
@@ -2412,10 +2812,10 @@ def reach_ctor(faulted, reading, rate, ctor, tolerance=1e-9):
 class FaultsAreUnreachable(unittest.TestCase):
     """Every planted fault's reachability walk, at 48, 44.1 and 22.05 kHz,
     reading what the node is handed at each position (11 macros x 17
-    positions + 8 patches); and two builds the walk must call reachable, so
+    positions + 9 patches); and two builds the walk must call reachable, so
     the readings are shown able to fail."""
 
-    CHECKED = 11 * 17 + 8
+    CHECKED = 11 * 17 + 9
 
     def test_every_fault_is_off_the_surface_at_three_rates(self):
         for rate in (48000, 44100, 22050):
@@ -2508,6 +2908,183 @@ class NullBuildRed(unittest.TestCase):
                 null = result["null"]
                 self.assertFalse(null["two_lines"] or null["ratio_ok"]
                                  or null["drift_ok"], null)
+
+
+# -- the docstring's claims -----------------------------------------------
+
+#: The board figures the docstring's Cost quotes, in ms per 256-frame stereo
+#: block (budget: palette row FeedbackDelay +options with no glue). Measured
+#: at audiodsp v0.6.2 (the full class at the default and every patch; patch
+#: 8 at `max_time_ms=800`, three runs); re-measured once at the final release.
+BOARD_COST = {
+    "measured_at": "v0.6.2",
+    "budget": {"P4": 0.480, "S3": 0.800},
+    "full": {"P4": (0.551, 0.608), "S3": (1.056, 1.093)},
+    "lean": {"P4": (0.445, 0.455), "S3": (0.781, 0.797)},
+}
+
+#: Every claim the module docstring makes, word for word, and the tests that
+#: assert it ("Class.test_name", in this file).
+CLAIMS = (
+    ("Time is the delay, from 20 to 1200 ms, and Feedback is how much of "
+     "each repeat goes round again, up to 0.99.",
+     ("Tier1Fast.test_the_control_spans",)),
+    ("Mix is the echo return: the dry stays at unity up to Mix 1, Mix 2 is "
+     "the repeats alone, and at Mix 0 the output is the input.",
+     ("Tier1Fast.test_the_dry_is_unity_until_the_repeat",
+      "Tier1Fast.test_mix_2_is_the_repeats_alone",
+      "Tier1Fast.test_mix_zero_is_a_wire_on_the_full_scale_ramp")),
+    ("Spread feeds each channel's repeats into the other, and does nothing "
+     "on a mono source.",
+     ("Tier1Fast.test_spread_does_not_silence_mono",
+      "Tier1Fast.test_spread_is_handed_as_set")),
+    ("With Sync on, Time is Division of the host's beat; with no host "
+     "tempo, Time stays where the knob is.",
+     ("Tier1Fast.test_the_transport_is_read_only_with_sync_on",
+      "Tier1Fast.test_a_host_without_a_tempo_leaves_time_on_the_knob")),
+    ("`character=\"varispeed\"`, the default, is the RE-201: Time moves the "
+     "motor, so a Time move bends the pitch of everything on the tape "
+     "instead of clicking, then settles.",
+     ("T1aVarispeed.test_the_named_moves",)),
+    ("Glide does nothing on this character.",
+     ("GlideIsInertOnVarispeed.test_three_glides_one_render",)),
+    ("`character=\"sliding-head\"` is the EP-3: Time slides a head, so the "
+     "pitch bends only while the head moves, at the rate Glide sets, and "
+     "the tape runs at one speed, so the darkening does not follow Time.",
+     ("T1bSlidingHead.test_the_ramp", "TheSurface.test_the_loss_corner")),
+    ("Glide 0 is an instant slide, and its price is a click.",
+     ("T1bSlidingHead.test_the_step_at_glide_0",)),
+    ("A Time move made while the last one is still bending takes its rate "
+     "from the last Time you set, not from where the tape has got to, so it "
+     "does not telescope as a real motor would.",
+     ("Tier1Fast.test_a_move_inside_a_walk_takes_its_rate_from_the_last_time",)),
+    ("A long rising move, or a rising slide at the fastest Glides, can read "
+     "more than 10 cents off the ideal bend, because the node walks its "
+     "read head in single precision.",
+     ("T1aVarispeed.test_the_top_binade_per_piece",
+      "T1bSlidingHead.test_the_glide_binades")),
+    ("The wobble is periodic, not random.",
+     ("TheSurface.test_the_table_holds_its_three_components",)),
+    ("A Wow or Flutter move that changes only how deep the wobble is glides "
+     "in, and one that changes their balance steps, so set the balance "
+     "before you play.",
+     ("Tier1Fast.test_a_depth_move_does_not_step",
+      "Tier1Fast.test_a_balance_move_steps_as_the_docstring_says")),
+    ("The darkening follows the tape's loss law only up to a band top that "
+     "rises with the tape's speed.",
+     ("T2LossLaw.test_one_pass_at_the_named_cells",)),
+    ("Record Level has no memory: tape hysteresis is not modelled.",
+     ("T5NoMemory.test_record_level_draws_no_hysteresis_loop",)),
+    ("The RE-201's Bass and Treble are not here.",
+     ("TheSurface.test_macros_characters_tier_latency",)),
+    ("A control that jumps makes the output step: move it in small steps "
+     "from the host if you need it smooth.",
+     ("Tier1Fast.test_a_balance_move_steps_as_the_docstring_says",)),
+    ("The tail rings only while the source keeps feeding: feed silence to "
+     "let it ring out.",
+     ("Tier1Fast.test_the_tail_waits_for_the_source",)),
+    ("A tail cut short by a source that stopped carries on when the source "
+     "comes back.",
+     ("Tier1Fast.test_the_tail_waits_for_the_source",)),
+    ("Latency is zero samples: nothing looks ahead.",
+     ("Tier1Fast.test_click_delay_is_zero",)),
+    ("`tail_samples` is an upper bound on how long the output takes to "
+     "reach exact zero once your input stops, at every Feedback and Spread, "
+     "stereo and mono.",
+     ("Tier1Fast.test_the_tail_reaches_exact_zero_inside_tail_samples",
+      "Tier1Fast.test_the_cross_feed_stall_cells_reach_zero",
+      "CrossFeedTailSweep.test_the_tail_ends_at_every_spread")),
+    ("Pass a lower `max_time_ms` for a shorter line: Time then stops at "
+     "that ceiling, and `get_macro(0)` shows where it stopped.",
+     ("LeanPatch.test_the_lean_build_renders_what_the_boards_measured",)),
+    ("The class needs audiodsp's `audioecho`, and on a board without it "
+     "construction raises `ImportError`.",
+     ("Tier1Fast.test_construction_needs_audioecho",)),
+    ("`character` must be `\"varispeed\"` or `\"sliding-head\"`.",
+     ("TheSurface.test_macros_characters_tier_latency",)),
+    ("Measured at v0.6.2 at the default and every patch, the full class "
+     "costs 0.551-0.608 ms a block on the P4 and 1.056-1.093 ms on the S3, "
+     "over the budgets of 0.480 ms and 0.800 ms.",
+     ("Claims.test_the_board_figures_are_the_table",)),
+    ("Measured at v0.6.2, patch 8 on a class built with `max_time_ms=800` "
+     "costs 0.445-0.455 ms on the P4 and 0.781-0.797 ms on the S3, inside "
+     "both budgets.",
+     ("Claims.test_the_board_figures_are_the_table",
+      "LeanPatch.test_the_lean_build_renders_what_the_boards_measured")),
+    ("`reset()` returns to patch 0, so a host that wants the lean patch "
+     "sets it again after a reset.",
+     ("LeanPatch.test_reset_brings_the_drive_back",)),
+)
+
+#: Model names that carry digits and are not figures.
+NAMES = ("RE-201", "EP-3")
+
+FAMILY_HEADING = "**Limits shared by the family.**"
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a digit outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for name in NAMES:
+        rest = rest.replace(name, " ")
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        self.assertEqual(claim_problems(tape.__doc__), [])
+        self.assertEqual(claim_problems(TapeDelay.__doc__, ()), [])
+        self.assertIn(FAMILY_HEADING, _flat(tape.__doc__))
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(tape.__doc__ + " It reads 12 ms."))
+        self.assertTrue(claim_problems(tape.__doc__.replace(
+            "nothing looks ahead", "nothing looks back")))
+        self.assertTrue(claim_problems(tape.__doc__, CLAIMS + (
+            ("The wobble is periodic, not random.",
+             ("Tier1Fast.test_nothing_here",)),)))
+
+    def test_the_board_figures_are_the_table(self):
+        cost = BOARD_COST
+        doc = _flat(tape.__doc__)
+
+        def span(pair):
+            return "%.3f-%.3f ms" % pair
+        full = ("Measured at %s at the default and every patch, the full "
+                "class costs %s a block on the P4 and %s on the S3, over "
+                "the budgets of %.3f ms and %.3f ms." % (
+                    cost["measured_at"], span(cost["full"]["P4"]),
+                    span(cost["full"]["S3"]), cost["budget"]["P4"],
+                    cost["budget"]["S3"]))
+        lean = ("Measured at %s, patch 8 on a class built with "
+                "`max_time_ms=800` costs %s on the P4 and %s on the S3, "
+                "inside both budgets." % (
+                    cost["measured_at"], span(cost["lean"]["P4"]),
+                    span(cost["lean"]["S3"])))
+        self.assertIn(full, doc)
+        self.assertIn(lean, doc)
+        # "over" and "inside" are what the table says.
+        for board in ("P4", "S3"):
+            self.assertGreater(cost["full"][board][0], cost["budget"][board])
+            self.assertLess(cost["lean"][board][1], cost["budget"][board])
+        self.assertEqual(TapeDelay.PATCHES[8][0], "Tape Delay - lean")
 
 
 if __name__ == "__main__":
