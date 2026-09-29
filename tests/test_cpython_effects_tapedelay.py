@@ -665,11 +665,19 @@ class TheSurface(unittest.TestCase):
         with self.assertRaises(ValueError):
             TapeDelay(src_of(np.zeros(512)), character="reel")
 
-    def test_parked_not_served(self):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-09-29, so `create()` serves this one. It was the
+        reverse assertion while the class was parked; revert
+        `rebuilt.ADOPTED` and this goes red."""
+        import audioeffects
         self.assertIs(rebuilt.module_class("TapeDelay"), TapeDelay)
-        self.assertNotIn("TapeDelay", rebuilt.ADOPTED)
-        self.assertIn("TapeDelay", rebuilt.parked())
-        self.assertIsNone(rebuilt.load("TapeDelay"))
+        self.assertIn("TapeDelay", rebuilt.ADOPTED)
+        self.assertNotIn("TapeDelay", rebuilt.parked())
+        self.assertIs(rebuilt.load("TapeDelay"), TapeDelay)
+        self.assertIs(audioeffects.TapeDelay, TapeDelay)
+        served = audioeffects.create("TapeDelay", src_of(np.zeros(64)), RATE)
+        self.assertIsInstance(served, TapeDelay)
+        served.deinit()
 
     def test_patches_are_the_dossier_settings_on_the_grid(self):
         # Section 6's table: Time, Fdbk, Mix, Glide, Wow, Flutter, Rec,

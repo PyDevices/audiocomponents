@@ -27,6 +27,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 from effects_measure import (SAMPLE_RATE, burst, channels, loudest_in, peak,
                              source, tone_gain_db)  # noqa: E402
 
+# The tests below that name `delay.` or `reverb.` are written against the old
+# `_core.Effect` classes those modules keep. `audioeffects.TapeDelay`,
+# `AnalogDelay` and `ConvolutionReverb` serve the Phase 5 rebuilds since
+# their adoption on 2026-09-29, which take different settings (no `wow`,
+# `age` or `stereo`) and have no `clear()`.
+from audioeffects import delay, reverb  # noqa: E402
+
 
 class TimeTest(unittest.TestCase):
     def test_a_tape_delay_leaves_the_dry_path_alone(self):
@@ -47,10 +54,10 @@ class TimeTest(unittest.TestCase):
         # through it once per lap, so the third is darker than the first.
         # Measured as how much of each tone survives three laps.
         def survival(hz):
-            delay = audioeffects.TapeDelay(burst(hz), time_ms=100.0,
-                                           feedback=0.7, mix=1.0, wow=0.0,
-                                           tone_hz=3000.0, drive=0.0)
-            left, _ = channels(delay.output, 200)
+            line = delay.TapeDelay(burst(hz), time_ms=100.0,
+                                   feedback=0.7, mix=1.0, wow=0.0,
+                                   tone_hz=3000.0, drive=0.0)
+            left, _ = channels(line.output, 200)
             step = int(0.1 * SAMPLE_RATE)
             first = loudest_in(left, step, 2000)
             third = loudest_in(left, step * 3, 2000)
@@ -80,26 +87,26 @@ class TimeTest(unittest.TestCase):
         # `age` is one knob over the loop's low-pass, its high-pass and its
         # drift. Only the first two are measurable as a level.
         def repeat_level(hz, age):
-            delay = audioeffects.AnalogDelay(burst(hz), time_ms=100.0,
-                                             feedback=0.6, mix=1.0, age=age,
-                                             drive=0.0)
-            left, _ = channels(delay.output, 200)
+            line = delay.AnalogDelay(burst(hz), time_ms=100.0,
+                                     feedback=0.6, mix=1.0, age=age,
+                                     drive=0.0)
+            left, _ = channels(line.output, 200)
             return loudest_in(left, int(0.2 * SAMPLE_RATE), 2000)
 
         self.assertLess(repeat_level(6000.0, 1.0), repeat_level(6000.0, 0.0))
         self.assertLess(repeat_level(80.0, 1.0), repeat_level(80.0, 0.0))
 
     def test_a_delay_line_can_be_emptied(self):
-        delay = audioeffects.TapeDelay(burst(1000.0), time_ms=100.0,
-                                        feedback=0.8, mix=1.0)
-        channels(delay.output, 40)
-        delay.clear()
-        self.assertEqual(peak(delay.output, 4), 0.0)
+        line = delay.TapeDelay(burst(1000.0), time_ms=100.0,
+                               feedback=0.8, mix=1.0)
+        channels(line.output, 40)
+        line.clear()
+        self.assertEqual(peak(line.output, 4), 0.0)
 
     def test_a_synthesized_room_decays_at_the_time_it_was_asked_for(self):
-        verb = audioeffects.ConvolutionReverb(source(), seconds=0.5)
+        verb = reverb.ConvolutionReverb(source(), seconds=0.5)
         verb.set_macro(4, 127)          # full wet, so only the tail is measured
-        low, high = audioeffects.ConvolutionReverb._MACRO_RANGES[0][:2]
+        low, high = reverb.ConvolutionReverb._MACRO_RANGES[0][:2]
         for knob in (127, 64, 0):
             verb.set_macro(0, knob)
             expected = 0.5 * (low + (high - low) * knob / 127.0)
@@ -108,8 +115,8 @@ class TimeTest(unittest.TestCase):
     def test_a_synthesized_room_is_not_the_same_noise_on_both_sides(self):
         # A stereo impulse whose channels agreed would be a mono impulse, and
         # the whole reason to spend twice the memory is that they do not.
-        verb = audioeffects.ConvolutionReverb(source(), seconds=0.25,
-                                              stereo=True)
+        verb = reverb.ConvolutionReverb(source(), seconds=0.25,
+                                        stereo=True)
         verb.set_macro(4, 127)
         left, right = [], []
         for _ in range(12):

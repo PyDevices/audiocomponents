@@ -19,6 +19,12 @@ from tools.validate_metadata import validate_component
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 from effects_measure import SAMPLE_RATE, peak, source  # noqa: E402
 
+# `reverb.Reverb` is the old `_core.Effect` class, the one with `preset`,
+# which `audioeffects.Reverb` served until the Phase 5 rebuild's adoption on
+# 2026-09-29. A chain entry may name a class in place of a NAME, which is
+# how `ShimmerHall` and `AirSpace` keep it; these tests do the same.
+from audioeffects import reverb  # noqa: E402
+
 
 class RackTest(unittest.TestCase):
     """The rack kind: one component whose graph is several effects.
@@ -31,7 +37,7 @@ class RackTest(unittest.TestCase):
     """
 
     CHAIN = (("Overdrive", {"drive": 0.3, "mix": 0.4}),
-             ("Reverb", {"preset": "plate", "mix": 0.25}))
+             (reverb.Reverb, {"preset": "plate", "mix": 0.25}))
 
     def test_a_chain_spec_builds_children_in_order_and_renders(self):
         rack = audioeffects.create("Rack", source(), SAMPLE_RATE,
@@ -67,7 +73,7 @@ class RackTest(unittest.TestCase):
         # "Racks may contain and be used by other racks" - both directions.
         inner = ("Rack", {"chain": (("Saturation", {"drive_db": 6.0}),)})
         outer = audioeffects.Rack(source(), chain=(
-            inner, ("Reverb", {"preset": "room", "mix": 0.2})))
+            inner, (reverb.Reverb, {"preset": "room", "mix": 0.2})))
         self.assertEqual(type(outer.effects[0]).__name__, "Rack")
         self.assertGreater(peak(outer.output, 8), 0.001)
 

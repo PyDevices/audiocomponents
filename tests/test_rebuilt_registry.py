@@ -865,7 +865,11 @@ class TheAdoptionGate(unittest.TestCase):
         # for Flanger and the phases to come. Phase 5's first two,
         # `DigitalDelay` and `SlapbackDelay`, were adopted on 2026-09-28 on
         # Brad's rulings, and are served from here until they come home.
-        self.assertEqual(rebuilt.ADOPTED, ("DigitalDelay", "SlapbackDelay"))
+        # Phase 5's last six followed on 2026-09-29, on the board session
+        # at audiodsp v0.6.3.
+        self.assertEqual(rebuilt.ADOPTED, (
+            "DigitalDelay", "SlapbackDelay", "TapeDelay", "AnalogDelay",
+            "PingPongDelay", "MultiTapDelay", "Reverb", "ConvolutionReverb"))
         self.assertEqual(rebuilt.adopted(), rebuilt.ADOPTED)
         for name in rebuilt.ADOPTED:
             self.assertIs(rebuilt.load(name), rebuilt.module_class(name))
