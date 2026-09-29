@@ -2128,5 +2128,457 @@ class NullBuildRed(unittest.TestCase):
                 self.assertTrue(result["control"]["passed"], name)
 
 
+
+# --------------------------------------------------------------------------
+# The trial of the second process: the tests the docstring's claims and the
+# re-audit's restatements needed that the rows above did not already give
+
+
+class HeldFloorPingPong(PingPongDelay):
+    """The pre-v0.6.3rc3 cross-feed stall (audiodsp#170), planted on the
+    output: once a channel has read `held` LSB it never reads less, so the
+    tail sits on a DC of `held` for ever."""
+
+    NAME = 'PingPongDelay'
+    held = 1
+
+    def _build(self, *arguments, **options):
+        PingPongDelay._build(self, *arguments, **options)
+        self._output = _HoldFloor(self._delay, type(self).held)
+
+
+class _HoldFloor(kit_faults._Node):
+    def __init__(self, source, held):
+        kit_faults._Node.__init__(self, source)
+        self.held = held
+        self._sign = [0] * source.channel_count
+
+    def _process(self, frames):
+        ch = self.channel_count
+        x = frames.reshape(-1, ch).copy()
+        for c in range(ch):
+            col = x[:, c]
+            if not self._sign[c]:
+                hit = np.flatnonzero(np.abs(col) == self.held)
+                if len(hit):
+                    self._sign[c] = 1 if col[hit[0]] > 0 else -1
+                    tail = col[hit[0]:]
+                    low = np.abs(tail) < self.held
+                    tail[low] = self._sign[c] * self.held
+                continue
+            low = np.abs(col) < self.held
+            col[low] = self._sign[c] * self.held
+        return x.reshape(-1)
+
+
+def _midtail(ctor, moves, at=2048, rate=RATE):
+    """A full-scale DC burst of 50 ms in both channels at Mix 2, then
+    silence; `moves` made `at` frames into the silence. Returns
+    (`tail_samples` read as the input stops, `tail_samples` read just after
+    the moves, frames from the moves to the output's last non-zero frame).
+    The render runs to the larger of the two bounds plus a second."""
+    burst = int(0.05 * rate) // BLOCK * BLOCK
+    move = burst + at
+    options = dict(ctor, mix=2.0)
+    probe = PingPongDelay(silence_src(64, rate=rate), sample_rate=rate,
+                          **options)
+    for index, value in moves:
+        probe.set_macro(index, value)
+    longest = max(probe.tail_samples, 13454) + rate
+    probe.deinit()
+    frames = move + longest + BLOCK
+    values = np.zeros(frames)
+    values[:burst] = 32767
+    source, _ = to_source(values, 2, rate)
+    effect = PingPongDelay(source, sample_rate=rate, **options)
+    seen = {}
+
+    def on_block(frame):
+        if frame == burst:
+            seen["before"] = effect.tail_samples
+        if frame == move:
+            for index, value in moves:
+                effect.set_macro(index, value)
+            seen["after"] = effect.tail_samples
+
+    y = pull(effect, frames, 2, on_block)
+    effect.deinit()
+    nonzero = np.flatnonzero(y[move:].any(axis=1))
+    last = int(nonzero[-1]) + 1 if len(nonzero) else 0
+    return seen["before"], seen["after"], last
+
+
+class TrialClaims(unittest.TestCase):
+    def test_the_knob_spans(self):
+        effect = PingPongDelay(silence_src(64), sample_rate=RATE)
+        for index, low, high in ((TIME_I, 20.0, 1000.0),
+                                 (FEEDBACK_I, 0.0, 0.99),
+                                 (MIX_I, 0.0, 2.0), (SPREAD_I, 0.0, 1.0)):
+            effect.set_macro(index, 0)
+            self.assertAlmostEqual(effect._value(index), low, places=9)
+            effect.set_macro(index, 127)
+            self.assertAlmostEqual(effect._value(index), high, places=9)
+        effect.set_macro(FEEDBACK_I, 127)
+        self.assertEqual(effect._feedback, 0.99)
+        effect.set_macro(FEEDBACK_I, 0)
+        self.assertEqual(effect._feedback, 0.0)
+
+    def test_mix_2_is_the_repeats_alone(self):
+        # A click at Mix 2: nothing until the repeat, Time later.
+        T = law_frames(100.0, RATE)
+        y = render(PingPongDelay, click(2 * T), mix=2.0, time_ms=100.0,
+                   feedback=0.0)
+        self.assertEqual(int(np.count_nonzero(y[:T])), 0)
+        self.assertEqual(int(y[T, 0]), 20000)
+
+    HZ = 997.0
+    LEVEL = 8000.0
+
+    def _bar(self):
+        """1.5 x the tone's own largest step."""
+        t = np.arange(4096) / RATE
+        x = np.round(self.LEVEL * np.sin(2.0 * math.pi * self.HZ * t))
+        return 1.5 * float(np.max(np.abs(np.diff(x))))
+
+    def _mix_moves(self, steps):
+        """The tone at Time 987 frames (the repeat half a cycle off the
+        dry), Feedback 0, Mix from MIDI 0 to 127 in `steps` equal moves, one
+        a block from frame 20 480; the largest step in the output from
+        there."""
+        frames = 20480 + (steps + 8) * BLOCK
+        t = np.arange(frames) / RATE
+        values = self.LEVEL * np.sin(2.0 * math.pi * self.HZ * t)
+        source, _ = to_source(values)
+        effect = PingPongDelay(source, sample_rate=RATE,
+                               time_ms=987 * 1000.0 / RATE, feedback=0.0,
+                               mix=0.0)
+
+        def move(frame):
+            k = (frame - 20480) // BLOCK + 1
+            if frame >= 20480 and k <= steps:
+                effect.set_macro(MIX_I, 127.0 * k / steps)
+
+        y = pull(effect, frames, 2, move)[:, 0].astype(np.int32)
+        effect.deinit()
+        return float(np.max(np.abs(np.diff(y[20479:]))))
+
+    def test_a_jump_steps_and_small_steps_do_not(self):
+        # The family limit (audiocomponents#117), the matrix's E4-m2=127
+        # P5 cells: Mix 0 -> 2 in one move steps the output; the same move
+        # in 127 steps from the host, one a block, stays under the bar.
+        self.assertGreater(self._mix_moves(1), 4.0 * self._bar())
+        self.assertLess(self._mix_moves(127), self._bar())
+
+    def _tail_across_a_stop(self, stop):
+        """A 50 ms tone burst into Time 100 ms, Feedback 0.5, Mix 2, then
+        silence; after 24 pulls the source hands empty buffers for `stop`
+        pulls, then silence again. Returns (the bytes handed while it was
+        stopped, the 40 blocks pulled after it came back)."""
+        import lifecycle
+        tone = np.round(self.LEVEL * np.sin(
+            2.0 * math.pi * self.HZ * np.arange(2400) / RATE)).astype(int)
+        burst = array("h")
+        for v in tone:
+            burst.extend((int(v), int(v)))
+        feed = lifecycle.Feed(burst, RATE, 2, "256", False)
+        effect = PingPongDelay(feed.port, sample_rate=RATE, time_ms=100.0,
+                               feedback=0.5, mix=2.0)
+        for _ in range(24):
+            audiocore.get_buffer(effect.output)
+        feed.point(feed.empty)
+        stopped = bytearray()
+        for _ in range(stop):
+            stopped.extend(bytes(audiocore.get_buffer(effect.output)[1]))
+        feed.point(feed.sil)
+        after = bytearray()
+        while len(after) < 40 * BLOCK * 4:
+            after.extend(bytes(audiocore.get_buffer(effect.output)[1]))
+        effect.deinit()
+        return bytes(stopped), bytes(after[:40 * BLOCK * 4])
+
+    def test_the_tail_waits_for_the_source(self):
+        # The family limit (audiodsp#180): a source that hands empty
+        # buffers stops the tail; when it feeds again the tail carries on
+        # where it was, as if the stop had not happened.
+        stopped, after = self._tail_across_a_stop(30)
+        self.assertEqual(stopped.strip(b"\x00"), b"")
+        self.assertGreater(max(abs(v) for v in array("h", after)), 1000)
+        self.assertEqual(after, self._tail_across_a_stop(0)[1])
+
+    def test_tail_samples_holds_for_the_settings_as_they_stand(self):
+        # Re-audit 1's first restatement: the bound counts from when it is
+        # read, for the settings as they stand. Each row moves a setting
+        # 2 048 frames into the silence and reads `tail_samples` after it:
+        # the output is exact zero within that many frames of the move.
+        rows = (({"time_ms": 20.0}, [(FEEDBACK_I, 127)]),
+                ({"time_ms": 20.0, "feedback": 0.99}, [(FEEDBACK_I, 0)]),
+                ({"time_ms": 20.0, "feedback": 0.99}, [(FEEDBACK_I, 64)]),
+                ({"time_ms": 20.0, "feedback": 0.85}, [(TIME_I, 30)]),
+                ({"time_ms": 60.0, "feedback": 0.85}, [(TIME_I, 0)]),
+                ({"time_ms": 20.0, "feedback": 0.85}, [(TONE_I, 0)]),
+                ({"time_ms": 20.0, "feedback": 0.85, "tone_hz": 800.0},
+                 [(TONE_I, 127)]),
+                ({"time_ms": 20.0, "feedback": 0.85}, [(SPREAD_I, 39)]),
+                ({"time_ms": 20.0, "feedback": 0.85, "cut_hz": 400.0},
+                 [(CUT_I, 0)]))
+        for ctor, moves in rows:
+            before, after, last = _midtail(ctor, moves)
+            self.assertGreater(last, 0, (ctor, moves))
+            self.assertIsNotNone(after, (ctor, moves))
+            self.assertLessEqual(last, after, (ctor, moves, before, after))
+        # The value read before a Feedback move up does not hold after it.
+        before, after, last = _midtail({"time_ms": 20.0},
+                                       [(FEEDBACK_I, 127)])
+        self.assertGreater(last, before)
+        self.assertGreater(after, before)
+
+    #: (typed feedback, Spread, k): where the pre-rc3 node's float32
+    #: cross-feed sum handed k back on both lanes for ever (audiodsp#170).
+    #: The first is the re-audit's typed cell; the rest are the cells the
+    #: fixer's probe (`trial/PingPongDelay/stall_probe.py` in the workspace)
+    #: finds held under every order of the sum, one per Feedback. No
+    #: Feedback knob position is among them.
+    CROSS_FEED_CELLS = ((0.9899999, 39.0 / 127.0, 50),
+                        (0.9899999, 2.0 / 127.0, 50),
+                        (0.9666666, 37.0 / 127.0, 15),
+                        (0.9827586, 38.0 / 127.0, 29),
+                        (0.9833333, 43.0 / 127.0, 30),
+                        (0.9838709, 42.0 / 127.0, 31))
+
+    def _cross_feed_tail(self, cls, feedback, spread, k):
+        """Stereo, 48 kHz, Time 20 ms, Mix 2: a DC of 2k + 2 LSB in both
+        channels for four laps, then silence to `tail_samples` plus a lap.
+        Returns (declared, the last non-zero frame after the fill, the
+        largest |sample| past `tail_samples`)."""
+        options = {"time_ms": 20.0, "feedback": feedback, "mix": 2.0,
+                   "spread": spread}
+        probe = PingPongDelay(silence_src(64), sample_rate=RATE, **options)
+        declared = probe.tail_samples
+        probe.deinit()
+        fill = 4 * 960 // BLOCK * BLOCK + BLOCK
+        values = [2 * k + 2] * fill + [0] * (declared + 960 + BLOCK)
+        source, _ = to_source(values)
+        cls.held = k
+        effect = cls(source, sample_rate=RATE, **options)
+        out = pull(effect, len(values), 2).astype(np.int64)
+        effect.deinit()
+        after = out[fill:]
+        nonzero = np.flatnonzero(after.any(axis=1))
+        last = 0 if nonzero.size == 0 else int(nonzero[-1]) + 1
+        return declared, last, int(np.max(np.abs(after[declared:])))
+
+    def test_the_cross_feed_stall_cells_reach_zero(self):
+        # Re-audit 1's third item: this class hands Spread as `cross_feed`,
+        # and up to audiodsp v0.6.3rc2 these typed cells held k LSB on both
+        # lanes for ever. At v0.6.3rc3 the node ends them (#170): the tail
+        # is exact zero inside `tail_samples`. Planted: a tail that holds a
+        # DC of k once it gets there, red at every cell.
+        for feedback, spread, k in self.CROSS_FEED_CELLS:
+            key = (feedback, spread)
+            effect = PingPongDelay(silence_src(64), sample_rate=RATE,
+                                   feedback=feedback, spread=spread)
+            self.assertEqual(float(np.float32(effect._feedback)),
+                             float(np.float32(feedback)), key)
+            effect.deinit()
+            declared, last, past = self._cross_feed_tail(
+                PingPongDelay, feedback, spread, k)
+            self.assertGreater(last, 0, key)
+            self.assertLessEqual(last, declared, key)
+            self.assertEqual(past, 0, key)
+            declared, last, past = self._cross_feed_tail(
+                HeldFloorPingPong, feedback, spread, k)
+            self.assertGreater(last, declared, key)
+            self.assertEqual(past, k, key)
+
+    def test_reset_returns_to_patch_0(self):
+        effect = PingPongDelay(silence_src(512), sample_rate=RATE, patch=5)
+        effect.set_macro(SPREAD_I, 10)
+        effect.reset()
+        self.assertEqual(effect.patch_index, 0)
+        for index, midi in enumerate(PingPongDelay.PATCHES[0][1]):
+            self.assertAlmostEqual(effect.get_macro(index), midi, delta=0.6)
+
+    def test_construction_needs_audioecho(self):
+        saved = sys.modules.get("audioecho", False)
+        saved_attr = pp.audioecho
+        sys.modules["audioecho"] = None
+        pp.audioecho = None
+        try:
+            with self.assertRaises(ImportError):
+                PingPongDelay(silence_src(512), sample_rate=RATE)
+        finally:
+            pp.audioecho = saved_attr
+            if saved is False:
+                del sys.modules["audioecho"]
+            else:
+                sys.modules["audioecho"] = saved
+
+
+# --------------------------------------------------------------------------
+# The docstring's claims
+
+#: Every claim the class docstring makes, word for word, and the tests that
+#: assert it ("Class.test_name", in this file).
+CLAIMS = (
+    ("Two delay lines crossed into each other: the repeats bounce between "
+     "the speakers.",
+     ("T1RepeatsAlternate.test_the_three_feedbacks_at_three_rates",)),
+    ("Your dry signal passes untouched on both sides, and the repeats come "
+     "back one side and then the other, all the way down.",
+     ("T5DryPath.test_the_defaults_stereo_and_mono",
+      "T1RepeatsAlternate.test_the_three_feedbacks_at_three_rates")),
+    ("The first repeat comes back Time later on the side First Side names, "
+     "the next Time after that on the other side, and they keep bouncing, "
+     "each a Feedback's worth quieter than the last.",
+     ("T1RepeatsAlternate.test_the_three_feedbacks_at_three_rates",
+      "T1RepeatsAlternate.test_the_time_stops_and_the_patch_cells",
+      "T2OneDecayRatio.test_the_constructor_feedbacks_at_the_named_times",
+      "T4SpreadLaw.test_first_side_right_is_the_swap_at_every_position")),
+    ("Time runs from 20 to 1000 ms and Feedback from 0 to 0.99.",
+     ("TrialClaims.test_the_knob_spans",
+      "TheSurface.test_time_lands_on_a_whole_frame")),
+    ("Mix is the echo level: the dry stays at unity up to Mix 1, Mix 2 is "
+     "the repeats alone, and at Mix 0 the output is the input.",
+     ("T5DryPath.test_the_named_cells",
+      "TrialClaims.test_mix_2_is_the_repeats_alone",
+      "Tier1Fast.test_mix_zero_is_a_wire_on_the_full_scale_ramp")),
+    ("Spread moves between two plain delays with the same repeats on both "
+     "sides, at 0, and the full bounce, at 1.",
+     ("T4SpreadLaw.test_the_eleven_positions",
+      "T3MonoSum.test_spread_0_is_twice_the_reference")),
+    ("At Spread 1 each repeat is on one side only, and the other side is "
+     "exact zero.",
+     ("T1RepeatsAlternate.test_the_three_feedbacks_at_three_rates",)),
+    ("With Sync on, Time is Division of the host's beat, up to 1000 ms; "
+     "with no host tempo, Time stays where the knob is.",
+     ("TheSurface.test_sync_quantises_time_and_clamps",)),
+    ("The class reads the host's transport only while Sync is on, and then "
+     "only when a control moves or a patch loads, never while it plays.",
+     ("Tier1Fast.test_the_transport_is_read_only_with_sync_on",
+      "TheSurface.test_sync_patches_follow_the_beat")),
+    ("Repeat Tone is a low-pass and Repeat Cut a high-pass inside the "
+     "loop, so each bounce is a little darker or thinner than the last.",
+     ("T3MonoSum.test_the_loop_filters_read_exact",)),
+    ("Repeat Tone's top stop and Repeat Cut's bottom stop take them out, "
+     "and a filter taken out is out.",
+     ("TheSurface.test_the_filter_stops",
+      "Tier1Fast.test_a_filter_really_in_then_out_is_out")),
+    ("At 22.05 kHz the top positions of Repeat Tone sit on one clamp below "
+     "Nyquist and sound the same.",
+     ("TheSurface.test_repeat_tone_clamps_at_22k",)),
+    ("Turning Time walks the repeats to the new Time, bending their pitch, "
+     "instead of clicking.",
+     ("TheSurface.test_the_walk_bends_by_the_law_and_the_jump_does_not",)),
+    ("At Spread 1 the loop hears the average of the two input channels, so "
+     "what differs between them never repeats.",
+     ("T5DryPath.test_an_antiphase_source_does_not_repeat_at_spread_1",)),
+    ("The dry is always each channel's own signal, never swapped or "
+     "summed.",
+     ("T5DryPath.test_never_spread_on_independent_channels",)),
+    ("A one-channel source gets an ordinary feedback delay at the same "
+     "Time, Feedback and Mix, and Spread and First Side do nothing there.",
+     ("T3MonoSum.test_the_named_pairs_at_three_rates",
+      "TheSurface.test_spread_and_first_side_hand_the_pair")),
+    ("At 48 kHz every Time position lands on the nearest whole frame.",
+     ("TheSurface.test_where_the_node_lands_the_handed_frame",)),
+    ("At 44.1 and 22.05 kHz the node lands some positions a fraction of a "
+     "frame off, and a sliver of each repeat falls on the frame beside it.",
+     ("TheSurface.test_where_the_node_lands_the_handed_frame",
+      "TheSurface.test_an_off_frame_time_leaks_into_the_next_frame")),
+    ("The dry sits at unity and the repeats add to it, so a hot input can "
+     "reach the int16 rail.",
+     ("InputCeiling.test_the_stated_ceiling_is_clean_and_1_db_over_is_not",)),
+    ("With Repeat Cut out and Mix below 1, an input that peaks at or below "
+     "floor(32767 (1 - Mix)) - 1 cannot reach the rail, at any Time, "
+     "Feedback or Spread.",
+     ("InputCeiling.test_the_any_material_bound",)),
+    ("Repeat Cut's high-pass overshoots, so with it in leave more room.",
+     ("InputCeiling.test_repeat_cut_needs_more_room",
+      "InputCeiling.test_the_cut_in_ceiling")),
+    ("A control that jumps makes the output step: move it in small steps "
+     "from the host if you need it smooth.",
+     ("TrialClaims.test_a_jump_steps_and_small_steps_do_not",)),
+    ("The tail rings only while the source keeps feeding: feed silence to "
+     "let it ring out.",
+     ("TrialClaims.test_the_tail_waits_for_the_source",)),
+    ("A tail cut short by a source that stopped carries on when the source "
+     "comes back.",
+     ("TrialClaims.test_the_tail_waits_for_the_source",)),
+    ("A click comes out on the frame it went in: there is no latency.",
+     ("Tier1Fast.test_click_delay_is_zero",
+      "TheSurface.test_macros_patches_tier_latency")),
+    ("`tail_samples` is an upper bound on how many frames the output takes "
+     "to reach exact zero, counted from when your input stops or from when "
+     "you read it if that is later, for the settings as they stand when "
+     "you read it.",
+     ("TrialClaims.test_tail_samples_holds_for_the_settings_as_they_stand",
+      "TrialClaims.test_the_cross_feed_stall_cells_reach_zero",
+      "Tier1Fast.test_the_tail_reaches_exact_zero_inside_tail_samples",
+      "Tier1Fast.test_a_full_scale_fill_at_every_spread",
+      "Tier1Fast.test_the_stall_cell_reaches_zero_at_the_feedback_set",
+      "Tier1Fast.test_the_tail_after_cut_in_then_out_is_inside_the_bound",
+      "Tier1Fast.test_a_falling_walk_keeps_the_old_time_in_the_tail")),
+    ("With Repeat Cut in circuit `tail_samples` is `None`: the class gives "
+     "no bound there.",
+     ("TheSurface.test_tail_samples_follows_time_feedback_and_tone",
+      "TheSurface.test_the_filter_stops")),
+    ("Pass a lower `max_time_ms` for a shorter line: Time then stops at "
+     "that ceiling, and `get_macro(0)` shows where it stopped.",
+     ("TheSurface.test_a_lowered_ceiling_clamps_visibly",)),
+    ("A constructor value outside a knob's span clamps to the nearer stop, "
+     "a `tone_hz` or `cut_hz` of 0 or less is that filter out, and NaN "
+     "takes the option's default.",
+     ("TheSurface.test_constructor_clamps_and_nan",)),
+    ("`reset()` empties the line and returns to patch 0.",
+     ("Tier1Fast.test_reset_silences_a_full_line",
+      "TrialClaims.test_reset_returns_to_patch_0")),
+    ("The class needs audiodsp's `audioecho`, and on a board without it "
+     "construction raises `ImportError`.",
+     ("TrialClaims.test_construction_needs_audioecho",)),
+)
+
+FAMILY_HEADING = "**Limits shared by the family.**"
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for word in rest.split():
+        if any(c.isdigit() for c in word):
+            problems.append("figure outside a claim: %s" % word)
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        self.assertEqual(claim_problems(PingPongDelay.__doc__), [])
+        self.assertEqual(claim_problems(pp.__doc__, ()), [])
+        self.assertIn(FAMILY_HEADING, _flat(PingPongDelay.__doc__))
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(PingPongDelay.__doc__
+                                       + " It reads 12 ms."))
+        self.assertTrue(claim_problems(_flat(PingPongDelay.__doc__).replace(
+            "there is no latency", "there is little latency")))
+        self.assertTrue(claim_problems(PingPongDelay.__doc__, CLAIMS + (
+            ("A click comes out on the frame it went in: there is no "
+             "latency.", ("Tier1Fast.test_nothing_here",)),)))
+
+
 if __name__ == "__main__":
     unittest.main()

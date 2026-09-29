@@ -75,9 +75,6 @@ KNOWN_RED = {
     ('TapeDelay', 'E8-dry', 'P3'): (
         2, '1da480f7', 2, '1da480f7',
         'a source that stays dry through a pause and comes back: old audio plays out of silence'),
-    ('PingPongDelay', 'E4-m2=127', 'P5'): (
-        4, '31c4e1c7', 32, 'c9e4e06a',
-        'Mix to 127 steps the output within one block'),
     ('MultiTapDelay', 'E', 'P3'): (
         20, '273472a7', None, None,
         'CPython only: a Time move or a patch change and back plays old audio out of silence (see KNOWN_P6)'),

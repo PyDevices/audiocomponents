@@ -257,6 +257,8 @@ DECLARED = {
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (two or three moves before one pull)',
     ("ConvolutionReverb", 'E8-dry', 'P3'):
         'family limit, disclosed (audiodsp#180): a tail cut short by a source that stopped carries on when the source comes back',
+    ("PingPongDelay", 'E4-m2=', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")
