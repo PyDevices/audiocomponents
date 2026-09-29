@@ -2803,6 +2803,88 @@ class TrialClaims(unittest.TestCase):
         DigitalDelay(silence_src(512), sample_rate=RATE).deinit()
 
 
+class SyncLimits(unittest.TestCase):
+    """Second fixer (2026-09-29): Sync's two limits, at the attacker's
+    settings. A Division longer than 800 ms stops at 800 ms, and the tempo
+    is read only when a control moves or a patch loads."""
+
+    #: The sixteen Divisions in beats, written out here: 1/32, 1/16T,
+    #: 1/32D, 1/16, 1/8T, 1/16D, 1/8, 1/4T, 1/8D, 1/4, 1/2T, 1/4D, 1/2,
+    #: 1/1T, 1/2D, 1/1.
+    BEATS = (1 / 8, 1 / 6, 3 / 16, 1 / 4, 1 / 3, 3 / 8, 1 / 2, 2 / 3,
+             3 / 4, 1, 4 / 3, 3 / 2, 2, 8 / 3, 3, 4)
+
+    def test_divisions_stop_at_800_ms(self):
+        for bpm in (120.0, 60.0):
+            def transport(_bpm=bpm):
+                return (True, 0.0, _bpm, 4, 4)
+            clamped = 0
+            for index, beats in enumerate(self.BEATS):
+                ideal = beats * 60.0 / bpm * RATE
+                expected = min(ideal, 0.8 * RATE)
+                measured, _ = t4_delay(DigitalDelay, transport=transport,
+                                       sync=127,
+                                       division=index * 127.0 / 15.0)
+                self.assertLessEqual(abs(measured - expected), 1.0,
+                                     (bpm, index))
+                if expected < ideal:
+                    clamped += 1
+                    self.assertGreater(abs(measured - ideal), 1.0)
+            self.assertEqual(clamped, 4 if bpm == 120.0 else 7, bpm)
+
+    def _tempo_change(self, action=None, channels=2):
+        """Sync on, a quarter note, Glide 0, Feedback 0, Mix 2. The host
+        goes from 120 to 60 bpm at frame 24 064, `action(effect)` runs, and
+        an impulse follows at frame 48 000: the echo's distance."""
+        at = 48000
+        frames = at + 50000
+        values = [0] * frames
+        values[at] = 32767
+        tempo = [120.0]
+
+        def transport():
+            return (True, 0.0, tempo[0], 4, 4)
+        effect = DigitalDelay.create(array_src(values, channels), RATE,
+                                     transport=transport, feedback=0.0,
+                                     mix=2.0, glide_ms=0.0)
+        effect.set_macro(SYNC_I, 127)
+        effect.set_macro(DIVISION_I, 9 * 127.0 / 15.0)
+
+        def change(frame):
+            if frame == 24064:
+                tempo[0] = 60.0
+                if action is not None:
+                    action(effect)
+        y = np.abs(left(pull(effect, frames, channels, on_block=change),
+                        channels))
+        effect.deinit()
+        y[at] = 0.0
+        return int(np.argmax(y)) - at
+
+    def test_a_tempo_change_waits_for_a_control(self):
+        self.assertEqual(self._tempo_change(), 24000)
+        self.assertEqual(self._tempo_change(channels=1), 24000)
+        # Any control moved, even to where it already is, reads the new
+        # tempo: a 60 bpm quarter, clamped to 800 ms.
+        for index in range(8):
+            def touch(effect, _index=index):
+                effect.set_macro(_index, effect.get_macro(_index))
+            self.assertEqual(self._tempo_change(touch), 38400, index)
+        self.assertEqual(self._tempo_change(touch, channels=1), 38400)
+        # A patch load reads it too. Patch 2 syncs on a dotted eighth and
+        # glides, so the Time it hands the node is read, not rendered:
+        # 750 ms at 60 bpm, 375 ms at 120.
+        for bpm, frames in ((120.0, 18000), (60.0, 36000)):
+            tempo = [120.0]
+            effect = DigitalDelay.create(
+                silence_src(512), RATE,
+                transport=lambda: (True, 0.0, tempo[0], 4, 4))
+            tempo[0] = bpm
+            effect.program_change(2)
+            self.assertEqual(effect._frames, frames, bpm)
+            effect.deinit()
+
+
 # --------------------------------------------------------------------------
 # The docstring's claims
 
@@ -2836,12 +2918,17 @@ CLAIMS = (
     ("Repeat Tone's top stop and Repeat Cut's bottom stop take them out.",
      ("TheSurface.test_filter_stops_are_exactly_zero",
       "T5BandLimit.test_an_open_top_stop_is_red")),
-    ("With Sync on, Time is Division of the host's beat; with no host "
-     "tempo, Time stays where the knob is.",
+    ("With Sync on, Time is Division of the host's beat, up to 800 ms; "
+     "with no host tempo, Time stays where the knob is.",
      ("T4TimeLaw.test_sync_quantises_time_into_the_map",
+      "SyncLimits.test_divisions_stop_at_800_ms",
       "T4TimeLaw.test_no_host_leaves_time_on_the_knob",
       "ZeroBpmHost.test_no_tempo_leaves_time_on_the_knob",
       "ZeroBpmHost.test_a_tempo_that_is_not_finite_leaves_time_on_the_knob")),
+    ("The class reads the tempo only when a control moves or a patch "
+     "loads, so after a tempo change Time keeps the old beat until you "
+     "move a control.",
+     ("SyncLimits.test_a_tempo_change_waits_for_a_control",)),
     ("Patch 5 puts the DD-2's 7 kHz and 40 Hz corners in the loop.",
      ("TrialClaims.test_patch_5_is_the_pedal_corners",
       "T5BandLimit.test_the_corners_at_48k")),

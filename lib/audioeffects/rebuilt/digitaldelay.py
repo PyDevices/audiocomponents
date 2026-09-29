@@ -12,8 +12,10 @@ takes, from 800 ms to 8 s. Glide 0 is an instant knob, and its price is a
 click. Repeat Tone is a low-pass and Repeat Cut a high-pass inside the loop,
 so each repeat is a little darker or thinner than the last. Repeat Tone's
 top stop and Repeat Cut's bottom stop take them out. With Sync on, Time is
-Division of the host's beat; with no host tempo, Time stays where the knob
-is.
+Division of the host's beat, up to 800 ms; with no host tempo, Time stays
+where the knob is. The class reads the tempo only when a control moves or a
+patch loads, so after a tempo change Time keeps the old beat until you move
+a control.
 
 **The pedal.** Patch 5 puts the DD-2's 7 kHz and 40 Hz corners in the
 loop. The DD-2's compander and its HOLD are not here.
@@ -589,10 +591,8 @@ class DigitalDelay(_component.Component):
         each lap is `memory` frames longer, the time the low-pass takes to
         forget the lap before, and near the Feedback values where the node
         once held a small value for ever the count takes one more lap
-        (`laps_to_zero`). `None` with Repeat Cut in circuit, whose
-        high-pass can more than double a peak in one pass, so the per-lap
-        argument does not hold; the node measures that case rather than
-        bounding it, and this class has no bound for it either.
+        (`laps_to_zero`). `None` with Repeat Cut in circuit: this class
+        derives no bound there.
         """
         self._check_live()
         return self._tail_bound()
