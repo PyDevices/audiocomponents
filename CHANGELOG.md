@@ -127,7 +127,11 @@ there, and are recorded in its changelog.
   docstring states the input ceiling, the click and channel crossing of a
   Time or Heads move while audio plays, and that on CircuitPython alone
   the stereo dry's right lane is one LSB hot within 32 LSB of the rails.
-  Board cost is unmeasured.
+  Board cost is unmeasured. At audiodsp v0.6.3rc3 the class plays what it
+  played at rc1; its docstring is now the player's text, each claim tied
+  to a test, with a jumping control disclosed as a family limit
+  (audiocomponents#117), and a return from Mix 0 said plainly to start
+  both lines empty.
 
 ### Changed
 

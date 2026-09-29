@@ -79,27 +79,6 @@ KNOWN_RED = {
     ('PingPongDelay', 'E4-m2=127', 'P5'): (
         4, '31c4e1c7', 32, 'c9e4e06a',
         'Mix to 127 steps the output within one block'),
-    ('MultiTapDelay', 'E', 'P3'): (
-        20, '273472a7', None, None,
-        'CPython only: a Time move or a patch change and back plays old audio out of silence (see KNOWN_P6)'),
-    ('MultiTapDelay', 'E', 'P4'): (
-        4, '11f966a4', None, None,
-        'at 22.05 kHz stereo a Mix, Repeat Tone or patch move re-converges after tail_samples allows'),
-    ('MultiTapDelay', 'E', 'P5'): (
-        85, '511cd123', None, None,
-        'Time, Heads, Tilt and patch moves step the output within one block (Time and Heads disclosed)'),
-    ('MultiTapDelay', 'E1-', 'P4'): (
-        16, '9a49aaf5', None, None,
-        'at 22.05 kHz mono a reset re-converges about 1000 frames after tail_samples allows'),
-    ('MultiTapDelay', 'E5-', 'P4'): (
-        14, 'b3271a6f', None, None,
-        'Mix 0 and back leaves the class out of step with a fresh instance for good'),
-    ('MultiTapDelay', 'E8-dry', 'P4'): (
-        15, '6743df4e', None, None,
-        'a source that runs dry once leaves the class out of step with a fresh instance for good'),
-    ('MultiTapDelay', 'E9-', 'P4'): (
-        70, '123b91ee', None, None,
-        'Mix 0 and back leaves the class out of step with a fresh instance for good'),
     ('AnalogDelay', 'E', 'P4'): (
         37, '1266f888', 150, 'bb0595c6',
         "the Modulation LFO's phase moves with the event, so a modulated patch never re-converges"),
@@ -150,7 +129,9 @@ KNOWN_P6 = {
         29, "cedec0fa", None, None,
         "after a Time move or a patch change CPython renders other bytes "
         "than both native interpreters, and on 20 cells plays old audio "
-        "out of silence where they do not"),
+        "out of silence where they do not: the CPython audiodelays twin "
+        "keeps the line past a shorter delay_ms, which the C node zeroes "
+        "(audiodsp#177)"),
 }
 
 #: LIFECYCLE_FULL=1 runs the full matrix (every event at every patch);

@@ -1,217 +1,10 @@
 """`MultiTapDelay` - one recording read by several heads on a fixed grid.
 
-Rebuilt from scratch for Phase 5 against
-`workspace docs/effects-internal/dossiers/MultiTapDelay.md`, whose trait
-table was frozen at Station A before this file existed (anchor commit
-02e7e0c1467ff43b13ff239325eed54dd84b2dcb, the Station A revision's freeze,
-2026-09-28). The old class in `delay.py` is consulted only for the six
-defects that dossier's section 7 names; it stays the class the library
-serves until the board runner adopts this one.
-
-**What it sounds like.** Your dry signal passes untouched, and a pattern of
-echoes follows it: the heads of a multi-head tape echo, each one the same
-recording read further along. The heads sit on a grid of whole multiples of
-one base time, so head 2 is exactly twice head 1 and head 3 exactly three
-times. Time (20-400 ms) is that base, the gap to head 1. Heads (3-8) is how
-many heads the grid has, and the pattern repeats once per trip past the
-farthest of them. Pattern picks which heads sound, from the twelve
-positions of the Roland RE-202's mode selector. Feedback (0-0.95) sends
-the pattern round again, each lap quieter; Repeat Tone darkens each lap a
-little more than the one before, once per lap, never once per head. Tilt
-leans the pattern's levels towards the near heads or the far ones. Mix
-(0-2) is the echo level: dry at unity up to 1, the echoes alone at 2, and
-Mix 0 is a wire. Sync locks Time to Division of the host's beat.
-
-**The standout:** the Roland RE-201 Space Echo's multi-head modes, with the
-Binson Echorec as a second reference. You get the RE-201's three heads and
-its one-knob grid as defaults; patch 3 is the Echorec's 74 ms head spacing
-on four heads.
-
-**The grid, exactly.** Time is landed on the nearest whole frame,
-n1 = floor(t1 fs / 1000 + 0.5), and head k sounds at exactly k n1 frames.
-The lap is P = K n1 frames for Heads K, clamped so it fits `max_lap_ms`:
-at the default 1600 ms the base stops at 400 / 400 / 320 / 266.67 /
-228.56 / 200 ms for 3 ... 8 heads. That clamp is on the audio path only and
-`get_macro(0)` keeps the knob's Time, because it moves with Heads and a
-Heads move back must give you your Time back. The tap node reads its input
-one 256-frame block after the dry has played it (so that nothing you set
-before the first pull, or right after `reset()`, lands on audio it has
-already written; see `_route`), so it is handed (P + 0.5) frames' worth of
-`delay_ms` and head k at (k n1 - 256 + 0.5) / P, and it truncates both:
-every head sounds at exactly k n1 against the dry, and a single-precision
-board lands on the same frames as a desktop. The lap node interpolates instead, so it is
-handed the least single-precision `delay_ms` whose frames, computed the
-node's way (`value * rate / 1000.0f`), are at or over P: stepping one
-float32 unit at a time from float32(P 1000 / fs), every intermediate
-rounded to float32, which is exact on the desktop and the identity on a
-board. Where no float32 value lands on P exactly (some laps at 44.1 and
-22.05 kHz) the read sits a few thousandths of a frame over P and puts that
-fraction of each lap one frame late, inside the lap's own response, never
-early.
-
-**Pattern.** Modes 1-11 are S1's head sets, keeping only the heads that
-exist on the grid: 1 = {1}, 2 = {2}, 3 = {3}, 4 = {1,2}, 5 = {2,3},
-6 = {1,3}, 7 = {1,2,3}, 8 = {1,4}, 9 = {3,4}, 10 = {1,3,4}, 11 = {1,2,4}
-(at three heads, modes 8-11 read {1}, {3}, {1,3}, {1,2}). **Mode 12 departs
-from S1**: the RE-202's mode 12 puts its heads at "optimized" positions
-that Roland does not publish, and this class puts mode 12 on the plain
-grid, every head 1 ... K, instead (patch 4 is eight of them). Heads above 4
-sound only in mode 12; in modes 1-11 they lengthen the lap without
-sounding.
-
-**Where the feedback is tapped is a design decision, not a source.** The
-lap is the farthest head on the grid, sounded or not, as if the record
-head were fed from head K. So in a mode that does not sound head K the
-repeats keep the lap's rhythm, not the heads': mode 1 at three heads
-sounds t1, 4 t1, 7 t1 ..., where a machine fed back from the sounding head
-would give t1, 2 t1, 3 t1.
-
-**Repeat Tone's out stop is a lighter graph.** With Repeat Tone in circuit
-the laps go round an `audioecho.FeedbackDelay` whose in-loop low-pass is the
-darkening (its corner pre-warped so it is the -3 dB point of one pass); at
-the out stop the class unplugs that node and lets the tap node's own
-`decay` make the laps, and nothing darkens. Crossing the out stop while
-audio plays changes the graph between blocks by re-pointing a port, which
-pulls nothing: the wet does not move against the dry, however many times
-you cross between two pulls (a host flipping patches 1 and 0 included),
-but the laps in flight are dropped or doubled once (up to half the click's
-level at Feedback 0.5).
-
-**Mix 0 hands your source straight through**, the class's output port
-pointed at its input adapter (through one more width-1 MidSide), an
-`audioroute.MidSide` at width 1 that passes the source byte for byte in
-256-frame blocks, so it is a wire on every interpreter. Going through the adapter, not round it, keeps the
-source's timeline whole: a switch to Mix 0 and back mid-stream neither
-skips nor repeats a frame, whatever size of buffer your source hands out,
-a bare `audiocore.RawSample` included. It departs from the dossier's
-section 6 there, which kept both lines recording at Mix 0 through the
-Mixer: CircuitPython's stock `audiomixer` scales a voice at level 1.0 by
-32768 / 32767, so on CircuitPython that route put every sample at
-|value| >= 32736 one LSB out (audiodsp's own Mixer, the one MicroPython
-and the boards run, passes unity through). The price is that the lines
-are not fed while Mix is 0, and turning Mix up from 0 starts the echoes
-from empty lines. The same
-stock Mixer is on the dry path above Mix 0. At one channel the class hands
-the dry's unity as 1 - 2^-15, which every Mixer here passes exactly; at two
-the stock Mixer's pan law leaves no level that is exact in both lanes, so
-on CircuitPython alone the right lane's dry reads one LSB hot on the
-source values within 32 LSB of the rails.
-
-**Moving Time or Heads clicks.** Both nodes jump to the new grid, and in
-stereo the tap node's planar line also crosses channels for up to one lap
-(the right channel briefly replays what the left one wrote). Nothing about
-the grid is claimed while Time or Heads moves with audio playing. A move
-made before the first pull, or after `reset()` and before the next pull,
-is not a move of that kind: the tap node's line holds only zeros then, so
-the first lap lands on the grid in both lanes. That holds however many
-times you call `reset()`, or take Mix to 0 and back, before the first
-pull or between two pulls.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audioecho", "audioroute")`).
-The laps are `audioecho.FeedbackDelay` and the dry fan-out is
-`audioroute.Splitter`; `audiodelays.MultiTapDelay` and `audiomixer.Mixer`
-are stock. On a stock CircuitPython board this module imports cleanly and
-construction raises `ImportError`.
-
-**Sample rate: 12 825 Hz and up.** The tap node reads one block behind
-the dry, so each head's offset is handed 256 frames short, and the 20 ms
-head must land on more than 256 frames for that to place it. Below
-12 825 Hz it would not, and the constructor raises `ValueError` rather
-than build a class whose Time knob cannot reach its low end.
-
-**Latency: zero samples, at every setting and patch, at every rate the
-class accepts.** The dry is a Splitter tap into a Mixer voice, a wire,
-and nothing looks ahead; the heads are the effect, not latency, and no
-option adds any. The first pull after construction plays your source's
-first frame. Any number of `reset()` calls and returns from Mix 0, before
-the first pull or between two pulls, leave the dry at +0 against your
-source and every head at +k n1 against the dry, for audio that arrives
-after them: `reset()` empties the lines, so audio from before it has no
-heads, and a return from Mix 0 starts the heads from empty lines. None of
-it takes a frame from your source or plays one twice, whatever size of
-buffer your source hands out: the input adapter keeps the unread part of
-a buffer across a reset and a Mix 0 switch, and the next pull plays it.
-
-That rests on `audiocore.get_buffer`, which every desktop build and the
-MicroPython boards carry and a patched CircuitPython board build may not.
-Without it the class cannot pull its own graph, so a class built above
-Mix 0 holds your source's first block in the dry until the first pull, and
-three things differ. If you take it to Mix 0 before that pull, the Mix-0
-run plays your source from its second block, 256 frames early, without the
-first; when Mix comes back up, or you call `reset()`, that first block
-plays then, with its heads after it, as late as the run was long, and
-everything after it is on time (after a 24-block run at 48 kHz, a click in
-the first block sounds 6 144 frames late). A class built at Mix 0 and reset
-before it was ever turned up opens with one silent 256-frame block and
-plays your source 256 frames late from then on. And a reset or a return
-from Mix 0 lets the one block the tap node had not read into the lines:
-its heads sound, as late as any Mix-0 run between was long. Taking Mix to
-0 and back before the first pull, with nothing played between, is on
-time.
-
-The output ends in an `audioroute.MidSide` at width 1, the identity, whose
-reset forwards nothing, above Mix 0 and at it: a host that resets the
-output (a mixer voice's `play()` does) reaches neither the Mixer, whose
-voices would empty the tap node's line (the heads of what was playing
-would go) and, on a build without `get_buffer`, re-prime from the
-Splitter and drop the source's first block, nor the input adapter, which
-would drop the part of a source buffer it holds. That reset leaves the
-lines and your source's timeline as they are; call `reset()` to empty the
-lines.
-
-**Mono.** A one-channel source gets the same effect on its one channel.
-There is no Spread: the tap node applies one set of heads to every
-channel, so heads cannot be placed across the field.
-
-**RAM at 48 kHz: about 655 KB** at the default `max_lap_ms` 1600: two lines
-of 307 392 B (the lap node's is `max_lap_ms` + 1 ms of two int16 lanes
-whatever the channel count; the tap node's is the same length times the
-channel count, 153 696 B mono), plus the Splitter's ring (about 34 KB), the
-Mixer and the small buffers. At 44.1 kHz each line is 282 416 B, at
-22.05 kHz 141 208 B. Pass a lower `max_lap_ms` to spend less (800 ms makes
-each line 153 792 B, and the base then stops at 800 / K ms). It has a
-floor of 540 ms: below that some Heads leave Time dead or its span under
-3.33 : 1. A `max_lap_ms` above 1600 or NaN is 1600.
-
-**Cost, a planning estimate; the board measurement is pending hardware.**
-Palette rows (MultiTapDelay, which ran four taps; FeedbackDelay +options;
-Splitter, two taps; Mixer; MidSide, twice, the input adapter and the tail;
-one Python pull of glue) put the full graph at **P4 <= 67 %, S3 <= 88 %**
-of a 5.333 ms stereo block, which is over the S3's 80 % line, and the
-lean graph (Repeat Tone out) at **P4 <= 59 %, S3 <= 74 %**. **On an S3, stack patch 1, `Three Heads,
-Even - lean`, not patch 0**, and only with light classes: the tap node
-alone is most of an S3 block. Every Repeat Tone-in setting, the defaults
-included, is over the S3's line by this estimate. Eight sounding heads
-(patch 4) cost more than any palette row has priced, and so may the long
-lines on a PSRAM board.
-
-**Input ceiling.** The heads sit at unity, and the tap node soft-limits at
-+-28000 (on the heads' sum, on the line write and on its output), so the
-echoes of a hot input are kneed while the dry is not: one head on a
-30 000 LSB click reads 28 023. On the kit's `noise_det` at 48 kHz the
-output reaches the int16 rail at no patch up to -6 dBFS peak; the wet
-passes the knee at -12 dBFS only at patch 4 (eight heads) and patch 1, and
-at patch 0 from -9 dBFS.
-
-**Tail.** `tail_samples` is an upper bound, in frames, on how long the
-echoes take to reach exact zero once your input stops, recomputed on every
-Time, Heads, Feedback or Repeat Tone move. With Repeat Tone in it is
-`DigitalDelay`'s bound for the lap node plus one lap for the tap node's
-line. At a Feedback a hair either side of 1 - 0.5 / k the lap node's loop
-low-pass can come to rest a hair above k LSB and hand it back; up to
-audiodsp v0.6.2 it did so for ever, and this class handed the node a
-Feedback just outside each such window (0.95 played as 0.950016). Since
-v0.6.3rc1 the node sets a stalled low-pass onto its input (audiodsp#157),
-the Feedback you set is the one the node plays, and the bound counts one
-more lap there: 167 laps at 0.95, Repeat Tone at the default. With Repeat
-Tone out the tap node truncates every lap toward zero, so the bound is
-(laps + 1) x P. At patch 0 it is 321 435 frames at 48 kHz (6.7 s).
-
-`capabilities = ("tempo_sync",)`: with Sync on, the class reads
-`self._transport()` on every macro move and program change (not per
-block), and Time's knob is rewritten to Division x the beat, clamped to its
-span. With no host transport, or a tempo that is not a finite positive
-number, Time stays where the knob is.
+The player's text is the class docstring, and every sentence in it that
+makes a claim is tied to a test by the `CLAIMS` table in the class's test
+file. How it works, and why, is in the class's dossier in the workspace
+repo (`docs/effects-internal/dossiers/MultiTapDelay.md`), and in the
+docstrings of `_route`, `_wire` and `_resync` below.
 """
 
 VENDOR = "PyDevices"
@@ -413,16 +206,53 @@ def _number(value, default):
 
 
 class MultiTapDelay(_component.Component):
-    """A multi-head echo: several heads on a grid of whole multiples of one
-    base time, S1's twelve head sets, laps that darken once per lap.
-    audiodsp tier; zero latency.
+    """A multi-head echo: one recording read by several heads on a grid.
 
-    **What the default surrenders:** mode 12 is the plain grid, not the
-    RE-202's unpublished "optimized" heads; the feedback is taken from the
-    farthest head on the grid by decision; Time and Heads click when they
-    move; and on an ESP32-S3 every Repeat Tone-in setting, the defaults
-    included, is over the 80 % cost line by the palette estimate, so the
-    S3 build is patch 1 (Repeat Tone out).
+    The heads of a multi-head tape echo, after the Roland Space Echo's
+    multi-head modes: your dry signal passes untouched, and a pattern of
+    echoes follows it.
+
+    **The controls.**
+    Time is the gap to head 1, landed on a whole frame, and head k sounds at
+    exactly k times that gap.
+    Heads is how many heads the grid has, and the pattern repeats once per
+    trip past the farthest of them.
+    Pattern picks which heads sound, from the twelve positions of the Roland
+    RE-202's mode selector.
+    Its last position sounds every head on the grid, not the RE-202's
+    unpublished positions.
+    The lap is the farthest head on the grid, sounded or not, so heads past
+    the ones a position sounds lengthen the lap without sounding.
+    Feedback sends the pattern round again, each lap quieter.
+    Repeat Tone darkens each lap a little more than the one before, once per
+    lap, never once per head.
+    Tilt leans the pattern's levels towards the near heads or the far ones.
+    Up to Mix 1 the dry passes at unity, and at Mix 2 the echoes play alone.
+    Mix 0 is a wire.
+    Sync locks Time to Division of the host's beat, clamped to Time's span.
+    With no host tempo, Time stays on the knob.
+    Time runs from 20 to 400 ms, Heads from 3 to 8, Feedback from 0 to 0.95
+    and Mix from 0 to 2.
+    `max_lap_ms` (1600 by default, 540 at least) caps the lap: where a grid
+    would pass it, Time comes down to fit.
+    A click comes out on the frame it went in: there is no latency.
+    A one-channel source gets the same effect on its one channel.
+    The sample rate must be at least 12 825 Hz: below it the constructor
+    raises `ValueError`.
+
+    **Reset, Mix at zero and the tail.**
+    The lines are not fed while Mix is 0, so a return from Mix 0 starts both
+    lines empty.
+    `reset()` empties both lines and returns to patch 0.
+    Neither a reset nor a trip to Mix 0 drops a frame of your source or
+    plays one twice, whatever size of buffer it hands out.
+    `tail_samples` is an upper bound on how long the echoes take to reach
+    exact zero once your input stops.
+    The tail rings on while your source hands back nothing.
+
+    **Limits shared by the family.**
+    A control that jumps makes the output step: move it in small steps from
+    the host if you need it smooth.
     """
 
     NAME = 'MultiTapDelay'
