@@ -283,5 +283,17 @@
 # validate_metadata valid; flake8 clean; the smoke 45 classes, 259 patches,
 # 0 failures on CPython and both rc3 binaries. Pending both boards.
 #
+# 2026-09-29: v0.6.3rc3 -> v0.6.3 (5afe010), the release, named by Brad
+# the same day ("release audiodsp 0.6.3"); on TestPyPI and production
+# PyPI. Nothing moved beneath the components: `git diff v0.6.3rc3 v0.6.3`
+# is VERSION and CHANGELOG.md, no source file. Re-run here on Brad's
+# workstation with both desktop interpreters rebuilt from clean build
+# directories at the tag (audioecho.__revision__ v0.0.3-308-g5afe010 on
+# MicroPython, the provenance stamp on CircuitPython; kept as bin/*-063)
+# and the venv's audiodsp installed from PyPI: the unit suite `Ran 2280
+# tests ... OK (skipped=2)`, the lifecycle matrix for all eight Phase 5
+# classes included; validate_api, validate_metadata and flake8 clean.
+# Pending both boards.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.3rc3 b386248518b381d62bd3360224b02f9a9ef9bf37
+v0.6.3 5afe010b61b1b9e628534bc90895b005f7df6d6d
