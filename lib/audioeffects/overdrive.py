@@ -17,7 +17,10 @@ At Mix 0 the class hands back the source byte for byte - the pedal is out
 of circuit, the way a true-bypass footswitch takes it out. One step above
 zero the tone stack is in circuit on the dry note as well, so the step off
 Mix 0 is a tone change, and that is the pedal switching on rather than a
-fade.
+fade. It switches on as it was built, not as it was left: the circuit is
+cleared and armed again - the output capacitor charged on the offset -
+before it is heard, where it used to play what it held when Mix went to 0,
+up to 11 640 LSB out of silence (audiocomponents#113).
 
 **The clip table is a normalised shape, not volts.** `CURVE` fills Q15 to
 both rails and `CURVE_VOLTS` is what its full scale stands for; the class
@@ -785,10 +788,13 @@ class Overdrive(_component.Component):
         mix = self._value(3)
         level = self._value(2)
         if mix <= 0.0:
-            self._output = self._source
+            self._route_around(self._source)
             return
         if not getattr(self, "_ready", False):
             self._output = self._out
+            return
+        if self._rejoin():
+            self._rearm(level)
             return
         if not self._primed:
             self._circuit.voice[0].play(self._dry)
@@ -799,3 +805,35 @@ class Overdrive(_component.Component):
         self._circuit.voice[0].level = 1.0
         self._circuit.voice[1].level = 1.0
         self._out.voice[0].level = level
+
+    def _rearm(self, level):
+        """Arm a graph Mix 0 left un-pulled, the way `_build` arms it.
+
+        Back off a bypass the filters, the shaper and the output capacitor
+        still hold what they held when Mix went to 0, and each mixer voice
+        still holds the block it had queued; `_rejoin` has just cleared the
+        nodes. What is left is `_build`'s own sequence: the levels, the
+        gates opened at them, the voices re-played with the clip branch
+        muted at the shaper so the block each keeps is a zero one, and the
+        capacitor charged on the offset before the port is pointed back at
+        the graph (audiocomponents#113).
+        """
+        self._dc_charged = False
+        self._circuit.voice[0].level = 1.0
+        self._circuit.voice[1].level = 1.0
+        self._out.voice[0].level = level
+        if self._clip_bias:
+            self._shaper.set(post_gain=0.0)
+        _component.open_level_gates(
+            self._circuit, [self._circuit.voice[0], self._circuit.voice[1]],
+            self._silence)
+        _component.open_level_gates(self._out, [self._out.voice[0]],
+                                    self._silence)
+        self._circuit.voice[0].play(self._dry)
+        self._circuit.voice[1].play(self._dc)
+        self._out.voice[0].play(self._lp)
+        self._primed = True
+        if self._clip_bias:
+            self._shaper.set(post_gain=self._post_gain)
+        self._settle_dc()
+        self._output = self._out

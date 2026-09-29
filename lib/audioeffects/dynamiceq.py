@@ -35,8 +35,10 @@ the path** at all there, because a mixer voice at level 1.0 is not unity -
 upstream's Q15 level is `1.0 * 32768` and the kernel divides by 32767, so
 the dry tap at unity came out one LSB high at every sample from 32736 up
 (audiodsp#95, three of 16384 on a full-scale ramp). The mixer's voices take
-their sources the first time Mix leaves 0, with their level gates opened on
-one block of silence first.
+their sources whenever Mix leaves 0, with their level gates opened on one
+block of silence first, and the filters, cell and tail are cleared before
+they do: they used to keep what they held when Mix went to 0 and play it
+when it came back, up to 7 769 LSB out of silence (audiocomponents#113).
 
 **`expand=True` is a build, not a knob.** `audiodynamics.Dynamics` fixes its
 mode at construction, and a class that carried both a compressor and an
@@ -64,7 +66,9 @@ milliseconds**: `latency_samples` is 0 for the life of the instance.
 
 **Cost, and it went up.** Two biquads, one detector-and-gain-cell, a
 three-tap splitter ring, a three-voice mixer, a block-sized guard and an
-identity `MidSide`, on a graph that runs in 256-frame blocks throughout.
+identity `MidSide`, on a graph that runs in 256-frame blocks throughout -
+mono included since 2026-09-28, when the mixer's fixed 2048-byte buffer
+(two blocks mono) became `1024 * channels`; stereo is the same bytes.
 Measured on the desktop against the class this replaces, five interleaved
 repeats of each: **1.46-1.56 ms per 256-frame stereo block against
 1.10-1.15**, about **45 % more**. Three of those nodes are new - the guard,
@@ -285,9 +289,18 @@ class DynamicEQ(_component.Component):
         # why the audible bell is narrower than f0/Q (dossier T5).
         cell.play(band)
 
+        # One render is one 256-frame block at either channel count
+        # (`Mixer._render_size` is `buffer_size // 2 // 4 * 4` bytes). It
+        # was a fixed 2048, which is one block stereo but TWO mono, and then
+        # the tail below hands out half a render and keeps the other half
+        # queued: a Mix move to 0 between the halves skipped those 256
+        # frames, and the move back played them - old audio out of silence
+        # (audiocomponents#113). Stereo is byte for byte what it was; mono
+        # renders the same samples in blocks half the size.
         mixer = audiomixer.Mixer(
             voice_count=3, sample_rate=rate, channel_count=channels,
-            bits_per_sample=16, samples_signed=True, buffer_size=2048)
+            bits_per_sample=16, samples_signed=True,
+            buffer_size=1024 * channels)
 
         # The class does **not** end in the Mixer, and that is not decoration.
         # On upstream CircuitPython `audiomixer.Mixer.reset_buffer` *stops*
@@ -430,8 +443,17 @@ class DynamicEQ(_component.Component):
             return
         if self.macro(self._MIX) <= 0.0 \
                 and self._macros[self._LISTEN] < 0.5:
-            self._output = self._head
+            self._route_around(self._head)
             return
+        # Back off the bypass, the filters, the cell and the identity tail
+        # still hold what they held when Mix went to 0, and each voice the
+        # block it had queued. Cleared, then the voices re-played once
+        # through the cleared nodes, as `_build` does (audiocomponents#113).
+        # The guard is the bypass's own node and still live, so it is kept;
+        # the mixer is kept out of the walk because its registered reset
+        # re-plays the voices twice over.
+        if self._rejoin(keep=(self._head, self._mixer)):
+            self._primed = False
         if not self._primed:
             self._play_voices()
         self._output = self._tail

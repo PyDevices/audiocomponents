@@ -49,6 +49,31 @@ floor the target is standing on; `marginal` is what the target itself added.
 Read the marginal column when comparing two nodes, and the rt column when
 asking whether a chain fits in real time.
 
+THE CONTROL, ONCE `audioeffects` IS IMPORTED
+--------------------------------------------
+The node rows import nothing, so their control is taken on a small heap.
+An effect target imports `audioeffects` (in `prime()`, before the control),
+and the control then costs more: on the boards the probe alone went from
+0.20 to 0.60 ms per block on the P4 and from 0.41 to 1.05-1.14 ms on the S3
+(board-test-plan.md, sections 2 for DigitalDelay and SlapbackDelay), and on
+desktop MicroPython from 0.0019 to 0.0118 ms with the live heap at 60 KB
+and then 480 KB. That is the collector's work growing with the heap, and it
+lands on the control and the target alike. On the desktop and the P4 the
+subtraction cancels it. On the S3 it does not: with the class module
+imported, the `FeedbackDelay@options` row's marginal read 0.638 ms against
+0.781 without, so a class's marginal and the palette row it was priced
+from were not measured in the same conditions.
+
+So an effect target is measured BESIDE its palette row by default: the row
+first, in the clean VM before anything imports `audioeffects` (its clean
+marginal, the figure the cost table holds), then again in the same session
+as the target, once before it and once after. The report adds the
+same-conditions figure, the row's clean marginal plus the target's ms per
+block minus the row's in the same session, which is the correction the board
+runs made by hand. `BESIDE` names each class's row; `main(target, beside=
+"<node key>")` names another, and `beside=False` skips it. A class with no
+row named gets the old report and a line saying so.
+
 THE DIGEST
 ----------
 One sha256 per run, over the first 128 blocks (683 ms) the target renders from
@@ -582,6 +607,31 @@ def _feedback_delay_options(probe):
     return node, (), (node, shape)
 
 
+def _feedback_delay_09(probe):
+    """The base row's node and settings at feedback 0.9, where audiodsp#154's
+    rounding rule fires: at 0.45 it never does, so the two rows above render
+    the same bytes at v0.6.1 and v0.6.2 by design. Ran on both boards on
+    2026-09-27 as a probe beside the tool (`fb09.py`, digest
+    `3b76320cb19450a8` at v0.6.2, `d9fb49a51cd7379a` at v0.6.1)."""
+    import audioecho
+    node = audioecho.FeedbackDelay(sample_rate=SAMPLE_RATE,
+                                   channel_count=CHANNELS, max_delay_ms=250)
+    node.set(delay_ms=180.0, feedback=0.9, mix=0.5)
+    node.play(probe.output)
+    return node, (), (node,)
+
+
+def _feedback_delay_options_damping(probe):
+    """The +options row with the loop low-pass in circuit (`damping_hz`
+    5000). Neither +options nor the base row turns a loop filter on, so no
+    row priced the one that `DigitalDelay`'s and `SlapbackDelay`'s patch 5
+    carry (Repeat Tone, Tone). The corner does not change the work per
+    sample; 5000 is a value every leg holds exactly."""
+    output, extras, keep = _feedback_delay_options(probe)
+    output.set(damping_hz=5000.0)
+    return output, extras, keep
+
+
 # --- the rate path the drive family prices from ----------------------------
 #
 # Phase 4 added these. `Bitcrusher` holds two `audiospeed.SpeedChanger` nodes
@@ -884,6 +934,10 @@ NODES = {
     "audioshaper.Waveshaper@x8": _waveshaper(8),
     "audioecho.FeedbackDelay@options": _feedback_delay_options,
     "audiodynamics.Dynamics@options": _dynamics_options,
+    # Phase 5: the row that can show audiodsp#154, and the loop low-pass.
+    "audioecho.FeedbackDelay@fb0.9": _feedback_delay_09,
+    "audioecho.FeedbackDelay@options+damping":
+        _feedback_delay_options_damping,
     # The rate path, Phase 4. Both legs of Bitcrusher's pair, at its rates.
     "audiospeed.SpeedChanger": _speed_changer(48000.0 / STAND_RATE_HZ),
     "audiospeed.SpeedChanger@up": _speed_changer(STAND_RATE_HZ / 48000.0),
@@ -1032,6 +1086,29 @@ def _rebuilt(name):
             effect.program_change(patch)
         return effect.output, (), (effect,)
     return build
+
+
+#: The palette row each class's cost budget was priced from, which `main()`
+#: measures beside it (see "THE CONTROL" above). From the classes' own
+#: docstrings and dossiers; a class not named here gets no beside row.
+BESIDE = {
+    "DigitalDelay": "audioecho.FeedbackDelay@options",
+    "SlapbackDelay": "audioecho.FeedbackDelay@options",
+    "Flanger": "audioecho.FeedbackDelay@options",
+}
+
+
+def _class_name(target):
+    """The class a target names, or `None` for `source` and node rows,
+    read from the string alone so nothing is imported to answer it."""
+    if target == "source" or target.startswith("node:") or target in NODES:
+        return None
+    for prefix in ("effect:", "rebuilt:"):
+        if target.startswith(prefix):
+            target = target[len(prefix):]
+    for mark in ("@", "#"):
+        target = target.partition(mark)[0]
+    return target
 
 
 def resolve(target):
@@ -1359,7 +1436,7 @@ def digests(*targets):
     print("DIGESTS DONE")
 
 
-def main(target=None):
+def main(target=None, beside=None):
     if target is None:
         catalogue()
         return None
@@ -1372,12 +1449,33 @@ def main(target=None):
              BLOCK_SECONDS * 1000.0))
 
     build = resolve(target)
+    if beside is None:
+        beside = BESIDE.get(_class_name(target))
+    row_build = resolve("node:" + beside) if beside else None
+
+    row_clean = None
+    if row_build is not None:
+        # Before anything imports `audioeffects`: the row as the cost table
+        # priced it. A node row imports nothing, so this VM is still clean.
+        print("clean control, before the import ", end="")
+        clean_control = run(_source, False)
+        print("clean %s " % beside, end="")
+        row_clean = run(row_build, False)
+        row_clean["marginal"] = (row_clean["ms_per_block"]
+                                 - clean_control["ms_per_block"])
 
     prime(build)
     print("control (probe source alone) ", end="")
     control = run(_source, False)
+    row_before = row_after = None
+    if row_build is not None:
+        print("beside  (%s) " % beside, end="")
+        row_before = run(row_build, False)
     print("target  (%s) " % target, end="")
     measured = run(build, True)
+    if row_build is not None:
+        print("beside  (%s) " % beside, end="")
+        row_after = run(row_build, False)
 
     print("")
     print("%-36s %10s %9s %10s %10s"
@@ -1391,6 +1489,24 @@ def main(target=None):
     marginal = measured["ms_per_block"] - control["ms_per_block"]
     print("%-36s %10s %9s %10.3f"
           % ("marginal (target - control)", "", "", marginal))
+    corrected = None
+    if row_clean is not None:
+        row_ms = (row_before["ms_per_block"] + row_after["ms_per_block"]) / 2
+        corrected = row_clean["marginal"] + measured["ms_per_block"] - row_ms
+        print("")
+        print("beside %s:" % beside)
+        print("  clean marginal, before the import      %10.3f"
+              % row_clean["marginal"])
+        print("  ms/block in this session, before/after %10.3f / %.3f"
+              % (row_before["ms_per_block"], row_after["ms_per_block"]))
+        print("  same-conditions marginal (clean row + target - row) %.3f"
+              % corrected)
+    elif _class_name(target) is not None and beside is not False:
+        print("")
+        print("no palette row named for %s: the marginal above subtracts a "
+              "control taken after the import (see THE CONTROL); pass "
+              "beside=<node key> to measure it beside its row"
+              % _class_name(target))
     print("")
     print("budget: %.3f ms/block is real time; this target uses %.0f%% of it"
           % (BLOCK_SECONDS * 1000.0,
@@ -1442,6 +1558,12 @@ def main(target=None):
           % (target, measured["blocks_per_s"], measured["rt"],
              measured["ms_per_block"], control["ms_per_block"], marginal,
              measured["bytes"], measured["digest"]))
+    if corrected is not None:
+        print("BESIDE\t%s\t%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f"
+              % (target, beside, row_clean["marginal"],
+                 row_before["ms_per_block"], row_after["ms_per_block"],
+                 measured["ms_per_block"], corrected))
+        measured["same_conditions_marginal"] = corrected
     return measured
 
 

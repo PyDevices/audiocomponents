@@ -30,6 +30,8 @@ import kit_probes as probes                                 # noqa: E402
 from audioeffects import _component                         # noqa: E402
 from audioeffects import rebuilt                            # noqa: E402
 from audioeffects.rebuilt import tapedelay as tape          # noqa: E402
+from audioeffects.rebuilt.digitaldelay import (             # noqa: E402
+    clear_of_stalls)
 
 VENDOR = "PyDevices"
 
@@ -347,6 +349,51 @@ class PerBlockSlidingTape(TapeDelay):
                             delay_ms=span * 1000.0 / self._sample_rate)
 
 
+class SteppedTape(TapeDelay):
+    """The workaround retired at audiodsp v0.6.3rc1: the Feedback handed to
+    the node at the nearer edge of the loss low-pass's stall window
+    (`clear_of_stalls`), a Feedback nobody set."""
+
+    NAME = 'TapeDelay'
+
+    def _refresh(self):
+        TapeDelay._refresh(self)
+        excess = tape.tone_excess(self._damping, self._sample_rate)[1]
+        stepped = clear_of_stalls(self._feedback, excess)
+        if stepped != self._feedback:
+            self._feedback = stepped
+            self._delay.set(feedback=stepped)
+
+
+class NoneAtZeroTape(TapeDelay):
+    """The class before audiodsp v0.6.3rc1: a Wow and Flutter of 0 hands the
+    node no table, so the node ramps the old depth out (#160) on its own
+    sine instead of the table's shape, a jump in the read offset."""
+
+    NAME = 'TapeDelay'
+
+    def _refresh(self):
+        TapeDelay._refresh(self)
+        if self._wow_ms == 0.0 and self._table is not None:
+            self._table = None
+            self._delay.set(wow_shape=None)
+
+
+class JumpWowTape(TapeDelay):
+    """A Wow or Flutter move that moves the read head by the whole change in
+    depth at once, as the node did at the wobble's crest up to v0.6.2 (it
+    added depth x table with no ramp)."""
+
+    NAME = 'TapeDelay'
+
+    def _refresh(self):
+        old = self._wow_ms
+        TapeDelay._refresh(self)
+        if not self._seeding and not self._deferred and self._wow_ms != old:
+            self._delay.set(delay_slew=0.0,
+                            delay_ms=self._node_ms + self._wow_ms - old)
+
+
 # -- sources and renders --------------------------------------------------
 
 def src_of(x, channels=2, rate=RATE):
@@ -644,10 +691,25 @@ class TheSurface(unittest.TestCase):
                                delta=0.0005)
         self.assertAlmostEqual(tape.cents_to_depth_ms(4.0, 5.12), 0.072,
                                delta=0.0005)
+        # Down to 0 on a playing node the last table stays handed, so the
+        # depth the node ramps out over 20 ms (audiodsp#160) leaves on its
+        # own shape; at depth 0 the table moves nothing.
         effect.set_macro(WOW_I, 0)
         effect.set_macro(FLUTTER_I, 0)
-        self.assertIsNone(effect._table)
         self.assertEqual(effect._wow_ms, 0.0)
+        self.assertIsNotNone(effect._table)
+        # Planted: the class before v0.6.3rc1 dropped it.
+        dropped = NoneAtZeroTape(src_of(np.zeros(512)))
+        dropped.set_macro(WOW_I, 0)
+        dropped.set_macro(FLUTTER_I, 0)
+        self.assertIsNone(dropped._table)
+        # A fresh node snaps onto its depth, so a constructor or patch at 0
+        # hands no table at all.
+        for effect in (TapeDelay(src_of(np.zeros(512)), wow_cents=0.0,
+                                 flutter_cents=0.0),
+                       TapeDelay(src_of(np.zeros(512)), patch=6)):
+            self.assertIsNone(effect._table)
+            self.assertEqual(effect._wow_ms, 0.0)
 
     def test_the_table_holds_its_three_components(self):
         out = array("h", [0] * 4096)
@@ -1923,13 +1985,126 @@ class Tier1Fast(unittest.TestCase):
         # The falling move keeps the old Time in the tail's reach.
         self.assertEqual(effect._reach, frames_of(300.0))
 
-    def test_the_stall_windows_are_stepped_clear(self):
-        effect = TapeDelay(src_of(np.zeros(512)))
-        for midi in range(128):
-            effect.set_macro(FEEDBACK_I, midi)
-            self.assertIsNotNone(effect.tail_samples, midi)
-            self.assertLess(abs(effect._feedback - effect.macro(FEEDBACK_I)),
-                            3e-5)
+    def test_the_feedback_is_handed_as_set(self):
+        # Up to audiodsp v0.6.2 the always-in loss low-pass could hold a
+        # small value for ever a hair either side of 1 - 0.5 / k, and the
+        # class stepped the Feedback clear (the 0.99 stop played as about
+        # 0.98998). Since v0.6.3rc1 the node lands a stalled low-pass
+        # (#157): every position is handed as set and the bound is finite,
+        # 686 laps at the stop (683 stepped).
+        for rate in (48000, 44100, 22050):
+            effect = TapeDelay(src_of(np.zeros(512), rate=rate))
+            for midi in range(128):
+                effect.set_macro(FEEDBACK_I, midi)
+                self.assertEqual(effect._feedback,
+                                 min(0.99, effect._value(FEEDBACK_I)),
+                                 (rate, midi))
+                self.assertIsNotNone(effect.tail_samples, (rate, midi))
+            excess = tape.tone_excess(effect._damping, rate)[1]
+            self.assertEqual(effect._feedback, 0.99)
+            self.assertEqual(tape.laps_to_zero(effect._feedback, excess),
+                             686)
+            # Planted: the retired stepping hands a Feedback nobody set.
+            stepped = SteppedTape(src_of(np.zeros(512), rate=rate))
+            stepped.set_macro(FEEDBACK_I, 127)
+            self.assertNotEqual(stepped._feedback, 0.99, rate)
+            self.assertLess(abs(stepped._feedback - 0.99), 3e-5)
+            self.assertEqual(tape.laps_to_zero(stepped._feedback, excess),
+                             683)
+
+    def _stall(self, cls, rate=RATE, channels=2):
+        """The stall cell: Feedback 0.5 (k = 1), Mix 2, Time 100 ms, no
+        wobble or squash, a 2 LSB DC for 1 s, then 3 s of silence. Returns
+        (the Feedback handed, tail_samples, frames from the input's end to
+        the last non-zero sample, whether the last frame is non-zero)."""
+        frames = 4 * rate
+        x = np.zeros(frames)
+        x[:rate] = 2.0
+        effect = cls(src_of(x, channels, rate), feedback=0.5, mix=2.0,
+                     record_level=0.0, time_ms=100.0, wow_cents=0.0,
+                     flutter_cents=0.0)
+        declared = effect.tail_samples
+        out = render(effect, frames)
+        nz = np.nonzero(np.any(out != 0, axis=1))[0]
+        last = int(nz[-1]) if len(nz) else -1
+        return effect._feedback, declared, last - rate + 1, last == frames - 1
+
+    def test_the_stall_cell_reaches_zero_at_the_feedback_set(self):
+        # Up to audiodsp v0.6.2 the node held this cell for ever with the
+        # Feedback handed raw, and the class stepped it clear. Since
+        # v0.6.3rc1 (#157) 0.5 is handed as set and the tail ends inside
+        # the bound (the Station C Tier 1 cell).
+        for rate in (48000, 44100, 22050):
+            for channels in (2, 1):
+                feedback, declared, tail, held = self._stall(
+                    TapeDelay, rate, channels)
+                self.assertEqual(feedback, 0.5, (rate, channels))
+                self.assertFalse(held, (rate, channels))
+                self.assertGreater(tail, 0, (rate, channels))
+                self.assertLessEqual(tail, declared, (rate, channels))
+        # Planted: the retired stepping hands a Feedback nobody set.
+        stepped = SteppedTape(src_of(np.zeros(512)), feedback=0.5)
+        self.assertNotEqual(stepped._feedback, 0.5)
+        self.assertLess(abs(stepped._feedback - 0.5), 3e-5)
+
+    def _depth_move(self, cls, start, target, points=8):
+        """(the tone's own largest step before the move, the largest step in
+        the 2 000 frames after it) over `points` moves a quarter of the
+        0.72 Hz wow line apart, on 997 Hz at 12 000 LSB, mono, wet only,
+        Time 350 ms, 48 kHz (`pin063cls_tape_wowmove.py`)."""
+        first = (16800 + 9600) // BLOCK * BLOCK
+        steadies, worsts = [], []
+        for k in range(points):
+            at = first + k * 65 * BLOCK
+            events = {at: lambda e: [e.set_macro(i, v)
+                                     for i, v in target.items()]}
+            effect = cls(src_of(sine(TONE, 12000.0, at + 2400), 1),
+                         mix=2.0, feedback=0.0, record_level=0.0,
+                         spread=0.0)
+            for index, value in start.items():
+                effect.set_macro(index, value)
+            y = render(effect, at + 2000 + BLOCK, events)[:, 0]
+            steadies.append(float(np.abs(np.diff(y[at - 3000:at - 1])).max()))
+            worsts.append(float(np.abs(np.diff(y[at - 1:at + 2000])).max()))
+        return max(steadies), max(worsts)
+
+    def test_a_depth_move_does_not_step(self):
+        # Since audiodsp v0.6.3rc1 the node ramps a new depth in over 20 ms
+        # (#160). While it travels the read offset may move |change| / 20 ms
+        # of a frame per frame on top of the wobble, so the tone may slope up
+        # to its own largest step times 1 + |change| / 20 ms, and no more.
+        # Wow at Flutter 0 keeps the table's shape; a knob down to 0 keeps
+        # the last table while the depth ramps out.
+        # The planted faults are read where they show: through the loss
+        # low-pass a read-head jump is plain only at some phases of the
+        # tone (on Wow 32 -> 127 the eight moves read 791 against 809).
+        wow_up = ({WOW_I: 32, FLUTTER_I: 0}, {WOW_I: 127}, 2.257, ())
+        wow_out = ({WOW_I: 127, FLUTTER_I: 0}, {WOW_I: 0}, 3.017,
+                   (NoneAtZeroTape,))
+        flutter_out = ({WOW_I: 0, FLUTTER_I: 127}, {FLUTTER_I: 0}, 0.072,
+                       (NoneAtZeroTape, JumpWowTape))
+        for start, target, change, faults in (wow_up, wow_out, flutter_out):
+            steady, worst = self._depth_move(TapeDelay, start, target)
+            self.assertLessEqual(worst, steady * (1.0 + change / 20.0),
+                                 (start, target))
+            # Planted: no table at 0, so the depth ramps out on the node's
+            # sine; and the read head moved by the whole change at once.
+            for cls in faults:
+                steady, worst = self._depth_move(cls, start, target)
+                self.assertGreater(worst, steady * (1.0 + change / 20.0),
+                                   (cls.__name__, start, target))
+
+    def test_a_balance_move_steps_as_the_docstring_says(self):
+        # A move that changes the balance of Wow and Flutter changes the
+        # table's shape, which the node swaps at once: the docstring's 803
+        # against the tone's 728, and 1 117 through a flutter-only table.
+        self.assertEqual(self._depth_move(TapeDelay,
+                                          {WOW_I: 32, FLUTTER_I: 0},
+                                          {FLUTTER_I: 127}), (728.0, 803.0))
+        self.assertEqual(self._depth_move(TapeDelay,
+                                          {WOW_I: 32, FLUTTER_I: 32},
+                                          {WOW_I: 0, FLUTTER_I: 0}),
+                         (728.0, 1117.0))
 
 
 class InputCeiling(unittest.TestCase):

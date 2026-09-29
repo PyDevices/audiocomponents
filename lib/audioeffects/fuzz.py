@@ -12,6 +12,12 @@ centre, so small signals clip on one half first and both halves go square
 when you hit it. There is no tone stack. `cascade` is a Ram's Head 1973 Big
 Muff: two silicon pairs and a mid scoop between 482 Hz and 1206 Hz.
 
+**Mix back up from 0 plays nothing from before.** At Mix 0 the class hands
+back its source and nothing behind it is pulled; it used to keep what it
+held and play it when Mix came back, up to 23 153 LSB out of silence. It
+now comes back as it was built: cleared, the output pole charged on the
+bias, the tone mixer's voices re-armed (audiocomponents#113).
+
 **What the default surrenders.** Mix 1, Fuzz 36 dB, Bias 0, Load 0, Tilt 0.
 Tone is inert on germanium. G2's 0.5 dB-per-step THD staircase is not met
 here (the last steps are +0.17 / +0.04 / +0.008 dB); h2/h1 still moves.
@@ -980,11 +986,36 @@ class Fuzz(_component.Component):
         if not self._ready:
             return
         if self._value(5) <= 0.0:
-            self._output = self._source
+            self._route_around(self._source)
             self._latency = 0
         else:
+            if self._rejoin(keep=(self._tone_mix,)):
+                self._rearm()
             self._output = self._tilt
             self._latency = self._wet_delay
+
+    def _rearm(self):
+        """Arm a graph Mix 0 left un-pulled, the way `_build` arms it.
+
+        Back off a bypass every node still holds what it held when Mix went
+        to 0, and on `cascade` each voice still holds the block it had
+        queued; `_rejoin` has cleared the nodes. The mixer is left out of
+        that walk on purpose: its registered reset re-plays the voices
+        there and then, which would take a block through a pole not yet
+        charged. So the order is `_build`'s: the output pole charged on the
+        offset, the shapers pointed back at the chain, then the gates and
+        the voices (audiocomponents#113).
+        """
+        self._charge_output(rewire=True)
+        if self._tone_mix is not None:
+            _component.open_level_gates(
+                self._tone_mix,
+                [self._tone_mix.voice[0], self._tone_mix.voice[1],
+                 self._tone_mix.voice[2]],
+                self._silence)
+            self._tone_mix.voice[0].play(self._tone_lp)
+            self._tone_mix.voice[1].play(self._tone_hp)
+            self._tone_mix.voice[2].play(self._dry)
 
     def program_change(self, index, channel=0, note_id=-1,
                        sample_position=0):
