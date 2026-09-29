@@ -54,6 +54,26 @@ KNOWN_RED = {
         'a host reset_buffer shifts the Wow phase, so the output never re-converges'),
     ('SlapbackDelay', 'E8-dry', 'P3'): (
         16, '95d6ec10', 16, '95d6ec10',
+    ('DigitalDelay', 'E', 'P5'): (
+        36, 'cfa18482', 94, '4627b739',
+        'Mix, Repeat Tone, Repeat Cut and patch moves step the output within one block'),
+    ('DigitalDelay', 'E8-dry', 'P3'): (
+        6, 'e155e27d', 6, 'e155e27d',
+        'a source that stays dry through a pause and comes back: old audio plays out of silence'),
+    ('TapeDelay', 'E', 'P5'): (
+        34, '60c8dd58', 106, '4ce31e31',
+        'Time, Mix, Wow and patch moves step the output within one block'),
+    ('TapeDelay', 'E1-', 'P4'): (
+        72, '407e821c', 72, '407e821c',
+        'reset() lands patch 0 at another moment than a fresh instance, so wow and flutter never re-converge'),
+    ('TapeDelay', 'E2-', 'P4'): (
+        32, 'd3f42f25', 32, 'd3f42f25',
+        'a host reset_buffer shifts the wow and flutter phase, so the output never re-converges'),
+    ('TapeDelay', 'E4-m0=0', 'P4'): (
+        0, '00000000', 10, '816d86bd',
+        'Time to 0 and back at 22.05 kHz: the glide back outlasts tail_samples'),
+    ('TapeDelay', 'E8-dry', 'P3'): (
+        2, '1da480f7', 2, '1da480f7',
         'a source that stays dry through a pause and comes back: old audio plays out of silence'),
     ('PingPongDelay', 'E4-m2=127', 'P5'): (
         4, '31c4e1c7', 32, 'c9e4e06a',

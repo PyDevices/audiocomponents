@@ -424,6 +424,17 @@ class EchoForgetsTimeSlapback(SlapbackDelay):
             self._refresh()
 
 
+class JumpTimeSlapback(SlapbackDelay):
+    """A Time move that jumps: the node's walk turned off, so the read head
+    lands on the new Time at once (trial, 2026-09-29)."""
+
+    NAME = 'SlapbackDelay'
+
+    def _refresh(self):
+        SlapbackDelay._refresh(self)
+        self._delay.set(delay_slew=0.0)
+
+
 # --------------------------------------------------------------------------
 # Sources and pulls
 
@@ -1145,7 +1156,8 @@ class TheSurface(unittest.TestCase):
         # MIDI 60 at 44.1 kHz is 4 193 frames, landed 1/2048 of a frame
         # late: a 20 000 click's repeat (Wow 0, Level 2) reads 19 618 and
         # 10 in the frame after; at 48 kHz the same position reads 19 627 alone
-        # (the default Saturation's loss). A half frame, planted, leaks.
+        # (the default Saturation's loss). At 22.05 kHz it reads 5 in the
+        # frame before and 19 623. A half frame, planted, leaks.
         def window(cls, rate):
             probe = cls(silence_src(64, 2, rate), sample_rate=rate)
             probe.set_macro(TIME_I, 60)
@@ -1157,6 +1169,7 @@ class TheSurface(unittest.TestCase):
             return [int(v) for v in y[frames - 1:frames + 2]]
 
         self.assertEqual(window(SlapbackDelay, 44100), [0, 19618, 10])
+        self.assertEqual(window(SlapbackDelay, 22050), [5, 19623, 0])
         self.assertEqual(window(SlapbackDelay, 48000), [0, 19627, 0])
         self.assertNotEqual(window(HalfFrameSlapback, 48000),
                             [0, 19627, 0])
@@ -1615,7 +1628,7 @@ class Tier1Fast(unittest.TestCase):
     def test_the_dry_is_unity_until_the_repeat(self):
         # Level 1.0 and grid 63 (0.992): the first T - 24 frames are the
         # source, byte for byte, with the wow at its top.
-        for level in (1.0, 2.0 * 63 / 127.0):
+        for level in (0.0, 0.35, 0.7, 1.0, 2.0 * 63 / 127.0):
             T = law_frames(40.0, RATE)
             ramp = probes.ramp_fs(frames=T * 2, channels=2)
             effect = SlapbackDelay(
@@ -1850,6 +1863,298 @@ class InputCeiling(unittest.TestCase):
                                             **options), 0, options)
             self.assertGreater(railed_samples(SlapbackDelay, over,
                                               **options), 0, options)
+
+
+# --------------------------------------------------------------------------
+# The docstring's claims, each tied to the test that asserts it (the trial
+# of the second process, 2026-09-29)
+
+#: (sentence, word for word as the class docstring has it, and the test
+#: that asserts it). Every sentence in the docstring that makes a claim is
+#: here; one that could not be tied to a test was struck.
+CLAIMS = (
+    ("By default the repeat comes 135 ms after the dry, once.",
+     "test_defaults_three_rates_stereo_and_mono"),
+    ("Time runs from 40 to 250 ms, Level from 0 to 2, Saturation from 0 to "
+     "1, Tone from 2 kHz to out at its top stop, Wow from 0 to 3.5 cents "
+     "and Repeats from 0 to 0.6.", "test_the_knob_spans"),
+    ("Level 0 is a wire.", "test_level_zero_is_a_wire_on_the_full_scale_ramp"),
+    ("Up to Level 1 the dry passes untouched until the repeat arrives, "
+     "however hard Saturation drives the repeat.",
+     "test_the_dry_is_unity_until_the_repeat"),
+    ("A hot input can reach the rail, since the repeat adds to a dry at "
+     "unity.", "test_the_stated_ceiling_is_clean_and_just_over_is_not"),
+    ("At Repeats 0 there is one repeat and no second.",
+     "test_no_second_repeat_at_the_stops_and_patches"),
+    ("Repeats above 0 sends the repeat round for more.",
+     "test_the_control_moves"),
+    ("Wow swings the repeat's pitch by the cents the knob reads, at a slow "
+     "fixed rate.", "test_zero_default_and_top"),
+    ("The default Wow takes the repeat's very top more than 4 dB down at "
+     "Nyquist, where Wow 0 leaves it within half a dB.",
+     "test_presence_at_nyquist_is_the_disclosed_wow_loss"),
+    ("At 22.05 kHz the last Tone positions below the top stop clamp below "
+     "Nyquist and all do the same thing.",
+     "test_tone_stops_and_the_22k_clamp"),
+    ("Every Time position lands on the nearest whole frame at 48 kHz.",
+     "test_where_the_node_lands_the_handed_frame"),
+    ("At 44.1 and 22.05 kHz the node lands some positions a fraction of a "
+     "frame off, and a sliver of the repeat falls on the frame beside it.",
+     "test_an_off_frame_time_leaks_into_the_next_frame"),
+    ("A host that writes back `get_macro(0)` keeps the constructor's exact "
+     "Time.", "test_a_host_echoing_time_keeps_the_frame"),
+    ("Turning Time walks the repeat to the new Time, bending its pitch, "
+     "instead of clicking.", "test_a_time_move_walks"),
+    ("A Wow move glides instead of stepping.", "test_a_wow_move_does_not_step"),
+    ("A source the same in both channels comes out the same in both "
+     "channels, and a one-channel source gets the stereo render's left "
+     "channel.", "test_the_defaults_the_corner_and_the_patches"),
+    ("A click comes out on the frame it went in: there is no latency.",
+     "test_click_delay_is_zero"),
+    ("`tail_samples` is an upper bound on how many frames the output takes "
+     "to reach exact zero, counted from when your input stops or from when "
+     "you read it if that is later, for the settings as they stand when you "
+     "read it.", "test_tail_samples_holds_for_the_settings_as_they_stand"),
+    ("`reset()` empties the line and returns to patch 0.",
+     "test_reset_empties_the_line"),
+    ("The class never reads the host's tempo.",
+     "test_the_transport_is_never_read"),
+    ("A constructor value outside a knob's span clamps to the nearer stop, a "
+     "`tone_hz` of 0 or less is Tone out, and NaN takes the option's "
+     "default.", "test_constructor_clamps_and_nan"),
+    ("A control that jumps makes the output step: move it in small steps "
+     "from the host if you need it smooth.",
+     "test_a_jumping_control_steps_the_output"),
+    ("The tail rings only while the source keeps feeding: feed silence to "
+     "let it ring out.", "test_a_tail_cut_short_carries_on"),
+    ("A tail cut short by a source that stopped carries on when the source "
+     "comes back.", "test_a_tail_cut_short_carries_on"),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def _cell(event, patch, channels=1, rate=RATE, cls=None):
+    """One lifecycle matrix cell on the class, as measured, with the class's
+    DECLARED rows lifted so the raw verdict shows."""
+    import lifecycle
+    cls = cls or SlapbackDelay
+    ev = [e for e in lifecycle.events(cls, patch) if e.name == event][0]
+    saved = dict(lifecycle.DECLARED)
+    for key in list(lifecycle.DECLARED):
+        if key[0] == "SlapbackDelay":
+            del lifecycle.DECLARED[key]
+    controls = {}
+    try:
+        return lifecycle.run_cell(cls, ev, rate, channels, patch, {},
+                                  controls)
+    finally:
+        lifecycle.DECLARED.clear()
+        lifecycle.DECLARED.update(saved)
+        for ctl in controls.values():
+            ctl.close()
+
+
+class NoWowSlapback(SlapbackDelay):
+    """The class with Wow at 0 in the constructor and every patch: the
+    control for the reset cells' declared P4 rows."""
+
+    NAME = 'SlapbackDelay'
+    PATCHES = dict((index, (name, values[:WOW_I] + (0,)
+                            + values[WOW_I + 1:]))
+                   for index, (name, values) in SlapbackDelay.PATCHES.items())
+
+    def _build(self, *args, **options):
+        options.setdefault("wow_cents", 0.0)
+        SlapbackDelay._build(self, *args, **options)
+
+
+def _time_move(cls, target=52):
+    """(the tone's own largest step before the move, the largest step over
+    the 2 000 frames from it, zero crossings in 1 024 frames before and
+    after) for Time 135 ms -> `target` at frame 15 616 on 997 Hz at 12 000
+    LSB, Level 2 (the repeat alone), Wow 0, 48 kHz."""
+    at = 15616
+    values = 12000 * np.sin(2 * math.pi * 997.0 * np.arange(RATE) / RATE)
+    source, _ = to_source(values)
+    effect = cls(source, sample_rate=RATE, level=2.0, wow_cents=0.0)
+
+    def move(frame):
+        if frame == at:
+            effect.set_macro(TIME_I, target)
+
+    y = pull(effect, RATE, on_block=move)[:, 0].astype(int)
+    steady = int(np.abs(np.diff(y[at - 3000:at - 1])).max())
+    worst = int(np.abs(np.diff(y[at - 1:at + 2000])).max())
+
+    def crossings(seg):
+        return int(np.count_nonzero(np.diff(np.sign(seg)) != 0))
+    return (steady, worst, crossings(y[at - 1024:at]),
+            crossings(y[at + 256:at + 1280]))
+
+
+def _midtail(ctor, moves, at=2048, rate=RATE):
+    """A full-scale DC burst of 50 ms at Level 2, then silence; `moves` made
+    `at` frames into the silence. (`tail_samples` read as the input stops,
+    `tail_samples` read just after the moves, frames from the moves to the
+    output's last non-zero frame)."""
+    burst = int(0.05 * rate) // BLOCK * BLOCK
+    move = burst + at
+    frames = move + 30 * rate
+    values = np.zeros(frames)
+    values[:burst] = 32767
+    source, _ = to_source(values, 2, rate)
+    effect = SlapbackDelay(source, sample_rate=rate, level=2.0, **ctor)
+    seen = {}
+
+    def on_block(frame):
+        if frame == burst:
+            seen["before"] = effect.tail_samples
+        if frame == move:
+            for index, value in moves:
+                effect.set_macro(index, value)
+            seen["after"] = effect.tail_samples
+
+    y = pull(effect, frames, on_block=on_block)[:, 0]
+    nonzero = np.nonzero(y[move:])[0]
+    last = int(nonzero[-1]) + 1 if len(nonzero) else 0
+    return seen["before"], seen["after"], last
+
+
+class TheClaims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = _flat(SlapbackDelay.__doc__)
+        tests = set()
+        for value in globals().values():
+            if isinstance(value, type) and issubclass(value,
+                                                      unittest.TestCase):
+                tests.update(n for n in dir(value) if n.startswith("test_"))
+        rest = doc
+        for sentence, test in CLAIMS:
+            self.assertIn(sentence, doc, sentence)
+            self.assertIn(test, tests, sentence)
+            rest = rest.replace(sentence, " ")
+        self.assertIn("**Limits shared by the family.**", doc)
+        numbers = [w for w in rest.split() if any(c.isdigit() for c in w)]
+        self.assertEqual(numbers, [])
+
+    def test_the_knob_spans(self):
+        effect = SlapbackDelay(silence_src(64), sample_rate=RATE)
+        for index, low, high in ((TIME_I, 40.0, 250.0), (LEVEL_I, 0.0, 2.0),
+                                 (SATURATION_I, 0.0, 1.0),
+                                 (WOW_I, 0.0, 3.5), (REPEATS_I, 0.0, 0.6)):
+            effect.set_macro(index, 0)
+            self.assertAlmostEqual(effect._value(index), low, places=9)
+            effect.set_macro(index, 127)
+            self.assertAlmostEqual(effect._value(index), high, places=9)
+        effect.set_macro(TONE_I, 0)
+        self.assertAlmostEqual(effect._value(TONE_I), 2000.0, places=6)
+        self.assertEqual(effect._damping,
+                         nominal_damping_hz(2000.0, RATE))
+        effect.set_macro(TONE_I, 127)
+        self.assertEqual(effect._damping, 0.0)
+
+    def test_a_time_move_walks(self):
+        # 135 -> 85 ms (grid 52) on the repeat alone: the pitch bends up
+        # (more crossings after the move), and no step is larger than the
+        # bent tone's own (+297.5 cents, x 1.19). Planted: the walk turned
+        # off, so the head jumps 50 ms and the output clicks.
+        steady, worst, before, after = _time_move(SlapbackDelay)
+        self.assertLessEqual(worst, 1.25 * steady)
+        self.assertGreater(after, before)
+        steady, worst, _, _ = _time_move(JumpTimeSlapback)
+        self.assertGreater(worst, 2 * steady)
+
+    def test_tail_samples_holds_for_the_settings_as_they_stand(self):
+        # Re-audit 1 found the tail sentence named no clock. Each row moves
+        # a setting 2 048 frames into the silence (1 024 on a 40 ms Time,
+        # whose repeat is over by then) and reads `tail_samples` after it:
+        # the output is exact zero within that many frames of the move.
+        rows = (({}, [(REPEATS_I, 127)], 2048),
+                ({"repeats": 0.6}, [(REPEATS_I, 0)], 2048),
+                ({"time_ms": 250.0}, [(TIME_I, 0)], 2048),
+                ({"time_ms": 40.0}, [(TIME_I, 127)], 1024),
+                ({"wow_cents": 0.0}, [(WOW_I, 127)], 2048),
+                ({"wow_cents": 3.5, "repeats": 0.6}, [(WOW_I, 0)], 2048),
+                ({"time_ms": 40.0, "wow_cents": 3.5}, [(WOW_I, 0)], 1024),
+                ({"repeats": 0.5}, [(TONE_I, 0)], 2048),
+                ({"tone_hz": 2000.0, "repeats": 0.6}, [(TONE_I, 127)], 2048))
+        for ctor, moves, at in rows:
+            before, after, last = _midtail(ctor, moves, at)
+            self.assertGreater(last, 0, (ctor, moves))
+            self.assertLessEqual(last, after, (ctor, moves, before, after))
+        # The value read before a Repeats move up does not hold after it.
+        before, after, last = _midtail({}, [(REPEATS_I, 127)])
+        self.assertGreater(last, before)
+
+    def test_the_reset_cells_differ_from_an_unreset_control_with_wow(self):
+        # The matrix's E1 and E2 cells go red on P4 at every patch, each
+        # with Wow above 0; with Wow 0 in the constructor and every patch
+        # the same cells are ok. A reset restarts the wobble where a fresh
+        # instance's starts (test_a_reset_restarts_the_wobble), and the
+        # matrix's control never stopped, so its wobble is further along.
+        # The class declares the cells.
+        for event in ("E1-reset@block", "E1-reset@part", "E2-reset_buffer"):
+            for patch in (None, 2):
+                res = _cell(event, patch)
+                self.assertTrue(res["P4"].startswith("RED"), (event, res))
+                res = _cell(event, patch, cls=NoWowSlapback)
+                self.assertEqual(res["P4"], "ok", (event, res))
+
+    def test_a_reset_restarts_the_wobble(self):
+        # Backs the DECLARED reason for E1/E2 P4: after reset() or the
+        # host's reset_buffer, patch 0 with Wow at its top, the output is
+        # sample for sample a fresh instance's fed the same material from
+        # that frame, while an instance that ran on without the reset
+        # differs in nearly every sample.
+        at = 40 * BLOCK
+        for rate in (48000, 22050):
+            for channels in (2, 1):
+                noise = np.random.default_rng(7).uniform(
+                    -12000, 12000, at + rate // 2)
+                for how in ("reset", "reset_buffer"):
+                    source, _ = to_source(noise, channels, rate)
+                    a = SlapbackDelay(source, sample_rate=rate, patch=0)
+                    a.set_macro(WOW_I, 127)
+                    pull(a, at)
+                    if how == "reset":
+                        a.reset()
+                    else:
+                        audiocore.reset_buffer(a.output)
+                    a.set_macro(WOW_I, 127)
+                    got = pull(a, rate // 2)
+                    source, _ = to_source(noise[at:], channels, rate)
+                    b = SlapbackDelay(source, sample_rate=rate, patch=0)
+                    b.set_macro(WOW_I, 127)
+                    want = pull(b, rate // 2)
+                    key = (rate, channels, how)
+                    self.assertEqual(int(np.count_nonzero(got != want)), 0,
+                                     key)
+                source, _ = to_source(noise, channels, rate)
+                c = SlapbackDelay(source, sample_rate=rate, patch=0)
+                c.set_macro(WOW_I, 127)
+                ran_on = pull(c, at + rate // 2)[at:]
+                differ = int(np.count_nonzero(ran_on[-1000:]
+                                              != want[-1000:]))
+                self.assertGreater(differ, 0.99 * 1000 * channels,
+                                   (rate, channels))
+
+    def test_a_jumping_control_steps_the_output(self):
+        # The matrix's E5 cell at patch 2 (Level to 0 and back) steps past
+        # its bar; the class declares it (audiocomponents#117).
+        res = _cell("E5-mix0", 2)
+        self.assertTrue(res["P5"].startswith("RED"), res)
+        self.assertEqual(res["P1"], "ok", res)
+
+    def test_a_tail_cut_short_carries_on(self):
+        # The matrix's E8-dry cell at patch 2: the source hands back an
+        # empty buffer once, and when it comes back the tail it cut short
+        # plays out of the silence (audiodsp#180).
+        res = _cell("E8-dry", 2)
+        self.assertTrue(res["P3"].startswith("RED(peak"), res)
+        self.assertEqual(res["P2"], "ok", res)
 
 
 # --------------------------------------------------------------------------

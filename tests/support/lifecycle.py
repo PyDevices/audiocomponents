@@ -162,6 +162,20 @@ DECLARED = {
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (the patch change; the Time moves glide)',
     ("DigitalDelay", 'E8-dry', 'P3'):
         'family limit, disclosed (audiodsp#180): a tail cut short by a source that stopped carries on when the source comes back',
+    ("SlapbackDelay", "E", "P5"):
+        "a control that jumps steps the output (family, audiocomponents#117):"
+        " Level, Tone and patch moves have no ramp",
+    ("SlapbackDelay", "E8-dry", "P3"):
+        "a tail cut short by a stopped source carries on when it comes back"
+        " (family, audiodsp#180)",
+    ("SlapbackDelay", "E1-", "P4"):
+        "a reset restarts the Wow wobble where a fresh instance's starts;"
+        " the control never stopped, so its wobble is further along and"
+        " with Wow above 0 the two never line up again (ok at Wow 0)",
+    ("SlapbackDelay", "E2-", "P4"):
+        "reset_buffer restarts the Wow wobble where a fresh instance's"
+        " starts; the control never stopped, so its wobble is further along"
+        " and with Wow above 0 the two never line up again (ok at Wow 0)",
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")
