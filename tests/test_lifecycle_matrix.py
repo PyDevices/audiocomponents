@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zlib
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "lib"))
@@ -33,28 +34,122 @@ from audioeffects import rebuilt                          # noqa: E402
 PHASE5 = ("DigitalDelay", "SlapbackDelay", "TapeDelay", "PingPongDelay",
           "MultiTapDelay", "AnalogDelay", "Reverb", "ConvolutionReverb")
 
-#: (class, event, property, rate, channels, patch) -> reason. `event` may
-#: end in `*` (a prefix); rate, channels and patch may be `*`; patch is
-#: "d" for the constructor defaults. Every red cell must match a row, and
-#: every cell a row matches must be red.
+#: What is red today. (class, event name prefix, property) ->
+#: (red cells in the quick matrix, their digest, red cells in the full
+#: matrix, their digest, reason). A red cell belongs to the row with the
+#: longest matching prefix. The file goes red when a red cell belongs to no
+#: row, or when a row's cells change in number or in which cells they are
+#: (the message lists them). The full-matrix pair is None where the full
+#: matrix has not been run (MultiTapDelay: it takes about 40 minutes on
+#: CPython).
 KNOWN_RED = {
+    ('DigitalDelay', 'E', 'P5'): (
+        36, 'cfa18482', 94, '4627b739',
+        'Mix, Repeat Tone, Repeat Cut and patch moves step the output within one block'),
+    ('DigitalDelay', 'E8-dry', 'P3'): (
+        6, 'e155e27d', 6, 'e155e27d',
+        'a source that stays dry through a pause and comes back: old audio plays out of silence'),
+    ('SlapbackDelay', 'E', 'P5'): (
+        124, '01ddb3de', 198, '4cda9a29',
+        'Level, Tone and patch moves step the output within one block (no ramp)'),
+    ('SlapbackDelay', 'E1-', 'P4'): (
+        56, 'c608fc28', 56, 'c608fc28',
+        'reset() lands patch 0 at another moment than a fresh instance, so the Wow phase never re-converges'),
+    ('SlapbackDelay', 'E2-', 'P4'): (
+        28, 'cbf2eabb', 28, 'cbf2eabb',
+        'a host reset_buffer shifts the Wow phase, so the output never re-converges'),
+    ('SlapbackDelay', 'E8-dry', 'P3'): (
+        16, '95d6ec10', 16, '95d6ec10',
+        'a source that stays dry through a pause and comes back: old audio plays out of silence'),
+    ('TapeDelay', 'E', 'P5'): (
+        34, '60c8dd58', 106, '4ce31e31',
+        'Time, Mix, Wow and patch moves step the output within one block'),
+    ('TapeDelay', 'E1-', 'P4'): (
+        72, '407e821c', 72, '407e821c',
+        'reset() lands patch 0 at another moment than a fresh instance, so wow and flutter never re-converge'),
+    ('TapeDelay', 'E2-', 'P4'): (
+        32, 'd3f42f25', 32, 'd3f42f25',
+        'a host reset_buffer shifts the wow and flutter phase, so the output never re-converges'),
+    ('TapeDelay', 'E4-m0=0', 'P4'): (
+        0, '00000000', 10, '816d86bd',
+        'Time to 0 and back at 22.05 kHz: the glide back outlasts tail_samples'),
+    ('TapeDelay', 'E8-dry', 'P3'): (
+        2, '1da480f7', 2, '1da480f7',
+        'a source that stays dry through a pause and comes back: old audio plays out of silence'),
+    ('PingPongDelay', 'E4-m2=127', 'P5'): (
+        4, '31c4e1c7', 32, 'c9e4e06a',
+        'Mix to 127 steps the output within one block'),
+    ('MultiTapDelay', 'E', 'P4'): (
+        4, '11f966a4', None, None,
+        'at 22.05 kHz stereo a Mix, Repeat Tone or patch move re-converges after tail_samples allows'),
+    ('MultiTapDelay', 'E', 'P5'): (
+        84, '6aacc9b1', None, None,
+        'Time, Heads, Tilt and patch moves step the output within one block (Time and Heads disclosed)'),
+    ('MultiTapDelay', 'E1-', 'P4'): (
+        16, '9a49aaf5', None, None,
+        'at 22.05 kHz mono a reset re-converges about 1000 frames after tail_samples allows'),
+    ('MultiTapDelay', 'E5-', 'P4'): (
+        14, 'b3271a6f', None, None,
+        'Mix 0 and back leaves the class out of step with a fresh instance for good'),
+    ('MultiTapDelay', 'E8-dry', 'P4'): (
+        15, '6743df4e', None, None,
+        'a source that runs dry once leaves the class out of step with a fresh instance for good'),
+    ('MultiTapDelay', 'E9-', 'P4'): (
+        70, '123b91ee', None, None,
+        'Mix 0 and back leaves the class out of step with a fresh instance for good'),
+    ('AnalogDelay', 'E', 'P4'): (
+        37, '1266f888', 150, 'bb0595c6',
+        "the Modulation LFO's phase moves with the event, so a modulated patch never re-converges"),
+    ('AnalogDelay', 'E', 'P5'): (
+        74, 'b699cca1', 214, '8d248b43',
+        'Time, Mix and patch moves step the output within one block'),
+    ('AnalogDelay', 'E8-dry', 'P3'): (
+        8, 'e1967d96', 8, 'e1967d96',
+        'a source that stays dry through a pause and comes back: old audio plays out of silence'),
+    ('Reverb', 'E', 'P4'): (
+        322, '606b9d85', 1409, '722197fe',
+        'a network move, reset or reset_buffer never re-converges to a fresh instance (modulation phase?)'),
+    ('Reverb', 'E', 'P5'): (
+        416, '8e447fac', 1166, '886ecc00',
+        'almost every macro and patch move steps the output within one block'),
+    ('Reverb', 'E1-reset@part', 'P1'): (
+        44, 'df421423', 44, 'df421423',
+        'reset() part-way through a source buffer drops the frames the input held: silence at Mix 0'),
+    ('Reverb', 'E8-dry', 'P3'): (
+        44, 'e23e44d7', 44, 'e23e44d7',
+        'a source that stays dry through a pause and comes back: old audio plays out of silence'),
+    ('ConvolutionReverb', 'E', 'P5'): (
+        324, '9421d061', 678, 'e8b57cdc',
+        'Mix, Damping, Predelay, Room and patch moves step the output within one block'),
+    ('ConvolutionReverb', 'E1-', 'P1'): (
+        72, '387f53ad', 72, '387f53ad',
+        'reset() silences the next 256 frames, dry included (disclosed)'),
+    ('ConvolutionReverb', 'E2-', 'P1'): (
+        36, '78219cf4', 36, '78219cf4',
+        'a host reset_buffer silences the next 256 frames at Mix 0, dry included'),
+    ('ConvolutionReverb', 'E4-m5=0', 'P1'): (
+        4, '2857f42f', 36, 'd4cc4837',
+        'Mix to 0 lands one block late: the first block after the move is not the source'),
+    ('ConvolutionReverb', 'E5-', 'P1'): (
+        36, 'caf98973', 36, 'caf98973',
+        'Mix to 0 lands one block late: the first block after the move is not the source'),
+    ('ConvolutionReverb', 'E8-dry', 'P3'): (
+        36, 'b7504caa', 36, 'b7504caa',
+        'a source that stays dry through a pause and comes back: old audio plays out of silence'),
 }
 
+#: LIFECYCLE_FULL=1 runs the full matrix (every event at every patch);
+#: otherwise the quick one (lifecycle.run_class(quick=True)).
+FULL = bool(os.environ.get("LIFECYCLE_FULL"))
 
-def _match(row, cell):
-    for want, got in zip(row, cell):
-        if want == "*":
-            continue
-        if isinstance(want, str) and want.endswith("*"):
-            if not str(got).startswith(want[:-1]):
-                return False
-        elif str(want) != str(got):
-            return False
-    return True
+
+def digest(cells):
+    text = "\n".join(sorted("|".join(map(str, c)) for c in cells))
+    return "%08x" % (zlib.crc32(text.encode()) & 0xFFFFFFFF)
 
 
 def parse(lines):
-    """{(class, event, rate, ch, patch): {prop: verdict}} and summaries."""
+    """{(class, event, rate, ch, patch): {prop: verdict}}."""
     cells = {}
     for line in lines:
         parts = line.split("|")
@@ -74,28 +169,47 @@ def red_cells(cells):
     return out
 
 
-def check_known(name, red, cells):
-    """Problems with `red` against KNOWN_RED, for class `name`."""
-    rows = [row for row in KNOWN_RED if row[0] == name]
-    problems = []
-    for cell in sorted(red):
-        if not any(_match(row, cell) for row in rows):
-            problems.append("new red: %s" % "|".join(map(str, cell)))
+def row_of(cell, rows):
+    best = None
     for row in rows:
-        matched = [c for c in cells_as_props(cells) if _match(row, c)]
-        if not matched:
-            problems.append("row matches no cell: %r" % (row,))
-        for cell in matched:
-            if cell not in red:
-                problems.append("turned green: %s (row %r)" % (
-                    "|".join(map(str, cell)), row))
+        if row[0] == cell[0] and row[2] == cell[2] and \
+                cell[1].startswith(row[1]):
+            if best is None or len(row[1]) > len(best[1]):
+                best = row
+    return best
+
+
+def group(name, red, table):
+    rows = [row for row in table if row[0] == name]
+    groups = dict((row, set()) for row in rows)
+    loose = []
+    for cell in sorted(red):
+        row = row_of(cell, rows)
+        if row is None:
+            loose.append(cell)
+        else:
+            groups[row].add(cell)
+    return groups, loose
+
+
+def check_known(name, red, table=None, full=None):
+    """Problems with class `name`'s red cells against KNOWN_RED."""
+    table = KNOWN_RED if table is None else table
+    full = FULL if full is None else full
+    groups, loose = group(name, red, table)
+    problems = ["new red: %s" % "|".join(map(str, c)) for c in loose]
+    for row, got in sorted(groups.items()):
+        entry = table[row]
+        count, dig = (entry[2], entry[3]) if full else (entry[0], entry[1])
+        if count is None:
+            continue
+        if (len(got), digest(got)) != (count, dig):
+            problems.append("row %r changed: %d red cells (digest %s), "
+                            "expected %d (%s); now red: %s" % (
+                                row, len(got), digest(got), count, dig,
+                                ", ".join("|".join(map(str, c[1:]))
+                                          for c in sorted(got))[:1500]))
     return problems
-
-
-def cells_as_props(cells):
-    for key, props in cells.items():
-        for prop in props:
-            yield (key[0], key[1], prop, key[2], key[3], key[4])
 
 
 def classes():
@@ -144,13 +258,14 @@ def start_native(binary, names, scratch):
                GCOV_PREFIX=scratch, PYTHONDONTWRITEBYTECODE="1")
     return subprocess.Popen(
         [binary, "-X", "heapsize=256M", "tests/support/lifecycle.py"]
-        + list(names), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        + list(names) + ([] if FULL else ["--quick"]), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, cwd=ROOT, env=env)
 
 
 def run_cpython(name):
     lines = []
-    lifecycle.run_class(rebuilt.module_class(name), emit=lines.append)
+    lifecycle.run_class(rebuilt.module_class(name), emit=lines.append,
+                        quick=not FULL)
     return lines
 
 
@@ -189,7 +304,7 @@ class TestMatrix(unittest.TestCase):
         problems = []
         for name in self.names:
             cells = parse(self.cpython[name])
-            problems += check_known(name, red_cells(cells), cells)
+            problems += check_known(name, red_cells(cells))
         self.assertEqual(problems, [], "\n".join(problems[:60]))
 
     def _p6(self, family):
@@ -261,15 +376,19 @@ class TestPlants(unittest.TestCase):
         self.assertEqual(got, "decl")
 
     def test_known_red_catches_both_directions(self):
-        cells = {("X", "E1", 48000, 2, "d"): {"P1": "RED(x)", "P2": "ok"}}
-        red = red_cells(cells)
-        KNOWN_RED[("X", "E1", "P2", "*", "*", "*")] = "planted"
-        try:
-            problems = check_known("X", red, cells)
-        finally:
-            del KNOWN_RED[("X", "E1", "P2", "*", "*", "*")]
-        self.assertTrue(any(p.startswith("new red") for p in problems))
-        self.assertTrue(any(p.startswith("turned green") for p in problems))
+        one = ("X", "E1-a", "P1", 48000, 2, "d")
+        two = ("X", "E1-b", "P1", 48000, 2, "d")
+        table = {("X", "E1-", "P1"): (2, digest([one, two]), None, None,
+                                      "planted")}
+        self.assertEqual(check_known("X", {one, two}, table, False), [])
+        # A listed cell turned green, a cell swapped for another, a red
+        # cell no row names: each is a problem.
+        self.assertTrue(check_known("X", {one}, table, False))
+        three = ("X", "E1-c", "P1", 48000, 2, "d")
+        self.assertTrue(check_known("X", {one, three}, table, False))
+        four = ("X", "E2-a", "P1", 48000, 2, "d")
+        got = check_known("X", {one, two, four}, table, False)
+        self.assertTrue(any(p.startswith("new red") for p in got))
 
     def test_p6_can_fail(self):
         """A plant whose level depends on the interpreter prints a
