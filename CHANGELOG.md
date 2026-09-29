@@ -69,6 +69,29 @@ there, and are recorded in its changelog.
   that changes only the wobble's depth glides over 20 ms, and a knob turned
   down to 0 keeps the last wow table while the depth ramps out; a move
   that changes the balance of Wow and Flutter still steps, disclosed.
+- **`AnalogDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** a
+  bucket-brigade delay on one `audioecho.FeedbackDelay`, with the Boss
+  DM-2's one 4096-stage line (`"single-line"`, the default) and the Deluxe
+  Memory Man's two in series (`"double-line"`) as characters. The Time knob
+  is the line's clock: the repeats' high-frequency corner tracks it as
+  0.2211 N / T, so they darken as Time grows, and a Time move bends their
+  pitch by T_old / T_new for exactly T_new instead of clicking. Every Time
+  lands on a whole frame at every rate, and Mix 0 is a wire while the line
+  keeps recording. Modulation is a triangle of fixed millisecond swing, and
+  Sync follows a host's beat by Division. There is no sample-and-hold, no
+  compander and no fixed ~3 kHz pair, so short Times are brighter than
+  either pedal. It lives in `lib/audioeffects/rebuilt/analogdelay.py`, and
+  `audioeffects.AnalogDelay` is still the old class. The docstring states
+  the input ceiling (-4.4 dBFS peak at the default Mix 0.4) and that
+  turning Time through several positions takes seconds to settle. Board
+  cost is unmeasured. At audiodsp v0.6.3rc1 the Feedback is handed as set
+  (no stepping clear of the stall windows; the bound counts one landing lap
+  there), and a Modulation move glides over 20 ms instead of stepping the
+  read offset. At v0.6.3rc3 Spread is handed as set: the node's stereo
+  cross-feed tail now ends on its own (audiodsp#170), so the 1/4096 grid
+  the class used to dodge it is gone. A jumping control steps the output
+  and a tail cut short by a stopped source carries on when it comes back,
+  disclosed as family limits (audiocomponents#117, audiodsp#180).
 - **`PingPongDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** repeats
   that alternate between the speakers, on one `audioecho.FeedbackDelay`
   whose cross-feed and input pan Spread moves between two plain delays and

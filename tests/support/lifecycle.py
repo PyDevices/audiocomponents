@@ -73,8 +73,30 @@ MIX_INDEX = {
 #: Where a class cannot satisfy a property by design, it says so HERE, one
 #: row per (class NAME, event name prefix, property): reason. A matching
 #: cell prints `decl` instead of RED and is counted as a declared exception.
-#: Nothing else skips a cell. Empty on purpose: no class has declared one.
+#: Nothing else skips a cell.
 DECLARED = {
+    ("AnalogDelay", "E", "P5"):
+        "a control that jumps steps the output (family, audiocomponents#117);"
+        " a Time move bends the pitch while the line walks, by design",
+    ("AnalogDelay", "E8-dry", "P3"):
+        "a tail cut short by a stopped source carries on when it comes back"
+        " (family, audiodsp#180)",
+    ("AnalogDelay", "E2-", "P4"):
+        "reset_buffer restarts the modulation triangle (the node's"
+        " state_init), so a modulated patch then matches a fresh instance,"
+        " not the uninterrupted control",
+    ("AnalogDelay", "E4-", "P4"):
+        "a Mod Rate move shifts the free-running triangle; after a Time move"
+        " and back, a 1-LSB rounding difference circulates in the feedback"
+        " loop past tail_samples",
+    ("AnalogDelay", "E6-", "P4"):
+        "a patch change shifts the free-running triangle, or leaves a 1-LSB"
+        " rounding difference circulating in the feedback loop past"
+        " tail_samples",
+    ("AnalogDelay", "E11-", "P4"):
+        "a patch change shifts the free-running triangle, or leaves a 1-LSB"
+        " rounding difference circulating in the feedback loop past"
+        " tail_samples",
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")
