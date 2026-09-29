@@ -1,171 +1,77 @@
-"""`Reverb` - Dattorro's plate network, cut four ways: an EMT 140 plate, a
-room, a chamber and a hall.
+"""`Reverb` - Dattorro's plate network, cut four ways: a plate, a room, a
+chamber and a hall.
 
-Rebuilt from scratch for Phase 5 against
-`workspace docs/effects-internal/dossiers/Reverb.md`, whose trait table was
-frozen at Station A before this file existed (anchor commit
-34753deba8a9d542050d42eaa9f756bcd160951f, the Station A critique's
-re-freeze, 2026-09-28). The old class in `reverb.py` is consulted only for
-the seven defects that dossier's section 7 names; it stays the class the
-library serves until the board runner adopts this one.
+Your dry signal passes untouched and a reverb tail rises behind it.
+Character picks the machine: `plate` is dense from the first milliseconds,
+the way the EMT 140's steel sheet is, while `room`, `chamber` and `hall`
+start sparse and build. Decay (0.3 to 10 s) sets how long the tail rings,
+Size (0.5 to 1.5) stretches every line of the network, and Predelay (0 to
+200 ms) holds the tail back from the dry. Diffusion (0 to 0.9) smears the
+early echoes, Damping (500 Hz to 16 kHz) darkens the tail as it rings, and
+Bandwidth (500 Hz to 20 kHz) darkens what goes in. Low Cut (20 to 500 Hz)
+keeps the bass out of the tank while the dry keeps it. Mod Depth (0 to 2 ms)
+and Mod Rate (0.1 to 5 Hz) wobble two lines inside the tank, Width (0 to 1)
+sets the stereo spread, and Tone (-12 to +12 dB) tilts the tail. Mix (0 to
+2) is `audiodelays.Echo`'s: the dry at unity until 1, the tail alone at 2.
+Mix 0 is a byte-exact wire while the tank keeps ringing behind it. Latency
+is zero: nothing looks ahead, and Predelay delays only the tail.
 
-**What it sounds like.** Your dry signal passes untouched and a reverb
-tail rises behind it. Character picks the machine: `plate` is dense from
-the first milliseconds, the way a steel sheet is, while `room`, `chamber`
-and `hall` start sparse and build, and differ in how long and how late
-they are. Decay is the time the tail takes to fall 60 dB at 500 Hz (0.3 to
-10 s). Size stretches every line of the network (0.5 to 1.5). Predelay
-holds the tail back from the dry (0 to 200 ms). Diffusion smears the early
-echoes (0 to 0.9). Damping darkens the tail as it rings (500 Hz to 16 kHz;
-on the plate it is where the damper ends up at the shortest Decays, see
-below). Bandwidth darkens what goes in, Low Cut keeps the bass out of the
-tank while the dry keeps it (20 to 500 Hz). Mod Depth and Mod Rate wobble
-two lines inside the tank so it does not ring on fixed pitches. Width
-narrows the image to mono at 0. Tone tilts the tail about 1 kHz. Mix is
-`audiodelays.Echo`'s: the dry at unity until 1, the tail alone at 2, and
-Mix 0 is a byte-exact wire while the tank keeps ringing behind it.
+On the plate, Decay also moves the tail's loss corner, the way the EMT
+140's damping panel does: open at Decay 8 s and above, at the Damping
+setting at 1 s and below. So a short plate is a darker plate: each halving
+of Decay from 8 s to 1 s shortens the upper band more than the lower one.
 
-**The plate's damper.** On the plate, Decay also moves the tail's loss
-corner, the way the EMT 140's damping panel does: fully open at Decay 8 s
-and above, at the Damping setting at 1 s and below, geometric in log Decay
-between. So a short plate is a darker plate, and the upper bands shorten
-more than the lower ones as you turn Decay down.
+A Character or Size move re-cuts the tank: the tail drops to nothing at the
+move, and the dry carries on without losing a frame. `reset()` empties the
+tank the same way, keeps the dry, and restores patch 0.
 
-**The standout:** the EMT 140 plate (Russo's thesis on its physics) and
-Dattorro's "Effect Design, Part 1" network, which he wrote as the plate
-class of reverberator; the room, chamber and hall are that network
-re-proportioned. The Fender 6G15 spring the dossier also studied is not
-here: the tank has no dispersive chain and the palette cannot build one
-that chirps upward (dossier section 8.6), so the spring character is
-parked until the node carries one. Asking for `character="spring"` says so.
+**Decay.** At each character's reference patch (Steel Plate, Live Room,
+Dark Chamber, Concert Hall) at Size 1.0, the tail falls 60 dB at 500 Hz
+within 12 % of Decay at 2, 3, 4, 6, 8 and 10 s, and on the hall from 4 s.
+Shorter Decays, other Sizes and the other patches are not claimed: Damped
+Plate, Small Room and Live Room ring longer than their Decay reads. With
+Damping at 1 kHz and Size 0.5, the room, chamber and hall at Decay 8 and
+10 s ring more than 12 % short of it: the class holds the bass to 1.5 x
+Decay. A sparse, quiet input rings out sooner than the knob: one click at
+1 000 LSB on an 8 s plate is exactly silent within 2 s.
 
-**Portability tier: audiodsp** (`REQUIRES = ("audioverb",)`). The whole wet
-path is one `audioverb.Tank`. On a stock CircuitPython board this module
-imports cleanly and construction raises `ImportError`.
+**Modulation.** With Mod Depth at 0, a 1 kHz tone on Steel Plate or Concert
+Hall comes out as one line, its sidebands more than 60 dB under it. On those
+two patches as shipped, at every grid position from 17 to 64 of Mod Depth
+(about 0.27 to 1 ms) and from 45 to 81 of Mod Rate (about 0.4 to 1.2 Hz),
+tones at 300 Hz, 1 kHz and 3 kHz spread into sidebands within 20 dB of the
+tone. Outside that it is not claimed: on Steel Plate a 3 kHz tone at Mod
+Depth position 81 (about 1.28 ms) and Mod Rate position 121 (about 4.16 Hz)
+reads more than 20 dB under.
 
-**Character and Size are set-and-leave.** The Tank's line lengths are fixed
-when it is built, so a Character move to another zone, or a Size move that
-changes the line set (almost any Size move does), builds a new Tank: the
-tail drops to nothing at the move, and you will hear the reverb cut off.
-The order is fixed: the output plays the dry alone, the old Tank is
-released, the new one is built with every other setting applied and
-starts from empty lines. Set them before you play, not while a tail rings.
-A patch that changes both rebuilds once.
+**Input ceiling.** There is no input gain, and the tank's lines clamp at the
+rail on every write whatever Mix is: a steady 362 Hz tone at 8 000 LSB RMS
+comes back more than 1 dB quieter in the tail than at 4 000. On 2 s of
+uniform noise at 4 000 LSB RMS at Mix 1, no shipped patch reaches the rail
+at 48, 44.1 or 22.05 kHz; Bright Chamber at 44.1 kHz is not claimed.
 
-A rebuild can also skip some of your dry. The Tank pulls its source a
-buffer at a time and plays 256 frames per block, so between blocks it may
-hold the rest of a source buffer it has not played yet; the old Tank takes
-those frames with it, and the new one starts at the source's next buffer.
-A source whose buffers divide 256 frames (a 256-frame host block does)
-loses nothing. One that hands 1024 or 2048 frames can lose up to a buffer
-less a block (512 frames when the move lands 1536 frames in), and the
-output then runs that far ahead of the source, at Mix 0 too: the byte-exact
-wire holds across a move only on such a source. A `RawSample` played
-straight in, which hands its whole buffer at once, loses the rest of it.
-`reset()` drops the same pending frames, as every class's reset does
-(`audiocore.reset_buffer`), and at the constructor's Size its patch 0
-rebuilds the Tank as well, since the grid's Size 64 cuts different lines
-from Size 1.0.
+**The patches:** Steel Plate (the defaults), Short Plate, Damped Plate,
+Bass-Free Plate, Small Room, Live Room, Concert Hall, Dark Chamber, Bright
+Chamber, Slow Bloom.
 
-**Decay is T60 at 500 Hz, between two knees.** The label holds to within
-12 % over most of the span (dossier T11). Below each character's *floor
-knee* its own diffusers and taps ring longer than the label, so the
-shortest Decays land at the floor (0.24 to 1.38 s over characters and
-Size) and the knob does least there; under the knee the delivered time can
-even step backward a little as the label rises. Above the *ceiling knee*,
-which a low Damping corner brings down on the room, chamber and hall, the
-class holds the bass to 1.5 x Decay and T60 at 500 Hz lands short of the
-label. Both knees are tabled per character and Size in the dossier's
-section 8.9, read on the 0-127 grid at each character's reference patch.
-Where the floor knee sits depends on the noise it is measured with, so it
-is tabled as a band: the lowest and the highest knee read on four sets of
-eight noise seeds. The bands' tops run from 0.45 s (the room at Size 0.5)
-to 2 s (the plate at Size 1.25, the hall at Size 1.5), and the widest band
-spans four Decay stops (the plate at Size 0.5, 0.3 to 1 s). From a band's
-top up the label held on every set measured; inside the band it holds on
-some sets and not others. The plate has no ceiling knee on the span, and
-the chamber at Size 1.5 has no floor knee at or under 2 s on one set of
-the four (its 2 s position reads 10 to 13 % long).
+`tail_samples` bounds the frames until the output is exactly zero once
+your input stops: 222 868 frames at the defaults at 48 kHz. One int16
+allocation holds the lines and 200 ms of predelay: 89 714 B for Steel Plate
+at 48 kHz, and 146 914 B for the hall at Size 1.5, the most it takes.
 
-**A sparse, quiet input decays sooner than the knob.** The tank's lines are
-16-bit and truncate toward zero, which is what lets the tail reach exact
-silence, but it also bites into a quiet tail: an impulse of 1 000 LSB on
-an 8 s plate reads 2.97 s, where interrupted noise at 8 000 LSB RMS reads
-8.29 s (dossier section 8.7). Every Decay figure here is from interrupted
-noise at 8 000 LSB RMS.
+**Limits shared by the family**
 
-**The patches.** Steel Plate (the defaults), Short Plate, Damped Plate,
-Bass-Free Plate (Low Cut at the 6G15's 360 Hz), Small Room, Live Room,
-Concert Hall, Dark Chamber, Bright Chamber, Slow Bloom. Two of them sit
-under their character's floor knee and ring longer than their Decay reads.
-Small Room's Decay reads 0.454 s and it rings 0.576 s at 500 Hz; it ships
-so because the rooms must stay that much shorter than the hall. Damped
-Plate's reads 1.011 s and it rings 1.228 s, because at Size 1.25 the
-plate's own ringing sets the time until somewhere between Decay 1.5 and
-2 s, depending on the noise it is measured with.
+A control that jumps makes the output step: move it in small steps from
+the host if you need it smooth.
 
-**Latency: zero samples, at every setting, character and rate.** Nothing
-looks ahead. Predelay is the wet path, not latency on the dry.
+The tail rings only while the source keeps feeding: feed silence to let
+it ring out. A tail cut short by a source that stopped carries on when
+the source comes back.
 
-**Mono.** The tank sums its input to one signal either way; a one-channel
-source gets the mono fold-down of the stereo tank, both tap sets in the one
-lane, halved (`audiodsp_tank.c:571-580`).
-
-**Mod Depth under 0.27 ms.** Whether a small depth spreads a steady tone
-into sidebands depends on the exact lines Size cuts. At 0.1 ms and 1 Hz on
-Steel Plate the sidebands of a 1 kHz tone sit 18.4 dB under it at Size 1.0
-and 27.2 dB under it at patch 0's Size (1.0039), and over the nine Size
-steps around it they range from 27.2 dB under to 12.5 dB over. Concert
-Hall is no steadier there: at 0.1 ms and 1 Hz a 1 kHz tone's sidebands sit
-2.3 dB under it and a 533.5 Hz tone's 32.5 dB under. From 0.27 ms up they
-measure within 20 dB of the tone on Steel Plate and Concert Hall at every
-Mod Rate for tones at 300 Hz, 1 kHz and 3 kHz, the three measured on the
-grid. That is three tones, not the band between them: at 0.27 ms and 5 Hz
-a 317.8 Hz tone on Concert Hall reads 23.9 dB under, and a 1004.9 Hz tone
-on Steel Plate 21.2 dB under.
-
-**Tone** spans +/-12 dB of end-to-end tilt, which the node puts half at
-each end: +12 is about -6 dB at 40 Hz and +6 dB at 16 kHz. At the centre
-the class hands 2^-24 dB rather than 0, so the tilt's filter keeps
-following the tail and a later Tone move out of silence stays silent.
-
-**Input ceiling.** Two things limit how hard you can drive it, and there
-is no input gain to turn down. First, the tank's 16-bit lines clamp at the
-rail on every write, whatever Mix is, so the tail compresses before the
-output clips: at the defaults a steady 362 Hz sine comes back 1.3 dB
-quieter in the tail at 8 000 LSB RMS (-12.3 dBFS) than at 1 000 to 4 000,
-and 7.5 dB quieter at 16 000, with the output still under the rail. Second,
-the tank adds dry and wet before it rounds and clamps the output. On 2 s of
-uniform noise at Mix 1 no shipped patch reaches the rail at 4 000 LSB RMS
-(-18.3 dBFS), at 48, 44.1 or 22.05 kHz; at 8 000 LSB RMS most of them do,
-up to 482 samples in 2 s on Bright Chamber. The 4 000 LSB RMS figure is the
-patches', not every setting's: with Decay 10 s, Size 1.5 and Diffusion 0.9
-at Mix 1, Live Room puts 12 samples on the rail at 22.05 kHz.
-
-**RAM.** One int16 allocation: the twelve lines plus 200 ms of predelay.
-89 714 B for Steel Plate at 48 kHz; 146 914 B for the hall at Size 1.5, the
-most the class allocates. A Character or Size move frees the old Tank
-before it builds the new one. A board that cannot afford the larger lines
-fails the move with the allocation's `MemoryError`, and the output is then
-the dry alone until a move that fits.
-
-**Cost.** One `audioverb.Tank`, no mixer (the Tank sums the dry itself),
-so no glue: **P4 <= 19 %, S3 <= 33 %** of a 5.333 ms stereo block, from the
-cost table's Tank row at Dattorro's network. The board measurement is
-pending hardware, and the row did not run Low Cut, Tone or Width below 1,
-which most patches do. No `" - lean"` patch: every patch runs the same
-graph.
-
-**Tail.** `tail_samples` bounds the frames until the output is exactly zero
-once your input stops: fs x (Predelay + 1.6 x max(1.2 x T_lf, 1.5 x Size)),
-T_lf being the low-frequency T60 the handed `decay` gives, the longest any
-band rings. 222 868 frames (4.64 s) at the defaults at 48 kHz.
-
-`capabilities = ()`: nothing here reads the host's transport.
-
-A value outside a macro's span clamps to the nearer stop; NaN takes the
-option's default; `character` must be `"plate"`, `"room"`, `"chamber"` or
-`"hall"`.
+Asking for `character="spring"` says it is parked: the tank has no
+dispersive chain yet. A value outside a macro's span clamps to the nearer
+stop, and NaN takes the option's default. On a board without `audioverb`,
+construction raises `ImportError`.
 """
 
 VENDOR = "PyDevices"
@@ -245,15 +151,6 @@ DAMPER_SHORT_S = 1.0
 
 #: The frequency Decay is stated at.
 DECAY_HZ = 500.0
-
-#: What the class hands for Tone at its centre detent instead of 0 dB. The
-#: Tank runs its tilt one-pole only while `tone_db` is non-zero
-#: (`audiodsp_tank.c:596-602`), so at exact 0 the filter's state freezes
-#: on whatever it last held and comes out as sound the moment Tone leaves
-#: the detent, even out of exact silence. 2^-24 dB keeps the one-pole
-#: tracking; both of its gains round to exactly 1 in single precision, so
-#: it is the flat tilt, and every float format holds it exactly.
-TONE_TRACK_DB = 1.0 / 16777216.0
 
 (CHARACTER_I, DECAY_I, SIZE_I, PREDELAY_I, DIFFUSION_I, DAMPING_I,
  BANDWIDTH_I, LOW_CUT_I, MOD_DEPTH_I, MOD_RATE_I, WIDTH_I, TONE_I,
@@ -392,16 +289,9 @@ def _between(value, low, high):
 
 
 class Reverb(_component.Component):
-    """Dattorro's network as four machines: an EMT 140 plate that is dense
-    at once and darkens as Decay shortens, and a room, chamber and hall
-    that build. Decay is T60 at 500 Hz. audiodsp tier; zero latency.
-
-    **What the default surrenders:** Decay holds its label only between a
-    floor knee and a ceiling knee (dossier section 8.9); a sparse, quiet
-    input decays sooner than the knob; Character and Size rebuild the tank,
-    cut the tail and can skip the dry the old tank held pending; the
-    spring character is parked.
-    """
+    """Dattorro's network as four machines: an EMT plate that is dense at
+    once and darkens as Decay shortens, and a room, chamber and hall that
+    build. The module docstring is the player's page."""
 
     NAME = 'Reverb'
     DISPLAY_NAME = 'Reverb'
@@ -557,9 +447,8 @@ class Reverb(_component.Component):
         return self._hz(value)
 
     def _tone_db(self, value):
-        """The tilt handed to the Tank: never exactly 0 (`TONE_TRACK_DB`)."""
-        if value == 0.0:
-            return TONE_TRACK_DB
+        """The tilt handed to the Tank, as set: the node keeps its tilt
+        tracking at 0 dB (audiodsp#168)."""
         return value
 
     def _mod_rate_hz(self, value):
@@ -588,13 +477,6 @@ class Reverb(_component.Component):
             self._deferred = False
         if type(self).PATCHES.get(index) is not None:
             self._refresh()
-
-    def _disown(self, node):
-        for position in range(len(self._nodes) - 1, -1, -1):
-            if self._nodes[position] is node:
-                del self._nodes[position]
-                del self._resets[position]
-                del self._deinits[position]
 
     def _refresh(self):
         fs = self._sample_rate
@@ -626,9 +508,11 @@ class Reverb(_component.Component):
                 _between(self._value(TONE_I), -12.0, 12.0)),
             "mix": _between(self._value(MIX_I), 0.0, 2.0),
         }
-        if (self._tank is None or index != self._index
-                or lines != self._lines or taps != self._taps):
-            self._rebuild(index, lines, taps, handed)
+        if self._tank is None:
+            self._build_tank(index, lines, taps, handed)
+        elif index != self._index or lines != self._lines \
+                or taps != self._taps:
+            self._recut(index, lines, taps, handed)
         else:
             self._tank.set(**handed)
         self._handed = handed
@@ -636,20 +520,10 @@ class Reverb(_component.Component):
         self._t_lf = t_lf
         self._tail = tail_frames(fs, predelay, t_lf, size)
 
-    def _rebuild(self, index, lines, taps, handed):
-        """Replace the Tank (dossier section 8.8): the output plays the dry
-        alone, the old Tank is released, the new one is built with every
-        setting applied, plays the source, and the output points at it.
-        Source frames the old Tank pulled and had not played go with it
-        (the module docstring says when)."""
-        old = self._tank
-        if old is not None:
-            self._output = self._source
-            self._disown(old)
-            self._tank = None
-            self._lines = None
-            self._taps = None
-            old.deinit()
+    def _build_tank(self, index, lines, taps, handed):
+        """Build the one Tank, at construction. Its sample rate, channel
+        count and predelay allocation never change after, so every later
+        Character or Size move is a re-cut of this node (`_recut`)."""
         tank = audioverb.Tank(
             sample_rate=self._sample_rate,
             channel_count=self._channel_count,
@@ -657,14 +531,26 @@ class Reverb(_component.Component):
             delays=lines,
             taps=taps,
             **handed)
-        # The Tank's reset empties every line and filter
-        # (`audiodsp_tank_reset`), so the base's reset walk clears the tail.
-        self._tank = self._own(tank)
+        # `clear` empties every line and filter and keeps the source frames
+        # the Tank has pulled and not yet played, so `reset()` does not skip
+        # the dry; `audiocore.reset_buffer` would drop them.
+        self._tank = self._own(tank, reset=tank.clear)
         self._index = index
         self._lines = lines
         self._taps = taps
         tank.play(self._source)
         self._output = tank
+
+    def _recut(self, index, lines, taps, handed):
+        """Re-cut the playing Tank in place (audiodsp#169): every line and
+        filter starts empty, as a new Tank's would, and the source frames it
+        holds stay, so the dry does not skip. The node allocates the new
+        lines before it frees the old, and a refused allocation leaves it
+        as it was."""
+        self._tank.set(delays=lines, taps=taps, **handed)
+        self._index = index
+        self._lines = lines
+        self._taps = taps
 
     @property
     def tail_samples(self):

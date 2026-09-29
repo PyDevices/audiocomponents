@@ -75,6 +75,23 @@ MIX_INDEX = {
 #: cell prints `decl` instead of RED and is counted as a declared exception.
 #: Nothing else skips a cell. Empty on purpose: no class has declared one.
 DECLARED = {
+    # Reverb: the tank's int16 lines truncate on every write and its
+    # filters run in float, so once two tanks have heard different material
+    # they stay a few LSB apart under the same input for good (seen at Mod
+    # Depth 0 too); a reset or a re-cut also restarts the modulation phase.
+    ("Reverb", "E1-", "P4"): "a reset tank never re-converges byte for byte (int16 lines, free modulation phase)",
+    ("Reverb", "E2-", "P4"): "a reset_buffer tank never re-converges byte for byte (int16 lines, free modulation phase)",
+    ("Reverb", "E4-", "P4"): "a move that reaches the loop leaves the tank a few LSB off a fresh one for good",
+    ("Reverb", "E6-", "P4"): "a patch move reaches the loop and leaves the tank a few LSB off a fresh one for good",
+    ("Reverb", "E11-", "P4"): "moves that reach the loop leave the tank a few LSB off a fresh one for good",
+    # Brad's ruling of 2026-09-28, disclosed in the docstring's "Limits
+    # shared by the family" (audiocomponents#117, audiodsp#180).
+    ("Reverb", "E4-", "P5"): "family: a control that jumps makes the output step (#117)",
+    ("Reverb", "E5-", "P5"): "family: a control that jumps makes the output step (#117)",
+    ("Reverb", "E6-", "P5"): "family: a control that jumps makes the output step (#117)",
+    ("Reverb", "E9-", "P5"): "family: a control that jumps makes the output step (#117)",
+    ("Reverb", "E11-", "P5"): "family: a control that jumps makes the output step (#117)",
+    ("Reverb", "E8-dry", "P3"): "family: the tail rings only while the source feeds (audiodsp#180)",
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")
