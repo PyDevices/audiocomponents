@@ -101,7 +101,10 @@ there, and are recorded in its changelog.
   raises naming the class, the taps, the rate and the limit in seconds.
   `latency_samples` reads the node: 256 frames whenever an impulse is
   loaded, 0 when none is, and Mix 0 is the source delayed by exactly that,
-  byte for byte. Measured mode loads at unit mean energy and refuses the
+  byte for byte, except for the frames a mid-stream `reset()` silences
+  and a pull the source leaves without a single frame, which comes out
+  as 256 frames of silence and puts what follows 256 frames later.
+  Measured mode loads at unit mean energy and refuses the
   synthesis macros with `IndexError`; no impulse ships. It lives in
   `lib/audioeffects/rebuilt/convolutionreverb.py`, and
   `audioeffects.ConvolutionReverb` is still the old class. It stands on
@@ -109,12 +112,13 @@ there, and are recorded in its changelog.
   block in flight, with no frame of the dry dropped or repeated at any Mix
   and the tail ringing on into the new room (a straight-line crossfade
   when it is the only room change between two pulls and the source has
-  not run dry part-way through a block since the last `reset()`;
+  not come up short (an empty buffer, one shorter than a frame, or an
+  error result) part-way through a block since the last `reset()`;
   otherwise the output can jump), and each side of a stereo room
   is unit energy on its own, so the room sits in the middle (the two
   sides within 0.001 dB on the room's own impulse over the settings
   walked). The docstring states the low-material lift a dark room gives
-  and the partition a mid-stream `reset()` drops. Board cost is unmeasured;
+  and the frames a mid-stream `reset()` silences. Board cost is unmeasured;
   by the cost table's line the default fits an S3, and
   anything over 0.091 s there is desktop-only.
 

@@ -71,13 +71,22 @@ loaded state; the synthesized room is always loaded, and only an empty
 impulse (`impulse=b""`) leaves the node a plain undelayed wire. Mix 0 is
 the source delayed by exactly `latency_samples`, byte for byte, because the
 node stays in the path at Mix 0 and a Mix move never jumps the timeline.
-A room-knob move keeps it too; the one exception is the 256 frames after
-a `reset()` (below).
+A room-knob move keeps it too. It does not hold over the
+`latency_samples` frames after a `reset()` (below), nor across a pull in
+which the source comes up short (an empty buffer, one shorter than a
+frame, or an error result) before the pull has a single frame: that pull
+comes out as 256 frames of silence, and everything after it comes out 256
+frames later. The node takes whole frames only: a part frame at the end
+of a buffer, and anything an error result carries, never reach it.
 
 **Tail.** `tail_samples` is `latency_samples` plus the loaded impulse
 rounded up to a partition: 4 096 frames (85.3 ms) at the default at
-48 kHz, 3 840 at 44.1 kHz, 2 048 at 22.05 kHz. After it the output is
-exactly zero.
+48 kHz, 3 840 at 44.1 kHz, 2 048 at 22.05 kHz. Counted in the frames the
+source hands, the output is exactly zero from more than `tail_samples`
+frames after the last non-zero one. Only frames the source hands move the
+room on: a pull of silence like the one above holds the tail where it is,
+and a source that stops handing frames stops the tail with it, until it
+hands frames again.
 
 **RAM.** 141 800 B at the default at 48 kHz with a stereo room (8 224 B a
 partition plus 18 440 B fixed), 110 960 B with a mono one; 133 576 B at
@@ -96,8 +105,8 @@ had the new settings.
 The change runs in a straight line from the old room to the new, at the
 Mix already in flight and within 1 LSB where neither room is at full
 scale, when two things hold: it is the only room change between two
-pulls, and the source has not handed back an empty buffer part-way
-through a block since the instance was built or last `reset()`. A patch
+pulls, and the source has not come up short (above) part-way through a
+block since the instance was built or last `reset()`. A patch
 change counts as one room change however many knobs it moves, and a move
 that lands on the room already loaded leaves the audio untouched.
 Otherwise the output can jump by many times what either room does on its
@@ -114,10 +123,12 @@ from 0 to 127 after 10 pulls.
 A patch change, the constructor and `reset()` synthesize at most once,
 not once per knob. The synthesis runs on the thread that moves the knob;
 on a board it can race the audio pump (audiodsp#166, open), which a
-desktop cannot show. `reset()` in the middle of a stream empties the room: the
-next 256 frames come out as exact zero, dry included. A Mix move never
-touches the room. It acts on the audio entering the node after it, so the
-block already in flight, at most 256 frames, comes out at the old Mix.
+desktop cannot show. `reset()` in the middle of a stream empties the room:
+the next `latency_samples` frames come out as exact zero, dry included.
+That is 256 with a room loaded and none on the empty impulse, whose output
+stays the source. A Mix move never touches the room. It acts on the audio
+entering the node after it, so the block already in flight, at most 256
+frames, comes out at the old Mix.
 
 **What the default surrenders.** The room is normalised to unit energy
 across the whole band, so with Damping in, low material comes back louder
@@ -343,12 +354,12 @@ class ConvolutionReverb(_component.Component):
 
     **What the default surrenders:** a dark room lifts low material (a low
     chord +3.83 dB at the default Damping, +13.40 dB at 500 Hz, 48 kHz),
-    calling `reset()` mid-stream silences the next 256 frames, dry
-    included, at every Mix, and anything longer than 0.091 s on an S3 or
+    calling `reset()` mid-stream with a room loaded silences the next 256
+    frames, dry included, and anything longer than 0.091 s on an S3 or
     0.219 s on a P4 is a desktop room (pending hardware). A room-knob move
     drops no dry frame. Two room changes between two pulls, or a move
-    after the source has handed back an empty buffer part-way through a
-    block (until a `reset()`), can make the output jump.
+    after the source has come up short part-way through a block (until a
+    `reset()`), can make the output jump.
     """
 
     NAME = 'ConvolutionReverb'

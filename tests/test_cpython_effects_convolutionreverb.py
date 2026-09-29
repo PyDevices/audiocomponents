@@ -78,6 +78,21 @@ of its sentences: the rule's legs (`OneSynthesisPerBlock` red on the pairs,
 under-run), the dry wire after every pair and an under-run (`ResetOnMove`),
 the Mix sentence (`MixOnePullLate`) and the reset sentence (`NoReset`). The
 `cf17a88` words are red on all seven.
+
+The audit after that round parked the class on four sentences that said
+more than the node does with a source that comes up short, and re-audit
+fix round 2 after the re-audit round 2 restates them, each read by a test
+that is red on the `8a57282` words and on a plant: coming up short is an
+empty buffer, one shorter than a frame or an error result
+(`test_every_short_read_part_way_counts_as_coming_up_short`, `RetryOnShort`;
+`RetryOnEmpty` is the clean class on the byte and error legs); a pull that
+comes up short before it has a frame is 256 frames of silence and moves
+the rest 256 frames later, and an error result's frames and a part frame
+never reach the node (the dry test's source cases, `ResetOnMove` and
+`KeepShortReads`); `reset()` silences `latency_samples` frames, none on the
+empty impulse (`ResetSilentOnEmpty`, `NoReset`); and the tail is counted in
+the frames the source hands (`test_the_tail_counts_the_frames_the_source_hands`,
+`TailTwoShort`).
 """
 
 import os
@@ -795,6 +810,112 @@ class RetryOnEmpty(ConvolutionReverb):
         ConvolutionReverb._build(self, *arguments, **options)
 
 
+class _RetryShortSource(_RetrySource):
+    """`_RetrySource` for every short read the binding stops on: an error
+    result, or a buffer shorter than one frame."""
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        width = 2 * self.channel_count
+        for _ in range(8):
+            result, data = self.inner._get_buffer(single_channel_output,
+                                                  audio_channel)
+            if result != audiocore.GET_BUFFER_ERROR and len(data) >= width:
+                break
+        return result, data
+
+
+class RetryOnShort(ConvolutionReverb):
+    """The short-read legs' control (re-audit fix round 2 after the re-audit
+    round 2 at audiodsp v0.6.3rc2): the class pulls again on every short
+    read the binding stops on (`Convolver.c:278` at 0d35a90), an empty
+    buffer, one shorter than a frame or an error result, so the node never
+    returns a short block. A move after any of them then fades over the
+    whole block. `RetryOnEmpty`, which tests only for an empty buffer, is
+    the clean class on the byte and error legs."""
+
+    NAME = NAME
+
+    def _build(self, *arguments, **options):
+        self._source = _RetryShortSource(self._source)
+        ConvolutionReverb._build(self, *arguments, **options)
+
+
+class _KeepShortSource(_RetrySource):
+    """The class's source behind a proxy that hands the node what the
+    binding would drop: an error result's frames as plain data, and a
+    part frame at the end of a buffer padded with zero bytes to a whole
+    frame."""
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        result, data = self.inner._get_buffer(single_channel_output,
+                                              audio_channel)
+        data = bytes(data)
+        width = 2 * self.channel_count
+        if len(data) > width and len(data) % width:
+            data += bytes(width - len(data) % width)
+        if result == audiocore.GET_BUFFER_ERROR:
+            result = audiocore.GET_BUFFER_MORE_DATA
+        return result, memoryview(data)
+
+
+class KeepShortReads(ConvolutionReverb):
+    """The whole-frames sentence's control: the part frame and the error
+    result's frames reach the node (`_KeepShortSource`)."""
+
+    NAME = NAME
+
+    def _build(self, *arguments, **options):
+        self._source = _KeepShortSource(self._source)
+        ConvolutionReverb._build(self, *arguments, **options)
+
+
+class _SilentBlock(kit_faults.HiddenGain):
+    """A 0 dB pass-through that, once armed, answers one pull with a
+    256-frame block of silence without pulling what is behind it."""
+
+    def __init__(self, source):
+        kit_faults.HiddenGain.__init__(self, source, 0.0)
+        self.armed = False
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        if self.armed:
+            self.armed = False
+            return (audiocore.GET_BUFFER_MORE_DATA,
+                    memoryview(bytes(256 * 2 * self.channel_count)))
+        return kit_faults.HiddenGain._get_buffer(
+            self, single_channel_output, audio_channel)
+
+
+class ResetSilentOnEmpty(ConvolutionReverb):
+    """The empty-impulse reset leg's control: on the empty impulse,
+    `reset()` plays a 256-frame block of silence, which is what "the next
+    256 frames come out as exact zero" (the `8a57282` words) promised
+    there too. With a room loaded it is the clean class."""
+
+    NAME = NAME
+
+    def _build(self, *arguments, **options):
+        ConvolutionReverb._build(self, *arguments, **options)
+        self._silent = _SilentBlock(self._node)
+        self._output = self._silent
+
+    def reset(self):
+        ConvolutionReverb.reset(self)
+        self._silent.armed = not int(self._node.taps)
+
+
+class TailTwoShort(ConvolutionReverb):
+    """The tail leg's control: `tail_samples` two frames short."""
+
+    NAME = NAME
+
+    @property
+    def tail_samples(self):
+        self._check_live()
+        taps = int(self._node.taps)
+        return (self._latency() + taps if taps else 0) - 2
+
+
 class MixOnePullLate(ConvolutionReverb):
     """The Mix sentence's control: a Mix move handed to the node one pull
     late, so 512 frames come out at the old Mix, not 256."""
@@ -1314,13 +1435,17 @@ def fade_reading(old, new, moved, first=None, at=None):
 
 
 class DryOnce(probes.ArraySource):
-    """int16 frames in 256-frame calls, except where `plan` maps a call
-    number (from 1) to how many frames that call hands: 0 is an empty
-    buffer, the source running dry for one call and then going on."""
+    """int16 frames in 256-frame calls (or `size`-frame calls), except
+    where `plan` maps a call number (from 1) to what that call hands: a
+    number is that many frames of the material, 0 an empty buffer, the
+    source running dry for one call and then going on; ("bytes", n) is n
+    stray bytes of 0x11 that take nothing from the material; ("error", n)
+    is `GET_BUFFER_ERROR` carrying the next n frames of the material."""
 
-    def __init__(self, data, rate, channels, plan=None):
+    def __init__(self, data, rate, channels, plan=None, size=None):
         probes.ArraySource.__init__(self, data, rate=rate, channels=channels)
         self.plan = dict(plan or {})
+        self.size = size
         self.calls = 0
 
     def _reset_buffer(self, single_channel_output=False, audio_channel=0):
@@ -1329,13 +1454,19 @@ class DryOnce(probes.ArraySource):
 
     def _get_buffer(self, single_channel_output=False, audio_channel=0):
         self.calls += 1
-        take = self.plan.get(self.calls)
+        take = self.plan.get(self.calls, self.size)
         if take is None:
             return probes.ArraySource._get_buffer(self)
+        result = audiocore.GET_BUFFER_MORE_DATA
+        if isinstance(take, tuple):
+            kind, take = take
+            if kind == "bytes":
+                return result, memoryview(b"\x11" * take)
+            result = audiocore.GET_BUFFER_ERROR
         stride = take * self.channel_count * 2
         chunk = bytes(self._pcm[self._position:self._position + stride])
         self._position += len(chunk)
-        return 1, memoryview(chunk)
+        return result, memoryview(chunk)
 
 
 #: The source hands 255 frames on its fourth call and an empty buffer on
@@ -1355,13 +1486,14 @@ def act(effect, moves):
 
 
 def dry_render(cls, rate, channels, start, pcm, plan=None, actions=None,
-               mix=2.0, blocks=40):
-    """`blocks` host pulls over `pcm` from a DryOnce source, `start` applied
-    at construction and `actions[n]` just before pull n. Returns the output
+               mix=2.0, blocks=40, size=None, **options):
+    """`blocks` host pulls over `pcm` from a DryOnce source (calls of `size`
+    frames, default 256), `start` applied at construction and `actions[n]`
+    just before pull n; `options` go to the constructor. Returns the output
     as (frames, channels) and the frame count of each pull."""
-    effect = build(cls, rate, channels, mix=mix)
+    effect = build(cls, rate, channels, mix=mix, **options)
     act(effect, start)
-    effect._source.swap(DryOnce(pcm, rate, channels, plan))
+    effect._source.swap(DryOnce(pcm, rate, channels, plan, size))
     audiocore.reset_buffer(effect.node)
     out, sizes = [], []
     for number in range(blocks):
@@ -1390,8 +1522,8 @@ MOVE_WORDS = (
     "from the end of the block in flight the output is exactly that of an "
     "instance that always had the new settings.",
     "when two things hold: it is the only room change between two pulls, "
-    "and the source has not handed back an empty buffer part-way through a "
-    "block since the instance was built or last `reset()`.",
+    "and the source has not come up short (above) part-way through a block "
+    "since the instance was built or last `reset()`.",
     "A patch change counts as one room change however many knobs it moves, "
     "and a move that lands on the room already loaded leaves the audio "
     "untouched.",
@@ -1400,12 +1532,37 @@ MOVE_WORDS = (
 )
 SUMMARY_WORDS = (
     "A room-knob move drops no dry frame. Two room changes between two "
-    "pulls, or a move after the source has handed back an empty buffer "
-    "part-way through a block (until a `reset()`), can make the output "
-    "jump.")
+    "pulls, or a move after the source has come up short part-way through "
+    "a block (until a `reset()`), can make the output jump.")
+#: What coming up short is, and what the node does with a short read
+#: (re-audit fix round 2 after the re-audit round 2 at audiodsp
+#: v0.6.3rc2): the latency paragraph.
+LATENCY_WORDS = (
+    "Mix 0 is the source delayed by exactly `latency_samples`, byte for "
+    "byte, because the node stays in the path at Mix 0 and a Mix move never "
+    "jumps the timeline. A room-knob move keeps it too. It does not hold "
+    "over the `latency_samples` frames after a `reset()` (below), nor "
+    "across a pull in which the source comes up short (an empty buffer, one "
+    "shorter than a frame, or an error result) before the pull has a single "
+    "frame: that pull comes out as 256 frames of silence, and everything "
+    "after it comes out 256 frames later.",
+    "The node takes whole frames only: a part frame at the end of a buffer, "
+    "and anything an error result carries, never reach it.",
+)
+TAIL_WORDS = (
+    "Counted in the frames the source hands, the output is exactly zero "
+    "from more than `tail_samples` frames after the last non-zero one. Only "
+    "frames the source hands move the room on: a pull of silence like the "
+    "one above holds the tail where it is, and a source that stops handing "
+    "frames stops the tail with it, until it hands frames again.")
 RESET_WORDS = (
-    "`reset()` in the middle of a stream empties the room: the next 256 "
-    "frames come out as exact zero, dry included.")
+    "`reset()` in the middle of a stream empties the room: the next "
+    "`latency_samples` frames come out as exact zero, dry included. That is "
+    "256 with a room loaded and none on the empty impulse, whose output "
+    "stays the source.")
+RESET_SUMMARY_WORDS = (
+    "calling `reset()` mid-stream with a room loaded silences the next 256 "
+    "frames, dry included,")
 MIX_LATE_RE = re.compile(
     r"A\s+Mix\s+move\s+never\s+touches\s+the\s+room\.\s+It\s+acts\s+on\s+the"
     r"\s+audio\s+entering\s+the\s+node\s+after\s+it,\s+so\s+the\s+block"
@@ -1623,6 +1780,69 @@ class RoomMoveWords(unittest.TestCase):
                 on_line(old, new, moved, sum(sizes[:24]),
                         label + ("under-run, reset()",))
 
+    def test_every_short_read_part_way_counts_as_coming_up_short(
+            self, cls=None):
+        # "comes up short (an empty buffer, one shorter than a frame, or an
+        # error result)", and the rule's "has not come up short (above)
+        # part-way through a block": the source hands 100 frames on its
+        # fourth call and, on its fifth, an empty buffer, 1 stray byte, 3
+        # stray bytes (stereo) or an error result carrying 7 frames. Each
+        # returns a short block of 100 frames, and a Predelay 0 -> 127 move
+        # twenty pulls on is off the new room over at most 155 frames, not
+        # 255, and off the 256-frame line by far more than 1 LSB; a Mix
+        # 0 -> 2 move there leaves 156 frames at the old Mix, not 256. The
+        # controls, 3 whole frames and (stereo) 5 bytes, a frame and a
+        # part, are not short: the node pulls again, the block is whole,
+        # and the move is on the line (255 frames off the new room, 256 at
+        # the old Mix). RetryOnShort (the class pulls again on every short
+        # read) is red on the short legs; RetryOnEmpty is red only on the
+        # empty one.
+        self.assertTrue(said(rebuilt.__doc__, LATENCY_WORDS[0]))
+        self.assertTrue(said(rebuilt.__doc__, MOVE_WORDS[2]))
+        self.assertTrue(said(ConvolutionReverb.__doc__, SUMMARY_WORDS))
+        start = DARK + HOLD_MIX
+        move = ((PREDELAY_I, 127),)
+        for rate in RATES:
+            for channels in (2, 1):
+                pcm = sine(44 * 256, channels, 40.0, rate, 2000.0)
+                legs = [("empty", 0, True), ("1 byte", ("bytes", 1), True),
+                        ("error, 7 frames", ("error", 7), True),
+                        ("3 frames", 3, False)]
+                if channels == 2:
+                    legs += [("3 bytes", ("bytes", 3), True),
+                             ("5 bytes", ("bytes", 5), False)]
+                for name, what, short in legs:
+                    plan = {4: 100, 5: what}
+                    label = (rate, channels, name)
+                    old, sizes = dry_render(cls, rate, channels, start, pcm,
+                                            plan, blocks=44)
+                    new = dry_render(cls, rate, channels, start + move, pcm,
+                                     plan, blocks=44)[0]
+                    moved = dry_render(cls, rate, channels, start, pcm, plan,
+                                       {24: move}, blocks=44)[0]
+                    a = sum(sizes[:24])
+                    r = fade_reading(old, new, moved, at=a)
+                    off = np.nonzero(np.any(moved[a:] != new[a:], axis=1))[0]
+                    fade = int(off[-1]) + 1
+                    m0 = dry_render(cls, rate, channels, (), pcm, plan,
+                                    mix=0.0, blocks=44)[0]
+                    m2 = dry_render(cls, rate, channels, (), pcm, plan,
+                                    {24: ((MIX_I, 127),)}, mix=0.0,
+                                    blocks=44)[0]
+                    late = int(np.nonzero(np.any(m0[a:] != m2[a:],
+                                                 axis=1))[0][0])
+                    self.assertEqual(r["pre"], 0, (label, r))
+                    if short:
+                        self.assertEqual(sizes[3], 100, label)
+                        self.assertLessEqual(fade, 155, (label, fade))
+                        self.assertGreater(r["off_line"], 100.0, (label, r))
+                        self.assertEqual(late, 156, label)
+                    else:
+                        self.assertEqual(sizes[3], 256, label)
+                        self.assertEqual(fade, 255, label)
+                        self.assertLessEqual(r["off_line"], 1.0, (label, r))
+                        self.assertEqual(late, 256, label)
+
     def test_no_dry_frame_drops_after_any_number_of_changes(self, cls=None):
         # "No frame of your dry signal drops or repeats, at any Mix and
         # after any number of moves: at Mix 0 the output is byte for byte
@@ -1630,39 +1850,82 @@ class RoomMoveWords(unittest.TestCase):
         # changes the rule names (Mix put back to 0 after a patch), across
         # moves after the source ran dry 100 and 255 frames into a block,
         # and across a move made before a pull the source leaves empty at
-        # a block edge. Where the source never leaves a block short that is
-        # the source delayed by `latency_samples`, and the test wants that
-        # too. ResetOnMove is red.
+        # a block edge. And it reads the latency paragraph against the same
+        # renders: Mix 0 is the source delayed by `latency_samples`, byte
+        # for byte, from a source in 256-frame calls, in 100-frame calls and
+        # in 1 000-frame calls, and after it comes up short part-way through
+        # a block; a pull in which it comes up short before the pull has a
+        # frame (an empty buffer, 1 stray byte or an error result at a block
+        # edge, and two such pulls) comes out as 256 frames of silence with
+        # everything after it 256 frames later; an error result's frames
+        # never reach the node, and neither does the part frame at the end
+        # of a buffer of a frame and a byte (its whole frame does). The
+        # moves come before and after the starved pull. ResetOnMove is red,
+        # and so are the 8a57282 words, whose one exception was the reset.
         self.assertTrue(said(rebuilt.__doc__, MOVE_WORDS[0]))
+        for words in LATENCY_WORDS:
+            self.assertTrue(said(rebuilt.__doc__, words), words)
         wire_back = ((MIX_I, 0),)
+        stray = np.frombuffer(b"\x11\x11", dtype=np.int16)[0]
+        room = ((ROOM_I, 50),)
         for rate in RATES:
             for channels in (2, 1):
                 frames = 40 * 256
                 pcm = ((np.arange(frames) * 7) % 20001 - 10000).astype(
                     np.int16)
                 pcm = np.repeat(pcm[:, None], channels, axis=1)
-                want = np.vstack([silence(LATENCY, channels), pcm])
-                # (name, source plan, moves, whether the output is the
-                # source delayed by `latency_samples`: not where the node
-                # plays a starved pull as silence)
-                cases = [(name, None, {MOVE_AT: changes + wire_back}, True)
-                         for name, _, changes in TWO_CHANGES]
+
+                def wire(source, silent=()):
+                    """`source` delayed by `latency_samples`, with 256
+                    frames of silence at each output frame in `silent`
+                    (output frames, the earlier silences counted)."""
+                    out = np.vstack([silence(LATENCY, channels), source])
+                    for at in sorted(silent):
+                        out = np.vstack([out[:at], silence(256, channels),
+                                         out[at:]])
+                    return out
+
+                edge = MOVE_AT * 256       # the starved pull, call 11
+                dropped = np.vstack([pcm[:edge], pcm[edge + 7:]])
+                part = np.vstack([pcm[:edge],
+                                  np.full((1, channels), stray, np.int16),
+                                  pcm[edge:]])
+                # (name, source plan, moves, the call size, what Mix 0 is)
+                cases = [(name, None, {MOVE_AT: changes + wire_back}, None,
+                          wire(pcm)) for name, _, changes in TWO_CHANGES]
                 for p in (100, 255):
                     cases.append(("under-run %d" % p, {4: p, 5: 0}, {
-                        20: ((ROOM_I, 50),),
-                        21: ((PREDELAY_I, 40), (DECAY_I, 30))}, True))
-                cases.append(("empty at a block edge", {11: 0},
-                              {MOVE_AT: ((ROOM_I, 50),)}, False))
-                for name, plan, actions, delayed in cases:
+                        20: room, 21: ((PREDELAY_I, 40), (DECAY_I, 30))},
+                        None, wire(pcm)))
+                cases += [
+                    ("100-frame calls, one empty", {30: 0}, {20: room}, 100,
+                     wire(pcm)),
+                    ("1 000-frame calls, one empty", {5: 0}, {6: room}, 1000,
+                     wire(pcm)),
+                    ("empty at a block edge, a move before it", {11: 0},
+                     {MOVE_AT: room}, None, wire(pcm, (edge,))),
+                    ("empty at a block edge, a move after it", {11: 0},
+                     {20: room}, None, wire(pcm, (edge,))),
+                    ("1 byte at a block edge", {11: ("bytes", 1)},
+                     {20: room}, None, wire(pcm, (edge,))),
+                    ("an error with 7 frames at a block edge",
+                     {11: ("error", 7)}, {20: room}, None,
+                     wire(dropped, (edge,))),
+                    ("two empty pulls", {11: 0, 15: 0}, {20: room}, None,
+                     wire(pcm, (edge, 14 * 256))),
+                    ("a frame and a byte at a block edge",
+                     {11: ("bytes", 2 * channels + 1)}, {20: room}, None,
+                     wire(part)),
+                ]
+                for name, plan, actions, size, want in cases:
                     label = (rate, channels, name)
                     out = dry_render(cls, rate, channels, (), pcm, plan,
-                                     actions, mix=0.0)[0]
+                                     actions, mix=0.0, size=size)[0]
                     still = dry_render(cls, rate, channels, (), pcm, plan,
-                                       mix=0.0)[0]
+                                       mix=0.0, size=size)[0]
                     self.assertEqual(digest(out), digest(still), label)
-                    if delayed:
-                        self.assertEqual(digest(out),
-                                         digest(want[:len(out)]), label)
+                    self.assertEqual(digest(out), digest(want[:len(out)]),
+                                     label)
 
     def test_a_mix_move_leaves_the_block_in_flight_at_the_old_mix(
             self, cls=None):
@@ -1701,22 +1964,39 @@ class RoomMoveWords(unittest.TestCase):
 
     def test_reset_silences_the_next_256_frames(self, cls=None):
         # "`reset()` in the middle of a stream empties the room: the next
-        # 256 frames come out as exact zero, dry included": at Mix 0, 1.2
-        # and 2, from a steady source and after one that ran dry 100 frames
-        # into a block, the 256 frames after a reset() twenty pulls in are
-        # exact zero and the frames either side of them are not. NoReset
-        # (a reset that keeps the history) is red.
+        # `latency_samples` frames come out as exact zero, dry included.
+        # That is 256 with a room loaded": at Mix 0, 1.2 and 2, on the
+        # synthesized room from a steady source and after one that ran dry
+        # 100 frames into a block, and on a measured impulse of 1 000 taps,
+        # the 256 frames after a reset() twenty pulls in are
+        # exact zero and the frames either side of them are not; at Mix 0
+        # the output is the source delayed by `latency_samples` but for
+        # those 256 frames (the latency paragraph's first exception). On
+        # the empty impulse (`latency_samples` 0) the reset silences
+        # nothing: at Mix 0, 0.6, 1.2 and 2 no output frame is zero and the
+        # output is the source, frame for frame. NoReset (a reset that
+        # keeps the history) is red on the room, ResetSilentOnEmpty (a
+        # reset that plays 256 frames of silence whatever the node holds)
+        # on the empty impulse, and so are the 8a57282 words, which said
+        # the next 256 frames at every Mix.
         self.assertTrue(said(rebuilt.__doc__, RESET_WORDS))
+        self.assertTrue(said(ConvolutionReverb.__doc__, RESET_SUMMARY_WORDS))
         for rate in RATES:
             for channels in (2, 1):
                 pcm = white(40 * 256, channels, -6.0, seed=4244)
-                for plan in (None, {4: 100, 5: 0}):
+                pcm[pcm == 0] = 1
+                want = np.vstack([silence(LATENCY, channels), pcm])
+                rooms = ({}, dict(impulse=make_impulse(1000).tobytes()))
+                for plan, room in ((None, rooms[0]), ({4: 100, 5: 0},
+                                                     rooms[0]),
+                                   (None, rooms[1])):
                     for midi in (0, 76, 127):
                         out, sizes = dry_render(
                             cls, rate, channels, ((MIX_I, midi),), pcm, plan,
-                            {20: (("reset", None), (MIX_I, midi))}, mix=0.0)
+                            {20: (("reset", None), (MIX_I, midi))}, mix=0.0,
+                            **room)
                         a = sum(sizes[:20])
-                        label = (rate, channels, plan, midi)
+                        label = (rate, channels, plan, bool(room), midi)
                         self.assertEqual(
                             int(np.max(np.abs(out[a:a + 256]))), 0, label)
                         self.assertGreater(
@@ -1724,6 +2004,77 @@ class RoomMoveWords(unittest.TestCase):
                         self.assertGreater(
                             int(np.max(np.abs(out[a + 256:a + 512]))), 0,
                             label)
+                        if midi == 0:
+                            wire = want[:len(out)].copy()
+                            wire[a:a + 256] = 0
+                            self.assertEqual(digest(out), digest(wire),
+                                             label)
+                for midi in (0, 38, 76, 127):
+                    label = (rate, channels, "empty impulse", midi)
+                    out = dry_render(
+                        cls, rate, channels, ((MIX_I, midi),), pcm, None,
+                        {20: (("reset", None), (MIX_I, midi))}, mix=0.0,
+                        impulse=b"")[0]
+                    self.assertTrue(np.all(np.any(out != 0, axis=1)), label)
+                    self.assertEqual(digest(out), digest(pcm[:len(out)]),
+                                     label)
+
+    def test_the_tail_counts_the_frames_the_source_hands(self, cls=None):
+        # The Tail paragraph: white noise at -6 dBFS over frames 0..4999,
+        # then zero frames, at Mix 1.2 and 2, on the synthesized room at
+        # patch 0 and on the empty impulse, three rates, stereo and mono;
+        # the source leaves no pull empty, one pull (call 23) empty inside
+        # the tail, or three in a row (calls 21 to 23), which is a source
+        # that stops handing frames mid-tail and then goes on. With the
+        # starved pulls' output taken out (each exact zero, 256 frames),
+        # the output is the no-starve render frame for frame, so the tail
+        # waits and then goes on where it was; and every frame more than
+        # `tail_samples` past the last non-zero input frame is exact zero,
+        # counted in the frames the source hands, while the room's last
+        # non-zero frame lands within one frame of that edge. TailTwoShort
+        # (`tail_samples` two frames short) is red, and so are the 8a57282
+        # words, which said only that the output is zero after the tail.
+        self.assertTrue(said(rebuilt.__doc__, TAIL_WORDS))
+        burst = 5000
+        for rate in RATES:
+            for channels in (2, 1):
+                pcm = silence(40 * 256, channels)
+                pcm[:burst] = white(burst, channels, -6.0, seed=808)
+                for options in ({}, dict(impulse=b"")):
+                    probe = build(cls, rate, channels, **options)
+                    tail = probe.tail_samples
+                    probe.deinit()
+                    for midi in (76, 127):
+                        steady = None
+                        for plan in (None, {23: 0}, {21: 0, 22: 0, 23: 0}):
+                            label = (rate, channels, options, midi, plan)
+                            out, sizes = dry_render(
+                                cls, rate, channels, ((MIX_I, midi),), pcm,
+                                plan, mix=0.0, **options)
+                            self.assertEqual(sizes, [256] * 40, label)
+                            handed = out
+                            if plan:
+                                starved = [call - 1 for call in plan]
+                                for pull in starved:
+                                    self.assertEqual(int(np.max(np.abs(
+                                        out[pull * 256:pull * 256 + 256]))),
+                                        0, label)
+                                keep = np.ones(len(out), bool)
+                                for pull in starved:
+                                    keep[pull * 256:pull * 256 + 256] = False
+                                handed = out[keep]
+                                self.assertEqual(
+                                    digest(handed),
+                                    digest(steady[:len(handed)]), label)
+                            else:
+                                steady = out
+                            edge = burst - 1 + tail
+                            self.assertEqual(
+                                int(np.max(np.abs(handed[edge + 1:]))), 0,
+                                label)
+                            last = int(np.nonzero(np.any(handed != 0,
+                                                         axis=1))[0][-1])
+                            self.assertGreaterEqual(last, edge - 1, label)
 
 
 # --------------------------------------------------------------------------
