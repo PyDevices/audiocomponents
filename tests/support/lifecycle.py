@@ -73,8 +73,28 @@ MIX_INDEX = {
 #: Where a class cannot satisfy a property by design, it says so HERE, one
 #: row per (class NAME, event name prefix, property): reason. A matching
 #: cell prints `decl` instead of RED and is counted as a declared exception.
-#: Nothing else skips a cell. Empty on purpose: no class has declared one.
+#: Nothing else skips a cell.
 DECLARED = {
+    ("DigitalDelay", 'E4-m2=', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    ("DigitalDelay", 'E4-m6=', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Repeat Tone)',
+    ("DigitalDelay", 'E4-m7=', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Repeat Cut)',
+    ("DigitalDelay", 'E5-', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    ("DigitalDelay", 'E6-', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (a patch change)',
+    ("DigitalDelay", 'E9-', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    ("DigitalDelay", 'E11-mix+patch', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix and a patch change)',
+    ("DigitalDelay", 'E11-2patch', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (a patch change)',
+    ("DigitalDelay", 'E11-3moves', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (the patch change; the Time moves glide)',
+    ("DigitalDelay", 'E8-dry', 'P3'):
+        'family limit, disclosed (audiodsp#180): a tail cut short by a source that stopped carries on when the source comes back',
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")

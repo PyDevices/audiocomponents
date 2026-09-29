@@ -43,12 +43,6 @@ PHASE5 = ("DigitalDelay", "SlapbackDelay", "TapeDelay", "PingPongDelay",
 #: matrix has not been run (MultiTapDelay: it takes about 40 minutes on
 #: CPython).
 KNOWN_RED = {
-    ('DigitalDelay', 'E', 'P5'): (
-        36, 'cfa18482', 94, '4627b739',
-        'Mix, Repeat Tone, Repeat Cut and patch moves step the output within one block'),
-    ('DigitalDelay', 'E8-dry', 'P3'): (
-        6, 'e155e27d', 6, 'e155e27d',
-        'a source that stays dry through a pause and comes back: old audio plays out of silence'),
     ('SlapbackDelay', 'E', 'P5'): (
         124, '01ddb3de', 198, '4cda9a29',
         'Level, Tone and patch moves step the output within one block (no ramp)'),

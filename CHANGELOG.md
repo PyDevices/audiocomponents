@@ -28,7 +28,12 @@ there, and are recorded in its changelog.
   Python floats in two derived settings (audiocomponents#75). The old
   `delay.DigitalDelay` and its `set_time` / `set_mix` stay in `delay.py`
   until the class comes home. It lives in
-  `lib/audioeffects/rebuilt/digitaldelay.py` until then.
+  `lib/audioeffects/rebuilt/digitaldelay.py` until then. Its docstring
+  carries only sentences a test asserts (`CLAIMS`), with the family's two
+  disclosed limits: a control that jumps steps the output
+  (audiocomponents#117), and a tail waits for a source that stopped
+  (audiodsp#180); `tail_samples` is `None` with Repeat Cut in, as at
+  patch 5.
 - **`SlapbackDelay` (rebuilt, Phase 5; adopted 2026-09-28):** the Sun
   Studio tape slap on one `audioecho.FeedbackDelay`, and what
   `audioeffects.SlapbackDelay` now serves: one mono repeat at 135 ms, landed
