@@ -157,6 +157,19 @@ there, and are recorded in its changelog.
   Time or Heads move while audio plays, and that on CircuitPython alone
   the stereo dry's right lane is one LSB hot within 32 LSB of the rails.
   Board cost is unmeasured.
+- **`Reverb` (rebuilt, Phase 5, parked under `rebuilt/`):** Dattorro's plate
+  network on one `audioverb.Tank`, cut four ways as a Character macro: an
+  EMT 140 plate that is dense at once and darkens as Decay shortens, and a
+  room, a chamber and a hall that build. Decay is T60 at 500 Hz within 12 %
+  at the reference patches from 2 s to 10 s (the hall from 4 s), held on
+  eight seed sets; shorter Decays are not claimed. At audiodsp v0.6.3rc3 a
+  Character or Size move re-cuts the one Tank in place and cuts the tail
+  without losing a frame of the dry, `reset()` keeps the dry the Tank holds,
+  and Tone's centre is handed as 0 dB. Mix 0 is a byte-exact wire while the
+  tank keeps ringing; latency is zero. It lives in
+  `lib/audioeffects/rebuilt/reverb.py`, and `audioeffects.Reverb` is still
+  the old class. The Fender 6G15 spring character is parked until the node
+  carries a dispersive chain. Board cost is unmeasured.
 
 ### Changed
 

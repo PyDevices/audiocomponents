@@ -96,6 +96,14 @@ KNOWN_RED = {
         'reset() part-way through a source buffer drops the frames the input held: silence at Mix 0'),
     ('Reverb', 'E8-dry', 'P3'): (
         44, 'e23e44d7', 44, 'e23e44d7',
+    ('AnalogDelay', 'E', 'P4'): (
+        37, '1266f888', 150, 'bb0595c6',
+        "the Modulation LFO's phase moves with the event, so a modulated patch never re-converges"),
+    ('AnalogDelay', 'E', 'P5'): (
+        74, 'b699cca1', 214, '8d248b43',
+        'Time, Mix and patch moves step the output within one block'),
+    ('AnalogDelay', 'E8-dry', 'P3'): (
+        8, 'e1967d96', 8, 'e1967d96',
         'a source that stays dry through a pause and comes back: old audio plays out of silence'),
     ('ConvolutionReverb', 'E', 'P5'): (
         324, '9421d061', 678, 'e8b57cdc',
