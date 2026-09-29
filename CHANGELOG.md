@@ -92,6 +92,42 @@ there, and are recorded in its changelog.
   finite once Cut is out again), and the Feedback is handed as set (no
   stepping clear of the stall windows; the bound counts one landing lap
   there).
+- **`MultiTapDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** the
+  RE-201's multi-head modes, with the Echorec as a second reference. Heads
+  sit on a grid of whole multiples of one base time, exactly, at every
+  rate; Pattern is the RE-202's twelve head sets over that grid (mode 12
+  the plain grid, not Roland's unpublished one); the laps go round an
+  `audioecho.FeedbackDelay` whose loop low-pass darkens once per lap, and
+  Repeat Tone's out stop swaps to a lighter graph (patch 1, the one to
+  stack on an S3). Mix 0 is a wire. It lives in
+  `lib/audioeffects/rebuilt/multitapdelay.py`, and
+  `audioeffects.MultiTapDelay` is still the old class. The tap node reads
+  its input one block behind the dry, so settings made before the first
+  pull or after `reset()` land on the grid in both lanes. Any number of
+  resets and returns from Mix 0, before the first pull or between two
+  pulls, leave the dry at +0 against the source and every head at +k n1,
+  and take no frame from the source or play one twice, whatever size of
+  buffer it hands out (a bare `RawSample` included): the source is read
+  through the input adapter at every Mix, Mix 0 included, and a reset
+  leaves the adapter's unread frames where they are. Any number of Repeat
+  Tone crossings between pulls leave the wet where it was; the output ends
+  in a width-1 MidSide, so a host resetting the output leaves the lines as
+  they are. On a build without `audiocore.get_buffer` (a patched
+  CircuitPython board may leave it out), a class built at Mix 0 and reset
+  before it was ever turned up plays its source 256 frames late; a class
+  built above Mix 0 and taken to Mix 0 before the first pull plays the
+  Mix-0 run 256 frames early without the source's first block, then plays
+  that block, with its heads, when Mix comes back up or `reset()` is
+  called; and a reset or a return from Mix 0 lets the block the tap node
+  had not read into the lines, its heads late by any Mix-0 run between. The
+  constructor refuses a sample rate below 12 825 Hz with a `ValueError`,
+  where the one-block lag could not place the 20 ms head. At audiodsp
+  v0.6.3rc1 the Feedback is handed to the lap node as set (no stepping
+  clear of the stall windows; the bound counts one landing lap there). The
+  docstring states the input ceiling, the click and channel crossing of a
+  Time or Heads move while audio plays, and that on CircuitPython alone
+  the stereo dry's right lane is one LSB hot within 32 LSB of the rails.
+  Board cost is unmeasured.
 
 ### Changed
 
