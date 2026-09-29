@@ -58,12 +58,11 @@ there, and are recorded in its changelog.
   drive one periodic wow table with a slow drift; Record Level is the
   loop's cubic squash, without memory. Mix 0 is a wire while the loop keeps
   recording. It lives in `lib/audioeffects/rebuilt/tapedelay.py`, and
-  `audioeffects.TapeDelay` is still the old class. The docstring states the
-  input ceiling (-1.1 dBFS peak at the defaults, -2.0 over the shipped
-  patches, on `noise_det`), the band the loss law holds in, the wobble's
-  100 s period, where the pitch claim stops (the node's single-precision
-  walk limits rising moves past 16 384 and 32 768 frames), and which Wow
-  and Flutter moves still step. On the boards the full class is over its
+  `audioeffects.TapeDelay` is still the old class. Every sentence of the
+  docstring that makes a claim is tied to a test (`CLAIMS` in its test
+  file); it says where the pitch bend stops, which Wow and Flutter moves
+  still step, and the family's two limits (a control that jumps steps the
+  output; the tail rings only while the source feeds). On the boards the full class is over its
   budget (P4 10.3-11.4 % against 9 %, S3 19.8-20.5 % against 15 %, at
   audiodsp v0.6.2); patch 8 `Tape Delay - lean` (patch 0 with Record
   Level at 0) built with `max_time_ms=800` met both bars in every run, and
@@ -72,7 +71,9 @@ there, and are recorded in its changelog.
   windows; the bound counts one landing lap there), a Wow or Flutter move
   that changes only the wobble's depth glides over 20 ms, and a knob turned
   down to 0 keeps the last wow table while the depth ramps out; a move
-  that changes the balance of Wow and Flutter still steps, disclosed.
+  that changes the balance of Wow and Flutter still steps, disclosed. At
+  v0.6.3rc3 Spread is handed as set: the node ends a cross-fed tail itself
+  (audiodsp#173), so the 1/4096 grid the class used is gone.
 - **`PingPongDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** repeats
   that alternate between the speakers, on one `audioecho.FeedbackDelay`
   whose cross-feed and input pan Spread moves between two plain delays and

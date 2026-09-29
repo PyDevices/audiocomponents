@@ -1,201 +1,63 @@
-"""`TapeDelay` - a tape loop with two transports: the RE-201's motor and the
-EP-3's sliding head.
+"""`TapeDelay` - a tape echo with two transports: the Roland RE-201's motor
+and the Maestro EP-3's sliding head.
 
-Rebuilt from scratch for Phase 5 against
-`workspace docs/effects-internal/dossiers/TapeDelay.md`, whose trait table
-was frozen at Station A before this file existed (anchor commit
-fd711caf7cb421dff9c0f4d24c717f7d00548c4b, the Station A critique's
-re-freeze, 2026-09-27). The old class in `delay.py` is consulted only for
-the seven defects that dossier's section 7 names; it stays the class the
-library serves until the board runner adopts this one.
+Your dry signal passes untouched, and the repeats follow it off a loop of
+tape, each one a little darker than the last.
 
-**What it sounds like.** Your dry signal passes untouched, and repeats
-follow it off a loop of tape, each one a little darker than the last,
-because the playback head loses the top of the band once per pass. Time
-(20-1 200 ms) is the delay. Feedback (0-0.99) is how much of each repeat
-goes round again. Mix (0-2) is the echo return: dry at unity up to 1, the
-repeats alone at 2, and Mix 0 is a wire while the loop keeps recording.
-Spacing (2-20 um) is how far the worn head sits off the tape: more spacing,
-darker repeats. Wow and Flutter are the transport's slow and fast wobble,
-in cents. Record Level drives the tape harder, a soft odd-order squash on
-every pass. Spread feeds each channel's repeats into the other. Sync locks
-Time to Division of the host's beat.
+**Controls.** Time is the delay, from 20 to 1200 ms, and Feedback is how
+much of each repeat goes round again, up to 0.99. Mix is the echo return:
+the dry stays at unity up to Mix 1, Mix 2 is the repeats alone, and at Mix 0
+the output is the input. Spacing is how far the worn head sits off the tape:
+more spacing, darker repeats. Wow and Flutter are the transport's slow and
+fast wobble. Record Level drives the tape harder, a soft squash on every
+pass. Spread feeds each channel's repeats into the other, and does nothing
+on a mono source. With Sync on, Time is Division of the host's beat; with no
+host tempo, Time stays where the knob is.
 
-**Two characters, and they differ in what turning Time does.**
-`character="varispeed"` (the default) is the Roland RE-201: Time moves the
-motor, so a Time move bends the pitch of everything on the tape by the
-ratio of the two times for exactly the new time, then settles, and the
-repeats that went round during the move come back at their own pitch.
-200 -> 100.4 ms reads +1 193 cents for 100.4 ms. The speed also moves the
-loss: between 180 and 600 ms (40 to 12 cm/s) the repeats' corner falls by
-the same 3.33x as the speed. Glide does nothing on this character; the
-motor's own law sets how long a move takes. `character="sliding-head"` is
-the Maestro EP-3: Time slides a head, so the pitch bends only while the
-head moves, by 1 180 ms / Glide delay-seconds per second, and whatever
-went round during the move keeps the bend for as long as it keeps going
-round. Glide 0 is an instant slide, and its price is a click. The tape
-runs at a fixed 20.32 cm/s there, so the loss does not follow Time.
+**Two characters.** `character="varispeed"`, the default, is the RE-201:
+Time moves the motor, so a Time move bends the pitch of everything on the
+tape instead of clicking, then settles. A longer Time runs the tape slower,
+and the repeats come back darker. Glide does nothing on this character.
+`character="sliding-head"` is the EP-3: Time slides a head, so the pitch
+bends only while the head moves, at the rate Glide sets, and the tape runs
+at one speed, so the darkening does not follow Time. Glide 0 is an instant
+slide, and its price is a click.
 
-**The standout:** the Roland RE-201 Space Echo and the Maestro Echoplex
-EP-3, as the tape literature models them (Zavalishin & Parker's two delay
-types; Chowdhury's playback-loss law; the Echoplex's two transport
-components and drift).
+**Where the pitch bend stops.** A Time move made while the last one is still
+bending takes its rate from the last Time you set, not from where the tape
+has got to, so it does not telescope as a real motor would. A long rising
+move, or a rising slide at the fastest Glides, can read more than 10 cents
+off the ideal bend, because the node walks its read head in single
+precision.
 
-**Portability tier: audiodsp** (`REQUIRES = ("audioecho",)`). The stock
-`audiodelays.Echo` has no filter, drive or cross-feed in its loop, so the
-darkening per pass has nowhere to live. On a stock CircuitPython board this
-module imports cleanly and construction raises `ImportError`.
+**The tape.** The wobble is periodic, not random. A Wow or Flutter move that
+changes only how deep the wobble is glides in, and one that changes their
+balance steps, so set the balance before you play. The darkening follows
+the tape's loss law only up to a band top that rises with the tape's speed.
+Record Level has no memory: tape hysteresis is not modelled. The RE-201's
+Bass and Treble are not here.
 
-**Latency: zero samples, at every setting, character and rate.** Nothing
-looks ahead. The delay is the wet path, not latency on the dry path, and
-no option adds any.
+**Limits shared by the family.** A control that jumps makes the output step:
+move it in small steps from the host if you need it smooth. The tail rings
+only while the source keeps feeding: feed silence to let it ring out. A tail
+cut short by a source that stopped carries on when the source comes back.
 
-**Mono.** A one-channel source gets the same effect on its one channel.
-Spread is held at 0 there: at one channel the node's cross-feed sends a
-repeat to a channel that does not exist, and Spread 1 would leave one
-repeat and nothing after it. The class never passes `input_pan`.
+**Latency, tail, portability.** Latency is zero samples: nothing looks ahead.
+`tail_samples` is an upper bound on how long the output takes to reach exact
+zero once your input stops, at every Feedback and Spread, stereo and mono.
+Pass a lower `max_time_ms` for a shorter line: Time then stops at that
+ceiling, and `get_macro(0)` shows where it stopped. The class needs
+audiodsp's `audioecho`, and on a board without it construction raises
+`ImportError`. `character` must be `"varispeed"` or `"sliding-head"`.
 
-**RAM.** The line is `max_time_ms + 5` ms of two int16 lanes whatever the
-channel count: 231 360 B at 48 kHz for the default 1 200 ms (212 560 B at
-44.1 kHz, 106 280 B at 22.05 kHz), plus 16 384 B for two 4 096-point wow
-tables (the node reads one while a Wow or Flutter move writes the other),
-two 16 KB shape tables shared by every instance, and about 1.2 KB of
-node. Pass a lower `max_time_ms` to spend less; Time then stops at that
-ceiling and `get_macro(0)` shows where it stopped.
-
-**Cost, and what to run on a board.** One `audioecho.FeedbackDelay` with
-`delay_slew`, a wow table, the loop low-pass and `loop_drive` on; no mixer.
-The budget, from palette row FeedbackDelay +options with no glue, is
-**P4 <= 9 % (0.480 ms), S3 <= 15 % (0.800 ms)** of a 5.333 ms stereo
-block. **The full class is over it on both boards.** Measured at audiodsp
-v0.6.2 at the default and every patch, it costs 0.551-0.608 ms a block on
-the P4 (10.3-11.4 %) and 1.056-1.093 ms on the S3 (19.8-20.5 %); patch 6
-reads 0.470 ms (8.8 %) and 0.855 ms (16.0 %). It still runs in real time on
-both.
-
-**To meet both bars, play patch 8, `Tape Delay - lean`, and build the class
-with `max_time_ms=800`.** That configuration read 0.445-0.455 ms on the P4
-(8.3-8.5 %) and 0.781-0.797 ms on the S3 (14.6-14.9 %, a thin margin) in
-each of three runs, measured at v0.6.2; the default and patch 5 built the
-same way with the drive off read 0.434-0.447 and 0.764-0.794 ms. Patch 8
-is patch 0 with Record Level at 0, and the 800 ms line is the other half
-of the saving. What you give up is the tape saturation: the repeats stay
-clean however hard you play, and chords no longer grit up as the repeats
-stack. And Time stops at 800 ms instead of 1 200 (patch 1's 789 ms still
-fits, and `get_macro(0)` shows where Time stopped). The darkening, the
-wobble and the pitch bends are patch 0's. Turning Record Level up again
-brings the drive, and its cost, back, and so does `reset()`: like every
-component's, it restores patch 0 (Record Level 25 on the grid, a drive of
-0.197), so a board that resets a lean instance should call
-`program_change(8)` after it. The boards are re-measured at the release.
-
-**What the default surrenders.** The darkening follows the tape's loss law
-only up to a band top: one pole in the loop holds it to 2 dB from 100 Hz
-to 2.9 kHz at 12 cm/s, 4.9 kHz at 20.32 cm/s and 6 kHz at 40 cm/s (at
-5 um), and above that the repeats are lighter than tape, by 21 dB a pass
-at 10 kHz and 12 cm/s. The fluctuation is periodic, not random: the wow
-line, the flutter line and the slow drift are harmonics 72, 512 and 1-9 of
-one table the node runs at 0.009991 Hz, so the whole wobble repeats every
-100.09 s (100.04 s at 22.05 kHz). Record Level has no memory: tape
-hysteresis is not modelled, and the squash is a static cubic, the same
-rising or falling. The RE-201's Bass and Treble are not here; the loss law
-and Spacing own the repeats' tone.
-
-**Where the pitch claim stops.** A varispeed move takes its rate from the
-last Time handed to the node and runs once, so a Time move issued while the
-last one is still gliding does not telescope as a real motor would: its
-bend is written into the loop and stays there.
-
-The node walks the read head in single precision
-(`audiodsp_feedback_delay.c:492`), so each step lands on the head's
-rounding grid, and that grid doubles every time the head passes a power of
-two in frames: 16 384 (341.3 ms at 48 kHz, 371.5 ms at 44.1, 743.0 ms at
-22.05) and 32 768 (682.7 ms at 48 kHz, 743.0 ms at 44.1; never at
-22.05 kHz, where 1 200 ms is 26 460 frames). On a rising move the pitch
-error this makes grows as the pitch falls, so the claim stops where it
-could pass 10 cents. On varispeed, a rising move whose walk passes 32 768
-frames is claimed up to a ratio of 2.95 : 1; past that the last part of
-the walk can read 11 cents off (333 -> 1 100 ms reads -11.2 cents there).
-On sliding-head, a rising move is claimed from Glide grid 4 (1 290.3 ms)
-while the head stays under 16 384 frames, from grid 10 (1 438.5 ms) once
-it passes 16 384, and from grid 22 (1 788.2 ms) once it passes 32 768.
-Grid 1 is not claimed on a rising move (350 -> 450 ms reads +41 cents
-there), nor is any constructor Glide faster than those edges. Falling
-moves are claimed at every Glide, and at every ratio up to 3.33 : 1.
-
-**Turning Wow or Flutter while it plays.** Since audiodsp v0.6.3rc1 the
-node ramps a new wobble depth in over 20 ms (audiodsp#160), so a move that
-changes only how deep the wobble is glides: Wow with Flutter at 0, either
-knob down to 0 on its own, or both up from 0. The class keeps the last
-table handed while the depth ramps out to 0, so the old wobble leaves on
-its own shape. On a 997 Hz tone at 12 000 LSB, wet only at 48 kHz, whose
-own largest step through the loss low-pass is 728 LSB, Wow 32 -> 127 at
-Flutter 0 steps at most 731 LSB in the 2 000 frames after it (1 057 at
-v0.6.2) and Wow 127 -> 0 at most 740 (945 at v0.6.2, and 1 082 on the
-fixed node without the kept table). While the depth travels the
-extra pitch is the change over 20 ms times where the wobble is: up to
-15 % (about 240 cents) for those 20 ms on the full 3 ms move at its crest.
-
-A move that changes the balance of Wow and Flutter still steps. It changes
-the table's shape, and the node swaps a table at once, so the repeats jump
-by the depth times the change in shape: Flutter 0 -> 127 at Wow grid 32
-steps 803 LSB against the tone's 728 (786 at v0.6.2). Turning both to 0
-one after the other passes through a table of one of them alone: Wow to 0
-first, with Flutter at grid 32, steps 1 117. Set the balance before you
-play.
-
-**Input ceiling.** The dry path sits at unity and the repeats add to it,
-and there is no input gain to turn down. Measured on the kit's `noise_det`
-at 48 kHz over 20 s, the defaults put no sample on the rail from
--1.1 dBFS peak down on either character, in stereo and in mono (at
--1.0 dBFS 14 samples rail in stereo, 7 in mono), and every shipped patch
-on either character from -2.0 dBFS down (patch 2, Short Slap, is the first
-to rail on varispeed, at -1.9; patch 4, High Intensity, on sliding-head, at
--1.8).
-
-**Tail.** `tail_samples` is an upper bound on how long the output takes to
-reach exact zero after your input stops: `laps x (reach + wow + 1 +
-memory)` frames, 14 laps at the default Feedback (240 282 frames, 5.01 s,
-at 48 kHz) and 85 at patch 4's 0.8965. The loop low-pass is always in, and
-at a Feedback a hair either side of 1 - 0.5 / k it can come to rest a hair
-above k LSB and hand it back. Up to audiodsp v0.6.2 it did so for ever,
-and the class handed the node a Feedback just outside each such window.
-Since v0.6.3rc1 the node sets a stalled low-pass onto its input
-(audiodsp#157), the Feedback you set is the one the node plays, and the
-bound counts one more lap there: 686 laps at the 0.99 stop.
-
-In stereo the cross-feed could do the same thing. Spread mixes each
-channel's loop with the other's, which in exact arithmetic never lands
-above the larger of the two, but the node's single-precision sum can come
-out a step above two equal lanes. With Spread strictly between its stops
-and off a short binary grid (Spread 1/127 on the knob, or 0.1726 typed)
-and a Feedback a float32 step or two under 1 - 0.5 / k, that handed k LSB
-(9 to 50 in the cells found) back for ever. So Spread reaches the node on
-a grid of 4096ths, within 1/8192 of the knob, and 0 and 1 are untouched.
-There, two equal whole lanes under 4 096 LSB sum to themselves exactly on
-every interpreter, whether or not a board's compiler fuses the sum. The
-lanes are whole at rest because the node lands a stalled low-pass on its
-tap, so the closure is the grid and that landing together. The bound then
-holds at every Feedback and Spread the constructor or a macro can hand,
-stereo and mono. After a falling Time move it keeps the Time the head
-walked from until a reset, because the class cannot see how far the walk
-has got.
-
-`capabilities = ("tempo_sync",)`: with Sync on, the class reads
-`self._transport()` on every macro move and program change (not per block).
-With no host transport, or a host whose tempo is not a finite positive
-number (0, negative, NaN, infinite or missing), Time stays where the knob
-is. A synced Time change moves the way the character moves Time.
-
-A constructor value stays on the audio path unrounded by the knob's grid
-where the grid would move it: Time (landed on a whole frame at the running
-rate, so 350 ms is 7 718 frames at 22.05 kHz) and Glide. A constructor
-Glide faster than grid 1 keeps its own walk (pinned at 0.99 under
-1 191.9 ms) and the knob reads back at grid 1, never at grid 0, the jump;
-one slower than 12 s plays 12 s; 0, a negative or NaN is the jump. A Time
-of 0 or less is 20 ms, a Spacing of 0 or less is 2 um, a `max_time_ms`
-above 1 200 or NaN is 1 200 ms, and any other NaN takes that option's
-default. `character` must be `"varispeed"` or `"sliding-head"`.
+**Cost.** Measured at v0.6.2 at the default and every patch, the full class
+costs 0.551-0.608 ms a block on the P4 and 1.056-1.093 ms on the S3, over the
+budgets of 0.480 ms and 0.800 ms. Patch 8, `Tape Delay - lean`, is patch 0
+with Record Level at 0: the repeats stay clean however hard you play.
+Measured at v0.6.2, patch 8 on a class built with `max_time_ms=800` costs
+0.445-0.455 ms on the P4 and 0.781-0.797 ms on the S3, inside both budgets.
+`reset()` returns to patch 0, so a host that wants the lean patch sets it
+again after a reset.
 """
 
 VENDOR = "PyDevices"
@@ -246,10 +108,6 @@ GLIDE_FLOOR = 1.0 / 127.0
 
 #: The node's own loop ceiling (`audiodsp_feedback_delay.c:157`).
 FEEDBACK_MAX = 0.99
-
-#: Spread's grid as the node is handed it at two channels: whole 4096ths,
-#: so the loop's cross-feed sum of two equal whole lanes is exact.
-_SPREAD_GRID = 4096
 
 #: The line's headroom over `max_time_ms`: one frame for the node's
 #: `line_frames - 2` clamp (`audiodsp_feedback_delay.c:148-150`) plus the
@@ -463,22 +321,6 @@ def wow_table(wow_cents, flutter_cents, out, flutter_harmonic=FLUTTER_HARMONIC,
     return peak
 
 
-def _spread_on_grid(spread):
-    """`spread` on the 1/4096 grid the node is handed at two channels
-    (dossier section 8, re-audit fix round 2; AnalogDelay's law). The node
-    sends `own * (1 - s) + other * s` round the loop in single precision.
-    With s off a short binary grid (1/127, or a typed 0.1726) those two
-    products can add up to one float32 step above two equal lanes, and at a
-    Feedback a step or two under 1 - 0.5 / k that hands a landed k LSB back
-    for ever. On the grid both products of a whole lane under 4096 LSB are
-    exact, so two equal whole lanes sum to themselves however the sum is
-    rounded or fused. The lanes are whole at rest because the node lands a
-    stalled loop low-pass on its tap (audiodsp#157): the closure is the grid
-    and that landing together. The grid moves Spread by at most 1/8192 and
-    leaves 0 and 1 where they are."""
-    return math.floor(spread * _SPREAD_GRID + 0.5) / _SPREAD_GRID
-
-
 def _option(value, default):
     """A constructor option as a float; NaN is the option's default."""
     value = float(value)
@@ -496,16 +338,8 @@ def _between(value, low, high):
 
 
 class TapeDelay(_component.Component):
-    """A tape echo with the RE-201's motor (`character="varispeed"`) or the
-    EP-3's sliding head (`"sliding-head"`): each repeat darker than the
-    last, a wobbling transport, and Time moves that bend the pitch instead
-    of clicking. audiodsp tier; zero latency.
-
-    **What the default surrenders:** the darkening follows the tape's loss
-    law only to a band top (2.9-6 kHz at 5 um, by speed) and is lighter
-    than tape above it; the wobble repeats every 100.09 s; Record Level has
-    no memory; no Bass or Treble. Glide is inert on varispeed.
-    """
+    """A tape echo with the RE-201's motor or the EP-3's sliding head.
+    The module docstring is the player's manual."""
 
     NAME = 'TapeDelay'
     DISPLAY_NAME = 'Tape Delay'
@@ -857,13 +691,13 @@ class TapeDelay(_component.Component):
             self._wow_key = key
 
         # At one channel the node's cross-feed sends the repeat nowhere.
-        # At two, Spread goes on the 1/4096 grid, where the loop's sum of
-        # two landed lanes cannot come out above both and hand a value back.
+        # At two, Spread is handed as set: since audiodsp v0.6.3rc3 a
+        # cross-fed tail reaches exact zero however the node rounds the
+        # cross-feed sum (audiodsp#173), so the 1/4096 grid is gone.
         if self._channel_count == 1:
             self._spread = 0.0
         else:
-            self._spread = _spread_on_grid(
-                _between(self._value(SPREAD_I), 0.0, 1.0))
+            self._spread = _between(self._value(SPREAD_I), 0.0, 1.0)
         self._delay.set(
             delay_slew=self._slew,
             delay_ms=node_ms,
@@ -884,8 +718,7 @@ class TapeDelay(_component.Component):
         the read head may be at, plus the wow table's peak excursion in
         frames rounded up, plus one frame for the interpolated read, plus
         the loop low-pass's memory. Finite at every setting the class
-        reaches, and in stereo it holds at every Spread because Spread is
-        handed on its 1/4096 grid (the module docstring's Tail)."""
+        reaches, stereo and mono, at every Spread."""
         self._check_live()
         return self._tail_bound()
 

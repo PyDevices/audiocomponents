@@ -73,8 +73,36 @@ MIX_INDEX = {
 #: Where a class cannot satisfy a property by design, it says so HERE, one
 #: row per (class NAME, event name prefix, property): reason. A matching
 #: cell prints `decl` instead of RED and is counted as a declared exception.
-#: Nothing else skips a cell. Empty on purpose: no class has declared one.
+#: Nothing else skips a cell.
 DECLARED = {
+    ("TapeDelay", 'E1-', 'P4'):
+        'reset() restarts the wow and flutter table, so the wobble is never in phase with a fresh instance again',
+    ("TapeDelay", 'E2-', 'P4'):
+        'a host reset_buffer restarts the wow and flutter table, so the wobble is never in phase with a fresh instance again',
+    ("TapeDelay", 'E4-m0=0', 'P4'):
+        "a Time move and back leaves other rounding in the loop than a fresh instance's; while material plays a 1 LSB difference can outlast tail_samples, which bounds silence",
+    ("TapeDelay", 'E4-m0=', 'P5'):
+        "varispeed bends the pitch on a Time move: a bend up past 1.5x steepens the triangle past P5's limit, and T1a's step clause holds (no click)",
+    ("TapeDelay", 'E11-2macro', 'P5'):
+        "varispeed bends the pitch on a Time move: a bend up past 1.5x steepens the triangle past P5's limit, and T1a's step clause holds (no click)",
+    ("TapeDelay", 'E4-m2=', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    ("TapeDelay", 'E4-m4=', 'P5'):
+        "family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Wow: a balance move swaps the table's shape)",
+    ("TapeDelay", 'E5-', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    ("TapeDelay", 'E6-', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (a patch change)',
+    ("TapeDelay", 'E9-', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    ("TapeDelay", 'E11-mix+patch', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix and a patch change)',
+    ("TapeDelay", 'E11-2patch', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (a patch change)',
+    ("TapeDelay", 'E11-3moves', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Time and a patch change)',
+    ("TapeDelay", 'E8-dry', 'P3'):
+        'family limit, disclosed (audiodsp#180): a tail cut short by a source that stopped carries on when the source comes back',
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")
