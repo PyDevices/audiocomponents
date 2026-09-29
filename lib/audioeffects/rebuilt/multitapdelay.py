@@ -228,6 +228,8 @@ class MultiTapDelay(_component.Component):
     lap, never once per head.
     Tilt leans the pattern's levels towards the near heads or the far ones.
     Up to Mix 1 the dry passes at unity, and at Mix 2 the echoes play alone.
+    On CircuitPython alone, a stereo dry's right lane reads one LSB hot on
+    source values within 32 LSB of the rails.
     Mix 0 is a wire.
     Sync locks Time to Division of the host's beat, clamped to Time's span.
     With no host tempo, Time stays on the knob.

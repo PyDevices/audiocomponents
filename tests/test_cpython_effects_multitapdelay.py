@@ -2954,6 +2954,9 @@ CLAIMS = (
      "ones.", "test_tilt_law"),
     ("Up to Mix 1 the dry passes at unity, and at Mix 2 the echoes play "
      "alone.", "test_the_mix_stops"),
+    ("On CircuitPython alone, a stereo dry's right lane reads one LSB hot "
+     "on source values within 32 LSB of the rails.",
+     "test_the_right_lane_is_hot_only_on_circuitpython"),
     ("Mix 0 is a wire.", "test_mix_zero_is_a_wire"),
     ("Sync locks Time to Division of the host's beat, clamped to Time's "
      "span.", "test_sync_is_division_clamped_to_the_span"),
@@ -2987,6 +2990,68 @@ CLAIMS = (
 )
 
 
+#: Every source value within 64 LSB of either rail, and a few inside,
+#: through the class at Mix 1 in one run of 256-frame blocks shorter than
+#: the first head: prints `channels|left wrong|right wrong|worst|least |v|`.
+HOT_SCRIPT = """
+import audiocore
+from array import array
+from audioeffects.rebuilt.multitapdelay import MultiTapDelay
+values = list(range(-32768, -32704)) + list(range(32704, 32768)) + [
+    -20000, -1, 0, 1, 20000]
+for channels in (2, 1):
+    data = array("h", [0] * (len(values) * channels))
+    for i in range(len(values)):
+        for c in range(channels):
+            data[i * channels + c] = values[i]
+    source = audiocore.RawSample(data, sample_rate=48000,
+                                 channel_count=channels)
+    effect = MultiTapDelay(source, sample_rate=48000, mix=1.0)
+    got = array("h")
+    while len(got) < len(data):
+        got.extend(memoryview(audiocore.get_buffer(effect.output)[1]).cast(
+            "h") if hasattr(memoryview, "cast") else
+            audiocore.get_buffer(effect.output)[1])
+    lanes = [0, 0]
+    worst = 0
+    least = 99999
+    for i in range(len(values)):
+        for c in range(channels):
+            d = got[i * channels + c] - values[i]
+            if d:
+                lanes[c] += 1
+                worst = max(worst, abs(d))
+                least = min(least, abs(values[i]))
+    print("%d|%d|%d|%d|%d" % (channels, lanes[0], lanes[1], worst, least))
+    effect.deinit()
+print("DONE")
+"""
+
+
+def run_hot(binary):
+    """{channels: (left wrong, right wrong, worst, least |v| wrong)}."""
+    with tempfile.TemporaryDirectory() as directory:
+        script = os.path.join(directory, "hot.py")
+        with open(script, "w") as handle:
+            handle.write(HOT_SCRIPT)
+        env = dict(os.environ, MICROPYPATH="lib", GCOV_PREFIX=directory,
+                   PYTHONDONTWRITEBYTECODE="1",
+                   PYTHONPATH=os.path.join(ROOT, "lib"))
+        argv = [binary] + ([] if binary == sys.executable
+                           else ["-X", "heapsize=256M"])
+        done = subprocess.run(argv + [script], capture_output=True,
+                              text=True, cwd=ROOT, env=env)
+    lines = done.stdout.splitlines()
+    if done.returncode != 0 or not lines or lines[-1] != "DONE":
+        raise AssertionError("%s: %s%s" % (binary, done.stdout[-1000:],
+                                           done.stderr[-2000:]))
+    out = {}
+    for line in lines[:-1]:
+        parts = [int(v) for v in line.split("|")]
+        out[parts[0]] = tuple(parts[1:])
+    return out
+
+
 def _flat(text):
     return " ".join(text.split())
 
@@ -3007,6 +3072,27 @@ class TheClaims(unittest.TestCase):
         self.assertIn("**Limits shared by the family.**", doc)
         numbers = [w for w in rest.split() if any(c.isdigit() for c in w)]
         self.assertEqual(numbers, [])
+
+    def test_the_right_lane_is_hot_only_on_circuitpython(self):
+        # The stock audiomixer's pan law: 32768 / 32767 on the right lane,
+        # which moves the 63 values from 32 736 up (and down from -32 736,
+        # the rail itself clipping) one LSB out. Mono and the left lane are
+        # exact, and every other interpreter is exact.
+        exact = {2: (0, 0, 0, 99999), 1: (0, 0, 0, 99999)}
+        self.assertEqual(run_hot(sys.executable), exact)
+        found = current_native_interpreters()
+        if found is None:
+            self.skipTest("no workspace bin/ above this checkout")
+        for family, binary in sorted(found.items()):
+            self.assertIsNotNone(binary, family)
+            got = run_hot(binary)
+            if family == "circuitpython":
+                self.assertEqual(got[1], exact[1])
+                left, right, worst, least = got[2]
+                self.assertEqual((left, worst, least), (0, 1, 32736))
+                self.assertEqual(right, 63)
+            else:
+                self.assertEqual(got, exact, family)
 
     def test_the_knob_spans(self):
         effect = MultiTapDelay(Endless(silence()), sample_rate=RATE)
