@@ -142,6 +142,26 @@ DECLARED = {
     ("Reverb", "E9-", "P5"): "family: a control that jumps makes the output step (#117)",
     ("Reverb", "E11-", "P5"): "family: a control that jumps makes the output step (#117)",
     ("Reverb", "E8-dry", "P3"): "family: the tail rings only while the source feeds (audiodsp#180)",
+    ("DigitalDelay", 'E4-m2=', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    ("DigitalDelay", 'E4-m6=', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Repeat Tone)',
+    ("DigitalDelay", 'E4-m7=', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Repeat Cut)',
+    ("DigitalDelay", 'E5-', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    ("DigitalDelay", 'E6-', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (a patch change)',
+    ("DigitalDelay", 'E9-', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    ("DigitalDelay", 'E11-mix+patch', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix and a patch change)',
+    ("DigitalDelay", 'E11-2patch', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (a patch change)',
+    ("DigitalDelay", 'E11-3moves', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (the patch change; the Time moves glide)',
+    ("DigitalDelay", 'E8-dry', 'P3'):
+        'family limit, disclosed (audiodsp#180): a tail cut short by a source that stopped carries on when the source comes back',
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")

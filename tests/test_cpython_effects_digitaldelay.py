@@ -63,10 +63,22 @@ retired tracking stop), every stall cell reaches zero at the Feedback set
 inside a finite bound (planted: the retired stepping, and the v0.6.2
 reckoning that says `None`). Two surface tests pin the Times the node lands
 off the whole frame at 44.1 and 22.05 kHz, as `PingPongDelay`'s do.
+
+The trial of the second process (2026-09-29, at audiodsp v0.6.3rc3): the
+module docstring is cut to the sentences `CLAIMS` ties to a test, and
+`Claims` holds it there (every sentence present, every named test real, no
+figure outside a claim, and the check shown able to fail). `TrialClaims`
+asserts the claims no earlier test did: Glide 0's click beside the default
+Glide's bend, a Mix jump that steps beside the same move in small steps,
+the tail that waits for its source, Mix 2 as the repeats alone, `None`
+with Repeat Cut in, patch 5's corners and the `ImportError` without
+`audioecho`. The lifecycle matrix's red cells for the class are declared
+as the two family limits (audiocomponents#117, audiodsp#180).
 """
 
 import math
 import os
+import re
 import sys
 import unittest
 from array import array
@@ -79,6 +91,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import audiocore                                            # noqa: E402
 import kit_faults                                           # noqa: E402
 import kit_probes as probes                                 # noqa: E402
+import lifecycle                                            # noqa: E402
 from audioeffects import _component                         # noqa: E402
 from audioeffects import rebuilt                            # noqa: E402
 from audioeffects.chorus import nominal_damping_hz          # noqa: E402
@@ -2632,6 +2645,402 @@ class NullBuildRed(unittest.TestCase):
                     DigitalDelay, measure, label="DigitalDelay %s" % name)
                 self.assertFalse(result["null"]["passed"], name)
                 self.assertTrue(result["control"]["passed"], name)
+
+
+# --------------------------------------------------------------------------
+# The trial of the second process (2026-09-29): the docstring's claims that
+# no earlier test asserted, each beside the reading that would refute it.
+
+
+def max_step_after(y, frame, frames=BLOCK):
+    """The largest first difference of `y` within `frames` of `frame`."""
+    seg = y[frame - 1:frame + frames]
+    return float(np.max(np.abs(np.diff(seg))))
+
+
+class TrialClaims(unittest.TestCase):
+    LEVEL = 12000
+    HZ = 440.0
+
+    #: The Time move's tone: 50 ms is 23.5 of its cycles, so the jump lands
+    #: the read head half a cycle away (at 440 Hz, 22 whole cycles, a jump
+    #: would be seamless and prove nothing).
+    MOVE_HZ = 470.0
+
+    def _bar(self, hz=None):
+        """1.5 x the tone's own steepest step, the lifecycle matrix's P5."""
+        return 1.5 * 2.0 * math.pi * (hz or self.HZ) / RATE * self.LEVEL
+
+    def _time_move(self, glide_ms):
+        """A 470 Hz tone at Mix 2, Feedback 0, Time 200 -> 150 ms on the
+        block at frame 20 480; the left channel."""
+        frames = 20480 + RATE // 2
+        values = sine_values(self.MOVE_HZ, frames, RATE, self.LEVEL)
+        effect = DigitalDelay(array_src(values), sample_rate=RATE,
+                              time_ms=200.0, feedback=0.0, mix=2.0,
+                              glide_ms=glide_ms)
+
+        def move(frame):
+            if frame == 20480:
+                effect.set_macro(TIME_I, midi_of_ms(150.0))
+        y = left(pull(effect, frames, on_block=move), 2)
+        effect.deinit()
+        return y
+
+    def test_glide_0_jumps_with_a_click(self):
+        # Glide 0: the read head jumps, and the output steps far past the
+        # tone's own slope. At the default Glide the same move does not.
+        bar = self._bar(self.MOVE_HZ)
+        self.assertGreater(max_step_after(self._time_move(0.0), 20480),
+                           2.0 * bar)
+        self.assertLess(max_step_after(self._time_move(4000.0), 20480,
+                                       RATE // 4), bar)
+
+    def _mix_moves(self, steps):
+        """The tone at Time 12.5 ms, Feedback 0, Mix from MIDI 0 to 127 in
+        `steps` equal moves, one per block from frame 20 480."""
+        frames = 20480 + (steps + 8) * BLOCK
+        values = sine_values(self.HZ, frames, RATE, self.LEVEL)
+        effect = DigitalDelay(array_src(values), sample_rate=RATE,
+                              time_ms=12.5, feedback=0.0, mix=0.0)
+
+        def move(frame):
+            k = (frame - 20480) // BLOCK + 1
+            if frame >= 20480 and k <= steps:
+                effect.set_macro(MIX_I, 127.0 * k / steps)
+        y = left(pull(effect, frames, on_block=move), 2)
+        effect.deinit()
+        return float(np.max(np.abs(np.diff(y[20479:]))))
+
+    def test_a_jump_steps_and_small_steps_do_not(self):
+        # The family limit (audiocomponents#117): Mix 0 -> 2 in one move
+        # steps the output; the same move in 127 steps from the host, one
+        # a block, stays under the bar.
+        self.assertGreater(self._mix_moves(1), 4.0 * self._bar())
+        self.assertLess(self._mix_moves(127), self._bar())
+
+    def _tail_across_a_stop(self, stop):
+        """A 50 ms burst into Time 100 ms, Feedback 0.5, Mix 2, then
+        silence; after 24 pulls the source hands empty buffers for `stop`
+        pulls, then silence again. Returns (the bytes handed while it was
+        stopped, the 40 blocks pulled after it came back)."""
+        burst = array("h")
+        for v in sine_values(self.HZ, 2400, RATE, self.LEVEL):
+            burst.extend((v, v))
+        feed = lifecycle.Feed(burst, RATE, 2, "256", False)
+        effect = DigitalDelay(feed.port, sample_rate=RATE, time_ms=100.0,
+                              feedback=0.5, mix=2.0)
+        for _ in range(24):
+            audiocore.get_buffer(effect.output)
+        feed.point(feed.empty)
+        stopped = bytearray()
+        for _ in range(stop):
+            stopped.extend(bytes(audiocore.get_buffer(effect.output)[1]))
+        feed.point(feed.sil)
+        after = bytearray()
+        while len(after) < 40 * BLOCK * 4:
+            after.extend(bytes(audiocore.get_buffer(effect.output)[1]))
+        effect.deinit()
+        return bytes(stopped), bytes(after[:40 * BLOCK * 4])
+
+    def test_the_tail_waits_for_the_source(self):
+        # The family limit (audiodsp#180): a source that hands empty
+        # buffers stops the tail; when it feeds again the tail carries on
+        # where it was, as if the stop had not happened.
+        stopped, after = self._tail_across_a_stop(30)
+        self.assertEqual(stopped.strip(b"\x00"), b"")
+        self.assertGreater(max(abs(v) for v in array("h", after)), 1000)
+        self.assertEqual(after, self._tail_across_a_stop(0)[1])
+
+    def test_mix_2_is_the_repeats_alone(self):
+        # A click at Mix 2: nothing until the repeat, 100 ms later.
+        values = [0] * 8192
+        values[10] = 30000
+        effect = DigitalDelay(array_src(values), sample_rate=RATE, mix=2.0,
+                              time_ms=100.0, feedback=0.0)
+        out = left(pull(effect, 8192), 2)
+        self.assertEqual(float(np.max(np.abs(out[:4810]))), 0.0)
+        self.assertEqual(float(out[4810]), 30000.0)
+
+    def test_repeat_cut_in_has_no_tail_bound(self):
+        # Repeat Cut's high-pass can take a lap's peak above the last one,
+        # so the per-lap count does not hold: `None` at patch 5 and at any
+        # Cut position above the out stop; an int with Cut out.
+        effect = DigitalDelay(silence_src(512), sample_rate=RATE, patch=5)
+        self.assertGreater(effect.get_macro(CUT_I), 0.0)
+        self.assertIsNone(effect.tail_samples)
+        for position in (1, 64, 127):
+            effect.set_macro(CUT_I, position)
+            self.assertIsNone(effect.tail_samples, position)
+        effect.set_macro(CUT_I, 0)
+        self.assertIsInstance(effect.tail_samples, int)
+        for patch in (0, 1, 2, 3, 4):
+            effect.program_change(patch)
+            self.assertIsInstance(effect.tail_samples, int, patch)
+
+    def test_patch_5_is_the_pedal_corners(self):
+        # Patch 5's Repeat Tone and Repeat Cut positions are the 7 kHz and
+        # 40 Hz corners T5 measures, within one step of the 7-bit knob.
+        grid = DigitalDelay.PATCHES[5][1]
+        ranges = DigitalDelay._MACRO_RANGES
+        tone = _component.macro_value(ranges[TONE_I], grid[TONE_I] / 127.0)
+        cut = _component.macro_value(ranges[CUT_I], grid[CUT_I] / 127.0)
+        step = 20.0 ** (1.0 / 127.0) - 1.0
+        self.assertLessEqual(abs(tone / 7000.0 - 1.0), step, tone)
+        self.assertLessEqual(abs(cut / 40.0 - 1.0), step, cut)
+
+    def test_construction_needs_audioecho(self):
+        saved = sys.modules.get("audioecho", False)
+        sys.modules["audioecho"] = None
+        try:
+            with self.assertRaises(ImportError):
+                DigitalDelay(silence_src(512), sample_rate=RATE)
+        finally:
+            if saved is False:
+                del sys.modules["audioecho"]
+            else:
+                sys.modules["audioecho"] = saved
+        DigitalDelay(silence_src(512), sample_rate=RATE).deinit()
+
+
+class SyncLimits(unittest.TestCase):
+    """Second fixer (2026-09-29): Sync's two limits, at the attacker's
+    settings. A Division longer than 800 ms stops at 800 ms, and the tempo
+    is read only when a control moves or a patch loads."""
+
+    #: The sixteen Divisions in beats, written out here: 1/32, 1/16T,
+    #: 1/32D, 1/16, 1/8T, 1/16D, 1/8, 1/4T, 1/8D, 1/4, 1/2T, 1/4D, 1/2,
+    #: 1/1T, 1/2D, 1/1.
+    BEATS = (1 / 8, 1 / 6, 3 / 16, 1 / 4, 1 / 3, 3 / 8, 1 / 2, 2 / 3,
+             3 / 4, 1, 4 / 3, 3 / 2, 2, 8 / 3, 3, 4)
+
+    def test_divisions_stop_at_800_ms(self):
+        for bpm in (120.0, 60.0):
+            def transport(_bpm=bpm):
+                return (True, 0.0, _bpm, 4, 4)
+            clamped = 0
+            for index, beats in enumerate(self.BEATS):
+                ideal = beats * 60.0 / bpm * RATE
+                expected = min(ideal, 0.8 * RATE)
+                measured, _ = t4_delay(DigitalDelay, transport=transport,
+                                       sync=127,
+                                       division=index * 127.0 / 15.0)
+                self.assertLessEqual(abs(measured - expected), 1.0,
+                                     (bpm, index))
+                if expected < ideal:
+                    clamped += 1
+                    self.assertGreater(abs(measured - ideal), 1.0)
+            self.assertEqual(clamped, 4 if bpm == 120.0 else 7, bpm)
+
+    def _tempo_change(self, action=None, channels=2):
+        """Sync on, a quarter note, Glide 0, Feedback 0, Mix 2. The host
+        goes from 120 to 60 bpm at frame 24 064, `action(effect)` runs, and
+        an impulse follows at frame 48 000: the echo's distance."""
+        at = 48000
+        frames = at + 50000
+        values = [0] * frames
+        values[at] = 32767
+        tempo = [120.0]
+
+        def transport():
+            return (True, 0.0, tempo[0], 4, 4)
+        effect = DigitalDelay.create(array_src(values, channels), RATE,
+                                     transport=transport, feedback=0.0,
+                                     mix=2.0, glide_ms=0.0)
+        effect.set_macro(SYNC_I, 127)
+        effect.set_macro(DIVISION_I, 9 * 127.0 / 15.0)
+
+        def change(frame):
+            if frame == 24064:
+                tempo[0] = 60.0
+                if action is not None:
+                    action(effect)
+        y = np.abs(left(pull(effect, frames, channels, on_block=change),
+                        channels))
+        effect.deinit()
+        y[at] = 0.0
+        return int(np.argmax(y)) - at
+
+    def test_a_tempo_change_waits_for_a_control(self):
+        self.assertEqual(self._tempo_change(), 24000)
+        self.assertEqual(self._tempo_change(channels=1), 24000)
+        # Any control moved, even to where it already is, reads the new
+        # tempo: a 60 bpm quarter, clamped to 800 ms.
+        for index in range(8):
+            def touch(effect, _index=index):
+                effect.set_macro(_index, effect.get_macro(_index))
+            self.assertEqual(self._tempo_change(touch), 38400, index)
+        self.assertEqual(self._tempo_change(touch, channels=1), 38400)
+        # A patch load reads it too. Patch 2 syncs on a dotted eighth and
+        # glides, so the Time it hands the node is read, not rendered:
+        # 750 ms at 60 bpm, 375 ms at 120.
+        for bpm, frames in ((120.0, 18000), (60.0, 36000)):
+            tempo = [120.0]
+            effect = DigitalDelay.create(
+                silence_src(512), RATE,
+                transport=lambda: (True, 0.0, tempo[0], 4, 4))
+            tempo[0] = bpm
+            effect.program_change(2)
+            self.assertEqual(effect._frames, frames, bpm)
+            effect.deinit()
+
+
+# --------------------------------------------------------------------------
+# The docstring's claims
+
+#: Every claim the module docstring makes, word for word, and the tests that
+#: assert it ("Class.test_name", in this file).
+CLAIMS = (
+    ("Time is the delay, from 12.5 to 800 ms, and Feedback is how much of "
+     "each repeat goes round again, up to 0.99.",
+     ("T4TimeLaw.test_the_map_at_the_stops_and_between",
+      "Tier1Fast.test_the_tail_is_bounded_at_every_feedback")),
+    ("Mix is the echo level: the dry stays at unity up to Mix 1, Mix 2 is "
+     "the repeats alone, and at Mix 0 the output is the input.",
+     ("T1DryIsAWire.test_the_hardest_cells",
+      "T1DryIsAWire.test_defaults_stereo_and_mono",
+      "TrialClaims.test_mix_2_is_the_repeats_alone",
+      "Tier1Fast.test_mix_zero_is_a_wire_on_the_full_scale_ramp")),
+    ("Turn Time while it plays and the repeats bend in pitch and settle, "
+     "instead of clicking.",
+     ("T2TimeResamples.test_the_row_cell_falls_on_the_law",
+      "T2TimeResamples.test_a_rising_move_at_the_default_glide",
+      "T2TimeResamples.test_the_block_staircase_is_red")),
+    ("Glide is how long a full-range Time move takes, from 800 ms to 8 s.",
+     ("TheSurface.test_glide_law",
+      "T2TimeResamples.test_a_wrong_glide_law_is_red")),
+    ("Glide 0 is an instant knob, and its price is a click.",
+     ("TrialClaims.test_glide_0_jumps_with_a_click",)),
+    ("Repeat Tone is a low-pass and Repeat Cut a high-pass inside the loop, "
+     "so each repeat is a little darker or thinner than the last.",
+     ("T5BandLimit.test_the_tone_compounds_in_the_loop",
+      "T5BandLimit.test_the_cut_compounds_in_the_loop")),
+    ("Repeat Tone's top stop and Repeat Cut's bottom stop take them out.",
+     ("TheSurface.test_filter_stops_are_exactly_zero",
+      "T5BandLimit.test_an_open_top_stop_is_red")),
+    ("With Sync on, Time is Division of the host's beat, up to 800 ms; "
+     "with no host tempo, Time stays where the knob is.",
+     ("T4TimeLaw.test_sync_quantises_time_into_the_map",
+      "SyncLimits.test_divisions_stop_at_800_ms",
+      "T4TimeLaw.test_no_host_leaves_time_on_the_knob",
+      "ZeroBpmHost.test_no_tempo_leaves_time_on_the_knob",
+      "ZeroBpmHost.test_a_tempo_that_is_not_finite_leaves_time_on_the_knob")),
+    ("The class reads the tempo only when a control moves or a patch "
+     "loads, so after a tempo change Time keeps the old beat until you "
+     "move a control.",
+     ("SyncLimits.test_a_tempo_change_waits_for_a_control",)),
+    ("Patch 5 puts the DD-2's 7 kHz and 40 Hz corners in the loop.",
+     ("TrialClaims.test_patch_5_is_the_pedal_corners",
+      "T5BandLimit.test_the_corners_at_48k")),
+    ("The DD-2's compander and its HOLD are not here.",
+     ("TheSurface.test_macros_patches_tier_latency",)),
+    ("At 48 kHz the repeats of a Time you have stopped turning do not "
+     "darken.",
+     ("T3NoDarkening.test_the_constructor_time_at_48k_and_22k",
+      "TheSurface.test_where_the_node_lands_the_handed_frame")),
+    ("At 44.1 and 22.05 kHz a few Times land a hair off the whole frame, "
+     "and at those each repeat spills a little onto the frame beside it.",
+     ("TheSurface.test_where_the_node_lands_the_handed_frame",
+      "TheSurface.test_an_off_frame_time_leaks_into_the_next_frame")),
+    ("A rising Time move at the fastest Glides can read more than 10 cents "
+     "off the ideal bend, because the node walks its read head in single "
+     "precision.",
+     ("T2TimeResamples.test_the_pitch_is_read_per_binade",
+      "T2TimeResamples.test_inside_the_band_is_red_and_outside_it_holds",
+      "T2TimeResamples.test_the_unclaimed_band_is_where_the_binade_model_says")),
+    ("At 22.05 kHz the top positions of Repeat Tone sit on one clamp below "
+     "Nyquist and sound the same.",
+     ("RepeatToneKnee.test_the_knee",)),
+    ("The dry sits at unity and the repeats add to it, so a hot input can "
+     "reach the int16 rail.",
+     ("InputCeiling.test_the_stated_ceiling_is_clean_and_just_over_is_not",)),
+    ("With Repeat Cut out and Mix below 1, an input that peaks at or below "
+     "floor(32767 (1 - Mix)) - 1 cannot reach the rail, at any Time or "
+     "Feedback.",
+     ("InputCeiling.test_the_any_material_bound",)),
+    ("A control that jumps makes the output step: move it in small steps "
+     "from the host if you need it smooth.",
+     ("TrialClaims.test_a_jump_steps_and_small_steps_do_not",)),
+    ("The tail rings only while the source keeps feeding: feed silence to "
+     "let it ring out.",
+     ("TrialClaims.test_the_tail_waits_for_the_source",)),
+    ("A tail cut short by a source that stopped carries on when the source "
+     "comes back.",
+     ("TrialClaims.test_the_tail_waits_for_the_source",)),
+    ("Latency is zero samples: nothing looks ahead.",
+     ("Tier1Fast.test_click_delay_is_zero",
+      "TheSurface.test_macros_patches_tier_latency")),
+    ("`tail_samples` is an upper bound on how long the output takes to "
+     "reach exact zero once your input stops, at every Feedback, with "
+     "Repeat Tone in or out.",
+     ("Tier1Fast.test_the_tail_reaches_exact_zero_inside_tail_samples",
+      "Tier1Fast.test_the_tail_is_bounded_at_every_feedback",
+      "Tier1Fast.test_repeat_tone_stall_cells_reach_zero_at_the_feedback_set",
+      "Tier1Fast.test_every_window_centre_reaches_zero",
+      "Tier1Fast.test_a_falling_walk_keeps_the_old_time_in_the_tail")),
+    ("With Repeat Cut in circuit, as at patch 5, `tail_samples` is `None`: "
+     "the class gives no bound there.",
+     ("TrialClaims.test_repeat_cut_in_has_no_tail_bound",)),
+    ("Pass a lower `max_time_ms` for a shorter line: Time then stops at "
+     "that ceiling, and `get_macro(0)` shows where it stopped.",
+     ("T4TimeLaw.test_a_lowered_ceiling_clamps_visibly",)),
+    ("A constructor Time of 0 is the bottom of its span, and a Repeat Tone "
+     "or Repeat Cut of 0 is that filter out.",
+     ("ConstructorZeros.test_zero_builds_and_means_the_stop",
+      "ConstructorZeros.test_zero_filters_render_as_filters_out")),
+    ("`reset()` empties the line and returns to patch 0.",
+     ("Tier1Fast.test_reset_empties_the_line",)),
+    ("The class reads the host's transport only while Sync is on.",
+     ("Tier1Fast.test_the_transport_is_read_only_with_sync_on",)),
+    ("The class needs audiodsp's `audioecho`, and on a board without it "
+     "construction raises `ImportError`.",
+     ("TrialClaims.test_construction_needs_audioecho",)),
+)
+
+#: Model names that carry digits and are not figures.
+NAMES = ("DD-2",)
+
+FAMILY_HEADING = "**Limits shared by the family.**"
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a digit outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for name in NAMES:
+        rest = rest.replace(name, " ")
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        self.assertEqual(claim_problems(dd.__doc__), [])
+        self.assertEqual(claim_problems(DigitalDelay.__doc__, ()), [])
+        self.assertIn(FAMILY_HEADING, _flat(dd.__doc__))
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(dd.__doc__ + " It reads 12 ms."))
+        self.assertTrue(claim_problems(_flat(dd.__doc__).replace(
+            "nothing looks ahead", "nothing looks back")))
+        self.assertTrue(claim_problems(dd.__doc__, CLAIMS + (
+            ("Latency is zero samples: nothing looks ahead.",
+             ("Tier1Fast.test_nothing_here",)),)))
 
 
 if __name__ == "__main__":
