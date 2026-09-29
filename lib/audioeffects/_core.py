@@ -10,7 +10,7 @@ tail as ``.output``:
     comp = audioeffects.create("Compressor", source, 48000,
                                threshold_db=-20, ratio=3)
     verb = audioeffects.create("Reverb", comp.output, 48000,
-                               preset="hall", mix=0.3)
+                               character="hall", mix=0.3)
     audio_out.play(verb.output)
 
 The underlying audiodsp nodes are kept as attributes so applications can bind

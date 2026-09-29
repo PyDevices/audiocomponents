@@ -54,7 +54,7 @@ there, and are recorded in its changelog.
   frame at 44.1 and 22.05 kHz, and Tone's flat top
   at 22.05 kHz. It lives in `lib/audioeffects/rebuilt/slapbackdelay.py`
   until it comes home.
-- **`TapeDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** a tape loop
+- **`TapeDelay` (rebuilt, Phase 5; adopted 2026-09-29):** a tape loop
   on one `audioecho.FeedbackDelay` with two transports as characters: the
   RE-201's motor (`"varispeed"`, the default), where a Time move bends the
   pitch by the ratio of the two times for exactly the new time, and the
@@ -63,22 +63,24 @@ there, and are recorded in its changelog.
   loss law whose corner follows Spacing and the tape speed; Wow and Flutter
   drive one periodic wow table with a slow drift; Record Level is the
   loop's cubic squash, without memory. Mix 0 is a wire while the loop keeps
-  recording. It lives in `lib/audioeffects/rebuilt/tapedelay.py`, and
-  `audioeffects.TapeDelay` is still the old class. Every sentence of the
+  recording. It is what `audioeffects.TapeDelay` and `create()` now serve,
+  from `lib/audioeffects/rebuilt/tapedelay.py` until it comes home; the old
+  `delay.TapeDelay` stays in `delay.py` until then. Every sentence of the
   docstring that makes a claim is tied to a test (`CLAIMS` in its test
   file); it says where the pitch bend stops, which Wow and Flutter moves
   still step, and the family's two limits (a control that jumps steps the
-  output; the tail rings only while the source feeds). On the boards the full class is over its
-  budget (P4 10.3-11.4 % against 9 %, S3 19.8-20.5 % against 15 %, at
-  audiodsp v0.6.2); patch 8 `Tape Delay - lean` (patch 0 with Record
-  Level at 0) built with `max_time_ms=800` met both bars in every run, and
-  gives up the tape saturation and Time above 800 ms. At audiodsp
+  output; the tail rings only while the source feeds). At audiodsp
   v0.6.3rc1 its Feedback is handed as set (no stepping clear of the stall
   windows; the bound counts one landing lap there), a Wow or Flutter move
   that changes only the wobble's depth glides over 20 ms, and a knob turned
   down to 0 keeps the last wow table while the depth ramps out; a move
-  that changes the balance of Wow and Flutter still steps, disclosed.
-- **`AnalogDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** a
+  that changes the balance of Wow and Flutter still steps, disclosed. At
+  v0.6.3rc3 Spread is handed as set: the node ends a cross-fed tail itself
+  (audiodsp#173), so the 1/4096 grid the class used is gone. On the boards
+  at audiodsp v0.6.3 every patch runs in real time at 13.4-14.1 % of a
+  block on the P4 and 10.0-12.8 % on the S3, and every digest equals the
+  desktop's or a single-precision desktop build's (audiocomponents#75).
+- **`AnalogDelay` (rebuilt, Phase 5; adopted 2026-09-29):** a
   bucket-brigade delay on one `audioecho.FeedbackDelay`, with the Boss
   DM-2's one 4096-stage line (`"single-line"`, the default) and the Deluxe
   Memory Man's two in series (`"double-line"`) as characters. The Time knob
@@ -89,22 +91,22 @@ there, and are recorded in its changelog.
   keeps recording. Modulation is a triangle of fixed millisecond swing, and
   Sync follows a host's beat by Division. There is no sample-and-hold, no
   compander and no fixed ~3 kHz pair, so short Times are brighter than
-  either pedal. It lives in `lib/audioeffects/rebuilt/analogdelay.py`, and
-  `audioeffects.AnalogDelay` is still the old class. The docstring states
-  the input ceiling (-4.4 dBFS peak at the default Mix 0.4) and that
-  turning Time through several positions takes seconds to settle. Board
-  cost is unmeasured. At audiodsp v0.6.3rc1 the Feedback is handed as set
+  either pedal. It is what `audioeffects.AnalogDelay` and `create()` now
+  serve, from `lib/audioeffects/rebuilt/analogdelay.py` until it comes
+  home. The docstring states the input ceiling (-4.4 dBFS peak at the
+  default Mix 0.4) and that turning Time through several positions takes
+  seconds to settle. At audiodsp v0.6.3rc1 the Feedback is handed as set
   (no stepping clear of the stall windows; the bound counts one landing lap
   there), and a Modulation move glides over 20 ms instead of stepping the
   read offset. At v0.6.3rc3 Spread is handed as set: the node's stereo
   cross-feed tail now ends on its own (audiodsp#170), so the 1/4096 grid
   the class used to dodge it is gone. A jumping control steps the output
   and a tail cut short by a stopped source carries on when it comes back,
-  disclosed as family limits (audiocomponents#117, audiodsp#180).
-  that changes the balance of Wow and Flutter still steps, disclosed. At
-  v0.6.3rc3 Spread is handed as set: the node ends a cross-fed tail itself
-  (audiodsp#173), so the 1/4096 grid the class used is gone.
-- **`PingPongDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** repeats
+  disclosed as family limits (audiocomponents#117, audiodsp#180). On the
+  boards at audiodsp v0.6.3 every patch runs in real time at 7.0-7.5 % of
+  a block on the P4 and 14.0-14.5 % on the S3, and every digest equals the
+  desktop's or a single-precision desktop build's (audiocomponents#75).
+- **`PingPongDelay` (rebuilt, Phase 5; adopted 2026-09-29):** repeats
   that alternate between the speakers, on one `audioecho.FeedbackDelay`
   whose cross-feed and input pan Spread moves between two plain delays and
   the full bounce, by a stated law. The dry path is each channel's own
@@ -116,18 +118,21 @@ there, and are recorded in its changelog.
   20 to 1000 ms), which needs a node option. Time walks rather than clicks,
   Sync follows the host's beat, and Repeat Tone and Repeat Cut put a
   low-pass and a high-pass in the loop, defaulting out. It lives in
-  `lib/audioeffects/rebuilt/pingpongdelay.py`, and
-  `audioeffects.PingPongDelay` is still the old class. The docstring states
+  `lib/audioeffects/rebuilt/pingpongdelay.py` until it comes home, and it
+  is what `audioeffects.PingPongDelay` and `create()` now serve. The
+  docstring states
   the input ceiling (-3 dBFS peak at the defaults, -3.1 over the shipped
   patches, on `noise_det`; -7.96 dBFS on any material with Repeat Cut in at
   the default Mix), and that at full Spread the loop hears (L + R) / 2.
-  Board cost is unmeasured. At audiodsp v0.6.3rc1 both loop filters' out
+  On the boards at audiodsp v0.6.3 every patch runs in real time at
+  11.9-12.2 % of a block on the P4 and 16.4-16.6 % on the S3, and every
+  digest equals the desktop's. At audiodsp v0.6.3rc1 both loop filters' out
   stops hand exactly 0 and a filter taken out is out whatever came before
   (no tracking Tone stop, no Cut held in at 20 Hz, so `tail_samples` is
   finite once Cut is out again), and the Feedback is handed as set (no
   stepping clear of the stall windows; the bound counts one landing lap
   there).
-- **`ConvolutionReverb` (rebuilt, Phase 5, parked under `rebuilt/`):** a
+- **`ConvolutionReverb` (rebuilt, Phase 5; adopted 2026-09-29):** a
   short room on one `audioconvolve.Convolver`, synthesized from Decay,
   Damping, Predelay, Diffusion and one of 64 Room seeds, or loaded from
   your own impulse (int16 frames or a 16-bit WAV at the graph's rate) with
@@ -139,16 +144,20 @@ there, and are recorded in its changelog.
   delayed by exactly that, byte for byte, while the source keeps feeding
   it and nothing resets it. Measured mode loads at unit mean energy and
   refuses the synthesis macros with `IndexError`; no impulse ships. It
-  lives in `lib/audioeffects/rebuilt/convolutionreverb.py`, and
-  `audioeffects.ConvolutionReverb` is still the old class. It stands on
+  lives in `lib/audioeffects/rebuilt/convolutionreverb.py` until it comes
+  home, and it is what `audioeffects.ConvolutionReverb` and `create()` now
+  serve. It stands on
   audiodsp v0.6.3rc3: a room-knob move never drops or repeats a dry frame
   at any Mix, from the end of the block in flight the output is that of an
   instance that always had the new settings, and each side of a stereo
   room is unit energy on its own, so the room sits in the middle.
   `reset()` mid-stream silences the block in flight, dry included, and a
   Mix move lands at the end of it. The docstring is the player's text,
-  every claim in it tied to a test. Board cost is unmeasured.
-- **`MultiTapDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** the
+  every claim in it tied to a test. On the boards at audiodsp v0.6.3 every
+  patch runs in real time at 41.6-42.2 % of a block on the P4 and
+  71.2-73.1 % on the S3, and every digest equals the desktop's or a
+  single-precision desktop build's (audiocomponents#75).
+- **`MultiTapDelay` (rebuilt, Phase 5; adopted 2026-09-29):** the
   RE-201's multi-head modes, with the Echorec as a second reference. Heads
   sit on a grid of whole multiples of one base time, exactly, at every
   rate; Pattern is the RE-202's twelve head sets over that grid (mode 12
@@ -156,8 +165,9 @@ there, and are recorded in its changelog.
   `audioecho.FeedbackDelay` whose loop low-pass darkens once per lap, and
   Repeat Tone's out stop swaps to a lighter graph (patch 1, the one to
   stack on an S3). Mix 0 is a wire. It lives in
-  `lib/audioeffects/rebuilt/multitapdelay.py`, and
-  `audioeffects.MultiTapDelay` is still the old class. The tap node reads
+  `lib/audioeffects/rebuilt/multitapdelay.py` until it comes home, and it
+  is what `audioeffects.MultiTapDelay` and `create()` now serve. The tap
+  node reads
   its input one block behind the dry, so settings made before the first
   pull or after `reset()` land on the grid in both lanes. Any number of
   resets and returns from Mix 0, before the first pull or between two
@@ -183,8 +193,12 @@ there, and are recorded in its changelog.
   docstring states the input ceiling, the click and channel crossing of a
   Time or Heads move while audio plays, and that on CircuitPython alone
   the stereo dry's right lane is one LSB hot within 32 LSB of the rails.
-  Board cost is unmeasured.
-- **`Reverb` (rebuilt, Phase 5, parked under `rebuilt/`):** Dattorro's plate
+  On the boards at audiodsp v0.6.3 every patch runs in real time on the P4
+  (36.0-72.5 % of a block); on the S3 patches 0-3, 5 and 6 do (57.8-78.1 %)
+  and patch 4 does not (5.567 ms, 104.4 %), so the docstring says patch 4
+  needs a P4-class board and patch 3 may. Every digest equals the
+  desktop's or a single-precision desktop build's (audiocomponents#75).
+- **`Reverb` (rebuilt, Phase 5; adopted 2026-09-29):** Dattorro's plate
   network on one `audioverb.Tank`, cut four ways as a Character macro: an
   EMT 140 plate that is dense at once and darkens as Decay shortens, and a
   room, a chamber and a hall that build. Decay is T60 at 500 Hz within 12 %
@@ -194,10 +208,15 @@ there, and are recorded in its changelog.
   without losing a frame of the dry, `reset()` keeps the dry the Tank holds,
   and Tone's centre is handed as 0 dB. Mix 0 is a byte-exact wire while the
   tank keeps ringing; latency is zero. It lives in
-  `lib/audioeffects/rebuilt/reverb.py`, and `audioeffects.Reverb` is still
-  the old class. The Fender 6G15 spring character is parked until the node
-  carries a dispersive chain. Board cost is unmeasured.
-  Board cost is unmeasured. At audiodsp v0.6.3rc3 the class plays what it
+  `lib/audioeffects/rebuilt/reverb.py` until it comes home, and it is what
+  `audioeffects.Reverb` and `create()` now serve; the old `reverb.Reverb`,
+  with its `preset`, stays in `reverb.py` until then. The Fender 6G15
+  spring character is parked until the node carries a dispersive chain.
+  On the boards at audiodsp v0.6.3 every patch runs in real time at
+  19.0-23.4 % of a block on the P4 and 33.7-36.3 % on the S3; every digest
+  equals a single-precision desktop build's (audiocomponents#75) but patch
+  7's, which differs from it by nine one-LSB samples of 65536
+  (audiodsp#183). At audiodsp v0.6.3rc3 the class plays what it
   played at rc1; its docstring is now the player's text, each claim tied
   to a test, with a jumping control disclosed as a family limit
   (audiocomponents#117), and a return from Mix 0 said plainly to start
@@ -205,6 +224,13 @@ there, and are recorded in its changelog.
 
 ### Changed
 
+- **`ShimmerHall` and `AirSpace` keep the classes they were ported
+  against.** With the Phase 5 `TapeDelay` and `Reverb` adopted, the two
+  racks name the old `delay.TapeDelay` and `reverb.Reverb` directly (a
+  `Rack` chain entry may now be a class in place of a `NAME`), so they
+  build and sound as before; moving them onto the rebuilds would re-voice
+  them. A chain that names `"Reverb"` gets the rebuild, which takes
+  `character=` where the old class took `preset=`.
 - **The audiodsp pin moves to v0.6.3rc3.** The release carries the
   convolution node's two fixes (audiodsp#165: the block in flight kept
   across a re-synthesis, each side of a stereo room normalised on its own),

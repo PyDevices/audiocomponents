@@ -10,7 +10,7 @@ construct one without holding any live objects:
     rack = audioeffects.create("Rack", source, 48000, chain=(
         ("Compressor", {"threshold_db": -24.0, "ratio": 3.0}),
         ("TapeDelay", {"time_ms": 340.0, "mix": 0.25}),
-        ("Reverb", {"preset": "hall", "mix": 0.3}),
+        ("Reverb", {"character": "hall", "mix": 0.3}),
     ))
     audio_out.play(rack.output)
 
@@ -19,6 +19,13 @@ between pieces (its `fx_shimmer.py` and `fx_space.py`), ported whole:
 fixed topologies with a macro surface over the children, so they carry
 patches the way any patchable effect here does. Racks may contain and be
 used by other racks: a `chain` entry may itself be a `("Rack", {...})`.
+
+Those two racks name the classes they were ported against, `delay.py`'s
+`TapeDelay` and `reverb.py`'s `Reverb`, directly rather than by NAME: the
+rebuilt classes the package serves under those names since their adoption
+on 2026-09-29 take different settings (no `preset`, no `wow`) and sound
+different, and moving a rack onto them is a re-voicing of the rack, not a
+part of the adoption.
 """
 
 VENDOR = "PyDevices"
@@ -27,10 +34,15 @@ from . import _core
 from ._component import macro_position as _macro_position
 from ._component import midi_of_position as _midi_of_position
 from ._component import port_target as _port_target
+from .delay import TapeDelay as _OldTapeDelay
+from .reverb import Reverb as _OldReverb
 
 
 def _child(name, tail, options):
-    """One chain entry built around `tail` at the configured rate."""
+    """One chain entry built around `tail` at the configured rate. `name`
+    is an effect NAME, or, for the soundtrack racks below, a class."""
+    if not isinstance(name, str):
+        return name.create(tail, _core.sample_rate(), **options)
     import audioeffects
     return audioeffects.create(name, tail, _core.sample_rate(), **options)
 
@@ -175,9 +187,9 @@ class ShimmerHall(Rack):
         # skipped for starting at zero could never come back.
         Rack.__init__(self, source, chain=(
             ("Octaver", {"down": 0.0, "up": 1.0}),
-            ("TapeDelay", {"time_ms": 420.0, "feedback": 0.5, "wow": 0.3,
-                           "drive": 0.2}),
-            ("Reverb", {"preset": "hall"}),
+            (_OldTapeDelay, {"time_ms": 420.0, "feedback": 0.5,
+                             "wow": 0.3, "drive": 0.2}),
+            (_OldReverb, {"preset": "hall"}),
         ))
         self.octave, self.tape, self.hall = self.effects
         self._init_macros((shimmer, echo, space, tone_hz), patch)
@@ -215,8 +227,8 @@ class AirSpace(Rack):
                  patch=None):
         Rack.__init__(self, source, chain=(
             ("LowPass", {"frequency": 4200.0}),
-            ("TapeDelay", {"time_ms": 375.0, "feedback": 0.4}),
-            ("Reverb", {"preset": "hall"}),
+            (_OldTapeDelay, {"time_ms": 375.0, "feedback": 0.4}),
+            (_OldReverb, {"preset": "hall"}),
         ))
         self.tone, self.tape, self.hall = self.effects
         self._init_macros((space, echo, frequency), patch)

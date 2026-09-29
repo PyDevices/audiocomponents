@@ -104,9 +104,26 @@ def _present():
 #: `SlapbackDelay`, `CombFilter` and the FeedbackDelay classes Phase 5 is
 #: still building, and coming home moves it. That is a separate step, after
 #: those classes land.
+#:
+#: Phase 5's last six, adopted 2026-09-29: `TapeDelay`, `AnalogDelay`,
+#: `PingPongDelay`, `MultiTapDelay`, `Reverb` and `ConvolutionReverb`. The
+#: board session at audiodsp v0.6.3 met the cost bar (80 % of a 5.333 ms
+#: stereo block) and real time at every cell on the ESP32-P4, and on the
+#: ESP32-S3 at every cell but MultiTapDelay's patch 4 (5.567 ms), which its
+#: docstring discloses on Brad's ruling. Each board digest equals the
+#: desktop's, or a desktop MicroPython's built with single-precision floats
+#: (audiocomponents#75); Reverb's patch 7 differs from that build by nine
+#: one-LSB samples of 65536 (audiodsp#183). They stay under this directory
+#: with the first two, for the same reason.
 ADOPTED = (
     "DigitalDelay",
     "SlapbackDelay",
+    "TapeDelay",
+    "AnalogDelay",
+    "PingPongDelay",
+    "MultiTapDelay",
+    "Reverb",
+    "ConvolutionReverb",
 )
 
 

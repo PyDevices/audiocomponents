@@ -998,10 +998,19 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(effect.patch_index, 3)
         effect.deinit()
 
-    def test_the_module_is_what_the_registry_builds(self):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-09-29, so `create()` serves this one. It was the
+        reverse assertion while the class was parked; revert
+        `rebuilt.ADOPTED` and this goes red."""
+        import audioeffects
         from audioeffects import rebuilt as registry
         self.assertIs(registry.module_class(NAME), ConvolutionReverb)
-        self.assertIn(NAME, registry.parked())
+        self.assertIn(NAME, registry.ADOPTED)
+        self.assertNotIn(NAME, registry.parked())
+        self.assertIs(audioeffects.ConvolutionReverb, ConvolutionReverb)
+        served = audioeffects.create(NAME, switchable(), RATE)
+        self.assertIsInstance(served, ConvolutionReverb)
+        served.deinit()
 
     def test_patch_0_is_the_constructor_grid(self):
         effect = build()

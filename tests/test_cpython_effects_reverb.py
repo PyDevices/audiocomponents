@@ -695,6 +695,21 @@ def handed_cut(effect):
 # -- the surface -------------------------------------------------------------
 
 class TheSurface(unittest.TestCase):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-09-29, so `create()` serves this one. It was the
+        reverse assertion while the class was parked; revert
+        `rebuilt.ADOPTED` and this goes red."""
+        import audioeffects
+        self.assertIs(rebuilt.module_class("Reverb"), Reverb)
+        self.assertIn("Reverb", rebuilt.ADOPTED)
+        self.assertNotIn("Reverb", rebuilt.parked())
+        self.assertIs(audioeffects.Reverb, Reverb)
+        served = audioeffects.create(
+            "Reverb", probes.ArraySource(interleave((), 2, 64), rate=RATE,
+                                         channels=2, block=64), RATE)
+        self.assertIsInstance(served, Reverb)
+        served.deinit()
+
     def test_macros_patches_tier_latency(self):
         self.assertIs(rebuilt.module_class("Reverb"), Reverb)
         self.assertEqual(Reverb.MACRO_LABELS, (

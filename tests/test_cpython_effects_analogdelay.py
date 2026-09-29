@@ -21,8 +21,8 @@ build that gained a hold or a fixed pair would show up here first. The
 full spans, the stereo renders the rows name, the three interpreters and
 the M5 table live in the evidence pack, not in this file.
 
-The rebuild is parked (not in `rebuilt.ADOPTED`), so the class is reached by
-`rebuilt.module_class("AnalogDelay")`.
+The class is reached by `rebuilt.module_class("AnalogDelay")`, which is also what
+`audioeffects.AnalogDelay` serves since its adoption on 2026-09-29.
 
 The dossier's laws are written out here independently of the class: the
 corner is 0.2211 N / T, the Time map 20 * 30^position ms, the whole frame
@@ -1349,11 +1349,17 @@ class TheSurface(unittest.TestCase):
         effect.program_change(3)
         self.assertEqual(effect.patch_index, 3)
 
-    def test_parked_not_served(self):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-09-29, so `create()` serves this one. It was the
+        reverse assertion while the class was parked; revert
+        `rebuilt.ADOPTED` and this goes red."""
         import audioeffects
-        self.assertNotIn("AnalogDelay", rebuilt.ADOPTED)
-        self.assertIn("AnalogDelay", rebuilt.parked())
-        self.assertIsNot(audioeffects.AnalogDelay, AnalogDelay)
+        self.assertIn("AnalogDelay", rebuilt.ADOPTED)
+        self.assertNotIn("AnalogDelay", rebuilt.parked())
+        self.assertIs(audioeffects.AnalogDelay, AnalogDelay)
+        served = audioeffects.create("AnalogDelay", silence_src(64), RATE)
+        self.assertIsInstance(served, AnalogDelay)
+        served.deinit()
 
     def test_patches_are_the_dossier_settings_on_the_grid(self):
         # Section 6's table, settings in the macros' own units, through

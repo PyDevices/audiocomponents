@@ -15,8 +15,8 @@ Every law a measurement checks against is written out here from the
 dossier, never taken from the class: the whole-frame landing, the Time
 span, the Spread law, the reference mono delay.
 
-The rebuild is parked (not in `rebuilt.ADOPTED`), so the class is reached by
-`rebuilt.module_class("PingPongDelay")`.
+The class is reached by `rebuilt.module_class("PingPongDelay")`, which is also what
+`audioeffects.PingPongDelay` serves since its adoption on 2026-09-29.
 """
 
 import math
@@ -902,11 +902,17 @@ class TheSurface(unittest.TestCase):
         effect.program_change(3)
         self.assertEqual(effect.patch_index, 3)
 
-    def test_parked_not_served(self):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-09-29, so `create()` serves this one. It was the
+        reverse assertion while the class was parked; revert
+        `rebuilt.ADOPTED` and this goes red."""
         import audioeffects
-        self.assertNotIn("PingPongDelay", rebuilt.ADOPTED)
-        self.assertIn("PingPongDelay", rebuilt.parked())
-        self.assertIsNot(audioeffects.PingPongDelay, PingPongDelay)
+        self.assertIn("PingPongDelay", rebuilt.ADOPTED)
+        self.assertNotIn("PingPongDelay", rebuilt.parked())
+        self.assertIs(audioeffects.PingPongDelay, PingPongDelay)
+        served = audioeffects.create("PingPongDelay", silence_src(64), RATE)
+        self.assertIsInstance(served, PingPongDelay)
+        served.deinit()
 
     def test_patches_are_the_dossier_settings_on_the_grid(self):
         for index, (name, values) in enumerate(DOSSIER_PATCHES):

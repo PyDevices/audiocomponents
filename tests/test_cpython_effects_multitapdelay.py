@@ -13,8 +13,8 @@ Every law a measurement checks against is written out here from the
 dossier, never taken from the class: the whole-frame landing, the lap
 clamp, S1's head sets, Tilt's line and the lap node's float32 hand-off.
 
-The rebuild is parked (not in `rebuilt.ADOPTED`), so the class is reached by
-`rebuilt.module_class("MultiTapDelay")`.
+The class is reached by `rebuilt.module_class("MultiTapDelay")`, which is also what
+`audioeffects.MultiTapDelay` serves since its adoption on 2026-09-29.
 
 Three plants are built for real here that Station A emulated: T4's
 per-head 6 kHz low-pass (a second tap node for head 2 behind an
@@ -1293,9 +1293,17 @@ class TheSurface(unittest.TestCase):
         effect.program_change(3)
         self.assertEqual(effect.patch_index, 3)
 
-    def test_parked_not_served(self):
-        self.assertNotIn("MultiTapDelay", rebuilt.ADOPTED)
-        self.assertIsNot(audioeffects.MultiTapDelay, MultiTapDelay)
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-09-29, so `create()` serves this one. It was the
+        reverse assertion while the class was parked; revert
+        `rebuilt.ADOPTED` and this goes red."""
+        self.assertIn("MultiTapDelay", rebuilt.ADOPTED)
+        self.assertNotIn("MultiTapDelay", rebuilt.parked())
+        self.assertIs(audioeffects.MultiTapDelay, MultiTapDelay)
+        served = audioeffects.create(
+            "MultiTapDelay", Endless(silence(), RATE, 2), RATE)
+        self.assertIsInstance(served, MultiTapDelay)
+        served.deinit()
 
     def test_patch_table_is_the_dossier_on_the_grid(self):
         for index, (name, values) in enumerate(DOSSIER_PATCHES):
