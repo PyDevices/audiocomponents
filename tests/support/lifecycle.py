@@ -82,13 +82,13 @@ DECLARED = {
         "a tail cut short by a stopped source carries on when it comes back"
         " (family, audiodsp#180)",
     ("SlapbackDelay", "E1-", "P4"):
-        "the Wow wobble runs free: a reset does not put its phase where a"
-        " fresh instance's is, so with Wow above 0 the output never matches"
-        " it again (ok at Wow 0)",
+        "a reset restarts the Wow wobble where a fresh instance's starts;"
+        " the control never stopped, so its wobble is further along and"
+        " with Wow above 0 the two never line up again (ok at Wow 0)",
     ("SlapbackDelay", "E2-", "P4"):
-        "the Wow wobble runs free: reset_buffer does not put its phase where"
-        " a fresh instance's is, so with Wow above 0 the output never"
-        " matches it again (ok at Wow 0)",
+        "reset_buffer restarts the Wow wobble where a fresh instance's"
+        " starts; the control never stopped, so its wobble is further along"
+        " and with Wow above 0 the two never line up again (ok at Wow 0)",
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")

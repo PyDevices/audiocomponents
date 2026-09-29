@@ -158,8 +158,6 @@ class SlapbackDelay(_component.Component):
     read it if that is later, for the settings as they stand when you read
     it.
     `reset()` empties the line and returns to patch 0.
-    With Wow above 0 the wobble runs free, so after a reset the output never
-    lines up with a fresh instance's again.
     The class never reads the host's tempo.
     A constructor value outside a knob's span clamps to the nearer stop, a
     `tone_hz` of 0 or less is Tone out, and NaN takes the option's default.

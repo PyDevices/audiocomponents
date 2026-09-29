@@ -1917,9 +1917,6 @@ CLAIMS = (
      "read it.", "test_tail_samples_holds_for_the_settings_as_they_stand"),
     ("`reset()` empties the line and returns to patch 0.",
      "test_reset_empties_the_line"),
-    ("With Wow above 0 the wobble runs free, so after a reset the output "
-     "never lines up with a fresh instance's again.",
-     "test_the_wobble_runs_free_across_a_reset"),
     ("The class never reads the host's tempo.",
      "test_the_transport_is_never_read"),
     ("A constructor value outside a knob's span clamps to the nearer stop, a "
@@ -1962,7 +1959,7 @@ def _cell(event, patch, channels=1, rate=RATE, cls=None):
 
 class NoWowSlapback(SlapbackDelay):
     """The class with Wow at 0 in the constructor and every patch: the
-    control for the free-running wobble."""
+    control for the reset cells' declared P4 rows."""
 
     NAME = 'SlapbackDelay'
     PATCHES = dict((index, (name, values[:WOW_I] + (0,)
@@ -2092,16 +2089,57 @@ class TheClaims(unittest.TestCase):
         before, after, last = _midtail({}, [(REPEATS_I, 127)])
         self.assertGreater(last, before)
 
-    def test_the_wobble_runs_free_across_a_reset(self):
+    def test_the_reset_cells_differ_from_an_unreset_control_with_wow(self):
         # The matrix's E1 and E2 cells go red on P4 at every patch, each
         # with Wow above 0; with Wow 0 in the constructor and every patch
-        # the same cells are ok. The class declares it.
+        # the same cells are ok. A reset restarts the wobble where a fresh
+        # instance's starts (test_a_reset_restarts_the_wobble), and the
+        # matrix's control never stopped, so its wobble is further along.
+        # The class declares the cells.
         for event in ("E1-reset@block", "E1-reset@part", "E2-reset_buffer"):
             for patch in (None, 2):
                 res = _cell(event, patch)
                 self.assertTrue(res["P4"].startswith("RED"), (event, res))
                 res = _cell(event, patch, cls=NoWowSlapback)
                 self.assertEqual(res["P4"], "ok", (event, res))
+
+    def test_a_reset_restarts_the_wobble(self):
+        # Backs the DECLARED reason for E1/E2 P4: after reset() or the
+        # host's reset_buffer, patch 0 with Wow at its top, the output is
+        # sample for sample a fresh instance's fed the same material from
+        # that frame, while an instance that ran on without the reset
+        # differs in nearly every sample.
+        at = 40 * BLOCK
+        for rate in (48000, 22050):
+            for channels in (2, 1):
+                noise = np.random.default_rng(7).uniform(
+                    -12000, 12000, at + rate // 2)
+                for how in ("reset", "reset_buffer"):
+                    source, _ = to_source(noise, channels, rate)
+                    a = SlapbackDelay(source, sample_rate=rate, patch=0)
+                    a.set_macro(WOW_I, 127)
+                    pull(a, at)
+                    if how == "reset":
+                        a.reset()
+                    else:
+                        audiocore.reset_buffer(a.output)
+                    a.set_macro(WOW_I, 127)
+                    got = pull(a, rate // 2)
+                    source, _ = to_source(noise[at:], channels, rate)
+                    b = SlapbackDelay(source, sample_rate=rate, patch=0)
+                    b.set_macro(WOW_I, 127)
+                    want = pull(b, rate // 2)
+                    key = (rate, channels, how)
+                    self.assertEqual(int(np.count_nonzero(got != want)), 0,
+                                     key)
+                source, _ = to_source(noise, channels, rate)
+                c = SlapbackDelay(source, sample_rate=rate, patch=0)
+                c.set_macro(WOW_I, 127)
+                ran_on = pull(c, at + rate // 2)[at:]
+                differ = int(np.count_nonzero(ran_on[-1000:]
+                                              != want[-1000:]))
+                self.assertGreater(differ, 0.99 * 1000 * channels,
+                                   (rate, channels))
 
     def test_a_jumping_control_steps_the_output(self):
         # The matrix's E5 cell at patch 2 (Level to 0 and back) steps past
