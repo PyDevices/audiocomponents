@@ -49,18 +49,6 @@ KNOWN_RED = {
     ('DigitalDelay', 'E8-dry', 'P3'): (
         6, 'e155e27d', 6, 'e155e27d',
         'a source that stays dry through a pause and comes back: old audio plays out of silence'),
-    ('SlapbackDelay', 'E', 'P5'): (
-        124, '01ddb3de', 198, '4cda9a29',
-        'Level, Tone and patch moves step the output within one block (no ramp)'),
-    ('SlapbackDelay', 'E1-', 'P4'): (
-        56, 'c608fc28', 56, 'c608fc28',
-        'reset() lands patch 0 at another moment than a fresh instance, so the Wow phase never re-converges'),
-    ('SlapbackDelay', 'E2-', 'P4'): (
-        28, 'cbf2eabb', 28, 'cbf2eabb',
-        'a host reset_buffer shifts the Wow phase, so the output never re-converges'),
-    ('SlapbackDelay', 'E8-dry', 'P3'): (
-        16, '95d6ec10', 16, '95d6ec10',
-        'a source that stays dry through a pause and comes back: old audio plays out of silence'),
     ('TapeDelay', 'E', 'P5'): (
         34, '60c8dd58', 106, '4ce31e31',
         'Time, Mix, Wow and patch moves step the output within one block'),

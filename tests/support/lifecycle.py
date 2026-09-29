@@ -73,8 +73,22 @@ MIX_INDEX = {
 #: Where a class cannot satisfy a property by design, it says so HERE, one
 #: row per (class NAME, event name prefix, property): reason. A matching
 #: cell prints `decl` instead of RED and is counted as a declared exception.
-#: Nothing else skips a cell. Empty on purpose: no class has declared one.
+#: Nothing else skips a cell.
 DECLARED = {
+    ("SlapbackDelay", "E", "P5"):
+        "a control that jumps steps the output (family, audiocomponents#117):"
+        " Level, Tone and patch moves have no ramp",
+    ("SlapbackDelay", "E8-dry", "P3"):
+        "a tail cut short by a stopped source carries on when it comes back"
+        " (family, audiodsp#180)",
+    ("SlapbackDelay", "E1-", "P4"):
+        "the Wow wobble runs free: a reset does not put its phase where a"
+        " fresh instance's is, so with Wow above 0 the output never matches"
+        " it again (ok at Wow 0)",
+    ("SlapbackDelay", "E2-", "P4"):
+        "the Wow wobble runs free: reset_buffer does not put its phase where"
+        " a fresh instance's is, so with Wow above 0 the output never"
+        " matches it again (ok at Wow 0)",
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")

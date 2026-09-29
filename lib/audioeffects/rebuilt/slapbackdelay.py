@@ -1,167 +1,9 @@
-"""`SlapbackDelay` - one tape repeat at 135 ms, in mono, the Sun Studio slap.
+"""`SlapbackDelay` - one tape repeat after the dry, in mono: the Sun Studio slap.
 
-Rebuilt from scratch for Phase 5 against
-`workspace docs/effects-internal/dossiers/SlapbackDelay.md`, whose trait
-table was frozen at Station A before this file existed (anchor commit
-7a5a4cbd8a734ea3df6ae8b8b04e32e763a15b5a, the Station A critique's
-re-freeze, 2026-09-27). The old class in `delay.py` is consulted only for
-the seven defects that dossier's section 7 names. This class was adopted
-on 2026-09-28, and `audioeffects.SlapbackDelay` serves it.
-
-**What it sounds like.** Your dry signal passes untouched, and one copy of
-it comes back 135 ms later, from the same place, a little quieter: the
-two-machine tape echo on the 1955 Sun sides, which Halmrast measured at
-134-137 ms, one repeat, mono. Time (40-250 ms) is the head spacing over the
-tape speed. Level (0-2) is the console return: dry at unity up to 1, the
-repeat alone at 2, and Level 0 is a wire while the line keeps recording.
-Saturation is how hard the return drove the record amplifier; it colours
-the repeat and never the dry. Tone is the tape path's top end, out of
-circuit by default. Wow is the transport's slow wobble, in cents at a fixed
-0.7 Hz. Repeats sends the slap back round for a second and third; the Sun
-rig had no feedback path, so it defaults to 0.
-
-**The standout:** Sam Phillips' two-Ampex-350 slapback at Sun Studio, as
-measured on *Baby Let's Play House* and *Tryin' to Get to You*. You get its
-time, its single repeat and its mono placement as defaults, and its tape
-colours as knobs.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audioecho",)`). The stock
-`audiodelays.Echo` limits its only output at +-28000, so its Mix 0 is not
-a wire. On a stock CircuitPython board this module imports cleanly and
-construction raises `ImportError`.
-
-**Latency: zero samples, at every setting and every rate.** Nothing looks
-ahead. The 135 ms is the repeat, not latency on the dry path, and no option
-adds any.
-
-**Mono.** The repeat sits exactly where the dry sits: on a source identical
-in both channels the output is identical in both channels, at every knob
-position. A one-channel source gets the identical effect on its one channel,
-sample for sample the left channel of a stereo render. The class never
-passes `input_pan`, and it has no width, spread or pan knob, and never will.
-
-**RAM.** A fixed line of 251 ms (Time's top plus 1 ms) of two int16 lanes
-whatever the channel count: 48 192 B at 48 kHz, 44 276 B at 44.1 kHz,
-22 136 B at 22.05 kHz, plus about 1.2 KB of node. No option sizes it.
-
-**Cost.** One `audioecho.FeedbackDelay` with `delay_slew`, wow and
-`loop_drive` on; no mixer. Palette row FeedbackDelay +options (the nearest
-not-cheaper row; no row prices `loop_drive`), glue 0: **P4 <= 9 %,
-S3 <= 15 %** of a 5.333 ms stereo block. Measured on both boards on
-2026-09-28 at every shipped patch, with the tool's control in the same
-conditions as the palette row: the P4 at most 0.396 ms, 7.4 % (rt 5.82 or
-better); the S3 0.781-0.783 ms, 14.6-14.7 %, at the default and patches
-0-4, and 0.813 ms, 15.2 %, at patch 5, the one patch with Tone in
-circuit (rt 3.08 or better). Brad passed patch 5 against the 15 % bar on
-2026-09-28; alone on an S3 the class leaves about 85 % of the block for
-everything else. All seven patch digests are identical on both boards and
-differ from the desktop's, because the Wow depth is worked out in Python
-in a board's single precision (`wow_depth_ms` 2.1 x 10^-5 to
-6.8 x 10^-5 ms high, under 0.0001 cent; patch 4's Feedback also one
-float32 step off).
-
-**What the default surrenders.** The default is Tone out, so the repeat is
-as bright as the dry: an Ampex 350 at 15 ips rolls off at 15 kHz and at
-7.5 ips lower still, and the Tone knob (patch 5, Dark Slap) is how you get
-there. Wow is on at 1 cent, and wow moves the read head between samples, so
-the repeat's top end breathes: at 48 kHz a 15 kHz tone in the repeat swings
-between -0.03 and -5.11 dB (mean -2.61 dB) about 25 times a second; at
-44.1 kHz between -0.02 and -6.38 dB (mean -3.35 dB). With Wow at 0 every
-static Time is handed to the node as the nearest whole frame at the
-running rate, so the default 135 ms is 6 480 frames at 48 kHz and 5 954
-frames (135.011 ms) at 44.1 kHz, not the 5 953.5 that would cost the
-repeat 6.35 dB at 15 kHz for as long as it played. At 48 kHz the node
-lands every one of the 128 Time positions exactly on that frame, and the
-repeat loses nothing.
-
-At 44.1 and 22.05 kHz it does not always. The node turns the milliseconds
-back into frames in float32, and for some Times no float32 value lands on
-the whole frame, so the read sits one float32 step off it. Among the 128
-Time positions that is 21 at 44.1 kHz (MIDI 4, 8, 9, 10, 11, 38, 39, 40,
-41, 49, 50, 53, 55, 60, 83, 86, 91, 93, 96, 99, 102) and 20 at 22.05 kHz
-(MIDI 8, 10, 34, 38, 39, 40, 41, 45, 53, 60, 81, 83, 86, 91, 93, 96, 97,
-98, 99, 102), at most 1/2048 of a frame off at 44.1 kHz and 1/4096 at
-22.05 kHz. Of the 9 262 whole frames a constructor `time_ms` reaches
-from 40 to 250 ms, 1 159 land off at 44.1 kHz, and 579 of 4 632 at
-22.05 kHz, up to 1/1024 and 1/2048 of a frame. None do at 48 kHz, nor the
-default 135 ms or any shipped patch's Time at any rate. There the repeat
-puts a sliver on the frame beside it: a 20 000 click's repeat reads
-19 618 and 10 at MIDI 60, 44.1 kHz (19 623 and 5 at 22.05 kHz), against
-19 627 on the frame (the default Saturation's own loss). The class cannot
-hand the node a number that lands there; a node change is asked for.
-
-**Saturation** is the node's cubic soft clip on the repeat, applied again on
-each pass when Repeats is up. On the repeat of a -6 dBFS tone the default
-0.15 adds a third harmonic at -50.0 dB re the fundamental and takes the
-fundamental down 0.08 dB; 1.0 puts the third at -33.1 dB and the
-fundamental at -0.56 dB. There is no second harmonic.
-
-**Turning Time while it plays** walks the repeat to the new time at a fixed
-0.1875 delay-seconds per second, instead of clicking: the repeat bends
-+297.5 cents while Time falls and -359.5 cents while it rises, and
-135 -> 85 ms takes 267 ms. There is no Glide knob; a slap's time is set,
-not played.
-
-**Turning Wow while it plays glides.** Since audiodsp v0.6.3rc1 the node
-ramps a new wow depth in over 20 ms (audiodsp#160), so the repeat bends
-for those 20 ms instead of jumping. On a 997 Hz tone at 12 000 LSB,
-Level 2, 48 kHz, a Wow move from grid 36 to 73 or from 0 to 127 steps the
-output by no more than the tone's own largest step, 1 564 LSB, anywhere
-in the 2 000 frames after it (up to v0.6.2 the same moves stepped 7 684
-and 23 037). While the depth travels, the extra pitch is the change over
-20 ms times where the 0.7 Hz cycle is: 0 to 127 is 0.46 ms, up to 2.3 %
-at the cycle's crest for those 20 ms. A patch change that moves Wow is a
-click only as far as its Level jump makes it: patch 0 to patch 2
-(Doubling), tried on every block boundary of that tone, steps up to 3 416
-LSB against patch 0's own 2 106 at 48 kHz (3 569 against 2 292 at
-44.1 kHz; 5 503 and 5 680 at v0.6.2), and 3 414 with Wow held at patch 0's,
-so what is left is the Level moving at once, not the Wow.
-
-**Tone out is out, after Tone has been in too.** Bring Tone back in after
-the repeat has died away and nothing plays: 0 LSB at 48, 44.1 and
-22.05 kHz, stereo and mono, after a 300 Hz tone at 30 000 LSB with Tone at
-2 kHz. The out stop hands the node exactly 0, and since audiodsp v0.6.3rc1
-the node keeps an out low-pass's state on the signal (audiodsp#158), so
-Tone out after Tone in renders the same bytes as a fresh instance's Tone
-out. Up to v0.6.2 the node froze that state and played it back; this class
-cured it with a tracking out stop, 1 LSB off the filter truly out in
-places, and the cure came out when the node was fixed.
-
-**A host that echoes Time back** (`set_macro(0, get_macro(0))`) keeps the
-constructor's exact Time: the 44.1 kHz default stays on 5 954 frames.
-Any other Time position lands the knob's own value, and that includes a
-restore: save `get_macro(0)`, move Time, write the saved value back, and
-the 44.1 kHz default comes back on 5 953 frames, one short.
-
-**Tone at a low rate.** The knob's corners clamp below Nyquist at the
-running rate. At 22.05 kHz grid positions 94-126 all sit on the 10 804.5 Hz
-clamp and do the same thing, and position 127 takes the filter out. At 44.1
-and 48 kHz every position moves.
-
-**Input ceiling.** The dry path sits at unity and the repeat adds to it,
-and there is no input gain to turn down. Measured on the kit's `noise_det`
-at 48 kHz over 4 s, the defaults put no sample on the rail from -2.5 dBFS
-peak down (at -2.4 they rail 14 samples), and the shipped patches from
--3.4 dBFS (patch 2, Doubling, the first to rail) down.
-
-**Tail.** `tail_samples` is an upper bound on how long the output takes to
-reach exact zero after your input stops: one lap of the line at Repeats 0
-(6 488 frames at the defaults, 48 kHz), 11 laps at 0.35, 21 at the 0.6
-stop. With Tone in circuit, at a Repeats a hair either side of 0.5 (which
-the span reaches), the loop low-pass can rest a hair above 1 LSB and hand
-it back; up to audiodsp v0.6.2 it did so for ever and the class moved
-Repeats clear of it. Since v0.6.3rc1 the node sets a stalled low-pass onto
-its input (audiodsp#157), Repeats is handed as set, the bound counts one
-more lap there, and the tail reaches exact zero inside it.
-
-`capabilities = ()`: a slapback's time is a fixed distance over a fixed
-tape speed, with no musical relationship to a tempo, so the class never
-reads `self._transport()`.
-
-A constructor value stays on the audio path unrounded by the knob's grid;
-Time is then landed on a whole frame. A value outside a knob's span clamps
-to the nearer stop (a Wow above 3.5 cents plays 3.5), a `tone_hz` of 0 or
-less is Tone out, and NaN takes that option's default.
+The player's text is the class docstring, and every sentence in it that
+makes a claim is tied to a test by the `CLAIMS` table in the class's test
+file. How it works, and why, is in the class's dossier in the workspace
+repo (`docs/effects-internal/dossiers/SlapbackDelay.md`).
 """
 
 VENDOR = "PyDevices"
@@ -270,13 +112,64 @@ def _between(value, low, high):
 
 
 class SlapbackDelay(_component.Component):
-    """One tape repeat, 135 ms after the dry and in the same place: the Sun
-    Studio slap. audiodsp tier; zero latency.
+    """One tape repeat after the dry, in the same place: the Sun Studio slap.
 
-    **What the default surrenders:** Tone is out, so the repeat is brighter
-    than an Ampex 350's 15 kHz top; the 1-cent wow makes the repeat's top
-    end breathe (a 15 kHz tone swings to -5.11 dB at 48 kHz, -6.38 dB at
-    44.1); and the Time knob walks rather than jumps.
+    Your dry signal passes untouched, and one copy of it comes back a moment
+    later, a little quieter: the two-machine tape echo on Sam Phillips' Sun
+    sides.
+    By default the repeat comes 135 ms after the dry, once.
+
+    **The controls.** Time is the gap between the dry and the repeat. Level
+    is the console's return. Saturation is how hard the return drove the
+    record amplifier. Tone is the tape path's top end. Wow is the
+    transport's slow wobble. Repeats sends the slap round again.
+    Time runs from 40 to 250 ms, Level from 0 to 2, Saturation from 0 to 1,
+    Tone from 2 kHz to out at its top stop, Wow from 0 to 3.5 cents and
+    Repeats from 0 to 0.6.
+    Level 0 is a wire.
+    Up to Level 1 the dry passes untouched until the repeat arrives, however
+    hard Saturation drives the repeat.
+    A hot input can reach the rail, since the repeat adds to a dry at unity.
+    At Repeats 0 there is one repeat and no second.
+    Repeats above 0 sends the repeat round for more.
+    Wow swings the repeat's pitch by the cents the knob reads, at a slow
+    fixed rate.
+    The default Wow takes the repeat's very top more than 4 dB down at
+    Nyquist, where Wow 0 leaves it within half a dB.
+    At 22.05 kHz the last Tone positions below the top stop clamp below
+    Nyquist and all do the same thing.
+
+    **Time.** Every Time position lands on the nearest whole frame at
+    48 kHz.
+    At 44.1 and 22.05 kHz the node lands some positions a fraction of a
+    frame off, and a sliver of the repeat falls on the frame beside it.
+    A host that writes back `get_macro(0)` keeps the constructor's exact
+    Time.
+    Turning Time walks the repeat to the new Time, bending its pitch,
+    instead of clicking.
+    A Wow move glides instead of stepping.
+
+    **Mono, latency, tail.** A source the same in both channels comes out
+    the same in both channels, and a one-channel source gets the stereo
+    render's left channel.
+    A click comes out on the frame it went in: there is no latency.
+    `tail_samples` is an upper bound on how many frames the output takes to
+    reach exact zero, counted from when your input stops or from when you
+    read it if that is later, for the settings as they stand when you read
+    it.
+    `reset()` empties the line and returns to patch 0.
+    With Wow above 0 the wobble runs free, so after a reset the output never
+    lines up with a fresh instance's again.
+    The class never reads the host's tempo.
+    A constructor value outside a knob's span clamps to the nearer stop, a
+    `tone_hz` of 0 or less is Tone out, and NaN takes the option's default.
+
+    **Limits shared by the family.**
+    A control that jumps makes the output step: move it in small steps from
+    the host if you need it smooth.
+    The tail rings only while the source keeps feeding: feed silence to let
+    it ring out. A tail cut short by a source that stopped carries on when
+    the source comes back.
     """
 
     NAME = 'SlapbackDelay'
@@ -478,12 +371,8 @@ class SlapbackDelay(_component.Component):
 
     @property
     def tail_samples(self):
-        """Frames until the output is exactly zero once the input stops, as
-        an upper bound: `laps_to_zero(f, excess)` laps of the longest delay
-        the read head may be at, plus the wow's depth in frames rounded up,
-        plus one frame for the interpolated read, plus the Tone low-pass's
-        memory. One lap at Repeats 0. Finite at every setting the class
-        reaches."""
+        """What this bound promises is in the class docstring; how it is
+        built is in the dossier."""
         self._check_live()
         return self._tail_bound()
 
