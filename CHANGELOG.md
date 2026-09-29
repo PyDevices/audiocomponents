@@ -95,6 +95,14 @@ there, and are recorded in its changelog.
 
 ### Changed
 
+- **The audiodsp pin moves to v0.6.3rc3.** The release carries the
+  convolution node's two fixes (audiodsp#165: the block in flight kept
+  across a re-synthesis, each side of a stereo room normalised on its own),
+  the reverb tank's two (audiodsp#172: the tilt keeps tracking at Tone 0,
+  `set(delays=, taps=)` re-cuts a playing node) and `FeedbackDelay`'s
+  stereo cross-feed stall (audiodsp#173). `ConvolutionReverb`'s default
+  and its seven patches render differently (the stereo room no longer
+  leans); no other class's render moved (the census, three interpreters).
 - **The audiodsp pin moves to v0.6.3rc1, and three workarounds come out.**
   The release carries audiodsp#161: `audioecho.FeedbackDelay` keeps an out
   loop filter's state live (#158, #159), lands a stalled damping state so a
