@@ -75,6 +75,8 @@ MIX_INDEX = {
 #: cell prints `decl` instead of RED and is counted as a declared exception.
 #: Nothing else skips a cell. Empty on purpose: no class has declared one.
 DECLARED = {
+    ("PingPongDelay", 'E4-m2=', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")

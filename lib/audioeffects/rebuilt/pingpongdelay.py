@@ -1,227 +1,9 @@
 """`PingPongDelay` - repeats that alternate between the speakers.
 
-Rebuilt from scratch for Phase 5 against
-`workspace docs/effects-internal/dossiers/PingPongDelay.md`, whose trait
-table was frozen at Station A before this file existed (anchor commit
-eb466725d4422619d8e941c043f77512c1e5237b, the Station A critique's
-re-freeze, 2026-09-28). The old class in `delay.py` is consulted only for
-the seven defects that dossier's section 7 names; it stays the class the
-library serves until the board runner adopts this one.
-
-**What it sounds like.** Your dry signal passes untouched on both sides.
-The first repeat comes back Time later on one side only, the side First
-Side names; the next comes back Time after that on the other side, a
-Feedback's worth quieter, and they keep bouncing, one side and then the
-other, all the way down. Each side on its own repeats every two Times.
-Time (20-1000 ms) is the spacing between one repeat and the next. Feedback
-(0-0.99) is how many bounces you hear. Mix (0-2) is the wet/dry balance:
-dry at unity up to 1, the repeats alone at 2, and Mix 0 is a wire while the
-line keeps recording. Spread moves the whole thing between two plain
-delays, one per side with the same repeats on both (0), and the full
-bounce (1). Sync locks Time to Division of the host's beat. Repeat Tone
-and Repeat Cut put a low-pass and a high-pass inside the loop, so each
-bounce is a little darker or thinner than the last; both default out.
-
-**No standout.** A ping-pong is a routing of two delay lines, not a
-circuit, and no product defines it (dossier section 2). The traits are the
-textbook property of the topology, stated so a measurement can fail them.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audioecho",)`). The
-cross-feed exists only on `audioecho.FeedbackDelay`; nothing a stock
-CircuitPython board carries crosses one channel's repeats into the other's
-line. On a stock board this module imports cleanly and construction raises
-`ImportError`.
-
-**Latency: zero samples, at every setting and every rate.** Nothing looks
-ahead. The dry path is a wire on both channels until the first repeat
-arrives, and the repeats are the effect, not latency. No option adds any.
-
-**Mono.** A one-channel source gets the mono sum of the stereo behaviour:
-an ordinary feedback delay at the same Time, Feedback and Mix, repeats at
-T, 2T, 3T ... at gains 1, f, f^2 .... Spread and First Side do nothing on
-a one-channel instance, because there is no second line to cross into:
-the class hands the node `cross_feed` 0 and `input_pan` 0 there whatever
-they say. (Handing it the stereo settings would silence the loop after one
-half-level repeat, which is what the old class did.) On a stereo source
-identical in both channels, with Mix at 2, the two channels summed are
-that mono delay's output exactly, sample for sample, as long as no two
-repeats overlap one another: on sustained material that overlaps its own
-repeats each side rounds its own write where the mono delay rounds the sum
-once, and the two part by a few LSB. That holds with both loop filters out
-while the material and its repeats go round, whether or not a filter was
-in before: a filter taken out is out exactly (below). With a
-loop filter in, the material must also end some way before Time, because
-each side's filter meets that side's next repeat two Times later where the
-mono delay's meets the very next one: a noise burst ending one frame before
-Time parts them in 295 samples by 1 LSB (Repeat Tone 800 Hz) and in 680 by
-up to 2 LSB (Repeat Cut 400 Hz). How far before depends on the filter.
-Measured at 48 kHz, Time 280 ms, Feedback 0.6, on noise up to 0 dBFS, the
-gap after which every longer gap tried is exact: 512 frames for Repeat
-Tone at 800 and 2500 Hz and Repeat Cut at 400 Hz (MIDI 127); for Repeat
-Cut lower down, 1024 frames at MIDI 96 (the knob's 192.5 Hz), 2048 at
-MIDI 64 (90.5 Hz), 4096 at MIDI 32 (42.5 Hz), and 8192 (171 ms) at MIDI 16
-(29.2 Hz) and at MIDI 1 (20.5 Hz), where 4096 still leaves 511 samples.
-MIDI 1 needs 8192 at Feedback 0.99 too, 6144 at 44.1 kHz and 3072 at
-22.05 kHz.
-
-**Spread's law.** Spread s hands the node `cross_feed` s and `input_pan`
--s (First Side left) or +s (right). On a click identical in both channels,
-repeat n reads f^(n-1) [(1 - s/2) + (s/2)(1 - 2s)^(n-1)] of the click on
-the First Side channel and f^(n-1) [(1 - s/2) - (s/2)(1 - 2s)^(n-1)] on
-the other. At Spread 0 the two channels are identical; at Spread 1 each
-repeat is on one side only and the other side is exact zero. The law is
-not claimed at any Time the node lands off the frame (below). There it
-misses a 20 000 click at Feedback 0.99 by up to 289 LSB at a knob position
-(MIDI 95; 145 LSB at 22.05 kHz), and by up to 575 LSB at a constructor or
-Sync Time (750.0227 ms at 44.1 kHz; 289 LSB at 22.05 kHz).
-
-**What the loop hears.** At Spread 1 the loop is fed the average of the
-two input channels, (L + R) / 2, into one line, so what the two channels
-share bounces and what differs between them never repeats. A source whose
-right channel is the left one upside down puts nothing in the loop: the
-defaults pass it through untouched, and at Mix 2 the output from Time on
-is silence, or within 1 LSB of it where the source saturates (R cannot be
--L where L is -32768: a full-scale ramp leaves 1 LSB). The dry path is
-always each channel's own signal, never swapped or summed.
-
-**Input ceiling.** The dry path sits at unity and the repeats add to it,
-so a hot input can put the output on the int16 rail, and there is no input
-gain to turn down. Measured on the kit's `noise_det` at 48 kHz over 20 s,
-the defaults are clean up to -3 dBFS peak (at -2 they rail 2331 samples)
-and every shipped patch up to -3.1 dBFS. Patch 4 (Spread 0, where each
-side repeats every Time rather than every two) rails first: 76 samples at
--3 dBFS, and 167 902 on a 997 Hz sine there; patch 3 rails 4. On any
-material, with Repeat Cut out and Mix below 1, an input peaking at or
-below one LSB under (1 - Mix) of full scale, floor(32767 (1 - Mix)) - 1,
-cannot reach the rail at any Time, Feedback or Spread, because the lines
-hold int16 and so the repeats never exceed Mix x full scale: -3.1 dBFS at
-the default Mix 0.3 and at every patch. At exactly (1 - Mix) of full scale
-the sum can round onto 32767, the rail value, though nothing is clipped.
-Repeat Cut's high-pass overshoots a square wave's edges, so with it in
-leave more room. Its output is the line's value less its own state, both
-inside the int16 line, so a repeat can reach twice full scale: an input at
-or below floor(32767 - 65535 Mix) - 1 cannot reach the rail at any Time,
-Feedback, Spread or Cut, which is 13 105 LSB, -7.96 dBFS, at the default
-Mix 0.3 (rendered on 108 square-wave cells and on noise at that level,
-none railed). At louder inputs than that bound, the worst cell tried is a 5 Hz
-square at Feedback 0.99 with Cut at 40 Hz: it rails 148 samples at
--4.5 dBFS and 40 at -5, and is clean from -5.5 dBFS. At the defaults a
-5 Hz square rails at -4 dBFS (396 samples with Cut at MIDI 1, 158 at
-40 Hz) and is clean from -4.5.
-
-**RAM.** The line is `max_time_ms + 1` ms of two int16 lanes whatever the
-channel count: 192 192 B at 48 kHz for the default 1000 ms (176 576 B at
-44.1 kHz, 88 288 B at 22.05 kHz), plus about 1.2 KB of node. The extra
-millisecond is what lets Time reach 1000 ms exactly. Pass a lower
-`max_time_ms` to spend less (300 ms costs 57 792 B, 500 ms 96 192 B);
-Time then stops at that ceiling and `get_macro(0)` shows where it stopped.
-
-**Cost.** One `audioecho.FeedbackDelay` with `delay_slew` on; no mixer.
-Palette row FeedbackDelay +options (the nearest not-cheaper row; there is
-no row for the slew alone), glue 0: **P4 <= 9 %, S3 <= 15 %** of a
-5.333 ms stereo block. The board measurement is pending hardware.
-
-**Turning Time while it plays** walks the repeats to the new time at a
-fixed 0.1875 delay-seconds per second instead of clicking, so every repeat
-already in the loop bends in pitch while it moves: +297.5 cents while Time
-falls and -359.5 cents while it rises (1200 log2(1 +- 0.1875)). 280 ->
-200 ms takes 427 ms, the full range 5.23 s. There is no Glide knob; a
-ping-pong's time is set to a subdivision, not played. While Time walks,
-the line is read between samples, and the two-tap read costs the top of
-the band sqrt(1 - 2 frac (1 - frac)(1 - cos 2 pi f / fs)) per pass. Every
-static Time is handed to the node as the nearest whole frame at the
-running rate, floor(ms fs / 1000 + 0.5); the knob's milliseconds and
-`get_macro(0)` stay as you set them. At 48 kHz the node lands every one of
-the 128 knob positions exactly on that frame, where the read is lossless,
-so the repeats of a Time you have stopped turning do not darken.
-
-At 44.1 and 22.05 kHz it does not always. The node turns the milliseconds
-back into frames in float32, and for some Times no float32 value lands on
-the whole frame, so the read sits one float32 step off it. Among the 128
-knob positions that is 25 at 44.1 kHz (MIDI 2, 3, 4, 19, 20, 24, 25, 28,
-38, 43, 47, 48, 50, 63, 65, 67, 69, 70, 83, 92, 93, 95, 107, 108, 114)
-and 20 at 22.05 kHz (MIDI 2, 4, 19, 28, 38, 47, 63, 65, 67, 69, 70, 83,
-88, 92, 93, 95, 108, 110, 112, 114), at most 1/512 of a frame off at
-44.1 kHz and 1/1024 at 22.05 kHz. A constructor `time_ms` or a Time Sync
-takes from a host's tempo reaches every whole frame from 20 to 1000 ms,
-and 5554 of those 43 219 frames land off at 44.1 kHz and 2785 of 21 610
-at 22.05 kHz, up to 1/256 and 1/512 of a frame off (743.04-760.73 ms).
-None do at 48 kHz. No patch's own Time is off, nor the default 280 ms. At
-an off-frame Time each pass puts part of the repeat on the frame beside
-it, and the repeats darken slowly. At a knob position that is up to 0.2 %
-a pass (a 20 000 click's first repeat reads 19 961 and 39 at MIDI 95,
-44.1 kHz), and at Feedback 0.99 the 60th repeat of a 10 kHz tone is
-0.86 dB quieter than the Feedback alone makes it at 44.1 kHz and 0.98 dB
-at 22.05 kHz (a 1 kHz tone 0.01-0.02 dB). At a constructor or Sync Time it
-is up to 0.39 % a pass (19 922 and 78 at 750.0227 ms, 44.1 kHz) and
-1.71 dB (44.1 kHz) and 1.96 dB (22.05 kHz) at the 60th repeat. The class
-cannot hand the node a number that lands there; a node change is asked
-for.
-
-**Repeat Tone** is the corner the loop low-pass achieves (800-16 000 Hz,
-the top stop out). It is inside the loop, so repeat n has passed it n
-times: on one side, each repeat is two passes darker than the last one
-there. With Repeat Tone in, a repeat's peak also lands late by the
-filter's group delay, more each pass. At a low rate the knob's corners
-clamp below Nyquist: at 22.05 kHz positions 111-126 all sit on the
-10 804.5 Hz clamp and do the same thing.
-
-**The filters' out stops, after a filter has been in.** Both out stops
-hand the node exactly 0 and the Feedback as set, whatever came before, and
-a filter taken out is out. Taking it out does not undo what it already did
-to the repeats going round; those stay filtered. Once they have died, the
-instance plays exactly as one whose filter was never in: 1 s of 0 dBFS
-noise with Tone 2 kHz or Cut 400 Hz in, the filter out as the noise stops,
-then fresh noise once the loop is empty, renders the same bytes from the
-fresh noise on as an instance that never had the filter (Time 20 ms,
-Feedback 0.5 and 0.85, Mix 2, at 48, 44.1 and 22.05 kHz, stereo and mono).
-Put straight to its out stop before any audio, a filter that has been in
-renders the same bytes as one never in (Tone: 2 s of 0 dBFS noise at
-Feedback 0.85 and 0.99 at the three rates, and at Time 20 ms and Feedback
-0.99 through the whole tail at 48 kHz; Cut: 2 s at 0.99, three rates).
-A filter brought back in after the repeats have died plays nothing. Up to
-audiodsp v0.6.2 the node froze an out filter's state and played it back,
-and this class kept Tone's low-pass tracking the repeats and Cut's
-high-pass in at 20 Hz once they had been in (the first up to 50 LSB off
-the filter out at Feedback 0.99, the second with `tail_samples` `None`).
-Since v0.6.3rc1 the node keeps an out low-pass's state on the signal and
-an out high-pass's at zero (audiodsp#158, #159), and both cures came out.
-With Cut out again, `tail_samples` is the bound Cut never in has, and a
-tail after Cut was in ends inside it (full-scale noise with Cut at 400 Hz
-or MIDI 1, Cut out as it stops: at most 0.9990 of the bound, Feedback
-0.45, 0.85 and 0.99, Spread 1, 0.5 and 0, three rates).
-
-Each pass through a loop filter also takes something off a repeat's peak,
-so with either filter in the late repeats of a quiet bounce fade faster
-than Feedback alone says: at Feedback 0.52 (MIDI 67) with Repeat Cut at
-400 Hz the 8th repeat of a 20 000 click is 143 LSB at 48 kHz.
-
-**Tail.** `tail_samples` is an upper bound on how long the output takes to
-reach exact zero after your input stops, and it is long: the loop rounds
-its way down from full scale, 14 laps at the default Feedback (188 174
-frames, 3.9 s, at 48 kHz) and 685 at 0.99 (11.4 minutes at Time 1000 ms).
-The cross-feed moves repeats between the sides without changing the loop
-gain, so the figure is the same at every Spread. With Repeat Tone in, at a
-Feedback a hair either side of 1 - 0.5 / k, the loop low-pass can come to
-rest a hair above k LSB and hand it back; up to audiodsp v0.6.2 it did so
-for ever and the class handed the node a Feedback just outside that
-window. Since v0.6.3rc1 the node sets a stalled low-pass onto its input
-(audiodsp#157), the Feedback you set is the one the node plays, and the
-bound counts one more lap there. With Repeat Cut in circuit
-`tail_samples` is `None`: no bound is derived there.
-
-`capabilities = ("tempo_sync",)`: with Sync on, the class reads
-`self._transport()` on every macro move and program change (not per
-block). With no host transport, or a host whose tempo is not a finite
-positive number, Time stays where the knob is. A Division past the
-1000 ms ceiling (or `max_time_ms`) clamps there, and `get_macro(0)` shows
-it.
-
-A constructor value stays on the audio path unrounded by the knob's grid;
-Time is then handed as a whole frame. A value outside a knob's span clamps
-to the nearer stop, a `tone_hz` or `cut_hz` of 0 or less is that filter
-out, and NaN takes that option's default. A `max_time_ms` above 1000 or
-NaN is 1000.
+The player's text is the class docstring, and every sentence in it that
+makes a claim is tied to a test by the `CLAIMS` table in the class's test
+file. How it works, and why, is in the class's dossier in the workspace
+repo (`docs/effects-internal/dossiers/PingPongDelay.md`).
 """
 
 VENDOR = "PyDevices"
@@ -320,16 +102,65 @@ def _side(value):
 
 
 class PingPongDelay(_component.Component):
-    """Two delay lines crossed into each other: the repeats alternate
-    between the speakers, one side and then the other. audiodsp tier; zero
-    latency.
+    """Two delay lines crossed into each other: the repeats bounce between the
+    speakers.
 
-    **What the default surrenders:** both loop filters are out, so the
-    bounce does not darken on its own; Time walks rather than jumps, and a
-    walk bends the repeats' pitch while it moves; at full Spread what
-    differs between the two input channels never repeats; on a mono source
-    Spread and First Side do nothing; and there is no input gain, so an
-    input above -3 dBFS peak can reach the rail.
+    Your dry signal passes untouched on both sides, and the repeats come
+    back one side and then the other, all the way down.
+
+    **The controls.** The first repeat comes back Time later on the side
+    First Side names, the next Time after that on the other side, and they
+    keep bouncing, each a Feedback's worth quieter than the last. Time runs
+    from 20 to 1000 ms and Feedback from 0 to 0.99. Mix is the echo level:
+    the dry stays at unity up to Mix 1, Mix 2 is the repeats alone, and at
+    Mix 0 the output is the input. Spread moves between two plain delays
+    with the same repeats on both sides, at 0, and the full bounce, at 1. At
+    Spread 1 each repeat is on one side only, and the other side is exact
+    zero. With Sync on, Time is Division of the host's beat, up to 1000 ms;
+    with no host tempo, Time stays where the knob is. The class reads the
+    host's transport only while Sync is on, and then only when a control
+    moves or a patch loads, never while it plays. Repeat Tone is a low-pass
+    and Repeat Cut a high-pass inside the loop, so each bounce is a little
+    darker or thinner than the last. Repeat Tone's top stop and Repeat Cut's
+    bottom stop take them out, and a filter taken out is out. At 22.05 kHz
+    the top positions of Repeat Tone sit on one clamp below Nyquist and
+    sound the same. Turning Time walks the repeats to the new Time, bending
+    their pitch, instead of clicking.
+
+    **Stereo and mono.** At Spread 1 the loop hears the average of the two
+    input channels, so what differs between them never repeats. The dry is
+    always each channel's own signal, never swapped or summed. A one-channel
+    source gets an ordinary feedback delay at the same Time, Feedback and
+    Mix, and Spread and First Side do nothing there.
+
+    **Where it stops.** At 48 kHz every Time position lands on the nearest
+    whole frame. At 44.1 and 22.05 kHz the node lands some positions a
+    fraction of a frame off, and a sliver of each repeat falls on the frame
+    beside it. The dry sits at unity and the repeats add to it, so a hot
+    input can reach the int16 rail. With Repeat Cut out and Mix below 1, an
+    input that peaks at or below floor(32767 (1 - Mix)) - 1 cannot reach the
+    rail, at any Time, Feedback or Spread. Repeat Cut's high-pass
+    overshoots, so with it in leave more room.
+
+    **Limits shared by the family.** A control that jumps makes the output
+    step: move it in small steps from the host if you need it smooth. The
+    tail rings only while the source keeps feeding: feed silence to let it
+    ring out. A tail cut short by a source that stopped carries on when the
+    source comes back.
+
+    **Latency, tail, portability.** A click comes out on the frame it went
+    in: there is no latency. `tail_samples` is an upper bound on how many
+    frames the output takes to reach exact zero, counted from when your
+    input stops or from when you read it if that is later, for the settings
+    as they stand when you read it. With Repeat Cut in circuit
+    `tail_samples` is `None`: the class gives no bound there. Pass a lower
+    `max_time_ms` for a shorter line: Time then stops at that ceiling, and
+    `get_macro(0)` shows where it stopped. A constructor value outside a
+    knob's span clamps to the nearer stop, a `tone_hz` or `cut_hz` of 0 or
+    less is that filter out, and NaN takes the option's default. `reset()`
+    empties the line and returns to patch 0. The class needs audiodsp's
+    `audioecho`, and on a board without it construction raises
+    `ImportError`.
     """
 
     NAME = 'PingPongDelay'
