@@ -75,6 +75,32 @@ MIX_INDEX = {
 #: cell prints `decl` instead of RED and is counted as a declared exception.
 #: Nothing else skips a cell. Empty on purpose: no class has declared one.
 DECLARED = {
+    ("ConvolutionReverb", 'E1-', 'P1'):
+        'by design, disclosed: reset() empties the room, so the block in flight, 256 frames, comes out as exact zero, dry included',
+    ("ConvolutionReverb", 'E2-', 'P1'):
+        'by design, disclosed: a host reset_buffer resets the node, so the block in flight, 256 frames, comes out as exact zero, dry included',
+    ("ConvolutionReverb", 'E4-m5=0', 'P1'):
+        'by design, disclosed: Mix acts from the end of the block in flight, so the block after a move to Mix 0 comes out at the old Mix',
+    ("ConvolutionReverb", 'E5-', 'P1'):
+        'by design, disclosed: Mix acts from the end of the block in flight, so the block after a move to Mix 0 comes out at the old Mix',
+    ("ConvolutionReverb", 'E4-m1=', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Damping re-synthesizes the room)',
+    ("ConvolutionReverb", 'E4-m2=', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Predelay re-synthesizes the room)',
+    ("ConvolutionReverb", 'E4-m4=', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Room re-synthesizes the room)',
+    ("ConvolutionReverb", 'E4-m5=', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    ("ConvolutionReverb", 'E5-', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    ("ConvolutionReverb", 'E6-', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (a patch change)',
+    ("ConvolutionReverb", 'E9-', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    ("ConvolutionReverb", 'E11-', 'P5'):
+        'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (two or three moves before one pull)',
+    ("ConvolutionReverb", 'E8-dry', 'P3'):
+        'family limit, disclosed (audiodsp#180): a tail cut short by a source that stopped carries on when the source comes back',
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")

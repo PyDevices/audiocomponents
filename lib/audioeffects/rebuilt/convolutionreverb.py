@@ -1,202 +1,9 @@
 """`ConvolutionReverb` - a room made by convolution, synthesized or loaded.
 
-Rebuilt from scratch for Phase 5 against
-`workspace docs/effects-internal/dossiers/ConvolutionReverb.md`, whose trait
-table was frozen at Station A before this file existed (anchor commit
-85cc2bfc9a5a3c34c6906fbf0c27b285ba1050d2, the Station A critique's
-re-freeze, 2026-09-28). The old class in `reverb.py` is consulted only for
-the six defects that dossier's section 7 names; it stays the class the
-library serves until the board runner adopts this one. The dossier's dated
-post-build revisions (2026-09-28) record what each audit round changed in
-the words and tests; the audio did not change in any of them. Since the
-re-audit at audiodsp v0.6.3rc2 the class stands on the fixed convolution
-node (audiodsp#165): a room-knob move no longer drops the block in flight
-or stops the tail (#163), and each side of a stereo room is normalised on
-its own, so the room no longer leans (#164). The two sentences that
-disclosed those defects are gone, and every stereo figure below was read
-again on the fixed node.
-
-**What it sounds like.** A short room behind your dry signal. With nothing
-loaded the class synthesizes the room: noise under an exponential that
-reaches -60 dB at the Decay time, a one-pole Damping roll-off on the tail,
-a Predelay of silence before it, a Diffusion fade-in so it does not start
-as a burst, and Room picks one of 64 noise seeds (two seeds are two rooms
-of one size). Mix runs 0 to 2: dry at unity up to 1, the room alone at 2.
-Hand it an impulse (`impulse=`, a bytes-like of int16 frames or a path to
-a 16-bit PCM WAV at the graph's rate) and the room is that recording, and
-only Mix is live.
-
-**The allocation.** `seconds` (default **0.08 s**) is how long a room this
-instance can ever hold, carved once at construction: 256-frame partitions,
-`ceil(round(seconds * fs) / 256)` of them, from a floor of **0.06 s** to a
-ceiling of **512 partitions = 131 072 taps**, which is 2.730 s at 48 kHz,
-2.972 s at 44.1 kHz and 5.944 s at 22.05 kHz. Outside those, construction
-raises `ValueError` naming this class, the taps, the rate and the limit.
-On a desktop the product is taken in double precision and `round` sends a
-half frame to even, so a `seconds` a hair over half a frame past a
-partition edge builds one partition fewer than exact arithmetic would:
-0.08001041666666667 s at 48 kHz is 3 840.5 + 7/2^48 frames exactly, and
-builds 3 840 taps, not 4 096. No floor or ceiling cell moves. A board's
-float is single precision, and there a few `seconds` land on the other
-side of a partition edge: in a single-precision emulation (not a board
-run) 0.685 s at 44.1 kHz and 1.370 s at 22.05 kHz build 118 partitions
-where a desktop builds 119. No floor, ceiling or default cell moves.
-Decay, Predelay and Diffusion are laws over what the allocation leaves
-(section 6): Decay is the T60, log from the node's 50 ms floor to
-`seconds - predelay`, so at its top the room reaches -60 dB exactly at the
-allocation's end; Predelay runs to `min(200 ms, (seconds - 50 ms) / 2)`;
-Diffusion to `min(500 ms, T60 / 4)`.
-
-**Which allocations are desktop-only.** By the line through the cost
-table's two Convolver rows (an interpolation, pending hardware), any
-`seconds` above **0.091 s on an ESP32-S3** and above **0.219 s on an
-ESP32-P4** is over Brad's 80 % real-time ceiling. The default is under
-both. The old class's one-second room is a desktop or offline render, and
-so is any measured room or hall impulse; a cabinet-length impulse fits.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audioconvolve",)`). The
-convolver is audiodsp's own node. On a stock CircuitPython board this
-module imports cleanly and construction raises `ImportError`.
-
-**Cost: one node.** One `audioconvolve.Convolver`, no mixer, no glue. At
-patch 0 on the default allocation (15 partitions at 48 kHz, stereo) the
-palette line gives **P4 <= 34 %, S3 <= 72 %** of a 5.333 ms stereo block
-(dossier Tier 3). The board measurement is pending hardware.
-
-**Latency: 256 frames whenever an impulse is loaded** - 5.333 ms at
-48 kHz, 5.805 ms at 44.1 kHz, 11.610 ms at 22.05 kHz - **and 0 when none
-is.** It is the partition: a block cannot be transformed until it is
-complete. `latency_samples` reads the node's own report, so it follows the
-loaded state; the synthesized room is always loaded, and only an empty
-impulse (`impulse=b""`) leaves the node a plain undelayed wire. Mix 0 is
-the source delayed by exactly `latency_samples`, byte for byte, because the
-node stays in the path at Mix 0 and a Mix move never jumps the timeline.
-A room-knob move keeps it too. It does not hold over the
-`latency_samples` frames after a `reset()` (below), nor across a pull in
-which the source comes up short (an empty buffer, one shorter than a
-frame, or an error result) before the pull has a single frame: that pull
-comes out as 256 frames of silence, and everything after it comes out 256
-frames later. The node takes whole frames only: a part frame at the end
-of a buffer, and anything an error result carries, never reach it.
-
-**Tail.** `tail_samples` is `latency_samples` plus the loaded impulse
-rounded up to a partition: 4 096 frames (85.3 ms) at the default at
-48 kHz, 3 840 at 44.1 kHz, 2 048 at 22.05 kHz. Counted in the frames the
-source hands, the output is exactly zero from more than `tail_samples`
-frames after the last non-zero one. Only frames the source hands move the
-room on: a pull of silence like the one above holds the tail where it is,
-and a source that stops handing frames stops the tail with it, until it
-hands frames again.
-
-**RAM.** 141 800 B at the default at 48 kHz with a stereo room (8 224 B a
-partition plus 18 440 B fixed), 110 960 B with a mono one; 133 576 B at
-44.1 kHz and 76 008 B at 22.05 kHz. A measured impulse is read once at
-construction, handed to the node and dropped; the class keeps no copy.
-
-**Moving a room knob changes the room within the block in flight.**
-Decay, Damping, Predelay, Diffusion and Room re-synthesize the impulse, and
-the node keeps what it holds. No frame of your dry signal drops or
-repeats, at any Mix and after any number of moves: at Mix 0 the output is
-byte for byte what it would have been with no move. A tail
-ringing at that moment rings on into the new room, and from the end of
-the block in flight the output is exactly that of an instance that always
-had the new settings.
-
-The change runs in a straight line from the old room to the new, at the
-Mix already in flight and within 1 LSB where neither room is at full
-scale, when two things hold: it is the only room change between two
-pulls, and the source has not come up short (above) part-way through a
-block since the instance was built or last `reset()`. A patch
-change counts as one room change however many knobs it moves, and a move
-that lands on the room already loaded leaves the audio untouched.
-Otherwise the output can jump by many times what either room does on its
-own, and how far is not known. For example, at 44.1 kHz stereo with
-Damping 0 of 127 (500 Hz) and Mix 2, a 40 Hz sine at 2 000 LSB with Room
-moved to 50 and then Predelay to 40 after 10 pulls jumps 10 046 LSB into
-the block, where the two rooms move at most 32 LSB a frame. Even on
-the straight line, low material can step further from one frame to the
-next than either room does, and how much further is not known: at 48 kHz
-stereo with Damping 0 of 127 (500 Hz) and Mix 2, a 40 Hz sine at 2 000 LSB
-steps 1.97 times the larger room's own largest step when Predelay moves
-from 0 to 127 after 10 pulls.
-
-A patch change, the constructor and `reset()` synthesize at most once,
-not once per knob. The synthesis runs on the thread that moves the knob;
-on a board it can race the audio pump (audiodsp#166, open), which a
-desktop cannot show. `reset()` in the middle of a stream empties the room:
-the next `latency_samples` frames come out as exact zero, dry included.
-That is 256 with a room loaded and none on the empty impulse, whose output
-stays the source. A Mix move never touches the room. It acts on the audio
-entering the node after it, so the block already in flight, at most 256
-frames, comes out at the old Mix.
-
-**What the default surrenders.** The room is normalised to unit energy
-across the whole band, so with Damping in, low material comes back louder
-than it went in: a 220 / 277 / 330 Hz chord (the three sines summed, at
-an 8 000 LSB peak) +3.83 dB at the default 6 kHz Damping and +13.40 dB at
-the 500 Hz stop, at 48 kHz. White-spectrum material comes back at its own
-level, within 0.5 dB, at every setting measured, and that holds on each
-side of a stereo room on its own, not only for the two together: each side is
-normalised on its own, so the room sits in the middle. On the room's own
-impulse the two sides read within 0.001 dB of each other at every setting
-walked (the widest found, L - R +0.0005 dB at 44.1 kHz, Decay 66,
-Damping 18, Predelay 34 and Diffusion 62 of 127, Room seed 48); what is
-left is the rounding of the impulse to int16. So material on one side only comes back
-at its own level too: at 48 kHz with Decay 0, Damping 500 Hz and
-Diffusion 0, white noise hard left comes back at -0.06 dB and hard right
-at +0.15 dB at Room seed 36, and at +0.02 and -0.21 dB at the default
-Room, seed 1 (the kit's uniform noise, seed 12345, at -12 dBFS peak; the
-tenths of a dB are that draw against that room). A mono room is one side
-and holds. Damping clamps at 0.159 fs, under the point where the node's
-one-pole coefficient stops moving, so at 48 kHz every one of its 128
-positions is a room of its own, while at 22.05 kHz the positions from 92
-up (the 6 kHz default among them) are one 3 506 Hz room.
-
-A single Room's decay with Damping in is not held to the Decay law, and
-how far one can read off it is not known: no walk covers every setting.
-It reads at least about 24 % off on a mono room: +23.70 % at 44.1 kHz
-(Decay 0, Damping 500 Hz, Predelay 0, Diffusion 32 of 127, Room seed 43),
-+24.02 % there with a -20 dBFS click (Decay 0, Damping 500 Hz,
-Predelay 127, Diffusion 28, seed 43), +22.83 % at 48 kHz (Decay 0,
-Damping 500 Hz, Predelay 0, Diffusion 10, seed 43) and +21.00 % at
-22.05 kHz (Decay 0, Damping 500 Hz, Predelay 0, Diffusion 46, seed 61).
-On a stereo room it is at least about 16.5 %: +16.56 % at 48 kHz
-(Decay 8, Damping 500 Hz, Predelay 0, Diffusion 32, seed 43) and
-+16.05 % at 22.05 kHz with a -20 dBFS click (Decay 127, Damping 500 Hz,
-Predelay 0, Diffusion 0, seed 27). The 64 Rooms' mean holds within 2 %.
-
-**Measured mode.** The impulse is trimmed by `start_ms`
-(int(start_ms * fs / 1000) frames, truncated) through a slice that copies
-nothing on a board, then loaded at unit mean energy across the channels
-the room holds, trimmed by `ir_gain_db` (-24 to +12 dB). A stereo impulse
-over a mono source keeps its left channel. An impulse with frames but no
-energy raises, and so does a `start_ms` that trims away every frame it
-has: either would be a room whose Mix does nothing. Decay, Damping, Predelay, Diffusion and Room raise
-`IndexError` from `set_macro` and `get_macro` in this mode: the loaded
-impulse is the room. `live_macros` says which macros an instance has. No
-impulse ships with this class; it loads yours and keeps no copy (Brad's
-ruling, 2026-09-08). An impulse is one-dimensional: a 2-D array (numpy's
-`(frames, channels)`) raises `TypeError`, so flatten it first.
-
-An empty impulse (`impulse=b""`) reports no taps and no latency: it is an
-undelayed wire, and its Mix does nothing. Its node is built with one
-partition: measured mode's allocation starts at one frame, and zero frames
-is that one partition. The class loads a measured impulse once, at
-construction. Loading another into its node mid-stream (`node.load()`)
-empties the room, because the node's `load()` resets.
-
-**Two readbacks that are not what they look like.** A `damping_hz`
-between 0 and 500 Hz is taken as 500 Hz, the span's bottom, with no
-error; 0 or below, 7 500 Hz and up, or NaN, is out of circuit (-100 and
-NaN hand the node 0 Hz and `get_macro` reads 127). And a fresh instance
-reports `patch_index` 0, the family's convention, although the
-constructor's exact
-defaults (Damping 6 000 Hz, Mix 0.6) sit between grid steps and patch 0 is
-those settings on the grid (6 059.8 Hz, Mix 0.598). Pass `patch=0` for
-patch 0's room exactly. `reset()` restores patch 0, so an instance built
-from the plain defaults moves onto the grid at its first reset.
-
-`capabilities = ()`: nothing here reads a beat.
+The player's text is the class docstring, and every sentence in it that
+makes a claim is tied to a test by the `CLAIMS` table in the class's test
+file. How it works, and why, is in the class's dossier in the workspace
+repo (`docs/effects-internal/dossiers/ConvolutionReverb.md`).
 """
 
 VENDOR = "PyDevices"
@@ -349,17 +156,76 @@ def _sum_squares(view, width, frames, channels, lane):
 
 
 class ConvolutionReverb(_component.Component):
-    """A short synthesized room, or the room a loaded impulse was measured
-    in. audiodsp tier; 256 frames of latency whenever an impulse is loaded.
+    """A room behind your dry signal, made by convolution: synthesized from
+    five knobs, or the room your own impulse was recorded in.
 
-    **What the default surrenders:** a dark room lifts low material (a low
-    chord +3.83 dB at the default Damping, +13.40 dB at 500 Hz, 48 kHz),
-    calling `reset()` mid-stream with a room loaded silences the next 256
-    frames, dry included, and anything longer than 0.091 s on an S3 or
-    0.219 s on a P4 is a desktop room (pending hardware). A room-knob move
-    drops no dry frame. Two room changes between two pulls, or a move
-    after the source has come up short part-way through a block (until a
-    `reset()`), can make the output jump.
+    With nothing loaded the class synthesizes a short room from noise.
+    By default the room is 0.08 s long.
+
+    **The controls.** Decay is how long the room rings, Damping darkens its
+    tail, Predelay puts silence between the dry and the room, and Diffusion
+    fades the room in instead of starting it as a burst.
+    Room picks one of 64 rooms of the same size.
+    Damping runs from 500 Hz at its bottom stop to out at its top stop.
+    At 22.05 kHz its brightest positions below the top stop clamp and all
+    make the same room.
+    Mix runs from 0 to 2: the dry at unity up to 1, the room alone at 2.
+    With Damping out, each of the 64 Rooms falls 60 dB within 3 % of the
+    Decay time.
+    With Damping in, the 64 Rooms fall 60 dB within 2 % of the Decay time on
+    average.
+    A single Room with Damping in can take more than 15 % longer.
+    At Damping's 500 Hz stop, low material comes back louder than it went
+    in.
+    Each side of a stereo room is normalised on its own, so the room sits in
+    the middle.
+
+    **Your own impulse.** Hand it `impulse=`, int16 frames or the path to a
+    16-bit PCM WAV at the graph's rate, and the room is that recording.
+    The room is then your source convolved with the impulse at unit
+    energy, within 1 LSB.
+    `ir_gain_db` trims it from -24 to +12 dB, and `start_ms` cuts up to
+    200 ms from its start.
+    Only Mix is live then: the other five knobs raise `IndexError`.
+    A WAV at another rate raises `ValueError`, and so does an impulse with
+    no energy or a `start_ms` that trims away every frame.
+    An empty impulse, `impulse=b""`, is an undelayed wire whose Mix does
+    nothing and whose `reset()` silences nothing.
+
+    **The allocation.** `seconds` is the longest room the instance can hold,
+    carved once when you build it: from 0.06 s up to 131 072 frames, and
+    outside that the constructor raises `ValueError`.
+
+    **Latency and tail.** `latency_samples` reads 256 while an impulse is
+    loaded and 0 on the empty impulse.
+    Held at Mix 0, the output is your source, byte for byte,
+    `latency_samples` late, while the source keeps feeding it and nothing
+    resets it.
+    `tail_samples` is `latency_samples` plus the loaded room rounded up to
+    a whole block of 256 frames.
+    More than `tail_samples` frames after your input's last non-zero frame,
+    the output is exact zero.
+
+    **Moving the knobs.** No frame of your dry signal drops or repeats when
+    you move a room knob, at any Mix, however many moves you make.
+    From the end of the block in flight, the output is that of an instance
+    that always had the new settings.
+    A Mix move acts from the end of the block in flight, so Mix 0 reaches
+    the plain source up to 256 frames late.
+    `reset()` empties the room and returns to patch 0.
+    With an impulse loaded, `reset()` in the middle of a stream silences the
+    block in flight, 256 frames, dry included, and with Mix set back to 0
+    your source carries on on time after it.
+    A host that calls `audiocore.reset_buffer` on the output silences the
+    block in flight too, but also drops the frames the node holds from a
+    source buffer it had not finished.
+
+    **Limits shared by the family.**
+    A control that jumps makes the output step: move it in small steps from
+    the host if you need it smooth.
+    The tail rings only while the source keeps feeding: feed silence to let
+    it ring out. A tail cut short by a source that stopped carries on when
+    the source comes back.
     """
 
     NAME = 'ConvolutionReverb'

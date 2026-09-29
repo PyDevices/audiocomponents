@@ -100,27 +100,19 @@ there, and are recorded in its changelog.
   0.06 s floor to the node's 512-partition ceiling, and anything outside
   raises naming the class, the taps, the rate and the limit in seconds.
   `latency_samples` reads the node: 256 frames whenever an impulse is
-  loaded, 0 when none is, and Mix 0 is the source delayed by exactly that,
-  byte for byte, except for the frames a mid-stream `reset()` silences
-  and a pull the source leaves without a single frame, which comes out
-  as 256 frames of silence and puts what follows 256 frames later.
-  Measured mode loads at unit mean energy and refuses the
-  synthesis macros with `IndexError`; no impulse ships. It lives in
-  `lib/audioeffects/rebuilt/convolutionreverb.py`, and
+  loaded, 0 when none is, and held at Mix 0 the output is the source
+  delayed by exactly that, byte for byte, while the source keeps feeding
+  it and nothing resets it. Measured mode loads at unit mean energy and
+  refuses the synthesis macros with `IndexError`; no impulse ships. It
+  lives in `lib/audioeffects/rebuilt/convolutionreverb.py`, and
   `audioeffects.ConvolutionReverb` is still the old class. It stands on
-  audiodsp v0.6.3rc2: moving a room knob changes the room within the
-  block in flight, with no frame of the dry dropped or repeated at any Mix
-  and the tail ringing on into the new room (a straight-line crossfade
-  when it is the only room change between two pulls and the source has
-  not come up short (an empty buffer, one shorter than a frame, or an
-  error result) part-way through a block since the last `reset()`;
-  otherwise the output can jump), and each side of a stereo room
-  is unit energy on its own, so the room sits in the middle (the two
-  sides within 0.001 dB on the room's own impulse over the settings
-  walked). The docstring states the low-material lift a dark room gives
-  and the frames a mid-stream `reset()` silences. Board cost is unmeasured;
-  by the cost table's line the default fits an S3, and
-  anything over 0.091 s there is desktop-only.
+  audiodsp v0.6.3rc3: a room-knob move never drops or repeats a dry frame
+  at any Mix, from the end of the block in flight the output is that of an
+  instance that always had the new settings, and each side of a stereo
+  room is unit energy on its own, so the room sits in the middle.
+  `reset()` mid-stream silences the block in flight, dry included, and a
+  Mix move lands at the end of it. The docstring is the player's text,
+  every claim in it tied to a test. Board cost is unmeasured.
 - **`MultiTapDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** the
   RE-201's multi-head modes, with the Echorec as a second reference. Heads
   sit on a grid of whole multiples of one base time, exactly, at every
@@ -171,9 +163,7 @@ there, and are recorded in its changelog.
 - **The audiodsp pin moves to v0.6.3rc2.** The release adds audiodsp#165 to
   rc1: `audioconvolve.Convolver` keeps the audio in flight when a room is
   re-synthesized (#163: nothing drops, the tail rings on, and the block
-  on its way out crossfades to the new room, in a straight line when that
-  is its only re-synthesis and the node's source has not run dry
-  part-way through a block since the last reset) and normalises each
+  on its way out crossfades to the new room) and normalises each
   side of a stereo room on its own (#164: the room no longer leans, and
   the pair's level holds). Mono rooms and measured impulses render the
   bytes they did. `ConvolutionReverb`, rebuilt and old, synthesizes

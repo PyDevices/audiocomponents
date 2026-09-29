@@ -93,10 +93,20 @@ never reach the node (the dry test's source cases, `ResetOnMove` and
 empty impulse (`ResetSilentOnEmpty`, `NoReset`); and the tail is counted in
 the frames the source hands (`test_the_tail_counts_the_frames_the_source_hands`,
 `TailTwoShort`).
+
+The trial of the second process (2026-09-29) made the class docstring the
+player's text and tied each of its claims to a test through `CLAIMS`
+(`TheClaims`). The module docstring no longer carries figures, so the tests
+that parsed it hold their cells as constants here, and the two that pinned
+struck figures (the jump two moves make, the step one move takes) are
+gone; the fade, jump and short-read mechanisms stay pinned as tests, not
+promises. New: a reset while the node holds part of a source buffer keeps
+the whole frames it holds (`ReplugOnReset` red), the empty impulse's Mix
+and reset do nothing (`ResetSilentOnEmpty` red), a host `reset_buffer`
+drops what the node held, and what each knob does.
 """
 
 import os
-import re
 import sys
 import tempfile
 import unittest
@@ -942,6 +952,18 @@ class MixOnePullLate(ConvolutionReverb):
                 self._node.set(mix=self._value(MIX_I) * 0.5)
 
 
+class ReplugOnReset(ConvolutionReverb):
+    """The reset-mid-buffer leg's control (the trial of the second process,
+    2026-09-29): `reset()` plugs the source back into the node, which drops
+    the frames the node held of a source buffer it had not finished."""
+
+    NAME = NAME
+
+    def reset(self):
+        ConvolutionReverb.reset(self)
+        self._node.play(self._source)
+
+
 def reach(faulted, reading, tolerance=0.0, rate=RATE, channels=2,
           builder=build):
     return kit_faults.fault_reachability(
@@ -1030,11 +1052,28 @@ class TheSurface(unittest.TestCase):
         effect.deinit()
 
     def test_damping_clamps_at_the_rate(self):
-        # 0.159 fs: at 22.05 kHz the default is the 3 506 Hz clamp.
+        # 0.159 fs: at 22.05 kHz the default is the 3 506 Hz clamp, and
+        # every position from 92 to 126 is that one room (the room's own
+        # impulse, compared byte for byte); at 48 kHz no two positions are.
         effect = build(rate=22050)
         self.assertAlmostEqual(effect._synthesis()[1], 0.159 * 22050,
                                places=6)
+        pulse = click(LATENCY + effect.node.taps + 256)
+        rooms = {}
+        for midi in range(88, 127):
+            effect.set_macro(DAMPING_I, midi)
+            rooms[midi] = digest(at_mix(effect, 127, pulse))
         effect.deinit()
+        self.assertEqual(len(set(rooms[m] for m in range(92, 127))), 1)
+        self.assertNotEqual(rooms[91], rooms[92])
+        effect = build()
+        pulse = click(LATENCY + effect.node.taps + 256)
+        seen = set()
+        for midi in range(0, 127):
+            effect.set_macro(DAMPING_I, midi)
+            seen.add(digest(at_mix(effect, 127, pulse)))
+        effect.deinit()
+        self.assertEqual(len(seen), 127)
 
     def test_measured_mode_refuses_the_synthesis_macros(self):
         effect = build(impulse=make_impulse().tobytes())
@@ -1068,6 +1107,13 @@ class TheSurface(unittest.TestCase):
             build(impulse=b"\x00\x00\x00")
         with self.assertRaises(ValueError):
             build(impulse=make_impulse().tobytes(), ir_gain_db=12.5)
+        with self.assertRaises(ValueError):
+            build(impulse=make_impulse().tobytes(), ir_gain_db=-24.5)
+        with self.assertRaises(ValueError):
+            build(impulse=make_impulse().tobytes(), start_ms=-0.5)
+        for gain_db, start_ms in ((-24.0, 0.0), (12.0, 200.0)):
+            build(impulse=make_impulse(12000).tobytes(), ir_gain_db=gain_db,
+                  start_ms=start_ms).deinit()
         with self.assertRaises(ValueError):
             build(impulse=make_impulse().tobytes(), start_ms=200.5)
 
@@ -1328,46 +1374,9 @@ class ResynthesisIsDeduplicated(unittest.TestCase):
         self.assertEqual(digest(out[2816:]), digest(wire[2816:]))
 
 
-#: The docstring's room-move figures (re-audit fix round 2 at audiodsp
-#: v0.6.3rc2, from the re-audit round-1 audit at v0.6.3rc2, items 1 and 2):
-#: the step one move's straight line takes on low material, and the jump
-#: two moves before one pull make. Each names its cell, and since re-audit
-#: fix round 1 after the re-audit round 2 at v0.6.3rc2, the pull its moves
-#: land after (the jump moves with it: 4 434 to 10 260 LSB over pulls 4 to
-#: 31 at the two-move cell, the round-2 audit's `cell`).
-_KNOB = r"(Decay|Damping|Predelay|Diffusion|Room)"
-_LSB = r"(\d{1,3}(?: \d{3})*)"
-_CELL = (r"at\s+(48|44\.1|22\.05)\s+kHz\s+(stereo|mono)\s+with\s+Damping"
-         r"\s+(\d+)\s+of\s+127\s+\(500\s+Hz\)\s+and\s+Mix\s+2,\s+a\s+(\d+)"
-         r"\s+Hz\s+sine\s+at\s+" + _LSB + r"\s+LSB\s+")
-STEP_RE = re.compile(
-    _CELL + r"steps\s+(\d+\.\d\d)\s+times\s+the\s+larger\s+room's\s+own"
-    r"\s+largest\s+step\s+when\s+" + _KNOB + r"\s+moves\s+from\s+(\d+)"
-    r"\s+to\s+(\d+)\s+after\s+(\d+)\s+pulls")
-TWO_MOVES_RE = re.compile(
-    _CELL + r"with\s+" + _KNOB + r"\s+moved\s+to\s+(\d+)\s+and\s+then\s+"
-    + _KNOB + r"\s+to\s+(\d+)\s+after\s+(\d+)\s+pulls\s+jumps\s+" + _LSB
-    + r"\s+LSB\s+into\s+the\s+block,\s+where\s+the\s+two\s+rooms\s+move\s+at"
-    r"\s+most\s+" + _LSB + r"\s+LSB\s+a\s+frame")
-KNOB_INDEX = dict(zip(ConvolutionReverb.MACRO_LABELS, range(6)))
-RATE_OF = {"48": 48000, "44.1": 44100, "22.05": 22050}
-
 #: The pull the moves land before, and the block in flight it plays.
 MOVE_AT = 10
 BLOCK_IN_FLIGHT = slice(MOVE_AT * 256, MOVE_AT * 256 + 256)
-
-
-def documented_move(doc, pattern):
-    """(rate, channels, start moves, sine Hz, sine peak, the rest of the
-    groups) of the docstring's sentence, or None."""
-    found = pattern.search(" ".join((doc or "").split()))
-    if found is None:
-        return None
-    g = found.groups()
-    number = lambda text: int(text.replace(" ", ""))             # noqa: E731
-    return (RATE_OF[g[0]], 2 if g[1] == "stereo" else 1,
-            ((DAMPING_I, int(g[2])),), int(g[3]), number(g[4]), g[5:],
-            number)
 
 
 def sine(frames, channels, hz, rate, peak):
@@ -1507,68 +1516,6 @@ def dry_render(cls, rate, channels, start, pcm, plan=None, actions=None,
     return np.vstack(out), sizes
 
 
-def said(doc, words):
-    """True when `words` are in `doc`, whitespace aside."""
-    return " ".join(words.split()) in " ".join((doc or "").split())
-
-
-#: The room-move rule as the docstring states it (re-audit fix round 1
-#: after the re-audit round 2 at audiodsp v0.6.3rc2): what holds after any
-#: move, when the change is the straight line, and what else can jump.
-MOVE_WORDS = (
-    "No frame of your dry signal drops or repeats, at any Mix and after any "
-    "number of moves: at Mix 0 the output is byte for byte what it would "
-    "have been with no move.",
-    "from the end of the block in flight the output is exactly that of an "
-    "instance that always had the new settings.",
-    "when two things hold: it is the only room change between two pulls, "
-    "and the source has not come up short (above) part-way through a block "
-    "since the instance was built or last `reset()`.",
-    "A patch change counts as one room change however many knobs it moves, "
-    "and a move that lands on the room already loaded leaves the audio "
-    "untouched.",
-    "Otherwise the output can jump by many times what either room does on "
-    "its own, and how far is not known.",
-)
-SUMMARY_WORDS = (
-    "A room-knob move drops no dry frame. Two room changes between two "
-    "pulls, or a move after the source has come up short part-way through "
-    "a block (until a `reset()`), can make the output jump.")
-#: What coming up short is, and what the node does with a short read
-#: (re-audit fix round 2 after the re-audit round 2 at audiodsp
-#: v0.6.3rc2): the latency paragraph.
-LATENCY_WORDS = (
-    "Mix 0 is the source delayed by exactly `latency_samples`, byte for "
-    "byte, because the node stays in the path at Mix 0 and a Mix move never "
-    "jumps the timeline. A room-knob move keeps it too. It does not hold "
-    "over the `latency_samples` frames after a `reset()` (below), nor "
-    "across a pull in which the source comes up short (an empty buffer, one "
-    "shorter than a frame, or an error result) before the pull has a single "
-    "frame: that pull comes out as 256 frames of silence, and everything "
-    "after it comes out 256 frames later.",
-    "The node takes whole frames only: a part frame at the end of a buffer, "
-    "and anything an error result carries, never reach it.",
-)
-TAIL_WORDS = (
-    "Counted in the frames the source hands, the output is exactly zero "
-    "from more than `tail_samples` frames after the last non-zero one. Only "
-    "frames the source hands move the room on: a pull of silence like the "
-    "one above holds the tail where it is, and a source that stops handing "
-    "frames stops the tail with it, until it hands frames again.")
-RESET_WORDS = (
-    "`reset()` in the middle of a stream empties the room: the next "
-    "`latency_samples` frames come out as exact zero, dry included. That is "
-    "256 with a room loaded and none on the empty impulse, whose output "
-    "stays the source.")
-RESET_SUMMARY_WORDS = (
-    "calling `reset()` mid-stream with a room loaded silences the next 256 "
-    "frames, dry included,")
-MIX_LATE_RE = re.compile(
-    r"A\s+Mix\s+move\s+never\s+touches\s+the\s+room\.\s+It\s+acts\s+on\s+the"
-    r"\s+audio\s+entering\s+the\s+node\s+after\s+it,\s+so\s+the\s+block"
-    r"\s+already\s+in\s+flight,\s+at\s+most\s+(\d+)\s+frames,\s+comes\s+out"
-    r"\s+at\s+the\s+old\s+Mix\.")
-
 #: What the rule says breaks the line, each before one pull, on the dark
 #: room (Damping 0) with Mix held at 2: (label, start, the changes).
 DARK = ((DAMPING_I, 0),)
@@ -1584,68 +1531,13 @@ TWO_CHANGES = (
 
 
 class RoomMoveWords(unittest.TestCase):
-    """The docstring's room-move paragraph, pinned to the room. Re-audit fix
-    round 2 at audiodsp v0.6.3rc2 pinned its figures; the re-audit round 2
-    there parked the class again on three of its sentences (a source that
-    ran dry shortens every later fade, a patch change keeps the line only as
-    its block's one room change, three moves start the block elsewhere than
-    two), so re-audit fix round 1 after it states only the rule: what holds
-    after any move, the two conditions for the straight line, and that
-    anything else can jump. Every sentence of it is read here, the
-    `cf17a88` words are red, and so is each plant."""
-
-    def test_two_moves_before_one_pull_jump_as_documented(self, cls=None):
-        # The example: frames before the block in flight are the old room's
-        # and after it a room built with both moves, exactly; the jump into
-        # it and the rooms' own largest step are the printed LSB, with the
-        # moves after the printed number of pulls; and Mix 0 stays the
-        # source delayed by `latency_samples` across the same two moves.
-        # OneSynthesisPerBlock (the moves gathered into one synthesis) is
-        # red: its jump is the rooms' own.
-        found = documented_move(rebuilt.__doc__, TWO_MOVES_RE)
-        self.assertIsNotNone(found, "no two-move sentence naming its cell")
-        rate, channels, start, hz, peak, rest, number = found
-        first = (KNOB_INDEX[rest[0]], int(rest[1]))
-        second = (KNOB_INDEX[rest[2]], int(rest[3]))
-        at = int(rest[4])
-        jump, own = number(rest[5]), number(rest[6])
-        pcm = sine(40 * 256, channels, hz, rate, peak)
-        old = room_render(cls, rate, channels, start, pcm)
-        new = room_render(cls, rate, channels, start + (first, second), pcm)
-        moved = room_render(cls, rate, channels, start, pcm, actions={
-            at: lambda e: apply_moves(e, (first, second))})
-        r = fade_reading(old, new, moved, at=at * 256)
-        self.assertEqual((r["pre"], r["post"]), (0, 0), r)
-        self.assertEqual((r["jump"], int(r["own"])), (jump, own), r)
-        self.assertGreater(r["jump"], 10 * r["own"], r)
-        wire = np.vstack([silence(LATENCY, channels), pcm[:-LATENCY]])
-        out = room_render(cls, rate, channels, start, pcm, mix=0.0,
-                          actions={at: lambda e: apply_moves(
-                              e, (first, second))})
-        self.assertEqual(digest(out), digest(wire))
-
-    def test_one_move_steps_as_documented(self):
-        # The step sentence: one move holds the straight line within 1 LSB
-        # and steps the printed multiple, to the hundredth, of the larger
-        # room's own largest step at its cell, after the printed pulls.
-        found = documented_move(rebuilt.__doc__, STEP_RE)
-        self.assertIsNotNone(found, "no step sentence naming its cell")
-        rate, channels, start, hz, peak, rest, _ = found
-        ratio = float(rest[0])
-        knob, before, after = KNOB_INDEX[rest[1]], int(rest[2]), int(rest[3])
-        at = int(rest[4])
-        start = start + ((knob, before),)
-        pcm = sine(40 * 256, channels, hz, rate, peak)
-        old = room_render(None, rate, channels, start, pcm)
-        new = room_render(None, rate, channels, start + ((knob, after),),
-                          pcm)
-        moved = room_render(None, rate, channels, start, pcm, actions={
-            at: lambda e: e.set_macro(knob, after)})
-        r = fade_reading(old, new, moved, at=at * 256)
-        self.assertEqual((r["pre"], r["post"]), (0, 0), r)
-        self.assertLessEqual(r["off_line"], 1.0, r)
-        self.assertGreater(ratio, 1.0)
-        self.assertLessEqual(abs(r["step"] / r["own"] - ratio), 0.006, r)
+    """What a move does while audio plays. Since the trial of the second
+    process (2026-09-29) the docstring claims only what holds in every
+    case: no dry frame drops or repeats, every move has landed from the end
+    of the block in flight, a Mix move leaves that block at the old Mix, and
+    a reset silences it. The straight-line fade, the jumps and the short
+    reads these tests also pin are the node's mechanism, stated in the
+    dossier, not promises in the docstring."""
 
     def test_a_patch_change_is_one_synthesis_on_the_line(self, cls=None):
         # "A patch change counts as one room change however many knobs it
@@ -1656,7 +1548,6 @@ class RoomMoveWords(unittest.TestCase):
         # new at the Mix already in flight (patch 5's room at patch 1's
         # Mix), and after it the output is the new patch's exactly.
         # PatchPerKnob (one synthesis a knob) is red.
-        self.assertTrue(said(rebuilt.__doc__, MOVE_WORDS[3]))
         for rate in RATES:
             for channels in (2, 1):
                 for pcm in (white(40 * 256, channels, -6.0, seed=4242),
@@ -1683,7 +1574,8 @@ class RoomMoveWords(unittest.TestCase):
                         self.assertEqual((r["pre"], post), (0, 0), label)
                         self.assertLessEqual(r["off_line"], 1.0, label)
 
-    def test_the_line_holds_only_as_the_rule_says(self, cls=None):
+    def test_every_move_has_landed_from_the_end_of_the_block_in_flight(
+            self, cls=None):
         # The rule, read at three rates, stereo and mono, on a 40 Hz sine at
         # 2 000 LSB through the dark room, Mix held at 2:
         # - on the line within 1 LSB, frames before and after exact: one
@@ -1700,9 +1592,6 @@ class RoomMoveWords(unittest.TestCase):
         # on the pairs, RetryOnEmpty (the class never lets the node see the
         # empty buffer) on the under-run, and the cf17a88 words on the
         # parse.
-        for words in MOVE_WORDS:
-            self.assertTrue(said(rebuilt.__doc__, words), words)
-        self.assertTrue(said(ConvolutionReverb.__doc__, SUMMARY_WORDS))
         for rate in RATES:
             for channels in (2, 1):
                 pcm = sine(40 * 256, channels, 40.0, rate, 2000.0)
@@ -1797,9 +1686,6 @@ class RoomMoveWords(unittest.TestCase):
         # the old Mix). RetryOnShort (the class pulls again on every short
         # read) is red on the short legs; RetryOnEmpty is red only on the
         # empty one.
-        self.assertTrue(said(rebuilt.__doc__, LATENCY_WORDS[0]))
-        self.assertTrue(said(rebuilt.__doc__, MOVE_WORDS[2]))
-        self.assertTrue(said(ConvolutionReverb.__doc__, SUMMARY_WORDS))
         start = DARK + HOLD_MIX
         move = ((PREDELAY_I, 127),)
         for rate in RATES:
@@ -1862,9 +1748,6 @@ class RoomMoveWords(unittest.TestCase):
         # of a buffer of a frame and a byte (its whole frame does). The
         # moves come before and after the starved pull. ResetOnMove is red,
         # and so are the 8a57282 words, whose one exception was the reset.
-        self.assertTrue(said(rebuilt.__doc__, MOVE_WORDS[0]))
-        for words in LATENCY_WORDS:
-            self.assertTrue(said(rebuilt.__doc__, words), words)
         wire_back = ((MIX_I, 0),)
         stray = np.frombuffer(b"\x11\x11", dtype=np.int16)[0]
         room = ((ROOM_I, 50),)
@@ -1939,9 +1822,7 @@ class RoomMoveWords(unittest.TestCase):
         # frames into a block it is 156. MixOnePullLate (512) is red, and
         # so are the cf17a88 words, which said the 256 frames in flight
         # come out at the old Mix.
-        found = MIX_LATE_RE.search(" ".join(rebuilt.__doc__.split()))
-        self.assertIsNotNone(found, "no Mix sentence with its frames")
-        most = int(found.group(1))
+        most = 256
         for rate in RATES:
             for channels in (2, 1):
                 pcm = white(40 * 256, channels, -6.0, seed=4243)
@@ -1979,8 +1860,6 @@ class RoomMoveWords(unittest.TestCase):
         # reset that plays 256 frames of silence whatever the node holds)
         # on the empty impulse, and so are the 8a57282 words, which said
         # the next 256 frames at every Mix.
-        self.assertTrue(said(rebuilt.__doc__, RESET_WORDS))
-        self.assertTrue(said(ConvolutionReverb.__doc__, RESET_SUMMARY_WORDS))
         for rate in RATES:
             for channels in (2, 1):
                 pcm = white(40 * 256, channels, -6.0, seed=4244)
@@ -2034,7 +1913,6 @@ class RoomMoveWords(unittest.TestCase):
         # non-zero frame lands within one frame of that edge. TailTwoShort
         # (`tail_samples` two frames short) is red, and so are the 8a57282
         # words, which said only that the output is zero after the tail.
-        self.assertTrue(said(rebuilt.__doc__, TAIL_WORDS))
         burst = 5000
         for rate in RATES:
             for channels in (2, 1):
@@ -2654,64 +2532,24 @@ class D5DecayLaw(unittest.TestCase):
         self.assertFalse(result["null"]["passed"])
 
 
-#: The docstring's single-Room sentences (re-audit fix round 2): a floor
-#: ("at least about"), then each figure with its cell in brackets.
-SINGLE_MONO_RE = re.compile(
-    r"at\s+least\s+about\s+(\d+(?:\.\d+)?)\s+%\s+off\s+on\s+a\s+mono\s+room:"
-    r"\s+\+(\d+\.\d\d)\s+%\s+at\s+44\.1\s+kHz\s+\(([^)]*)\),"
-    r"\s+\+(\d+\.\d\d)\s+%\s+there\s+with\s+a\s+-20\s+dBFS\s+click"
-    r"\s+\(([^)]*)\),"
-    r"\s+\+(\d+\.\d\d)\s+%\s+at\s+48\s+kHz\s+\(([^)]*)\)"
-    r"\s+and\s+\+(\d+\.\d\d)\s+%\s+at\s+22\.05\s+kHz\s+\(([^)]*)\)")
-SINGLE_STEREO_RE = re.compile(
-    r"On\s+a\s+stereo\s+room\s+it\s+is\s+at\s+least\s+about"
-    r"\s+(\d+(?:\.\d+)?)\s+%:"
-    r"\s+\+(\d+\.\d\d)\s+%\s+at\s+48\s+kHz\s+\(([^)]*)\)"
-    r"\s+and\s+\+(\d+\.\d\d)\s+%\s+at\s+22\.05\s+kHz\s+with\s+a\s+-20\s+dBFS"
-    r"\s+click\s+\(([^)]*)\)")
-
-#: The cell behind each figure, in the sentences' order: (rate, channels,
-#: click LSB, Decay MIDI, Predelay MIDI, Diffusion MIDI, Room seed), all at
-#: Damping 500 Hz and 0.08 s. The walk behind the mono cells is the
+#: The single Rooms the walks found furthest off the law, each with its
+#: reading in % (the figures the docstring printed until the trial of the
+#: second process, 2026-09-29): (rate, channels, click LSB, Decay MIDI,
+#: Predelay MIDI, Diffusion MIDI, Room seed), all at Damping 500 Hz and
+#: 0.08 s. The walk behind the mono cells is the
 #: re-audit round-1 audit's (`convolutionreverb_reaudit1_audit.py mono
 #: monowalk`); the stereo cells are its re-refuter's walk
 #: (`convolutionreverb_reaudit1_refute.py single`) re-run on the fixed node
 #: at audiodsp v0.6.3rc2, where every stereo room moved (re-audit fix round
 #: 1: v0.6.2's +16.20 % cell reads otherwise there).
-SINGLE_MONO_CELLS = (
-    (44100, 1, 32767, 0, 0, 32, 43),
-    (44100, 1, 3277, 0, 127, 28, 43),
-    (48000, 1, 32767, 0, 0, 10, 43),
-    (22050, 1, 32767, 0, 0, 46, 61),
+SINGLE_ROOM_CELLS = (
+    ((44100, 1, 32767, 0, 0, 32, 43), 23.70),
+    ((44100, 1, 3277, 0, 127, 28, 43), 24.02),
+    ((48000, 1, 32767, 0, 0, 10, 43), 22.83),
+    ((22050, 1, 32767, 0, 0, 46, 61), 21.00),
+    ((48000, 2, 32767, 8, 0, 32, 43), 16.56),
+    ((22050, 2, 3277, 127, 0, 0, 27), 16.05),
 )
-SINGLE_STEREO_CELLS = (
-    (48000, 2, 32767, 8, 0, 32, 43),
-    (22050, 2, 3277, 127, 0, 0, 27),
-)
-
-
-def documented_single_rooms(doc):
-    """((mono floor, [(figure, words)...]), (stereo floor, [...])) as the
-    module docstring states them, or None where a sentence is missing."""
-    text = " ".join((doc or "").split())
-    found = []
-    for pattern in (SINGLE_MONO_RE, SINGLE_STEREO_RE):
-        match = pattern.search(text)
-        if match is None:
-            found.append(None)
-            continue
-        groups = match.groups()
-        pairs = [(float(groups[i]), groups[i + 1])
-                 for i in range(1, len(groups), 2)]
-        found.append((float(groups[0]), pairs))
-    return tuple(found)
-
-
-def cell_words(cell):
-    """The words a cell's brackets must carry."""
-    _, _, _, decay, predelay, diffusion, seed = cell
-    return ("Decay %d" % decay, "Damping 500 Hz", "Predelay %d" % predelay,
-            "Diffusion %d" % diffusion, "seed %d" % seed)
 
 
 def single_room_error(cell, cls=None):
@@ -2733,32 +2571,18 @@ def single_room_error(cell, cls=None):
 
 
 class D5SingleRoom(unittest.TestCase):
-    """D5's Not claimed line, a single Room with Damping in: nothing is
-    claimed, but the docstring tells a player how far one was found off the
-    law, and twice a figure written as a bound was exceeded (the re-audit
-    round-1 audit). This pins each printed figure to the Room it names,
-    to the printed hundredth, and wants each "at least about" within half a
-    point of its sentence's widest figure. It does not make a figure a
-    bound (re-audit fix round 2)."""
+    """D5's Not claimed line, a single Room with Damping in: the docstring
+    says only that one can take more than 15 % longer than the Decay time.
+    Each cell the walks found is held to its reading, to the hundredth, and
+    every one is past the 15 %."""
 
-    def test_the_documented_single_rooms_are_what_the_room_reads(self):
-        mono, stereo = documented_single_rooms(rebuilt.__doc__)
-        for label, found, cells in (("mono", mono, SINGLE_MONO_CELLS),
-                                    ("stereo", stereo, SINGLE_STEREO_CELLS)):
-            self.assertIsNotNone(found, "no %s single-Room floor" % label)
-            floor, pairs = found
-            self.assertEqual(len(pairs), len(cells), label)
-            self.assertLessEqual(abs(floor - max(f for f, _ in pairs)), 0.5,
-                                 (label, floor))
-            for (figure, words), cell in zip(pairs, cells):
-                for word in cell_words(cell):
-                    self.assertIsNotNone(
-                        re.search(r"\b%s\b" % re.escape(word), words),
-                        (label, cell, word, words))
-                error, floor_clean = single_room_error(cell)
-                self.assertTrue(floor_clean, cell)
-                self.assertLessEqual(abs(error - figure), 0.006,
-                                     (label, cell, error, figure))
+    def test_a_single_room_can_take_more_than_15_percent_longer(self):
+        for cell, figure in SINGLE_ROOM_CELLS:
+            error, floor_clean = single_room_error(cell)
+            self.assertTrue(floor_clean, cell)
+            self.assertLessEqual(abs(error - figure), 0.006,
+                                 (cell, error, figure))
+            self.assertGreater(error, 15.0, cell)
 
 
 # --------------------------------------------------------------------------
@@ -2849,16 +2673,6 @@ class D6UnitEnergy(unittest.TestCase):
         self.assertFalse(result["null"]["passed"])
 
 
-#: The module docstring's balance sentence (re-audit fix round 1, audiodsp
-#: v0.6.3rc2): the bound over the walk, then the widest setting found.
-BALANCE_RE = re.compile(
-    r"On\s+the\s+room's\s+own\s+impulse\s+the\s+two\s+sides\s+read\s+within"
-    r"\s+(\d+\.\d+)\s+dB\s+of\s+each\s+other\s+at\s+every\s+setting\s+walked"
-    r"\s+\(the\s+widest\s+found,\s+L\s+-\s+R\s+([+-]\d+\.\d{4})\s+dB\s+at"
-    r"\s+(48|44\.1|22\.05)\s+kHz,\s+Decay\s+(\d+),\s+Damping\s+(\d+),"
-    r"\s+Predelay\s+(\d+)\s+and\s+Diffusion\s+(\d+)\s+of\s+127,\s+Room"
-    r"\s+seed\s+(\d+)\)")
-
 #: D6 (4)'s bar: each side of a stereo room within 0.01 dB of the other on
 #: the room's own impulse (dossier section 3.6).
 BALANCE_BAR_DB = 0.01
@@ -2873,18 +2687,12 @@ OLD_WIDEST_CELL = {
 }
 OLD_WIDEST_OTHER_CELL = (0, 0, 0, 0, 6)
 
-
-def documented_balance(doc):
-    """(bound dB, widest L - R dB, rate, (Decay, Damping, Predelay,
-    Diffusion MIDI), Room seed) as the module docstring states it, or
-    None."""
-    found = BALANCE_RE.search(" ".join((doc or "").split()))
-    if found is None:
-        return None
-    g = found.groups()
-    rate = {"48": 48000, "44.1": 44100, "22.05": 22050}[g[2]]
-    return (float(g[0]), float(g[1]), rate,
-            tuple(int(v) for v in g[3:7]), int(g[7]))
+#: The bound over the walk and the widest setting it found (re-audit fix
+#: round 1 at v0.6.3rc2; printed in the docstring until the trial of the
+#: second process): L - R +0.0005 dB at 44.1 kHz, Decay 66, Damping 18,
+#: Predelay 34, Diffusion 62, Room seed 48.
+BALANCE_BOUND_DB = 0.001
+BALANCE_WIDEST = (0.0005, 44100, (66, 18, 34, 62), 48)
 
 
 def build_at_cell(rate, cell, cls=None):
@@ -2915,9 +2723,8 @@ class D6Balance(unittest.TestCase):
     0.05 dB)."""
 
     def test_the_documented_balance_is_what_the_room_reads(self):
-        documented = documented_balance(rebuilt.__doc__)
-        self.assertIsNotNone(documented, "no balance sentence")
-        bound, widest, rate, cell, seed = documented
+        bound = BALANCE_BOUND_DB
+        widest, rate, cell, seed = BALANCE_WIDEST
         self.assertLessEqual(bound, BALANCE_BAR_DB)
         self.assertLessEqual(abs(widest), bound)
         effect = build_at_cell(rate, cell + (room_midi(seed),))
@@ -2934,9 +2741,7 @@ class D6Balance(unittest.TestCase):
                 self.assertLessEqual(abs(pooled), 0.01, (rate, cell))
 
     def test_no_cell_of_the_slice_is_past_the_bound(self):
-        documented = documented_balance(rebuilt.__doc__)
-        self.assertIsNotNone(documented, "no balance sentence")
-        bound = documented[0]
+        bound = BALANCE_BOUND_DB
         for rate in RATES:
             diffusion = OLD_WIDEST_CELL[rate][3]
             effect = build_at_cell(rate, OLD_WIDEST_CELL[rate])
@@ -2965,29 +2770,6 @@ class D6Balance(unittest.TestCase):
         self.assertEqual(result["checked"], WALKED)
 
 
-#: The docstring's one-sided example (re-audit fix round 1, audiodsp
-#: v0.6.3rc2): white noise on one side only, at two Rooms, each figure to
-#: the hundredth of a dB.
-ONE_SIDED_RE = re.compile(
-    r"at\s+48\s+kHz\s+with\s+Decay\s+0,\s+Damping\s+500\s+Hz\s+and\s+"
-    r"Diffusion\s+0,\s+white\s+noise\s+hard\s+left\s+comes\s+back\s+at\s+"
-    r"([+-]\d+\.\d\d)\s+dB\s+and\s+hard\s+right\s+at\s+([+-]\d+\.\d\d)\s+dB"
-    r"\s+at\s+Room\s+seed\s+(\d+),\s+and\s+at\s+([+-]\d+\.\d\d)\s+and\s+"
-    r"([+-]\d+\.\d\d)\s+dB\s+at\s+the\s+default\s+Room,\s+seed\s+(\d+)")
-
-
-def documented_one_sided(doc):
-    """[(options, left dB, right dB)] as the docstring states them, or
-    None."""
-    found = ONE_SIDED_RE.search(" ".join((doc or "").split()))
-    if found is None:
-        return None
-    g = found.groups()
-    corner = dict(decay=0.0, damping_hz=500.0, diffusion=0.0)
-    return [(dict(corner, room=int(g[2])), float(g[0]), float(g[1])),
-            (dict(corner, room=int(g[5])), float(g[3]), float(g[4]))]
-
-
 def one_sided_level(side, cls=None, rate=RATE, **options):
     """Pooled wet/dry dB at Mix 2 of the kit's white noise (seed 12345,
     -12 dBFS peak, 3 s) on `side` alone, the other side silent, read after
@@ -3004,17 +2786,18 @@ def one_sided_level(side, cls=None, rate=RATE, **options):
 
 
 class D6OneSided(unittest.TestCase):
-    """The docstring's one-sided example, read at the Rooms it names (re-
-    audit fix round 1, audiodsp v0.6.3rc2). Up to v0.6.3rc1 white noise on
+    """The one-sided example the docstring printed until the trial of the
+    second process, read at its Rooms (re-audit fix round 1, audiodsp
+    v0.6.3rc2). Up to v0.6.3rc1 white noise on
     one side came back up to 2.7 dB off its level, with a sign that turned
     with the Room; since each side is normalised on its own it comes back
     within a few tenths. Each printed figure is held to its printed
     hundredth, and each within D6's 0.5 dB."""
 
     def test_the_documented_one_sided_example_is_what_the_room_reads(self):
-        cells = documented_one_sided(rebuilt.__doc__)
-        self.assertIsNotNone(cells, "no one-sided example naming its Rooms")
-        self.assertEqual(cells[1][0]["room"], 1)    # "the default Room"
+        corner = dict(decay=0.0, damping_hz=500.0, diffusion=0.0)
+        cells = [(dict(corner, room=36), -0.06, 0.15),
+                 (dict(corner, room=1), 0.02, -0.21)]
         for options, left, right in cells:
             for side, printed in ((0, left), (1, right)):
                 level = one_sided_level(side, **options)
@@ -3057,6 +2840,7 @@ class Tier1Fast(unittest.TestCase):
                 for _ in range(6):
                     audiocore.get_buffer(effect.output)
                 effect.reset()
+                self.assertEqual(effect.patch_index, 0)
                 out = bytearray()
                 for _ in range(8):
                     out += bytes(audiocore.get_buffer(effect.output)[1])
@@ -3129,6 +2913,348 @@ class ImpulseFiles(unittest.TestCase):
                 build(impulse=path)
             self.assertIn("44100", str(caught.exception))
             self.assertIn("48000", str(caught.exception))
+
+# --------------------------------------------------------------------------
+# The claims (the trial of the second process, 2026-09-29)
+# --------------------------------------------------------------------------
+
+#: (sentence, word for word as the class docstring has it, and the test
+#: that asserts it). Every sentence in the docstring that makes a claim is
+#: here; one that could not be tied to a test was struck.
+CLAIMS = (
+    ("By default the room is 0.08 s long.", "test_the_laws_at_the_defaults"),
+    ("Decay is how long the room rings, Damping darkens its tail, Predelay "
+     "puts silence between the dry and the room, and Diffusion fades the "
+     "room in instead of starting it as a burst.",
+     "test_what_each_knob_does"),
+    ("Room picks one of 64 rooms of the same size.",
+     "test_room_picks_one_of_64_rooms"),
+    ("Damping runs from 500 Hz at its bottom stop to out at its top stop.",
+     "test_what_each_knob_does"),
+    ("At 22.05 kHz its brightest positions below the top stop clamp and all "
+     "make the same room.", "test_damping_clamps_at_the_rate"),
+    ("Mix runs from 0 to 2: the dry at unity up to 1, the room alone at 2.",
+     "test_the_mix_walk_never_reaches_the_plant"),
+    ("With Damping out, each of the 64 Rooms falls 60 dB within 3 % of the "
+     "Decay time.", "test_damping_out_every_room_within_3_percent"),
+    ("With Damping in, the 64 Rooms fall 60 dB within 2 % of the Decay time "
+     "on average.", "test_damping_in_the_64_room_mean_within_2_percent"),
+    ("A single Room with Damping in can take more than 15 % longer.",
+     "test_a_single_room_can_take_more_than_15_percent_longer"),
+    ("At Damping's 500 Hz stop, low material comes back louder than it went "
+     "in.", "test_a_dark_room_lifts_low_material"),
+    ("Each side of a stereo room is normalised on its own, so the room sits "
+     "in the middle.", "test_no_cell_of_the_slice_is_past_the_bound"),
+    ("Hand it `impulse=`, int16 frames or the path to a 16-bit PCM WAV at "
+     "the graph's rate, and the room is that recording.",
+     "test_a_wav_loads_the_same_room_as_its_frames"),
+    ("The room is then your source convolved with the impulse at unit "
+     "energy, within 1 LSB.",
+     "test_within_one_lsb_across_layouts_levels_gain_and_trim"),
+    ("`ir_gain_db` trims it from -24 to +12 dB, and `start_ms` cuts up to "
+     "200 ms from its start.", "test_impulse_level_and_shape_are_checked"),
+    ("Only Mix is live then: the other five knobs raise `IndexError`.",
+     "test_measured_mode_refuses_the_synthesis_macros"),
+    ("A WAV at another rate raises `ValueError`, and so does an impulse with "
+     "no energy or a `start_ms` that trims away every frame.",
+     "test_what_measured_mode_refuses"),
+    ("An empty impulse, `impulse=b\"\"`, is an undelayed wire whose Mix does "
+     "nothing and whose `reset()` silences nothing.",
+     "test_an_empty_impulse_is_a_wire_whatever_mix_and_reset"),
+    ("`seconds` is the longest room the instance can hold, carved once when "
+     "you build it: from 0.06 s up to 131 072 frames, and outside that the "
+     "constructor raises `ValueError`.",
+     "test_every_cell_builds_or_raises_by_the_law"),
+    ("`latency_samples` reads 256 while an impulse is loaded and 0 on the "
+     "empty impulse.", "test_loaded_every_patch_and_the_predelay_stop"),
+    ("Held at Mix 0, the output is your source, byte for byte, "
+     "`latency_samples` late, while the source keeps feeding it and nothing "
+     "resets it.", "test_every_macro_stop_and_patch_with_mix_at_0"),
+    ("`tail_samples` is `latency_samples` plus the loaded room rounded up to "
+     "a whole block of 256 frames.",
+     "test_tail_is_latency_plus_the_loaded_impulse"),
+    ("More than `tail_samples` frames after your input's last non-zero "
+     "frame, the output is exact zero.",
+     "test_the_tail_counts_the_frames_the_source_hands"),
+    ("No frame of your dry signal drops or repeats when you move a room "
+     "knob, at any Mix, however many moves you make.",
+     "test_no_dry_frame_drops_after_any_number_of_changes"),
+    ("From the end of the block in flight, the output is that of an "
+     "instance that always had the new settings.",
+     "test_every_move_has_landed_from_the_end_of_the_block_in_flight"),
+    ("A Mix move acts from the end of the block in flight, so Mix 0 reaches "
+     "the plain source up to 256 frames late.",
+     "test_a_mix_move_lands_a_partition_late_and_reset_drops_one"),
+    ("`reset()` empties the room and returns to patch 0.",
+     "test_reset_empties_the_room"),
+    ("With an impulse loaded, `reset()` in the middle of a stream silences "
+     "the block in flight, 256 frames, dry included, and with Mix set back "
+     "to 0 your source carries on on time after it.",
+     "test_a_reset_keeps_the_whole_frames_the_node_holds"),
+    ("A host that calls `audiocore.reset_buffer` on the output silences the "
+     "block in flight too, but also drops the frames the node holds from a "
+     "source buffer it had not finished.",
+     "test_a_host_reset_buffer_silences_the_block_and_drops_held_frames"),
+)
+
+#: The family's two limits, ruled by Brad on 2026-09-28, word for word.
+FAMILY = (
+    "A control that jumps makes the output step: move it in small steps "
+    "from the host if you need it smooth.",
+    "The tail rings only while the source keeps feeding: feed silence to let "
+    "it ring out. A tail cut short by a source that stopped carries on when "
+    "the source comes back.",
+)
+
+
+def _flat(text):
+    return " ".join((text or "").split())
+
+
+def chord(rate, frames, channels):
+    """220, 277 and 330 Hz summed, at an 8 000 LSB peak."""
+    t = np.arange(frames) / float(rate)
+    x = sum(np.sin(2 * np.pi * hz * t) for hz in (220.0, 277.0, 330.0))
+    x = np.round(8000.0 * x / np.max(np.abs(x))).astype(np.int16)
+    return np.repeat(x[:, None], channels, axis=1)
+
+
+def wire_render(cls, rate, channels, pcm, size, at, action, blocks=40,
+                **options):
+    """`blocks` pulls at Mix 0 from a source in `size`-frame calls;
+    `action(effect)` just before pull `at`, then Mix put back to 0. Returns
+    the output and the frame where pull `at` starts."""
+    effect = build(cls, rate, channels, mix=0.0, **options)
+    effect._source.swap(DryOnce(pcm, rate, channels, None, size))
+    audiocore.reset_buffer(effect.node)
+    out = []
+    for number in range(blocks):
+        if number == at:
+            action(effect)
+            effect.set_macro(MIX_I, 0)
+        out.append(np.frombuffer(bytes(audiocore.get_buffer(effect.output)[1]),
+                                 dtype=np.int16).reshape(-1, channels))
+    effect.deinit()
+    return np.vstack(out), at * 256
+
+
+def counting(frames, channels):
+    """A source with no zero frame and no two frames alike nearby."""
+    pcm = ((np.arange(frames) * 7) % 20001 - 10000).astype(np.int16)
+    pcm[pcm == 0] = 1
+    return np.repeat(pcm[:, None], channels, axis=1)
+
+
+class TheClaims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = _flat(ConvolutionReverb.__doc__)
+        tests = set()
+        for value in globals().values():
+            if isinstance(value, type) and issubclass(value,
+                                                      unittest.TestCase):
+                tests.update(n for n in dir(value) if n.startswith("test_"))
+        rest = doc
+        for sentence, test in CLAIMS:
+            self.assertIn(sentence, doc, sentence)
+            self.assertIn(test, tests, sentence)
+            rest = rest.replace(sentence, " ")
+        self.assertIn("**Limits shared by the family.**", doc)
+        for sentence in FAMILY:
+            self.assertIn(sentence, doc, sentence)
+        numbers = [w for w in rest.split() if any(c.isdigit() for c in w)]
+        self.assertEqual(numbers, [])
+
+    def test_what_each_knob_does(self):
+        # On the room's own impulse (a click at Mix 2, 48 kHz): Decay 127
+        # rings longer than Decay 0; Damping at its 500 Hz bottom stop
+        # leaves under a fifth of the share of the tail's second half above
+        # 4 kHz that its top stop leaves, which
+        # hands the node no roll-off at all; Predelay 127 leaves 15 ms of
+        # silence after the latency before the room, Predelay 0 none; and
+        # Diffusion 127 starts the room at least 6 dB quieter over its first
+        # 5 ms than Diffusion 0, with the same energy overall.
+        def impulse(**options):
+            effect = build(mix=2.0, **options)
+            taps = effect.node.taps
+            out = run(effect, click(LATENCY + taps + 256))
+            synthesis = effect._synthesis()
+            effect.deinit()
+            return out[LATENCY:LATENCY + taps].astype(np.float64), synthesis
+
+        long_room, _ = impulse(decay=1.0, damping_hz=0.0)
+        short_room, _ = impulse(decay=0.0, damping_hz=0.0)
+        self.assertGreater(schroeder_t60(np.sum(long_room ** 2, axis=1), RATE),
+                           1.4 * schroeder_t60(np.sum(short_room ** 2, axis=1),
+                                               RATE))
+
+        def top(ir):
+            ir = ir[len(ir) // 2:]              # the tail's second half
+            spectrum = np.abs(np.fft.rfft(ir[:, 0])) ** 2
+            hz = np.fft.rfftfreq(len(ir), 1.0 / RATE)
+            return float(np.sum(spectrum[hz > 4000.0]) / np.sum(spectrum))
+
+        dark, synthesis = impulse(damping_hz=500.0)
+        self.assertAlmostEqual(synthesis[1], 500.0, places=6)
+        effect = build()
+        effect.set_macro(DAMPING_I, 0)
+        self.assertAlmostEqual(effect._synthesis()[1], 500.0, places=6)
+        effect.set_macro(DAMPING_I, 127)
+        self.assertEqual(effect._synthesis()[1], 0.0)
+        effect.deinit()
+        bright, synthesis = impulse(damping_hz=0.0)
+        self.assertEqual(synthesis[1], 0.0)
+        self.assertLess(top(dark), 0.2 * top(bright))
+
+        late, _ = impulse(predelay=1.0, diffusion=0.0)
+        early, _ = impulse(predelay=0.0, diffusion=0.0)
+        self.assertEqual(first_arrival(late), 720)
+        self.assertEqual(first_arrival(early), 0)
+
+        soft, _ = impulse(diffusion=1.0)
+        hard, _ = impulse(diffusion=0.0)
+        head = int(0.005 * RATE)
+        self.assertLess(10 * np.log10(np.sum(soft[:head] ** 2)
+                                      / np.sum(hard[:head] ** 2)), -6.0)
+
+    def test_room_picks_one_of_64_rooms(self):
+        # Walked by set_macro over every position: 64 seeds, 64 impulses no
+        # two alike, all on one allocation, and each on the Decay law with
+        # Damping out (D5 walks that within 3 %).
+        effect = build(damping_hz=0.0)
+        taps = effect.node.taps
+        pulse = click(LATENCY + taps + 256)
+        seeds, rooms = set(), set()
+        for midi in range(128):
+            effect.set_macro(ROOM_I, midi)
+            seeds.add(effect._synthesis()[4])
+            rooms.add(digest(at_mix(effect, 127, pulse)))
+            self.assertEqual(effect.node.taps, taps)
+        effect.deinit()
+        self.assertEqual(seeds, set(range(1, 65)))
+        self.assertEqual(len(rooms), 64)
+
+    def test_a_dark_room_lifts_low_material(self):
+        # A low chord at Mix 2, the level after the room has built, at
+        # Damping's 500 Hz stop: louder than the dry at three rates, stereo
+        # and mono, at 16 Rooms and three Decays (the least lift over that
+        # walk is about 2 dB). No number is claimed: the lift turns with the
+        # Room.
+        least = None
+        for rate in RATES:
+            for channels in (2, 1):
+                pcm = chord(rate, int(1.5 * rate), channels)
+                for decay in (0.0, 0.5, 1.0):
+                    effect = build(rate=rate, channels=channels, decay=decay,
+                                   damping_hz=500.0)
+                    for room in range(0, 128, 8):
+                        effect.set_macro(ROOM_I, room)
+                        level, _ = m6_cell(effect, pcm)
+                        least = level if least is None else min(least, level)
+                        self.assertGreater(level, 0.0,
+                                           (rate, channels, decay, room))
+                    effect.deinit()
+        self.assertGreater(least, 1.0)
+
+    def test_what_measured_mode_refuses(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = ImpulseFiles().write(folder, 44100, 1, 900)
+            with self.assertRaises(ValueError):
+                build(impulse=path)
+        with self.assertRaises(ValueError):
+            build(impulse=np.zeros(512, dtype=np.int16).tobytes())
+        with self.assertRaises(ValueError):
+            build(impulse=make_impulse(100).tobytes(), start_ms=2.1)
+
+    def test_an_empty_impulse_is_a_wire_whatever_mix_and_reset(self):
+        # `impulse=b""`: at Mix 0, 0.6, 1.2 and 2, across a reset() before
+        # pull 20 (Mix put back after it) and a host `reset_buffer` on the
+        # output before pull 25, the output is the source frame for frame,
+        # with no latency and no frame silenced. ResetSilentOnEmpty (a
+        # reset that plays 256 frames of silence) is red.
+        for rate in (48000, 22050):
+            for channels in (2, 1):
+                pcm = counting(40 * 256, channels)
+                for cls in (None, ResetSilentOnEmpty):
+                    for midi in (0, 38, 76, 127):
+                        effect = build(cls, rate, channels, impulse=b"")
+                        effect.set_macro(MIX_I, midi)
+                        effect._source.swap(probes.ArraySource(
+                            pcm, rate=rate, channels=channels))
+                        audiocore.reset_buffer(effect.node)
+                        out = bytearray()
+                        for number in range(40):
+                            if number == 20:
+                                effect.reset()
+                                effect.set_macro(MIX_I, midi)
+                            if number == 25:
+                                audiocore.reset_buffer(effect.output)
+                            out += bytes(audiocore.get_buffer(
+                                effect.output)[1])
+                        effect.deinit()
+                        out = np.frombuffer(bytes(out), dtype=np.int16
+                                            ).reshape(-1, channels)
+                        label = (rate, channels, cls, midi)
+                        if cls is None:
+                            self.assertEqual(digest(out), digest(pcm), label)
+                        else:
+                            self.assertNotEqual(digest(out), digest(pcm),
+                                                label)
+
+    def test_a_reset_keeps_the_whole_frames_the_node_holds(self):
+        # The re-audit's ask: a reset() while the node holds part of a
+        # source buffer. From sources in 512-, 100- and 256-frame calls, at
+        # Mix 0, the reset before pull 20 or 21 (with 512-frame calls pull
+        # 21 finds the node holding half a buffer; with 100-frame calls
+        # both do): the 256 frames after it are exact zero and every other
+        # frame is the source on time. ReplugOnReset (the source plugged
+        # back into the node on reset, which drops what the node held) is
+        # red wherever the node held frames, and clean where it held none.
+        for rate in (48000, 22050):
+            for channels in (2, 1):
+                pcm = counting(40 * 256, channels)
+                wire = np.vstack([silence(LATENCY, channels), pcm])
+                for size in (512, 100, 256):
+                    for at in (20, 21):
+                        held = (at * 256) % size != 0
+                        for cls in (None, ReplugOnReset):
+                            out, a = wire_render(cls, rate, channels, pcm,
+                                                 size, at,
+                                                 lambda e: e.reset())
+                            want = wire[:len(out)].copy()
+                            want[a:a + 256] = 0
+                            label = (rate, channels, size, at, cls)
+                            if cls is None or not held:
+                                self.assertEqual(digest(out), digest(want),
+                                                 label)
+                            else:
+                                self.assertNotEqual(digest(out),
+                                                    digest(want), label)
+
+    def test_a_host_reset_buffer_silences_the_block_and_drops_held_frames(
+            self):
+        # A host `audiocore.reset_buffer(effect.output)` before pull 21, at
+        # Mix 0: the 256 frames after it are exact zero, and from then on
+        # the output is the source moved on by the frames the node held of
+        # its current buffer: none from 256-frame calls, 256 from 512-frame
+        # calls, 24 from 100-frame calls (54 calls handed 5 400 frames and
+        # the node had taken 5 376). audiodsp: the node's reset drops them.
+        for rate in (48000, 22050):
+            for channels in (2, 1):
+                pcm = counting(44 * 256, channels)
+                for size, dropped in ((256, 0), (512, 256), (100, 24)):
+                    out, a = wire_render(
+                        None, rate, channels, pcm, size, 21,
+                        lambda e: audiocore.reset_buffer(e.output))
+                    label = (rate, channels, size)
+                    wire = np.vstack([silence(LATENCY, channels), pcm])
+                    self.assertEqual(digest(out[:a]), digest(wire[:a]), label)
+                    self.assertEqual(int(np.max(np.abs(out[a:a + 256]))), 0,
+                                     label)
+                    rest = out[a + 256:]
+                    self.assertEqual(
+                        digest(rest),
+                        digest(pcm[a + dropped:a + dropped + len(rest)]),
+                        label)
 
 
 if __name__ == "__main__":
