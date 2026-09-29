@@ -66,6 +66,18 @@ them into one synthesis), the step one move takes on a low sine (red on the
 figure moved), and a patch change held to the straight line (red on
 `PatchPerKnob`, one synthesis a knob). The `1b3bb94` words, which printed
 neither figure, are red on the first two.
+
+The re-audit round 2 at v0.6.3rc2 parked the class on three of those
+sentences, and re-audit fix round 1 after it restates the paragraph as a
+rule with no mechanism in it: what holds after any number of moves, the two
+conditions for the straight line (one room change between two pulls, and a
+source that has not run dry part-way through a block since the last
+`reset()`), and that anything else can jump. `RoomMoveWords` now reads each
+of its sentences: the rule's legs (`OneSynthesisPerBlock` red on the pairs,
+`RetryOnEmpty`, which never lets the node see the empty buffer, red on the
+under-run), the dry wire after every pair and an under-run (`ResetOnMove`),
+the Mix sentence (`MixOnePullLate`) and the reset sentence (`NoReset`). The
+`cf17a88` words are red on all seven.
 """
 
 import os
@@ -699,9 +711,10 @@ class OneSynthesisPerBlock(ConvolutionReverb):
     one synthesis at the next pull. It is what the class would do with a
     hook at the block edge, and what a node that kept fading from the room
     that played would render (the node ask): the block starts on that
-    room, not on the first move's. Two moves before one pull then read
-    like one move, on the straight line from the old room to the new, and
-    the docstring's jump is gone."""
+    room, not on the room before the last move, which is where the node at
+    v0.6.3rc2 starts it. Two or more changes before one pull then read like
+    one, on the straight line from the old room to the new, and the
+    docstring's jump is gone (the rule test's pairs too)."""
 
     NAME = NAME
 
@@ -741,6 +754,71 @@ class PatchPerKnob(ConvolutionReverb):
             return
         for macro, value in enumerate(patch[1]):
             self.set_macro(macro, value)
+
+
+class _RetrySource:
+    """The class's source behind a proxy that never hands the node an
+    empty buffer: an empty read is followed at once by another."""
+
+    def __init__(self, inner):
+        self.inner = inner
+        for name in ("sample_rate", "channel_count", "bits_per_sample",
+                     "samples_signed"):
+            setattr(self, name, getattr(inner, name))
+
+    def swap(self, source):
+        self.inner.swap(source)
+
+    def _reset_buffer(self, single_channel_output=False, audio_channel=0):
+        self.inner._reset_buffer(single_channel_output, audio_channel)
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        for _ in range(8):
+            result, data = self.inner._get_buffer(single_channel_output,
+                                                  audio_channel)
+            if len(data):
+                break
+        return result, data
+
+
+class RetryOnEmpty(ConvolutionReverb):
+    """The under-run leg's control (re-audit fix round 1 after the re-audit
+    round 2 at audiodsp v0.6.3rc2): the class pulls again when its source
+    hands back an empty buffer, so the node never returns a short block and
+    stays at its block edge. A move after an under-run then fades over the
+    whole block, as if the source had never run dry."""
+
+    NAME = NAME
+
+    def _build(self, *arguments, **options):
+        self._source = _RetrySource(self._source)
+        ConvolutionReverb._build(self, *arguments, **options)
+
+
+class MixOnePullLate(ConvolutionReverb):
+    """The Mix sentence's control: a Mix move handed to the node one pull
+    late, so 512 frames come out at the old Mix, not 256."""
+
+    NAME = NAME
+
+    def _build(self, *arguments, **options):
+        self._hooked = False
+        ConvolutionReverb._build(self, *arguments, **options)
+        self._mix_wait = 0
+        self._output = _PullHook(self._node, self)
+        self._hooked = True
+
+    def _apply_macro(self, index, position):
+        if self._hooked and not self._deferred and index == MIX_I:
+            self._mix_wait = 2
+            return
+        ConvolutionReverb._apply_macro(self, index, position)
+
+    def _flush(self):
+        if self._mix_wait:
+            self._mix_wait -= 1
+            if not self._mix_wait:
+                self._node.set(mix=self._value(MIX_I) * 0.5)
 
 
 def reach(faulted, reading, tolerance=0.0, rate=RATE, channels=2,
@@ -1132,7 +1210,10 @@ class ResynthesisIsDeduplicated(unittest.TestCase):
 #: The docstring's room-move figures (re-audit fix round 2 at audiodsp
 #: v0.6.3rc2, from the re-audit round-1 audit at v0.6.3rc2, items 1 and 2):
 #: the step one move's straight line takes on low material, and the jump
-#: two moves before one pull make. Each names its cell.
+#: two moves before one pull make. Each names its cell, and since re-audit
+#: fix round 1 after the re-audit round 2 at v0.6.3rc2, the pull its moves
+#: land after (the jump moves with it: 4 434 to 10 260 LSB over pulls 4 to
+#: 31 at the two-move cell, the round-2 audit's `cell`).
 _KNOB = r"(Decay|Damping|Predelay|Diffusion|Room)"
 _LSB = r"(\d{1,3}(?: \d{3})*)"
 _CELL = (r"at\s+(48|44\.1|22\.05)\s+kHz\s+(stereo|mono)\s+with\s+Damping"
@@ -1141,10 +1222,10 @@ _CELL = (r"at\s+(48|44\.1|22\.05)\s+kHz\s+(stereo|mono)\s+with\s+Damping"
 STEP_RE = re.compile(
     _CELL + r"steps\s+(\d+\.\d\d)\s+times\s+the\s+larger\s+room's\s+own"
     r"\s+largest\s+step\s+when\s+" + _KNOB + r"\s+moves\s+from\s+(\d+)"
-    r"\s+to\s+(\d+)")
+    r"\s+to\s+(\d+)\s+after\s+(\d+)\s+pulls")
 TWO_MOVES_RE = re.compile(
     _CELL + r"with\s+" + _KNOB + r"\s+moved\s+to\s+(\d+)\s+and\s+then\s+"
-    + _KNOB + r"\s+to\s+(\d+)\s+before\s+one\s+pull\s+jumps\s+" + _LSB
+    + _KNOB + r"\s+to\s+(\d+)\s+after\s+(\d+)\s+pulls\s+jumps\s+" + _LSB
     + r"\s+LSB\s+into\s+the\s+block,\s+where\s+the\s+two\s+rooms\s+move\s+at"
     r"\s+most\s+" + _LSB + r"\s+LSB\s+a\s+frame")
 KNOB_INDEX = dict(zip(ConvolutionReverb.MACRO_LABELS, range(6)))
@@ -1202,15 +1283,17 @@ def room_render(cls, rate, channels, moves, pcm, mix=2.0, actions=None):
     return out
 
 
-def fade_reading(old, new, moved, first=None):
-    """The block in flight of `moved` against the straight line from `old`
-    to `new` (full-scale samples left out: the node clips after its fade),
-    the jump into it, its largest step and the rooms' own largest step from
-    the frame before it to the frame after it, how many frames before it
-    are off `old` and after it off `new`, and how far its first frame sits
-    from `first` (the room of a first move) and from `old`."""
+def fade_reading(old, new, moved, first=None, at=None):
+    """The block in flight of `moved` (the 256 frames from frame `at`,
+    default the block after MOVE_AT pulls) against the straight line from
+    `old` to `new` (full-scale samples left out: the node clips after its
+    fade), the jump into it, its largest step and the rooms' own largest
+    step from the frame before it to the frame after it, how many frames
+    before it are off `old` and after it off `new`, and how far its first
+    frame sits from `first` (the room of a first move) and from `old`."""
     o, n, m = (x.astype(np.float64) for x in (old, new, moved))
-    a, b = BLOCK_IN_FLIGHT.start, BLOCK_IN_FLIGHT.stop
+    a = BLOCK_IN_FLIGHT.start if at is None else at
+    b = a + 256
     k = (np.arange(1, 257, dtype=np.float64) / 256.0)[:, None]
     line = o[a:b] + k * (n[a:b] - o[a:b])
     full = (np.abs(o[a:b]) >= 32767) | (np.abs(n[a:b]) >= 32767)
@@ -1230,93 +1313,417 @@ def fade_reading(old, new, moved, first=None):
     return reading
 
 
+class DryOnce(probes.ArraySource):
+    """int16 frames in 256-frame calls, except where `plan` maps a call
+    number (from 1) to how many frames that call hands: 0 is an empty
+    buffer, the source running dry for one call and then going on."""
+
+    def __init__(self, data, rate, channels, plan=None):
+        probes.ArraySource.__init__(self, data, rate=rate, channels=channels)
+        self.plan = dict(plan or {})
+        self.calls = 0
+
+    def _reset_buffer(self, single_channel_output=False, audio_channel=0):
+        probes.ArraySource._reset_buffer(self)
+        self.calls = 0
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        self.calls += 1
+        take = self.plan.get(self.calls)
+        if take is None:
+            return probes.ArraySource._get_buffer(self)
+        stride = take * self.channel_count * 2
+        chunk = bytes(self._pcm[self._position:self._position + stride])
+        self._position += len(chunk)
+        return 1, memoryview(chunk)
+
+
+#: The source hands 255 frames on its fourth call and an empty buffer on
+#: its fifth, then goes on: the node's block phase is 255 from then on.
+UNDERRUN = {4: 255, 5: 0}
+
+
+def act(effect, moves):
+    """Apply `moves`: (macro, MIDI), ("patch", index) or ("reset", None)."""
+    for index, value in moves:
+        if index == "patch":
+            effect.program_change(value)
+        elif index == "reset":
+            effect.reset()
+        else:
+            effect.set_macro(index, value)
+
+
+def dry_render(cls, rate, channels, start, pcm, plan=None, actions=None,
+               mix=2.0, blocks=40):
+    """`blocks` host pulls over `pcm` from a DryOnce source, `start` applied
+    at construction and `actions[n]` just before pull n. Returns the output
+    as (frames, channels) and the frame count of each pull."""
+    effect = build(cls, rate, channels, mix=mix)
+    act(effect, start)
+    effect._source.swap(DryOnce(pcm, rate, channels, plan))
+    audiocore.reset_buffer(effect.node)
+    out, sizes = [], []
+    for number in range(blocks):
+        if actions and number in actions:
+            act(effect, actions[number])
+        data = np.frombuffer(bytes(audiocore.get_buffer(effect.output)[1]),
+                             dtype=np.int16).reshape(-1, channels)
+        out.append(data)
+        sizes.append(len(data))
+    effect.deinit()
+    return np.vstack(out), sizes
+
+
+def said(doc, words):
+    """True when `words` are in `doc`, whitespace aside."""
+    return " ".join(words.split()) in " ".join((doc or "").split())
+
+
+#: The room-move rule as the docstring states it (re-audit fix round 1
+#: after the re-audit round 2 at audiodsp v0.6.3rc2): what holds after any
+#: move, when the change is the straight line, and what else can jump.
+MOVE_WORDS = (
+    "No frame of your dry signal drops or repeats, at any Mix and after any "
+    "number of moves: at Mix 0 the output is byte for byte what it would "
+    "have been with no move.",
+    "from the end of the block in flight the output is exactly that of an "
+    "instance that always had the new settings.",
+    "when two things hold: it is the only room change between two pulls, "
+    "and the source has not handed back an empty buffer part-way through a "
+    "block since the instance was built or last `reset()`.",
+    "A patch change counts as one room change however many knobs it moves, "
+    "and a move that lands on the room already loaded leaves the audio "
+    "untouched.",
+    "Otherwise the output can jump by many times what either room does on "
+    "its own, and how far is not known.",
+)
+SUMMARY_WORDS = (
+    "A room-knob move drops no dry frame. Two room changes between two "
+    "pulls, or a move after the source has handed back an empty buffer "
+    "part-way through a block (until a `reset()`), can make the output "
+    "jump.")
+RESET_WORDS = (
+    "`reset()` in the middle of a stream empties the room: the next 256 "
+    "frames come out as exact zero, dry included.")
+MIX_LATE_RE = re.compile(
+    r"A\s+Mix\s+move\s+never\s+touches\s+the\s+room\.\s+It\s+acts\s+on\s+the"
+    r"\s+audio\s+entering\s+the\s+node\s+after\s+it,\s+so\s+the\s+block"
+    r"\s+already\s+in\s+flight,\s+at\s+most\s+(\d+)\s+frames,\s+comes\s+out"
+    r"\s+at\s+the\s+old\s+Mix\.")
+
+#: What the rule says breaks the line, each before one pull, on the dark
+#: room (Damping 0) with Mix held at 2: (label, start, the changes).
+DARK = ((DAMPING_I, 0),)
+HOLD_MIX = ((MIX_I, 127),)
+TWO_CHANGES = (
+    ("two knobs", DARK, ((ROOM_I, 50), (PREDELAY_I, 40))),
+    ("three knobs", DARK, ((ROOM_I, 50), (PREDELAY_I, 40), (DECAY_I, 30))),
+    ("a knob, then a patch", (("patch", 1),) + DARK,
+     ((PREDELAY_I, 40), ("patch", 3))),
+    ("a patch, then a knob", (("patch", 1),), (("patch", 3), (ROOM_I, 50))),
+    ("two patches", (("patch", 0),), (("patch", 1), ("patch", 3))),
+)
+
+
 class RoomMoveWords(unittest.TestCase):
-    """The docstring's room-move paragraph, pinned to the room (re-audit
-    fix round 2 at audiodsp v0.6.3rc2). The round-1 audit at v0.6.3rc2
-    parked the class on it: its straight line and its step held for one
-    move at a block edge on white noise, and two moves before one pull
-    start the block in flight on a room never played. Each figure the
-    docstring prints is read at the cell it names; the `1b3bb94` words,
-    which printed neither, are red, and so is each figure moved."""
+    """The docstring's room-move paragraph, pinned to the room. Re-audit fix
+    round 2 at audiodsp v0.6.3rc2 pinned its figures; the re-audit round 2
+    there parked the class again on three of its sentences (a source that
+    ran dry shortens every later fade, a patch change keeps the line only as
+    its block's one room change, three moves start the block elsewhere than
+    two), so re-audit fix round 1 after it states only the rule: what holds
+    after any move, the two conditions for the straight line, and that
+    anything else can jump. Every sentence of it is read here, the
+    `cf17a88` words are red, and so is each plant."""
 
     def test_two_moves_before_one_pull_jump_as_documented(self, cls=None):
-        # The two-move sentence: frames before the block in flight are the
-        # old room's and after it a room built with both moves, exactly;
-        # the block's first frame sits nearer the first move's room than
-        # the old one; the jump into it and the rooms' own largest step
-        # are the printed LSB; and Mix 0 stays the source delayed by
-        # `latency_samples` across the same two moves. OneSynthesisPerBlock
-        # (the moves gathered into one synthesis) is red: its block starts
-        # on the old room.
+        # The example: frames before the block in flight are the old room's
+        # and after it a room built with both moves, exactly; the jump into
+        # it and the rooms' own largest step are the printed LSB, with the
+        # moves after the printed number of pulls; and Mix 0 stays the
+        # source delayed by `latency_samples` across the same two moves.
+        # OneSynthesisPerBlock (the moves gathered into one synthesis) is
+        # red: its jump is the rooms' own.
         found = documented_move(rebuilt.__doc__, TWO_MOVES_RE)
         self.assertIsNotNone(found, "no two-move sentence naming its cell")
         rate, channels, start, hz, peak, rest, number = found
         first = (KNOB_INDEX[rest[0]], int(rest[1]))
         second = (KNOB_INDEX[rest[2]], int(rest[3]))
-        jump, own = number(rest[4]), number(rest[5])
+        at = int(rest[4])
+        jump, own = number(rest[5]), number(rest[6])
         pcm = sine(40 * 256, channels, hz, rate, peak)
         old = room_render(cls, rate, channels, start, pcm)
-        mid = room_render(cls, rate, channels, start + (first,), pcm)
         new = room_render(cls, rate, channels, start + (first, second), pcm)
         moved = room_render(cls, rate, channels, start, pcm, actions={
-            MOVE_AT: lambda e: apply_moves(e, (first, second))})
-        r = fade_reading(old, new, moved, mid)
+            at: lambda e: apply_moves(e, (first, second))})
+        r = fade_reading(old, new, moved, at=at * 256)
         self.assertEqual((r["pre"], r["post"]), (0, 0), r)
-        self.assertLess(r["near_first"], r["near_old"], r)
         self.assertEqual((r["jump"], int(r["own"])), (jump, own), r)
         self.assertGreater(r["jump"], 10 * r["own"], r)
         wire = np.vstack([silence(LATENCY, channels), pcm[:-LATENCY]])
         out = room_render(cls, rate, channels, start, pcm, mix=0.0,
-                          actions={MOVE_AT: lambda e: apply_moves(
+                          actions={at: lambda e: apply_moves(
                               e, (first, second))})
         self.assertEqual(digest(out), digest(wire))
 
     def test_one_move_steps_as_documented(self):
-        # The step sentence: one move at a block edge holds the straight
-        # line within 1 LSB and steps the printed multiple, to the
-        # hundredth, of the larger room's own largest step at its cell.
+        # The step sentence: one move holds the straight line within 1 LSB
+        # and steps the printed multiple, to the hundredth, of the larger
+        # room's own largest step at its cell, after the printed pulls.
         found = documented_move(rebuilt.__doc__, STEP_RE)
         self.assertIsNotNone(found, "no step sentence naming its cell")
         rate, channels, start, hz, peak, rest, _ = found
         ratio = float(rest[0])
         knob, before, after = KNOB_INDEX[rest[1]], int(rest[2]), int(rest[3])
+        at = int(rest[4])
         start = start + ((knob, before),)
         pcm = sine(40 * 256, channels, hz, rate, peak)
         old = room_render(None, rate, channels, start, pcm)
         new = room_render(None, rate, channels, start + ((knob, after),),
                           pcm)
         moved = room_render(None, rate, channels, start, pcm, actions={
-            MOVE_AT: lambda e: e.set_macro(knob, after)})
-        r = fade_reading(old, new, moved)
+            at: lambda e: e.set_macro(knob, after)})
+        r = fade_reading(old, new, moved, at=at * 256)
         self.assertEqual((r["pre"], r["post"]), (0, 0), r)
         self.assertLessEqual(r["off_line"], 1.0, r)
         self.assertGreater(ratio, 1.0)
         self.assertLessEqual(abs(r["step"] / r["own"] - ratio), 0.006, r)
 
     def test_a_patch_change_is_one_synthesis_on_the_line(self, cls=None):
-        # "A patch change moves every knob in one synthesis and keeps the
-        # straight line": patch 1 -> 3 (every room knob moves, Mix does
-        # not) before one pull, at three rates, stereo and mono, on white
-        # noise and on the low sine. PatchPerKnob (one synthesis a knob) is
-        # red.
+        # "A patch change counts as one room change however many knobs it
+        # moves": patch 1 -> 3 (every room knob moves, Mix does not) and
+        # patch 1 -> 5 (Mix moves too, 44 -> 63) before one pull, at three
+        # rates, stereo and mono, on white noise and on the low sine. The
+        # block in flight is on the straight line from the old room to the
+        # new at the Mix already in flight (patch 5's room at patch 1's
+        # Mix), and after it the output is the new patch's exactly.
+        # PatchPerKnob (one synthesis a knob) is red.
+        self.assertTrue(said(rebuilt.__doc__, MOVE_WORDS[3]))
         for rate in RATES:
             for channels in (2, 1):
                 for pcm in (white(40 * 256, channels, -6.0, seed=4242),
                             sine(40 * 256, channels, 40.0, rate, 2000.0)):
-                    renders = []
-                    for action in (None, "built", "moved"):
-                        effect = build(cls, rate, channels, patch=1)
-                        acts = None
-                        if action == "built":
-                            effect.program_change(3)
-                        elif action == "moved":
-                            acts = {MOVE_AT: lambda e: e.program_change(3)}
-                        renders.append(pulled(effect, pcm, acts))
-                        effect.deinit()
-                    r = fade_reading(*renders)
-                    label = (rate, channels, r)
-                    self.assertEqual((r["pre"], r["post"]), (0, 0), label)
-                    self.assertLessEqual(r["off_line"], 1.0, label)
+                    for target in (3, 5):
+                        old_mix = ConvolutionReverb.PATCHES[1][1][MIX_I]
+                        renders = []
+                        for action in ("old", "line", "built", "moved"):
+                            effect = build(cls, rate, channels, patch=1)
+                            acts = None
+                            if action in ("line", "built"):
+                                effect.program_change(target)
+                            if action == "line":
+                                effect.set_macro(MIX_I, old_mix)
+                            if action == "moved":
+                                acts = {MOVE_AT: lambda e, t=target:
+                                        e.program_change(t)}
+                            renders.append(pulled(effect, pcm, acts))
+                            effect.deinit()
+                        old, line, built, moved = renders
+                        r = fade_reading(old, line, moved)
+                        post = fade_reading(old, built, moved)["post"]
+                        label = (rate, channels, target, r)
+                        self.assertEqual((r["pre"], post), (0, 0), label)
+                        self.assertLessEqual(r["off_line"], 1.0, label)
+
+    def test_the_line_holds_only_as_the_rule_says(self, cls=None):
+        # The rule, read at three rates, stereo and mono, on a 40 Hz sine at
+        # 2 000 LSB through the dark room, Mix held at 2:
+        # - on the line within 1 LSB, frames before and after exact: one
+        #   knob move; one knob a pull (Room, then Predelay the next pull);
+        #   a move after an under-run and a reset();
+        # - the audio untouched: a move onto the room already loaded (Room
+        #   0 -> 1, both seed 1);
+        # - frames before and after exact, but a step past ten times the
+        #   rooms' own: every pair of changes before one pull the rule
+        #   names (two knobs, three, a knob and a patch either way, two
+        #   patches), and one knob move after the source ran dry 255
+        #   frames into a block.
+        # OneSynthesisPerBlock (changes gathered into one synthesis) is red
+        # on the pairs, RetryOnEmpty (the class never lets the node see the
+        # empty buffer) on the under-run, and the cf17a88 words on the
+        # parse.
+        for words in MOVE_WORDS:
+            self.assertTrue(said(rebuilt.__doc__, words), words)
+        self.assertTrue(said(ConvolutionReverb.__doc__, SUMMARY_WORDS))
+        for rate in RATES:
+            for channels in (2, 1):
+                pcm = sine(40 * 256, channels, 40.0, rate, 2000.0)
+
+                def render(start, actions=None, plan=None):
+                    return dry_render(cls, rate, channels, start + HOLD_MIX,
+                                      pcm, plan, actions)
+
+                def on_line(old, new, moved, at, label, post=True):
+                    r = fade_reading(old, new, moved, at=at)
+                    self.assertEqual(r["pre"], 0, (label, r))
+                    if post:
+                        self.assertEqual(r["post"], 0, (label, r))
+                    self.assertLessEqual(r["off_line"], 1.0, (label, r))
+
+                def jumps(old, new, moved, at, label):
+                    r = fade_reading(old, new, moved, at=at)
+                    self.assertEqual((r["pre"], r["post"]), (0, 0),
+                                     (label, r))
+                    self.assertGreater(r["step"], 10 * r["own"], (label, r))
+
+                label = (rate, channels)
+                a = MOVE_AT * 256
+                room = ((ROOM_I, 50),)
+                pre = ((PREDELAY_I, 40),)
+                old = render(DARK)[0]
+                one = render(DARK + room)[0]
+                on_line(old, one, render(DARK, {MOVE_AT: room})[0], a,
+                        label + ("one knob",))
+                both = render(DARK + room + pre)[0]
+                paced = render(DARK, {MOVE_AT: room, MOVE_AT + 1: pre})[0]
+                on_line(old, one, paced, a, label + ("paced, first",),
+                        post=False)
+                first = render(DARK, {MOVE_AT: room})[0]
+                on_line(first, both, paced, a + 256,
+                        label + ("paced, second",))
+                same = render(DARK, {MOVE_AT: ((ROOM_I, 1),)})[0]
+                self.assertEqual(digest(same), digest(old),
+                                 label + ("the room already loaded",))
+                for name, start, changes in TWO_CHANGES:
+                    changes = changes + HOLD_MIX
+                    jumps(render(start)[0], render(start + changes)[0],
+                          render(start, {MOVE_AT: changes})[0], a,
+                          label + (name,))
+                # The under-run: the move twenty pulls on, and the same move
+                # after a reset() that follows the under-run.
+                p0, p127 = ((PREDELAY_I, 0),), ((PREDELAY_I, 127),)
+                old, sizes = render(DARK + p0, plan=UNDERRUN)
+                new = render(DARK + p127, plan=UNDERRUN)[0]
+                moved = render(DARK + p0, {20: p127}, UNDERRUN)[0]
+                u = sum(sizes[:20])
+                jumps(old, new, moved, u, label + ("under-run",))
+                self.assertEqual(sizes[3], 255, label)
+                # The block in flight is the one frame left of the node's
+                # block; from its end the output is the new room's.
+                self.assertEqual(digest(moved[u + 1:]), digest(new[u + 1:]),
+                                 label)
+                # An empty buffer at a block edge is not part-way through
+                # one: the node plays 256 frames of silence and no phase
+                # moves, and a move made before that pull fades, on the
+                # line, over the block the node plays next.
+                edge = {11: 0}
+                old, sizes = render(DARK, plan=edge)
+                self.assertEqual(sizes, [256] * 40, label)
+                self.assertEqual(int(np.max(np.abs(old[a:a + 256]))), 0,
+                                 label)
+                on_line(old, render(DARK + room, plan=edge)[0],
+                        render(DARK, {MOVE_AT: room}, edge)[0], a + 256,
+                        label + ("an empty buffer at a block edge",))
+                again = (("reset", None),) + DARK + HOLD_MIX + p0
+                old, sizes = render(DARK + p0, {12: again}, UNDERRUN)
+                new = render(DARK + p0, {12: again + p127}, UNDERRUN)[0]
+                moved = render(DARK + p0, {12: again, 24: p127},
+                               UNDERRUN)[0]
+                on_line(old, new, moved, sum(sizes[:24]),
+                        label + ("under-run, reset()",))
+
+    def test_no_dry_frame_drops_after_any_number_of_changes(self, cls=None):
+        # "No frame of your dry signal drops or repeats, at any Mix and
+        # after any number of moves: at Mix 0 the output is byte for byte
+        # what it would have been with no move", across every pair of
+        # changes the rule names (Mix put back to 0 after a patch), across
+        # moves after the source ran dry 100 and 255 frames into a block,
+        # and across a move made before a pull the source leaves empty at
+        # a block edge. Where the source never leaves a block short that is
+        # the source delayed by `latency_samples`, and the test wants that
+        # too. ResetOnMove is red.
+        self.assertTrue(said(rebuilt.__doc__, MOVE_WORDS[0]))
+        wire_back = ((MIX_I, 0),)
+        for rate in RATES:
+            for channels in (2, 1):
+                frames = 40 * 256
+                pcm = ((np.arange(frames) * 7) % 20001 - 10000).astype(
+                    np.int16)
+                pcm = np.repeat(pcm[:, None], channels, axis=1)
+                want = np.vstack([silence(LATENCY, channels), pcm])
+                # (name, source plan, moves, whether the output is the
+                # source delayed by `latency_samples`: not where the node
+                # plays a starved pull as silence)
+                cases = [(name, None, {MOVE_AT: changes + wire_back}, True)
+                         for name, _, changes in TWO_CHANGES]
+                for p in (100, 255):
+                    cases.append(("under-run %d" % p, {4: p, 5: 0}, {
+                        20: ((ROOM_I, 50),),
+                        21: ((PREDELAY_I, 40), (DECAY_I, 30))}, True))
+                cases.append(("empty at a block edge", {11: 0},
+                              {MOVE_AT: ((ROOM_I, 50),)}, False))
+                for name, plan, actions, delayed in cases:
+                    label = (rate, channels, name)
+                    out = dry_render(cls, rate, channels, (), pcm, plan,
+                                     actions, mix=0.0)[0]
+                    still = dry_render(cls, rate, channels, (), pcm, plan,
+                                       mix=0.0)[0]
+                    self.assertEqual(digest(out), digest(still), label)
+                    if delayed:
+                        self.assertEqual(digest(out),
+                                         digest(want[:len(out)]), label)
+
+    def test_a_mix_move_leaves_the_block_in_flight_at_the_old_mix(
+            self, cls=None):
+        # "A Mix move ... acts on the audio entering the node after it, so
+        # the block already in flight, at most 256 frames, comes out at the
+        # old Mix": Mix 0 -> 2 twenty pulls in.
+        # The frames after the move at the old Mix are never more than the
+        # printed count, and from the first one at the new Mix the output
+        # is an instance that always had it; from a steady source the count
+        # is the printed one exactly, and after the source ran dry 100
+        # frames into a block it is 156. MixOnePullLate (512) is red, and
+        # so are the cf17a88 words, which said the 256 frames in flight
+        # come out at the old Mix.
+        found = MIX_LATE_RE.search(" ".join(rebuilt.__doc__.split()))
+        self.assertIsNotNone(found, "no Mix sentence with its frames")
+        most = int(found.group(1))
+        for rate in RATES:
+            for channels in (2, 1):
+                pcm = white(40 * 256, channels, -6.0, seed=4243)
+                for plan, frames in ((None, most), ({4: 100, 5: 0}, 156)):
+                    old, sizes = dry_render(cls, rate, channels, (), pcm,
+                                            plan, mix=0.0)
+                    new = dry_render(cls, rate, channels, (), pcm, plan,
+                                     mix=2.0)[0]
+                    moved = dry_render(cls, rate, channels, (), pcm, plan,
+                                       {20: ((MIX_I, 127),)}, mix=0.0)[0]
+                    a = sum(sizes[:20])
+                    self.assertEqual(digest(moved[:a]), digest(old[:a]))
+                    off = np.nonzero(np.any(moved[a:] != old[a:], axis=1))[0]
+                    late = int(off[0])
+                    label = (rate, channels, plan, late)
+                    self.assertLessEqual(late, most, label)
+                    self.assertEqual(late, frames, label)
+                    self.assertEqual(digest(moved[a + late:]),
+                                     digest(new[a + late:]), label)
+
+    def test_reset_silences_the_next_256_frames(self, cls=None):
+        # "`reset()` in the middle of a stream empties the room: the next
+        # 256 frames come out as exact zero, dry included": at Mix 0, 1.2
+        # and 2, from a steady source and after one that ran dry 100 frames
+        # into a block, the 256 frames after a reset() twenty pulls in are
+        # exact zero and the frames either side of them are not. NoReset
+        # (a reset that keeps the history) is red.
+        self.assertTrue(said(rebuilt.__doc__, RESET_WORDS))
+        for rate in RATES:
+            for channels in (2, 1):
+                pcm = white(40 * 256, channels, -6.0, seed=4244)
+                for plan in (None, {4: 100, 5: 0}):
+                    for midi in (0, 76, 127):
+                        out, sizes = dry_render(
+                            cls, rate, channels, ((MIX_I, midi),), pcm, plan,
+                            {20: (("reset", None), (MIX_I, midi))}, mix=0.0)
+                        a = sum(sizes[:20])
+                        label = (rate, channels, plan, midi)
+                        self.assertEqual(
+                            int(np.max(np.abs(out[a:a + 256]))), 0, label)
+                        self.assertGreater(
+                            int(np.max(np.abs(out[a - 256:a]))), 0, label)
+                        self.assertGreater(
+                            int(np.max(np.abs(out[a + 256:a + 512]))), 0,
+                            label)
 
 
 # --------------------------------------------------------------------------
