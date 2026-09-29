@@ -126,6 +126,27 @@ there, and are recorded in its changelog.
   finite once Cut is out again), and the Feedback is handed as set (no
   stepping clear of the stall windows; the bound counts one landing lap
   there).
+- **`ConvolutionReverb` (rebuilt, Phase 5, parked under `rebuilt/`):** a
+  short room on one `audioconvolve.Convolver`, synthesized from Decay,
+  Damping, Predelay, Diffusion and one of 64 Room seeds, or loaded from
+  your own impulse (int16 frames or a 16-bit WAV at the graph's rate) with
+  only Mix live. The allocation is `seconds`, 0.08 s by default, from a
+  0.06 s floor to the node's 512-partition ceiling, and anything outside
+  raises naming the class, the taps, the rate and the limit in seconds.
+  `latency_samples` reads the node: 256 frames whenever an impulse is
+  loaded, 0 when none is, and held at Mix 0 the output is the source
+  delayed by exactly that, byte for byte, while the source keeps feeding
+  it and nothing resets it. Measured mode loads at unit mean energy and
+  refuses the synthesis macros with `IndexError`; no impulse ships. It
+  lives in `lib/audioeffects/rebuilt/convolutionreverb.py`, and
+  `audioeffects.ConvolutionReverb` is still the old class. It stands on
+  audiodsp v0.6.3rc3: a room-knob move never drops or repeats a dry frame
+  at any Mix, from the end of the block in flight the output is that of an
+  instance that always had the new settings, and each side of a stereo
+  room is unit energy on its own, so the room sits in the middle.
+  `reset()` mid-stream silences the block in flight, dry included, and a
+  Mix move lands at the end of it. The docstring is the player's text,
+  every claim in it tied to a test. Board cost is unmeasured.
 - **`MultiTapDelay` (rebuilt, Phase 5, parked under `rebuilt/`):** the
   RE-201's multi-head modes, with the Echorec as a second reference. Heads
   sit on a grid of whole multiples of one base time, exactly, at every
@@ -191,6 +212,15 @@ there, and are recorded in its changelog.
   stereo cross-feed stall (audiodsp#173). `ConvolutionReverb`'s default
   and its seven patches render differently (the stereo room no longer
   leans); no other class's render moved (the census, three interpreters).
+- **The audiodsp pin moves to v0.6.3rc2.** The release adds audiodsp#165 to
+  rc1: `audioconvolve.Convolver` keeps the audio in flight when a room is
+  re-synthesized (#163: nothing drops, the tail rings on, and the block
+  on its way out crossfades to the new room) and normalises each
+  side of a stereo room on its own (#164: the room no longer leans, and
+  the pair's level holds). Mono rooms and measured impulses render the
+  bytes they did. `ConvolutionReverb`, rebuilt and old, synthesizes
+  stereo rooms, so its stereo renders move; nothing else here uses the
+  node.
 - **The audiodsp pin moves to v0.6.3rc1, and three workarounds come out.**
   The release carries audiodsp#161: `audioecho.FeedbackDelay` keeps an out
   loop filter's state live (#158, #159), lands a stalled damping state so a

@@ -128,24 +128,6 @@ KNOWN_RED = {
     ('AnalogDelay', 'E8-dry', 'P3'): (
         8, 'e1967d96', 8, 'e1967d96',
         'a source that stays dry through a pause and comes back: old audio plays out of silence'),
-    ('ConvolutionReverb', 'E', 'P5'): (
-        324, '9421d061', 678, 'e8b57cdc',
-        'Mix, Damping, Predelay, Room and patch moves step the output within one block'),
-    ('ConvolutionReverb', 'E1-', 'P1'): (
-        72, '387f53ad', 72, '387f53ad',
-        'reset() silences the next 256 frames, dry included (disclosed)'),
-    ('ConvolutionReverb', 'E2-', 'P1'): (
-        36, '78219cf4', 36, '78219cf4',
-        'a host reset_buffer silences the next 256 frames at Mix 0, dry included'),
-    ('ConvolutionReverb', 'E4-m5=0', 'P1'): (
-        4, '2857f42f', 36, 'd4cc4837',
-        'Mix to 0 lands one block late: the first block after the move is not the source'),
-    ('ConvolutionReverb', 'E5-', 'P1'): (
-        36, 'caf98973', 36, 'caf98973',
-        'Mix to 0 lands one block late: the first block after the move is not the source'),
-    ('ConvolutionReverb', 'E8-dry', 'P3'): (
-        36, 'b7504caa', 36, 'b7504caa',
-        'a source that stays dry through a pause and comes back: old audio plays out of silence'),
 }
 
 #: P6 differences today: class -> (cells whose line differs between CPython
