@@ -80,8 +80,8 @@ def build(measure_peak):
     # quiets) on the soft one. The guide's own top rule: play it twice,
     # once as struck and once with the soft one turned up to match --
     # if they still sound like the same instrument once level-matched,
-    # the trait failed. 2c is that second pass, done for Brad instead of
-    # asking him to ride a fader mid-listen.
+    # the trait failed. 2c is that second pass, done for the listener instead
+    # of asking them to ride a fader mid-listen.
     t = 12.0
     markers.append((t, "2a. Bark: HARD chord (vel %d) -- snarling edge, "
                        "almost distorted" % HARD_VEL))

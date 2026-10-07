@@ -121,7 +121,7 @@ One ULP of float32 on three of those and 32 on the shelf gain. `audiobiquad`
 gives bit-identical coefficients from identical settings on all four legs,
 so this is the class's own arithmetic and not the node's.
 
-**This is accepted and deliberately not fixed** (Brad, 2026-09-22): a board
+**This is accepted and deliberately not fixed** (2026-09-22): a board
 and a desktop are allowed to differ by a last-bit coefficient, and no class
 is to be rewritten around it. What it means for you:
 

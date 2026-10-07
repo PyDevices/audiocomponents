@@ -10,7 +10,7 @@ that did not contain the code the gate was about. **A green gate on a stale
 binary is the most expensive kind of stale**, because absence of a signal
 reads as agreement.
 
-`tools/provenance.py` (in the workspace anchor) writes a stamp beside every interpreter
+The interpreter build's `tools/provenance.py` writes a stamp beside every interpreter
 `build_interpreters.sh` installs. This is the half our gates call.
 
 The question this repository asks is not the one audiodsp's own gates ask.

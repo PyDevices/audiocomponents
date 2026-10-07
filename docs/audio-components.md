@@ -70,8 +70,8 @@ Each patch name is a unique, non-empty human-readable string. Each values
 tuple has exactly one integer per macro, and every value is in MIDI range
 `0..127`.
 
-**Patch values are integers deliberately, and this is settled** (Brad,
-2026-09-02, after the question was raised by instruments whose declared
+**Patch values are integers deliberately, and this is settled** (2026-09-02,
+after the question was raised by instruments whose declared
 defaults did not land on a grid point). The live surface and the patch
 surface do different jobs, and the asymmetry is the boundary between them:
 

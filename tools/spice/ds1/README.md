@@ -7,7 +7,7 @@ pair to ground with C10 0.01 uF across them (7.2 kHz).
 
 ```sh
 ./run.sh
-/home/brad/gh/pydevices/audiocomponents/.venv/bin/python analyze.py
+.venv/bin/python analyze.py   # this repo's venv
 ```
 
 ## Simplifications, named

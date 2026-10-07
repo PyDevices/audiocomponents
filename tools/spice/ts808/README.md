@@ -1,6 +1,6 @@
 # TS808 in ngspice — Phase 0 of the effects program
 
-Proof that the SPICE workflow in the effects vision (`docs/effects-vision.md` §4 in the PyDevices anchor repo)
+Proof that a SPICE workflow
 works on the `Overdrive` standout, the Ibanez TS808 Tube Screamer: schematic
 read → netlist we wrote → ngspice → numbers → falsifiable traits. Two stages
 are modelled, the clipping ("drive") stage and the tone/volume stage. The
@@ -10,7 +10,7 @@ input and output buffers are not (they are unity followers).
 
 ```sh
 ./run.sh                                   # ngspice -b, ~2 s, writes out/*.csv
-/home/brad/gh/pydevices/micropython-vst3/.venv/bin/python analyze.py
+python analyze.py                          # any venv with numpy
 ```
 
 `run.sh` needs `/usr/bin/ngspice` (override with `NGSPICE=`); `analyze.py`

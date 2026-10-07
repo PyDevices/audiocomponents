@@ -7,7 +7,7 @@ oracles for F3's ceiling and harmonics; the gain deck is F2's GBW assumption.
 
 ```sh
 ./run.sh
-/home/brad/gh/pydevices/audiocomponents/.venv/bin/python analyze.py
+.venv/bin/python analyze.py   # this repo's venv
 ```
 
 ## Simplifications, named

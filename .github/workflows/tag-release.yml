@@ -14,7 +14,7 @@ jobs:
   validate:
     # The reusable tags whatever VERSION says, verbatim, and any string that
     # is a legal git ref would become a tag and a Release. VERSION here holds
-    # a placeholder until Brad names the release, so refuse to tag anything
+    # a placeholder until the maintainer names the release, so refuse to tag anything
     # that is not a release version -- the same grammar the publish chain
     # accepts (vX.Y.Z[{a|b|rc}N|.devN]).
     runs-on: ubuntu-latest

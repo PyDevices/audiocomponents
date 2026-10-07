@@ -93,8 +93,8 @@ date their sound was blessed, and `--verify` reports them as `rebuilt` and
 excludes them from the failure count. Everything not named there is still held
 to the old oracle exactly as before; `--include-rebuilt` compares them anyway.
 
-**Adding a name to `REBUILT` is a re-blessing, and it is Brad's call every
-time, never an agent's.**
+**Adding a name to `REBUILT` is a re-blessing, and it is the maintainer's call
+every time, never an agent's.**
 
 ## The release chain
 
@@ -104,9 +104,9 @@ time, never an agent's.**
   (`working-directory: lib/<package>`), publishes them to TestPyPI, and
   requests the two MIP index entries (`mip-profile:
   audioinstruments,audioeffects`, on one call — mip serializes them).
-- **Versions are Brad's to name.** An agent never edits `VERSION`, never
-  tags, never dispatches a workflow. `VERSION` holds a placeholder until he
-  names the release, and `tag-release.yml` refuses to tag anything that is
+- **Versions are the maintainer's to name.** An agent never edits `VERSION`,
+  never tags, never dispatches a workflow. `VERSION` holds a placeholder until
+  the maintainer names the release, and `tag-release.yml` refuses to tag anything that is
   not a release version, so the placeholder cannot leak into a tag.
 - The two packages version and release together. A local editable install
   reports `0.0.0` because the build workflow writes `lib/<package>/VERSION`

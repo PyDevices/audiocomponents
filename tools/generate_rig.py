@@ -14,7 +14,7 @@ What it builds, every time, for any instrument named in `rig_instruments/`:
     solo click, not a rebuild. This prototype has only one build, so A and B
     start identical.
   - A third, armed, empty "<Instrument> - Play" track on the same
-    instrument, so Brad can play it himself once the gesture tracks have run.
+    instrument, so the listener can play it once the gesture tracks have run.
   - Named project markers over every gesture, from the instrument's
     `rig_instruments/<name>.py` module - which is itself sourced from the
     Phase 2 listening guide's per-instrument section (read that first; it is
@@ -318,8 +318,8 @@ def midi_item(name, notes, total_seconds):
 
 
 def play_track(name, script, base_macros):
-    """An armed, empty track on the same instrument, so Brad can play it
-    himself. REC line verified 2026-09-02 against a live REAPER 7.79 save
+    """An armed, empty track on the same instrument, so the listener can
+    play it. REC line verified 2026-09-02 against a live REAPER 7.79 save
     (I_RECARM=1, I_RECMON=1, I_RECINPUT = all-MIDI-inputs/all-channels)."""
     lines = ["  <TRACK %s" % guid(),
              '    NAME "%s"' % name,
@@ -408,7 +408,7 @@ def build_project(instrument, measure_peak):
     # images, so a listener comparing them would be judging position as well
     # as tone. And leaving both audible summed two identical copies into the
     # master, which clipped - manufacturing exactly the grit the bark test
-    # asks Brad to judge. Press play on an unfixed project and the instrument
+    # asks the listener to judge. Press play on an unfixed project and the instrument
     # sounds more aggressive than it is.
     #
     # So B ships muted: press play and hear ONE instance, centred, unclipped.
