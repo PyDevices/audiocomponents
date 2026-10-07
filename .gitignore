@@ -29,8 +29,8 @@ dist/
 # docs/effects-alias-floor.json.
 tools/alias_floor/work/
 
-# Internal program material — the effects program's working record lives in the
-# private workspace repo (PyDevices/workspace, docs/effects-internal/), not here.
+# Internal program material — the effects program's working record lives
+# elsewhere, not here.
 # Dossiers, evidence packs, gate audits, survey and cost documents, and the probe
 # rigs that print them are how the work was proved; the library, its tests and its
 # README are what we publish.

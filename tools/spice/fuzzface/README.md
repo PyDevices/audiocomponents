@@ -7,7 +7,7 @@ AC128 Ebers-Moll parameters in our own `.model` line. Not a download.
 
 ```
 ./run.sh
-/home/brad/gh/pydevices/audiocomponents/.venv/bin/python analyze.py
+.venv/bin/python analyze.py   # this repo's venv
 ```
 
 ## Simplifications, named

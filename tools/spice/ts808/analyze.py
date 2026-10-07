@@ -2,7 +2,7 @@
 """analyze.py -- read the CSVs run.sh left in out/ and print the numbers.
 
 numpy only.  Run with a python that has numpy, e.g.
-  /home/brad/gh/pydevices/micropython-vst3/.venv/bin/python analyze.py
+  python analyze.py   (any venv with numpy)
 
 Prints:
   1. drive stage, AC at drive max: the high-pass corner from the simulated

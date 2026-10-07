@@ -12,7 +12,7 @@ what was ringing, and everything else shares one, because nothing else in a
 kit silences anything else.
 
 **But a bank is not the whole of a drum, and the first version of this file
-believed it was.** Brad listened to it and said the kick was not convincing
+believed it was.** A listen found the kick was not convincing
 and the snare sounded like a tuned tom. Both were true, and both were things
 a resonator bank structurally cannot do:
 
@@ -37,10 +37,8 @@ its snare is a tone plus band-passed noise - and the reason is the same.
 
 **The sound is not sampled and not pretending to be.** There are no captures
 here and could not be - the library ships no binary assets - so the mode
-tables are physics and published measurement. Read
-`docs/effects-internal/dossiers/instruments/acoustickit.md` in the workspace
-anchor for what is measured and what is not, because the honest answer is
-"mostly not": the snare's six modes and their damping come from Skrodzka,
+tables are physics and published measurement. As for what is measured and
+what is not, the honest answer is "mostly not": the snare's six modes and their damping come from Skrodzka,
 Hojan and Proksza (2006) and are real; every other drum here is the general
 membrane scaling law with frequencies chosen to sit where that size of drum
 sits. Those are engineering numbers, not findings, and they are marked so.

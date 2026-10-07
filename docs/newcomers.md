@@ -136,8 +136,8 @@ python tests/parity/effects_library_smoke.py
 python -m flake8
 ```
 
-The full instrument parity run needs the larger PyDevices workspace and its
-MicroPython build, so it is intentionally not a normal CI requirement. Read
+The full instrument parity run needs the sibling repositories checked out
+beside this one and a MicroPython build, so it is intentionally not a normal CI requirement. Read
 [AGENTS.md](../AGENTS.md) before changing the pin, parity goldens, or release
 files; several of those actions require maintainer decisions.
 

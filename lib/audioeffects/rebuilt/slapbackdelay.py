@@ -2,8 +2,7 @@
 
 The player's text is the class docstring, and every sentence in it that
 makes a claim is tied to a test by the `CLAIMS` table in the class's test
-file. How it works, and why, is in the class's dossier in the workspace
-repo (`docs/effects-internal/dossiers/SlapbackDelay.md`).
+file.
 """
 
 VENDOR = "PyDevices"

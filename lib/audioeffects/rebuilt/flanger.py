@@ -1,10 +1,8 @@
 """`Flanger` - a BBD swept comb informed by the Electric Mistress.
 
-Rebuilt from scratch at Phase 3 against
-`workspace docs/effects-internal/dossiers/Flanger.md`, whose trait table
-was frozen at Station A on 2026-09-08 before this file existed. The old
-class in `modulation.py` is not consulted except for the eight defects
-the dossier's section 7 names, and it stays the class the library serves
+Rebuilt from scratch against a trait table frozen on 2026-09-08 before
+this file existed. The old class in `modulation.py` is not consulted
+except for eight known defects, and it stays the class the library serves
 until the auditor adopts this one.
 
 **What it sounds like.** One interpolated delay line mixes with the dry

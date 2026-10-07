@@ -40,8 +40,7 @@ notes too, and this never calls it.
 and counted in `reentered`. On a board a timer callback arrives between the
 interpreter's own bytecodes, so it can land inside `start()` or inside
 another tick; re-entering there laid the same step twice and disarmed the
-keyboard underneath a press that was still using it. See
-`docs/spikes/live-audio-path-fullbar.md` in the workspace anchor.
+keyboard underneath a press that was still using it.
 
 `health()` is the four counters and the two depths in one dict, for an app
 that wants to show them. The one that means a step was not heard is

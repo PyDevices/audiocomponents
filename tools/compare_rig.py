@@ -11,7 +11,7 @@ directly"), but the two must agree on which gesture is loud, which is
 quiet, and that no gesture went silent.
 
 Gesture windows (name, start-of-next-marker) are parsed straight out of the
-generated .RPP's own MARKER lines - what Brad actually sees in REAPER -
+generated .RPP's own MARKER lines - what the listener actually sees in REAPER -
 rather than recomputed from the gesture module, so the printed table never
 disagrees with the project (a recomputed level-match boost, for instance,
 would print a different number than the one actually baked into the

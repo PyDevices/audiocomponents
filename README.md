@@ -72,6 +72,8 @@ copies of `lib/audioinstruments/` and `lib/audioeffects/` were deleted on
 2026-09-03, so this is the only copy
 ([#2](https://github.com/PyDevices/audiocomponents/issues/2) has the move).
 
+What's planned next is in [ROADMAP.md](ROADMAP.md).
+
 ## Layout
 
 - `lib/audioinstruments/` — one module per instrument, plus `_support.py`
@@ -87,8 +89,8 @@ copies of `lib/audioinstruments/` and `lib/audioeffects/` were deleted on
 - `tests/` — the CPython suites; `tests/parity/` — the instrument parity
   harness and its goldens
 - `AUDIODSP_PIN` — the exact audiodsp release every gate runs against
-- `VERSION` — the version the next tag carries; a placeholder until Brad
-  names the release
+- `VERSION` — the version the next tag carries; a placeholder until the
+  maintainer names the release
 - `.github/workflows/` — CI (`tests.yml`, `lint.yml`) and the release chain
 
 Each package keeps its own `pyproject.toml` under `lib/<package>/`, which is
@@ -157,7 +159,7 @@ two interpreters agreeing is an observation, never a gate.
 **During the accuracy rewrite these goldens are the thing being changed.**
 A failure there is the expected outcome of a deliberate rebuild, not a
 regression — but it stops being a gate the moment it is re-captured casually.
-Re-capture is a blessing, and blessings are Brad's.
+Re-capture is a blessing, and blessings are the maintainer's.
 
 ## Sound stability
 

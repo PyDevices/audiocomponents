@@ -11,7 +11,7 @@ untied to the published curves.
 
 **What it is.** A guitar cabinet is a transfer function: driver, box, and
 where the microphone sits. The default is a **synthetic designed cascade**,
-not a third-party impulse (Brad, 2026-09-08). Character `4x12 stack` follows
+not a third-party impulse (decided 2026-09-08). Character `4x12 stack` follows
 the Vintage 30 on-baffle shape inside a sealed close-miked box; `1x12 combo`
 follows a G12M-class driver in an open back - a lower box corner it does not
 have, a hotter low mid, and a designed 100-300 Hz cancellation notch. Mix 0
