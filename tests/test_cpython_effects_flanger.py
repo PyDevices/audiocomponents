@@ -1,6 +1,6 @@
 """`Flanger`'s own invariant and planted-fault tests.
 
-Dossier: workspace docs/effects-internal/dossiers/Flanger.md, frozen
+The dossier was frozen
 2026-09-08. Exhaustive rate coverage lives in the evidence pack; this
 file asserts at 48 kHz unless the test is about rate or latency.
 """
@@ -598,7 +598,7 @@ class F8ColorCeiling(unittest.TestCase):
                 t60 = (start - burst) / float(rate)
         return t60
 
-    #: F8 restated on 2026-09-28 (Brad's ruling of that date): what the
+    #: F8 restated on 2026-09-28 (a ruling of that date): what the
     #: node does at audiodsp v0.6.2, measured, not the 2.0 s bar. The ring
     #: at Color max read 2.13 s at 440 Hz and 2.35 s at 200 Hz at v0.6.1;
     #: audiodsp#154 empties the line where rounding used to hold a few LSB

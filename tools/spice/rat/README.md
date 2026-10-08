@@ -1,6 +1,6 @@
 # Rat clipper and gain stage in ngspice
 
-Netlists written from Distortion.md S1 (ProCo Rat). The clipper deck is the
+Netlists written from the ProCo Rat schematic. The clipper deck is the
 oracles for F3's ceiling and harmonics; the gain deck is F2's GBW assumption.
 
 ## Run
@@ -16,9 +16,9 @@ oracles for F3's ceiling and harmonics; the gain deck is F2's GBW assumption.
   No C7, no 4.5 V bias rail, no Filter, no volume pot.
 - Gain AC: two-leg feedback (47 Ohm / 2.2 uF and 560 Ohm / 4.7 uF), 100K
   Distortion at max, C4 100 pF, behavioural op-amp with AOL 100 dB and
-  **GBW 0.32 MHz** (dossier Q4: the value that reproduces S1's 30 dB at
-  10 kHz). No slew limit. Single supply 0..9 V, input biased at 4.5 V.
-- 1N4148 parameters: Nexperia IS/N as Distortion.md S8; comment text not
+  **GBW 0.32 MHz** (dossier Q4: the value that reproduces the schematic's 30 dB
+  at 10 kHz). No slew limit. Single supply 0..9 V, input biased at 4.5 V.
+- 1N4148 parameters: Nexperia's published IS/N; comment text not
   copied.
 
 ## Analysis (pasted from a real run)

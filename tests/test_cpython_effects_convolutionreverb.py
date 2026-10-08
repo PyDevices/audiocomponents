@@ -1,7 +1,6 @@
 """`ConvolutionReverb`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/ConvolutionReverb.md`
-(frozen at anchor 85cc2bf); its Tier 2 rows are D1-D6. Each row here is the
+The dossier's Tier 2 rows are D1-D6. Each row here is the
 measurement over a slice of the span the row quantifies over, the same
 measurement red on the row's planted fault at the constructor defaults
 (D1's at the measured-mode defaults), the fault shown out of reach of every
@@ -1128,8 +1127,7 @@ class TheSurface(unittest.TestCase):
 
     def test_a_trim_past_the_impulse_raises(self):
         # A clamped trim would build the unloaded wire, whose Mix does
-        # nothing, with no error (review probe
-        # convolutionreverb_review_trimall.py; ruling (o)). 100 frames is
+        # nothing, with no error (the review's ruling (o)). 100 frames is
         # 2.083 ms at 48 kHz: 2.0 ms trims 96 and builds a 256-tap room.
         h = make_impulse(100).tobytes()
         effect = build(impulse=h, start_ms=2.0)
@@ -2546,9 +2544,8 @@ class D5DecayLaw(unittest.TestCase):
 #: second process, 2026-09-29): (rate, channels, click LSB, Decay MIDI,
 #: Predelay MIDI, Diffusion MIDI, Room seed), all at Damping 500 Hz and
 #: 0.08 s. The walk behind the mono cells is the
-#: re-audit round-1 audit's (`convolutionreverb_reaudit1_audit.py mono
-#: monowalk`); the stereo cells are its re-refuter's walk
-#: (`convolutionreverb_reaudit1_refute.py single`) re-run on the fixed node
+#: re-audit round-1 audit's; the stereo cells are its re-refuter's walk,
+#: re-run on the fixed node
 #: at audiodsp v0.6.3rc2, where every stereo room moved (re-audit fix round
 #: 1: v0.6.2's +16.20 % cell reads otherwise there).
 SINGLE_ROOM_CELLS = (
@@ -3006,7 +3003,7 @@ CLAIMS = (
      "test_a_host_reset_buffer_silences_the_block_and_drops_held_frames"),
 )
 
-#: The family's two limits, ruled by Brad on 2026-09-28, word for word.
+#: The family's two limits, as ruled on 2026-09-28, word for word.
 FAMILY = (
     "A control that jumps makes the output step: move it in small steps "
     "from the host if you need it smooth.",

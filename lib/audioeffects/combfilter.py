@@ -2,9 +2,9 @@
 itself: the naked resonator every flanger, every Karplus-Strong string and
 every reverb tank is built out of.
 
-Rebuilt from scratch for the effects program's Phase 2 against
-`workspace docs/effects-internal/dossiers/CombFilter.md`, whose trait table and surface were frozen at
-Station A before this file existed. The old `eq.py:CombFilter` is not
+Rebuilt from scratch for the effects program's Phase 2 against a dossier
+whose trait table and surface were frozen at Station A before this file
+existed. The old `eq.py:CombFilter` is not
 consulted except for the seven defects the dossier's section 7 names.
 
 **What it sounds like.** Tune it and the signal grows a set of resonances on
@@ -202,7 +202,7 @@ TRIM_Q = 0.7071067811865476
 #: over every active Trim step, DC at twelve levels and both signs, 5 and
 #: 40 Hz sines stopped at eight phases, and noise, 15 621 cells, none held
 #: and the longest ran 40 041 frames at 48 kHz (0.834 s; 0.825 s at 44.1,
-#: 0.818 s at 22.05; `housekeeping_cf_trim_tail.py`, 2026-09-28). 1.5 s is
+#: 0.818 s at 22.05; measured 2026-09-28). 1.5 s is
 #: 1.8 times that. The comb's lap bound counts from where the trim stops.
 TRIM_TAIL_S = 1.5
 

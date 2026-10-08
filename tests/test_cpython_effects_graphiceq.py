@@ -1,10 +1,9 @@
 """`GraphicEQ`, rebuilt: its Tier 1 invariants and its own planted faults.
 
-The dossier is `workspace docs/effects-internal/dossiers/GraphicEQ.md` and the evidence pack is
-`workspace docs/effects-internal/evidence/GraphicEQ-evidence.md`; this file is the part of that pack that
+This file is the part of the evidence pack that
 has to keep passing after the run that wrote it. Every measurement here is
 paired with a fault of the same kind, because a check nobody has seen fail is
-not a check (`docs/effects-kit-spec.md` section 6).
+not a check.
 
 The three old-surface `GraphicEQ` tests in
 `test_cpython_effects_dynamics_eq.py` are retired in the same commit: they
@@ -648,8 +647,7 @@ class TheClampIsReported(unittest.TestCase):
         # The check has to drive signal, not silence. On the *ported* biquad
         # a corner over Nyquist rails into a full-scale square at fs/4 while
         # raising nothing, and renders exact zeros on silence, so
-        # construct-and-catch and silence-in-silence-out both pass it
-        # (`GraphicEQ.md` App. E(iv)).
+        # construct-and-catch and silence-in-silence-out both pass it.
         data = tone(400.0, 8192, peak=6000, rate=22050)
         result = run(data, 8192, macros=((9, 127), (8, 127)), rate=22050)
         self.assertLess(int(abs(result.data).max()), 20000,

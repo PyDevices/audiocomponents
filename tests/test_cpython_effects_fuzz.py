@@ -1,6 +1,6 @@
 """`Fuzz`'s own invariant and planted-fault tests.
 
-Dossier: workspace docs/effects-internal/dossiers/Fuzz.md, frozen
+The dossier was frozen
 2026-09-17. Exhaustive rate coverage lives in the evidence pack; this
 file asserts at 48 kHz unless the test is about latency.
 """
@@ -159,8 +159,8 @@ class NoOutputPole(Fuzz):
     NAME = 'Fuzz'
 
     def _build(self, **options):
-        # `rebuilt.Fuzz`, not the module global: `fuzz_fix4.py plant`
-        # installs this class *as* that global, and a fault written
+        # `rebuilt.Fuzz`, not the module global: a probe that plants this
+        # fault installs this class *as* that global, and a fault written
         # against it recurses until the stack ends.
         rebuilt.Fuzz._build(self, **options)
         if getattr(self, "_cascade_out_hp", None) is not None:
@@ -399,7 +399,7 @@ class G1Asymmetry(unittest.TestCase):
       at 18 dB is a nearly linear part of the curve (h2 −80.5), and Bias
       −0.5 with Tilt −6 is h2 −33.56.
 
-    What Brad should listen for at Phase 7: at the shipped default, on a
+    What to listen for at Phase 7: at the shipped default, on a
     single note held and let down, the octave-up **growl under the note** —
     the even harmonics — and that it thins out as you dig in. If the note
     sounds like a clean square-wave fuzz with no octave in it, this trait is
@@ -700,7 +700,7 @@ def alias_20k(wet, hz, rate, size):
     Every FFT bin more than two bins from a harmonic of `hz` and from DC,
     summed against the fundamental's bin, over 4800 samples at 48 kHz so
     every harmonic lands on a bin. This is the number A4's bar is graded on
-    and the one the board runner's `probes/alias_floor/analyse_alias.py`
+    and the one the board runner's alias analysis
     prints; `kit.spectrum`'s `alias_floor_db` is the same rule with no band
     limit, and the two part company where the last decimation stage's
     transition band lets a fold land above 20 kHz.
@@ -771,7 +771,7 @@ class A4AliasFloor(unittest.TestCase):
        11.025 kHz — and what folds there was never in the oversampled path
        to be filtered.
 
-    What Brad should listen for at Phase 7: at full Fuzz on a high note, a
+    What to listen for at Phase 7: at full Fuzz on a high note, a
     thin metallic ring that does not move with the note — that is the fold.
     At 48 kHz and the default it should be inaudible under the fuzz itself;
     at 22.05 kHz, or on patch 8, it is meant to be audible and is the price
@@ -938,7 +938,7 @@ class G3FuzzIsGain(unittest.TestCase):
     every one.
 
     **The span, and the three places the reading has nothing to say** (the
-    dial-back walk, 44 positions, `probes/fuzz_fix2.py faults`): the class
+    dial-back walk, 44 positions): the class
     has to be *in circuit* and its clipper must not be railed —
     **Output Tilt 0, Mix ≥ 0.5, Level above 0, |Bias| < 1**. At Mix 0 the
     output is the borrowed source, at Level 0 it is silence, and at Bias ±1
@@ -1044,8 +1044,8 @@ class CascadeC1(unittest.TestCase):
     """Cascade's two silicon pairs clip symmetrically: even lines ≤ −40 dBc,
     h3 the largest, and the peak barely grows over a 20 dB level range.
 
-    **The span, from the 42-position dial-back walk**
-    (`probes/fuzz_fix2.py faults`): cascade, Sustain 54 dB, **Tone 0.5**,
+    **The span, from the 42-position dial-back walk**:
+    cascade, Sustain 54 dB, **Tone 0.5**,
     Bias centred, Mix 1, Level above 0. `GermaniumCascade` — the off-centre
     table in the cascade graph — is red at 41 of the 42 positions, and green
     at exactly one: **Tone 0**, where the whole sum comes out of the 482 Hz
@@ -2252,7 +2252,7 @@ import stale_blocks as stale                                    # noqa: E402
 
 class TheBypassComesBackAsBuilt(unittest.TestCase):
     """Mix back up from 0 after a pause plays nothing that was there before
-    the pause (audiocomponents#113; Brad, 2026-09-28: "fix the stale
+    the pause (audiocomponents#113; decided 2026-09-28: "fix the stale
     blocks"). At Mix 0 the class hands back its source and nothing behind
     it is pulled, so the graph kept its filters' memory and the block each
     mixer voice had queued; bringing Mix back played that out of silence.

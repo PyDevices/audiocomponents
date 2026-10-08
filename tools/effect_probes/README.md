@@ -1,6 +1,6 @@
 # The measurement kit's probe material
 
-`docs/effects-kit-spec.md` section 3. Generated on CPython by
+Generated on CPython by
 `make_probes.py`, never recomputed on a board — the ESP32 ports are
 single-precision, so a probe computed there would not be the probe the
 desktop measured against.
@@ -94,7 +94,7 @@ arithmetic in this directory and reproduces anywhere.
   material has to carry samples above half scale in *every* block, not only
   at the ends.
 - **`tone_fs4` is levelled so the SAMPLE peak lands on −6.00 dBFS**, which
-  makes its true peak −2.99 dB — the pair `Limiter.md:557`–`558` measured
+  makes its true peak −2.99 dB — the pair the Limiter's own measurement read
   (−6.00 / −2.95). That is the case where a faulted TRUEPEAK certifies a
   −6 dBFS ceiling as met while 3 dB escapes in the reconstructed waveform.
   It exists at 48 kHz and 44.1 kHz only, as section 3 says.

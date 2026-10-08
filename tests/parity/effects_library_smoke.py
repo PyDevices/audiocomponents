@@ -19,7 +19,7 @@ fixtures. A parked class is built through its own
 sample rate, and every patch is selected the way a host selects one, with
 `program_change()`. Nothing here calls the module-level `configure()` or
 passes a `patch=` constructor keyword, so this file keeps working through the
-Phase 1 construction change (effects-roadmap.md section 3) that replaces
+Phase 1 construction change that replaces
 `_core`'s module state and its `__new__` format sniffing.
 
 Exit status is non-zero if any class fails to build, disagrees with its

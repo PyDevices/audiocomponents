@@ -608,8 +608,7 @@ class Keys:
         `()` to append to and a `None` to append to, which is two
         AttributeErrors out of an LVGL timer callback and a bar that stops.
         Seen on the P4 at 06:45 on 2026-09-21 with every row on every step,
-        and reproduced on the desktop at both lines: see
-        docs/spikes/live-audio-path-fullbar.md.
+        and reproduced on the desktop at both lines.
 
         Nothing else changes: with no nesting `_outer` stays empty and this
         is the four stores it always was.

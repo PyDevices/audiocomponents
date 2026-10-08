@@ -1,12 +1,12 @@
 """`MultibandCompressor`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/MultibandCompressor.md`; its Tier 2 rows are
+The dossier's Tier 2 rows are
 M1..M5 and each has a test here under its own number. The class gate asks two
 things of every trait and this file carries both: the measurement, and the
 *same* measurement shown red on a fault of the same kind. A green measurement
 with no demonstrated red has never been shown able to fail.
 
-The full Tier 2 sweeps live in `workspace docs/effects-internal/probes/phase2_probes/multiband_traits.py` --
+The full Tier 2 sweeps live outside this file --
 fifty-seven tones a curve is a minute apiece and does not belong in a unit
 suite. What is here is the short form of each, plus the decisions that have no
 sweep: the surface, the clamp, the reset ordering and the guard.
@@ -677,8 +677,7 @@ class TierOne(unittest.TestCase):
 
 
 class Traits(unittest.TestCase):
-    """M1..M5 in short form; the full sweeps are in
-    `workspace docs/effects-internal/probes/phase2_probes/multiband_traits.py`."""
+    """M1..M5 in short form; the full sweeps are too slow for a unit suite."""
 
     M1_TONES = (30.0, 141.0, 283.0, 1000.0, 1414.0, 4000.0, 16000.0)
 
@@ -880,7 +879,7 @@ import stale_blocks as stale                                    # noqa: E402
 
 class TheBypassComesBackAsBuilt(unittest.TestCase):
     """Mix back up from 0 after a pause plays nothing that was there before
-    the pause (audiocomponents#113; Brad, 2026-09-28: "fix the stale
+    the pause (audiocomponents#113; decided 2026-09-28: "fix the stale
     blocks"). At Mix 0 the class hands back its source and nothing behind
     it is pulled, so the graph kept its filters' memory and the block each
     mixer voice had queued; bringing Mix back played that out of silence.

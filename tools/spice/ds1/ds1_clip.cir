@@ -1,6 +1,6 @@
 * ds1_clip.cir -- Boss DS-1 diodes to ground under C10 (R14 2.2K, 0.01 uF)
 *
-* Topology from Distortion.md S2 / S5 Fig. 8. The booster and tone stack
+* Topology from the DS-1 schematic. The booster and tone stack
 * are omitted: this is the clipper the second waveshaper table is from.
 .include models.lib
 .param amp=1.0

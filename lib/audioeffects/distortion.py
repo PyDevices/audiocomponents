@@ -1,8 +1,5 @@
 """ProCo Rat distortion, with the Boss DS-1 as a second character.
 
-Dossier: `workspace docs/effects-internal/dossiers/Distortion.md`. Evidence:
-`workspace docs/effects-internal/evidence/Distortion-evidence.md`.
-
 **What it is.** A hard clip to ground after a gain stage, not a diode pair
 in the feedback loop (that is `Overdrive`). Character `filter` is the Rat:
 two feedback legs that brighten into the clipper, the op-amp's own bandwidth

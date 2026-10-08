@@ -53,8 +53,7 @@ on the ESP32-P4 against 5 % and 31.3 % on the ESP32-S3 against 10 %
 says why rather than the argument**: every shipped patch costs 102-106 % of
 patch 0 because no macro touches the node's build, the only cheaper
 configuration that still processes is the peak detector at 89 %, and a node
-of this kind in this graph doing *nothing at all* still costs 75 %
-(`workspace docs/effects-internal/probes/phase2_probes/transientshaper_lean.py`). The budget needs two thirds
+of this kind in this graph doing *nothing at all* still costs 75 %. The budget needs two thirds
 off. **At construction defaults this class is a wire** - a cost figure taken
 there is a graph idling, so measure it at patch 1 (Snap).
 

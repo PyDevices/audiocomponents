@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """1N914 one-sided clipper curve for `audioeffects.exciter`.
 
-Derives one normalised Q15 table from the component values named in
-`docs/effects-internal/dossiers/Exciter.md` §1 / S1, not by eye.
+Derives one normalised Q15 table from the component values of the
+exciter's source circuit S1, not by eye.
 
 S1's harmonic creator is one 1N914 across an op-amp with a 10 K threshold
 pot and a 47 K output resistor, clipping one polarity only. The DC table

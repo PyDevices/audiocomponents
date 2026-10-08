@@ -1,8 +1,5 @@
 """Split-band compression: a crossover, one compressor per band, one sum.
 
-Dossier: `workspace docs/effects-internal/dossiers/MultibandCompressor.md`. Evidence:
-`workspace docs/effects-internal/evidence/MultibandCompressor-evidence.md`.
-
 There is no unit behind this class. Split-band compression is a *topology* -
 RaneNote 155 draws it as a general variation on the compressor (Fig. 7),
 "divides the incoming signal into two or more frequency bands ... After

@@ -92,22 +92,21 @@ lists R11 and R12 as 1K), P3 100K. Its stated figures we check against: gain
 12–118, high-pass corner 720 Hz, tone low-pass 723.4 Hz, treble corner
 3.2 kHz.
 
-**Corrected 2026-09-07 by the netlist transcription check** (`audiocomponents/docs/effects/Overdrive.md`,
-Appendix I), which read every value in both decks back to this page: an
-earlier version of this paragraph said the article's text gives the (−) input
-resistor as 1K where the drawing says 4K7. **It does not.** The page names R4
-once, in its BOM, as "1 Resistor 4K7 (R4)", the drawing agrees, and a grep of
-the raw HTML finds no 1K claim about R4 anywhere — the netlist's 4.7 kΩ was
-never in doubt, only that account of a conflict. The conflict that *is* real
-is the second one: the BOM reads "4 Resistors 1K (R1, R8, R11, R12) / 1
-Resistor 220 (R10)" where the drawing and the prose both put 220 Ω on the
-tone wiper and 1K in the feedback. The arithmetic settles it — 220 Ω gives
-the 3288 Hz zero and the 14.9 dB boost this page itself states as "3.2KHz"
-and PedalPCB (S5) reports independently, while the BOM reading would give
-723 Hz and 6.0 dB, which nobody claims. Two further self-contradictions in
-the same page's designators, and the finding that all eighteen of the
-mirror's formula images resolve to one 81×16 GIF, are recorded in that
-Appendix.
+**Corrected 2026-09-07 by the netlist transcription check**, which read every
+value in both decks back to this page: an earlier version of this paragraph
+said the article's text gives the (−) input resistor as 1K where the drawing
+says 4K7. **It does not.** The page names R4 once, in its BOM, as "1 Resistor
+4K7 (R4)", the drawing agrees, and a grep of the raw HTML finds no 1K claim
+about R4 anywhere — the netlist's 4.7 kΩ was never in doubt, only that account
+of a conflict. The conflict that *is* real is the second one: the BOM reads "4
+Resistors 1K (R1, R8, R11, R12) / 1 Resistor 220 (R10)" where the drawing and
+the prose both put 220 Ω on the tone wiper and 1K in the feedback. The
+arithmetic settles it — 220 Ω gives the 3288 Hz zero and the 14.9 dB boost
+this page itself states as "3.2KHz" and PedalPCB (S5) reports independently,
+while the BOM reading would give 723 Hz and 6.0 dB, which nobody claims. Two
+further self-contradictions in the same page's designators, and the finding
+that all eighteen of the mirror's formula images resolve to one 81×16 GIF, are
+recorded in that Appendix.
 
 **S2. Nexperia, 1N4148 SPICE model**,
 <https://assets.nexperia.com/documents/spice-model/1N4148.prm>: IS 4.352E-9,

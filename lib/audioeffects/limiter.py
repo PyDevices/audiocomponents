@@ -1,8 +1,5 @@
 """A lookahead brickwall limiter: a ceiling the signal does not get past.
 
-Dossier: `workspace docs/effects-internal/dossiers/Limiter.md`. Evidence:
-`workspace docs/effects-internal/evidence/Limiter-evidence.md`.
-
 There is no circuit behind this class and no pedal it is named after. What it
 models is a *specification* - ITU-R BS.1770-5 Annex 2 for what "the peak did
 not exceed the ceiling" means, and Hamalainen's DAFx-02 paper for what a

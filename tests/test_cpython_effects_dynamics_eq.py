@@ -217,8 +217,8 @@ class DynamicsAndEQTest(unittest.TestCase):
 #
 #   test_lookahead_stops_a_limiter_overshooting_the_transient - it asserted
 #     that the lone node overshoots by more than 50 % without lookahead and
-#     comes back inside 20 % with it. That is defect 2 of `Limiter.md` section
-#     7 written as a pass: measured, lookahead on one node makes the overshoot
+#     comes back inside 20 % with it. That is one of the old Limiter's
+#     defects written as a pass: measured, lookahead on one node makes the overshoot
 #     *worse*, and the old class only read green because its hardcoded
 #     0.05 ms attack made the no-lookahead case bad enough to beat. The
 #     rebuilt class overshoots at no setting; L2 and L3 in

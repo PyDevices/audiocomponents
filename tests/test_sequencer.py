@@ -428,7 +428,7 @@ class ATickInsideAnotherOne(unittest.TestCase):
     disarmed. Found on the P4 on 2026-09-21 as two AttributeErrors out of
     an LVGL timer callback, at two different lines of
     `audioinstruments._support.press`, on a full bar that a sparse one
-    never showed: `docs/spikes/live-audio-path-fullbar.md`.
+    never showed.
 
     Nothing is exhausted when it happens - at the app's queue capacity of
     96 a full bar refuses nothing and presses at most five voices of the

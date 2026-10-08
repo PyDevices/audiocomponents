@@ -1,12 +1,11 @@
 """`TransientShaper`'s own invariant and planted-fault tests (Phase 2).
 
 The class gate asks for these beside the contract-level suite: a fault that
-has never been shown to fire is not a check. The full evidence run lives in
-`workspace docs/effects-internal/probes/phase2_probes/transientshaper_evidence.py` and takes minutes; this
-file is the fast subset a suite can carry, and every assertion here has a
+has never been shown to fire is not a check. The full evidence run takes minutes;
+this file is the fast subset a suite can carry, and every assertion here has a
 faulted counterpart in the same test.
 
-`workspace docs/effects-internal/evidence/TransientShaper-evidence.md` is the record; the numbers there
+The evidence pack is the record; the numbers there
 come from the driver, not from this file.
 """
 

@@ -213,7 +213,7 @@ def laps_to_zero(feedback, excess=0.0):
     at every window centre k = 1 ... 50, Repeat Tone grid 0, 64 and 126,
     on a 2 LSB DC and on full scale, in blocks of 64 to 4 096 frames at
     Time 12.5 ms, each tail ends inside the count with the extra lap left
-    out, 239 frames or more short of it (`pin063_stall_landing.py`).
+    out, 239 frames or more short of it.
     """
     feedback = float(feedback)
     if feedback < 0.0:

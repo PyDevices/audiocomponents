@@ -74,9 +74,7 @@ coefficients cancel to seven parts in a million, so the increment single
 precision has to carry is 2e-5 of the numbers being differenced. Filed as
 audiodsp#64 with the fix (a transposed direct form II costs nothing at run
 time), and the fix landed; the one cell left is what it did not reach
-(audiocomponents#66). The measurement, the map and the four-way
-decomposition are
-`workspace docs/effects-internal/probes/phase2_probes/bandpass_lowcorner.py`.
+(audiocomponents#66).
 
 **The prototype's four**, each measured against RBJ's closed form at the
 running rate and each tracking it to <= 0.009 dB, so none of them is a defect
@@ -117,8 +115,7 @@ in steps and it is a sweep; jump it and it is a click.
 `capabilities = ()`: nothing in a band-pass is measured in beats, and the
 class never reads `self._transport()`.
 
-Dossier: `workspace docs/effects-internal/dossiers/BandPass.md`, traits frozen 2026-09-07.
-Evidence:  `workspace docs/effects-internal/evidence/BandPass-evidence.md`.
+Traits frozen 2026-09-07.
 """
 
 VENDOR = "PyDevices"

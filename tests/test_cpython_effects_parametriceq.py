@@ -387,7 +387,7 @@ class BellCheckTest(unittest.TestCase):
     The evidence probe's own analysis, held here because the gate audit
     broke it: `local_maximum_near` marked every interior point of a plateau
     a maximum, so all three of T2's clauses read green on a byte-flat wire
-    (`docs/effects-phase2-gate-audit.md` section 1, T2). The probe is
+    (the Phase 2 gate audit's T2 finding). The probe is
     imported lazily - it pulls numpy in through the kit, and nothing else in
     this file does.
     """

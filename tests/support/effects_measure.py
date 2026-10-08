@@ -18,7 +18,7 @@ when it is named on its own.
 The analysis primitives (`_fft`, `spectrum`, `harmonic_db`, `rms`, `peak`,
 `tone_gain_db`, `tilt_db`, `sine`, `burst`, `channels`, `loudest_in`) are
 numpy-free on purpose: they are what the measurement kit takes over, and the
-kit runs where audiodsp builds (docs/effects-kit-spec.md section 2).
+kit runs where audiodsp builds.
 """
 
 import math

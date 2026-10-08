@@ -1,6 +1,6 @@
 """The planted-fault battery for measurements 11-20 of the kit spec.
 
-`docs/effects-kit-spec.md` section 6: a measurement whose planted-fault run
+A measurement whose planted-fault run
 is not committed is not one a class gate may cite, and every fault lands
 beside **a control that must pass**, or the battery only proves the checker
 always fails.
@@ -908,15 +908,15 @@ class Digest(unittest.TestCase):
     def test_cpython_against_desktop_micropython(self):
         """The measurement's own subject: the same node, rendered by two
         interpreters, compared by hashing the bytes."""
-        # A present binary is not a current one. The anchor's bin/micropython is
-        # built by hand and goes stale silently; one that predates
-        # AUDIODSP_PIN renders a core the pin does not name and this
-        # comparison agrees with itself about the wrong thing (cmods#27).
+        # A present binary is not a current one. The bin/micropython beside
+        # this checkout is built by hand and goes stale silently; one that
+        # predates AUDIODSP_PIN renders a core the pin does not name and
+        # this comparison agrees with itself about the wrong thing (cmods#27).
         # Fail rather than skip: a skip here would read as "the two
         # interpreters agree".
         ok, message = provenance_gate.check(MICROPYTHON)
-        self.assertTrue(ok, message + "\n  rebuild: ../tools/build_interpreters.sh "
-                        "./build_interpreters.sh --only mp-unix")
+        self.assertTrue(ok, message + "\n  rebuild bin/micropython with "
+                        "audiodsp at AUDIODSP_PIN")
         with tempfile.TemporaryDirectory() as directory:
             script = os.path.join(directory, "dual_runtime_render.py")
             with open(script, "w") as handle:

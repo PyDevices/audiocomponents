@@ -1,7 +1,6 @@
 """`Fuzz` - a biased germanium pair, with a Big Muff cascade as a second character.
 
-Rebuilt from scratch for Phase 4 against
-`workspace docs/effects-internal/dossiers/Fuzz.md`, traits frozen at
+Rebuilt from scratch for Phase 4 against its dossier, traits frozen at
 Station A on 2026-09-17 before this file existed. The old `drive.py:Fuzz`
 was not consulted except for the five defects the dossier's section 7 names;
 it was the class the library served until this one was adopted on the boards
@@ -495,7 +494,7 @@ LEAN_OVERSAMPLE = 2
 #:
 #: **×2, and it costs floor — said out loud.** Cascade's alias floor,
 #: 48 kHz, −6 dBFS, wet branch, A4's own rule, measured for the first time
-#: this round (`probes/fuzz_fix5.py`), at 1010 / 3700 Hz:
+#: this round, at 1010 / 3700 Hz:
 #:
 #:     Fuzz default  ×1 −18.315/−13.407  ×2 −27.372/−21.343
 #:                   ×4 −30.123/−24.946  ×8 −30.232/−26.595
@@ -870,7 +869,7 @@ class Fuzz(_component.Component):
         `shaper1` is re-pointed, onto `self._quiet` - `hp_in` is never
         pulled, so neither tap of the input split moves. A 1 kHz burst
         behind a live Bias move arrives at the same output frame with the
-        move as without it (`probes/fuzz_fix4.py align`), and a block
+        move as without it, and a block
         pulled off `self._dry` to "rebalance" is what puts the dry leg 256
         frames **early**, which is how this was measured in the first
         place.

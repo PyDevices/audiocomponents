@@ -1,9 +1,8 @@
 """The sweep driver's battery: a measurement run over the span its trait
 quantifies over, not at a point inside it.
 
-`docs/effects-phase2-pattern-revision.md` section 1.1 is what this file
-holds `tools/effect_measurements.py:macro_sweep` to. Twenty-eight of the
-forty-five clauses an independent refutation pass broke across sixteen
+This file holds `tools/effect_measurements.py:macro_sweep` to that.
+Twenty-eight of the forty-five clauses an independent refutation pass broke across sixteen
 classes broke the same way: the row quantified over a span, the pack
 measured one setting inside it, and the setting was chosen after the trait
 was frozen.

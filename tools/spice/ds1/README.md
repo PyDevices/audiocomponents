@@ -1,6 +1,6 @@
 # DS-1 clipper in ngspice
 
-Netlist written from Distortion.md S2 / S5 Fig. 8: R14 2.2K into a 1N4148
+Netlist written from the Boss DS-1 schematic: R14 2.2K into a 1N4148
 pair to ground with C10 0.01 uF across them (7.2 kHz).
 
 ## Run

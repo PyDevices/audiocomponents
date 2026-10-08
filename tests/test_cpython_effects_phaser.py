@@ -1,6 +1,6 @@
 """`Phaser`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/Phaser.md`; its
+The dossier's
 Tier 2 rows are P1..P10. Exhaustive rate coverage lives in the evidence
 pack. This file stays at 48 kHz except where a test is about rate
 handling.

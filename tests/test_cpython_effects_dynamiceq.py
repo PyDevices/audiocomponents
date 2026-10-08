@@ -1,12 +1,11 @@
 """`DynamicEQ`'s own invariant, trait and planted-fault battery.
 
-The class gate (`docs/effects-roadmap.md`, "The class gate") asks for two
+The class gate asks for two
 things this file carries: every Tier 1 invariant green at 48 kHz, and every
 demonstrated Tier 2 trait shown **red on a planted fault of the same kind**.
-Three-rate coverage is the evidence pack's
-(`workspace docs/effects-internal/evidence/DynamicEQ-evidence.md`). Numbers are
+Three-rate coverage is the evidence pack's. Numbers are
 printed as they are measured so the pack quotes a run and not a
-recollection; the dossier is `workspace docs/effects-internal/dossiers/DynamicEQ.md`.
+recollection.
 
 Every fault below is planted in a **live instance**, by reaching into the
 graph the class built, so the control and the faulted run are the same code
@@ -970,7 +969,7 @@ import stale_blocks as stale                                    # noqa: E402
 
 class TheBypassComesBackAsBuilt(unittest.TestCase):
     """Mix back up from 0 after a pause plays nothing that was there before
-    the pause (audiocomponents#113; Brad, 2026-09-28: "fix the stale
+    the pause (audiocomponents#113; decided 2026-09-28: "fix the stale
     blocks"). At Mix 0 the class hands back its source and nothing behind
     it is pulled, so the graph kept its filters' memory and the block each
     mixer voice had queued; bringing Mix back played that out of silence.

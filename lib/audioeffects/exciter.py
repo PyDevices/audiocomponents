@@ -1,7 +1,6 @@
 """`Exciter` - dry plus a one-sided high-passed harmonic branch.
 
-Rebuilt from scratch at Phase 4 against
-`workspace docs/effects-internal/dossiers/Exciter.md`, traits frozen
+Rebuilt from scratch at Phase 4 against its dossier, traits frozen
 2026-09-17 at Station A. The old class in `drive.py` was consulted only for
 the defects that dossier §7 names: no macros, no Harmonics knob, Mix to
 1.0, no transient character, and an unexplained mixer buffer size. That

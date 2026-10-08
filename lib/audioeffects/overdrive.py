@@ -1,7 +1,6 @@
 """`Overdrive` - a Tube Screamer-shaped boost: dry plus a clipped shelf.
 
-Rebuilt from scratch at Phase 4 against
-`workspace docs/effects-internal/dossiers/Overdrive.md`, traits frozen
+Rebuilt from scratch at Phase 4 against its dossier, traits frozen
 2026-09-17 at Station A. The old class in `drive.py` is consulted only for
 the defects that dossier section 7 names: no macros, an asymmetric
 OVERDRIVE curve, a hidden -3 dB trim, and a 4.5 kHz low-pass after mix.

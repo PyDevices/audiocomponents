@@ -17,7 +17,6 @@ oscillation - but a biquad cascade is linear, so from silence it stays
 silent however far the resonance is pushed, and it makes no harmonics for
 the growl to live in. That gap is not a matter of degree, which is why
 `audioladder.Ladder` exists and why this class needs audiodsp's build.
-Dossier: `workspace docs/effects-internal/dossiers/LadderFilter.md` sections 4 and 5.
 
 **Latency: 0 samples - 0.000 ms - at every setting, and there is no
 latency-adding option on this class.** `Oversample` runs the loop at twice
@@ -31,8 +30,7 @@ patch 6, `Ladder - lean`, is patch 0 with it off for the S3.
 **Cost:** budgeted at 14 % of one stereo block on a 240 MHz ESP32-S3 and 8 %
 on a 400 MHz ESP32-P4 with `Oversample` on, 7 % on the S3 with the lean
 patch (dossier section 3, Tier 3). Measured 2026-09-07: 16.3 % of a block
-on the ESP32-P4 and 26.9 % on the ESP32-S3, over budget on both
-(`workspace docs/effects-internal/evidence/LadderFilter-evidence.md` section 4).
+on the ESP32-P4 and 26.9 % on the ESP32-S3, over budget on both.
 
 **One invariant this class does not hold, on purpose.** A self-oscillating
 filter does not return to silence. At `Resonance` at or above k = 4 - macro
@@ -52,7 +50,7 @@ clause (-23...-27 dB/octave over 4->8 kHz) is **disconfirmed at 22.05 kHz**
 Nyquist; the -12.0 dB-at-cutoff and 435 Hz -3 dB clauses hold. Both stay
 in the evidence pack as disconfirmed, with cause.
 
-**Measured** - `workspace docs/effects-internal/evidence/LadderFilter-evidence.md`: -12.055 dB at the
+**Measured**: -12.055 dB at the
 cutoff and -24.10 dB/octave at 48 kHz; the passband 0.00 -> -13.90 dB
 across k = 0...4; self-oscillation at 999.82 Hz holding to +0.01 dB over
 two seconds, 0.068 % THD, every even harmonic below -131 dB re the first.

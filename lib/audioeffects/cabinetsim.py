@@ -1,7 +1,6 @@
 """`CabinetSim` - a designed guitar-cabinet response, two characters.
 
-Rebuilt from scratch at Phase 4 against
-`workspace docs/effects-internal/dossiers/CabinetSim.md`, traits frozen
+Rebuilt from scratch at Phase 4 against its dossier, traits frozen
 2026-09-17 at Station A, re-cut 2026-09-17 in the first fix round (T3,
 below), disclosures added 2026-09-18 in the second.
 The old class in `drive.py` is consulted only for the defects that dossier

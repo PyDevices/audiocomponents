@@ -14,8 +14,7 @@ computed from a re-derivation of RBJ.
     ... --levels     the probe-level axis T3 and T5 left free
     ... --sweeps     the macro spans, through `effect_measurements.macro_sweep`
 
-**What the gate audit changed here** (2026-09-07,
-`docs/effects-phase2-gate-audit.md` sections 3 and 4.2). T2 read
+**What the gate audit changed here** (2026-09-07). T2 read
 *demonstrated* on a byte-flat wire, because `local_maximum_near` marked every
 interior point of a plateau a maximum; T3 and T5 were measured at one probe
 level and fail above -16 dBFS, where the class's int16 sections clip; T4's
@@ -166,7 +165,7 @@ class Curve:
 
         Three things this returns that the first version did not, each
         because the refutation pass showed that version green on a byte-flat
-        wire (`docs/effects-phase2-pattern-revision.md` section 1.2):
+        wire:
 
         * the maximum is **strict on the left**, so a plateau - every
           interior point of which satisfied `>=` on both sides - is no longer
@@ -495,7 +494,7 @@ def t5_result(rate, dry, cls=None, fault=None, level=LEVEL_DBFS, macros=None,
     """The fault is planted on the **cut** build only, which is what a signed
     Q law does. The presence clause is new this session: a flat build read
     0.0000 dB and passed, so the row could not tell a reciprocal bell from no
-    bell (`docs/effects-phase2-gate-audit.md` section 1, T5)."""
+    bell (the gate audit's T5 finding)."""
     points = t5_points(rate)
     worst, presence = [], []
     for gain in gains:
