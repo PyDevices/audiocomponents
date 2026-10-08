@@ -10,8 +10,8 @@ that did not contain the code the gate was about. **A green gate on a stale
 binary is the most expensive kind of stale**, because absence of a signal
 reads as agreement.
 
-The interpreter build's `tools/provenance.py` writes a stamp beside every interpreter
-`build_interpreters.sh` installs. This is the half our gates call.
+The interpreter build writes a provenance stamp beside every interpreter it
+installs. This is the half our gates call.
 
 The question this repository asks is not the one audiodsp's own gates ask.
 Ours is pinned: `AUDIODSP_PIN` names the exact commit every gate here runs
@@ -84,5 +84,5 @@ def require(binary) -> None:
         raise SystemExit(
             f"\n{binary} cannot certify this repository: it does not contain "
             f"the audiodsp in AUDIODSP_PIN.\n"
-            f"Rebuild it:  ../tools/build_interpreters.sh --only mp-unix\n"
-            f"(cp-unix for circuitpython.)\n")
+            f"Rebuild bin/micropython (and bin/circuitpython) with audiodsp "
+            f"at AUDIODSP_PIN.\n")

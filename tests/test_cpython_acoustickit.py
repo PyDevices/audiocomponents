@@ -118,7 +118,7 @@ def _window(samples, ms):
     strike after it. Measured from sample 0 that shifts a 25 ms window across
     5.3 ms of leading silence and reads the first hit of any kit 700 Hz
     brighter than the rest - which looks exactly like a real defect, and is
-    not. Aligning to the onset is also what `.reference-captures/lufs.py` does,
+    not. The reference captures' loudness script aligns to the onset too,
     for the same reason.
     """
     channel = left(samples)

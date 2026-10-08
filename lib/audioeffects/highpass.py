@@ -16,7 +16,7 @@ Slope switch is a desk's: 12 dB/oct for a low-cut you do not want to notice,
 growl anywhere in it - a high-pass is linear.
 
 **Three things the knobs do not do exactly, found by the Phase 2 gate audit
-(`docs/effects-phase2-gate-audit.md` section 4.1) and its patch sweep, and
+and its patch sweep, and
 bounded here rather than hidden.**
 
 *The corner gain reads Q down to about 40 Hz, and drifts below that.* Set
@@ -178,8 +178,8 @@ class HighPass(_component.Component):
     LATENCY_SAMPLES = 0
 
     #: Measured, not assumed - and re-measured after the Phase 2 gate audit
-    #: found the first measurement's excitation too weak to be a ceiling
-    #: (`docs/effects-phase2-gate-audit.md` section 4.1). The tail of a
+    #: found the first measurement's excitation too weak to be a ceiling.
+    #: The tail of a
     #: high-pass is its resonant pole ringing down, so the longest one comes
     #: from the state that pole is driven to, not from the loudest strike:
     #: a full-scale tone **at** the corner, held until the ring has stopped

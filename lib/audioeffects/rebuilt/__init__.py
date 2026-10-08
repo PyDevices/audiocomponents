@@ -93,8 +93,7 @@ def _present():
 #:
 #: Phase 5's first two, adopted 2026-09-28 on the rulings of that date:
 #: `DigitalDelay` and `SlapbackDelay`. Both are THROUGH on the desktop half
-#: (`audit-DigitalDelay-reaudit2.md`, `audit-SlapbackDelay-reaudit1.md`),
-#: and their board rows met the bars (board-test-plan.md, section 2), each
+#: of their re-audits, and their board rows met the bars, each
 #: S3 patch 5 at the corrected cost that passed (DigitalDelay about
 #: 0.78 ms, 14.6 % of a block; SlapbackDelay 0.813 ms, 15.2 % against the
 #: 15 % bar) and each patch digest identical board to board, differing

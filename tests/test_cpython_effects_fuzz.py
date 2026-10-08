@@ -159,8 +159,8 @@ class NoOutputPole(Fuzz):
     NAME = 'Fuzz'
 
     def _build(self, **options):
-        # `rebuilt.Fuzz`, not the module global: `fuzz_fix4.py plant`
-        # installs this class *as* that global, and a fault written
+        # `rebuilt.Fuzz`, not the module global: a probe that plants this
+        # fault installs this class *as* that global, and a fault written
         # against it recurses until the stack ends.
         rebuilt.Fuzz._build(self, **options)
         if getattr(self, "_cascade_out_hp", None) is not None:
@@ -700,7 +700,7 @@ def alias_20k(wet, hz, rate, size):
     Every FFT bin more than two bins from a harmonic of `hz` and from DC,
     summed against the fundamental's bin, over 4800 samples at 48 kHz so
     every harmonic lands on a bin. This is the number A4's bar is graded on
-    and the one the board runner's `probes/alias_floor/analyse_alias.py`
+    and the one the board runner's alias analysis
     prints; `kit.spectrum`'s `alias_floor_db` is the same rule with no band
     limit, and the two part company where the last decimation stage's
     transition band lets a fold land above 20 kHz.
@@ -938,7 +938,7 @@ class G3FuzzIsGain(unittest.TestCase):
     every one.
 
     **The span, and the three places the reading has nothing to say** (the
-    dial-back walk, 44 positions, `probes/fuzz_fix2.py faults`): the class
+    dial-back walk, 44 positions): the class
     has to be *in circuit* and its clipper must not be railed —
     **Output Tilt 0, Mix ≥ 0.5, Level above 0, |Bias| < 1**. At Mix 0 the
     output is the borrowed source, at Level 0 it is silence, and at Bias ±1
@@ -1044,8 +1044,8 @@ class CascadeC1(unittest.TestCase):
     """Cascade's two silicon pairs clip symmetrically: even lines ≤ −40 dBc,
     h3 the largest, and the peak barely grows over a 20 dB level range.
 
-    **The span, from the 42-position dial-back walk**
-    (`probes/fuzz_fix2.py faults`): cascade, Sustain 54 dB, **Tone 0.5**,
+    **The span, from the 42-position dial-back walk**:
+    cascade, Sustain 54 dB, **Tone 0.5**,
     Bias centred, Mix 1, Level above 0. `GermaniumCascade` — the off-centre
     table in the cascade graph — is red at 41 of the 42 positions, and green
     at exactly one: **Tone 0**, where the whole sum comes out of the 482 Hz

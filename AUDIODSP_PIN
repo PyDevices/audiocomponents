@@ -31,8 +31,8 @@
 # well. The tag resolves to the commit in the second column.
 #
 #
-# Moved to 2f6cbc3 on 2026-09-07 by the effects program's Phase 1 (anchor
-# docs/effects-roadmap.md; audiocomponents#29). That commit is audiodsp main
+# Moved to 2f6cbc3 on 2026-09-07 by the effects program's Phase 1
+# (audiocomponents#29). That commit is audiodsp main
 # with the eight palette nodes Phase 0's survey asked for and Phase 1 built
 # (audiodsp#37-#44, #47): four FeedbackDelay options, eleven Dynamics options,
 # audioshaper.Waveshaper, audiobiquad.Biquad/AllPass, audioladder.Ladder,

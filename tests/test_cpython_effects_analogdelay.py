@@ -2103,7 +2103,7 @@ class Tier1Fast(unittest.TestCase):
     #: (feedback, spread) where the node's cross-feed sum, off the grid,
     #: hands a landed k back: the re-refutation's three portable cells
     #: (k = 9, 11, 50; the Feedback as its float32 value) and the typed
-    #: Feedback 0.9899999 at Spread 39/127 (analogdelay_reaudit1_refute.py).
+    #: Feedback 0.9899999 at Spread 39/127.
     CROSS_FEED_CELLS = ((0.9444443583488464, 1.0 / 127.0, 9),
                         (0.9545453786849976, 3.0 / 127.0, 11),
                         (0.9899999499320984, 2.0 / 127.0, 50),
@@ -2166,8 +2166,8 @@ class Tier1Fast(unittest.TestCase):
                          points=8):
         """Per move, (the largest first difference in the 40 ms after it,
         its bar) at `points` moves an eighth of the triangle's period
-        apart: 997 Hz at 12 000 LSB, mono, wet only, Time 300 ms, 48 kHz
-        (`analogdelay_refix1.py modmove`). The read offset is S(t) u(t)
+        apart: 997 Hz at 12 000 LSB, mono, wet only, Time 300 ms, 48 kHz.
+        The read offset is S(t) u(t)
         fs / 1000 frames; while the node ramps the swing (20 ms, audiodsp
         #160) |dD/dn| <= |change| / 20 + 0.004 r max(S_old, S_new), and
         neither the linear-interpolated read nor the one-pole can raise a

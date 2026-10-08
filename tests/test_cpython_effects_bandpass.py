@@ -4,8 +4,7 @@ The dossier's traits were frozen 2026-09-07, and this file's numbers are
 read into its evidence pack. Every Tier 1 invariant and every Tier 2
 trait the dossier fixed has a test here, and **every one of them has a
 planted fault of its own kind beside it**, because a measurement whose
-checker has never been shown failing is not a measurement
-(`docs/effects-kit-spec.md` section 6).
+checker has never been shown failing is not a measurement.
 
 The measurements are the kit's - `tools/effect_measurements.py` - driven over
 in-process renders through `tests/support/kit_probes.py`, so nothing is read

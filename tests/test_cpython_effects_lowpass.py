@@ -56,7 +56,7 @@ def magnitude_db(node, hz, rate=SAMPLE_RATE):
     very nearly a wire, and this net used to read it as fully wet.
 
     That was the blind spot the Phase 2 gate audit named
-    (`docs/effects-phase2-gate-audit.md` section 4.3: the short circuit fired
+    (the short circuit fired
     only at `mix == 0.0`, so a fault leaving every section at `mix = 0.001` -
     the class audibly a wire - left T1, T2 and T3 green).
     `TheNetSeesTheMixCrossfade` below is that fault, and it is red now.
@@ -285,10 +285,10 @@ class MostlyDryLowPass(lowpass.LowPass):
 class TheNetSeesTheMixCrossfade(unittest.TestCase):
     """The regression net's own blind spot, closed.
 
-    `docs/effects-phase2-gate-audit.md` section 4.3, second bullet: the net
-    short-circuited only at `mix == 0.0`, so a fault leaving every section at
-    `mix = 0.001` left T1, T2 and T3 green. Every test here carries both
-    halves - what the old net said about this fault, and what this one does.
+    The Phase 2 gate audit found that the net short-circuited only at `mix ==
+    0.0`, so a fault leaving every section at `mix = 0.001` left T1, T2 and T3
+    green. Every test here carries both halves - what the old net said about
+    this fault, and what this one does.
     """
 
     def faulted(self, **options):

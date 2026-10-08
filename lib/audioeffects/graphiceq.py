@@ -134,7 +134,7 @@ _SHELF_Q = 0.7071067811865475
 _LEVEL_CORNER_HZ = 5.0
 
 #: The proportional-Q law's skirt: the level, in dB, whose crossing frequency
-#: is held still while the peak grows (`ParametricEQ.md` Appendix A).
+#: is held still while the peak grows.
 _SKIRT_DB = 1.0
 
 #: The anchor gain the `Band Q` macro names the Q of.
@@ -159,7 +159,7 @@ _ANCHOR_NUM = _ANCHOR_A ** 2 - (_SKIRT ** 2) / (_ANCHOR_A ** 2)
 def band_q(gain_db, anchor):
     """The Q a band of `gain_db` gets, for a bank anchored at `anchor`.
 
-    `ParametricEQ.md` Appendix A's law, rearranged so the anchor is the
+    `ParametricEQ`'s proportional-Q law, rearranged so the anchor is the
     macro: holding the +/-1 dB skirt at one frequency while the peak grows
     means `Q(G) = anchor * sqrt((A^2 - L^2/A^2) / (A12^2 - L^2/A12^2))` with
     `A = 10^(|G|/40)`. Below +1 dB there is no root -- a 1 dB skirt cannot sit

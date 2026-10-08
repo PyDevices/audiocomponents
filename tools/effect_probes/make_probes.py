@@ -4,13 +4,12 @@
     tools/effect_probes/make_probes.py [--dry-run] [--verify]
                                        [--only NAME ...] [--outdir DIR]
 
-`docs/effects-kit-spec.md` section 3. A fixed set, generated here and never
-recomputed on a board (the ESP32 ports are single-precision, so a probe
-computed there would not be the probe the desktop measured against). One
-manifest, `probes.json`, names each probe, its rate, its length, its level
-and its FNV digest, so a stale probe cannot be mistaken for a fresh one:
-`tools/render_effect.py` checks the digest of every probe it loads and
-refuses one that has drifted.
+A fixed set, generated here and never recomputed on a board (the ESP32 ports
+are single-precision, so a probe computed there would not be the probe the
+desktop measured against). One manifest, `probes.json`, names each probe, its
+rate, its length, its level and its FNV digest, so a stale probe cannot be
+mistaken for a fresh one: `tools/render_effect.py` checks the digest of every
+probe it loads and refuses one that has drifted.
 
 Every probe exists at all three rates (48000 / 44100 / 22050) and at
 channel_count 1 and 2, and **every probe is identical in both channels**.
@@ -44,9 +43,8 @@ CHANNEL_COUNTS = (1, 2)
 FULL_SCALE = 32767
 REFERENCE = 32768.0                          # 0 dBFS reference for readouts
 
-#: Where the probes land. `tools/probes_scratch/` in the spec's section 8 is
-#: this repo's `tools/phase0_probes/` and `tools/spice/`; nothing named
-#: `tools/probes/` is created, and neither of those is touched.
+#: Where the probes land: beside this script. Nothing named `tools/probes/`
+#: is created, and `tools/spice/` is not touched.
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -466,7 +464,7 @@ def build_tone_fs4(rate):
     Limiter L1 says in its own disconfirmation clause that a probe set with
     no such tone reads green on a limiter with no true-peak detection at
     all: the level below is chosen so the SAMPLE peak lands on -6.00 dBFS,
-    which is the seed's own measured pair (Limiter.md:557-558) and the value
+    which is the seed's own measured pair and the value
     that lets the faulted TRUEPEAK certify a -6 dBFS ceiling as met while
     3 dB escapes.
     """
@@ -761,7 +759,6 @@ def main(argv):
 
     manifest_path = os.path.join(outdir, "probes.json")
     manifest = {"generator": "tools/effect_probes/make_probes.py",
-                "spec": "docs/effects-kit-spec.md section 3",
                 "rates": list(RATES),
                 "channel_counts": list(CHANNEL_COUNTS),
                 "channels_identical": True,

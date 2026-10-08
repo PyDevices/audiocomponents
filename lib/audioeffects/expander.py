@@ -62,7 +62,7 @@ worth 5-8 % of the node's own per-frame work on the desktop, where the
 budget needs 26-29 %, so it does **not** bring the class inside the budget
 and it is not offered as if it did. It changes the sound: see the ratio-law
 paragraph above. The budget itself is under review for the whole phase
-(`docs/effects-phase2-gate-audit.md` section 4.3, audiocomponents#48).
+(audiocomponents#48).
 
 **Three things the dossier asked for that this class does not do**, each
 measured rather than assumed, each with its number in the evidence pack:

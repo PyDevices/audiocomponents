@@ -424,7 +424,7 @@ class LeanResetTape(TapeDelay):
 
 class DriveOffTape(TapeDelay):
     """Not a fault: the cost study's variant D, `loop_drive` handed 0 after
-    every refresh (`tapedelay_cost_variants.py`, `DriveOff`). Built at
+    every refresh (`DriveOff`). Built at
     `max_time_ms=800` it is variant K, the configuration the boards
     measured."""
 
@@ -2305,7 +2305,7 @@ class Tier1Fast(unittest.TestCase):
     #: Spread off every grid, and the fifth one of the 13 cells whose
     #: hand-back survives every order a compiler may sum the cross-feed in
     #: (separate roundings and both fused multiply-adds), so the plant holds
-    #: there on a board too (tapedelay_reaudit1_audit.mirror.out.txt).
+    #: there on a board too.
     CROSS_FEED_CELLS = (
         ("knob", 9, 0.9444443583488464, 1),
         ("knob", 11, 0.9545453786849976, 3),
@@ -2402,7 +2402,7 @@ class Tier1Fast(unittest.TestCase):
         """(the tone's own largest step before the move, the largest step in
         the 2 000 frames after it) over `points` moves a quarter of the
         0.72 Hz wow line apart, on 997 Hz at 12 000 LSB, mono, wet only,
-        Time 350 ms, 48 kHz (`pin063cls_tape_wowmove.py`)."""
+        Time 350 ms, 48 kHz."""
         first = (16800 + 9600) // BLOCK * BLOCK
         steadies, worsts = [], []
         for k in range(points):

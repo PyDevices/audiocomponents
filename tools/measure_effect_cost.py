@@ -55,7 +55,7 @@ The node rows import nothing, so their control is taken on a small heap.
 An effect target imports `audioeffects` (in `prime()`, before the control),
 and the control then costs more: on the boards the probe alone went from
 0.20 to 0.60 ms per block on the P4 and from 0.41 to 1.05-1.14 ms on the S3
-(board-test-plan.md, sections 2 for DigitalDelay and SlapbackDelay), and on
+(the DigitalDelay and SlapbackDelay board runs), and on
 desktop MicroPython from 0.0019 to 0.0118 ms with the live heap at 60 KB
 and then 480 KB. That is the collector's work growing with the heap, and it
 lands on the control and the target alike. On the desktop and the P4 the
@@ -611,7 +611,7 @@ def _feedback_delay_09(probe):
     """The base row's node and settings at feedback 0.9, where audiodsp#154's
     rounding rule fires: at 0.45 it never does, so the two rows above render
     the same bytes at v0.6.1 and v0.6.2 by design. Ran on both boards on
-    2026-09-27 as a probe beside the tool (`fb09.py`, digest
+    2026-09-27 as a probe beside the tool (digest
     `3b76320cb19450a8` at v0.6.2, `d9fb49a51cd7379a` at v0.6.1)."""
     import audioecho
     node = audioecho.FeedbackDelay(sample_rate=SAMPLE_RATE,
@@ -989,7 +989,7 @@ def _split_patch(name):
     A cost figure at construction defaults is not a class's cost unless the
     defaults are the state the cost is about: four of Phase 2's sixteen
     board figures were the bare probe's, because the runner applies no
-    patch (`docs/effects-phase2-pattern-revision.md` section 1.4).
+    patch.
     """
     if "@" not in name:
         return name, None

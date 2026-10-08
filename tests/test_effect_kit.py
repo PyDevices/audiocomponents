@@ -1,10 +1,9 @@
 """The measurement kit's planted-fault battery, measurements 1-10.
 
-`docs/effects-kit-spec.md` section 6: every planted fault lands as a test
-here, in `test_rig_comparator.py`'s shape - **a control that must pass beside
-the fault**, or the battery only proves the checker always fails. A
-measurement whose planted-fault run is not committed is not one a class gate
-may cite.
+Every planted fault lands as a test here, in `test_rig_comparator.py`'s shape -
+**a control that must pass beside the fault**, or the battery only proves the
+checker always fails. A measurement whose planted-fault run is not committed is
+not one a class gate may cite.
 
 One test per measurement, each holding both halves:
 

@@ -1865,7 +1865,7 @@ class RoundOneRoutes(unittest.TestCase):
 
     def test_a_host_reset_keeps_the_first_block(self):
         # Red on c80ca59: the 3 000 click at 2 744 on all three
-        # interpreters (multitapdelay_stationC_hostreset.py).
+        # interpreters.
         for rate in RATES:
             for channels in (2, 1):
                 for patch in (None, 1):

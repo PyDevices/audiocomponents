@@ -1,5 +1,5 @@
 * models.lib -- 1N4148 pair (Nexperia parameter values) and a behavioural
-* op-amp whose GBW is a parameter. Numbers only from Distortion.md S8;
+* op-amp whose GBW is a parameter. Numbers only from Nexperia's model;
 * Nexperia's comment text is not reproduced.
 .subckt 1N4148 1 2
 Rrev 1 2 5.827E+9

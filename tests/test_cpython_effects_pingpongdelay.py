@@ -2340,8 +2340,7 @@ class TrialClaims(unittest.TestCase):
     #: (typed feedback, Spread, k): where the pre-rc3 node's float32
     #: cross-feed sum handed k back on both lanes for ever (audiodsp#170).
     #: The first is the re-audit's typed cell; the rest are the cells the
-    #: fixer's probe (`trial/PingPongDelay/stall_probe.py` in the workspace)
-    #: finds held under every order of the sum, one per Feedback. No
+    #: fixer's stall probe finds held under every order of the sum, one per Feedback. No
     #: Feedback knob position is among them.
     CROSS_FEED_CELLS = ((0.9899999, 39.0 / 127.0, 50),
                         (0.9899999, 2.0 / 127.0, 50),

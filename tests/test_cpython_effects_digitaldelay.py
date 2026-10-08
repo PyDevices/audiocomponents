@@ -434,8 +434,7 @@ class PostToneDelay(DigitalDelay):
     moved out of the loop onto the output - the same pre-warped
     coefficient, applied once. One pass is identical to the class; the
     repeats do not compound, so T3's control stops darkening. (The
-    re-refuter's fault, `digitaldelay_rerefute1_t5.py`, moved here at fix
-    round 2.)"""
+    re-refuter's fault, moved here at fix round 2.)"""
 
     NAME = 'DigitalDelay'
 
@@ -1063,7 +1062,7 @@ def f32_walk_cents(rate, grids, start_ms=150.0, target_ms=200.0):
     `target_ms` in whole frames, at the dossier's law for each Glide grid
     position in `grids`. Returns, per position, the cents the walk plays
     off the law, read over the walk's middle 80 % (gate audit round 2's
-    model, `digitaldelay_audit2_f32scan.py`)."""
+    model)."""
     grids = np.asarray(grids, dtype=np.float64)
     a = dd.whole_frames(start_ms, rate)
     b = dd.whole_frames(target_ms, rate)
@@ -1668,8 +1667,8 @@ class TheSurface(unittest.TestCase):
         # The node turns the handed ms back into frames in float32
         # (`audiodsp_feedback_delay.c:148`). At 48 kHz every knob position
         # lands exactly; at 44.1 and 22.05 kHz these land one float32 step
-        # off, which the class cannot avoid (the node ask is drafted:
-        # `audiodsp-feedback-delay-whole-frame-landing.md`). Goes red when
+        # off, which the class cannot avoid (a node change is drafted for
+        # audiodsp). Goes red when
         # the node lands every whole frame.
         off_frame = {
             48000: [],

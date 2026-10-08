@@ -133,13 +133,12 @@ V_SLIDING = 0.2032
 #: The wow table: one period of TABLE_POINTS Q15 points at WOW_HZ, holding
 #: the wow line at harmonic WOW_HARMONIC, the flutter line at
 #: FLUTTER_HARMONIC and the drift at harmonics 1-9, amplitude 1/k, at
-#: DRIFT_PHASES (dossier section 6; `tapedelay_stationA_common.py:59`).
+#: DRIFT_PHASES (dossier section 6).
 #: TABLE_POINTS is not a cost lever. The node reads any length the same way,
 #: and a shorter table silently kills the flutter: at 1 024 points harmonic
 #: 512 sits on the table's Nyquist, at 256 it folds onto DC, and the Flutter
 #: knob then writes the same table as Flutter 0 while T4 still reads two
-#: lines, an interpolation image of the wow line (the 2026-09-28 cost study,
-#: `audits/phase5/tapedelay-cost-options.md`).
+#: lines, an interpolation image of the wow line (the 2026-09-28 cost study).
 WOW_HZ = 0.01
 TABLE_POINTS = 4096
 WOW_HARMONIC = 72

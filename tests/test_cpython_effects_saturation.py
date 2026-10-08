@@ -328,8 +328,7 @@ class TheThirdFixRoundsRows(unittest.TestCase):
 
     Mix's polarity, A4 at both ends of its level span, Tilt's effect on
     TU2, and the integer onset at every build x rate. Each one is walked
-    rather than asserted at a point, and each one has a planted opposite
-    in `probes/saturation_fix3.py`.
+    rather than asserted at a point, and each one has a planted opposite.
     """
 
     LEVELS = (0.0, 0.25, 0.5, 0.75, 1.0)

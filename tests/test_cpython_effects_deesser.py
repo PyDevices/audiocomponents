@@ -1,6 +1,6 @@
 """`DeEsser`'s own invariant, trait and planted-fault battery.
 
-The class gate (`docs/effects-roadmap.md`, "The class gate") asks for two
+The class gate asks for two
 things this file carries: the Tier 1 invariants green on CPython at 48 kHz
 and at `channel_count` 1, and every demonstrated Tier 2 trait shown **red
 on a planted fault of the same kind**. Three-rate, three-interpreter
@@ -38,8 +38,8 @@ from audioeffects import deesser                  # noqa: E402
 #: tests still import the home module so a planted-fault subclass is
 #: measured against this file, not only `create()`. The G2 cell it was
 #: parked on - 22.05 kHz never rendered on either native build - is closed
-#: (`DeEsser-evidence.md` section 2); G6 is not, and the fixer pass measured
-#: why no `" - lean"` patch can close it (section 4).
+#: in the evidence pack; G6 is not, and the fixer pass measured
+#: why no `" - lean"` patch can close it.
 import effect_measurements as M                           # noqa: E402
 from audioeffects import _component                        # noqa: E402
 sys.path.insert(0, os.path.join(HERE, "support"))

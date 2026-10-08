@@ -1,5 +1,5 @@
 """Playable gestures for `rhodes`, read from the Phase 2 listening guide's
-rhodes section (docs/phase2-listening-guide.md).
+rhodes section.
 
 A gesture module's contract (see generate_rig.py):
 

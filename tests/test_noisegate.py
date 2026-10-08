@@ -6,7 +6,7 @@ before the class was written, and its evidence pack cites this file.
 Every Tier 2 trait here is a pair: the
 clean run that must be green and a planted fault **of the same kind** that
 must be red. A measurement with no fault beside it is a tripwire, not a
-measurement (`docs/effects-kit-spec.md` section 6).
+measurement.
 
 Three things about the kit that this file works around rather than hides,
 each recorded in the evidence pack's "what the kit got wrong":

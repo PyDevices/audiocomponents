@@ -8,8 +8,8 @@ compares.
                      [--events events.json] [--transport tempo.json]
                      [--selftest]
 
-`docs/effects-kit-spec.md` section 4. `--option` is the one addition to
-that signature, made for `NoiseGate` in Phase 2 and general to every class:
+The kit's renderer. `--option` is the one addition to
+its signature, made for `NoiseGate` in Phase 2 and general to every class:
 the contract's construction boundary is ``create(source, rate, **options)``
 and some classes take a build choice there rather than on a knob - a duck
 graph is different wiring, and a look-ahead is latency the whole chain pays,
@@ -68,7 +68,7 @@ going away.
 
 What is deliberately not here
 -----------------------------
-The analysis. Section 1: the render is dual-runtime, the analysis is not.
+The analysis. The render is dual-runtime, the analysis is not.
 Every FFT, fit and envelope belongs in `tools/effect_analysis.py` and its
 `tools/measure_effect.py` CLI, on the desktop under CPython with numpy.
 This file exports numbers only where they cost nothing to carry (frame

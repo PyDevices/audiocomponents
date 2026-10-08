@@ -1,6 +1,6 @@
 * rat_clip.cir -- ProCo Rat diodes-to-ground clipper (R6 1K, D1/D2 to ground)
 *
-* Topology from Distortion.md S1. The op-amp and Filter are omitted: this
+* Topology from the Rat schematic. The op-amp and Filter are omitted: this
 * deck is the memoryless pair the waveshaper table is derived from.
 * Driven from an ideal source through R6; the pair sits to ground.
 *

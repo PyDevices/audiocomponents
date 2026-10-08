@@ -1,6 +1,6 @@
 """`DynamicEQ`'s own invariant, trait and planted-fault battery.
 
-The class gate (`docs/effects-roadmap.md`, "The class gate") asks for two
+The class gate asks for two
 things this file carries: every Tier 1 invariant green at 48 kHz, and every
 demonstrated Tier 2 trait shown **red on a planted fault of the same kind**.
 Three-rate coverage is the evidence pack's. Numbers are
