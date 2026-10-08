@@ -1,16 +1,23 @@
 # The measurement kit's probe material
 
-`docs/effects-kit-spec.md` section 3. Generated once on CPython by
+`docs/effects-kit-spec.md` section 3. Generated on CPython by
 `make_probes.py`, never recomputed on a board — the ESP32 ports are
 single-precision, so a probe computed there would not be the probe the
 desktop measured against.
 
 ```
-tools/effect_probes/probes.json          the manifest
-tools/effect_probes/<rate>/<n>ch/<name>.wav   the data
+tools/effect_probes/probes.json          the manifest, committed
+tools/effect_probes/<rate>/<n>ch/<name>.wav   the data, generated
 ```
 
-**66 probe names, 388 files, 95.8 MB.** Every probe exists at all three
+**66 probe names, 388 files, 95.8 MB, none of them in git.** The WAVs are
+generated on demand: `tools/render_effect.py` and the tests (through
+`tests/support/kit_probes.probe_path()`) write a probe the first time they
+need it and check its digest every time. To make the whole set at once,
+run `make_probes.py --ensure`; it takes about fifteen seconds. `.gitignore`
+covers every `*.wav`, and the lint workflow fails if one is tracked.
+
+Every probe exists at all three
 rates (48000 / 44100 / 22050) and at `channel_count` 1 and 2, and every
 probe is **identical in both channels** — STEREO's own clause requires it,
 or L−R is not silent at width zero and a correct endpoint reads as broken.
@@ -28,8 +35,11 @@ records what each probe *is*: the step table of `tones_step` and
 every probe whose requested level does not land on an exact int16 value.
 
 `render_effect.py` checks that digest before every render and refuses a
-probe that has drifted. `make_probes.py --verify` re-checks the whole set.
-Both were shown to fail, not only to pass:
+probe that has drifted. A probe generated on demand is checked before it is
+written, and a file already on disk is never overwritten: one that does
+not match is reported, and deleting it lets it be generated again.
+`make_probes.py --verify` re-checks the whole set. Both were shown to fail,
+not only to pass:
 
 ```
 $ .venv/bin/python -c "d=bytearray(open('tools/effect_probes/48000/2ch/ramp_fs.wav','rb').read()); d[5000]=(d[5000]+1)&0xff; open(...,'wb').write(bytes(d))"
@@ -38,8 +48,8 @@ DRIFTED ramp_fs 48000/2: file fc7d8e22, manifest aef0fa61
 verified 388 files, 1 bad
 $ .venv/bin/python tools/render_effect.py LowPass ramp_fs out
 probe tools/effect_probes/48000/2ch/ramp_fs.wav does not match probes.json
-(file fc7d8e22, manifest aef0fa61) - it is stale; regenerate with
-tools/effect_probes/make_probes.py
+(file fc7d8e22, manifest aef0fa61) - it is stale; delete it and run
+tools/effect_probes/make_probes.py --ensure
 ```
 
 and with the byte restored, `verified 388 files, 0 bad`.
@@ -47,11 +57,34 @@ and with the byte restored, `verified 388 files, 0 bad`.
 ## Usage
 
 ```
-make_probes.py                 generate everything, write probes.json
-make_probes.py --dry-run       print the plan and the disk cost, write nothing
+make_probes.py --ensure        generate what is missing, check everything,
+                               never write probes.json
 make_probes.py --verify        re-hash every file against probes.json
+make_probes.py --dry-run       print the plan and the disk cost, write nothing
+make_probes.py                 generate everything, rewrite probes.json
 make_probes.py --only NAME     regenerate one probe, merging the manifest
 ```
+
+The last two change the reference. Run them when a probe is meant to
+change, and commit the new `probes.json`.
+
+## The instrument probes depend on audiodsp
+
+`chord` and `hit_levels_*` (36 files) are rendered through
+`audioinstruments`, and so through audiodsp's nodes. Their digests hold
+only at the audiodsp release `AUDIODSP_PIN` names, which is the one CI
+installs. With another audiodsp installed, generating them fails and says
+so; install audiodsp at the pin:
+
+```
+pip install "pydevices-audiodsp @ git+https://github.com/PyDevices/audiodsp@<pin>"
+```
+
+That failure is the point of the check: it is how a change in the way
+audiodsp renders an instrument shows up. When the pin moves and the
+instruments render differently on purpose, regenerate them with `--only`
+and commit `probes.json` with the pin. Every other probe is plain
+arithmetic in this directory and reproduces anywhere.
 
 ## Choices a reader should not have to infer
 
@@ -79,19 +112,10 @@ make_probes.py --only NAME     regenerate one probe, merging the manifest
   (`juno106` and `tr808` note 38), not recorded. Section 3 says "one
   recorded percussive hit"; the recorded captures in `.reference-captures/`
   are reference material this program analyses and never redistributes, so
-  a probe cut from one could not be committed beside the code that reads
-  it. The deviation is in the manifest too, not only here.
+  a probe cut from one could not ship beside the code that reads it. The
+  deviation is in the manifest too, not only here.
 - **Sines hold a whole number of cycles**, so the fundamental lands on an
   exact FFT bin with no window and the probe can be looped. 1.5 s is 33075
   frames at 22050 Hz, so a 32768-point transform fits at the lowest rate; a
   65536-point one does not, which is why SPECTRUM exports its transform
   length.
-
-## Open, and for a person to decide
-
-95.8 MB of WAV in a repo whose `.git` is 6.1 MB is a real change, and
-section 3's "committed as data" was written before anyone had counted it.
-The manifest works either way: it is 265 KB of text carrying every digest,
-so `--verify` detects drift whether the WAVs are tracked or regenerated
-from this directory's own source. Nothing here assumes an answer, and no
-`.gitignore` entry has been added.

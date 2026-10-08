@@ -409,7 +409,7 @@
    "files": {
     "22050/1": {
      "bytes": 132344,
-     "fnv1a": "048ee9af",
+     "fnv1a": "ba230450",
      "frames": 66150,
      "instrument": "juno106",
      "notes": [
@@ -419,15 +419,15 @@
       64
      ],
      "path": "22050/1ch/chord.wav",
-     "peak_dbfs": -1.355,
-     "peak_lsb": 28036,
-     "rms_dbfs": -15.491,
+     "peak_dbfs": -2.671,
+     "peak_lsb": 24093,
+     "rms_dbfs": -18.864,
      "seconds": 3.0,
      "velocity": 100
     },
     "22050/2": {
      "bytes": 264644,
-     "fnv1a": "21b734dd",
+     "fnv1a": "7273c31d",
      "frames": 66150,
      "instrument": "juno106",
      "notes": [
@@ -437,15 +437,15 @@
       64
      ],
      "path": "22050/2ch/chord.wav",
-     "peak_dbfs": -1.355,
-     "peak_lsb": 28036,
-     "rms_dbfs": -15.491,
+     "peak_dbfs": -2.671,
+     "peak_lsb": 24093,
+     "rms_dbfs": -18.864,
      "seconds": 3.0,
      "velocity": 100
     },
     "44100/1": {
      "bytes": 264644,
-     "fnv1a": "e1675625",
+     "fnv1a": "24a27777",
      "frames": 132300,
      "instrument": "juno106",
      "notes": [
@@ -455,15 +455,15 @@
       64
      ],
      "path": "44100/1ch/chord.wav",
-     "peak_dbfs": -2.137,
-     "peak_lsb": 25620,
-     "rms_dbfs": -15.541,
+     "peak_dbfs": -1.441,
+     "peak_lsb": 27760,
+     "rms_dbfs": -18.81,
      "seconds": 3.0,
      "velocity": 100
     },
     "44100/2": {
      "bytes": 529244,
-     "fnv1a": "4d20fe71",
+     "fnv1a": "aca588a1",
      "frames": 132300,
      "instrument": "juno106",
      "notes": [
@@ -473,15 +473,15 @@
       64
      ],
      "path": "44100/2ch/chord.wav",
-     "peak_dbfs": -2.137,
-     "peak_lsb": 25620,
-     "rms_dbfs": -15.541,
+     "peak_dbfs": -1.441,
+     "peak_lsb": 27760,
+     "rms_dbfs": -18.81,
      "seconds": 3.0,
      "velocity": 100
     },
     "48000/1": {
      "bytes": 288044,
-     "fnv1a": "a3e7b246",
+     "fnv1a": "fbe39210",
      "frames": 144000,
      "instrument": "juno106",
      "notes": [
@@ -491,15 +491,15 @@
       64
      ],
      "path": "48000/1ch/chord.wav",
-     "peak_dbfs": -2.167,
-     "peak_lsb": 25532,
-     "rms_dbfs": -15.542,
+     "peak_dbfs": -1.752,
+     "peak_lsb": 26781,
+     "rms_dbfs": -18.83,
      "seconds": 3.0,
      "velocity": 100
     },
     "48000/2": {
      "bytes": 576044,
-     "fnv1a": "7bd32675",
+     "fnv1a": "6ed2fa8d",
      "frames": 144000,
      "instrument": "juno106",
      "notes": [
@@ -509,9 +509,9 @@
       64
      ],
      "path": "48000/2ch/chord.wav",
-     "peak_dbfs": -2.167,
-     "peak_lsb": 25532,
-     "rms_dbfs": -15.542,
+     "peak_dbfs": -1.752,
+     "peak_lsb": 26781,
+     "rms_dbfs": -18.83,
      "seconds": 3.0,
      "velocity": 100
     }
@@ -955,7 +955,7 @@
     "22050/1": {
      "achieved_peak_dbfs": -19.999,
      "bytes": 44144,
-     "fnv1a": "eb2b9104",
+     "fnv1a": "5126fc09",
      "frames": 22050,
      "instrument": "tr808",
      "level_dbfs": -20,
@@ -963,7 +963,7 @@
      "path": "22050/1ch/hit_levels_-20.wav",
      "peak_dbfs": -19.999,
      "peak_lsb": 3277,
-     "rms_dbfs": -39.104,
+     "rms_dbfs": -39.234,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -971,7 +971,7 @@
     "22050/2": {
      "achieved_peak_dbfs": -19.999,
      "bytes": 88244,
-     "fnv1a": "a0a71809",
+     "fnv1a": "ca3000cd",
      "frames": 22050,
      "instrument": "tr808",
      "level_dbfs": -20,
@@ -979,7 +979,7 @@
      "path": "22050/2ch/hit_levels_-20.wav",
      "peak_dbfs": -19.999,
      "peak_lsb": 3277,
-     "rms_dbfs": -39.104,
+     "rms_dbfs": -39.234,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -987,7 +987,7 @@
     "44100/1": {
      "achieved_peak_dbfs": -19.999,
      "bytes": 88244,
-     "fnv1a": "8c43b869",
+     "fnv1a": "5d1c84a5",
      "frames": 44100,
      "instrument": "tr808",
      "level_dbfs": -20,
@@ -995,7 +995,7 @@
      "path": "44100/1ch/hit_levels_-20.wav",
      "peak_dbfs": -19.999,
      "peak_lsb": 3277,
-     "rms_dbfs": -38.627,
+     "rms_dbfs": -38.91,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1003,7 +1003,7 @@
     "44100/2": {
      "achieved_peak_dbfs": -19.999,
      "bytes": 176444,
-     "fnv1a": "7f69614d",
+     "fnv1a": "003d5cf5",
      "frames": 44100,
      "instrument": "tr808",
      "level_dbfs": -20,
@@ -1011,7 +1011,7 @@
      "path": "44100/2ch/hit_levels_-20.wav",
      "peak_dbfs": -19.999,
      "peak_lsb": 3277,
-     "rms_dbfs": -38.627,
+     "rms_dbfs": -38.91,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1019,7 +1019,7 @@
     "48000/1": {
      "achieved_peak_dbfs": -19.999,
      "bytes": 96044,
-     "fnv1a": "ec397cb2",
+     "fnv1a": "11110ba5",
      "frames": 48000,
      "instrument": "tr808",
      "level_dbfs": -20,
@@ -1027,7 +1027,7 @@
      "path": "48000/1ch/hit_levels_-20.wav",
      "peak_dbfs": -19.999,
      "peak_lsb": 3277,
-     "rms_dbfs": -39.116,
+     "rms_dbfs": -39.19,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1035,7 +1035,7 @@
     "48000/2": {
      "achieved_peak_dbfs": -19.999,
      "bytes": 192044,
-     "fnv1a": "d8aaed05",
+     "fnv1a": "37885519",
      "frames": 48000,
      "instrument": "tr808",
      "level_dbfs": -20,
@@ -1043,7 +1043,7 @@
      "path": "48000/2ch/hit_levels_-20.wav",
      "peak_dbfs": -19.999,
      "peak_lsb": 3277,
-     "rms_dbfs": -39.116,
+     "rms_dbfs": -39.19,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1060,7 +1060,7 @@
     "22050/1": {
      "achieved_peak_dbfs": -39.992,
      "bytes": 44144,
-     "fnv1a": "ff746ad4",
+     "fnv1a": "ddf8d7e5",
      "frames": 22050,
      "instrument": "tr808",
      "level_dbfs": -40,
@@ -1068,7 +1068,7 @@
      "path": "22050/1ch/hit_levels_-40.wav",
      "peak_dbfs": -39.992,
      "peak_lsb": 328,
-     "rms_dbfs": -59.096,
+     "rms_dbfs": -59.227,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1076,7 +1076,7 @@
     "22050/2": {
      "achieved_peak_dbfs": -39.992,
      "bytes": 88244,
-     "fnv1a": "1308360d",
+     "fnv1a": "140d5fcd",
      "frames": 22050,
      "instrument": "tr808",
      "level_dbfs": -40,
@@ -1084,7 +1084,7 @@
      "path": "22050/2ch/hit_levels_-40.wav",
      "peak_dbfs": -39.992,
      "peak_lsb": 328,
-     "rms_dbfs": -59.096,
+     "rms_dbfs": -59.227,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1092,7 +1092,7 @@
     "44100/1": {
      "achieved_peak_dbfs": -39.992,
      "bytes": 88244,
-     "fnv1a": "2a51f449",
+     "fnv1a": "d77c6264",
      "frames": 44100,
      "instrument": "tr808",
      "level_dbfs": -40,
@@ -1100,7 +1100,7 @@
      "path": "44100/1ch/hit_levels_-40.wav",
      "peak_dbfs": -39.992,
      "peak_lsb": 328,
-     "rms_dbfs": -58.619,
+     "rms_dbfs": -58.901,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1108,7 +1108,7 @@
     "44100/2": {
      "achieved_peak_dbfs": -39.992,
      "bytes": 176444,
-     "fnv1a": "75a261e5",
+     "fnv1a": "5a8c89c9",
      "frames": 44100,
      "instrument": "tr808",
      "level_dbfs": -40,
@@ -1116,7 +1116,7 @@
      "path": "44100/2ch/hit_levels_-40.wav",
      "peak_dbfs": -39.992,
      "peak_lsb": 328,
-     "rms_dbfs": -58.619,
+     "rms_dbfs": -58.901,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1124,7 +1124,7 @@
     "48000/1": {
      "achieved_peak_dbfs": -39.992,
      "bytes": 96044,
-     "fnv1a": "0269545b",
+     "fnv1a": "75ebe131",
      "frames": 48000,
      "instrument": "tr808",
      "level_dbfs": -40,
@@ -1132,7 +1132,7 @@
      "path": "48000/1ch/hit_levels_-40.wav",
      "peak_dbfs": -39.992,
      "peak_lsb": 328,
-     "rms_dbfs": -59.107,
+     "rms_dbfs": -59.182,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1140,7 +1140,7 @@
     "48000/2": {
      "achieved_peak_dbfs": -39.992,
      "bytes": 192044,
-     "fnv1a": "650ec121",
+     "fnv1a": "14f0d1f1",
      "frames": 48000,
      "instrument": "tr808",
      "level_dbfs": -40,
@@ -1148,7 +1148,7 @@
      "path": "48000/2ch/hit_levels_-40.wav",
      "peak_dbfs": -39.992,
      "peak_lsb": 328,
-     "rms_dbfs": -59.107,
+     "rms_dbfs": -59.182,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1165,7 +1165,7 @@
     "22050/1": {
      "achieved_peak_dbfs": -6.0,
      "bytes": 44144,
-     "fnv1a": "abb6894d",
+     "fnv1a": "df87d36b",
      "frames": 22050,
      "instrument": "tr808",
      "level_dbfs": -6,
@@ -1173,7 +1173,7 @@
      "path": "22050/1ch/hit_levels_-6.wav",
      "peak_dbfs": -6.0,
      "peak_lsb": 16423,
-     "rms_dbfs": -25.104,
+     "rms_dbfs": -25.235,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1181,7 +1181,7 @@
     "22050/2": {
      "achieved_peak_dbfs": -6.0,
      "bytes": 88244,
-     "fnv1a": "87ded291",
+     "fnv1a": "0eb207bd",
      "frames": 22050,
      "instrument": "tr808",
      "level_dbfs": -6,
@@ -1189,7 +1189,7 @@
      "path": "22050/2ch/hit_levels_-6.wav",
      "peak_dbfs": -6.0,
      "peak_lsb": 16423,
-     "rms_dbfs": -25.104,
+     "rms_dbfs": -25.235,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1197,7 +1197,7 @@
     "44100/1": {
      "achieved_peak_dbfs": -6.0,
      "bytes": 88244,
-     "fnv1a": "4f0b65e8",
+     "fnv1a": "f6ee586e",
      "frames": 44100,
      "instrument": "tr808",
      "level_dbfs": -6,
@@ -1205,7 +1205,7 @@
      "path": "44100/1ch/hit_levels_-6.wav",
      "peak_dbfs": -6.0,
      "peak_lsb": 16423,
-     "rms_dbfs": -24.627,
+     "rms_dbfs": -24.91,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1213,7 +1213,7 @@
     "44100/2": {
      "achieved_peak_dbfs": -6.0,
      "bytes": 176444,
-     "fnv1a": "ee07d39d",
+     "fnv1a": "2ec35f65",
      "frames": 44100,
      "instrument": "tr808",
      "level_dbfs": -6,
@@ -1221,7 +1221,7 @@
      "path": "44100/2ch/hit_levels_-6.wav",
      "peak_dbfs": -6.0,
      "peak_lsb": 16423,
-     "rms_dbfs": -24.627,
+     "rms_dbfs": -24.91,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1229,7 +1229,7 @@
     "48000/1": {
      "achieved_peak_dbfs": -6.0,
      "bytes": 96044,
-     "fnv1a": "23f7ab31",
+     "fnv1a": "a59c8137",
      "frames": 48000,
      "instrument": "tr808",
      "level_dbfs": -6,
@@ -1237,7 +1237,7 @@
      "path": "48000/1ch/hit_levels_-6.wav",
      "peak_dbfs": -6.0,
      "peak_lsb": 16423,
-     "rms_dbfs": -25.116,
+     "rms_dbfs": -25.191,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1245,7 +1245,7 @@
     "48000/2": {
      "achieved_peak_dbfs": -6.0,
      "bytes": 192044,
-     "fnv1a": "9aa2e9bd",
+     "fnv1a": "01a08ba9",
      "frames": 48000,
      "instrument": "tr808",
      "level_dbfs": -6,
@@ -1253,7 +1253,7 @@
      "path": "48000/2ch/hit_levels_-6.wav",
      "peak_dbfs": -6.0,
      "peak_lsb": 16423,
-     "rms_dbfs": -25.116,
+     "rms_dbfs": -25.191,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1270,7 +1270,7 @@
     "22050/1": {
      "achieved_peak_dbfs": -59.939,
      "bytes": 44144,
-     "fnv1a": "68ce230e",
+     "fnv1a": "5d0600f6",
      "frames": 22050,
      "instrument": "tr808",
      "level_dbfs": -60,
@@ -1278,7 +1278,7 @@
      "path": "22050/1ch/hit_levels_-60.wav",
      "peak_dbfs": -59.939,
      "peak_lsb": 33,
-     "rms_dbfs": -79.033,
+     "rms_dbfs": -79.165,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1286,7 +1286,7 @@
     "22050/2": {
      "achieved_peak_dbfs": -59.939,
      "bytes": 88244,
-     "fnv1a": "9b1f3f69",
+     "fnv1a": "1d29ebd1",
      "frames": 22050,
      "instrument": "tr808",
      "level_dbfs": -60,
@@ -1294,7 +1294,7 @@
      "path": "22050/2ch/hit_levels_-60.wav",
      "peak_dbfs": -59.939,
      "peak_lsb": 33,
-     "rms_dbfs": -79.033,
+     "rms_dbfs": -79.165,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1302,7 +1302,7 @@
     "44100/1": {
      "achieved_peak_dbfs": -59.939,
      "bytes": 88244,
-     "fnv1a": "79127d8a",
+     "fnv1a": "ab932555",
      "frames": 44100,
      "instrument": "tr808",
      "level_dbfs": -60,
@@ -1310,7 +1310,7 @@
      "path": "44100/1ch/hit_levels_-60.wav",
      "peak_dbfs": -59.939,
      "peak_lsb": 33,
-     "rms_dbfs": -78.563,
+     "rms_dbfs": -78.847,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1318,7 +1318,7 @@
     "44100/2": {
      "achieved_peak_dbfs": -59.939,
      "bytes": 176444,
-     "fnv1a": "1f839ced",
+     "fnv1a": "cf806115",
      "frames": 44100,
      "instrument": "tr808",
      "level_dbfs": -60,
@@ -1326,7 +1326,7 @@
      "path": "44100/2ch/hit_levels_-60.wav",
      "peak_dbfs": -59.939,
      "peak_lsb": 33,
-     "rms_dbfs": -78.563,
+     "rms_dbfs": -78.847,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1334,7 +1334,7 @@
     "48000/1": {
      "achieved_peak_dbfs": -59.939,
      "bytes": 96044,
-     "fnv1a": "3324ea3c",
+     "fnv1a": "5ebb0f5f",
      "frames": 48000,
      "instrument": "tr808",
      "level_dbfs": -60,
@@ -1342,7 +1342,7 @@
      "path": "48000/1ch/hit_levels_-60.wav",
      "peak_dbfs": -59.939,
      "peak_lsb": 33,
-     "rms_dbfs": -79.05,
+     "rms_dbfs": -79.121,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1350,7 +1350,7 @@
     "48000/2": {
      "achieved_peak_dbfs": -59.939,
      "bytes": 192044,
-     "fnv1a": "8d1ef65d",
+     "fnv1a": "3c9c195d",
      "frames": 48000,
      "instrument": "tr808",
      "level_dbfs": -60,
@@ -1358,7 +1358,7 @@
      "path": "48000/2ch/hit_levels_-60.wav",
      "peak_dbfs": -59.939,
      "peak_lsb": 33,
-     "rms_dbfs": -79.05,
+     "rms_dbfs": -79.121,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1375,7 +1375,7 @@
     "22050/1": {
      "achieved_peak_dbfs": -80.767,
      "bytes": 44144,
-     "fnv1a": "85cb1418",
+     "fnv1a": "72c34d18",
      "frames": 22050,
      "instrument": "tr808",
      "level_dbfs": -80,
@@ -1383,7 +1383,7 @@
      "path": "22050/1ch/hit_levels_-80.wav",
      "peak_dbfs": -80.767,
      "peak_lsb": 3,
-     "rms_dbfs": -99.686,
+     "rms_dbfs": -99.8,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1391,7 +1391,7 @@
     "22050/2": {
      "achieved_peak_dbfs": -80.767,
      "bytes": 88244,
-     "fnv1a": "a9dd350d",
+     "fnv1a": "86537ab5",
      "frames": 22050,
      "instrument": "tr808",
      "level_dbfs": -80,
@@ -1399,7 +1399,7 @@
      "path": "22050/2ch/hit_levels_-80.wav",
      "peak_dbfs": -80.767,
      "peak_lsb": 3,
-     "rms_dbfs": -99.686,
+     "rms_dbfs": -99.8,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1407,7 +1407,7 @@
     "44100/1": {
      "achieved_peak_dbfs": -80.767,
      "bytes": 88244,
-     "fnv1a": "4743f260",
+     "fnv1a": "e1c48dc2",
      "frames": 44100,
      "instrument": "tr808",
      "level_dbfs": -80,
@@ -1415,7 +1415,7 @@
      "path": "44100/1ch/hit_levels_-80.wav",
      "peak_dbfs": -80.767,
      "peak_lsb": 3,
-     "rms_dbfs": -99.135,
+     "rms_dbfs": -99.413,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1423,7 +1423,7 @@
     "44100/2": {
      "achieved_peak_dbfs": -80.767,
      "bytes": 176444,
-     "fnv1a": "320a244d",
+     "fnv1a": "cfa5fb29",
      "frames": 44100,
      "instrument": "tr808",
      "level_dbfs": -80,
@@ -1431,7 +1431,7 @@
      "path": "44100/2ch/hit_levels_-80.wav",
      "peak_dbfs": -80.767,
      "peak_lsb": 3,
-     "rms_dbfs": -99.135,
+     "rms_dbfs": -99.413,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1439,7 +1439,7 @@
     "48000/1": {
      "achieved_peak_dbfs": -80.767,
      "bytes": 96044,
-     "fnv1a": "8ee1d486",
+     "fnv1a": "2eba730f",
      "frames": 48000,
      "instrument": "tr808",
      "level_dbfs": -80,
@@ -1447,7 +1447,7 @@
      "path": "48000/1ch/hit_levels_-80.wav",
      "peak_dbfs": -80.767,
      "peak_lsb": 3,
-     "rms_dbfs": -99.619,
+     "rms_dbfs": -99.686,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127
@@ -1455,7 +1455,7 @@
     "48000/2": {
      "achieved_peak_dbfs": -80.767,
      "bytes": 192044,
-     "fnv1a": "1f36e329",
+     "fnv1a": "bdd5f691",
      "frames": 48000,
      "instrument": "tr808",
      "level_dbfs": -80,
@@ -1463,7 +1463,7 @@
      "path": "48000/2ch/hit_levels_-80.wav",
      "peak_dbfs": -80.767,
      "peak_lsb": 3,
-     "rms_dbfs": -99.619,
+     "rms_dbfs": -99.686,
      "seconds": 1.0,
      "source": "rendered, not recorded - see make_hit_level's docstring",
      "velocity": 127

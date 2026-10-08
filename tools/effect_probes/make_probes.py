@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the measurement kit's probe material, once, on CPython.
 
-    tools/effect_probes/make_probes.py [--dry-run] [--verify]
+    tools/effect_probes/make_probes.py [--dry-run] [--verify] [--ensure]
                                        [--only NAME ...] [--outdir DIR]
 
 `docs/effects-kit-spec.md` section 3. A fixed set, generated here and never
@@ -19,15 +19,21 @@ at width zero and a correct endpoint reads as broken.
 
     --dry-run   print the plan and what it will cost on disk, write nothing
     --verify    re-hash every file against probes.json and report drift
-    --only      generate just these probe names (the manifest is merged)
+    --ensure    generate only the files that are missing, never touch
+                probes.json, and fail if any file does not match it
+    --only      generate just these probe names (the manifest is merged;
+                with --ensure, ensure just these)
 
-Numbers, not adjectives: `--dry-run` prints the exact byte count, because
-the full set as section 3 specifies it is not small and whether it belongs
-in git is a decision for a person, not for this script.
+The WAVs are not kept in git: the full set is close to 100 MB, and it is
+generated in about fifteen seconds from this file. `probes.json` is
+committed and is the reference. `ensure_probes()` is what every reader
+calls - `tools/render_effect.py` and the test suite's
+`tests/support/kit_probes.probe_path()` - so the first use of a probe
+generates it and every use checks it.
 
 stdlib only, deliberately: numpy's sin and math's sin need not round the
-same way in the last LSB, and these files are committed data whose digests
-have to be reproducible from the source that is checked in beside them.
+same way in the last LSB, and these files' digests have to be reproducible
+from the source that is checked in beside them.
 """
 
 import json
@@ -584,8 +590,8 @@ def make_hit_level(level):
 
     Section 3 says "one recorded percussive hit". The recorded captures in
     `.reference-captures/` are reference material this program analyses and
-    never redistributes, so a probe cut from one could not be committed
-    beside the code that reads it. This is `audioinstruments`' own tr808
+    never redistributes, so a probe cut from one could not ship beside the
+    code that reads it. This is `audioinstruments`' own tr808
     snare instead - our material, at the same job - and the deviation is
     recorded here rather than left for a reader to discover from the bytes.
     """
@@ -719,9 +725,172 @@ def wav_bytes(mono, rate, channels):
     return header + payload, payload
 
 
+# --- on demand ---------------------------------------------------------------
+
+class ProbeError(Exception):
+    """A probe that cannot be produced, or found, as probes.json records it."""
+
+
+#: Paths already checked in this process, with the (size, mtime) they had.
+_VERIFIED = {}
+
+
+def rendered_by_instruments(name):
+    """True for the probes that render through audioinstruments.
+
+    Those are the only probes whose bytes depend on something outside this
+    file: the instrument and the audiodsp nodes underneath it.
+    """
+    return name == "chord" or name.startswith("hit_levels_")
+
+
+def _audiodsp_pin():
+    path = os.path.join(HERE, "..", "..", "AUDIODSP_PIN")
+    try:
+        with open(path) as handle:
+            for line in handle:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    return line.split()[0]
+    except OSError:
+        pass
+    return None
+
+
+def _audiodsp_installed():
+    try:
+        from importlib.metadata import version
+        return version("pydevices-audiodsp")
+    except Exception:
+        return "not found"
+
+
+def _mismatch(name, rate, channels, found, expected, where):
+    message = ("probe %s at %d Hz, %d ch: %s has digest %s, probes.json says "
+               "%s." % (name, rate, channels, where, found, expected))
+    if rendered_by_instruments(name):
+        pin = _audiodsp_pin() or "the release AUDIODSP_PIN names"
+        message += (
+            " These probes render through audiodsp's instruments, so they"
+            " only reproduce at the audiodsp release AUDIODSP_PIN names:"
+            " install audiodsp at %s (this interpreter has %s), for example"
+            ' pip install "pydevices-audiodsp @'
+            ' git+https://github.com/PyDevices/audiodsp@%s".'
+            " If an instrument changed on purpose, regenerate the probe with"
+            " make_probes.py --only %s and commit probes.json."
+            % (pin, _audiodsp_installed(), pin, name))
+    else:
+        message += (" The generator no longer reproduces it. If that change"
+                    " is intended, regenerate with make_probes.py --only %s"
+                    " and commit probes.json." % name)
+    return message
+
+
+def _stamp(path):
+    info = os.stat(path)
+    return info.st_size, info.st_mtime_ns
+
+
+def _file_digest(path):
+    with open(path, "rb") as handle:
+        handle.seek(44)
+        return "%08x" % checksum(handle.read())
+
+
+def _write(path, blob):
+    """Write through a temporary name, so a reader never sees half a file."""
+    directory = os.path.dirname(path)
+    if not os.path.isdir(directory):
+        os.makedirs(directory, exist_ok=True)
+    temporary = "%s.%d.tmp" % (path, os.getpid())
+    with open(temporary, "wb") as handle:
+        handle.write(blob)
+    os.replace(temporary, path)
+
+
+def _as_set(value):
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return {value}
+    return set(int(item) for item in value)
+
+
+def ensure_probes(names=None, rates=None, channel_counts=None, outdir=HERE):
+    """Have the named probes on disk, each matching probes.json.
+
+    `names` is one probe name, a list of them, or None for every probe the
+    manifest lists; `rates` and `channel_counts` narrow it the same way. A
+    missing file is generated from this file's builders and written only if
+    its digest matches the manifest. A file already on disk is hashed and
+    refused if it does not match: it is never overwritten, because a file
+    that disagrees with the reference is a finding, not a cache miss.
+
+    Raises ProbeError, whose message says what to do. probes.json is read,
+    never written. Returns `outdir`.
+    """
+    with open(os.path.join(outdir, "probes.json")) as handle:
+        probes = json.load(handle)["probes"]
+    if names is None:
+        names = sorted(probes)
+    elif isinstance(names, str):
+        names = [names]
+    rates = _as_set(rates)
+    channel_counts = _as_set(channel_counts)
+    builders = None
+    for name in names:
+        probe = probes.get(name)
+        if probe is None:
+            raise ProbeError("probes.json has no probe %r (it has %d)"
+                             % (name, len(probes)))
+        wanted = {}
+        for key, entry in sorted(probe.get("files", {}).items()):
+            rate, channels = (int(part) for part in key.split("/"))
+            if rates is not None and rate not in rates:
+                continue
+            if channel_counts is not None and channels not in channel_counts:
+                continue
+            wanted.setdefault(rate, []).append(
+                (channels, entry, os.path.join(outdir, entry["path"])))
+        for rate, files in sorted(wanted.items()):
+            missing = [item for item in files if not os.path.exists(item[2])]
+            if missing:
+                if builders is None:
+                    builders = dict((entry[0], entry[2])
+                                    for entry in catalogue())
+                if name not in builders:
+                    raise ProbeError("probes.json lists %r and this "
+                                     "generator has no builder for it"
+                                     % name)
+                mono, _facts = builders[name](rate)
+                for channels, entry, path in missing:
+                    blob, payload = wav_bytes(mono, rate, channels)
+                    digest = "%08x" % checksum(payload)
+                    if digest != entry["fnv1a"]:
+                        raise ProbeError(_mismatch(
+                            name, rate, channels, digest, entry["fnv1a"],
+                            "the generated file"))
+                    _write(path, blob)
+                    _VERIFIED[path] = _stamp(path)
+            for channels, entry, path in files:
+                stamp = _stamp(path)
+                if _VERIFIED.get(path) == stamp:
+                    continue
+                digest = _file_digest(path)
+                if digest != entry["fnv1a"]:
+                    raise ProbeError(_mismatch(
+                        name, rate, channels, digest, entry["fnv1a"],
+                        "%s on disk" % path)
+                        + " Delete the file and it is generated again on"
+                          " next use.")
+                _VERIFIED[path] = stamp
+    return outdir
+
+
 def main(argv):
     dry_run = "--dry-run" in argv
     verify = "--verify" in argv
+    ensure = "--ensure" in argv
     outdir = HERE
     only = []
     index = 0
@@ -732,6 +901,16 @@ def main(argv):
             outdir = argv[index + 1]; index += 2
         else:
             index += 1
+
+    if ensure:
+        try:
+            ensure_probes(only or None, outdir=outdir)
+        except ProbeError as error:
+            print("make_probes.py --ensure: %s" % error, file=sys.stderr)
+            return 1
+        print("probes present and matching probes.json: %s"
+              % (", ".join(only) if only else "all"))
+        return 0
 
     entries = catalogue()
     if only:

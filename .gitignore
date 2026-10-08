@@ -52,3 +52,10 @@ tools/*_evidence.py
 tools/*_state_probe.py
 tools/compressor_probes.py
 tools/compressor_deinit_use.py
+
+# Audio is generated, never committed. The measurement kit's probes are
+# written on demand by tools/effect_probes/make_probes.py, and lint fails
+# if a WAV is tracked anywhere.
+*.wav
+*.WAV
+tools/effect_probes/*/

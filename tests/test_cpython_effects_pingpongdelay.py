@@ -52,9 +52,6 @@ RATES = (48000, 44100, 22050)
 
 PingPongDelay = rebuilt.module_class("PingPongDelay")
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-PROBES = os.path.join(HERE, "..", "tools", "effect_probes")
-
 
 # --------------------------------------------------------------------------
 # The dossier's laws, written out independently of the class
@@ -380,7 +377,7 @@ def burst(rate, ms=50.0, peak=8192):
 
 def material(name, rate, channels):
     """A kit probe as it ships, (frames, channels) int16."""
-    path = os.path.join(PROBES, str(rate), "%dch" % channels, name + ".wav")
+    path = probes.probe_path(name, rate, channels)
     with wave.open(path, "rb") as handle:
         data = handle.readframes(handle.getnframes())
     return np.frombuffer(data, dtype=np.int16).reshape(-1, channels)
