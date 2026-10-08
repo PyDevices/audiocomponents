@@ -6,9 +6,15 @@
 # otherwise would turn a real gate into a skipped one. See AGENTS.md.
 name: Tests
 
+# Once per change: pushes to main and pull requests. Documentation-only changes
+# skip it; the two package READMEs under lib/ are not skipped, because tests
+# read them and the wheels carry them.
 on:
   push:
+    branches: [main]
+    paths-ignore: ['docs/**', 'README.md', 'ROADMAP.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE']
   pull_request:
+    paths-ignore: ['docs/**', 'README.md', 'ROADMAP.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE']
 
 jobs:
   test:
