@@ -1,6 +1,6 @@
 """`Compressor` - four compressor characters over one palette.
 
-Rebuilt from scratch at Phase 2 against `workspace docs/effects-internal/dossiers/Compressor.md`, whose
+Rebuilt from scratch at Phase 2 against a dossier whose
 trait table was frozen at Station A on 2026-09-07. The four characters are
 the dossier's four standouts, and they differ in **detector law, release law,
 ratio law and side-chain weighting** - not in three time constants, which is
@@ -59,8 +59,7 @@ sample.
 survive the Phase 2 refutation pass and its gate audit, and the class was
 not edited to save them: the numbers below are this class's own behaviour
 at settings a player dials, measured over the span each row quantifies
-over rather than at one point
-(`workspace docs/effects-internal/evidence/Compressor-evidence.md` section 1).
+over rather than at one point.
 
 * **It is not clean on bass material with a fast release.** At 10 dB of
   gain reduction on a 50 Hz tone, patch 1 reads **0.021 %** THD at the

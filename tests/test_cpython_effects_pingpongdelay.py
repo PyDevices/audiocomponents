@@ -1,8 +1,7 @@
 """`PingPongDelay`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/PingPongDelay.md`
-(frozen at anchor eb46672, the Station A critique's re-freeze); its Tier 2
-rows are T1-T5. Each row here is the measurement at a few of the row's
+The dossier, frozen at the Station A critique's re-freeze, has Tier 2
+rows T1-T5. Each row here is the measurement at a few of the row's
 cells and the same measurement shown red on a planted fault of the same
 kind, at the constructor defaults (or, for a clause the defaults do not
 reach, at the row's own cell, said where it is). Every fault is shown

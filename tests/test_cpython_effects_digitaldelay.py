@@ -1,7 +1,6 @@
 """`DigitalDelay`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/DigitalDelay.md`
-(frozen at anchor 51207b8); its Tier 2 rows are T1-T5. Each row here is the
+The dossier's Tier 2 rows are T1-T5. Each row here is the
 measurement at a few of the row's cells and the same measurement shown red
 on a planted fault of the same kind, at the constructor defaults. Every
 fault is shown unreachable from every macro position and shipped patch, and

@@ -1,7 +1,6 @@
 """`GraphicEQ`, rebuilt: its Tier 1 invariants and its own planted faults.
 
-The dossier is `workspace docs/effects-internal/dossiers/GraphicEQ.md` and the evidence pack is
-`workspace docs/effects-internal/evidence/GraphicEQ-evidence.md`; this file is the part of that pack that
+This file is the part of the evidence pack that
 has to keep passing after the run that wrote it. Every measurement here is
 paired with a fault of the same kind, because a check nobody has seen fail is
 not a check (`docs/effects-kit-spec.md` section 6).

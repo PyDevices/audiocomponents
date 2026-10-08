@@ -843,7 +843,7 @@ class SteppedCombFilter(combfilter.CombFilter):
 
 class TheTailIsDeclared(unittest.TestCase):
     """`tail_samples` is finite at every setting (housekeeping,
-    2026-09-28, Brad's ruling of that date): the comb's lap bound, each lap
+    2026-09-28, a ruling of that date): the comb's lap bound, each lap
     one frame past the longest line the read head may be at plus the Tone
     low-pass's memory, plus `TRIM_TAIL_S` while the trim is in circuit.
     Every macro's stops and interior points, every patch, the long corners

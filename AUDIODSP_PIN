@@ -39,11 +39,11 @@
 # audioverb.Tank, audiomath.SubOctave and audioroute.MidSide, each with its
 # own parity probe and golden, all fifteen probes byte-identical on CPython
 # and MicroPython. No release: audiodsp is released once, at Phase 7, when
-# the effects work is complete (Brad, 2026-09-06), so this pin names a commit
+# the effects work is complete (decided 2026-09-06), so this pin names a commit
 # and the pyproject floors stay at v0.2.0 until then. This is also the first
 # floor to carry the 64-voice ceiling (audiodsp 8f8b10d); the three
 # instruments the ceiling moves at the gate's material are retired to
-# REBUILT with Brad's listen of 2026-09-06 as the blessing (audiodsp#31).
+# REBUILT with a listening test of 2026-09-06 as the blessing (audiodsp#31).
 #
 # Moved to cebb7ca on 2026-09-15, for audiomodal.Bank. `acoustickit` imports
 # it, so the floor had to carry it or the kit could not be built at all -- CI
@@ -51,7 +51,7 @@
 # reason above: audiodsp is released once, at Phase 7.
 #
 # Moved to 3388df4 on 2026-09-17, in the effects program's Phase 4 fix round,
-# on Brad's ruling of the same day: a toolkit defect is fixed the moment it is
+# on a ruling of the same day: a toolkit defect is fixed the moment it is
 # found and the phase pins to the merge commit, the version to be named later.
 # That commit is audiodsp PR #86: the CPython mixer twin scales a voice in
 # float32 as the kernel does (audiodsp#84 - CPython and the native builds now
@@ -122,17 +122,17 @@
 # `OK (skipped=2)`, validate_api 55 instruments and 45 effects, the smoke
 # green -- the same counts as at 02b1841.
 #
-# 2026-09-27: 4e58091 -> v0.6.1 (094dde5), on Brad's instruction. The
+# 2026-09-27: 4e58091 -> v0.6.1 (094dde5), decided the same day. The
 # effects program's Phase 5 (Time) was un-parked in a cloud session, where
-# the desktop interpreters are built from the audiodsp checkout beside the
-# anchor -- and at 4e58091 the unix MicroPython no longer links under
+# the desktop interpreters are built from the audiodsp checkout beside
+# this one -- and at 4e58091 the unix MicroPython no longer links under
 # micropython-pydevices' current overlay: every usermod entry in the module
 # table comes up undefined (the manifest names the modules the way audiodsp
 # main has named them since #144), so not one desktop gate could run at the
-# floor this file named. Told that, Brad: "Move the pin and document that I
-# told you to." And, the same hour: v0.6.1 was tagged on 2026-09-25 and is
-# on TestPyPI, on the MIP index and on production PyPI (uploaded by hand
-# after the Trusted Publisher step failed that day); the only commit past it
+# floor this file named, so the pin moved. And, the same hour: v0.6.1 was
+# tagged on 2026-09-25 and is on TestPyPI, on the MIP index and on
+# production PyPI (uploaded by hand after the Trusted Publisher step failed
+# that day); the only commit past it
 # is #151, which moves the PyPI upload into audiodsp's own workflow, and no
 # source file differs -- so the desktop pair built from main (dd84add) is
 # the release's DSP byte for byte. What moved beneath the components between
@@ -165,7 +165,7 @@
 # The pyproject floors stay at >=0.5.1; raising them is a release-time
 # change and Phase 7's.
 #
-# 2026-09-27: v0.6.1 -> v0.6.2 (1c89b03), on Brad's instruction, the same
+# 2026-09-27: v0.6.1 -> v0.6.2 (1c89b03), as decided the same
 # day: "merge it and release and move the pin ... Work unattended and
 # continue with effects after the release and pin move." v0.6.2 is on
 # TestPyPI and production PyPI (the first upload through audiodsp's own
@@ -184,7 +184,7 @@
 # holding the ring up). The first eight are rewritten to the fixed
 # behaviour, each shown red at v0.6.1; Flanger's two stay red for the gate
 # audit, because the bar is not the pin move's to lower. Re-run here at the
-# new pin on Brad's workstation (Linux x86-64, Python 3.12, MicroPython
+# new pin on a workstation (Linux x86-64, Python 3.12, MicroPython
 # v1.29.0 + overlay and CircuitPython 10.3.0 + the apply scripts, both
 # rebuilt from v0.6.2): the unit suite `Ran 1601 tests ... FAILED
 # (failures=2, skipped=2)`, the two being Flanger's F8 rows above;
@@ -192,15 +192,14 @@
 # flake8 clean; the smoke 45 classes, 249 patches, 0 failures on CPython,
 # MicroPython and CircuitPython, line for line what v0.6.1 printed. A
 # burst-and-two-seconds census of the whole catalogue (every class and
-# parked rebuild, constructor default and every patch, 316 cells; the anchor's
-# docs/effects-internal/probes/phase5_probes/pin062_catalogue_digest.py)
+# parked rebuild, constructor default and every patch, 316 cells)
 # moved 18 cells, the same 18 with the same digests on all three
 # interpreters: CombFilter (5), the parked Flanger (6), TapeDelay (3),
 # AnalogDelay (2), PingPongDelay (1) and the parked DigitalDelay (1).
 # Pending both boards, as v0.6.1 was.
 #
 # 2026-09-28: v0.6.2 -> v0.6.3rc1 (bd7d2e2), a pre-release of the next
-# patch, on Brad's ruling of the same day, "fix the node now, in parallel".
+# patch, on a ruling of the same day, "fix the node now, in parallel".
 # It is on TestPyPI only (18 wheels; pre-releases skip production PyPI and
 # MIP), so CI's `git+...@v0.6.3rc1` install is the one that reaches it.
 # What moved beneath the components, by `git log v0.6.2..v0.6.3rc1 --
@@ -223,7 +222,7 @@
 # before and after the workarounds came out; the library smoke moves 15
 # peaks on all three, all where a patch change on a playing instance moves
 # a wow depth (Chorus 1-5, Vibrato 3-6, the parked Flanger 1-6), which is
-# #160's ramp. Re-run here on Brad's workstation, with the desktop
+# #160's ramp. Re-run here on a Linux x86-64 workstation, with the desktop
 # interpreters rebuilt at the tag (audioecho.__revision__
 # v0.0.3-290-gbd7d2e2 on MicroPython; CircuitPython carries none, and its
 # provenance stamp names the same): the unit suite `Ran 1693 tests ... OK
@@ -234,7 +233,7 @@
 #
 # 2026-09-28: v0.6.3rc1 -> v0.6.3rc2 (0d35a90), on this class branch
 # (effects/phase5-convolutionreverb) first, so ConvolutionReverb is audited
-# once, on the fixed node (Brad, the same day). A pre-release of the next
+# once, on the fixed node (decided the same day). A pre-release of the next
 # patch, on TestPyPI only, like rc1. What moved beneath the components, by
 # `git log v0.6.3rc1..v0.6.3rc2 -- src`: audiodsp#165, two fixes to
 # audioconvolve.Convolver. A re-synthesis on a node that holds an impulse
@@ -283,10 +282,10 @@
 # validate_metadata valid; flake8 clean; the smoke 45 classes, 259 patches,
 # 0 failures on CPython and both rc3 binaries. Pending both boards.
 #
-# 2026-09-29: v0.6.3rc3 -> v0.6.3 (5afe010), the release, named by Brad
+# 2026-09-29: v0.6.3rc3 -> v0.6.3 (5afe010), the release, named
 # the same day ("release audiodsp 0.6.3"); on TestPyPI and production
 # PyPI. Nothing moved beneath the components: `git diff v0.6.3rc3 v0.6.3`
-# is VERSION and CHANGELOG.md, no source file. Re-run here on Brad's
+# is VERSION and CHANGELOG.md, no source file. Re-run here on a Linux x86-64
 # workstation with both desktop interpreters rebuilt from clean build
 # directories at the tag (audioecho.__revision__ v0.0.3-308-g5afe010 on
 # MicroPython, the provenance stamp on CircuitPython; kept as bin/*-063)

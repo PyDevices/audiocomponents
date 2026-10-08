@@ -2,9 +2,9 @@
 itself: the naked resonator every flanger, every Karplus-Strong string and
 every reverb tank is built out of.
 
-Rebuilt from scratch for the effects program's Phase 2 against
-`workspace docs/effects-internal/dossiers/CombFilter.md`, whose trait table and surface were frozen at
-Station A before this file existed. The old `eq.py:CombFilter` is not
+Rebuilt from scratch for the effects program's Phase 2 against a dossier
+whose trait table and surface were frozen at Station A before this file
+existed. The old `eq.py:CombFilter` is not
 consulted except for the seven defects the dossier's section 7 names.
 
 **What it sounds like.** Tune it and the signal grows a set of resonances on

@@ -1,6 +1,6 @@
 """`Exciter`'s own invariant and planted-fault tests.
 
-Dossier: workspace docs/effects-internal/dossiers/Exciter.md, frozen
+The dossier was frozen
 2026-09-17. Exhaustive rate coverage lives in the evidence pack; this
 file asserts at 48 kHz unless the test is about rate or latency.
 
@@ -1428,7 +1428,7 @@ import stale_blocks as stale                                    # noqa: E402
 
 class TheBypassComesBackAsBuilt(unittest.TestCase):
     """Mix back up from 0 after a pause plays nothing that was there before
-    the pause (audiocomponents#113; Brad, 2026-09-28: "fix the stale
+    the pause (audiocomponents#113; decided 2026-09-28: "fix the stale
     blocks"). At Mix 0 the class hands back its source and nothing behind
     it is pulled, so the graph kept its filters' memory and the block each
     mixer voice had queued; bringing Mix back played that out of silence.

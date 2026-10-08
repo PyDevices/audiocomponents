@@ -48,17 +48,13 @@ one-pole high-pass overshoots a square wave's edges. So a square and a sine
 of *equal peak* open the gate about 0.63 dB apart where the trait asks for
 0.5, while the bare node with no key filters opens both at exactly the same
 threshold. In practice: percussive, edgy material triggers this gate very
-slightly earlier than a smooth tone of the same peak. Measured in
-`workspace docs/effects-internal/evidence/NoiseGate-evidence.md` section 1, trait G6.
+slightly earlier than a smooth tone of the same peak (measured, trait G6).
 
 **And one setting that does less than the knob says.** In `duck=True` the
 depth is honest to about -40 dB; past that the graph is subtracting two
 nearly equal 16-bit streams and runs into their own quantisation - Range
 -60 measures -59.5 dB and -80 measures -77.2. Plain gating has no such
 limit: its depth is the node's own float.
-
-The dossier is `workspace docs/effects-internal/dossiers/NoiseGate.md` and the evidence pack that holds
-this class to it is `workspace docs/effects-internal/evidence/NoiseGate-evidence.md`.
 """
 
 import math

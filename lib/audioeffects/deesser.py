@@ -1,8 +1,6 @@
 """The dbx 902 de-esser: sibilance measured against the programme, not
 against a threshold knob.
 
-Dossier: `workspace docs/effects-internal/dossiers/DeEsser.md`. Evidence: `workspace docs/effects-internal/evidence/DeEsser-evidence.md`.
-
 **What it is, in a musician's terms.** A de-esser that does not have a
 threshold, and does not need one. It listens to how loud the "s" band is
 *relative to the whole track* and ducks only when that ratio goes wrong, so
@@ -141,7 +139,7 @@ _BUTTERWORTH_Q = 0.7071067811865476
 #: so its magnitude is `w^2 / (w^2 + wc^2)`: -6 dB at `fc`, and -3 dB at
 #: `1.5538 * fc`. Asking for `fc / 1.5538` therefore puts the detector's
 #: -3 dB point on the audio split's corner, so one Frequency macro means one
-#: thing in both paths. Derivation: `workspace docs/effects-internal/dossiers/DeEsser.md`, App. R from 4.
+#: thing in both paths.
 _DETECTOR_CORNER = 1.0 / 1.5537739740300374
 
 #: What a reset has to push through a Splitter's ring. The ring is 8192

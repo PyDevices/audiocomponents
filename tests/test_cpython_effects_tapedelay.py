@@ -1,7 +1,6 @@
 """`TapeDelay`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/TapeDelay.md`,
-frozen at anchor commit fd711caf7cb421dff9c0f4d24c717f7d00548c4b; Tier 2
+The dossier's Tier 2
 rows are T1a, T1b, T2, T3, T4 (demonstrated) and T5 (disconfirmed by
 design). Each demonstrated row here is the measurement at a few of the
 cells its *Quantified over* column names, the same measurement red on a
@@ -393,7 +392,7 @@ class NoneAtZeroTape(TapeDelay):
 
 class LeanDriveOnTape(TapeDelay):
     """The lean patch with the drive left on: patch 8 plays patch 0's
-    Record Level, so it names the saving and makes none (Brad's cost
+    Record Level, so it names the saving and makes none (the cost
     ruling, 2026-09-28)."""
 
     NAME = 'TapeDelay'
@@ -896,7 +895,7 @@ def lean_render(cls, patch=LEAN, **ctor):
 
 
 class LeanPatch(unittest.TestCase):
-    """Brad's cost ruling of 2026-09-28: keep the class and add a lean
+    """The cost ruling of 2026-09-28: keep the class and add a lean
     patch. Patch 8 `Tape Delay - lean` is patch 0 with Record Level 0, and
     with `max_time_ms=800` it is the cost study's variant K, which met the
     P4 and S3 bars in every run."""

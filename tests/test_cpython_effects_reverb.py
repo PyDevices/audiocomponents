@@ -1,6 +1,6 @@
 """`Reverb`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/Reverb.md`; its
+The dossier's
 demonstrated Tier 2 rows are T1-T3 and T7-T11 (T4-T6 are the spring's and
 park with it). Each row here is the measurement at one of its claimed
 cells, the same measurement shown red on a fault of the same kind at the
@@ -1546,7 +1546,7 @@ class T10Modulation(unittest.TestCase):
 
     def test_the_claimed_rectangle(self):
         # every grid point, stepped by 1, is REVERB_T10_WALK=1 (about half
-        # an hour a patch; its printout is in the anchor's trial folder);
+        # an hour a patch);
         # the default walks the corners and every eighth position
         full = bool(os.environ.get("REVERB_T10_WALK"))
         step = 1 if full else 8
@@ -1995,7 +1995,7 @@ class Claims(unittest.TestCase):
             self.assertIn(_words(sentence), text)
 
 
-#: The two family sentences, as Brad ruled them on 2026-09-28.
+#: The two family sentences, as ruled on 2026-09-28.
 FAMILY = (
     "A control that jumps makes the output step: move it in small steps "
     "from the host if you need it smooth.",

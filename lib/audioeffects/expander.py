@@ -1,7 +1,6 @@
 """`Expander` - a downward expander in the Drawmer DS201's shape.
 
-The dossier is `workspace docs/effects-internal/dossiers/Expander.md`; the evidence pack that grades it
-is `workspace docs/effects-internal/evidence/Expander-evidence.md`. What a reader needs here:
+What a reader needs here:
 
 **What it is.** Below the threshold the output falls `ratio` dB for every
 dB the input falls, down to a floor the Depth knob sets - so a quiet
@@ -51,8 +50,7 @@ period and the settled slope falls short - measured -2.48 % at ratio 4,
 fitted line. Musically that is the difference between a downward expander and
 a soft, slightly gritty gate; it is what the peak position is *for*, and patch
 5 is named for it. But the number in E1 is the RMS detector's, and nothing
-here claims the law at the other position. `workspace docs/effects-internal/evidence/Expander-evidence.md`
-section 1 carries the whole grid.
+here claims the law at the other position.
 
 **What it costs, and the one lever the panel has.** Measured on the boards
 2026-09-07: 8.4 % of a 5.333 ms stereo block on the ESP32-P4 and 16.3 % on

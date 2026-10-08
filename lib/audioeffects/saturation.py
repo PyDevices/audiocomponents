@@ -1,7 +1,6 @@
 """`Saturation` - a 12AX7 stage, a tape chain, or transformer iron.
 
-Rebuilt from scratch for Phase 4 against
-`workspace docs/effects-internal/dossiers/Saturation.md`, traits frozen at
+Rebuilt from scratch for Phase 4 against its dossier, traits frozen at
 Station A on 2026-09-17 before this file existed. The old `drive.py:Saturation`
 was not consulted except for the six defects the dossier's section 7 names;
 it was the class the library served until this one was adopted on the boards

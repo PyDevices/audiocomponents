@@ -1,7 +1,6 @@
 """`Fuzz` - a biased germanium pair, with a Big Muff cascade as a second character.
 
-Rebuilt from scratch for Phase 4 against
-`workspace docs/effects-internal/dossiers/Fuzz.md`, traits frozen at
+Rebuilt from scratch for Phase 4 against its dossier, traits frozen at
 Station A on 2026-09-17 before this file existed. The old `drive.py:Fuzz`
 was not consulted except for the five defects the dossier's section 7 names;
 it was the class the library served until this one was adopted on the boards

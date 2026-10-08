@@ -251,7 +251,7 @@ from audioeffects import compressor                             # noqa: E402
 
 
 class TheBypassComesBackAsBuilt(unittest.TestCase):
-    """Mix up from 0 plays nothing from before (audiocomponents#113; Brad,
+    """Mix up from 0 plays nothing from before (audiocomponents#113; decided
     2026-09-28: "fix the stale blocks"). An instance built wet primes its
     mixer voices with the first block of the source; moved to 0 before it
     played, and back up after the input stopped, that block came out 256

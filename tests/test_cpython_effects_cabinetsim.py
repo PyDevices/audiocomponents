@@ -1,10 +1,9 @@
 """`CabinetSim`'s own invariant and planted-fault tests.
 
-Dossier: workspace docs/effects-internal/dossiers/CabinetSim.md, frozen
+The dossier was frozen
 2026-09-17, T3 re-cut in the first fix round, three disclosures added in
 the second. Exhaustive rate coverage and the 211-position fault sweep live
-in the evidence pack and in
-`docs/effects-internal/probes/cabinetsim_fix2.py`; this file asserts at
+in the evidence pack; this file asserts at
 48 kHz unless the test is about rate or latency, and sweeps the macro
 surface at MIDI 0/32/64/96/127 (`GRID`) plus the seven shipped patches -
 and at MIDI 0/8/../120/127 (`FINE`) where a guard was found green just

@@ -1,6 +1,6 @@
 """`Vibrato`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/Vibrato.md`; Tier 2
+The dossier's Tier 2
 rows are T1–T7. Each row here is the measurement and the same measurement
 shown red on a fault of the same kind. Exhaustive rates live in the evidence
 pack, not in this file.

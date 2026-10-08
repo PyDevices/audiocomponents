@@ -1,7 +1,6 @@
 """`Tremolo` — Fender bias-vary and optical characters on one Multiply.
 
-Rebuilt from scratch for Phase 3 against
-`workspace docs/effects-internal/dossiers/Tremolo.md`, whose trait table was
+Rebuilt from scratch for Phase 3 against a dossier whose trait table was
 frozen at Station A before this file existed. The old
 `modulation.py:Tremolo` is consulted only for the defects that dossier's
 section 7 names (block-rate MixerVoice.level, CPython LFO freeze, Depth-1

@@ -1,7 +1,6 @@
 """`RingMod` — Bode multiplier-type ring, with a switching character.
 
-Rebuilt from scratch for Phase 3 against
-`workspace docs/effects-internal/dossiers/RingMod.md`, whose trait table was
+Rebuilt from scratch for Phase 3 against a dossier whose trait table was
 frozen at Station A before this file existed. The old `modulation.py:RingMod`
 is consulted only for the defects that dossier's section 7 names.
 

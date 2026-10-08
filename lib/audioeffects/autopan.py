@@ -1,6 +1,6 @@
 """`AutoPan` - a pan law under an LFO, not a Mixer panning input.
 
-Dossier: `workspace docs/effects-internal/dossiers/AutoPan.md`, traits frozen
+Traits frozen
 2026-09-08 at Station A **before this file existed**; Rate span re-frozen
 2026-09-08 in the fix round (vision §7.2). Grade *design*: the three published
 centre-attenuation conventions (3.01 / 4.5 / 6.02 dB), a per-sample oscillator,

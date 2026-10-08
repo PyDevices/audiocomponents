@@ -1,7 +1,6 @@
 """`ConvolutionReverb`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/ConvolutionReverb.md`
-(frozen at anchor 85cc2bf); its Tier 2 rows are D1-D6. Each row here is the
+The dossier's Tier 2 rows are D1-D6. Each row here is the
 measurement over a slice of the span the row quantifies over, the same
 measurement red on the row's planted fault at the constructor defaults
 (D1's at the measured-mode defaults), the fault shown out of reach of every
@@ -3006,7 +3005,7 @@ CLAIMS = (
      "test_a_host_reset_buffer_silences_the_block_and_drops_held_frames"),
 )
 
-#: The family's two limits, ruled by Brad on 2026-09-28, word for word.
+#: The family's two limits, as ruled on 2026-09-28, word for word.
 FAMILY = (
     "A control that jumps makes the output step: move it in small steps "
     "from the host if you need it smooth.",

@@ -1,8 +1,5 @@
 """Ten octave bands and two level sliders, after the MXR M-108 Ten Band.
 
-Dossier: `workspace docs/effects-internal/dossiers/GraphicEQ.md`. Evidence:
-`workspace docs/effects-internal/evidence/GraphicEQ-evidence.md`.
-
 The M-108 is not ten filters in parallel. It is **one op-amp stage whose gain
 is varied across a tuned circuit**, nine gyrator bells at 31.25 Hz doubling to
 8 kHz and a shelf at 16 kHz, with a mechanical **centre detent** at which each

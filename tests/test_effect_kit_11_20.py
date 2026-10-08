@@ -908,8 +908,8 @@ class Digest(unittest.TestCase):
     def test_cpython_against_desktop_micropython(self):
         """The measurement's own subject: the same node, rendered by two
         interpreters, compared by hashing the bytes."""
-        # A present binary is not a current one. The anchor's bin/micropython is
-        # built by hand and goes stale silently; one that predates
+        # A present binary is not a current one. The bin/micropython beside
+        # this checkout is built by hand and goes stale silently; one that predates
         # AUDIODSP_PIN renders a core the pin does not name and this
         # comparison agrees with itself about the wrong thing (cmods#27).
         # Fail rather than skip: a skip here would read as "the two

@@ -1,6 +1,6 @@
 """`Fuzz`'s own invariant and planted-fault tests.
 
-Dossier: workspace docs/effects-internal/dossiers/Fuzz.md, frozen
+The dossier was frozen
 2026-09-17. Exhaustive rate coverage lives in the evidence pack; this
 file asserts at 48 kHz unless the test is about latency.
 """
@@ -399,7 +399,7 @@ class G1Asymmetry(unittest.TestCase):
       at 18 dB is a nearly linear part of the curve (h2 −80.5), and Bias
       −0.5 with Tilt −6 is h2 −33.56.
 
-    What Brad should listen for at Phase 7: at the shipped default, on a
+    What to listen for at Phase 7: at the shipped default, on a
     single note held and let down, the octave-up **growl under the note** —
     the even harmonics — and that it thins out as you dig in. If the note
     sounds like a clean square-wave fuzz with no octave in it, this trait is
@@ -771,7 +771,7 @@ class A4AliasFloor(unittest.TestCase):
        11.025 kHz — and what folds there was never in the oversampled path
        to be filtered.
 
-    What Brad should listen for at Phase 7: at full Fuzz on a high note, a
+    What to listen for at Phase 7: at full Fuzz on a high note, a
     thin metallic ring that does not move with the note — that is the fold.
     At 48 kHz and the default it should be inaudible under the fuzz itself;
     at 22.05 kHz, or on patch 8, it is meant to be audible and is the price
@@ -2252,7 +2252,7 @@ import stale_blocks as stale                                    # noqa: E402
 
 class TheBypassComesBackAsBuilt(unittest.TestCase):
     """Mix back up from 0 after a pause plays nothing that was there before
-    the pause (audiocomponents#113; Brad, 2026-09-28: "fix the stale
+    the pause (audiocomponents#113; decided 2026-09-28: "fix the stale
     blocks"). At Mix 0 the class hands back its source and nothing behind
     it is pulled, so the graph kept its filters' memory and the block each
     mixer voice had queued; bringing Mix back played that out of silence.

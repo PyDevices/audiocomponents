@@ -2,7 +2,7 @@
 zero at DC is exact, not nearly.
 
 Rebuilt from scratch for the effects program's Phase 2 against
-`workspace docs/effects-internal/dossiers/HighPass.md`. The old `eq.py:HighPass` is not consulted except
+its dossier. The old `eq.py:HighPass` is not consulted except
 for the eight defects the dossier's section 7 names.
 
 **What it sounds like.** One knob decides where the bottom stops, and above
@@ -30,8 +30,7 @@ double and stores the five it uses as `float`
 corner gain is set by `1 + a1 + a2`, which at a 10 Hz corner is 1.7e-6 -
 smaller than the rounding of `a1 ~ -2` into single precision. Evaluating the
 class's own cascade with the coefficients rounded that way predicts every
-rendered figure to within 0.005 dB (`workspace docs/effects-internal/probes/phase2_probes/highpass_sweep.py
-corner`). **The bound: at f0 with `2*pi*f0/F_s >= 5.2e-3` - 40 Hz at
+rendered figure to within 0.005 dB. **The bound: at f0 with `2*pi*f0/F_s >= 5.2e-3` - 40 Hz at
 48 kHz, 18 Hz at 22.05 kHz - the corner reads Q to within 0.05 dB at every Q
 and both slopes, measured. Below it the knob is a direction, not a number.**
 
@@ -189,7 +188,7 @@ class HighPass(_component.Component):
     #: section) and +12 dB of trim - that measures **627 267 samples** at
     #: 48 kHz, against the 303 727 a 200 ms burst produced. Swept over
     #: Frequency x Resonance x Slope x Trim, 54 cells, worst cell at every
-    #: span's own stop: `workspace docs/effects-internal/probes/phase2_probes/highpass_sweep.py tail`.
+    #: span's own stop.
     #: Lower rates are shorter in frames (a tail is a time, and 48 kHz has
     #: the most frames in it: 625 665 / 561 319 / 287 882 at 48 / 44.1 /
     #: 22.05 kHz), so this is a ceiling at every rate. Declared at the next

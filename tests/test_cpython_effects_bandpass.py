@@ -1,8 +1,7 @@
 """`BandPass`'s own invariant and planted-fault tests (effects Phase 2).
 
-The dossier is `workspace docs/effects-internal/dossiers/BandPass.md`, traits frozen 2026-09-07; the
-evidence pack this file's numbers are read into is
-`workspace docs/effects-internal/evidence/BandPass-evidence.md`. Every Tier 1 invariant and every Tier 2
+The dossier's traits were frozen 2026-09-07, and this file's numbers are
+read into its evidence pack. Every Tier 1 invariant and every Tier 2
 trait the dossier fixed has a test here, and **every one of them has a
 planted fault of its own kind beside it**, because a measurement whose
 checker has never been shown failing is not a measurement
@@ -563,8 +562,7 @@ class TierTwo(unittest.TestCase):
     # direct-form I recursion missed the bar in 11 of 56 cells below 100 Hz
     # at Q >= 4, worst -0.50 dB at the macro stops. Its transposed direct
     # form II, at the cebb7ca floor, leaves 1 of 56: -0.091 dB at f0 31.5 Hz,
-    # Q 32 (workspace docs/effects-internal/probes/phase2_probes/
-    # bandpass_lowcorner.py, `map`; audiocomponents#66). The tests below are
+    # Q 32 (audiocomponents#66). The tests below are
     # the bound: where the row holds, the one cell where it does not, that
     # the fault fires through the class, and that the measurement can fail.
 

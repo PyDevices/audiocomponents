@@ -1,7 +1,6 @@
 """`MultiTapDelay`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/MultiTapDelay.md`
-(frozen at anchor 02e7e0c, the Station A revision); its Tier 2 rows are
+The dossier, frozen at the Station A revision, has Tier 2 rows
 T1-T5. Each row here is the measurement at a few of the row's cells and the
 same measurement shown red on a planted fault of the same kind, at the
 constructor defaults. Every fault is shown unreachable from every macro
@@ -2941,9 +2940,8 @@ class ReauditRoundTwo(unittest.TestCase):
 #: that asserts it). Every sentence in the class docstring that makes a
 #: claim is here; one that could not be tied to a test was struck (the
 #: trial fixer's dated note in the dossier lists them).
-#: What the boards measured, marginal ms a block at 48 kHz stereo (the
-#: anchor's phase5_probes/boards_063/RESULTS.md, audiodsp v0.6.3). The
-#: budget is Brad's G6 bar, 80 % of the block.
+#: What the boards measured, marginal ms a block at 48 kHz stereo (audiodsp
+#: v0.6.3). The budget is the G6 bar, 80 % of the block.
 BOARD_COST = {
     "measured_at": "v0.6.3",
     "block_ms": 5.333,

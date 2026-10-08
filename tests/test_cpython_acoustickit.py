@@ -34,14 +34,14 @@ against design intent. Skrodzka, Hojan & Proksza (2006) put a 14" snare's
 above it rings three times longer. The audible pitch of a snare is therefore
 *not* its fundamental, and a model built on the usual "decay falls off with
 frequency" assumption would land this at 224 Hz and be wrong in a way nobody
-would catch by listening for a bug. See the dossier in the workspace anchor,
-`docs/effects-internal/dossiers/instruments/acoustickit.md`.
+would catch by listening for a bug.
 
-**A10, A11 and A12 exist because Brad listened and every trait above passed.**
-He said the kick was not convincing and the snare sounded like a tuned tom, and
-he was right twice. Measured on the version he heard: the kick's f0 was 56.2 Hz
-at 5 ms, at 60 ms and at 150 ms alike, a pitch drop of exactly 0.0%; and the
-snare's "wires" - two resonators at 1.9 and 3.3 kHz - measured a spectral
+**A10, A11 and A12 exist because a listening test failed where every trait
+above passed.** The kick was not convincing and the snare sounded like a
+tuned tom, and both judgements were right. Measured on the version that was
+heard: the kick's f0 was 56.2 Hz at 5 ms, at 60 ms and at 150 ms alike, a
+pitch drop of exactly 0.0%; and the snare's "wires" - two resonators at 1.9
+and 3.3 kHz - measured a spectral
 flatness of 0.001 in that band, where white noise measures 0.542 and a single
 pure tone measures 0.000. They were two tones carrying 4% of the energy and
 gone by 40 ms, leaving a pitched 325 Hz body, which is a tom.
@@ -64,7 +64,7 @@ not a check; it is a hope." Each of these was made and reverted:
 | `_JITTER = 0.5` | A4 | snare wanders 40% of peak hit to hit, and detunes audibly |
 | `hat_bank.clear()` removed from `strike` | A5 | open hat rings under the closed one, 5944 peak where there should be silence |
 | hi-hat moved into the main bank | A5, A6 | choking the hat takes the kick and the crash with it |
-| the kick's `bend` removed | A10 | 0% drop - this is what Brad heard as "not convincing" |
+| the kick's `bend` removed | A10 | 0% drop - this is what was heard as "not convincing" |
 | snare wires back to two resonators | A11, A12 | flatness 0.001, wire band 4% and gone by 40 ms |
 """
 

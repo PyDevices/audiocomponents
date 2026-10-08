@@ -24,7 +24,7 @@ there, and are recorded in its changelog.
   nothing (at audiodsp v0.6.3rc1, whose node keeps an out filter's state
   live). On the boards: at most
   7.0 % of a block on the P4 and about 14.6 % on the S3 (patch 5,
-  same-conditions reading), passed by Brad; patch 5's digest is identical
+  same-conditions reading), passed at review; patch 5's digest is identical
   board to board and differs from the desktop through single-precision
   Python floats in two derived settings (audiocomponents#75). The old
   `delay.DigitalDelay` and its `set_time` / `set_mix` stay in `delay.py`
@@ -45,7 +45,7 @@ there, and are recorded in its changelog.
   to no filter whatever came before, and a Wow move glides over 20 ms (both
   at audiodsp v0.6.3rc1).
   On the boards: at most 7.4 % of a block on the P4; on the S3 14.6-14.7 %,
-  and 15.2 % at patch 5 (Tone in), which Brad passed against the 15 % bar;
+  and 15.2 % at patch 5 (Tone in), which passed review against the 15 % bar;
   every patch digest is identical board to board and differs from the
   desktop through the Wow depth worked out in single precision
   (audiocomponents#75). The docstring states the input ceiling (-2.5 dBFS
@@ -436,7 +436,7 @@ version number. The release carries repository tooling and docs only.
   both.
 
 - **Phase 4 is closed: `Saturation`, `Fuzz` and `Exciter` are adopted and
-  home, and `drive.py` is deleted.** Brad's G6 ruling of 2026-09-18
+  home, and `drive.py` is deleted.** The G6 ruling of 2026-09-18
   (vision §7.2) makes the cost gate a real-time ceiling -- at or under 80 %
   of one stereo block on the ESP32-S3 and the ESP32-P4, at the constructor
   default and at every shipped patch -- and turns the palette sum back into
@@ -811,8 +811,8 @@ version number. The release carries repository tooling and docs only.
   than 95 % of the range, so the next one cannot repeat it.
 
 - **`acoustickit`: the kick and the snare are a hybrid now, because a bank
-  alone could not be either.** Brad listened and said the kick was not
-  convincing and the snare sounded like a tuned tom. Both were true and both
+  alone could not be either.** A listening test found the kick not
+  convincing and the snare sounding like a tuned tom. Both were true and both
   were structural: a resonator bank's modes sit where they are put, so the
   kick's f0 measured 56.2 Hz at 5 ms, 60 ms and 150 ms alike - a pitch drop of
   0.0%, where a real kick falls from about 100 Hz to 50 in the first tenth of a
@@ -844,7 +844,7 @@ version number. The release carries repository tooling and docs only.
   snare's six modes and their damping ratios are real, from Skrodzka, Hojan and
   Proksza (2006), and everything else is the membrane scaling law placed where
   that size of drum sits - marked MEASURED or NOT MEASURED in the source, one
-  drum at a time. The dossier in the workspace anchor carries the sourcing.
+  drum at a time.
 
   Striking harder makes a drum brighter rather than only louder: each mode's
   amplitude follows `velocity ** (1 + tilt)` and the high modes tilt hardest,
@@ -1585,9 +1585,7 @@ version number. The release carries repository tooling and docs only.
   palette cannot reach are stated in its docstring rather than hidden: the
   release curves where the 902's is a straight line in dB, Range is an
   asymptote rather than a clamp, and the program-dependent attack does not
-  reach the 902's ratio. Evidence: `workspace
-  docs/effects-internal/dossiers/DeEsser.md` and
-  `workspace docs/effects-internal/evidence/DeEsser-evidence.md`.
+  reach the 902's ratio.
 ### Added
 
 - `TransientShaper` rebuilt from scratch on the Phase 2 construction module

@@ -1,9 +1,9 @@
 """`NoiseGate`'s own invariants and its planted faults (Phase 2, Drawmer
 DS201).
 
-The dossier is `workspace docs/effects-internal/dossiers/NoiseGate.md`, its traits frozen 2026-09-07
-before the class was written; the evidence pack that cites this file is
-`workspace docs/effects-internal/evidence/NoiseGate-evidence.md`. Every Tier 2 trait here is a pair: the
+The dossier's traits were frozen 2026-09-07
+before the class was written, and its evidence pack cites this file.
+Every Tier 2 trait here is a pair: the
 clean run that must be green and a planted fault **of the same kind** that
 must be red. A measurement with no fault beside it is a tripwire, not a
 measurement (`docs/effects-kit-spec.md` section 6).

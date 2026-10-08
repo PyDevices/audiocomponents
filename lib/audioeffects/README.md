@@ -80,9 +80,8 @@ one of them is **audiodsp** tier - none runs on a stock CircuitPython board -
 and every one adds **zero samples of latency** at its defaults.
 
 **Cost** is the class's own share of one 256-frame stereo block at 48 kHz,
-measured on an ESP32-P4 at 360 MHz and an ESP32-S3 at 240 MHz on 2026-09-07
-([`workspace docs/effects-internal/audits/effects-cost-table.md`](../../workspace docs/effects-internal/audits/effects-cost-table.md), "Phase 2
-classes"). It is the **marginal** figure - the same run's control subtracted,
+measured on an ESP32-P4 at 360 MHz and an ESP32-S3 at 240 MHz on 2026-09-07.
+It is the **marginal** figure - the same run's control subtracted,
 so the harness floor is not charged to the class - taken at construction
 defaults with no patch applied. Twelve of the sixteen are over the budget
 their dossier set, and the board run names the reason: those budgets were

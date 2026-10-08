@@ -1,6 +1,6 @@
 """`Limiter`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/Limiter.md`; its Tier 2 rows are L1..L7 and each
+The dossier's Tier 2 rows are L1..L7 and each
 one has a test here under its own number. The class gate asks for two things
 of every trait, and this file carries both: the measurement, and the *same*
 measurement shown red on a fault of the same kind. A green measurement with no
@@ -1061,7 +1061,7 @@ class ShapeStageOnlyClear(rebuilt.Limiter):
 
 class ALookaheadThatGrowsPlaysNothingOld(unittest.TestCase):
     """Lookahead back up after a pause plays nothing from before the pause
-    (audiocomponents#113; Brad, 2026-09-28: "fix the stale blocks"). The
+    (audiocomponents#113; decided 2026-09-28: "fix the stale blocks"). The
     node writes its lookahead line only as far as its delay reaches, so the
     rest keeps what it held the last time the delay was that long, and
     Lookahead off and back on replayed the last note at full level (31 373

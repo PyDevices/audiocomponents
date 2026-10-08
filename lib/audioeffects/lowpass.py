@@ -2,7 +2,7 @@
 low-pass is a version of, digitised without losing its tail.
 
 Rebuilt from scratch for the effects program's Phase 2 against
-`workspace docs/effects-internal/dossiers/LowPass.md`. The old `eq.py:LowPass` is not consulted except
+its dossier. The old `eq.py:LowPass` is not consulted except
 for the seven defects the dossier's section 7 names.
 
 **What it sounds like.** One knob slides the whole curve along the frequency
@@ -70,8 +70,7 @@ ESP32-P4 and 9.6 % on the S3**, against a dossier budget of 1.5 % / 5 %.
 **Over budget on both, and there is no `" - lean"` patch**: the class has no
 macro that removes a section, and measured across every setting its surface
 can reach the desktop cost moves less than the same setting moves between
-passes (0.013 ms/block against 0.016-0.022;
-`workspace docs/effects-internal/probes/phase2_probes/lowpass_cost.py`). It still runs in real time on both
+passes (0.013 ms/block against 0.016-0.022). It still runs in real time on both
 boards with room to spare - the budget was instruction-count arithmetic that
 could not see a node graph's per-block Python, and it is the budget that is
 being contested, not the class's fitness for use.
@@ -117,7 +116,7 @@ from . import _component
 #: within 0.001 dB of 20*log10(Q) **at f0 1 kHz**. Swept over the whole
 #: Frequency travel by the gate audit it holds to 0.011 dB at 12 dB/oct and
 #: leaves the bar at 24 dB/oct only at f0 20-31.5 Hz with Q 16 (worst
-#: -0.2717 dB, `workspace docs/effects-internal/probes/phase2_probes/lowpass_patch_sweep.py sweep`).
+#: -0.2717 dB).
 BUTTERWORTH_LOW = 0.5411961001461969
 BUTTERWORTH_HIGH = 1.3065629648763766
 

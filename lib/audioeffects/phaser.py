@@ -1,7 +1,6 @@
 """`Phaser` - four first-order all-pass stages swept the way a Phase 90 is.
 
-Rebuilt from scratch for Phase 3 against
-`workspace docs/effects-internal/dossiers/Phaser.md`, traits frozen at
+Rebuilt from scratch for Phase 3 against its dossier, traits frozen at
 Station A on 2026-09-08 before this file existed. The old
 `modulation.py:Phaser` is not consulted except for the eight defects the
 dossier's section 7 names.

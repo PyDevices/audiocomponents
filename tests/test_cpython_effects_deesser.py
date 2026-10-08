@@ -4,8 +4,7 @@ The class gate (`docs/effects-roadmap.md`, "The class gate") asks for two
 things this file carries: the Tier 1 invariants green on CPython at 48 kHz
 and at `channel_count` 1, and every demonstrated Tier 2 trait shown **red
 on a planted fault of the same kind**. Three-rate, three-interpreter
-coverage is the evidence pack's, not this suite's
-(`workspace docs/effects-internal/evidence/DeEsser-evidence.md`); run with
+coverage is the evidence pack's, not this suite's; run with
 `-v` and the readouts appear beside each test.
 
 Structure, so a reader can find one thing:
