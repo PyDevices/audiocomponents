@@ -79,22 +79,23 @@ Needs `../bin/micropython` (or `--micropython`) and an `mpvst` checkout beside t
 Comparison is always within one interpreter; cross-interpreter agreement is
 recorded as an observation, never enforced.
 
-**`--capture-old` cannot absorb an accuracy rebuild, and never could.** It
-re-reads micropython-vst3 at the fixed revision `ac87f13`, so re-running it
-rewrites the same hashes. An instrument the accuracy program has deliberately
-rebuilt against hardware references will never match that oracle again — this
-paragraph used to claim re-capturing was "how the accuracy rewrite is supposed
-to move", which was wrong and left 14 of 20 drums comparisons red with no
-operation that could clear them.
+**`--capture-old` cannot absorb a deliberate change.** It re-reads
+micropython-vst3 at the fixed revision `ac87f13`, so re-running it rewrites the
+same hashes. An instrument whose sound was changed on purpose will never match
+that oracle again.
 
-**Rebuilt instruments are retired from this gate instead.** They are named in
-`REBUILT` in `tests/parity/run_instruments_parity.py`, with the phase and the
-date their sound was blessed, and `--verify` reports them as `rebuilt` and
-excludes them from the failure count. Everything not named there is still held
-to the old oracle exactly as before; `--include-rebuilt` compares them anyway.
+**Changing an instrument's sound on purpose.** Instruments are tuned by ear, by
+whoever is playing them: change the voice, play it, keep it or don't. When a
+change is kept, the same commit names the instrument in `REBUILT` in
+`tests/parity/run_instruments_parity.py`, with the date, and `--verify` then
+reports it as `rebuilt` instead of failing. No separate ruling, dossier or
+re-capture is needed. Everything not named there is still held to the old
+oracle exactly as before, because the gate's job is to catch sound that changes
+by accident: a refactor, a moved node, an audiodsp bump. `--include-rebuilt`
+compares the rebuilt ones anyway.
 
-**Adding a name to `REBUILT` is a re-blessing, and it is the maintainer's call
-every time, never an agent's.**
+What stays mechanical for a kept change is only breakage: the instrument still
+plays, isn't silent, doesn't clip, and still runs in real time on a board.
 
 ## The release chain
 
