@@ -1,8 +1,7 @@
 """The measurement kit's first ten measurements, over rendered audio.
 
-`docs/effects-kit-spec.md` section 5 specifies twenty measurements. This
-module implements the first ten - the six Tier 1 invariants and the first
-four Tier 2 circuit traits:
+The kit specifies twenty measurements. This module implements the first ten -
+the six Tier 1 invariants and the first four Tier 2 circuit traits:
 
     WIRE  TAIL  LEVEL  CLICK  STATE  DIGEST
     RESPONSE  SPECTRUM  CURVE  GAINTRACE
@@ -2364,7 +2363,7 @@ def truepeak(render, *, ceiling_dbfs=None, tolerance_db=0.5, factor=4,
     on the sample peak instead of the oversampled one - and it must certify a
     build the correct read fails.
 
-    Worked against `Limiter.md:557-558`. With true-peak detection off the
+    Worked against the Limiter's measured pair. With true-peak detection off the
     palette reads sample peak -6.00 dBFS / true peak -2.95 dB TP; with it on,
     -7.93 dBFS / -4.88 dB TP. The two sample peaks do **not** collapse to one
     number, so a faulted measurement does not return an obviously broken
@@ -2648,7 +2647,7 @@ def roundtrip(emitted, captured, *, block_frames, correlation_floor=0.3,
 # --------------------------------------------------------------------------
 # The sweep driver - the kit's answer to Phase 2's largest finding
 #
-# `docs/effects-phase2-pattern-revision.md` section 1.1: 28 of the 45 clauses
+# 28 of the 45 clauses
 # an independent refutation pass broke across sixteen classes broke for one
 # reason - the row was quantified over a span ("every probe", "any Q in
 # 0.5...16", "both slopes") and was measured at ONE point in it, with the
@@ -2661,8 +2660,8 @@ def roundtrip(emitted, captured, *, block_frames, correlation_floor=0.3,
 # miss their bar at a macro's end position - and reports the WORST cell with
 # the point it occurred at, in the units the panel reads.
 #
-# The evidence template's "Quantified over" column is what feeds `spans`
-# (`docs/effects/TEMPLATE.md`, Tier 2).
+# The evidence template's Tier 2 "Quantified over" column is what feeds
+# `spans`.
 # --------------------------------------------------------------------------
 
 class MacroSpan:

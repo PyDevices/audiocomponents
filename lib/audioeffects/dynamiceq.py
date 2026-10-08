@@ -1,8 +1,5 @@
 """One equaliser band that only moves when there is something in it.
 
-Dossier: `workspace docs/effects-internal/dossiers/DynamicEQ.md`. Evidence:
-`workspace docs/effects-internal/evidence/DynamicEQ-evidence.md`.
-
 **What it is, in a musician's terms.** A bell you dial in the ordinary way -
 frequency, width - which does nothing at all until the sound *in that band*
 crosses the threshold, and then cuts by however far the compressor law says.

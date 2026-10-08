@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """TS808 feedback-diode curve for `audioeffects.overdrive`.
 
-Derives one normalised Q15 table from the circuit values in
-`docs/effects-internal/dossiers/Overdrive.md` §1 / S6, not by eye.
+Derives one normalised Q15 table from the circuit values of the
+overdrive's source circuit S6, not by eye.
 
 Static DC solve of Yeh/Abel/Smith DAFx-07 eq. 22 at dV/dt = 0:
 

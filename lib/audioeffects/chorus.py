@@ -1,7 +1,6 @@
 """`Chorus` — one delayed voice on a clock-modulated bucket-brigade line.
 
-Rebuilt from scratch for Phase 3 against
-`workspace docs/effects-internal/dossiers/Chorus.md`, whose trait table was
+Rebuilt from scratch for Phase 3 against a dossier whose trait table was
 frozen at Station A before this file existed. The old `modulation.py:Chorus`
 is consulted only for the six defects that dossier's section 7 names.
 

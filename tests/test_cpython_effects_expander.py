@@ -1,8 +1,7 @@
 """`Expander`'s own planted-fault tests, and the two checks that say a fault
 and a reading are worth citing at all.
 
-The Phase 2 gate audit ruled this class **Y\\*** on G3
-(`docs/effects-phase2-gate-audit.md` section 3): E4's depth-0 row was green
+The Phase 2 gate audit ruled this class **Y\\*** on G3: E4's depth-0 row was green
 clean *and* green faulted, and E1's ratio-8 row needed the fault driven
 downward before it fired. Both faults are replaced here, and this file is
 what stops either defect coming back:

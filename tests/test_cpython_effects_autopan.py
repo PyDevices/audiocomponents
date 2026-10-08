@@ -1,6 +1,6 @@
 """`AutoPan`'s invariant and planted-fault tests (effects Phase 3).
 
-Dossier: `workspace docs/effects-internal/dossiers/AutoPan.md`, traits
+Traits
 frozen 2026-09-08 before the class. Exhaustive rate coverage lives in the
 evidence pack; this file asserts at 48 kHz unless the test is about rate.
 """

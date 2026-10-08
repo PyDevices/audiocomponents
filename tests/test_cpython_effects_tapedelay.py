@@ -1,7 +1,6 @@
 """`TapeDelay`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/TapeDelay.md`,
-frozen at anchor commit fd711caf7cb421dff9c0f4d24c717f7d00548c4b; Tier 2
+The dossier's Tier 2
 rows are T1a, T1b, T2, T3, T4 (demonstrated) and T5 (disconfirmed by
 design). Each demonstrated row here is the measurement at a few of the
 cells its *Quantified over* column names, the same measurement red on a
@@ -393,7 +392,7 @@ class NoneAtZeroTape(TapeDelay):
 
 class LeanDriveOnTape(TapeDelay):
     """The lean patch with the drive left on: patch 8 plays patch 0's
-    Record Level, so it names the saving and makes none (Brad's cost
+    Record Level, so it names the saving and makes none (the cost
     ruling, 2026-09-28)."""
 
     NAME = 'TapeDelay'
@@ -425,7 +424,7 @@ class LeanResetTape(TapeDelay):
 
 class DriveOffTape(TapeDelay):
     """Not a fault: the cost study's variant D, `loop_drive` handed 0 after
-    every refresh (`tapedelay_cost_variants.py`, `DriveOff`). Built at
+    every refresh (`DriveOff`). Built at
     `max_time_ms=800` it is variant K, the configuration the boards
     measured."""
 
@@ -896,7 +895,7 @@ def lean_render(cls, patch=LEAN, **ctor):
 
 
 class LeanPatch(unittest.TestCase):
-    """Brad's cost ruling of 2026-09-28: keep the class and add a lean
+    """The cost ruling of 2026-09-28: keep the class and add a lean
     patch. Patch 8 `Tape Delay - lean` is patch 0 with Record Level 0, and
     with `max_time_ms=800` it is the cost study's variant K, which met the
     P4 and S3 bars in every run."""
@@ -2306,7 +2305,7 @@ class Tier1Fast(unittest.TestCase):
     #: Spread off every grid, and the fifth one of the 13 cells whose
     #: hand-back survives every order a compiler may sum the cross-feed in
     #: (separate roundings and both fused multiply-adds), so the plant holds
-    #: there on a board too (tapedelay_reaudit1_audit.mirror.out.txt).
+    #: there on a board too.
     CROSS_FEED_CELLS = (
         ("knob", 9, 0.9444443583488464, 1),
         ("knob", 11, 0.9545453786849976, 3),
@@ -2403,7 +2402,7 @@ class Tier1Fast(unittest.TestCase):
         """(the tone's own largest step before the move, the largest step in
         the 2 000 frames after it) over `points` moves a quarter of the
         0.72 Hz wow line apart, on 997 Hz at 12 000 LSB, mono, wet only,
-        Time 350 ms, 48 kHz (`pin063cls_tape_wowmove.py`)."""
+        Time 350 ms, 48 kHz."""
         first = (16800 + 9600) // BLOCK * BLOCK
         steadies, worsts = [], []
         for k in range(points):

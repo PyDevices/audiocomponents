@@ -8,7 +8,7 @@ fourth axis, the one whose absence renders the whole split family silent
 (`MultibandCompressor` A-M5). `SwitchableSource` is what STATE needs to swap
 the borrowed source for a silent one without rebuilding the class.
 
-**Probes.** The subset of `docs/effects-kit-spec.md` section 3 that the first
+**Probes.** The subset of the kit's probe corpus that the first
 ten measurements' planted faults need: `ramp_fs`, `click_stereo`,
 `burst_silence`, `dc_step`, `sine`, `staircase`, `alt_fs`, `noise_det`, and a
 quiet chord-shaped stand-in. They are generated in process, per test, so no

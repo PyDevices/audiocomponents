@@ -1,11 +1,10 @@
 """The planted faults for the measurement kit's first ten measurements.
 
-`docs/effects-kit-spec.md` section 6 is the discipline these are held to: a
-fault that does not turn its own measurement red is not a planted fault, and
-a battery without a control that must pass only proves the checker always
-fails. Each fault below is the one the spec names for its measurement, and
-each is the cheap version - a node in the path, a subclass, or a byte in the
-render - never a change to a library file.
+The discipline these are held to: a fault that does not turn its own
+measurement red is not a planted fault, and a battery without a control that
+must pass only proves the checker always fails. Each fault below is the one the
+spec names for its measurement, and each is the cheap version - a node in the
+path, a subclass, or a byte in the render - never a change to a library file.
 
 What is a shipped class and what is a stand-in, said plainly:
 
@@ -395,9 +394,8 @@ def corrupt_one_block(pcm, block_frames=256, channels=2):
 # --------------------------------------------------------------------------
 # The two checks the pattern revision asks the fault runner for
 #
-# `docs/effects-phase2-pattern-revision.md` sections 1.2 and 1.3. Eleven of
-# Phase 2's forty-five broken clauses read green on a build that did nothing,
-# and three "planted faults" were positions of the class's own surface. Both
+# Eleven of Phase 2's forty-five broken clauses read green on a build that
+# did nothing, and three "planted faults" were positions of the class's own surface. Both
 # are kit functions here rather than habits, for the reason the revision
 # gives: every one of the eleven was written by a session that believed it
 # had already applied the rule.
@@ -416,7 +414,7 @@ class NullBuildGreen(AssertionError):
 class ControlRed(AssertionError):
     """The same measurement went red on the real class, so the null build's
     red says nothing. A battery without a control that must pass only proves
-    the checker always fails (`docs/effects-kit-spec.md` section 6)."""
+    the checker always fails."""
 
 
 class FaultReachable(AssertionError):

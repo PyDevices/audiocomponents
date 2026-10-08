@@ -858,13 +858,13 @@ class TheAdoptionGate(unittest.TestCase):
         # Phase 3's THROUGH names and RingMod have come home; Flanger stays
         # parked. All seven of Phase 4's were adopted on the boards on
         # 2026-09-18 and promoted the same day -- `Saturation`, `Fuzz` and
-        # `Exciter` last, under Brad's G6 ruling that the cost gate is a
+        # `Exciter` last, under the G6 ruling that the cost gate is a
         # real-time ceiling, 80 % of a stereo block, which all three are
         # inside on both boards at every shipped patch. `drive.py` is
         # deleted, so ADOPTED emptied and the substitution machinery stayed
         # for Flanger and the phases to come. Phase 5's first two,
         # `DigitalDelay` and `SlapbackDelay`, were adopted on 2026-09-28 on
-        # Brad's rulings, and are served from here until they come home.
+        # rulings of that day, and are served from here until they come home.
         # Phase 5's last six followed on 2026-09-29, on the board session
         # at audiodsp v0.6.3.
         self.assertEqual(rebuilt.ADOPTED, (

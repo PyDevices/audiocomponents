@@ -26,7 +26,7 @@ def digest(key):
 class TheNewRows(unittest.TestCase):
     def test_feedback_09_is_the_row_the_boards_took(self):
         # Both boards and both desktop legs rendered this at audiodsp
-        # v0.6.2 (board-test-plan.md, "Section 1 at v0.6.2"); at v0.6.1 it
+        # v0.6.2; at v0.6.1 it
         # was d9fb49a51cd7379a, which is why the row exists.
         self.assertEqual(digest("audioecho.FeedbackDelay@fb0.9"),
                          "3b76320cb19450a8")

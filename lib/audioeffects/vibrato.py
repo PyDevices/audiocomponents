@@ -1,7 +1,6 @@
 """`Vibrato` — a clock-modulated bucket-brigade line, wet alone.
 
-Rebuilt from scratch for Phase 3 against
-`workspace docs/effects-internal/dossiers/Vibrato.md`, whose trait table was
+Rebuilt from scratch for Phase 3 against a dossier whose trait table was
 frozen at Station A before this file existed. The old
 `modulation.py:Vibrato` is consulted only for the six defects that dossier's
 section 7 names.

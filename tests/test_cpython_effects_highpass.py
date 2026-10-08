@@ -497,7 +497,7 @@ class TheDeclaredTailIsTheMeasuredOne(unittest.TestCase):
         # Gate audit section 4.1: the declaration was taken from a burst and
         # a driven corner is far longer. 10 Hz / Resonance 16 / 24 dB/oct /
         # +12 dB is the worst cell of
-        # `workspace docs/effects-internal/probes/phase2_probes/highpass_sweep.py tail`, 54 cells, and it is
+        # the tail sweep, 54 cells, and it is
         # at every span's own stop - Frequency 0 is patch 0's own corner.
         built = highpass.HighPass(source(), frequency=10.0, q=16.0,
                                       slope=24, trim_db=12.0)

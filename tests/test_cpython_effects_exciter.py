@@ -1,6 +1,6 @@
 """`Exciter`'s own invariant and planted-fault tests.
 
-Dossier: workspace docs/effects-internal/dossiers/Exciter.md, frozen
+The dossier was frozen
 2026-09-17. Exhaustive rate coverage lives in the evidence pack; this
 file asserts at 48 kHz unless the test is about rate or latency.
 
@@ -364,7 +364,7 @@ def h2h3(rendered, hz, window="blackmanharris", size=None, span=4,
          settled=0.5):
     """h2 and h3 re the fundamental, windowed, over the whole segment.
 
-    The reader the packs used (`R.h23` in `probes/exciter_refute2.py`)
+    The reader the packs used
     calls `kit.spectrum(..., size=None, window=None)`, which asks
     `exact_bin_size` for a rectangular length. T2's probe rule is
     `1.375 × corner` on a LOG macro, so the probe and the rate are usually
@@ -1236,13 +1236,13 @@ class TheHarmonicReadersControl(unittest.TestCase):
     same identity build gives **−92.629 dB** at that cell.
 
     These rows hold the control at a reduced grid; the full 240-cell walk
-    and the four re-run fault walks are `probes/exciter_fix4.py`.
+    and the four re-run fault walks are too slow for a unit suite.
     """
 
     #: The plant's handles. Together, `WINDOW=None`, `READ_DIVISOR=10` and
-    #: `SETTLED=0.0` are exactly `probes/exciter_fix3.py reader`'s
-    #: instrument: a rectangular read of the first tenth of a second, which
-    #: is where `exact_bin_size` hands back its 64-sample floor.
+    #: `SETTLED=0.0` are exactly the fix round's reader: a rectangular read of
+    #: the first tenth of a second, which is where `exact_bin_size` hands back
+    #: its 64-sample floor.
     WINDOW = "blackmanharris"
     READ_DIVISOR = 2
     SETTLED = 0.5
@@ -1428,7 +1428,7 @@ import stale_blocks as stale                                    # noqa: E402
 
 class TheBypassComesBackAsBuilt(unittest.TestCase):
     """Mix back up from 0 after a pause plays nothing that was there before
-    the pause (audiocomponents#113; Brad, 2026-09-28: "fix the stale
+    the pause (audiocomponents#113; decided 2026-09-28: "fix the stale
     blocks"). At Mix 0 the class hands back its source and nothing behind
     it is pulled, so the graph kept its filters' memory and the block each
     mixer voice had queued; bringing Mix back played that out of silence.

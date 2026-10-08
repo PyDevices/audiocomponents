@@ -1,7 +1,7 @@
 """`Notch`'s own invariant and planted-fault tests.
 
-The class's Tier 2 traits are measured in the evidence pack with the kit
-(`workspace docs/effects-internal/probes/phase2_probes/notch_evidence.py`); what is here is the subset a
+The class's Tier 2 traits are measured in the evidence pack with the kit;
+what is here is the subset a
 rebuild must not be allowed to regress silently, each one paired with a
 fault that turns it red. A checker that has only ever passed has not been
 shown to work, so no assertion below stands without its faulted twin.

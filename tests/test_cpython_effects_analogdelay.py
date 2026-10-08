@@ -1,7 +1,6 @@
 """`AnalogDelay`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/AnalogDelay.md`
-(frozen at anchor cc61011, the Station A critique revision, with the
+The dossier was frozen at the Station A critique revision, with the
 post-build revisions of 2026-09-28 in its section 8: T3's inside no-step bar
 carries the loop low-pass's carry across the move's coefficient change and
 reads from the move's own first difference, the landing gap is read, the
@@ -9,7 +8,7 @@ walk is read where the head lands, the binade pieces have a resolvable
 minimum, and T7's arrival clause is claimed across Mix's interior material
 by material, at every grid position and at any Mix at or above
 1.01 x 0.5 / W on the two loud materials; R13's Spread grid came out at
-audiodsp v0.6.3rc3, whose node ends the stereo tail itself). Four of its
+audiodsp v0.6.3rc3, whose node ends the stereo tail itself. Four of its
 Tier 2 rows can be demonstrated, T2a, T3, T6 and T7, and each is here as
 the measurement at a few of the row's cells beside the same measurement
 shown red on the row's planted fault at the constructor defaults. Every
@@ -2104,7 +2103,7 @@ class Tier1Fast(unittest.TestCase):
     #: (feedback, spread) where the node's cross-feed sum, off the grid,
     #: hands a landed k back: the re-refutation's three portable cells
     #: (k = 9, 11, 50; the Feedback as its float32 value) and the typed
-    #: Feedback 0.9899999 at Spread 39/127 (analogdelay_reaudit1_refute.py).
+    #: Feedback 0.9899999 at Spread 39/127.
     CROSS_FEED_CELLS = ((0.9444443583488464, 1.0 / 127.0, 9),
                         (0.9545453786849976, 3.0 / 127.0, 11),
                         (0.9899999499320984, 2.0 / 127.0, 50),
@@ -2167,8 +2166,8 @@ class Tier1Fast(unittest.TestCase):
                          points=8):
         """Per move, (the largest first difference in the 40 ms after it,
         its bar) at `points` moves an eighth of the triangle's period
-        apart: 997 Hz at 12 000 LSB, mono, wet only, Time 300 ms, 48 kHz
-        (`analogdelay_refix1.py modmove`). The read offset is S(t) u(t)
+        apart: 997 Hz at 12 000 LSB, mono, wet only, Time 300 ms, 48 kHz.
+        The read offset is S(t) u(t)
         fs / 1000 frames; while the node ramps the swing (20 ms, audiodsp
         #160) |dD/dn| <= |change| / 20 + 0.004 r max(S_old, S_new), and
         neither the linear-interpolated read nor the one-pole can raise a
@@ -2573,7 +2572,7 @@ class TheClaims(unittest.TestCase):
             self.assertAlmostEqual(effect._value(index), high, places=9)
 
     def test_turning_time_settles_in_seconds(self):
-        # Brad's ruling of 2026-09-28 keeps the walk as it is. At 48 kHz,
+        # The ruling of 2026-09-28 keeps the walk as it is. At 48 kHz,
         # wet alone, Feedback 0: MIDI 101 -> 111 as ten moves a block
         # apart against one jump made with the last of them. The jump
         # lands on a static 111 within its Time (391 ms); the ten moves

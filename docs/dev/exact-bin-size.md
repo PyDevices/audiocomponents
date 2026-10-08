@@ -46,7 +46,7 @@ nothing else.
 | `tests/` — all 26 call/length pairs | 48000 | 1000 / 5500 | 2048–24000 | = NEW | — | 0.000 | — | — |
 | `tools/compressor_evidence.py:366` | 48000 | 50 / 100 / 1000 | any | = NEW | — | 0.000 | — | — |
 | " (the one tone with a fractional period) | 48000 | 15000 | 36000 | 36000 | 36000 | 0.000 | -92.2 | -92.2 |
-| `probes/overdrive_g4_refute.py` t7_alias | 48000 | 1010 | 24000 | 24000 | 24000 | 0.000 | -91.9 | -91.9 |
+| Overdrive G4 refutation probe, t7_alias | 48000 | 1010 | 24000 | 24000 | 24000 | 0.000 | -91.9 | -91.9 |
 | " | 44100 | 1010 | 22050 | 22050 | 22050 | 0.000 | -92.1 | -92.1 |
 | " | 22050 | 1010 | 11025 | 11025 | 11025 | 0.000 | -92.1 | -92.1 |
 | " (sframes, quarter second) | 48000 | 1010 | 6000 | 5988 | 4800 | 0.119 | **-53.1** | -92.1 |
@@ -55,15 +55,15 @@ nothing else.
 | " T1/T2/T3/T5 at 1 kHz | 44100 / 22050 | 1000 | 22050 / 11025 | = NEW | — | 0.000 | -92.9 | -92.9 |
 | " (sframes) | 44100 | 1000 | 5512 | 5468 | 5292 | 0.400 | **-41.9** | -92.9 |
 | " (sframes) | 22050 | 1000 | 2756 | 2734 | 2646 | 0.200 | **-41.9** | -92.6 |
-| `probes/saturation_p4fix.py` spec() | 48000 | 1000 | 24000 | 24000 | 24000 | 0.000 | -240 | -240 |
+| Saturation fix probe, spec() | 48000 | 1000 | 24000 | 24000 | 24000 | 0.000 | -240 | -240 |
 | " | 44100 | 1000 | 24000 | 23990 | 23814 | 0.400 | **-41.9** | -92.9 |
 | " | 22050 | 1000 | 24000 | 23990 | 23814 | 0.400 | **-35.9** | -92.6 |
 | " walk() | 44100 | 1000 | 12000 | 11995 | 11907 | 0.200 | **-47.9** | -92.9 |
-| `probes/distortion/distortion_refute2.py` harm() | 44100 / 22050 | 1000 | 8820 / 4410 | = NEW | — | 0.000 | -92.9 | -92.9 |
+| Distortion refutation probe, harm() | 44100 / 22050 | 1000 | 8820 / 4410 | = NEW | — | 0.000 | -92.9 | -92.9 |
 | " (rate//10 renders) | 22050 | 1000 | 1102 | 1080 | 882 | 0.450 | **-34.9** | -93.2 |
-| `probes/exciter_*.py` | 44100 | 5500 | 22050 / 11025 | = NEW | — | 0.000 | -92.5 | -92.5 |
+| Exciter probes | 44100 | 5500 | 22050 / 11025 | = NEW | — | 0.000 | -92.5 | -92.5 |
 | " | 22050 | 3010 | 5512 | 5509 | 5355 | 0.163 | **-34.1** | -92.1 |
-| `tools/ladderfilter_evidence.py:411` rect read | 48000 | ~999.82 | 24000 | 23956 | 22228 | 0.312 | **-44.8** | -90.1 |
+| LadderFilter evidence probe, rect read | 48000 | ~999.82 | 24000 | 23956 | 22228 | 0.312 | **-44.8** | -90.1 |
 
 ## How to read the bold numbers
 
@@ -82,7 +82,7 @@ class whose h2 or THD was recorded below that was reading leakage. The
 summed alias floor is the exposed readout because it sums every bin in the
 band, and a skirt has a bin everywhere.
 
-The `*_refute2.py` and `*_p4fix.py` probes are one-shot scripts that were run
+The refutation and fix probes are one-shot scripts that were run
 once and quoted; nothing here re-ran them, and no class was re-measured.
 Re-running one is the only way to say what its numbers would be now.
 

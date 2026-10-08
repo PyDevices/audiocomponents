@@ -2,7 +2,7 @@
 top, with three API 550A proportional-Q bells in the middle.
 
 Rebuilt from scratch for the effects program's Phase 2 against
-`workspace docs/effects-internal/dossiers/ParametricEQ.md`. The old `eq.py:ParametricEQ` is not
+its dossier. The old `eq.py:ParametricEQ` is not
 consulted except for the six defects the dossier's section 7 names.
 
 **What it sounds like.** The bottom is a Pultec: boost and attenuate at once

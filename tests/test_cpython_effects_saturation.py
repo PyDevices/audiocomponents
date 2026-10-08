@@ -1,6 +1,6 @@
 """`Saturation`'s own invariant and planted-fault tests.
 
-Dossier: workspace docs/effects-internal/dossiers/Saturation.md, frozen
+The dossier was frozen
 2026-09-17. Exhaustive rate coverage lives in the evidence pack; this
 file asserts at 48 kHz unless the test is about latency.
 """
@@ -328,8 +328,7 @@ class TheThirdFixRoundsRows(unittest.TestCase):
 
     Mix's polarity, A4 at both ends of its level span, Tilt's effect on
     TU2, and the integer onset at every build x rate. Each one is walked
-    rather than asserted at a point, and each one has a planted opposite
-    in `probes/saturation_fix3.py`.
+    rather than asserted at a point, and each one has a planted opposite.
     """
 
     LEVELS = (0.0, 0.25, 0.5, 0.75, 1.0)
@@ -970,7 +969,7 @@ class TU2PlateCeiling(unittest.TestCase):
 
     **Traits now claimed:** TU2 only; TU1, TU3, TP1, TP2 and A4 are
     untouched and this class's invariant tests pass unchanged.
-    **Phase 7, what Brad listens for:** patch 1 "Hot into the curve" on a
+    **Phase 7, what to listen for:** patch 1 "Hot into the curve" on a
     sustained low note - it should thicken and bloom on the way up and go
     blunt on the way down, not square up symmetrically the way a diode
     pedal does. If both halves harden together, this target is wrong.
@@ -1613,7 +1612,7 @@ import stale_blocks as stale                                    # noqa: E402
 
 class TheBypassComesBackAsBuilt(unittest.TestCase):
     """Mix back up from 0 after a pause plays nothing that was there before
-    the pause (audiocomponents#113; Brad, 2026-09-28: "fix the stale
+    the pause (audiocomponents#113; decided 2026-09-28: "fix the stale
     blocks"). At Mix 0 the class hands back its source and nothing behind
     it is pulled, so the graph kept its filters' memory and the block each
     mixer voice had queued; bringing Mix back played that out of silence.

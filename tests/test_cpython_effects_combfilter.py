@@ -567,13 +567,12 @@ class TheTuningKnobIsClickFree(unittest.TestCase):
             self):
         """The gate audit's ruling on T6, committed as a test.
 
-        `docs/effects-phase2-gate-audit.md` section 4.1: `NoGlideCombFilter`
-        forces `delay_slew = 0`, and macro 5 `Glide` spans 0...1 with grid
-        position 0 sitting exactly there - so the "fault" and the clean
-        class at Glide 0 are the same build, and both read the same
+        `NoGlideCombFilter` forces `delay_slew = 0`, and macro 5 `Glide` spans
+        0...1 with grid position 0 sitting exactly there - so the "fault" and
+        the clean class at Glide 0 are the same build, and both read the same
         +8.28 dB. The two tests above therefore demonstrate that Glide at or
-        above about 0.01 is click-free, which is not what the dossier froze;
-        T6 stands as **unmeasured** until a fault the surface cannot dial is
+        above about 0.01 is click-free, which is not what the dossier froze; T6
+        stands as **unmeasured** until a fault the surface cannot dial is
         written.
 
         This asserts the kit's own check now catches it
@@ -843,12 +842,12 @@ class SteppedCombFilter(combfilter.CombFilter):
 
 class TheTailIsDeclared(unittest.TestCase):
     """`tail_samples` is finite at every setting (housekeeping,
-    2026-09-28, Brad's ruling of that date): the comb's lap bound, each lap
+    2026-09-28, a ruling of that date): the comb's lap bound, each lap
     one frame past the longest line the read head may be at plus the Tone
     low-pass's memory, plus `TRIM_TAIL_S` while the trim is in circuit.
     Every macro's stops and interior points, every patch, the long corners
     and the stall centres, at three rates, stereo and mono, end inside it
-    (`housekeeping_cf_tail.py`, 900 cells); these are the cells where each
+    (900 cells); these are the cells where each
     part of the bound is tight, each beside a bound that is short there."""
 
     def render(self, cls, material, **options):

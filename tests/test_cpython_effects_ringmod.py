@@ -1,6 +1,5 @@
 """`RingMod`'s own invariant and planted-fault tests.
 
-The dossier is `workspace docs/effects-internal/dossiers/RingMod.md`.
 Exhaustive rates live in the evidence pack, not in this file.
 """
 

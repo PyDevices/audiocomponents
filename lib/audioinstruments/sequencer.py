@@ -373,7 +373,7 @@ class Sequencer:
         queue through this same instrument. Re-entering there laid `_next`
         twice, once from each call, and left the armed keyboard underneath
         disarmed by the inner call's exit while the outer press was still
-        using it (docs/spikes/live-audio-path-fullbar.md). A refused tick
+        using it. A refused tick
         costs nothing: the look-ahead is hundreds of milliseconds and the
         next tick tops up what this one did not.
         """

@@ -1,7 +1,7 @@
 """`Notch` - the two-pole band-stop: everything except one band, tuned.
 
 Rebuilt from scratch for the effects program's Phase 2 against
-`workspace docs/effects-internal/dossiers/Notch.md`. The old `eq.py:Notch` is not consulted except for
+its dossier. The old `eq.py:Notch` is not consulted except for
 the seven defects the dossier's section 7 names.
 
 **What it sounds like.** One knob says where, one says how wide, and what

@@ -83,7 +83,7 @@ DEFAULT_OLD_REV = "ac87f13"
 #:
 #: Adding a name here says "this instrument deliberately left the old
 #: behaviour". It is a record of a decision, not a way to quiet a failure, and
-#: it is Brad's call - never an agent's. Each entry names the change and why.
+#: it is a person's call - never an agent's. Each entry names the change and why.
 #:
 #: NOTE this is a different act from re-capturing a digest. A digest that drifted
 #: under an UNCHANGED port is repaired with `--capture-old` (see f7a370a, the 19
@@ -100,8 +100,8 @@ REBUILT = {
     "dmx": "phase 1, 2026-09-02",
     "drumtraks": "phase 1, 2026-09-02",
     "simmons_sdsv": "phase 1, 2026-09-02",
-    # The 64-voice ceiling (audiodsp 8f8b10d) - Brad listened to the held-chord
-    # A/B on 2026-09-06 and blessed it (audiodsp#31); the pin moved to 2f6cbc3 on
+    # The 64-voice ceiling (audiodsp 8f8b10d) - a listening test of the held-chord
+    # A/B on 2026-09-06 blessed it (audiodsp#31); the pin moved to 2f6cbc3 on
     # 2026-09-07 (effects Phase 1), the first floor to carry it. These three
     # are the comparisons the ceiling moves at this gate's material
     # (audiocomponents#24).

@@ -1,7 +1,6 @@
 """`Bitcrusher` — 12-bit linear hold, the SP-1200's two numbers as knobs.
 
-Rebuilt from scratch at Phase 4 against
-`workspace docs/effects-internal/dossiers/Bitcrusher.md`, traits frozen
+Rebuilt from scratch at Phase 4 against its dossier, traits frozen
 2026-09-17 at Station A and re-frozen the same day at the fix round's two
 §7.2 revisions (T2's material, T6's alphabet). The old class in `drive.py`
 is consulted only for the defects that dossier §7 names: no macros, a floor

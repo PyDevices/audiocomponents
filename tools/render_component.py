@@ -33,7 +33,7 @@ render, buys the two things that matter. The four sustaining keyboards -
 rhodes, wurlitzer, pianet, clavinet, all with `amp_s` above zero - spend
 the back half of the render in release, which is the only place their
 key-off behaviour can be heard at all; before this they rang forever and
-three of the most identifying traits in `docs/phase2-listening-guide.md`
+three of the most identifying traits in the Phase 2 listening guide
 could not be measured offline. And it is gentle on the percussion: 9 of
 the 122 drum one-shots across the ten kits move, every one of them a
 cymbal, a ride or a crash still sounding when the key comes up, which is

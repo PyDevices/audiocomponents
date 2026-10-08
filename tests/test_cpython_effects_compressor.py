@@ -4,8 +4,7 @@ The class gate asks each rebuilt class for its invariant and planted-fault
 tests. `Compressor`'s measurements live in `tools/compressor_evidence.py`,
 because they are minutes of rendering; what belongs *here* is the part that
 must not rot silently - the three faults the Phase 2 gate audit sent back,
-held to the two rules the pattern revision added
-(`docs/effects-phase2-pattern-revision.md` sections 1.2 and 1.3):
+held to the two rules the pattern revision added:
 
 * a planted fault must be one the class's own macro grid and shipped
   patches cannot dial, and must not be inert;
@@ -251,7 +250,7 @@ from audioeffects import compressor                             # noqa: E402
 
 
 class TheBypassComesBackAsBuilt(unittest.TestCase):
-    """Mix up from 0 plays nothing from before (audiocomponents#113; Brad,
+    """Mix up from 0 plays nothing from before (audiocomponents#113; decided
     2026-09-28: "fix the stale blocks"). An instance built wet primes its
     mixer voices with the first block of the source; moved to 0 before it
     played, and back up after the input stopped, that block came out 256

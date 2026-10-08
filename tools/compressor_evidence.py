@@ -1,7 +1,7 @@
 """Station C's measurements for `Compressor`, as one runnable file.
 
-Every table in `docs/effects/Compressor-evidence.md` is one case here, so a
-reader can re-run any figure in the pack. Tier 1 goes through the kit
+Every table in the class's evidence pack is one case here, so a
+reader can re-run any figure in it. Tier 1 goes through the kit
 (`tools/effect_measurements.py`); Tier 2 reads the same `Render` objects and
 applies the dossier's own bars, which are quoted beside each readout.
 
@@ -960,7 +960,7 @@ def case_faults():
 
 # -- the pattern revision's two checks, and this class's own faults -------
 #
-# `docs/effects-phase2-pattern-revision.md` sections 1.2 and 1.3, and the
+# The pattern revision's two checks, and the
 # gate audit's G3 ruling on this class: F2's fault was never run, O1's was
 # inert, and M5's was "as F5", which is a knob position. All three are
 # re-recorded below, each through `kit_faults`.
@@ -1588,7 +1588,7 @@ def case_deinit():
 
     Use-after-deinit is deliberately not probed here: on both native builds
     a deinitialised `audiomixer.Mixer` renders on and then dumps core.
-    `tools/compressor_deinit_use.py` is that probe, one node per process.
+    That probe runs separately, one node per process.
     """
     mode = _alloc_mode()
     source, _ = sample(tone(220.0, 0.25, 9000.0), loop=True)
