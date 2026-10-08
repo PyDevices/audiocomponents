@@ -765,24 +765,38 @@ def _audiodsp_installed():
         return "not found"
 
 
-def _mismatch(name, rate, channels, found, expected, where):
-    message = ("probe %s at %d Hz, %d ch: %s has digest %s, probes.json says "
-               "%s." % (name, rate, channels, where, found, expected))
-    if rendered_by_instruments(name):
-        pin = _audiodsp_pin() or "the release AUDIODSP_PIN names"
-        message += (
-            " These probes render through audiodsp's instruments, so they"
-            " only reproduce at the audiodsp release AUDIODSP_PIN names:"
-            " install audiodsp at %s (this interpreter has %s), for example"
+def _instrument_advice(name):
+    pin = _audiodsp_pin() or "the release AUDIODSP_PIN names"
+    return (" These probes render through audiodsp's instruments, and"
+            " probes.json records them at the audiodsp release AUDIODSP_PIN"
+            " names: install audiodsp at %s (this interpreter has %s), for"
+            " example"
             ' pip install "pydevices-audiodsp @'
             ' git+https://github.com/PyDevices/audiodsp@%s".'
-            " If an instrument changed on purpose, regenerate the probe with"
-            " make_probes.py --only %s and commit probes.json."
-            % (pin, _audiodsp_installed(), pin, name))
-    else:
-        message += (" The generator no longer reproduces it. If that change"
-                    " is intended, regenerate with make_probes.py --only %s"
-                    " and commit probes.json." % name)
+            % (pin, _audiodsp_installed(), pin))
+
+
+def _mismatch(name, rate, channels, found, expected, path=None):
+    """The refusal, worded for the two ways a probe can disagree."""
+    if path is None:
+        message = ("probe %s at %d Hz, %d ch: generated with digest %s, "
+                   "probes.json says %s." % (name, rate, channels, found,
+                                             expected))
+        if rendered_by_instruments(name):
+            return message + _instrument_advice(name) + (
+                " If an instrument changed on purpose, regenerate the probe"
+                " with make_probes.py --only %s and commit probes.json."
+                % name)
+        return message + (" The generator no longer reproduces it. If that"
+                          " change is intended, regenerate with"
+                          " make_probes.py --only %s and commit probes.json."
+                          % name)
+    message = ("probe %s does not match probes.json (file %s, manifest %s):"
+               " it is stale or damaged. Delete it and it is generated again"
+               " on next use." % (path, found, expected))
+    pin = (_audiodsp_pin() or "").lstrip("v")
+    if rendered_by_instruments(name) and _audiodsp_installed() != pin:
+        message += _instrument_advice(name)
     return message
 
 
@@ -868,8 +882,7 @@ def ensure_probes(names=None, rates=None, channel_counts=None, outdir=HERE):
                     digest = "%08x" % checksum(payload)
                     if digest != entry["fnv1a"]:
                         raise ProbeError(_mismatch(
-                            name, rate, channels, digest, entry["fnv1a"],
-                            "the generated file"))
+                            name, rate, channels, digest, entry["fnv1a"]))
                     _write(path, blob)
                     _VERIFIED[path] = _stamp(path)
             for channels, entry, path in files:
@@ -879,10 +892,7 @@ def ensure_probes(names=None, rates=None, channel_counts=None, outdir=HERE):
                 digest = _file_digest(path)
                 if digest != entry["fnv1a"]:
                     raise ProbeError(_mismatch(
-                        name, rate, channels, digest, entry["fnv1a"],
-                        "%s on disk" % path)
-                        + " Delete the file and it is generated again on"
-                          " next use.")
+                        name, rate, channels, digest, entry["fnv1a"], path))
                 _VERIFIED[path] = stamp
     return outdir
 

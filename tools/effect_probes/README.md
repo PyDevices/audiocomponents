@@ -71,10 +71,10 @@ change, and commit the new `probes.json`.
 ## The instrument probes depend on audiodsp
 
 `chord` and `hit_levels_*` (36 files) are rendered through
-`audioinstruments`, and so through audiodsp's nodes. Their digests hold
-only at the audiodsp release `AUDIODSP_PIN` names, which is the one CI
-installs. With another audiodsp installed, generating them fails and says
-so; install audiodsp at the pin:
+`audioinstruments`, and so through audiodsp's nodes. `probes.json` records
+them as the audiodsp release `AUDIODSP_PIN` names renders them, which is
+the one CI installs. An audiodsp that renders the instruments differently
+fails the check, and the message says so; install audiodsp at the pin:
 
 ```
 pip install "pydevices-audiodsp @ git+https://github.com/PyDevices/audiodsp@<pin>"
