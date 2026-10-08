@@ -1,8 +1,12 @@
 name: Lint
 
+# Once per change: pushes to main and pull requests; documentation-only changes skip it.
 on:
   push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
   pull_request:
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
 
 jobs:
   flake8:
