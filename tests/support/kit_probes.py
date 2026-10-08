@@ -12,9 +12,9 @@ the borrowed source for a silent one without rebuilding the class.
 ten measurements' planted faults need: `ramp_fs`, `click_stereo`,
 `burst_silence`, `dc_step`, `sine`, `staircase`, `alt_fs`, `noise_det`, and a
 quiet chord-shaped stand-in. They are generated in process, per test, so no
-stale artifact can be mistaken for a fresh one. The committed corpus under
-`tools/effect_probes/` with its `probes.json` manifest is section 3's own
-deliverable and is not this file.
+stale artifact can be mistaken for a fresh one. The full set under
+`tools/effect_probes/`, with its `probes.json` manifest, is the corpus
+itself; `probe_path()` is how a test reaches it.
 
 `render()` is a **stand-in for `tools/render_effect.py`** (spec section 4),
 which did not exist when this battery was written. It keeps that file's
@@ -41,6 +41,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import audiocore  # noqa: E402
 from tools import effect_measurements as kit  # noqa: E402
 from tools.effect_measurements import Render  # noqa: E402
+
+#: The measurement kit's full probe set. Only probes.json is in git; the
+#: WAVs are generated on first use by `probe_path()`.
+PROBE_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..",
+                                          "..", "tools", "effect_probes"))
 
 try:  # pragma: no cover - the renderer part A is writing
     from tools import render_effect as PART_A_RENDERER
@@ -97,6 +102,27 @@ class SwitchableSource:
 
     def _get_buffer(self, single_channel_output=False, audio_channel=0):
         return self.inner._get_buffer(single_channel_output, audio_channel)
+
+
+# --------------------------------------------------------------------------
+# The full probe set, generated on demand
+# --------------------------------------------------------------------------
+
+def probe_path(name, rate=48000, channels=2):
+    """The path of one probe from `tools/effect_probes/`, ready to read.
+
+    The file is generated if it is missing and checked against probes.json
+    either way, so a test never reads a stale probe. A probe that cannot be
+    made to match raises `make_probes.ProbeError`, and the message says why
+    and what to install; nothing is skipped.
+    """
+    if PROBE_DIR not in sys.path:
+        sys.path.insert(0, PROBE_DIR)
+    import make_probes
+    make_probes.ensure_probes([name], rates=rate, channel_counts=channels,
+                              outdir=PROBE_DIR)
+    return os.path.join(PROBE_DIR, str(rate), "%dch" % channels,
+                        name + ".wav")
 
 
 # --------------------------------------------------------------------------

@@ -63,9 +63,6 @@ STAGES = {SINGLE: 4096, DOUBLE: 8192}
 
 AnalogDelay = rebuilt.module_class("AnalogDelay")
 
-PROBE_DIR = os.path.join(os.path.dirname(__file__), "..", "tools",
-                         "effect_probes")
-
 
 # --------------------------------------------------------------------------
 # The dossier's laws, written out independently of the class
@@ -483,8 +480,7 @@ def left(interleaved, channels):
 
 
 def material(name, rate, channels):
-    path = os.path.join(PROBE_DIR, str(rate), "%dch" % channels,
-                        name + ".wav")
+    path = probes.probe_path(name, rate, channels)
     handle = wave.open(path)
     try:
         data = handle.readframes(handle.getnframes())

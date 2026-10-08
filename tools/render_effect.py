@@ -490,7 +490,37 @@ def resolve_probe(name, rate, channels):
         raise SystemExit("probe %r has no %s Hz %d-channel file; it has %s"
                          % (name, rate, channels,
                             ", ".join(sorted(probe["files"]))))
-    return directory + "/" + entry["path"], entry["fnv1a"], entry
+    path = directory + "/" + entry["path"]
+    ensure_probe(name, rate, channels, directory, path)
+    return path, entry["fnv1a"], entry
+
+
+def ensure_probe(name, rate, channels, directory, path):
+    """Generate the probe if it is not on disk yet, and check it.
+
+    The WAVs are not kept in git; `make_probes.ensure_probes()` writes one
+    on first use. That runs on CPython only - a probe is never computed on
+    a board, whose float is single precision - so under MicroPython and
+    CircuitPython the probe has to have been generated already.
+    """
+    if sys.implementation.name != "cpython":
+        try:
+            open(path, "rb").close()
+        except OSError:
+            raise SystemExit("probe %s is not on disk; generate it on CPython "
+                             "first: python tools/effect_probes/make_probes.py"
+                             " --ensure" % path)
+        return
+    import os
+    where = os.path.abspath(directory)
+    if where not in sys.path:
+        sys.path.insert(0, where)
+    import make_probes
+    try:
+        make_probes.ensure_probes([name], rates=rate, channel_counts=channels,
+                                  outdir=directory)
+    except make_probes.ProbeError as error:
+        raise SystemExit(str(error))
 
 
 # --- self test -------------------------------------------------------------
@@ -686,8 +716,9 @@ def main(argv):
     digest_of_probe = wav_pcm_digest(path)
     if expected is not None and digest_of_probe != int(expected, 16):
         raise SystemExit("probe %s does not match probes.json "
-                         "(file %08x, manifest %s) - it is stale; "
-                         "regenerate with tools/effect_probes/make_probes.py"
+                         "(file %08x, manifest %s) - it is stale; delete "
+                         "it and run tools/effect_probes/make_probes.py "
+                         "--ensure"
                          % (path, digest_of_probe, expected))
 
     if options["selftest"]:

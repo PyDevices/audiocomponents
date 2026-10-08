@@ -51,7 +51,7 @@ ceiling. With True Peak off (the default), a worst-phase tone at a quarter
 of the sample rate leaves a -6 dBFS ceiling **3.01 dB high** in the
 reconstructed waveform at 48000, 44100 and 22050 Hz - the ceiling is held
 on the samples and broken between them. With it on, and **any** lookahead
-at all, the worst of the 65 committed probes at 48 kHz and 44.1 kHz, at
+at all, the worst of the 65 kit probes at 48 kHz and 44.1 kHz, at
 Lookahead 0.25, 1.5 and 10 ms, is **+0.22 dB** over the ceiling against a
 0.50 dB bar, with no probe red. With True Peak on and Lookahead at **0**
 it is a sample ceiling and nothing more: a full-scale ramp escapes by
@@ -148,7 +148,7 @@ class Limiter(_component.Component):
     With True Peak off (the default), a worst-phase tone at a quarter of
     the sample rate leaves a -6 dBFS ceiling **3.01 dB high** in the
     reconstructed waveform at 48000, 44100 and 22050 Hz. On, with any
-    lookahead at all, the worst of the 65 committed probes at both rates
+    lookahead at all, the worst of the 65 kit probes at both rates
     is **+0.22 dB** over, and none is red. With True Peak on and
     **Lookahead 0** it is a sample ceiling only - `ramp_fs` escapes by
     **+2.22 dB TP**, `dc_step` by +1.12 - because an inter-sample

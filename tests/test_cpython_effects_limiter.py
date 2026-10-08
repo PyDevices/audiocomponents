@@ -918,20 +918,19 @@ class TheTruePeakReserve(unittest.TestCase):
 
     CEILING_DB = -6.0
 
-    def _committed(self, name, rate=RATE):
+    def _kit_probe(self, name, rate=RATE):
         import wave
-        path = os.path.join(os.path.dirname(__file__), "..", "tools",
-                            "effect_probes", str(rate), "2ch", name + ".wav")
+        path = probes.probe_path(name, rate, 2)
         with wave.open(path, "rb") as handle:
             frames = handle.getnframes()
             return array("h", handle.readframes(frames)), frames
 
     def _over(self, name, cls=None, rate=RATE, **options):
-        """The committed probe through the class, read against the ceiling
+        """The kit probe through the class, read against the ceiling
         over the **aligned** window: the source carries the class's own
         latency in trailing silence and the leading latency is trimmed, so
         the harness's own cut to silence is not read as an overshoot."""
-        pcm, frames = self._committed(name, rate)
+        pcm, frames = self._kit_probe(name, rate)
         padded = array("h", pcm)
         padded.extend([0] * 8192)
         effect = build(cls, probe=padded, rate=rate,

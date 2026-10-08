@@ -28,7 +28,7 @@ not all of it - that is what separates a measurement from a tripwire - and
 each of those tests asserts the green half as hard as the red one.
 
 Renders here are made in process and thrown away. Nothing is read from disk,
-so no stale artifact can be mistaken for a fresh one; the committed probe
+so no stale artifact can be mistaken for a fresh one; the generated probe
 corpus and the renderer are section 3's and section 4's own deliverables.
 """
 
@@ -54,8 +54,7 @@ except ImportError:                                             # pragma: no cov
     render_effect = None
 
 RATE = 48000
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROBES = os.path.join(ROOT, "tools", "effect_probes")
+PROBES = probes.PROBE_DIR
 
 
 def build(cls_or_name, source, rate=RATE, **options):
@@ -759,7 +758,7 @@ class RendererIntegrationTest(unittest.TestCase):
     def probe(self, name, rate=RATE, channels=2):
         entry = self.manifest["probes"][name]["files"]["%d/%d"
                                                        % (rate, channels)]
-        path = os.path.join(PROBES, entry["path"])
+        path = probes.probe_path(name, rate, channels)
         render = kit.Render.from_wav(path, block=None, interpreter="cpython",
                                      probe=name)
         # Section 3's stale-probe guard, and a cross-check of the two FNV

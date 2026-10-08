@@ -62,6 +62,11 @@ jobs:
       # drop the flag.
       - run: python -m pip install --no-deps -e lib/audioinstruments -e lib/audioeffects
 
+      # The probe WAVs are not in git. Generate them here, so a probe that no
+      # longer matches probes.json fails this step by name instead of inside
+      # a test. The tests would generate them too; this makes it explicit.
+      - run: python tools/effect_probes/make_probes.py --ensure
+
       - run: python -m unittest discover -s tests -p "test_*.py"
       - run: python tools/validate_api.py
       - run: python tests/parity/effects_library_smoke.py

@@ -44,6 +44,7 @@ import effect_measurements as M                           # noqa: E402
 from audioeffects import _component                        # noqa: E402
 sys.path.insert(0, os.path.join(HERE, "support"))
 import kit_faults as F                                     # noqa: E402
+import kit_probes                                          # noqa: E402
 
 #: `_component` reads `VENDOR` off the module a class is *defined* in, and
 #: the two faults below are subclasses of a rebuilt class. Without this the
@@ -51,7 +52,6 @@ import kit_faults as F                                     # noqa: E402
 #: cannot be built is a fault that cannot fail.
 VENDOR = "PyDevices"
 
-PROBES = os.path.join(os.path.dirname(HERE), "tools", "effect_probes")
 #: Unit tests render at one rate. 44.1 kHz and 22.05 kHz stay in the
 #: evidence pack (`tools/compressor_evidence.py`-style probes, all three
 #: interpreters). The Nyquist clamp test is the exception and keeps `RATES`.
@@ -96,7 +96,7 @@ def probe(name, rate, channels=2, frames=None):
     same measurement as on the whole file; a tail or a release still
     loads the file through.
     """
-    path = os.path.join(PROBES, str(rate), "%dch" % channels, name + ".wav")
+    path = kit_probes.probe_path(name, rate, channels)
     with open(path, "rb") as handle:
         data = handle.read()
     at = 12
