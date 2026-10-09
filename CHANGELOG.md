@@ -291,6 +291,8 @@ there, and are recorded in its changelog.
 
 ### Fixed
 
+- The delays, Reverb and ConvolutionReverb now ring out when their source ends, then rest at exact zero, instead of freezing the tail until the source came back; a one-shot source plays once instead of feeding them for ever. A source that comes up short part-way through a block leaves a whole block with the rest silent, and a host `reset_buffer` on ConvolutionReverb keeps the frames it holds. All of it is audiodsp's, at the commit `AUDIODSP_PIN` now names (audiocomponents#127).
+
 - **Ten effects no longer replay old audio when a control brings a bypassed
   part of their graph back** (#113). Mix 0 hands the source straight back,
   so nothing behind it is pulled, and the graph kept what it held - its

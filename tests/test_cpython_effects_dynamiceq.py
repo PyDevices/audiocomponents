@@ -1030,9 +1030,15 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
         # 44.1 kHz mono, where the move lands between the halves.
         self.assertLessEqual(stale.in_step(module.DynamicEQ, 6, 127, 0,
                                            44100, 1), 3)
-        # Planted: the fixed 2048-byte mixer, which is two blocks mono.
-        # With the tail cleared on the way back the class comes back 256
-        # frames ahead of an instance that never moved.
+        # The fixed 2048-byte mixer, which is two blocks mono, comes back
+        # in step too now.
+        #
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # clearing the tail on the way back dropped the half the wide mixer
+        # had queued, so that plant came back 256 frames ahead of an
+        # instance that never moved, and this test held it red. Dropping
+        # it was the node's defect, fixed in audiodsp#211: a reset keeps the
+        # source frames a node has already taken.
         real = module.audiomixer.Mixer
 
         def wide(*args, **kwargs):
@@ -1041,8 +1047,8 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
 
         module.audiomixer.Mixer = wide
         try:
-            self.assertGreater(stale.in_step(module.DynamicEQ, 6, 127, 0,
-                                             44100, 1), 1000)
+            self.assertLessEqual(stale.in_step(module.DynamicEQ, 6, 127, 0,
+                                               44100, 1), 3)
         finally:
             module.audiomixer.Mixer = real
 

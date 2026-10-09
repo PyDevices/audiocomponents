@@ -232,8 +232,9 @@ class RebuildOnMove(Reverb):
 
 
 class ResetDropsHeldFrames(Reverb):
-    """`reset()` through `audiocore.reset_buffer` on the Tank, which drops
-    the source frames it holds, instead of `Tank.clear`."""
+    """`reset()` through `audiocore.reset_buffer` on the Tank instead of
+    `Tank.clear`. Up to audiodsp v0.6.3 that dropped the source frames the
+    Tank held; since audiodsp#211 it keeps them."""
 
     NAME = 'Reverb'
 
@@ -1124,9 +1125,16 @@ class Tier1(unittest.TestCase):
             self.assertEqual(self._dry_across_a_reset(Reverb, block), 0,
                              block)
 
-    def test_a_reset_through_reset_buffer_is_red(self):
+    def test_a_reset_through_reset_buffer_keeps_the_dry_too(self):
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # a host reset of the Tank dropped the source frames it held, so
+        # this plant, which resets the Tank that way instead of through
+        # `Tank.clear`, lost dry frames and the test held it red. Dropping
+        # them was the node's defect, fixed in audiodsp#211: a host reset
+        # keeps the source frames a node has already taken, so both routes
+        # keep the dry now.
         for block in (100, 1024):
-            self.assertGreater(
+            self.assertEqual(
                 self._dry_across_a_reset(ResetDropsHeldFrames, block), 0,
                 block)
 

@@ -614,6 +614,7 @@ class Overdrive(_component.Component):
         self._split = split
         self._dry = dry
         self._tap1 = tap1
+        self._tap1 = tap1
         self._circuit = circuit
         self._out = out
 
@@ -818,6 +819,16 @@ class Overdrive(_component.Component):
         the graph (audiocomponents#113).
         """
         self._dc_charged = False
+        # Since audiodsp#211 a reset keeps the source frames a node had
+        # taken, which is right mid-stream and wrong here: what the nodes
+        # took before Mix went to 0 is old audio now. Playing each one
+        # from its own source again drops it.
+        self._adapter.play(self._source)
+        self._hp.play(self._tap1)
+        self._c4.play(self._hp)
+        self._shaper.play(self._c4)
+        self._dc.play(self._shaper)
+        self._lp.play(self._circuit)
         self._circuit.voice[0].level = 1.0
         self._circuit.voice[1].level = 1.0
         self._out.voice[0].level = level
