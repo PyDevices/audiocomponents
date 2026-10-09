@@ -48,15 +48,7 @@ KNOWN_RED = {}
 #: and a native interpreter in the quick matrix, their digest, the same for
 #: the full matrix, reason). Both native interpreters print the same lines
 #: as each other for every class.
-KNOWN_P6 = {
-    "MultiTapDelay": (
-        29, "cedec0fa", None, None,
-        "after a Time move or a patch change CPython renders other bytes "
-        "than both native interpreters, and on 20 cells plays old audio "
-        "out of silence where they do not: the CPython audiodelays twin "
-        "keeps the line past a shorter delay_ms, which the C node zeroes "
-        "(audiodsp#177)"),
-}
+KNOWN_P6 = {}
 
 #: LIFECYCLE_FULL=1 runs the full matrix (every event at every patch);
 #: otherwise the quick one (lifecycle.run_class(quick=True)).
