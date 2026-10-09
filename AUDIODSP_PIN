@@ -295,4 +295,4 @@
 # Pending both boards.
 #
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.3 5afe010b61b1b9e628534bc90895b005f7df6d6d
+eb2d20daa7f3be2965f8f641b3fdf2d9a55aca9c eb2d20daa7f3be2965f8f641b3fdf2d9a55aca9c
