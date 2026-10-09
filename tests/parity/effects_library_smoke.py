@@ -32,6 +32,7 @@ from array import array
 
 import audiocore
 import audioeffects
+import audiofilters
 from audioeffects import rebuilt
 
 SAMPLE_RATE = 48000
@@ -50,18 +51,18 @@ EXTRA_ARGUMENTS = {
 
 
 #: Frames the probe carries, and frames one patch is allowed to pull off it.
-#: The whole probe is one `audiocore.RawSample`, which hands its array back
-#: in a single `get_buffer` call, and `audioroute.Splitter`'s ring is 8192
-#: frames (`audiodsp/src/shared/audiodsp_splitter.h:20`) - so a longer probe
-#: would render *silence* through every unguarded Splitter class in the
-#: catalogue, which is the trap `MultibandCompressor` M5 records. 8000 is
-#: under that and 4096 was not enough: one instance is walked through all of
-#: its patches on one probe, and a class whose output block is the contract's
-#: own 256 frames (a 2048-byte stereo Mixer, `_component._pcm()`'s default)
-#: used the entire 4096-frame probe on its first two patches and then read as
-#: silent for the rest - a harness limit that looked exactly like a broken
-#: class. Capping the pull per patch keeps every class on the same budget,
-#: and 8000 / 1024 leaves room for seven patches.
+#: One instance is walked through all of its patches on one probe, so the
+#: probe loops: since audiodsp#213 a node lets go of a source that has ended,
+#: and a one-shot probe ran out under Reverb's tenth patch and TapeDelay's
+#: ninth, which then read as silent (the old nodes replayed a finished
+#: RawSample for ever, which is what had kept them fed). It loops through
+#: `audiofilters.Filter`, the house re-blocker, so a class sees 256-frame
+#: blocks rather than the whole array in one `get_buffer`: a whole array
+#: longer than `audioroute.Splitter`'s 8192-frame ring
+#: (`audiodsp/src/shared/audiodsp_splitter.h:20`) would render silence
+#: through every unguarded Splitter class in the catalogue, the trap
+#: `MultibandCompressor` M5 records. Capping the pull per patch keeps every
+#: class on the same budget.
 PROBE_FRAMES = 8000
 FRAMES_PER_PATCH = 1024
 
@@ -72,8 +73,15 @@ def source(frames=PROBE_FRAMES, level=11000):
         for channel in range(CHANNEL_COUNT):
             shape = ((frame * (61 + channel * 17)) % 401) - 200
             values.append(shape * level // 200)
-    return audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
-                               channel_count=CHANNEL_COUNT)
+    raw = audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
+                              channel_count=CHANNEL_COUNT)
+    block = audiofilters.Filter(filter=None, mix=1.0,
+                                buffer_size=256 * CHANNEL_COUNT * 2,
+                                sample_rate=SAMPLE_RATE,
+                                channel_count=CHANNEL_COUNT,
+                                bits_per_sample=16, samples_signed=True)
+    block.play(raw, loop=True)
+    return block
 
 
 def peak(sample, blocks=8, frames=FRAMES_PER_PATCH):

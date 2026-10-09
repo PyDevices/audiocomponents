@@ -62,9 +62,7 @@ at 48 kHz, and 146 914 B for the hall at Size 1.5, the most it takes.
 A control that jumps makes the output step: move it in small steps from
 the host if you need it smooth.
 
-The tail rings only while the source keeps feeding: feed silence to let
-it ring out. A tail cut short by a source that stopped carries on when
-the source comes back.
+When your source ends, the tail rings out as it would on silence.
 
 Asking for `character="spring"` says it is parked: the tank has no
 dispersive chain yet. A value outside a macro's span clamps to the nearer

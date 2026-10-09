@@ -164,9 +164,7 @@ class SlapbackDelay(_component.Component):
     **Limits shared by the family.**
     A control that jumps makes the output step: move it in small steps from
     the host if you need it smooth.
-    The tail rings only while the source keeps feeding: feed silence to let
-    it ring out. A tail cut short by a source that stopped carries on when
-    the source comes back.
+    When your source ends, the tail rings out as it would on silence.
     """
 
     NAME = 'SlapbackDelay'

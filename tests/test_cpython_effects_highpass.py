@@ -554,8 +554,10 @@ class ResetAndDeinitWalkEveryNode(unittest.TestCase):
         primed = max(abs(v) for v in pull_ints(built.output, 2048))
         self.assertGreater(primed, 0)
         built.reset()
-        # The source replays its silent lead, so a cleared cascade can only
-        # write zeros; anything left in a section would come out here.
+        # The source carries on through the silence after its burst (a
+        # reset keeps the frames the node took, audiodsp#211), so a cleared
+        # cascade can only write zeros; anything left in a section would
+        # come out here.
         self.assertEqual(max(abs(v) for v in pull_ints(built.output, 2048)),
                          0)
         self.assertEqual(len(built._nodes), 3)
@@ -572,14 +574,22 @@ class ResetAndDeinitWalkEveryNode(unittest.TestCase):
                            0)
 
     def test_reset_leaves_the_borrowed_source_rendering(self):
+        # A reset half-way through the burst: the source goes on from
+        # where it was, so the rest of the burst comes out.
+        #
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # a reset dropped the RawSample buffer the cascade held and the
+        # sample replayed from its top, so this test pulled past the silent
+        # lead to hear the burst again. The replay was the node's defect,
+        # fixed in audiodsp#211: a reset keeps the source frames a node has
+        # already taken.
         borrowed = self.primed_source()
         built = highpass.HighPass(borrowed, frequency=20.0, q=16.0,
                                       slope=24)
-        pull_ints(built.output, 8192)
+        pull_ints(built.output, 6144)            # half-way into the burst
         built.reset()
-        pull_ints(built.output, 4096)            # past the silent lead
-        self.assertGreater(max(abs(v) for v in pull_ints(built.output, 4096)),
-                           0)
+        self.assertGreater(max(abs(v) for v in pull_ints(built.output, 1024)),
+                           1000)
 
     def test_deinit_releases_every_node_and_is_idempotent(self):
         built = highpass.HighPass(source(), frequency=300.0)

@@ -185,6 +185,18 @@ def build(cls=None, rate=RATE, channels=2, **options):
     return cls(switchable(channels, rate), sample_rate=rate, **options)
 
 
+def fresh(effect):
+    """Hand the node the source the test just swapped in, and empty it.
+
+    Since audiodsp#213 the node lets go of a source once it hands its last
+    buffer, so a second render on one instance re-plays the source to the
+    node, as a host starting new material does; and since audiodsp#211 a
+    host reset keeps the source frames the node already took, so `play()`
+    is what drops them. The reset then clears the room's history."""
+    effect.node.play(effect._source)
+    audiocore.reset_buffer(effect.node)
+
+
 def run(effect, pcm, frames=None):
     """Swap `pcm` in behind `effect`, empty the node, pull `frames` frames
     (default: len(pcm)) and return them as (frames, channels) int16."""
@@ -195,7 +207,7 @@ def run(effect, pcm, frames=None):
         pcm = np.vstack([pcm, silence(total - pcm.shape[0], channels)])
     effect._source.swap(probes.ArraySource(pcm, rate=effect.sample_rate,
                                            channels=channels))
-    audiocore.reset_buffer(effect.node)
+    fresh(effect)
     out = bytearray()
     want = total * channels * 2
     while len(out) < want:
@@ -1245,7 +1257,7 @@ class ResynthesisIsDeduplicated(unittest.TestCase):
         channels = effect.channel_count
         effect._source.swap(probes.ArraySource(
             pcm, rate=effect.sample_rate, channels=channels, block=block))
-        audiocore.reset_buffer(effect.node)
+        fresh(effect)
         out = bytearray()
         for number in range(blocks):
             if number == 10 and action is not None:
@@ -1355,7 +1367,7 @@ class ResynthesisIsDeduplicated(unittest.TestCase):
         def pull(effect, action):
             effect._source.swap(probes.ArraySource(pcm, rate=RATE,
                                                    channels=2))
-            audiocore.reset_buffer(effect.node)
+            fresh(effect)
             out = bytearray()
             for block in range(32):
                 if block == 10:
@@ -1398,7 +1410,7 @@ def pulled(effect, pcm, actions=None, blocks=40):
     channels = effect.channel_count
     effect._source.swap(probes.ArraySource(pcm, rate=effect.sample_rate,
                                            channels=channels))
-    audiocore.reset_buffer(effect.node)
+    fresh(effect)
     out = bytearray()
     for number in range(blocks):
         if actions and number in actions:
@@ -1510,7 +1522,7 @@ def dry_render(cls, rate, channels, start, pcm, plan=None, actions=None,
     effect = build(cls, rate, channels, mix=mix, **options)
     act(effect, start)
     effect._source.swap(DryOnce(pcm, rate, channels, plan, size))
-    audiocore.reset_buffer(effect.node)
+    fresh(effect)
     out, sizes = [], []
     for number in range(blocks):
         if actions and number in actions:
@@ -1587,18 +1599,26 @@ class RoomMoveWords(unittest.TestCase):
         # 2 000 LSB through the dark room, Mix held at 2:
         # - on the line within 1 LSB, frames before and after exact: one
         #   knob move; one knob a pull (Room, then Predelay the next pull);
-        #   a move after an under-run and a reset();
+        #   a move after the source ran dry 255 frames into a block; a move
+        #   after an under-run and a reset();
         # - the audio untouched: a move onto the room already loaded (Room
         #   0 -> 1, both seed 1);
         # - frames before and after exact, but a step past ten times the
         #   rooms' own: every pair of changes before one pull the rule
         #   names (two knobs, three, a knob and a patch either way, two
-        #   patches), and one knob move after the source ran dry 255
-        #   frames into a block.
+        #   patches).
         # OneSynthesisPerBlock (changes gathered into one synthesis) is red
-        # on the pairs, RetryOnEmpty (the class never lets the node see the
-        # empty buffer) on the under-run, and the cf17a88 words on the
-        # parse.
+        # on the pairs, and the cf17a88 words on the parse.
+        #
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # a source that ran dry part-way through a block made the node
+        # hand on a short block, which moved its block phase for good, so
+        # a move after an under-run landed part-way through the node's
+        # block and jumped; this test asserted that jump. The short block
+        # was the node's defect (audiodsp#213 names it): the node now
+        # renders what the source did not hand from silence, every block is
+        # whole, and a move after an under-run is on the line like any
+        # other.
         for rate in RATES:
             for channels in (2, 1):
                 pcm = sine(40 * 256, channels, 40.0, rate, 2000.0)
@@ -1650,23 +1670,22 @@ class RoomMoveWords(unittest.TestCase):
                 new = render(DARK + p127, plan=UNDERRUN)[0]
                 moved = render(DARK + p0, {20: p127}, UNDERRUN)[0]
                 u = sum(sizes[:20])
-                jumps(old, new, moved, u, label + ("under-run",))
-                self.assertEqual(sizes[3], 255, label)
-                # The block in flight is the one frame left of the node's
-                # block; from its end the output is the new room's.
-                self.assertEqual(digest(moved[u + 1:]), digest(new[u + 1:]),
-                                 label)
-                # An empty buffer at a block edge is not part-way through
-                # one: the node plays 256 frames of silence and no phase
-                # moves, and a move made before that pull fades, on the
-                # line, over the block the node plays next.
+                on_line(old, new, moved, u, label + ("under-run",))
+                self.assertEqual(sizes, [256] * 40, label)
+                # An empty buffer at a block edge: the node renders that
+                # block from silence through the room, so the room rings on
+                # over it and no block of the output goes silent, and a move
+                # made before that pull is on the line over the block in
+                # flight, like any other. Up to v0.6.3 the node played that
+                # block as exact zero, outside the room, and the fade came a
+                # block later; the node's defect, fixed in audiodsp#213.
                 edge = {11: 0}
                 old, sizes = render(DARK, plan=edge)
                 self.assertEqual(sizes, [256] * 40, label)
-                self.assertEqual(int(np.max(np.abs(old[a:a + 256]))), 0,
-                                 label)
+                self.assertGreater(int(np.max(np.abs(old[a:a + 256]))), 0,
+                                   label)
                 on_line(old, render(DARK + room, plan=edge)[0],
-                        render(DARK, {MOVE_AT: room}, edge)[0], a + 256,
+                        render(DARK, {MOVE_AT: room}, edge)[0], a,
                         label + ("an empty buffer at a block edge",))
                 again = (("reset", None),) + DARK + HOLD_MIX + p0
                 old, sizes = render(DARK + p0, {12: again}, UNDERRUN)
@@ -1679,32 +1698,40 @@ class RoomMoveWords(unittest.TestCase):
     def test_every_short_read_part_way_counts_as_coming_up_short(
             self, cls=None):
         # "comes up short (an empty buffer, one shorter than a frame, or an
-        # error result)", and the rule's "has not come up short (above)
-        # part-way through a block": the source hands 100 frames on its
-        # fourth call and, on its fifth, an empty buffer, 1 stray byte, 3
-        # stray bytes (stereo) or an error result carrying 7 frames. Each
-        # returns a short block of 100 frames, and a Predelay 0 -> 127 move
-        # twenty pulls on is off the new room over at most 155 frames, not
-        # 255, and off the 256-frame line by far more than 1 LSB; a Mix
-        # 0 -> 2 move there leaves 156 frames at the old Mix, not 256. The
-        # controls, 3 whole frames and (stereo) 5 bytes, a frame and a
-        # part, are not short: the node pulls again, the block is whole,
-        # and the move is on the line (255 frames off the new room, 256 at
-        # the old Mix). RetryOnShort (the class pulls again on every short
-        # read) is red on the short legs; RetryOnEmpty is red only on the
-        # empty one.
+        # error result)": the source hands 100 frames on its fourth call
+        # and, on its fifth, an empty buffer, 1 stray byte, 3 stray bytes
+        # (stereo) or an error result carrying 7 frames. Each block is
+        # whole, and the rest of the short one is silence: at Mix 0 the 156
+        # frames after the 100 are exact zero and the source resumes 156
+        # frames late (149 after the error, whose 7 frames never reach the
+        # node). The controls, 3 whole frames and (stereo) 5 bytes, a frame
+        # and a part, are not short: the node pulls again and inserts no
+        # silence (one stray frame, from the 5 bytes). Either way a
+        # Predelay 0 -> 127 move twenty pulls on is on the 256-frame line
+        # within 1 LSB, off the new room over 255 frames, and a Mix 0 -> 2
+        # move there leaves 256 frames at the old Mix.
+        #
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # a short read part-way through a block made the node hand on a
+        # short block of 100 frames, so the move after it was off the line
+        # and a Mix move left 156 frames at the old Mix; this test asserted
+        # both. The short block was the node's defect (audiodsp#213): it
+        # moved the node's block phase for good. The node now renders what
+        # the source did not hand from silence, so the short read shows as
+        # silence in the dry instead.
         start = DARK + HOLD_MIX
         move = ((PREDELAY_I, 127),)
+        stray = np.frombuffer(b"\x11\x11", dtype=np.int16)[0]
         for rate in RATES:
             for channels in (2, 1):
                 pcm = sine(44 * 256, channels, 40.0, rate, 2000.0)
-                legs = [("empty", 0, True), ("1 byte", ("bytes", 1), True),
-                        ("error, 7 frames", ("error", 7), True),
-                        ("3 frames", 3, False)]
+                legs = [("empty", 0, 156), ("1 byte", ("bytes", 1), 156),
+                        ("error, 7 frames", ("error", 7), 149),
+                        ("3 frames", 3, 0)]
                 if channels == 2:
-                    legs += [("3 bytes", ("bytes", 3), True),
-                             ("5 bytes", ("bytes", 5), False)]
-                for name, what, short in legs:
+                    legs += [("3 bytes", ("bytes", 3), 156),
+                             ("5 bytes", ("bytes", 5), 1)]
+                for name, what, late_by in legs:
                     plan = {4: 100, 5: what}
                     label = (rate, channels, name)
                     old, sizes = dry_render(cls, rate, channels, start, pcm,
@@ -1724,17 +1751,22 @@ class RoomMoveWords(unittest.TestCase):
                                     blocks=44)[0]
                     late = int(np.nonzero(np.any(m0[a:] != m2[a:],
                                                  axis=1))[0][0])
+                    self.assertEqual(sizes, [256] * 44, label)
                     self.assertEqual(r["pre"], 0, (label, r))
-                    if short:
-                        self.assertEqual(sizes[3], 100, label)
-                        self.assertLessEqual(fade, 155, (label, fade))
-                        self.assertGreater(r["off_line"], 100.0, (label, r))
-                        self.assertEqual(late, 156, label)
-                    else:
-                        self.assertEqual(sizes[3], 256, label)
-                        self.assertEqual(fade, 255, label)
-                        self.assertLessEqual(r["off_line"], 1.0, (label, r))
-                        self.assertEqual(late, 256, label)
+                    self.assertEqual(fade, 255, label)
+                    self.assertLessEqual(r["off_line"], 1.0, (label, r))
+                    self.assertEqual(late, 256, label)
+                    # Mix 0 is the source `latency_samples` late, with
+                    # what the fifth call did at frame 868 of it.
+                    at = 3 * 256 + 100
+                    gap = {156: silence(156, channels),
+                           149: silence(156, channels), 0: pcm[:0],
+                           1: np.full((1, channels), stray, np.int16)}
+                    skip = 7 if late_by == 149 else 0
+                    want = np.vstack([silence(LATENCY, channels), pcm[:at],
+                                      gap[late_by], pcm[at + skip:]])
+                    self.assertEqual(digest(m0), digest(want[:len(m0)]),
+                                     label)
 
     def test_no_dry_frame_drops_after_any_number_of_changes(self, cls=None):
         # "No frame of your dry signal drops or repeats, at any Mix and
@@ -1746,15 +1778,25 @@ class RoomMoveWords(unittest.TestCase):
         # a block edge. And it reads the latency paragraph against the same
         # renders: Mix 0 is the source delayed by `latency_samples`, byte
         # for byte, from a source in 256-frame calls, in 100-frame calls and
-        # in 1 000-frame calls, and after it comes up short part-way through
-        # a block; a pull in which it comes up short before the pull has a
-        # frame (an empty buffer, 1 stray byte or an error result at a block
-        # edge, and two such pulls) comes out as 256 frames of silence with
-        # everything after it 256 frames later; an error result's frames
-        # never reach the node, and neither does the part frame at the end
-        # of a buffer of a frame and a byte (its whole frame does). The
-        # moves come before and after the starved pull. ResetOnMove is red,
-        # and so are the 8a57282 words, whose one exception was the reset.
+        # in 1 000-frame calls; where the source comes up short (an empty
+        # buffer, 1 stray byte or an error result, part-way through a block
+        # or at its edge, and two such pulls) the rest of that block is
+        # silence, `latency_samples` late like the source, with everything
+        # after it that much later; an error result's frames never reach
+        # the node, and neither does the part frame at the end of a buffer
+        # of a frame and a byte (its whole frame does). The moves come
+        # before and after the starved pull. ResetOnMove is red, and so are
+        # the 8a57282 words, whose one exception was the reset.
+        #
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # a pull that came up short before it had a frame played 256
+        # frames of silence straight out, outside the room and on no
+        # latency, and one that came up short part-way through a block
+        # handed on a short block with no silence at all; this test
+        # asserted both. Both were the node's defect (audiodsp#213): the
+        # node now renders the frames the source did not hand from silence,
+        # through the room, so every block is whole and the gap is the
+        # rest of the block, as late as the source around it.
         wire_back = ((MIX_I, 0),)
         stray = np.frombuffer(b"\x11\x11", dtype=np.int16)[0]
         room = ((ROOM_I, 50),)
@@ -1766,12 +1808,14 @@ class RoomMoveWords(unittest.TestCase):
                 pcm = np.repeat(pcm[:, None], channels, axis=1)
 
                 def wire(source, silent=()):
-                    """`source` delayed by `latency_samples`, with 256
-                    frames of silence at each output frame in `silent`
-                    (output frames, the earlier silences counted)."""
+                    """`source` delayed by `latency_samples`, with `n`
+                    frames of silence at each source frame `at` of the
+                    (at, n) pairs in `silent` (the earlier silences
+                    counted)."""
                     out = np.vstack([silence(LATENCY, channels), source])
-                    for at in sorted(silent):
-                        out = np.vstack([out[:at], silence(256, channels),
+                    for at, n in sorted(silent):
+                        at += LATENCY
+                        out = np.vstack([out[:at], silence(n, channels),
                                          out[at:]])
                     return out
 
@@ -1786,23 +1830,26 @@ class RoomMoveWords(unittest.TestCase):
                 for p in (100, 255):
                     cases.append(("under-run %d" % p, {4: p, 5: 0}, {
                         20: room, 21: ((PREDELAY_I, 40), (DECAY_I, 30))},
-                        None, wire(pcm)))
+                        None, wire(pcm, ((3 * 256 + p, 256 - p),))))
+                # 29 calls of 100 frames are 11 blocks and 84 frames, and 4
+                # of 1 000 are 15 blocks and 160: the empty call leaves the
+                # rest of that block silent.
                 cases += [
                     ("100-frame calls, one empty", {30: 0}, {20: room}, 100,
-                     wire(pcm)),
+                     wire(pcm, ((2900, 172),))),
                     ("1 000-frame calls, one empty", {5: 0}, {6: room}, 1000,
-                     wire(pcm)),
+                     wire(pcm, ((4000, 96),))),
                     ("empty at a block edge, a move before it", {11: 0},
-                     {MOVE_AT: room}, None, wire(pcm, (edge,))),
+                     {MOVE_AT: room}, None, wire(pcm, ((edge, 256),))),
                     ("empty at a block edge, a move after it", {11: 0},
-                     {20: room}, None, wire(pcm, (edge,))),
+                     {20: room}, None, wire(pcm, ((edge, 256),))),
                     ("1 byte at a block edge", {11: ("bytes", 1)},
-                     {20: room}, None, wire(pcm, (edge,))),
+                     {20: room}, None, wire(pcm, ((edge, 256),))),
                     ("an error with 7 frames at a block edge",
                      {11: ("error", 7)}, {20: room}, None,
-                     wire(dropped, (edge,))),
+                     wire(dropped, ((edge, 256),))),
                     ("two empty pulls", {11: 0, 15: 0}, {20: room}, None,
-                     wire(pcm, (edge, 14 * 256))),
+                     wire(pcm, ((edge, 256), (edge + 4 * 256, 256)))),
                     ("a frame and a byte at a block edge",
                      {11: ("bytes", 2 * channels + 1)}, {20: room}, None,
                      wire(part)),
@@ -1824,16 +1871,22 @@ class RoomMoveWords(unittest.TestCase):
         # old Mix": Mix 0 -> 2 twenty pulls in.
         # The frames after the move at the old Mix are never more than the
         # printed count, and from the first one at the new Mix the output
-        # is an instance that always had it; from a steady source the count
-        # is the printed one exactly, and after the source ran dry 100
-        # frames into a block it is 156. MixOnePullLate (512) is red, and
-        # so are the cf17a88 words, which said the 256 frames in flight
-        # come out at the old Mix.
+        # is an instance that always had it; the count is the printed one
+        # exactly, from a steady source and after the source ran dry 100
+        # frames into a block. MixOnePullLate (512) is red, and so are the
+        # cf17a88 words, which said the 256 frames in flight come out at
+        # the old Mix.
+        #
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # the count after the under-run was 156, because the node handed on
+        # a short block of 100 frames and its blocks ran 100 frames out of
+        # step from then on; this test asserted 156. The short block was
+        # the node's defect (audiodsp#213): every block is whole now.
         most = 256
         for rate in RATES:
             for channels in (2, 1):
                 pcm = white(40 * 256, channels, -6.0, seed=4243)
-                for plan, frames in ((None, most), ({4: 100, 5: 0}, 156)):
+                for plan, frames in ((None, most), ({4: 100, 5: 0}, most)):
                     old, sizes = dry_render(cls, rate, channels, (), pcm,
                                             plan, mix=0.0)
                     new = dry_render(cls, rate, channels, (), pcm, plan,
@@ -1867,11 +1920,23 @@ class RoomMoveWords(unittest.TestCase):
         # reset that plays 256 frames of silence whatever the node holds)
         # on the empty impulse, and so are the 8a57282 words, which said
         # the next 256 frames at every Mix.
+        #
+        # Restated at audiodsp eb2d20d (audiocomponents#127): only the Mix 0
+        # wire after the under-run moved. Up to v0.6.3 the node handed on a
+        # short block there and the source came out on time; this test
+        # asserted that. The short block was the node's defect
+        # (audiodsp#213): the rest of that block is silence now, so the
+        # source after it is 156 frames later.
         for rate in RATES:
             for channels in (2, 1):
                 pcm = white(40 * 256, channels, -6.0, seed=4244)
                 pcm[pcm == 0] = 1
                 want = np.vstack([silence(LATENCY, channels), pcm])
+                # After the under-run the rest of that block is silence,
+                # and the source runs 156 frames later (audiodsp#213).
+                gap = LATENCY + 3 * 256 + 100
+                dry = np.vstack([want[:gap], silence(156, channels),
+                                 want[gap:]])
                 rooms = ({}, dict(impulse=make_impulse(1000).tobytes()))
                 for plan, room in ((None, rooms[0]), ({4: 100, 5: 0},
                                                      rooms[0]),
@@ -1891,7 +1956,7 @@ class RoomMoveWords(unittest.TestCase):
                             int(np.max(np.abs(out[a + 256:a + 512]))), 0,
                             label)
                         if midi == 0:
-                            wire = want[:len(out)].copy()
+                            wire = (dry if plan else want)[:len(out)].copy()
                             wire[a:a + 256] = 0
                             self.assertEqual(digest(out), digest(wire),
                                              label)
@@ -1911,15 +1976,21 @@ class RoomMoveWords(unittest.TestCase):
         # patch 0 and on the empty impulse, three rates, stereo and mono;
         # the source leaves no pull empty, one pull (call 23) empty inside
         # the tail, or three in a row (calls 21 to 23), which is a source
-        # that stops handing frames mid-tail and then goes on. With the
-        # starved pulls' output taken out (each exact zero, 256 frames),
-        # the output is the no-starve render frame for frame, so the tail
-        # waits and then goes on where it was; and every frame more than
-        # `tail_samples` past the last non-zero input frame is exact zero,
-        # counted in the frames the source hands, while the room's last
+        # that stops handing frames mid-tail and then goes on. The output
+        # is the no-starve render frame for frame: the room rings on
+        # through the starved pulls as it does on the silence the source
+        # would have handed. Every frame more than `tail_samples` past the
+        # last non-zero input frame is exact zero, while the room's last
         # non-zero frame lands within one frame of that edge. TailTwoShort
         # (`tail_samples` two frames short) is red, and so are the 8a57282
         # words, which said only that the output is zero after the tail.
+        #
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # each starved pull came out as 256 frames of exact zero and the
+        # tail waited, then went on where it was, so the tail was counted
+        # in the frames the source handed; this test asserted that. The
+        # frozen tail was the node's defect (audiodsp#180, fixed in
+        # audiodsp#213).
         burst = 5000
         for rate in RATES:
             for channels in (2, 1):
@@ -1939,18 +2010,8 @@ class RoomMoveWords(unittest.TestCase):
                             self.assertEqual(sizes, [256] * 40, label)
                             handed = out
                             if plan:
-                                starved = [call - 1 for call in plan]
-                                for pull in starved:
-                                    self.assertEqual(int(np.max(np.abs(
-                                        out[pull * 256:pull * 256 + 256]))),
-                                        0, label)
-                                keep = np.ones(len(out), bool)
-                                for pull in starved:
-                                    keep[pull * 256:pull * 256 + 256] = False
-                                handed = out[keep]
-                                self.assertEqual(
-                                    digest(handed),
-                                    digest(steady[:len(handed)]), label)
+                                self.assertEqual(digest(out), digest(steady),
+                                                 label)
                             else:
                                 steady = out
                             edge = burst - 1 + tail
@@ -2842,7 +2903,7 @@ class Tier1Fast(unittest.TestCase):
                 burst = np.vstack([white(1024), silence(8192)])
                 effect._source.swap(probes.ArraySource(burst, rate=RATE,
                                                        channels=2))
-                audiocore.reset_buffer(effect.node)
+                fresh(effect)
                 for _ in range(6):
                     audiocore.get_buffer(effect.output)
                 effect.reset()
@@ -2997,19 +3058,18 @@ CLAIMS = (
      "the block in flight, 256 frames, dry included, and with Mix set back "
      "to 0 your source carries on on time after it.",
      "test_a_reset_keeps_the_whole_frames_the_node_holds"),
-    ("A host that calls `audiocore.reset_buffer` on the output silences the "
-     "block in flight too, but also drops the frames the node holds from a "
-     "source buffer it had not finished.",
-     "test_a_host_reset_buffer_silences_the_block_and_drops_held_frames"),
+    ("A host that calls `audiocore.reset_buffer` on the output does the "
+     "same.",
+     "test_a_host_reset_buffer_silences_the_block_and_keeps_held_frames"),
 )
 
-#: The family's two limits, as ruled on 2026-09-28, word for word.
+#: The family's two limits, as ruled on 2026-09-28, word for word; the
+#: second restated at audiodsp eb2d20d, whose nodes ring out when a source
+#: ends.
 FAMILY = (
     "A control that jumps makes the output step: move it in small steps "
     "from the host if you need it smooth.",
-    "The tail rings only while the source keeps feeding: feed silence to let "
-    "it ring out. A tail cut short by a source that stopped carries on when "
-    "the source comes back.",
+    "When your source ends, the tail rings out as it would on silence.",
 )
 
 
@@ -3032,7 +3092,7 @@ def wire_render(cls, rate, channels, pcm, size, at, action, blocks=40,
     the output and the frame where pull `at` starts."""
     effect = build(cls, rate, channels, mix=0.0, **options)
     effect._source.swap(DryOnce(pcm, rate, channels, None, size))
-    audiocore.reset_buffer(effect.node)
+    fresh(effect)
     out = []
     for number in range(blocks):
         if number == at:
@@ -3186,7 +3246,7 @@ class TheClaims(unittest.TestCase):
                         effect.set_macro(MIX_I, midi)
                         effect._source.swap(probes.ArraySource(
                             pcm, rate=rate, channels=channels))
-                        audiocore.reset_buffer(effect.node)
+                        fresh(effect)
                         out = bytearray()
                         for number in range(40):
                             if number == 20:
@@ -3236,31 +3296,32 @@ class TheClaims(unittest.TestCase):
                                 self.assertNotEqual(digest(out),
                                                     digest(want), label)
 
-    def test_a_host_reset_buffer_silences_the_block_and_drops_held_frames(
+    def test_a_host_reset_buffer_silences_the_block_and_keeps_held_frames(
             self):
         # A host `audiocore.reset_buffer(effect.output)` before pull 21, at
-        # Mix 0: the 256 frames after it are exact zero, and from then on
-        # the output is the source moved on by the frames the node held of
-        # its current buffer: none from 256-frame calls, 256 from 512-frame
-        # calls, 24 from 100-frame calls (54 calls handed 5 400 frames and
-        # the node had taken 5 376). audiodsp: the node's reset drops them.
+        # Mix 0, from 256-, 512- and 100-frame calls: the 256 frames after
+        # it are exact zero, and every other frame is the source on time,
+        # as after `reset()`.
+        #
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # the node's reset dropped the frames it held of the source buffer
+        # it was part-way through (256 from 512-frame calls, 24 from
+        # 100-frame calls), so the source came back that many frames on;
+        # this test asserted that. Dropping them skipped part of a source
+        # nobody had reset, the node's defect fixed in audiodsp#211: a host
+        # reset keeps the source frames the node has already taken.
         for rate in (48000, 22050):
             for channels in (2, 1):
                 pcm = counting(44 * 256, channels)
-                for size, dropped in ((256, 0), (512, 256), (100, 24)):
+                wire = np.vstack([silence(LATENCY, channels), pcm])
+                for size in (256, 512, 100):
                     out, a = wire_render(
                         None, rate, channels, pcm, size, 21,
                         lambda e: audiocore.reset_buffer(e.output))
                     label = (rate, channels, size)
-                    wire = np.vstack([silence(LATENCY, channels), pcm])
-                    self.assertEqual(digest(out[:a]), digest(wire[:a]), label)
-                    self.assertEqual(int(np.max(np.abs(out[a:a + 256]))), 0,
-                                     label)
-                    rest = out[a + 256:]
-                    self.assertEqual(
-                        digest(rest),
-                        digest(pcm[a + dropped:a + dropped + len(rest)]),
-                        label)
+                    want = wire[:len(out)].copy()
+                    want[a:a + 256] = 0
+                    self.assertEqual(digest(out), digest(want), label)
 
 
 if __name__ == "__main__":

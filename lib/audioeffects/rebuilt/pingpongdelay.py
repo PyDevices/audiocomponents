@@ -142,10 +142,8 @@ class PingPongDelay(_component.Component):
     overshoots, so with it in leave more room.
 
     **Limits shared by the family.** A control that jumps makes the output
-    step: move it in small steps from the host if you need it smooth. The
-    tail rings only while the source keeps feeding: feed silence to let it
-    ring out. A tail cut short by a source that stopped carries on when the
-    source comes back.
+    step: move it in small steps from the host if you need it smooth. When
+    your source ends, the tail rings out as it would on silence.
 
     **Latency, tail, portability.** A click comes out on the frame it went
     in: there is no latency. `tail_samples` is an upper bound on how many

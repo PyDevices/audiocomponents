@@ -1924,10 +1924,8 @@ CLAIMS = (
     ("A control that jumps makes the output step: move it in small steps "
      "from the host if you need it smooth.",
      "test_a_jumping_control_steps_the_output"),
-    ("The tail rings only while the source keeps feeding: feed silence to "
-     "let it ring out.", "test_a_tail_cut_short_carries_on"),
-    ("A tail cut short by a source that stopped carries on when the source "
-     "comes back.", "test_a_tail_cut_short_carries_on"),
+    ("When your source ends, the tail rings out as it would on silence.",
+     "test_the_tail_rings_out_when_the_source_ends"),
 )
 
 
@@ -2147,13 +2145,22 @@ class TheClaims(unittest.TestCase):
         self.assertTrue(res["P5"].startswith("RED"), res)
         self.assertEqual(res["P1"], "ok", res)
 
-    def test_a_tail_cut_short_carries_on(self):
-        # The matrix's E8-dry cell at patch 2: the source hands back an
-        # empty buffer once, and when it comes back the tail it cut short
-        # plays out of the silence (audiodsp#180).
-        res = _cell("E8-dry", 2)
-        self.assertTrue(res["P3"].startswith("RED(peak"), res)
-        self.assertEqual(res["P2"], "ok", res)
+    def test_the_tail_rings_out_when_the_source_ends(self):
+        # The matrix's E8-end cell at patch 2: the source ends part-way
+        # through a block, and from there the output is, byte for byte, a
+        # control whose source turned to silence at the same pull (P4);
+        # silence after the tail is exact zero (P2) and nothing plays out
+        # of it (P3).
+        #
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # this read the retired E8-dry cell, a source that ran dry once and
+        # came back, and asserted the tail it froze played out of the
+        # silence. That was the node's defect (audiodsp#180), fixed in
+        # audiodsp#213: a node lets go of a source that has ended and rings
+        # out on silence.
+        res = _cell("E8-end", 2)
+        for prop in ("P1", "P2", "P3", "P4"):
+            self.assertEqual(res[prop], "ok", (prop, res))
 
 
 # --------------------------------------------------------------------------

@@ -294,5 +294,32 @@
 # classes included; validate_api, validate_metadata and flake8 clean.
 # Pending both boards.
 #
+# 2026-10-09: v0.6.3 -> eb2d20d, audiodsp main, a commit and not a release
+# (v0.6.4 is behind it). It carries the CircuitPython 11.0.0-alpha.1 resync
+# (audiodsp#221) and, by `git log v0.6.3..eb2d20d -- src`, these changes
+# beneath the components: FeedbackDelay, Tank and Convolver let go of a
+# source once it hands its last buffer, render whatever the source did not
+# fill from silence, so every block is whole and a tail rings out when its
+# source ends, and rest once their state is exactly zero (audiodsp#213); a
+# host reset keeps the source frames a node has already taken (#211);
+# MultiTapDelay keeps its lanes and never spins, and FeedbackDelay's wow and
+# pitch shift park at a zero crossing (#216); upstream's buffer-length and
+# silence-fill fixes (#215); FeedbackDelay gains delay_frames (#206); the
+# CPython mixer forces a pending level move per source stretch (#203);
+# released nodes refuse every method (#198); control writes take the pump
+# lock (#205, #209); Echo stays inside a short line and defaults to mix 0.25
+# on CPython (#200, #197); a looping MP3's second lap (#219); audiometer
+# (#186, #199) and the CPython audiopump engine (#190).
+#
+# The tests that pinned the old nodes are restated to the new behaviour,
+# each with the reason in its own comment (audiocomponents#127): the
+# family's tail sentence in seven docstrings ("When your source ends, the
+# tail rings out as it would on silence.") and the tests that read it, in
+# place of the frozen tail; ConvolutionReverb's short reads, which leave a
+# whole block with the rest silent instead of a short block, and its host
+# reset_buffer, which keeps the frames the node holds; two MultiTapDelay
+# plants that #211 made inert; and the lifecycle matrix's E8-dry event,
+# retired because a native source that runs dry has ended.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.3 5afe010b61b1b9e628534bc90895b005f7df6d6d
+eb2d20daa7f3be2965f8f641b3fdf2d9a55aca9c eb2d20daa7f3be2965f8f641b3fdf2d9a55aca9c

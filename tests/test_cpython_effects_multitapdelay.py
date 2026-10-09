@@ -2105,7 +2105,8 @@ class SteppedLaps(MultiTapDelay):
 
 class BareAdapter(MultiTapDelay):
     """Mix 0 on the input adapter itself, without `_through`: a host's
-    reset of the output reaches the adapter and drops what it holds."""
+    reset of the output reaches the adapter. Up to audiodsp v0.6.3 that
+    dropped what it held; since audiodsp#211 it keeps it."""
 
     NAME = 'MultiTapDelay'
 
@@ -2725,14 +2726,18 @@ class ReauditRoundOne(unittest.TestCase):
         cells = [key for key in results
                  if key[0] == "BLOCKS" and key[1] == "clean"]
         self.assertEqual(len(cells), 3 * 4 * 2 * 4)
-        # The adapter registered for a reset drops its frames at reset() and,
-        # through the base's `_rejoin`, at every return from Mix 0 as well;
-        # ac2181f, which had no `_rejoin`, lost them at reset() only. Mix 0
-        # on the source itself skips them while Mix is 0. The 256-frame
-        # control, which leaves the adapter holding nothing, stays green.
-        for plant, events in (("adapterreset",
-                               ("reset", "Mix 0 and back", "Mix-0 run")),
-                              ("sourcebypass", ("Mix-0 run",))):
+        # Mix 0 on the source itself skips what the adapter holds while Mix
+        # is 0. The 256-frame control, which leaves the adapter holding
+        # nothing, stays green.
+        #
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # the adapter registered for a reset dropped its frames at reset()
+        # and at every return from Mix 0, and this test held that plant red
+        # there. Dropping them was the node's defect, fixed in audiodsp#211:
+        # a reset keeps the source frames a node has already taken, so the
+        # plant renders what the class does and is green.
+        self.assertEqual(red_cells(results, "BLOCKS", "adapterreset"), [])
+        for plant, events in (("sourcebypass", ("Mix-0 run",)),):
             want = sorted(("%s %d %s" % (buffers, pulls, event), rate,
                            channels)
                           for buffers, pulls in HELD for event in events
@@ -2794,12 +2799,18 @@ class ReauditRoundOne(unittest.TestCase):
     def test_a_host_reset_at_mix_zero_keeps_the_timeline(self):
         # 31 blocks at Mix 0 from a source in 512-frame buffers, so the
         # adapter holds 256 frames, then the host resets the output: the
-        # click at 8 400 stays at 8 400 (the adapter itself as the port's
-        # target puts it at 8 144).
+        # click at 8 400 stays at 8 400, with the adapter itself as the
+        # port's target too.
+        #
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # a host reset of the bare adapter dropped the 256 frames it held
+        # and put the click at 8 144, and this test asserted that. Dropping
+        # them was the node's defect, fixed in audiodsp#211: a host reset
+        # keeps the source frames a node has already taken.
         module = routes_module()
         for channels in (2, 1):
             values = module.clicks(channels, 20000, ((8400, 20000),))
-            for cls, want in ((MultiTapDelay, 8400), (BareAdapter, 8144)):
+            for cls, want in ((MultiTapDelay, 8400), (BareAdapter, 8400)):
                 effect = cls(module.source(values, RATE, channels, 512),
                              sample_rate=RATE, mix=0.0)
                 head = pull(effect, 31 * BLOCK)

@@ -2094,14 +2094,16 @@ class Tier1Fast(unittest.TestCase):
                 sys.modules["audioecho"] = saved
         TapeDelay(src_of(np.zeros(512))).deinit()
 
-    def _tail_across_a_stop(self, stop):
+    def _tail_across_a_stop(self, stop, loud=False):
         """A 50 ms burst into Time 100 ms, Feedback 0.5, Mix 2, then
         silence; after 24 pulls the source hands empty buffers for `stop`
-        pulls, then silence again. Returns (the bytes handed while it was
-        stopped, the 40 blocks pulled after it came back)."""
-        feed = lifecycle.Feed(array("h", np.repeat(
+        pulls, then silence again (with `loud`, the burst on a loop).
+        Returns (the bytes handed while it was stopped, the 40 blocks
+        pulled after it)."""
+        burst = array("h", np.repeat(
             np.round(sine(TONE, 12000.0, 2400)).astype(np.int16), 2)
-            .tobytes()), RATE, 2, "256", False)
+            .tobytes())
+        feed = lifecycle.Feed(burst, RATE, 2, "256", False)
         effect = TapeDelay(feed.port, sample_rate=RATE, time_ms=100.0,
                            feedback=0.5, mix=2.0)
         for _ in range(24):
@@ -2110,21 +2112,28 @@ class Tier1Fast(unittest.TestCase):
         stopped = bytearray()
         for _ in range(stop):
             stopped.extend(bytes(audiocore.get_buffer(effect.output)[1]))
-        feed.point(feed.sil)
+        feed.point(lifecycle._adapter(burst, RATE, 2, 256, True)
+                   if loud else feed.sil)
         after = bytearray()
         while len(after) < 40 * BLOCK * 4:
             after.extend(bytes(audiocore.get_buffer(effect.output)[1]))
         effect.deinit()
         return bytes(stopped), bytes(after[:40 * BLOCK * 4])
 
-    def test_the_tail_waits_for_the_source(self):
-        # The family limit (audiocomponents#117, audiodsp#180): a source
-        # that hands empty buffers stops the tail; when it feeds again the
-        # tail carries on where it was, as if the stop had not happened.
-        stopped, after = self._tail_across_a_stop(30)
-        self.assertEqual(stopped.strip(b"\x00"), b"")
-        self.assertGreater(max(abs(v) for v in array("h", after)), 1000)
-        self.assertEqual(after, self._tail_across_a_stop(0)[1])
+    def test_the_tail_rings_out_when_the_source_ends(self):
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # the node advanced only on frames its source handed it, so a
+        # source that ran dry froze the tail and a source that came back
+        # played over it, and this test pinned that. That was the node's
+        # defect (audiodsp#180), fixed in audiodsp#213: a node lets go of a
+        # source that has ended and renders the frames it was not handed
+        # from silence. So across the end the tail is, byte for byte, the
+        # tail fed silence all along, and a loud source pointed behind the
+        # same port afterwards is not heard.
+        stopped, after = self._tail_across_a_stop(30, loud=True)
+        self.assertGreater(max(abs(v) for v in array("h", stopped)), 1000)
+        fed = self._tail_across_a_stop(0)[1]
+        self.assertEqual((stopped + after)[:len(fed)], fed)
 
     def test_silence_stays_silence(self):
         for character in tape.CHARACTERS:
@@ -2987,12 +2996,8 @@ CLAIMS = (
     ("A control that jumps makes the output step: move it in small steps "
      "from the host if you need it smooth.",
      ("Tier1Fast.test_a_balance_move_steps_as_the_docstring_says",)),
-    ("The tail rings only while the source keeps feeding: feed silence to "
-     "let it ring out.",
-     ("Tier1Fast.test_the_tail_waits_for_the_source",)),
-    ("A tail cut short by a source that stopped carries on when the source "
-     "comes back.",
-     ("Tier1Fast.test_the_tail_waits_for_the_source",)),
+    ("When your source ends, the tail rings out as it would on silence.",
+     ("Tier1Fast.test_the_tail_rings_out_when_the_source_ends",)),
     ("Latency is zero samples: nothing looks ahead.",
      ("Tier1Fast.test_click_delay_is_zero",)),
     ("`tail_samples` is an upper bound on how long the output takes to "

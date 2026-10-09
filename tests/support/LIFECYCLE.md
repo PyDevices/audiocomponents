@@ -45,11 +45,13 @@ later (6 for Mix).
   back.
 - **E5** Mix (the class's wet/dry control) to 0 and back.
 - **E6** `program_change` to each other patch and back.
-- **E8** the source hands back an empty buffer once, part-way through a
-  block, then carries on (`E8-dry`); the source ends (`E8-end`). A native
+- **E8** the source ends part-way through a block (`E8-end`). A native
   source can only run dry by handing back an empty buffer with
   `GET_BUFFER_DONE`, so that is what the matrix does, through an
-  `audioroute.Port` it re-points.
+  `audioroute.Port` it re-points. Since audiodsp#213 a node takes that as
+  the source's end, lets go of it and rings out on silence, so a dry spell
+  that carries on afterwards cannot be told from an end; the `E8-dry` event
+  that tried is retired.
 - **E9** source buffers of 256, 100, 512 and 1000 frames and one whole
   RawSample: P1 is Mix 0 all along; the other properties use the E5 move.
 - **E10** reset, every macro to 127 and back, Mix to 0 and back, a patch
@@ -69,8 +71,7 @@ at patch 0.
 
 - **P1** At Mix 0 the output is the source, byte for byte, on time (shifted
   by `latency_samples`). Events that do not move Mix take Mix back to 0 in
-  the same gap; E5 is judged over the stretch it holds Mix at 0. `E8-dry` may
-  insert silence but may not lose, repeat or reorder a frame; after
+  the same gap; E5 is judged over the stretch it holds Mix at 0. After
   `E8-end` the output is the frames the source handed, then silence.
 - **P2** Silence in gives silence out: after the event and `tail_samples`
   (read after it) + `latency_samples` + one block + the last source buffer,
@@ -80,8 +81,7 @@ at patch 0.
   blocks are exactly 0. A single action is taken in the silence instead.
 - **P4** From `tail_samples + latency_samples + one block` after the last
   move on, the output is byte-identical to the control's, over 2048 frames
-  of material. `E8-dry` may converge to the control delayed by up to one
-  block.
+  of material.
 - **P5** No step within one block of the move larger than 1.5 x the larger
   of the triangle's own largest step and the control's. Control moves only
   (E4, E5, E6, E9, E11): a reset, a deinit and a source fault are cuts by
