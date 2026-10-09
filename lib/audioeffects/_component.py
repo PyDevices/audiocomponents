@@ -305,6 +305,55 @@ def static_transport():
     return (False, 0.0, 120.0, 4, 4)
 
 
+def biquad_ring(node):
+    """Frames an `audiobiquad.Biquad` rings for after its input stops, from
+    any state, as an upper bound, read off the coefficients in force.
+
+    With no input the output is a sum of the two poles' powers, p1**n and
+    p2**n. Its amplitude is at most a small constant times the state over
+    |p1 - p2| (which is 2 r sin(w) for a resonator), and the state is at
+    most a few times full scale whatever filter built it, including the
+    one in force before a control moved (audiocomponents#114: a large
+    move down rang 10 to 30 % past bounds that left both of those out). So
+    the output is under half an LSB after ln(65536 * 40 / |p1 - p2|)
+    time constants of the larger pole. A cascade's bound is the sum of its
+    sections'.
+    """
+    a1, a2 = node.coefficients[3], node.coefficients[4]
+    disc = a1 * a1 - 4.0 * a2
+    if disc < 0.0:
+        radius = math.sqrt(a2)
+        gap = math.sqrt(-disc)
+    else:
+        root = math.sqrt(disc)
+        radius = max(abs(-a1 + root), abs(-a1 - root)) / 2.0
+        gap = root
+    if radius <= 0.0:
+        return 2
+    if radius >= 1.0:
+        return None
+    if gap < 1e-9:
+        gap = 1e-9
+    return int(math.ceil((_RING_LN + math.log(1.0 / gap))
+                         / -math.log(radius))) + 2
+
+
+def cascade_ring(nodes):
+    """`biquad_ring` summed over a cascade, or None if any section has a
+    pole on or outside the unit circle."""
+    total = 0
+    for node in nodes:
+        ring = biquad_ring(node)
+        if ring is None:
+            return None
+        total += ring
+    return total
+
+
+#: ln(65536 * 40): full scale to half an LSB, with the state's headroom.
+_RING_LN = math.log(65536.0 * 40.0)
+
+
 def db_to_gain(db):
     return 10.0 ** (db / 20.0)
 

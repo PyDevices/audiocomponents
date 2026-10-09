@@ -164,13 +164,13 @@ class LowPass(_component.Component):
     CAPABILITIES = ()
     LATENCY_SAMPLES = 0
 
-    #: Measured, not assumed: the longest burst-to-exact-zero this class
-    #: reaches anywhere in its own span - 20 Hz at Resonance 16 and
-    #: 24 dB/oct, struck with a full-scale burst - is 203 731 samples after
-    #: the source goes silent, at 48 kHz. Lower rates are shorter in frames
-    #: (a tail is a time, and 48 kHz has the most frames in it), so this is
-    #: a ceiling at every rate. Declared at the next multiple of 2048.
-    TAIL_SAMPLES = 204800
+    #: The design-rate worst case of the per-build bound `tail_samples`
+    #: reports: 20 Hz at Resonance 16 and 24 dB/oct with the trim cutting,
+    #: at 48 kHz. The instance's own figure is what a host should read:
+    #: patch 0's is 45 samples. Before audiocomponents#114 this was a
+    #: measured 204 800, which a move from a high corner to a low one as the
+    #: input stopped outlived (279 149 at patch 4).
+    TAIL_SAMPLES = 528261
 
     MACRO_LABELS = ("Frequency", "Resonance", "Slope", "Mix", "Trim")
     MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "TOGGLE",
@@ -291,3 +291,16 @@ class LowPass(_component.Component):
     def _apply_macro(self, index, position):
         del index, position
         self._refresh()
+
+    @property
+    def tail_samples(self):
+        """The ring time of *this* build: the sections in circuit, each
+        bounded from its coefficients in force (`_component.biquad_ring`),
+        summed down the cascade. The bound holds from any state the
+        sections can hold, including what the settings before a move left
+        in them (audiocomponents#114). A section that Mix 0 or the Slope
+        switch has taken out passes its input through and adds nothing."""
+        self._check_live()
+        return _component.cascade_ring(
+            [node for node in (self._pole_one, self._pole_two, self._trim)
+             if node.mix > 0.0])

@@ -951,3 +951,50 @@ class Digests(unittest.TestCase):
         one, _ = render_through(data, frequency=200.0, q=2.0)
         other, _ = render_through(data, frequency=4000.0, q=2.0)
         self.assertNotEqual(one.digest, other.digest)
+
+
+class OldRing(bandpass.BandPass):
+    """The bound before audiocomponents#114: 4 time constants of
+    `Q F_s / f0` for one section and 6 for the cascade, which left out the
+    state a move leaves behind and the low centre's 1 / sin(w)."""
+
+    NAME = 'BandPass'
+
+    @property
+    def tail_samples(self):
+        self._check_live()
+        ring = 6.0 if self._steep() else 4.0
+        return int(math.ceil(ring * self._value(1) * self._sample_rate
+                             / self.centre_hz))
+
+
+class TheTailAfterAMove(unittest.TestCase):
+    """A large move down in Frequency as the input stops rings out inside
+    the bound read after the move (audiocomponents#114), at the cells where
+    the old bound was short; the old bound is red there."""
+
+    #: (rate, channels, patch, Frequency from, Frequency to). Patch 0's
+    #: 16 kHz to 20 Hz rang 8 981 frames against the old 6 882, and the
+    #: steep patch 2's 24 352 against 18 992.
+    CELLS = ((48000, 2, 0, 127, 0), (48000, 2, 2, 127, 0),
+             (48000, 1, 2, 127, 0), (22050, 1, 3, 127, 32))
+
+    def test_the_ring_ends_inside_the_bound(self):
+        import tail_ring
+        for rate, channels, patch, high, low in self.CELLS:
+            for kind in ("noise", 100):
+                got, bound = tail_ring.ring(
+                    "BandPass", rate, channels, patch, start=((0, high),),
+                    moves=((0, low),), kind=kind)
+                self.assertLessEqual(got, bound,
+                                     (rate, channels, patch, kind))
+
+    def test_the_old_bound_is_red(self):
+        import tail_ring
+        red = 0
+        for rate, channels, patch, high, low in self.CELLS:
+            got, bound = tail_ring.ring(
+                "BandPass", rate, channels, patch, start=((0, high),),
+                moves=((0, low),), cls=OldRing)
+            red += got > bound
+        self.assertEqual(red, len(self.CELLS))

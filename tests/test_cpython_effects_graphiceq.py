@@ -610,14 +610,23 @@ class TheTailReachesZero(unittest.TestCase):
                 after = result.data[burst:]
                 rows = [i for i in range(after.shape[0]) if after[i].any()]
                 measured = (rows[-1] + 1) if rows else 0
+                # The declaration of the build in force, since
+                # audiocomponents#114: every band at its top, as rendered.
                 effect, _ = build(data, rate=rate)
+                for index, value in macros:
+                    effect.set_macro(index, value)
                 declared = effect.tail_samples
                 effect.deinit()
                 self.assertLessEqual(measured, declared,
                                      "%d Hz: measured %d frames of tail "
                                      "against a declared %d"
                                      % (rate, measured, declared))
-                self.assertGreater(measured, declared // 2,
+                # Since audiocomponents#114 the bound holds from any state
+                # the sections can hold, a move's included, and sums the
+                # chain; on a steady burst that reads about 3.3 times the
+                # ring, where the old fixed figure read 1.0 and was short
+                # after a move.
+                self.assertGreater(measured, declared // 4,
                                    "%d Hz: declared %d frames for a %d frame "
                                    "tail -- a bound that loose is not a "
                                    "report" % (rate, declared, measured))
@@ -993,3 +1002,18 @@ class TheLevelMacros(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheTailAfterAMove(unittest.TestCase):
+    """A Gain or Volume move from the top to the bottom as the input stops
+    rings out inside the bound read after the move (audiocomponents#114);
+    the old fixed 0.47 s is red there."""
+
+    def test_the_ring_ends_inside_the_bound_and_the_old_one_is_short(self):
+        import tail_ring
+        for index in (10, 11):
+            got, bound = tail_ring.ring(
+                "GraphicEQ", 22050, 1, None, start=((index, 127),),
+                moves=((index, 0),))
+            self.assertLessEqual(got, bound, index)
+            self.assertGreater(got, int(22050 * 0.47), index)

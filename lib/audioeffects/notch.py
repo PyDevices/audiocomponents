@@ -126,14 +126,13 @@ class Notch(_component.Component):
     CAPABILITIES = ()
     LATENCY_SAMPLES = 0
 
-    #: Measured, not assumed: the longest burst-to-exact-zero this class
-    #: reaches anywhere in its own span - 20 Hz at Width 32 with the
-    #: harmonic notch on and the trim at +12 dB, struck with a full-scale
-    #: burst - is 140 405 samples after the source goes silent, at 48 kHz.
-    #: Lower rates are shorter in frames (a tail is a time, and 48 kHz has
-    #: the most frames in it), so this is a ceiling at every rate. Declared
-    #: at the next multiple of 2048. Patch 0's own tail is 88 samples.
-    TAIL_SAMPLES = 143360
+    #: The design-rate worst case of the per-build bound `tail_samples`
+    #: reports: 20 Hz at Width 60, the harmonic notch on and the trim at
+    #: +12 dB, at 48 kHz. The instance's own figure is what a host should
+    #: read: patch 0's is 187 samples. Before audiocomponents#114 this was a
+    #: measured 143 360, which a move from a high centre to a low one as the
+    #: input stopped outlived by up to twice.
+    TAIL_SAMPLES = 965439
 
     MACRO_LABELS = ("Frequency", "Width", "Harmonics", "Depth", "Trim")
     MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "TOGGLE",
@@ -260,3 +259,17 @@ class Notch(_component.Component):
     def _apply_macro(self, index, position):
         del index, position
         self._refresh()
+
+    @property
+    def tail_samples(self):
+        """The ring time of *this* build: the sections in circuit, each
+        bounded from its coefficients in force (`_component.biquad_ring`),
+        summed down the cascade. The bound holds from any state the
+        sections can hold, including what the settings before a move left
+        in them (audiocomponents#114). A section a Depth of 0 or the
+        Harmonics switch has taken out passes its input through and adds
+        nothing."""
+        self._check_live()
+        return _component.cascade_ring(
+            [node for node in (self._fundamental, self._harmonic, self._trim)
+             if node.mix > 0.0])

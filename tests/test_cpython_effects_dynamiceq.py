@@ -1053,5 +1053,46 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
             module.audiomixer.Mixer = real
 
 
+class OldPeriodsTail(module.DynamicEQ):
+    """The bound before audiocomponents#114: 4 periods of `Q / f0`, from
+    a burst at fixed settings."""
+
+    NAME = 'DynamicEQ'
+
+    @property
+    def tail_samples(self):
+        self._check_live()
+        corner = self._corner_hz or 1.0
+        return int(4.0 * self.macro(self._WIDTH) * self._sample_rate
+                   / corner) + 1
+
+
+class TheTailAfterAMove(unittest.TestCase):
+    """A large move down in Frequency as the input stops rings out inside
+    the bound read after the move (audiocomponents#114); the old bound is
+    red at the same cells."""
+
+    #: (rate, channels, patch, Frequency from, Frequency to). Patch 1's
+    #: move rang 19 372 frames against the old 15 875 at 48 kHz.
+    CELLS = ((48000, 2, 1, 127, 0), (22050, 2, None, 127, 0),
+             (22050, 1, 3, 127, 0))
+
+    def test_the_ring_ends_inside_the_bound(self):
+        import tail_ring
+        for rate, channels, patch, high, low in self.CELLS:
+            got, bound = tail_ring.ring(
+                "DynamicEQ", rate, channels, patch, start=((0, high),),
+                moves=((0, low),))
+            self.assertLessEqual(got, bound, (rate, channels, patch))
+
+    def test_the_old_bound_is_red(self):
+        import tail_ring
+        for rate, channels, patch, high, low in self.CELLS:
+            got, bound = tail_ring.ring(
+                "DynamicEQ", rate, channels, patch, start=((0, high),),
+                moves=((0, low),), cls=OldPeriodsTail)
+            self.assertGreater(got, bound, (rate, channels, patch))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -14,7 +14,9 @@ the hi-hat above it and the kick below it, and *Key Listen* puts that band on
 the output so you can hear what you are tuning. Key Listen replaces the
 audio; it is a listening position, not a mix. Give the class ``key=`` and
 another stream drives the detector entirely, which is how one sound gates
-another.
+another. The key band's filters ring after the input stops, so while Key
+Listen is on `tail_samples` covers that ring; with ``key=`` the band
+follows the key and `tail_samples` is ``None``.
 
 **Portability tier: audiodsp.** Built on ``audiodynamics.Dynamics``, which is
 audiodsp's own module and not a CircuitPython port, so a stock CircuitPython
@@ -99,6 +101,21 @@ INVERTING_LEVEL = -32768
 #: a number, so the duck's blend gain floors here instead; -120 dB leaves the
 #: dry path a wire to well under an LSB.
 SILENT_DB = -120.0
+
+
+#: ln(4 * 65536): a one-pole state at four times full scale falls under
+#: half an int16 LSB after this many time constants.
+_KEY_RING_TIME_CONSTANTS = math.log(4.0 * 65536.0)
+
+
+def _key_pole_ring(hz, sample_rate):
+    """Frames one of the key band's poles at `hz` rings for: its state
+    falls by exp(-2 pi f / fs) a frame (`audiodsp_dynamics.c`'s sidechain
+    coefficients), plus a frame for single precision."""
+    if hz <= 0.0:
+        return 0
+    return int(math.ceil(_KEY_RING_TIME_CONSTANTS * sample_rate
+                         / (2.0 * math.pi * hz))) + 1
 
 
 class NoiseGate(_component.Component):
@@ -209,6 +226,8 @@ class NoiseGate(_component.Component):
             sidechain_poles=2 if int(key_poles) >= 2 else 1,
             lookahead_ms=lookahead_ms))
         self._dyn.play(gate_input)
+        self._key_poles = 2 if int(key_poles) >= 2 else 1
+        self._external_key = key is not None
         if key is not None:
             self._dyn.key(key)
 
@@ -276,11 +295,32 @@ class NoiseGate(_component.Component):
 
     @property
     def tail_samples(self):
-        """The same number: what is left to come out after the input goes
-        quiet is exactly the audio held in the look-ahead buffer. Nothing
-        here has a feedback path or a delay line."""
+        """The same number, with Key Listen off: what is left to come out
+        after the input goes quiet is exactly the audio held in the
+        look-ahead buffer. Nothing here has a feedback path or a delay line.
+
+        With Key Listen on, the output is the key band, and its one-pole
+        filters ring after the input stops (audiocomponents#114: 2 048
+        frames at the default Key Low). Each pole adds the frames its state
+        takes to fall from four times full scale - the most a high-pass
+        hands the next stage - to under half an LSB. With an external `key=`
+        the band follows the key, not the input, so there is no bound:
+        `None`.
+        """
         self._check_live()
-        return self._latency
+        if self._macros[self.KEY_LISTEN] < 0.5:
+            return self._latency
+        if self._external_key:
+            return None
+        ring = (_key_pole_ring(self._hz(self._value_of(self.KEY_LOW)),
+                               self._sample_rate)
+                + _key_pole_ring(self._hz(self._value_of(self.KEY_HIGH)),
+                                 self._sample_rate))
+        return self._latency + self._key_poles * ring
+
+    def _value_of(self, index):
+        return _component.macro_value(self._MACRO_RANGES[index],
+                                      self._macros[index])
 
     # -- macros -------------------------------------------------------
 
