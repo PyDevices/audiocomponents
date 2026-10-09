@@ -1672,17 +1672,20 @@ class RoomMoveWords(unittest.TestCase):
                 u = sum(sizes[:20])
                 on_line(old, new, moved, u, label + ("under-run",))
                 self.assertEqual(sizes, [256] * 40, label)
-                # An empty buffer at a block edge is not part-way through
-                # one: the node plays 256 frames of silence and no phase
-                # moves, and a move made before that pull fades, on the
-                # line, over the block the node plays next.
+                # An empty buffer at a block edge: the node renders that
+                # block from silence through the room, so the room rings on
+                # over it and no block of the output goes silent, and a move
+                # made before that pull is on the line over the block in
+                # flight, like any other. Up to v0.6.3 the node played that
+                # block as exact zero, outside the room, and the fade came a
+                # block later; the node's defect, fixed in audiodsp#213.
                 edge = {11: 0}
                 old, sizes = render(DARK, plan=edge)
                 self.assertEqual(sizes, [256] * 40, label)
-                self.assertEqual(int(np.max(np.abs(old[a:a + 256]))), 0,
-                                 label)
+                self.assertGreater(int(np.max(np.abs(old[a:a + 256]))), 0,
+                                   label)
                 on_line(old, render(DARK + room, plan=edge)[0],
-                        render(DARK, {MOVE_AT: room}, edge)[0], a + 256,
+                        render(DARK, {MOVE_AT: room}, edge)[0], a,
                         label + ("an empty buffer at a block edge",))
                 again = (("reset", None),) + DARK + HOLD_MIX + p0
                 old, sizes = render(DARK + p0, {12: again}, UNDERRUN)
