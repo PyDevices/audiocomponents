@@ -2812,7 +2812,8 @@ class TrialClaims(unittest.TestCase):
 class SyncLimits(unittest.TestCase):
     """Second fixer (2026-09-29): Sync's two limits, at the attacker's
     settings. A Division longer than 800 ms stops at 800 ms, and the tempo
-    is read only when a control moves or a patch loads."""
+    is read when the host calls `transport_changed()`, a control moves or a
+    patch loads."""
 
     #: The sixteen Divisions in beats, written out here: 1/32, 1/16T,
     #: 1/32D, 1/16, 1/8T, 1/16D, 1/8, 1/4T, 1/8D, 1/4, 1/2T, 1/4D, 1/2,
@@ -2867,9 +2868,17 @@ class SyncLimits(unittest.TestCase):
         y[at] = 0.0
         return int(np.argmax(y)) - at
 
-    def test_a_tempo_change_waits_for_a_control(self):
+    def test_a_tempo_change_is_taken_on_the_hook_or_a_control(self):
+        # Nothing reads the transport while the class plays: with no call
+        # and no control, the echo stays a 120 bpm quarter.
         self.assertEqual(self._tempo_change(), 24000)
         self.assertEqual(self._tempo_change(channels=1), 24000)
+        # The host's `transport_changed()` reads the new tempo
+        # (audiocomponents#118): a 60 bpm quarter, clamped to 800 ms.
+        def hook(effect):
+            effect.transport_changed()
+        self.assertEqual(self._tempo_change(hook), 38400)
+        self.assertEqual(self._tempo_change(hook, channels=1), 38400)
         # Any control moved, even to where it already is, reads the new
         # tempo: a 60 bpm quarter, clamped to 800 ms.
         for index in range(8):
@@ -2931,10 +2940,9 @@ CLAIMS = (
       "T4TimeLaw.test_no_host_leaves_time_on_the_knob",
       "ZeroBpmHost.test_no_tempo_leaves_time_on_the_knob",
       "ZeroBpmHost.test_a_tempo_that_is_not_finite_leaves_time_on_the_knob")),
-    ("The class reads the tempo only when a control moves or a patch "
-     "loads, so after a tempo change Time keeps the old beat until you "
-     "move a control.",
-     ("SyncLimits.test_a_tempo_change_waits_for_a_control",)),
+    ("After a tempo change Time takes the new beat when the host calls "
+     "`transport_changed()`, or when a control moves or a patch loads.",
+     ("SyncLimits.test_a_tempo_change_is_taken_on_the_hook_or_a_control",)),
     ("Patch 5 puts the DD-2's 7 kHz and 40 Hz corners in the loop.",
      ("TrialClaims.test_patch_5_is_the_pedal_corners",
       "T5BandLimit.test_the_corners_at_48k")),

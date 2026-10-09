@@ -1971,6 +1971,11 @@ class Tier1Fast(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         pull(effect, 4 * BLOCK)
         self.assertEqual(len(calls), 1)
+        effect.transport_changed()
+        self.assertGreater(len(calls), 1)
+        reads = len(calls)
+        pull(effect, 4 * BLOCK)
+        self.assertEqual(len(calls), reads)
 
 
 def railed_samples(cls, dbfs, seconds, values=None, **options):
@@ -2465,7 +2470,8 @@ CLAIMS = (
      "with no host tempo, Time stays where the knob is.",
      ("TheSurface.test_sync_quantises_time_and_clamps",)),
     ("The class reads the host's transport only while Sync is on, and then "
-     "only when a control moves or a patch loads, never while it plays.",
+     "only when a control moves, a patch loads or the host calls "
+     "`transport_changed()`, never while it plays.",
      ("Tier1Fast.test_the_transport_is_read_only_with_sync_on",
       "TheSurface.test_sync_patches_follow_the_beat")),
     ("Repeat Tone is a low-pass and Repeat Cut a high-pass inside the "

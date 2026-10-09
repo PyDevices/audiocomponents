@@ -280,6 +280,7 @@ class Phaser(_component.Component):
     REQUIRES = ("audiobiquad", "audioshaper")
 
     CAPABILITIES = ("tempo_sync",)
+    _SYNC_MACRO = 8
     LATENCY_SAMPLES = 0
     #: Worst-case first-order all-pass flush at the coefficient cap
     #: (`AUDIODSP_FILTER_F32_MAX_ALLPASS_C`) is ~550_000 samples in the C

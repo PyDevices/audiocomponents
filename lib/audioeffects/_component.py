@@ -300,6 +300,10 @@ SPLITTER_TAPS = 4
 NYQUIST_MARGIN = 0.98
 
 
+#: `Component._followed_bpm` before `transport_changed()` has read a tempo.
+_UNREAD = object()
+
+
 def static_transport():
     """The transport a component sees when it was given none."""
     return (False, 0.0, 120.0, 4, 4)
@@ -658,6 +662,12 @@ class Component:
     #: The contract's static reads. `CAPABILITIES` names `"tempo_sync"` if
     #: and only if the class reads `self._transport()`.
     CAPABILITIES = ()
+
+    #: The index of a tempo-synced class's Sync switch, or None. While that
+    #: macro is on, `transport_changed()` reads the host's tempo, and when
+    #: it has moved applies the switch again, which re-reads the transport
+    #: the way moving the switch to where it already is would.
+    _SYNC_MACRO = None
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
 
@@ -702,6 +712,9 @@ class Component:
         self._sample_rate = sample_rate
         self._channel_count = source_channels
         self._transport = static_transport if transport is None else transport
+        #: The tempo `transport_changed()` last acted on; `_UNREAD` until
+        #: it first reads one.
+        self._followed_bpm = _UNREAD
         self._nodes = []
         self._resets = []
         self._deinits = []
@@ -1039,6 +1052,30 @@ class Component:
         _bounded_midi(value)
         _channel(channel)
         _sample_position(sample_position)
+
+    def transport_changed(self):
+        """Tell the component the host's transport may have changed.
+
+        A tempo-synced component with Sync on reads the transport, and when
+        the tempo differs from the one it last followed, sets itself to it:
+        a synced Time or Rate follows the song without a control moving. A
+        host may call this once a block: with Sync off it reads nothing, and
+        with the tempo unchanged it reads the transport and returns. A
+        component that does not sync to tempo does nothing.
+        """
+        self._check_live()
+        index = type(self)._SYNC_MACRO
+        if index is None or self._macros[index] < 0.5:
+            return
+        transport = self._transport
+        state = transport() if callable(transport) else transport
+        bpm = state[2]
+        last = self._followed_bpm
+        if last is not _UNREAD and (bpm == last or (bpm != bpm and
+                                                    last != last)):
+            return
+        self._followed_bpm = bpm
+        self._apply_macro(index, self._macros[index])
 
     def poly_pressure(self, pitch, value, channel=0, note_id=-1,
                       sample_position=0):

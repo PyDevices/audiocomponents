@@ -226,6 +226,7 @@ class Tremolo(_component.Component):
     REQUIRES = ("audiomath",)
 
     CAPABILITIES = ("tempo_sync",)
+    _SYNC_MACRO = SYNC
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = 0
 

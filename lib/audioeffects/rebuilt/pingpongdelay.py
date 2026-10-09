@@ -118,7 +118,8 @@ class PingPongDelay(_component.Component):
     zero. With Sync on, Time is Division of the host's beat, up to 1000 ms;
     with no host tempo, Time stays where the knob is. The class reads the
     host's transport only while Sync is on, and then only when a control
-    moves or a patch loads, never while it plays. Repeat Tone is a low-pass
+    moves, a patch loads or the host calls `transport_changed()`, never
+    while it plays. Repeat Tone is a low-pass
     and Repeat Cut a high-pass inside the loop, so each bounce is a little
     darker or thinner than the last. Repeat Tone's top stop and Repeat Cut's
     bottom stop take them out, and a filter taken out is out. At 22.05 kHz
@@ -169,6 +170,7 @@ class PingPongDelay(_component.Component):
     REQUIRES = ("audioecho",)
 
     CAPABILITIES = ("tempo_sync",)
+    _SYNC_MACRO = SYNC_I
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
 

@@ -75,6 +75,7 @@ class AutoPan(_component.Component):
     REQUIRES = ("audiomath",)
 
     CAPABILITIES = ("tempo_sync",)
+    _SYNC_MACRO = 6
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = 0
 

@@ -116,6 +116,12 @@ class Rack(_core.Effect):
             total += tail
         return total
 
+    def transport_changed(self):
+        """Pass the host's word on to every child, in chain order."""
+        self._check_live()
+        for child in self.effects:
+            child.transport_changed()
+
     def reset(self):
         """Clear the whole graph's DSP history, then restore patch 0.
 
