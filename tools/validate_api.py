@@ -15,7 +15,8 @@ import audioinstruments
 
 
 COMMON_METHODS = (
-    "set_macro", "program_change", "get_macro", "reset", "deinit",
+    "set_macro", "program_change", "get_macro", "transport_changed",
+    "reset", "deinit",
 )
 INSTRUMENT_METHODS = (
     "note_on", "note_off", "all_notes_off", "pitch_bend", "control_change",

@@ -1097,6 +1097,11 @@ class Instrument:
         self._set_macro(index, _bounded_midi(value), channel, note_id,
                         sample_position, custom=True)
 
+    def transport_changed(self):
+        """The host's transport may have changed. No instrument syncs to
+        tempo yet, so there is nothing to follow."""
+        self._check_live()
+
     def program_change(self, index, channel=0, note_id=-1, sample_position=0):
         self._check_live()
         channel = _channel(channel)

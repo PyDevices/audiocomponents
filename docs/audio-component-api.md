@@ -78,6 +78,7 @@ component.patch_index         # integer, or None for custom macro state
 component.set_macro(index, value, sample_position=0)
 component.program_change(index, sample_position=0)
 component.get_macro(index)
+component.transport_changed()
 component.reset()
 component.deinit()
 ```
@@ -109,14 +110,10 @@ Names describe meaningful optional behavior, for example
 `"poly_pressure"`, or `"tempo_sync"`. Capability discovery is advisory; the
 optional methods remain safe to call even when a capability is absent.
 
-**Shipped status:** the vocabulary above is specified, but no shipped
-component declares a capability yet — every provider currently reports the
-empty tuple (the `CAPABILITIES = ()` default in `lib/audioeffects/_core.py`
-and the `capabilities=()` default in `lib/audioinstruments/_support.py` are
-never overridden). Hosts therefore cannot yet use capability discovery to
-find, say, pitch-bend-aware or tempo-synced components; declaring
-capabilities across the shipped libraries is deferred to future component
-work, not dropped.
+**Shipped status:** the effects with a Sync control declare `"tempo_sync"`.
+No other capability is declared yet, so a host cannot use discovery to find,
+say, a pitch-bend-aware instrument; declaring the rest across the shipped
+libraries is deferred to future component work, not dropped.
 
 ### `output` is stable for the life of the component
 
@@ -304,14 +301,25 @@ It returns:
 When omitted, the component sees `(False, 0.0, 120.0, 4, 4)`. Components may
 ignore transport. A tempo-aware component advertises `"tempo_sync"`.
 
-**Shipped status:** the producer side of this contract exists —
-`lib/audiorender/tempo.py` supplies a real transport during offline
-rendering, and every shipped component accepts the `transport` argument —
-but no shipped component consumes it: instruments and effects store the
-callable and never call it (only the `static_transport` defaults in
-`lib/audioinstruments/_support.py` and `lib/audioeffects/_core.py` exist).
-Tempo-synced effects and instruments are specified here but unimplemented;
-they are deferred to future component work, not excluded by design.
+A component reads the transport when it needs a reading, never while its
+output is pulled. Call `transport_changed()` when the tempo may have moved,
+and a synced component reads the transport again and follows it; without the
+call it keeps the tempo it last read until a control moves. The call is
+cheap enough to make once a block: with Sync off it reads nothing, and with
+the tempo unchanged it reads the transport once and returns. A component
+that does not sync to tempo takes the call and does nothing, and a rack
+passes it to its children.
+
+```python
+for block in host_blocks():
+    effect.transport_changed()
+    audio_out.write(effect.output)
+```
+
+**Shipped status:** the effects with a Sync control consume the transport:
+the delays (`DigitalDelay`, `TapeDelay`, `AnalogDelay`, `PingPongDelay`,
+`MultiTapDelay`), `Phaser`, `AutoPan` and `Tremolo`. No instrument syncs to
+tempo yet.
 
 Construction may allocate the complete graph and bounded resources. Pulling
 from `output` must not allocate, block, perform I/O, or depend on garbage

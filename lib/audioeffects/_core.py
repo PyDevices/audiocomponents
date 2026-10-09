@@ -348,6 +348,11 @@ class Effect:
         self._patch_index = None
         self._apply_macro(index, self._macros[index])
 
+    def transport_changed(self):
+        """The host's transport may have changed. A class on this base does
+        not sync to tempo, so there is nothing to follow."""
+        self._check_live()
+
     def program_change(self, index, channel=0, note_id=-1,
                        sample_position=0):
         """Apply patch `index`. An index this class does not have is ignored,

@@ -273,6 +273,7 @@ class MultiTapDelay(_component.Component):
     REQUIRES = ("audioecho", "audioroute")
 
     CAPABILITIES = ("tempo_sync",)
+    _SYNC_MACRO = SYNC_I
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
 

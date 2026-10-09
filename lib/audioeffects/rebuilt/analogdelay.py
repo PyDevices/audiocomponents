@@ -219,6 +219,7 @@ class AnalogDelay(_component.Component):
     REQUIRES = ("audioecho",)
 
     CAPABILITIES = ("tempo_sync",)
+    _SYNC_MACRO = SYNC_I
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
 
