@@ -15,6 +15,10 @@ the real thing.
 - The two placeholder classes in `audioeffects/rebuilt/` (`ExampleStock`,
   `ExampleAudioif`) go once shipped classes cover both portability tiers.
 
+- Control moves that ramp instead of stepping: Mix, levels and depths over
+  20 ms in audiodsp's nodes, then filter corners, then crossfaded patch
+  changes. The policy is in [docs/control-smoothing.md](docs/control-smoothing.md).
+
 ## Later: effects
 
 - Every effect compared with its counterpart in hexefx_audiolib, adopting that
