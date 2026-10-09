@@ -1169,36 +1169,55 @@ class Tier1(unittest.TestCase):
         own = int(np.max(np.abs(np.diff(x.astype(np.int32)))))
         self.assertGreater(step, 3 * own, (step, own))
 
-    def test_the_tail_rings_only_while_the_source_feeds(self):
-        # the family limit: a source that stops handing frames stops the
-        # tail where it is, and it carries on when the source comes back
+    def test_the_tail_rings_out_when_the_source_ends(self):
+        # The family sentence: a source that ends, part-way through the
+        # tail, leaves the tank ringing out as it would on silence: the
+        # output is, sample for sample, the render of a source that hands
+        # silence from there on.
+        #
+        # Restated at audiodsp eb2d20d (audiocomponents#127). Up to v0.6.3
+        # the Tank advanced only on frames its source handed it, so a
+        # source that stopped froze the tail (exact zero for two seconds)
+        # and the frozen tail played when the source came back; this test
+        # asserted that. That was the node's defect (audiodsp#180), fixed
+        # in audiodsp#213: the node lets go of a source that has ended and
+        # renders what it was not handed from silence.
         class Gated:
-            def __init__(self, burst):
+            def __init__(self, burst, ends):
                 self.sample_rate = RATE
                 self.channel_count = 2
                 self.bits_per_sample = 16
                 self.samples_signed = True
                 self.data = interleave(burst, 2, len(burst)).tobytes()
                 self.open = True
+                self.ends = ends
 
             def _reset_buffer(self, *args):
                 pass
 
             def _get_buffer(self, *args):
                 if not self.open:
-                    return 0, memoryview(b"")
+                    if self.ends:
+                        return 0, memoryview(b"")
+                    return 1, memoryview(bytes(1024))
                 chunk, self.data = self.data[:1024], self.data[1024:]
                 return 1, memoryview(chunk or bytes(1024))
 
-        src = Gated(noise_burst(RATE, seconds=0.25))
-        effect = Reverb(src, sample_rate=RATE, mix=2.0)
-        render(effect, RATE // 2)
-        self.assertGreater(int(np.max(np.abs(render(effect, 256)))), 0)
-        src.open = False
-        render(effect, 1024)                      # what the Tank holds
-        self.assertEqual(int(np.max(np.abs(render(effect, 2 * RATE)))), 0)
-        src.open = True
-        self.assertGreater(int(np.max(np.abs(render(effect, 256)))), 0)
+        renders = []
+        for ends in (True, False):
+            src = Gated(noise_burst(RATE, seconds=0.25), ends)
+            effect = Reverb(src, sample_rate=RATE, mix=2.0)
+            head = render(effect, RATE // 2)
+            src.open = False
+            ring = render(effect, RATE)
+            src.open = True
+            renders.append((head, ring, render(effect, RATE)))
+            effect.deinit()
+        (head, ring, after), (fed_head, fed_ring, fed_after) = renders
+        self.assertTrue(np.array_equal(head, fed_head))
+        self.assertGreater(int(np.max(np.abs(ring[:256]))), 0)
+        self.assertTrue(np.array_equal(ring, fed_ring))
+        self.assertTrue(np.array_equal(after, fed_after))
 
     def test_lower_rates_build_and_ring(self):
         for rate in (44100, 22050):
@@ -1925,10 +1944,8 @@ CLAIMS = (
     ("A control that jumps makes the output step: move it in small steps "
      "from the host if you need it smooth.",
      ("Tier1.test_a_control_that_jumps_steps_the_output",)),
-    ("The tail rings only while the source keeps feeding: feed silence to "
-     "let it ring out. A tail cut short by a source that stopped carries on "
-     "when the source comes back.",
-     ("Tier1.test_the_tail_rings_only_while_the_source_feeds",)),
+    ("When your source ends, the tail rings out as it would on silence.",
+     ("Tier1.test_the_tail_rings_out_when_the_source_ends",)),
     ("Asking for `character=\"spring\"` says it is parked: the tank has no "
      "dispersive chain yet.",
      ("TheSurface.test_options_clamp_default_and_refuse",)),
@@ -1995,13 +2012,12 @@ class Claims(unittest.TestCase):
             self.assertIn(_words(sentence), text)
 
 
-#: The two family sentences, as ruled on 2026-09-28.
+#: The two family sentences, as ruled on 2026-09-28; the second restated
+#: at audiodsp eb2d20d, whose nodes ring out when a source ends.
 FAMILY = (
     "A control that jumps makes the output step: move it in small steps "
     "from the host if you need it smooth.",
-    "The tail rings only while the source keeps feeding: feed silence to "
-    "let it ring out. A tail cut short by a source that stopped carries on "
-    "when the source comes back.",
+    "When your source ends, the tail rings out as it would on silence.",
 )
 
 

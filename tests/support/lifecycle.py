@@ -78,9 +78,6 @@ DECLARED = {
     ("AnalogDelay", "E", "P5"):
         "a control that jumps steps the output (family, audiocomponents#117);"
         " a Time move bends the pitch while the line walks, by design",
-    ("AnalogDelay", "E8-dry", "P3"):
-        "a tail cut short by a stopped source carries on when it comes back"
-        " (family, audiodsp#180)",
     ("AnalogDelay", "E2-", "P4"):
         "reset_buffer restarts the modulation triangle (the node's"
         " state_init), so a modulated patch then matches a fresh instance,"
@@ -123,8 +120,6 @@ DECLARED = {
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (a patch change)',
     ("TapeDelay", 'E11-3moves', 'P5'):
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Time and a patch change)',
-    ("TapeDelay", 'E8-dry', 'P3'):
-        'family limit, disclosed (audiodsp#180): a tail cut short by a source that stopped carries on when the source comes back',
     # Reverb: the tank's int16 lines truncate on every write and its
     # filters run in float, so once two tanks have heard different material
     # they stay a few LSB apart under the same input for good (seen at Mod
@@ -141,7 +136,6 @@ DECLARED = {
     ("Reverb", "E6-", "P5"): "family: a control that jumps makes the output step (#117)",
     ("Reverb", "E9-", "P5"): "family: a control that jumps makes the output step (#117)",
     ("Reverb", "E11-", "P5"): "family: a control that jumps makes the output step (#117)",
-    ("Reverb", "E8-dry", "P3"): "family: the tail rings only while the source feeds (audiodsp#180)",
     ("DigitalDelay", 'E4-m2=', 'P5'):
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
     ("DigitalDelay", 'E4-m6=', 'P5'):
@@ -160,14 +154,9 @@ DECLARED = {
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (a patch change)',
     ("DigitalDelay", 'E11-3moves', 'P5'):
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (the patch change; the Time moves glide)',
-    ("DigitalDelay", 'E8-dry', 'P3'):
-        'family limit, disclosed (audiodsp#180): a tail cut short by a source that stopped carries on when the source comes back',
     ("SlapbackDelay", "E", "P5"):
         "a control that jumps steps the output (family, audiocomponents#117):"
         " Level, Tone and patch moves have no ramp",
-    ("SlapbackDelay", "E8-dry", "P3"):
-        "a tail cut short by a stopped source carries on when it comes back"
-        " (family, audiodsp#180)",
     ("SlapbackDelay", "E1-", "P4"):
         "a reset restarts the Wow wobble where a fresh instance's starts;"
         " the control never stopped, so its wobble is further along and"
@@ -210,11 +199,6 @@ DECLARED = {
         "Mix 0 or a crossing of Repeat Tone's out stop empties a line; the old"
         " laps die to 1 LSB inside tail_samples, and a 1-LSB rounding"
         " difference then circulates past it",
-    ("MultiTapDelay", "E8-dry", "P4"):
-        "the lines hold the gap the source left, where the control's hold"
-        " audio; that dies to 1 LSB inside tail_samples, and a 1-LSB rounding"
-        " difference then circulates in the loop past it, for good at some"
-        " settings",
     ("MultiTapDelay", "E4-m0=", "P3"):
         "CPython only, the node's twin (audiodsp#177): the CPython"
         " audiodelays.MultiTapDelay keeps the line past a shorter delay_ms"
@@ -255,8 +239,6 @@ DECLARED = {
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
     ("ConvolutionReverb", 'E11-', 'P5'):
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (two or three moves before one pull)',
-    ("ConvolutionReverb", 'E8-dry', 'P3'):
-        'family limit, disclosed (audiodsp#180): a tail cut short by a source that stopped carries on when the source comes back',
     ("PingPongDelay", 'E4-m2=', 'P5'):
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
 }
@@ -499,10 +481,6 @@ def act(e, feed, ctx, actions):
             e.program_change(a[1])
         elif op == "restore":
             restore(e, ctx)
-        elif op == "dry":
-            feed.port.play(feed.empty)
-        elif op == "wet":
-            feed.port.play(feed.current)
         elif op == "end":
             feed.point(feed.empty)
         else:
@@ -553,8 +531,6 @@ def events(cls, patch, quick=False):
             continue
         out.append(Event("E6-p%d" % q, [("patch", q)], [("restore",)],
                          moves_mix=True))
-    out.append(Event("E8-dry", [("dry",)], [("wet",)], kind="100",
-                     control_move=False, gap=1))
     out.append(Event("E8-end", [("end",)], kind="100", control_move=False))
     for kind in SOURCE_KINDS:
         if mix is not None:
@@ -775,16 +751,6 @@ def p1(cls, ev, rate, channels, patch, options):
         # some past the pull it ended at), then silence.
         if _is_zero(out[d:hi * fsize]):
             return "ok"
-    if ev.name.startswith("E8-dry"):
-        # A starve may play as silence: zeros inserted, then the source
-        # again from where it stopped, with nothing lost or repeated.
-        z = frame
-        while z < hi and out[z * fsize:(z + 1) * fsize] == bytes(fsize):
-            z += 1
-        gap = z - frame
-        if gap and _first_diff(out[z * fsize:], shifted[frame * fsize:], 0,
-                               (hi - z) * fsize) < 0:
-            return "ok"
     return "RED(first wrong frame %d%s)" % (frame - lo, _diagnose(
         out, shifted, frame, fsize, hi))
 
@@ -848,7 +814,7 @@ def main_render(cls, ev, rate, channels, patch, options, controls):
             bound = last + tail + lat + BLOCK
         stop = bound + MARGIN
         verdict, crc, s0 = _p4_stream(e, c, out, cout, last, bound, stop,
-                                      fsize, ev.name.startswith("E8-dry"))
+                                      fsize)
         if "P4" not in res:
             res["P4"] = verdict
         out = None
@@ -898,7 +864,7 @@ def _pull_some(x, fsize):
     return bytes(BLOCK * fsize)
 
 
-def _p4_stream(e, c, out, cout, last, bound, stop, fsize, shifted):
+def _p4_stream(e, c, out, cout, last, bound, stop, fsize):
     """P4, streamed: the instance's and the control's bytes compared as
     they are pulled, from the last move to `stop`. Returns the verdict,
     the CRC of every byte the instance handed, and its frame count."""
@@ -907,10 +873,6 @@ def _p4_stream(e, c, out, cout, last, bound, stop, fsize, shifted):
     lo = last * fsize
     hi = stop * fsize
     lastdiff = -1
-    win_e = bytearray()
-    win_c = bytearray()
-    lo_e = bound * fsize
-    lo_c = (bound - BLOCK) * fsize
     while base < hi:
         if not out:
             data = _pull_some(e, fsize)
@@ -925,22 +887,12 @@ def _p4_stream(e, c, out, cout, last, bound, stop, fsize, shifted):
             d = _last_diff(a, b, max(0, lo - base), n)
             if d >= 0:
                 lastdiff = base + d
-        if shifted:
-            if base + n > lo_e:
-                win_e.extend(a[max(0, lo_e - base):])
-            if base + n > lo_c:
-                win_c.extend(b[max(0, lo_c - base):])
         out = out[n:]
         cout = cout[n:]
         base += n
     s0 = (base + len(out)) // fsize
     if lastdiff < 0 or lastdiff // fsize < bound:
         return "ok", crc, s0
-    if shifted:
-        for s in range(1, BLOCK + 1):
-            off = (BLOCK - s) * fsize
-            if win_c[off:off + len(win_e)] == win_e:
-                return "ok(shift %d)" % s, crc, s0
     return ("RED(differs at +%d, bound +%d)" % (lastdiff // fsize - last,
                                                bound - last), crc, s0)
 

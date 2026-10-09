@@ -215,16 +215,12 @@ class ConvolutionReverb(_component.Component):
     With an impulse loaded, `reset()` in the middle of a stream silences the
     block in flight, 256 frames, dry included, and with Mix set back to 0
     your source carries on on time after it.
-    A host that calls `audiocore.reset_buffer` on the output silences the
-    block in flight too, but also drops the frames the node holds from a
-    source buffer it had not finished.
+    A host that calls `audiocore.reset_buffer` on the output does the same.
 
     **Limits shared by the family.**
     A control that jumps makes the output step: move it in small steps from
     the host if you need it smooth.
-    The tail rings only while the source keeps feeding: feed silence to let
-    it ring out. A tail cut short by a source that stopped carries on when
-    the source comes back.
+    When your source ends, the tail rings out as it would on silence.
     """
 
     NAME = 'ConvolutionReverb'
