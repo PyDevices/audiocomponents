@@ -105,6 +105,22 @@ _RANGES = (
 )
 
 
+#: ln(65536): a one-pole state at full scale falls under half an int16 LSB
+#: after this many time constants.
+_RING_TIME_CONSTANTS = math.log(65536.0)
+
+
+def one_pole_ring(hz, sample_rate):
+    """Frames a `FeedbackDelay` loop filter at `hz` takes to fall from full
+    scale to under half an LSB: the node's state falls by exp(-2 pi f / fs)
+    a frame (`one_pole_coefficient`), plus one frame for the single
+    precision it computes that in. 0 for a filter out of circuit."""
+    if hz <= 0.0:
+        return 0
+    return int(math.ceil(_RING_TIME_CONSTANTS * sample_rate
+                         / (2.0 * math.pi * hz))) + 1
+
+
 def _unit_sine(index, length):
     """Bipolar unit sine on `[0, 1)`."""
     return math.sin(2.0 * math.pi * index / float(length))
@@ -546,7 +562,15 @@ class Vibrato(_component.Component):
         self._route_output()
         self._latency = int(frames)
         d_max = mean_ms / (1.0 - m) if m < 1.0 - DEPTH_OFF else mean_ms
-        self._tail = int(math.ceil(d_max * self._sample_rate / 1000.0)) + 64
+        # The wet path's two one-pole filters ring after the line has
+        # emptied: Tone's low-pass, then Body's high-pass, whose state can
+        # hold up to full scale and falls by exp(-2 pi f / fs) a frame. Each
+        # adds the frames it takes to fall from full scale to under half an
+        # LSB (audiocomponents#114: Body alone rang 2 430 frames past the
+        # line at 20 Hz, 48 kHz).
+        self._tail = (int(math.ceil(d_max * self._sample_rate / 1000.0)) + 64
+                      + one_pole_ring(damping, self._sample_rate)
+                      + one_pole_ring(body, self._sample_rate))
 
     @property
     def latency_samples(self):

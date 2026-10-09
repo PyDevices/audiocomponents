@@ -844,5 +844,51 @@ class Tier2Traits(unittest.TestCase):
                 self.assertLess(abs(ducked - hold), 0.10 * hold)
 
 
+
+class OldTail(NoiseGate):
+    """The bound before audiocomponents#114: the look-ahead alone, which
+    Key Listen's ringing key band outlives."""
+
+    NAME = 'NoiseGate'
+
+    @property
+    def tail_samples(self):
+        self._check_live()
+        return self._latency
+
+
+class KeyListenTail(unittest.TestCase):
+    """Key Listen switched on as the input stops: the key band's filters
+    ring, and the output reaches exact zero inside the bound read after the
+    switch, at Key Low's bottom and middle and both key slopes
+    (audiocomponents#114). The look-ahead alone is red there."""
+
+    def test_the_ring_ends_inside_the_bound(self):
+        import tail_ring
+        for rate in (48000, 22050):
+            for poles in (1, 2):
+                for low in (0, 64):
+                    got, bound = tail_ring.ring(
+                        "NoiseGate", rate, 2, start=((5, low),),
+                        moves=((7, 127),), options={"key_poles": poles})
+                    self.assertLessEqual(got, bound, (rate, poles, low))
+
+    def test_the_look_ahead_alone_is_red(self):
+        import tail_ring
+        got, bound = tail_ring.ring("NoiseGate", 48000, 2,
+                                    moves=((7, 127),), cls=OldTail)
+        self.assertGreater(got, bound)
+
+    def test_an_external_key_has_no_bound(self):
+        import kit_probes as probes
+        silence = probes.ArraySource(bytes(4 * 256), rate=48000)
+        key = probes.ArraySource(bytes(4 * 256), rate=48000)
+        gate = NoiseGate(silence, key=key, key_listen=True)
+        self.assertIsNone(gate.tail_samples)
+        gate.set_macro(7, 0)
+        self.assertEqual(gate.tail_samples, 0)
+        gate.deinit()
+
+
 if __name__ == "__main__":
     unittest.main()

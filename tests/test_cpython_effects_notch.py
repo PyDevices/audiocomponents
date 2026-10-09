@@ -185,7 +185,11 @@ class ShortTail(Notch):
     outlives."""
 
     NAME = 'Notch'
-    TAIL_SAMPLES = 1024
+
+    @property
+    def tail_samples(self):
+        self._check_live()
+        return 1024
 
 
 class RateBlind(Notch):
@@ -514,8 +518,14 @@ class EveryPlantedFaultIsOutOfTheSurfacesReach(unittest.TestCase):
         self.assertEqual(checked["clean"], 2.0)
 
     def test_the_short_tail_is_a_declaration_no_setting_moves(self):
+        # Since audiocomponents#114 the declaration is the build's own, so
+        # the clean reading is the defaults' figure, not the class constant.
         checked = self._check(ShortTail, lambda e: e.tail_samples)
-        self.assertEqual(checked["clean"], Notch.TAIL_SAMPLES)
+        defaults = built(source=silence())
+        try:
+            self.assertEqual(checked["clean"], defaults.tail_samples)
+        finally:
+            defaults.deinit()
         self.assertEqual(checked["target"], 1024)
 
     def test_the_rate_blind_centre_is_not_a_frequency_position(self):
@@ -565,3 +575,42 @@ class TheResetWalkReachesEveryNode(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OldConstantTail(Notch):
+    """The bound before audiocomponents#114: one measured class constant,
+    143 360 samples, from a burst at fixed settings."""
+
+    NAME = 'Notch'
+
+    @property
+    def tail_samples(self):
+        self._check_live()
+        return 143360
+
+
+class TheTailAfterAMove(unittest.TestCase):
+    """A large move down in Frequency as the input stops rings out inside
+    the bound read after the move (audiocomponents#114), at the cells where
+    the old constant was short; the old constant is red there."""
+
+    #: (rate, channels, patch, Frequency from, Frequency to). Patch 5's
+    #: move to 20 Hz rang 288 768 frames against the old 143 360.
+    CELLS = ((48000, 2, 5, 127, 0), (48000, 1, 3, 127, 0),
+             (22050, 1, 5, 127, 0))
+
+    def test_the_ring_ends_inside_the_bound(self):
+        import tail_ring
+        for rate, channels, patch, high, low in self.CELLS:
+            got, bound = tail_ring.ring(
+                "Notch", rate, channels, patch, start=((0, high),),
+                moves=((0, low),))
+            self.assertLessEqual(got, bound, (rate, channels, patch))
+
+    def test_the_old_constant_is_red(self):
+        import tail_ring
+        for rate, channels, patch, high, low in self.CELLS:
+            got, bound = tail_ring.ring(
+                "Notch", rate, channels, patch, start=((0, high),),
+                moves=((0, low),), cls=OldConstantTail)
+            self.assertGreater(got, bound, (rate, channels, patch))

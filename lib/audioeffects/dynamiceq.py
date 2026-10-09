@@ -140,15 +140,6 @@ _GUARD_FRAMES = 256
 #: is a clamp, never a refusal (the rate-honesty invariant).
 _MAX_CORNER = 0.4
 
-#: Ring-down of one pole pair, in periods of `Q / f0`, from a full-scale DC
-#: burst to the last non-zero sample. Measured on `audiobiquad.Biquad` at the
-#: corners of both spans; the float state is flushed to exact zero below
-#: 1e-20, so this is a real number and not an asymptote. The margin above
-#: what was measured is there because `tail_samples` may be long and may
-#: never be short.
-_TAIL_PERIODS = 4.0
-
-
 class DynamicEQ(_component.Component):
     """A bell that only appears when the band it sits on crosses a threshold.
 
@@ -509,20 +500,24 @@ class DynamicEQ(_component.Component):
         """How long the split rings, in samples at this rate.
 
         The only memory in this class is the two biquads', and they share a
-        denominator, so one pole pair sets it. A resonator rings for about
-        `Q` periods of its centre; measured on `audiobiquad.Biquad` from a
-        full-scale DC burst to the last non-zero sample, the constant is
-        under 4 across both spans, and the float state is flushed to exact
-        zero below 1e-20 so the tail really does arrive.
+        denominator, so one pole pair sets it: the bound is read off the
+        coefficients in force (`_component.biquad_ring`) and holds from any
+        state the sections can hold, including what the settings before a
+        move left in them. The old figure, 4 periods of `Q / f0` from a
+        burst at fixed settings, was short after a large move down
+        (audiocomponents#114). The float state is flushed to exact zero
+        below 1e-20, so the tail really does arrive.
 
         The detector holds no audio: `audiodynamics` multiplies its input by
         a gain, so silence in is silence out whatever the release is doing,
         and the release therefore adds nothing here.
         """
         self._check_live()
-        corner = self._corner_hz or 1.0
-        return int(_TAIL_PERIODS * self.macro(self._WIDTH)
-                   * self._sample_rate / corner) + 1
+        rings = [_component.biquad_ring(node)
+                 for node in (self._notch, self._band)]
+        if None in rings:
+            return None
+        return max(rings)
 
     def gain_reduction_db(self):
         """What the gain cell did to the last frame of the band, in dB.

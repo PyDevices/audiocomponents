@@ -499,8 +499,8 @@ class TheTrimIsFlat(unittest.TestCase):
 
 
 class TheDeclaredTailIsTheMeasuredOne(unittest.TestCase):
-    """`TAIL_SAMPLES` is a ceiling over the whole span, measured at the
-    worst setting the macros offer. Here it is held to the tail at a setting
+    """`tail_samples` is a bound for the build in force, and `TAIL_SAMPLES`
+    the design-rate worst case of it. Here it is held to the tail at a setting
     cheap enough to render inside a unit test, with the fault that would
     make the declaration a wrong number rather than a spare one."""
 
@@ -527,7 +527,9 @@ class TheDeclaredTailIsTheMeasuredOne(unittest.TestCase):
         test above passes, or that comparison is a tripwire."""
 
         class ShortTailLowPass(lowpass.LowPass):
-            TAIL_SAMPLES = 1024
+            @property
+            def tail_samples(self):
+                return 1024
 
         sample = burst_then_silence(burst=9600, seconds=2)
         clean = lowpass.LowPass.create(sample, SAMPLE_RATE,
@@ -671,3 +673,42 @@ class TheFaultsAreOutOfThePlayersReach(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OldConstantTail(lowpass.LowPass):
+    """The bound before audiocomponents#114: one measured class constant,
+    204 800 samples, from a burst at fixed settings."""
+
+    NAME = 'LowPass'
+
+    @property
+    def tail_samples(self):
+        self._check_live()
+        return 204800
+
+
+class TheTailAfterAMove(unittest.TestCase):
+    """A large move down in Frequency as the input stops rings out inside
+    the bound read after the move (audiocomponents#114), at the cells where
+    the old constant was short; the old constant is red there."""
+
+    #: (rate, channels, patch, Frequency from, Frequency to). Patch 4's
+    #: move to 20 Hz rang 279 149 frames against the old 204 800.
+    CELLS = ((48000, 1, 4, 127, 0), (48000, 2, 4, 96, 0))
+
+    def test_the_ring_ends_inside_the_bound(self):
+        import tail_ring
+        for rate, channels, patch, high, low in self.CELLS + (
+                (48000, 2, 3, 127, 0), (22050, 1, 4, 127, 0)):
+            got, bound = tail_ring.ring(
+                "LowPass", rate, channels, patch, start=((0, high),),
+                moves=((0, low),))
+            self.assertLessEqual(got, bound, (rate, channels, patch))
+
+    def test_the_old_constant_is_red(self):
+        import tail_ring
+        for rate, channels, patch, high, low in self.CELLS:
+            got, bound = tail_ring.ring(
+                "LowPass", rate, channels, patch, start=((0, high),),
+                moves=((0, low),), cls=OldConstantTail)
+            self.assertGreater(got, bound, (rate, channels, patch))

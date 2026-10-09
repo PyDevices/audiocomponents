@@ -728,3 +728,46 @@ class NullBuildsAtDefault(unittest.TestCase):
                                            label="T7")
         self.assertFalse(bool(result["null"]))
         self.assertTrue(bool(result["control"]))
+
+
+class OldTail(rebuilt.Vibrato):
+    """The bound before audiocomponents#114: the longest delay plus 64
+    frames, leaving out the ring of the wet path's two filters."""
+
+    NAME = 'Vibrato'
+
+    @property
+    def tail_samples(self):
+        self._check_live()
+        rate = self._sample_rate
+        body = self._hz(self._value(6))
+        damping = rebuilt.nominal_damping_hz(self._hz(self._value(5)), rate)
+        return (rebuilt.Vibrato.tail_samples.fget(self)
+                - rebuilt.one_pole_ring(damping, rate)
+                - rebuilt.one_pole_ring(body, rate))
+
+
+class TheFiltersRingIsInTheTail(unittest.TestCase):
+    """Body's high-pass and Tone's low-pass ring after the line has emptied,
+    longest at Body's 20 Hz stop (audiocomponents#114): the output reaches
+    exact zero inside the bound at every Body stop, and a bound without the
+    filters is red at the low ones."""
+
+    def test_the_ring_ends_inside_the_bound(self):
+        import tail_ring
+        for rate in (48000, 22050):
+            for channels in (2, 1):
+                for body in (0, 64, 127):
+                    for tone in (0, 127):
+                        got, bound = tail_ring.ring(
+                            "Vibrato", rate, channels,
+                            start=((6, body), (5, tone)))
+                        self.assertLessEqual(
+                            got, bound, (rate, channels, body, tone))
+
+    def test_a_bound_without_the_filters_is_red(self):
+        import tail_ring
+        for rate in (48000, 22050):
+            got, bound = tail_ring.ring("Vibrato", rate, 2,
+                                        start=((6, 0),), cls=OldTail)
+            self.assertGreater(got, bound, rate)

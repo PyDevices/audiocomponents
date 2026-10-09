@@ -97,7 +97,10 @@ the portable fallback required by the provider contract.
 the same channel count as its source. `latency_samples` is input-to-output
 latency at the component's sample rate. Instruments normally report zero. A
 finite effect tail is reported in samples; `None` means that the tail is
-unknown or not finitely bounded. A rack reports the latency and tail of its
+unknown or not finitely bounded. The tail counts from the end of the latency:
+more than `latency_samples + tail_samples` frames after the input's last
+non-zero frame, the output is exact zero. Read it after a control move: it
+describes the settings in force. A rack reports the latency and tail of its
 complete graph.
 
 `capabilities` is a static tuple of ASCII strings. An empty tuple is valid.

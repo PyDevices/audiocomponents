@@ -66,8 +66,10 @@ that looks ahead. No option on this class adds any -- there is no lookahead,
 no partition and no window to add, so the table of latency-adding options is
 empty on purpose.
 
-**Tail: 465 ms**, set by the 31.25 Hz band's ring-down at full boost, and
-constant in time across rates. `tail_samples` reports the rate-scaled bound.
+**Tail: the build's own.** `tail_samples` bounds the ring-down of the
+sections in circuit at the settings in force, from whatever state they hold,
+so it also covers a move made as the input stops. A flat curve is a wire with
+no tail; the 31.25 Hz band at full boost rings for about half a second.
 
 **It is loud, and it clips where the pedal clips.** `Gain` sits before the
 bank and `Volume` after, as the panel reads; each node writes int16 between
@@ -146,10 +148,12 @@ _ANCHOR_DB = 12.0
 _Q_MIN = 0.05
 _Q_MAX = 60.0
 
-#: The worst-case ring-down, in seconds: all ten bands at +12 dB, measured at
-#: 464.9 / 465.3 / 465.4 ms at 48000 / 44100 / 22050 Hz. Reported with margin,
-#: so `tail_samples` is a bound rather than a coincidence at one rate.
-_TAIL_SECONDS = 0.47
+#: The largest per-build bound found at 48 kHz over 400 random settings of
+#: the fourteen macros at their stops, about 4.5 s. `tail_samples`
+#: reports the build in force, which is what a host should read; this is
+#: the class's static figure. Before audiocomponents#114 it was a measured
+#: 0.47 s, which a Gain or Volume move to the bottom outlived.
+_DESIGN_TAIL_SAMPLES = 217895
 
 _SKIRT = 10.0 ** (_SKIRT_DB / 20.0)
 _ANCHOR_A = 10.0 ** (_ANCHOR_DB / 40.0)
@@ -198,7 +202,7 @@ class GraphicEQ(_component.Component):
     CAPABILITIES = ()
 
     LATENCY_SAMPLES = 0
-    TAIL_SAMPLES = int(48000 * _TAIL_SECONDS)
+    TAIL_SAMPLES = _DESIGN_TAIL_SAMPLES
 
     MACRO_LABELS = ("31", "63", "125", "250", "500", "1k", "2k", "4k", "8k",
                     "16k Shelf", "Gain", "Volume", "Band Q", "Constant Q")
@@ -433,14 +437,19 @@ class GraphicEQ(_component.Component):
 
     @property
     def tail_samples(self):
-        """The worst-case ring-down at the running rate.
-
-        A bound, not a coincidence at 48 kHz: the 31.25 Hz band's decay is
-        465 ms whatever the rate, so the sample count has to scale with it or
-        it is wrong at two rates out of three.
+        """The ring time of *this* build: Gain, the ten bands and Volume,
+        each section in circuit bounded from its coefficients in force
+        (`_component.biquad_ring`) and summed down the chain. The bound
+        holds from any state the sections can hold, including what the
+        settings before a move left in them: a Gain or Volume move from the
+        top to the bottom as the input stopped rang 10 to 20 % past the old
+        fixed 0.47 s (audiocomponents#114). A flat section is a wire and
+        adds nothing.
         """
         self._check_live()
-        return int(self._sample_rate * _TAIL_SECONDS)
+        return _component.cascade_ring(
+            [node for node in [self._gain] + self._sections + [self._volume]
+             if node.mix > 0.0])
 
     @property
     def centres(self):

@@ -120,8 +120,6 @@ Traits frozen 2026-09-07.
 
 VENDOR = "PyDevices"
 
-import math
-
 import audiobiquad
 
 from . import _component
@@ -145,12 +143,12 @@ class BandPass(_component.Component):
     LATENCY_SAMPLES = 0
 
     #: The surface's worst case **at the design rate**: Q 32 at 20 Hz with
-    #: two sections at 48 kHz, `ceil(6 * Q * F_s / f0)` = 460 800 samples,
-    #: 9.6 s. A class constant cannot be a ceiling for a resonator whose ring
-    #: time scales with the sample rate, so `tail_samples` below reports the
-    #: build instead; this is the design-rate figure a reader of the class
-    #: gets, not a bound over every rate.
-    TAIL_SAMPLES = 460800
+    #: two sections at 48 kHz, `_component.biquad_ring` = 630 328
+    #: samples, 13.1 s. A class constant cannot be a ceiling for a resonator
+    #: whose ring time scales with the sample rate, so `tail_samples` below
+    #: reports the build instead; this is the design-rate figure a reader of
+    #: the class gets, not a bound over every rate.
+    TAIL_SAMPLES = 630328
 
     MACRO_LABELS = ("Frequency", "Width", "Slope", "Mix")
     MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "TOGGLE", 3: "UNIPOLAR"}
@@ -180,12 +178,6 @@ class BandPass(_component.Component):
     #: at 1 kHz, Q 2 the wanted width is 500.0 Hz, `Q * k` gives 497.4 Hz,
     #: and `Q / k` - the seed's wording - gives 206.1 Hz.
     _CASCADE_Q = 0.6435942529055827
-
-    #: Ring time to half an int16 LSB, in time constants of `Q*F_s/(pi*f0)`
-    #: samples: 3.53 for one section, about 5.1 for the cascade's double
-    #: pole. Rounded up, and used by `tail_samples`.
-    _RING_ONE = 4.0
-    _RING_TWO = 6.0
 
     def _build(self, frequency=1000.0, q=0.707, sections=1, mix=1.0,
                patch=None):
@@ -283,13 +275,13 @@ class BandPass(_component.Component):
     def tail_samples(self):
         """The ring time of *this* build, not a class constant.
 
-        A band-pass is a resonator: its tail is `Q * F_s / (pi * f0)` samples
-        of time constant, and the output reaches half an int16 LSB after
-        about 3.5 of them (5.1 for the cascade's double pole). A host told
-        the surface's worst case at every setting would allocate 9.6 s for a
-        filter nobody asked for.
+        A band-pass is a resonator, so its tail is set by its poles: the
+        sections' working Q at the centre in force, one section or the two
+        of the steep slope (`_component.biquad_ring`). The bound holds
+        from any state the sections can hold, including what the settings
+        before a move left in them. A host told the surface's worst case at
+        every setting would allocate 13 s for a filter nobody asked for.
         """
         self._check_live()
-        ring = self._RING_TWO if self._steep() else self._RING_ONE
-        return int(math.ceil(ring * self._value(1) * self._sample_rate
-                             / self.centre_hz))
+        sections = self._sections if self._steep() else self._sections[:1]
+        return _component.cascade_ring(sections)
