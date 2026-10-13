@@ -10,6 +10,18 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`Rack` (rebuilt, Phase 6):** the serial chain on the contract's base, in
+  `rebuilt/rack.py` beside the old class, which stays until the rebuild is
+  promoted. `chain=` keeps its meaning and also takes a bare effect class. It
+  renders exactly the same pedals patched by hand; `latency_samples` and
+  `tail_samples` are live sums; `reset()` clears every pedal and puts each
+  back to the settings the rack built it with; `deinit()` releases every
+  pedal, and a chain that fails part-way releases what it built; each pedal
+  gets the rack's transport and `transport_changed()` reaches nested racks;
+  `capabilities` is the union of the pedals'. `effects` is a tuple. Patches
+  and a rack's restore now share one private path in the base,
+  `_apply_positions`, which the classes that did work once per patch moved
+  onto.
 - MultiTapDelay: the docstring says which patches need a P4-class board (patch 4 does, patch 3 may), from the boards' figures at audiodsp v0.6.3
 - **`DigitalDelay` (rebuilt, Phase 5; adopted 2026-09-28):** a clean
   interpolated line with the Boss DD-2's control law on one

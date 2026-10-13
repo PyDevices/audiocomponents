@@ -29,6 +29,22 @@ RAIL = 32767
 #: cell prints `decl` and is counted as a declared exception. Nothing else
 #: skips a cell.
 DECLARED = {
+    ("Rack", "plants", "T1/"):
+        "T1's faults are the empty rack's identity and its port, which a"
+        " render at the probe chain cannot see; the trait test holds them red",
+    ("Rack", "plants", "T4/"):
+        "T4's faults live in reset() and patch 0, which the plant render"
+        " never calls; the trait test holds them red",
+    ("Rack", "plants", "T5/"):
+        "T5's faults live in deinit() and a failed build, which the plant"
+        " render never reaches; the trait test holds them red",
+    ("Rack", "plants", "T6/"):
+        "T6's faults need a host transport and a tempo change, which the"
+        " plant render does not give; the trait test holds them red",
+    ("Rack", "ceiling", "sine/48000/2/"):
+        "the probe chain ends in ConvolutionReverb, which rails this 0 dBFS"
+        " sine at its own defaults (its own ceiling cell sine/48000/2/d); a"
+        " rack is exactly its pedals",
 }
 
 CPYTHON = sys.implementation.name == "cpython"

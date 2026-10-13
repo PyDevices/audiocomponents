@@ -75,6 +75,10 @@ MIX_INDEX = {
 #: cell prints `decl` instead of RED and is counted as a declared exception.
 #: Nothing else skips a cell.
 DECLARED = {
+    ("Rack", "E1-", "P4"):
+        "a rack is exactly its pedals, and two of the probe chain's are E1 P4"
+        " red alone at their defaults, Vibrato ('differs at +4917, bound"
+        " +2870' at 48 kHz stereo) and Fuzz ('+26883, bound +24836')",
     ("AnalogDelay", "E", "P5"):
         "a control that jumps steps the output (family, audiocomponents#117);"
         " a Time move bends the pitch while the line walks, by design",
@@ -549,15 +553,17 @@ def events(cls, patch, quick=False):
     out.append(Event("E10-patch", [("patch", npatch - 1 if patch != npatch - 1
                                     else 0)], [("restore",)],
                      moves_mix=True, first=True))
-    if full:
+    if full and labels:
         out.append(Event("E11-2macro", [("macro", 0, 0), ("macro", 0, 127)],
                          [("restore",)], moves_mix=(mix == 0)))
         if mix is not None:
             out.append(Event("E11-mix+patch",
                              [("macro", mix, 0), ("patch", npatch - 1)],
                              [("restore",)], moves_mix=True))
+    if full:
         out.append(Event("E11-2patch", [("patch", npatch - 1), ("patch", 0)],
                          [("restore",)], moves_mix=True))
+    if full and labels:
         out.append(Event("E11-3moves",
                          [("macro", 0, 0), ("macro", 0, 127),
                           ("patch", npatch - 1)],
@@ -1339,8 +1345,11 @@ def _cli(argv):
             if cls is None:
                 print("MISSING|%s" % name)
                 continue
-        run_class(cls, only=only, quick=quick, name=name if name in PLANTS
-                  else None)
+        # The kit's options table: a class whose defaults are trivial (the
+        # generic Rack's empty chain) runs on something real.
+        import kit_options
+        run_class(cls, options=kit_options.options_for(cls.NAME), only=only,
+                  quick=quick, name=name if name in PLANTS else None)
     print("DONE")
 
 

@@ -6,8 +6,13 @@ given something real here, and every kit check builds it with these.
 """
 
 KIT_OPTIONS = {
-    # Filled with a real chain when the Rack's kit run is set up.
-    "Rack": {"chain": ()},
+    # The Rack card's probe chain K: a nested rack, a delay line mid-chain,
+    # latency in three children, finite tails and one tempo-synced child.
+    "Rack": {"chain": (
+        ("Fuzz", {}),
+        ("Rack", {"chain": (("DigitalDelay", {"mix": 0.3, "feedback": 0.4}),
+                            ("Vibrato", {}))}),
+        ("ConvolutionReverb", {}))},
 }
 
 
