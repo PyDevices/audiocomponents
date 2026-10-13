@@ -29,6 +29,10 @@ RAIL = 32767
 #: cell prints `decl` and is counted as a declared exception. Nothing else
 #: skips a cell.
 DECLARED = {
+    ("PitchShifter", "paperwork", "surface-m2"):
+        "Mix is BIPOLAR so MIDI 64 is exactly 1 (the dry at unity at the"
+        " defaults); the card's section 3 says UNIPOLAR and is superseded"
+        " on that point by a recorded ruling",
     ("StereoWidener", "plants", "H3/"):
         "delay_slew acts only while a Delay move walks the read head, and"
         " the kit's render never moves a control; H3's own test shows the"
@@ -54,6 +58,31 @@ DECLARED = {
         " through the clock's low-pass stay under Sensitivity, where the"
         " octaves are silent by design (trait T3 b)",
 }
+
+# PitchShifter at Feedback's top: the repeats stack on the dry, up to 21
+# times the input's peak on a DC, so the rail is reachable below any useful
+# ceiling. The docstring says so ("Feedback stacks level too, far past the
+# input: at Feedback 127, Delay 0 and Mix 2 a noise burst peaking at
+# -10.3 dBFS reaches the rail at unison or an octave up, and comes within
+# 4 dB of it at an octave down or a fourth or fifth either way"), and
+# test_feedback_near_its_top_stacks_level_far_past_the_input holds it at each
+# Pitch named. Every material (the square, sine and DC, and the squares at
+# the wider periods) and each combination that puts Feedback at 127 (alone,
+# with the levels at 127, and with every macro at 127), at every rate and
+# channel count; the cells with Feedback below its top stay live.
+for _material in ("square", "sine", "dc", "sq41", "sq55", "sq82", "sq110",
+                  "sq147"):
+    for _rate in RATES:
+        for _channels in CHANNELS:
+            for _cell in ("m4=127", "lv=127+m4=127", "all=127"):
+                DECLARED[("PitchShifter", "ceiling", "%s/%d/%d/%s" % (
+                    _material, _rate, _channels, _cell))] = (
+                    "Feedback 0.95 stacks repeats on the dry, up to 21"
+                    " times the input's peak: the class docstring says"
+                    " Feedback stacks level far past the input, a -10.3"
+                    " dBFS noise burst reaching the rail at Feedback 127,"
+                    " Delay 0 and Mix 2 (test_feedback_near_its_top_stacks_"
+                    "level_far_past_the_input)")
 
 CPYTHON = sys.implementation.name == "cpython"
 

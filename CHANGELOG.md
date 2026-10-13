@@ -10,6 +10,15 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`PitchShifter` (rebuilt, Phase 6):** a fixed-interval splice shifter
+  in the manner of the first harmonizers, on a Pitch, Fine, Mix, Delay and
+  Feedback surface. Pitch moves in whole semitones an octave either way and
+  Fine detunes by up to 50 cents; the dry passes untouched up to Mix 1;
+  Delay holds the shifted voice back up to 112.5 ms; and with Feedback up
+  every repeat is shifted again, so a fifth climbs a fifth at a time.
+  `window_ms` (15 to 60, 30 by default) sets the splice window at
+  construction. The old `semitones=` option is gone: Pitch and Fine
+  replace it.
 - **`StereoWidener` (rebuilt, Phase 6):** two characters on a Width, Delay
   and Character surface. Haas delays the right channel 1 to 40 ms behind the
   left, crossfading the right toward its late copy up to Width 1 and turning
