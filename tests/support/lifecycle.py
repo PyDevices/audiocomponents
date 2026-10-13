@@ -1327,6 +1327,12 @@ def _cli(argv):
     for name in names:
         if name in PLANTS:
             cls = PLANTS[name]
+        elif name.startswith("Node"):
+            import node_matrix
+            cls = node_matrix.NODES.get(name)
+            if cls is None:
+                print("MISSING|%s" % name)
+                continue
         else:
             from audioeffects import rebuilt
             cls = rebuilt.module_class(name)
