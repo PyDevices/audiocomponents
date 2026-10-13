@@ -15,7 +15,8 @@ The material is the card's: a 100 ms tone burst at f0 with 5 ms ramps and
 a 2000 LSB peak, after an offset of 0 to 255 frames. A seed set draws f0
 (165 to 330 Hz) and the offset from this module's own integer generator,
 so every interpreter makes the same bytes. Bands are Goertzel sums over
-Hann frames, 1024 frames at 48 kHz and 512 at 22.05 kHz.
+Hann frames, 1024 frames at 48 kHz and 512 at 22.05 kHz, on the left
+channel of a stereo render at 48 kHz and a mono one at 22.05 kHz.
 
 The unit tests run a share of each trait's cells; `figures()` runs every
 cell the card names, eight seed sets each, and prints the evidence pack's
@@ -193,6 +194,12 @@ def db(power):
     return 10.0 * math.log(power) / math.log(10.0)
 
 
+def card_channels(rate):
+    """The card's material: stereo at 48 kHz (the left channel read), mono
+    at 22.05 kHz."""
+    return 2 if rate >= 44100 else 1
+
+
 def wet(cls, rate, channels, f0, offset, frames, **options):
     """Left channel of a Mix 2 render of the burst."""
     options.setdefault("mix", 2.0)
@@ -285,8 +292,8 @@ T1_BLOOMS = (20.0, 200.0, 800.0)
 
 def t1_onset(cls, rate, f0, offset, bloom):
     frames = law_frames(bloom + 400.0, rate) + offset
-    s1 = wet(cls, rate, 1, f0, offset, frames, bloom_ms=bloom, shimmer=1.0)
-    s0 = wet(cls, rate, 1, f0, offset, frames, bloom_ms=bloom, shimmer=0.0)
+    s1 = wet(cls, rate, card_channels(rate), f0, offset, frames, bloom_ms=bloom, shimmer=1.0)
+    s0 = wet(cls, rate, card_channels(rate), f0, offset, frames, bloom_ms=bloom, shimmer=0.0)
     hz = 2.0 * f0
     size = hann_size(rate)
     window = hann(size)
@@ -339,8 +346,8 @@ def t2_read(cls, rate, character, interval, seed):
     span = law_frames(500.0, rate)
     frames = start + span
     options = dict(character=character, interval=interval, rise=0.0)
-    s1 = wet(cls, rate, 1, f0, offset, frames, shimmer=1.0, **options)
-    s0 = wet(cls, rate, 1, f0, offset, frames, shimmer=0.0, **options)
+    s1 = wet(cls, rate, card_channels(rate), f0, offset, frames, shimmer=1.0, **options)
+    s0 = wet(cls, rate, card_channels(rate), f0, offset, frames, shimmer=0.0, **options)
     d = [s1[n] - s0[n] for n in range(frames)]
     size = 2048 if rate >= 44100 else 1024
     window = hann(size)
@@ -383,10 +390,10 @@ def t3_read(cls, rate, bloom, seed):
     frames = law_frames(100.0 + 6 * bloom + 600.0, rate) + offset
     options = dict(character="rise", bloom_ms=bloom, damping_hz=16000.0,
                    decay=4.0, interval=12)
-    s0 = wet(cls, rate, 1, f0, offset, frames, shimmer=0.0, **options)
-    r0 = wet(cls, rate, 1, f0, offset, frames, shimmer=1.0, rise=0.0,
+    s0 = wet(cls, rate, card_channels(rate), f0, offset, frames, shimmer=0.0, **options)
+    r0 = wet(cls, rate, card_channels(rate), f0, offset, frames, shimmer=1.0, rise=0.0,
              **options)
-    r9 = wet(cls, rate, 1, f0, offset, frames, shimmer=1.0, rise=0.9,
+    r9 = wet(cls, rate, card_channels(rate), f0, offset, frames, shimmer=1.0, rise=0.9,
              **options)
     hop = 256
     onsets = [t3_onset(band_track(r0, 2.0 * f0, rate, hop),
@@ -425,7 +432,7 @@ def band_peak(values, hz, rate):
 
 def t45_render(cls, rate, f0, offset, character, rise, damping):
     frames = law_frames(100.0 + 200.0 * 6 + 400.0, rate) + offset
-    return wet(cls, rate, 1, f0, offset, frames, character=character,
+    return wet(cls, rate, card_channels(rate), f0, offset, frames, character=character,
                shimmer=1.0, rise=rise, damping_hz=damping, bloom_ms=200.0,
                interval=12)
 
