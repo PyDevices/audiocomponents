@@ -411,9 +411,9 @@ class GraphicEQ(_component.Component):
         node.gain_db = gain_db
         node.mix = 1.0
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
-        """Jump to a patch, and start the new curve from a clean bank.
+    def _apply_positions(self, positions, patch_index):
+        """Jump to a patch (or a rack's restore), and start the new curve
+        from a clean bank.
 
         The difference between this and `set_macro` is deliberate, and it is
         the difference between a jump and a sweep. A slider being pushed
@@ -424,16 +424,9 @@ class GraphicEQ(_component.Component):
         peaks at **32767 and stays above its own steady level for 306 ms**
         without this, and at **5826 for 8 ms** with it.
         """
-        if type(self).PATCHES.get(index) is None:
-            return _component.Component.program_change(
-                self, index, channel=channel, note_id=note_id,
-                sample_position=sample_position)
-        result = _component.Component.program_change(
-            self, index, channel=channel, note_id=note_id,
-            sample_position=sample_position)
+        _component.Component._apply_positions(self, positions, patch_index)
         for node in self._nodes:
             node.clear()
-        return result
 
     @property
     def tail_samples(self):

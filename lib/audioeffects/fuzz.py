@@ -1016,10 +1016,8 @@ class Fuzz(_component.Component):
             self._tone_mix.voice[1].play(self._tone_hp)
             self._tone_mix.voice[2].play(self._dry)
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
-        _component.Component.program_change(self, index, channel, note_id,
-                                            sample_position)
+    def _apply_positions(self, positions, patch_index):
+        _component.Component._apply_positions(self, positions, patch_index)
         self._route()
         self._refresh_output()
 

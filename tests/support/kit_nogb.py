@@ -18,7 +18,7 @@ when any of P1 to P4 reads other than it did with `get_buffer` present
 `bytes-<scenario>` cells hold the whole render, every channel, to equal
 the one with `get_buffer` present: a reset, two resets in a row, a reset
 before the first pull, a patch change and a reset in one block, at the
-defaults and at the last patch, stereo and mono.
+defaults and at every patch, stereo and mono.
 
 CPython only: it patches the `audiocore` name those modules read, with a
 stand-in that has everything but `get_buffer`, and puts it back afterwards.
@@ -187,7 +187,7 @@ def run(cls, emit=print, quick=False, name=None, options=None):
     except Exception as exc:                              # noqa: BLE001
         cells.cell("run", "RED(raised %s: %s)" % (type(exc).__name__, exc))
         return cells.summary()
-    for patch in (None, max(cls.PATCHES) or None):
+    for patch in [None] + sorted(cls.PATCHES):
         for ch in (2, 1):
             for label, actions in SCENARIOS:
                 key = "bytes-%s/48000/%d/%s" % (

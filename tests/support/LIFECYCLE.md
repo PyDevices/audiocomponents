@@ -16,7 +16,8 @@ To run it on one class (CPython, or a native binary with
 
 It prints one line per cell, `class|event|rate|channels|patch|P1:..|...|h:..`,
 and a `SUMMARY` line per class: cells run, cells with any red property,
-declared exceptions. `tests/test_lifecycle_matrix.py` runs it on every Phase 5
+and cells with any declared property (a cell with two declared properties
+counts once). `tests/test_lifecycle_matrix.py` runs it on every Phase 5
 class on the branch, on CPython and both native interpreters, and holds the
 red cells to its `KNOWN_RED` table.
 
@@ -58,6 +59,11 @@ later (6 for Mix).
   change and back, all before the first pull.
 - **E11** two macro moves; a Mix move and a patch change; two patch changes;
   three moves; all before one pull, back later.
+- **E12** a move before the first pull that stays: each patch, and Mix to
+  0, 64 and 127. At the defaults only. Its control is not the
+  uninterrupted instance but a fresh one built at the move's setting
+  (`patch=`, or the Mix keyword, `mix` unless `MIX_KEYWORD` names another);
+  a constructor that takes no such keyword prints `na(no fresh build)`.
 
 "Back" is `program_change(patch)` at a patch, and `set_macro` with the
 values `get_macro` read at the defaults (landed exactly where that
@@ -86,6 +92,17 @@ at patch 0.
   of the triangle's own largest step and the control's. Control moves only
   (E4, E5, E6, E9, E11): a reset, a deinit and a source fault are cuts by
   definition, and E10 has nothing before it.
+- **PF** (E12) The first block equals the fresh instance's, byte for
+  byte: a level that waits for a zero crossing or a block before it moves
+  plays its first block at the old setting, which P4's bound forgives.
+- **PR** (E1-reset@block, E10-reset, E5-mix0, E10-mix0) From the move that
+  lands the class on a state it can be built at (a reset: patch 0; a
+  return from Mix 0 that routed around the graph, a rejoin: the cell's own
+  configuration; a Mix 0 that keeps the graph running prints `na`) on,
+  4096 frames are byte-identical to a fresh instance built there and fed
+  the source from the same frame. Where the source stands is read off a
+  dry run to the move. No tail is forgiven: a child left at its own patch 0, a line kept
+  across a reset or a block primed twice is red here.
 - **P6** The three interpreters print identical lines for every cell. Each
   line carries `h:`, a CRC-32 of the event instance's whole render, so P6
   compares bytes, not only verdicts.
@@ -105,7 +122,26 @@ free-running LFO) adds a row to `DECLARED` in `lifecycle.py`:
     }
 
 The key is (class `NAME`, event name prefix, property); the cell then prints
-`decl` and counts as a declared exception.
+`decl` and counts as a declared exception. The prefix names at least one
+whole event and its dash (`E4-`, `E10-reset`); a bare `E` or `E1` is
+refused at import, because it also matches cells its reason does not
+describe.
+
+A row can be narrowed by scopes after the property, each kind at most
+once: a tuple of patches (None for the defaults), and a string naming the
+interpreters (`sys.implementation.name`, comma-separated):
+
+    ("PitchShifter", "E10-reset", "P4", "circuitpython"): "...",
+    ("Octaver", "E5-", "P1", (1, 2, 5)): "...",
+
+A row whose reason holds on one interpreter only names it, so the cell
+stays a live check on the other two. A row written with a patch tuple as
+its fourth element keeps working as it is; one with a bare `E` prefix is
+split into one row per event its reason covers.
+
+PR is excused only by `FREE_PHASE`, class `NAME` -> the free-running
+phase (an LFO, a wow table) that keeps a reset or a rejoin from matching a
+fresh instance, named.
 
 A cell that cannot finish on one interpreter, such as a node there that
 never returns from a pull, is skipped there instead: a row in `SKIP`, keyed
@@ -125,5 +161,7 @@ and `LIFECYCLE_CLASSES=DigitalDelay,TapeDelay` limits it to some classes.
 The helper ships a control and a planted fault for every property, and
 `TestPlants` holds each plant red on its cell with its control green there:
 `DropOnReset` (P1), `HoldDC` (P2), `StaleMix` against `Routed` (P3),
-`LateMove` (P4), `HardSwitch` (P5), `BusyDeinit` (PD) and `ImplPlant`
+`LateMove` (P4), `HardSwitch` (P5), `BusyDeinit` (PD), `LatePatch` (PF, a
+pre-pull patch that lands a block late), `ResetLeak` against `Routed` (PR,
+a reset that keeps its echo line; P4 reads both as ok) and `ImplPlant`
 (P6, a level a hair different off CPython).

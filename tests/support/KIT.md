@@ -87,7 +87,9 @@ names a test, which exists and passes. The class's test module holds a
 
 A test is a method name (any TestCase that defines it), `Class.test_name`,
 a tuple of those, or `DECLARED:<NAME>,<event prefix>,<property>`, a row of
-the lifecycle matrix's DECLARED table. "Exists" is an AST lookup in the test
+the lifecycle matrix's DECLARED table. A scoped row is named with its
+scopes after the property: `patches=1/2/d` (`d` the defaults) and each
+interpreter by name, as in `DECLARED:PitchShifter,E10-reset,P4,circuitpython`. "Exists" is an AST lookup in the test
 module; "passes" runs that test alone under unittest (a skip is not a pass).
 The text is the class's module docstring and then its class docstring. A
 sentence is a claim if it holds a digit, a number word, or a bound or
@@ -139,9 +141,13 @@ hands it:
 at, on the worst material, the output does not wrap, sit on a rail, or go
 silent. The class states `INPUT_CEILING_DBFS` (dBFS, 0 or below); with
 none it is held to 0 dBFS. The material, 2 s at the peak: a 100 Hz square,
-a 50 Hz sine, one-sample clicks of alternating sign, noise, and a DC step,
-at the defaults, every patch and each macro alone at each stop, at 48 and
-22.05 kHz, stereo and mono (`--quick`: 48 kHz stereo). The bars:
+a 50 Hz sine, one-sample clicks of alternating sign, noise, a DC step, and
+squares on the low notes 41, 55, 82, 110 and 147 Hz (`sq41` ...). The
+settings: the defaults, every patch, each macro alone at 0, 64 and 127,
+every macro at 127 together (`all=127`), and every level-like macro (a
+label holding Level, Mix, Octave, Direct, Voice or Gain) at 127 with each
+other macro at each of its stops (`lv=127+m<i>=<v>`). At 48 and 22.05 kHz,
+stereo and mono (`--quick`: 48 kHz stereo). The bars:
 
 - `wrap`: neighbouring samples of opposite sign more than 32768 apart,
   where the second, moved by 65536, lands within a quarter of the jump of
@@ -163,6 +169,12 @@ this repository or a parent), never changed; with no checkout, or without
 the pinned commit in it, an audiodsp citation prints `na(...)`. Line
 numbers are all it can know: a citation whose lines moved still resolves.
 
+It also holds `MACRO_LABELS` and `MACRO_MODES` to the surface table in
+section 3 of the class's card (`<NAME>.md` in `KIT_CARDS`, or the cards
+directory found above this repository): one `surface-m<i>` cell per macro,
+a mismatch naming both sides. A class with no card, or a card with no
+table whose header has `#`, `Label` and `Mode`, prints `na(...)`.
+
 **nogb** (`kit_nogb.py`). A class whose primed voice is flushed by
 `audiocore.get_buffer` misbehaves on the board builds that compile it out
 of CircuitPython: the block the voice still holds plays later, source
@@ -180,11 +192,19 @@ run that has it.
 - `bytes-<scenario>/48000/<channels>/<d|pK>`: the whole render, every
   channel, byte for byte: a reset, two resets in a row, a reset before the
   first pull, a patch change and a reset in one block, and resets a block
-  apart. A class whose first block is rightly gated differently without
+  apart, at the defaults and every patch. A class whose first block is rightly gated differently without
   `get_buffer` declares the cell in `DECLARED`.
 
 CPython only. A module that imports `get_buffer` inside a function is not
 reached.
+
+## Known gaps
+
+- **Several levels.** Every render check plays its material at one level
+  (the ceiling at the stated peak, the others where they are set). A class
+  whose behaviour turns on input level, such as a comparator or a dead
+  band, can be wrong a few dB below the level any cell plays. No check
+  sweeps the input level yet.
 
 ## Options
 
@@ -217,11 +237,16 @@ and a loose claim (claims), `ReadbackOff`, `StopRaises`, `NanLevel`,
 `PatchStale` and `CtorNan` (args; `ClearsFirst` and `ClearsMacro` for the
 refused calls: one zeroes the cached level, the other drops the patch or
 moves a macro, before validating), `WrapKit`, `ClipKit` and `DeadStop`
-(ceiling), a missing CHANGELOG line and citations past the end of a file or
-to no file (paperwork), `FlushOnly` and `DoubleReset` (nogb: the first leans
+(ceiling; `MidWrap`, `ComboWrap`, `AllWrap` and `LowWrap` wrap only at
+Level 64, at the level-like macros at 127 with Tone at 0, with every macro
+at 127, and on a square below 60 Hz, against `CondKit` and `KitPlain`), a
+missing CHANGELOG line, citations past the end of a file or to no file, and
+a fixture card whose surface table differs (paperwork), `FlushOnly` and `DoubleReset` (nogb: the first leans
 on `get_buffer` to flush a primed voice, the second drops a block on a
 second reset in a row without it; `FlushKit`, which primes a voice of its own
-and plays it again where it cannot flush, is the control), and `Silent`, which does nothing. Its native half
+and plays it again where it cannot flush, is the control; `MidPatchReset`
+does it at a middle patch only, against `FlushKit3`), and `Silent`, which
+does nothing. Its native half
 holds the render checks to the same lines on all three interpreters, and
 shows that agreement can fail with `ImplKit`, whose level differs off
 CPython.

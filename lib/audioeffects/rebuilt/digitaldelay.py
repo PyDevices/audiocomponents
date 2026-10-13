@@ -311,6 +311,8 @@ class DigitalDelay(_component.Component):
     VERSION = '0.1.0'
 
     TIER = _component.AUDIODSP
+    #: The exact constructor values a rack's reset puts back with the knobs.
+    _KEPT = ('_glide_exact',)
     REQUIRES = ("audioecho",)
 
     CAPABILITIES = ("tempo_sync",)
@@ -514,20 +516,18 @@ class DigitalDelay(_component.Component):
         if not self._deferred:
             self._refresh()
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
-        """Apply patch `index` whole, then refresh once. The base applies
+    def _apply_positions(self, positions, patch_index):
+        """Apply a patch (or a rack's restore) whole, then refresh once. The base applies
         the macros in index order, so a refresh per macro would read Time
         against the outgoing patch's Sync and, with a host transport, keep
         its synced Time instead of the new patch's own."""
         self._deferred = True
         try:
-            _component.Component.program_change(
-                self, index, channel, note_id, sample_position)
+            _component.Component._apply_positions(self, positions,
+                                                  patch_index)
         finally:
             self._deferred = False
-        if type(self).PATCHES.get(index) is not None:
-            self._refresh()
+        self._refresh()
 
     def reset(self):
         _component.Component.reset(self)

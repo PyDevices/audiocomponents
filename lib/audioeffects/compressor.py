@@ -486,9 +486,8 @@ class Compressor(_component.Component):
         else:
             self._fast.set(sidechain_hz=self._hz(self.macro(11) * emphasis))
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
-        super().program_change(index, channel, note_id, sample_position)
+    def _apply_positions(self, positions, patch_index):
+        _component.Component._apply_positions(self, positions, patch_index)
         self._route()
 
     def _lean(self):
