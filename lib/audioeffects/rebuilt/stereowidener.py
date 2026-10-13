@@ -156,6 +156,10 @@ class StereoWidener(_component.Component):
     #: an anti-phase pair's side, and 2 x 16 383 still fits.
     INPUT_CEILING_DBFS = -6.03
 
+    #: The constructor's Delay, exactly, which a rack's reset puts back
+    #: with the knobs.
+    _KEPT = ("_delay_exact",)
+
     MACRO_LABELS = ("Width", "Delay", "Character")
     MACRO_MODES = {
         0: "BIPOLAR",
@@ -352,27 +356,27 @@ class StereoWidener(_component.Component):
     # -- applying ------------------------------------------------------
 
     def _apply_macro(self, index, position):
-        if index == DELAY_I and self._ready and (
+        if index == DELAY_I and self._ready and not self._seeding and (
                 abs(position - self._delay_seed) > ECHO_TOLERANCE):
             self._delay_exact = None
         if self._ready:
             self._refresh()
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
-        """Apply patch `index` whole, then refresh the graph once."""
+    def _apply_positions(self, positions, patch_index):
+        """Apply a patch (or a rack's restore) whole, then refresh the graph
+        once. A patch drops the constructor's Delay; a restore keeps the
+        one it put back (`_KEPT`), so the two share this one path."""
         ready = self._ready
         self._ready = False
         try:
-            _component.Component.program_change(
-                self, index, channel, note_id, sample_position)
+            _component.Component._apply_positions(self, positions,
+                                                  patch_index)
         finally:
             self._ready = ready
-        if type(self).PATCHES.get(index) is not None:
-            # Only a call the base accepted drops the constructor's Delay.
+        if not self._seeding:
             self._delay_exact = None
-            if ready:
-                self._refresh()
+        if ready:
+            self._refresh()
 
     def _refresh(self):
         if self._ms is None:

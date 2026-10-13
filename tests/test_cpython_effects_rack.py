@@ -1065,6 +1065,41 @@ def t4_exact(cls, rate, channels, cases=EXACT):
     return wrong
 
 
+def t4_widener(cls, rate, channels):
+    """A StereoWidener built at Delay 20 ms comes back from the rack's reset
+    as built: it plays the 20 ms, reads 20.0 back, and renders what the
+    freshly built rack does, after its Delay was moved before the reset."""
+    wrong = []
+    frames = 12000
+    values = clicks(frames, channels, range(512, frames, 2400))
+    widener = rebuilt.module_class("StereoWidener")
+    chain = ((widener, {"delay_ms": 20.0}),)
+
+    def before(rack):
+        rack.effects[0].set_macro(1, 100)
+
+    def run(rack):
+        return pull(rack.output, frames - 512, channels)
+
+    for line in _against_fresh(cls, rate, channels, chain, values, run,
+                               before):
+        wrong.append("StereoWidener: %s" % line)
+    rack = cls.create(_feed(values, rate, channels).port, rate, chain=chain)
+    try:
+        before(rack)
+        rack.reset()
+        got = rack.effects[0].macro(1)
+        if got != 20.0:
+            wrong.append("StereoWidener: Delay reads %r after reset, 20.0 "
+                         "as built" % (got,))
+        if rack.effects[0]._delay_exact != 20.0:
+            wrong.append("StereoWidener: _delay_exact is %r after reset"
+                         % (rack.effects[0]._delay_exact,))
+    finally:
+        rack.deinit()
+    return wrong
+
+
 def t5_patch(cls):
     """A `patch=` the rack refuses releases every pedal it had built."""
     wrong = []
@@ -1258,6 +1293,9 @@ class TestReset(TestCase):
         for rate, channels in ((48000, 2), (22050, 1)):
             self.assertEqual(t4_exact(Rack, rate, channels), [],
                              (rate, channels))
+
+    def test_a_stereo_widener_comes_back_with_its_exact_delay(self):
+        self.assertEqual(t4_widener(Rack, 48000, 2), [])
 
     def test_reset_as_built_faults_are_red(self):
         self.assertNotEqual(t4_mix0(PutBackRack, 48000, 2), [])
