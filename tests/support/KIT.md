@@ -1,14 +1,16 @@
 # The effects kit
 
-Six mechanical checks that run on one effect class with no model in the
+Seven mechanical checks that run on one effect class with no model in the
 loop: every verdict is arithmetic on rendered bytes, or on the source. They
 sit beside the [lifecycle matrix](LIFECYCLE.md) and catch the kinds of
 defect that kept turning up class after class: a tail that outlasts
 `tail_samples`, a planted fault a knob can reach, a docstring promise no
 test holds, a control that does not read back what it was set to, an input
-level that wraps, and a citation that no longer resolves.
+level that wraps, a citation that no longer resolves, a refused call that
+leaves a trace, and a class that only behaves where `audiocore.get_buffer`
+exists.
 
-To run all six on one class, from the repo root:
+To run all seven on one class, from the repo root:
 
     python tests/support/kit.py DigitalDelay
     python tests/support/kit.py DigitalDelay --only tail,ceiling --quick
@@ -27,9 +29,9 @@ why), `RED(...)` with what was measured, or `decl`. `h:` is a CRC-32 of the
 cell's render, so two interpreters' lines agree only when their bytes do.
 
 The four render checks (tail, plants, args, ceiling) are numpy-free and
-print the same lines on CPython, MicroPython and CircuitPython. The claims
-and paperwork checks read source, unittest and git, and run on CPython
-only; a native run prints `SKIP` for them.
+print the same lines on CPython, MicroPython and CircuitPython. The claims,
+paperwork and nogb checks read source, unittest and git, or patch modules,
+and run on CPython only; a native run prints `SKIP` for them.
 
 A class that does nothing at all must not read as a pass: the tail and
 args checks print `na(silent)` for a render that was zero throughout, and
@@ -117,6 +119,22 @@ hands it:
   was not on; and a NaN build renders exactly what the defaults or the
   option at 0 render.
 
+- `refused-<trigger>/<d|last|opt>`: a call the contract's methods refuse
+  leaves the instance exactly as it was. The triggers are
+  `program_change` with a negative, boolean or float `sample_position`, or
+  an index of 0.0, 1.0, True, -1, None or "0"; `set_macro` with an index
+  or value of the wrong type, a negative or float `sample_position` or
+  NaN; and the two no-ops the contract allows (an index past the last
+  patch, `channel=-1`). The call lands before pull 8 on an instance built
+  at the defaults (`d`), at the last patch (`last`) and with every numeric
+  constructor option moved off its default (`opt`, which is where a
+  constructor's exact value lives). A raise must be ValueError, TypeError
+  or IndexError. Whether it raised or was accepted as a no-op, every macro
+  reads back the same (on the 0-127 grid and as `macro()` plays it),
+  `patch_index` is unchanged, and the render equals one from an instance
+  that never saw the call. A call that is not a no-op and is accepted is
+  not judged (`ok(a)`).
+
 **ceiling** (`kit_ceiling.py`). At the level the class says it is clean
 at, on the worst material, the output does not wrap, sit on a rail, or go
 silent. The class states `INPUT_CEILING_DBFS` (dBFS, 0 or below); with
@@ -145,6 +163,29 @@ this repository or a parent), never changed; with no checkout, or without
 the pinned commit in it, an audiodsp citation prints `na(...)`. Line
 numbers are all it can know: a citation whose lines moved still resolves.
 
+**nogb** (`kit_nogb.py`). A class whose primed voice is flushed by
+`audiocore.get_buffer` misbehaves on the board builds that compile it out
+of CircuitPython: the block the voice still holds plays later, source
+frames from the start of the material at a point where they do not belong.
+The check hides `get_buffer` from the class's module, its bases' modules
+and `audioeffects` (it replaces the `audiocore` name they read with a
+stand-in that has everything but `get_buffer`, and puts it back; the
+matrix's own pulls keep the real one) and compares two things with the
+run that has it.
+
+- Lifecycle cells (E1, E5, E6, E10 at 48 kHz, stereo and mono, every
+  patch): P1 to P4 must be the same kind of verdict (ok, na, RED), so a
+  cell is red when the class is fine with `get_buffer` and not without. The
+  frames a red verdict names are not compared.
+- `bytes-<scenario>/48000/<channels>/<d|pK>`: the whole render, every
+  channel, byte for byte: a reset, two resets in a row, a reset before the
+  first pull, a patch change and a reset in one block, and resets a block
+  apart. A class whose first block is rightly gated differently without
+  `get_buffer` declares the cell in `DECLARED`.
+
+CPython only. A module that imports `get_buffer` inside a function is not
+reached.
+
 ## Options
 
 `kit_options.py` holds `KIT_OPTIONS`, the constructor options the kit
@@ -166,16 +207,21 @@ prints `decl` and counts as declared. Nothing else skips a cell.
 
 ## The plants
 
-`tests/test_kit.py` holds every check red on a planted fault and its
-control green on the same cell, with the plants in `kit_planted.py`
-(a Waveshaper and a level around the source; `KitPlain` is the control):
-`ShortTail` and `EventTail` (tail; `EchoTail` the control), `NoneSilent`
-and `NoneDC` (a None tail), `Inert`, `KnobReach` and `SoftOnly` (plants),
-a fixture test module with a missing sentence, a missing test, a failing
-and a skipped test and a loose claim (claims), `ReadbackOff`,
-`StopRaises`, `NanLevel`, `PatchStale` and `CtorNan` (args), `WrapKit`,
-`ClipKit` and `DeadStop` (ceiling), a missing CHANGELOG line and citations
-past the end of a file or to no file (paperwork), and `Silent`, which does
-nothing. Its native half holds the render checks to the same lines on all
-three interpreters, and shows that agreement can fail with `ImplKit`,
-whose level differs off CPython.
+`tests/test_kit.py` holds every check red on a planted fault and its control
+green on the same cell, with the plants in `kit_planted.py` (a Waveshaper
+and a level around the source; `KitPlain` is the control): `ShortTail` and
+`EventTail` (tail; `EchoTail` the control), `NoneSilent` and `NoneDC` (a
+None tail), `Inert`, `KnobReach` and `SoftOnly` (plants), a fixture test
+module with a missing sentence, a missing test, a failing and a skipped test
+and a loose claim (claims), `ReadbackOff`, `StopRaises`, `NanLevel`,
+`PatchStale` and `CtorNan` (args; `ClearsFirst` and `ClearsMacro` for the
+refused calls: one zeroes the cached level, the other drops the patch or
+moves a macro, before validating), `WrapKit`, `ClipKit` and `DeadStop`
+(ceiling), a missing CHANGELOG line and citations past the end of a file or
+to no file (paperwork), `FlushOnly` and `DoubleReset` (nogb: the first leans
+on `get_buffer` to flush a primed voice, the second drops a block on a
+second reset in a row without it; `FlushKit`, which primes a voice of its own
+and plays it again where it cannot flush, is the control), and `Silent`, which does nothing. Its native half
+holds the render checks to the same lines on all three interpreters, and
+shows that agreement can fail with `ImplKit`, whose level differs off
+CPython.
