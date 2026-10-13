@@ -445,6 +445,24 @@ DECLARED = {
         "as E4: the line held at mix 0 plays when mix comes back",
     ("NodeEcho", "E9-", "P3"):
         "as E4, at every source buffer size",
+    ("NodePitchShift", "E2-", "P4"):
+        "reset_buffer restarts the splice phase, so the node matches a fresh"
+        " one, not the uninterrupted control",
+    ("NodePitchShift", "E4-m1", "P4"):
+        "a Semitones move runs the read position at another rate, so the"
+        " splice phase lands elsewhere; putting it back would click",
+    ("NodePitchShift", "E6-", "P4"):
+        "as E4: a patch with other semitones moves the splice phase",
+    ("NodePitchShift", "E11-", "P4"):
+        "as E4: moves before a pull move the splice phase",
+    ("NodeGranularPitchShift", "E1-", "P4"):
+        "a reset restarts the grain clock, so grains never line up with the"
+        " uninterrupted control again",
+    ("NodeGranularPitchShift", "E2-", "P4"):
+        "as E1: the host reset restarts the grain clock",
+    ("NodeGranularPitchShift", "E6-", "P4"):
+        "a Spread move to 0 draws no jitter, so the random sequence falls"
+        " behind the control's",
 }
 
 import lifecycle  # noqa: E402
