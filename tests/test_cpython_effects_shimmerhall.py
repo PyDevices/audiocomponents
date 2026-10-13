@@ -149,7 +149,8 @@ def left(out, channels):
     """The left channel (the only one, in mono)."""
     if channels == 1:
         return out
-    return out[0::2]
+    # A loop, not out[0::2]: MicroPython's array takes no slice step.
+    return [out[n] for n in range(0, len(out), 2)]
 
 
 def hann_size(rate):
