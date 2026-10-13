@@ -209,6 +209,9 @@ class AirSpace(_component.Component):
     INPUT_CEILING_DBFS = -12.0
     TAIL_SAMPLES = None
 
+    #: The exact-value flags, which a rack's reset puts back with the knobs.
+    _KEPT = ("_snap",)
+
     MACRO_LABELS = ("Time", "Feedback", "Glide", "Drive", "Loop Top",
                     "Loop Bass", "Top Cut", "Low Cut", "Decay", "Damping",
                     "Mix")
@@ -396,20 +399,31 @@ class AirSpace(_component.Component):
             self._snap = flags
             raise
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
-        """Apply patch `index`: every macro lands on a whole step."""
-        self._check_live()
+    def _apply_positions(self, positions, patch_index):
+        """A patch lands every macro on a whole step, so every macro plays
+        the default on the default's step again; a rack's restore (while
+        `_seeding`) keeps the flags it put back (`_KEPT`). The one path a
+        patch and a restore share."""
         flags = list(self._snap)
-        if (not isinstance(index, bool) and isinstance(index, int)
-                and type(self).PATCHES.get(index) is not None):
+        if not self._seeding:
             self._snap = [True] * len(flags)
         try:
-            _component.Component.program_change(
-                self, index, channel, note_id, sample_position)
+            _component.Component._apply_positions(self, positions,
+                                                  patch_index)
         except Exception:
             self._snap = flags
             raise
+
+    def _record(self):
+        positions, patch_index, kept = _component.Component._record(self)
+        return (positions, patch_index, (list(kept[0]),))
+
+    def _restore(self, record):
+        # Copy the flags: `set_macro` changes them in place, and the
+        # rack's record must stay what the rack built.
+        positions, patch_index, kept = record
+        _component.Component._restore(
+            self, (positions, patch_index, (list(kept[0]),)))
 
     def _dry_level(self, mix):
         """The dry voice's level, min(1, 2 - Mix). At one channel unity is

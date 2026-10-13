@@ -19,6 +19,33 @@ there, and are recorded in its changelog.
   chamber's tail, and a Time move bends the repeats' pitch. The chamber is
   the rebuilt `Reverb`, and `reset()` renders exactly as a fresh instance.
   The old `rack.AirSpace` stays what the library serves until adoption.
+
+- **`StereoWidener` (rebuilt, Phase 6):** two characters on a Width, Delay
+  and Character surface. Haas delays the right channel 1 to 40 ms behind the
+  left, crossfading the right toward its late copy up to Width 1 and turning
+  the left down above it; Mid/Side scales the difference between the
+  channels and leaves the sum alone. A mono source passes untouched, and a
+  Delay move glides instead of clicking. The old `delay_ms=`/`width=`
+  options keep their names with these meanings.
+- **`Rack` (rebuilt, Phase 6):** the serial chain on the contract's base, in
+  `rebuilt/rack.py` beside the old class, which stays until the rebuild is
+  promoted. `chain=` keeps its meaning and also takes a bare effect class. It
+  renders exactly the same pedals patched by hand; `latency_samples` and
+  `tail_samples` are live sums; `reset()` clears every pedal and puts each
+  back to the settings the rack built it with; `deinit()` releases every
+  pedal, and a chain that fails part-way releases what it built; each pedal
+  gets the rack's transport and `transport_changed()` reaches nested racks;
+  `capabilities` is the union of the pedals'. `effects` is a tuple. Patches
+  and a rack's restore now share one private path in the base,
+  `_apply_positions`, which the classes that did work once per patch moved
+  onto.
+- **`Octaver` (rebuilt, Phase 6):** the analog octave-down, after the
+  Boss OC-2. The octave is your own note with every other cycle turned
+  over, clocked from a low-passed copy and multiplied into an all-passed
+  one, so it keeps your attack and decay and tracks from E2 to A4 at the
+  default. Seven controls: Direct, Octave 1, Octave 2, Tracking, Tone 1,
+  Tone 2 and Sensitivity, and six patches. It drops the shifter-based
+  class's octave up and its `down=`, `up=`, `down2=` and `up2=` options.
 - MultiTapDelay: the docstring says which patches need a P4-class board (patch 4 does, patch 3 may), from the boards' figures at audiodsp v0.6.3
 - **`DigitalDelay` (rebuilt, Phase 5; adopted 2026-09-28):** a clean
   interpolated line with the Boss DD-2's control law on one
@@ -299,6 +326,8 @@ there, and are recorded in its changelog.
   the off stop keeps Tone in's stepped Feedback.
 
 ### Fixed
+
+- A Time brought back after a shorter one no longer plays a stray sample from before the move in MultiTapDelay and the delays built on `audiodelays.Echo` (on CPython and MicroPython; CircuitPython's own `audiodelays` still plays it); PitchShifter, Harmonizer and Octaver start again from scratch on a reset and no longer hang on a source with nothing to give; and a host reset that reaches a Mixer inside an effect keeps the audio its voices hold. All of it is audiodsp's, at the pre-release `AUDIODSP_PIN` now names (v0.6.6rc1).
 
 - The delays, Reverb and ConvolutionReverb now ring out when their source ends, then rest at exact zero, instead of freezing the tail until the source came back; a one-shot source plays once instead of feeding them for ever. A source that comes up short part-way through a block leaves a whole block with the rest silent, and a host `reset_buffer` on ConvolutionReverb keeps the frames it holds. All of it is audiodsp's, at the commit `AUDIODSP_PIN` now names (audiocomponents#127).
 

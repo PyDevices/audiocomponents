@@ -368,10 +368,18 @@ class Effect:
         patch = self.PATCHES.get(index)
         if patch is None:
             return
-        for macro, value in enumerate(patch[1]):
-            self._macros[macro] = min(1.0, max(0.0, float(value) / 127.0))
-            self._apply_macro(macro, self._macros[macro])
-        self._patch_index = index
+        self._apply_positions([min(1.0, max(0.0, float(value) / 127.0))
+                               for value in patch[1]], index)
+
+    def _apply_positions(self, positions, patch_index):
+        """Set the macros to `positions` (0..1), apply each, and record
+        `patch_index`: `program_change`'s body, which a rack also calls to
+        put a child back as it built it (`_component.Component`'s
+        counterpart says why)."""
+        for macro in range(len(positions)):
+            self._macros[macro] = positions[macro]
+            self._apply_macro(macro, positions[macro])
+        self._patch_index = patch_index
 
     def macro(self, index):
         """What macro `index` currently stands for, in its own units."""

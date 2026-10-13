@@ -461,18 +461,16 @@ class Reverb(_component.Component):
         if not self._deferred:
             self._refresh()
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
-        """Apply patch `index` whole, then refresh the Tank once, so a
+    def _apply_positions(self, positions, patch_index):
+        """Apply a patch (or a rack's restore) whole, then refresh the Tank once, so a
         patch that moves Character and Size rebuilds it once."""
         self._deferred = True
         try:
-            _component.Component.program_change(
-                self, index, channel, note_id, sample_position)
+            _component.Component._apply_positions(self, positions,
+                                                  patch_index)
         finally:
             self._deferred = False
-        if type(self).PATCHES.get(index) is not None:
-            self._refresh()
+        self._refresh()
 
     def _refresh(self):
         fs = self._sample_rate

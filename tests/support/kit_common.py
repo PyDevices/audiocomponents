@@ -32,6 +32,30 @@ DECLARED = {
     ("AirSpace", "plants", "T5/"): "the glide plant changes only how a"
     " Time move travels, and the plant check renders at fixed settings, so"
     " it reads as the clean class; the class's T5 tests move Time",
+    ("StereoWidener", "plants", "H3/"):
+        "delay_slew acts only while a Delay move walks the read head, and"
+        " the kit's render never moves a control; H3's own test shows the"
+        " plant red on a move, and no macro or patch sets the slew",
+    ("Rack", "plants", "T1/"):
+        "T1's faults are the empty rack's identity and its port, which a"
+        " render at the probe chain cannot see; the trait test holds them red",
+    ("Rack", "plants", "T4/"):
+        "T4's faults live in reset() and patch 0, which the plant render"
+        " never calls; the trait test holds them red",
+    ("Rack", "plants", "T5/"):
+        "T5's faults live in deinit() and a failed build, which the plant"
+        " render never reaches; the trait test holds them red",
+    ("Rack", "plants", "T6/"):
+        "T6's faults need a host transport and a tempo change, which the"
+        " plant render does not give; the trait test holds them red",
+    ("Rack", "ceiling", "sine/48000/2/"):
+        "ConvolutionReverb's own ceiling at its defaults: it rails this 0"
+        " dBFS sine alone (its own ceiling cell sine/48000/2/d), a finding"
+        " for that class and not a rack defect",
+    ("Octaver", "ceiling", "clicks/"):
+        "with Direct at 0 only the octaves sound, and one-sample clicks"
+        " through the clock's low-pass stay under Sensitivity, where the"
+        " octaves are silent by design (trait T3 b)",
 }
 
 CPYTHON = sys.implementation.name == "cpython"

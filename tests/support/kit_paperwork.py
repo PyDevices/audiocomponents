@@ -15,6 +15,16 @@ working tree. A file found in neither is red. Line numbers inside the
 file are all this can know: a citation whose lines moved under it still
 resolves.
 
+**The surface.** The class's `MACRO_LABELS` and `MACRO_MODES` against the
+surface table of its class card: `<NAME>.md` in the cards directory
+(`KIT_CARDS`, or a `docs/effects-internal/dossiers` directory in a parent
+of this repository), read as text. The table is the first in section 3
+whose header has `#`, `Label` and `Mode` columns; a label is compared
+without its backticks and a mode by its first word (`UNIPOLAR, log` is
+UNIPOLAR; a macro `MACRO_MODES` leaves out is UNIPOLAR). One
+`surface-m<i>` cell per macro either side has; a mismatch names both. With
+no card, or no such table on it, the `surface` cell prints `na(...)`.
+
 The pinned audiodsp is read from a checkout, never changed: `KIT_AUDIODSP`
 or an `audiodsp` directory beside this repository (or beside a parent of
 it). Without one, or without the pinned commit in it, each audiodsp
@@ -171,6 +181,104 @@ def cite_verdict(path, first, last, pin, root=ROOT):
     return "RED(no %s at the pin or in this repository)" % path
 
 
+def find_cards(root=ROOT):
+    env = os.environ.get("KIT_CARDS")
+    if env:
+        return env if os.path.isdir(env) else None
+    here = root
+    for _up in range(6):
+        here = os.path.dirname(here)
+        candidate = os.path.join(here, "docs", "effects-internal",
+                                 "dossiers")
+        if os.path.isdir(candidate):
+            return candidate
+    return None
+
+
+def _row(line):
+    line = line.strip().replace("\\|", "/")
+    return [c.strip() for c in line.strip("|").split("|")]
+
+
+def card_surface(text):
+    """[(index, label, mode)] from the card's surface table, or None."""
+    inside = False
+    header = None
+    rows = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            if inside:
+                break
+            inside = line[3:].lstrip().startswith("3")
+            continue
+        if not inside:
+            continue
+        if not line.lstrip().startswith("|"):
+            if header is not None and rows:
+                break
+            continue
+        cells = _row(line)
+        if header is None:
+            if "#" in cells and "Label" in cells and "Mode" in cells:
+                header = cells
+            continue
+        if not "".join(cells).strip("-: "):
+            continue
+        words = cells[header.index("Mode")].replace(",", " ").split()
+        mode = words[0].upper() if words else ""
+        number = cells[header.index("#")].replace("\u2013", "-")
+        label = cells[header.index("Label")].replace("`", "").strip()
+        if "-" in number:
+            # A range row: "1-3 | `Voice 1` ... `Voice 3`" names one macro
+            # per index, the label's trailing number counting with it.
+            try:
+                first, last = (int(n) for n in number.split("-", 1))
+            except ValueError:
+                continue
+            stem = label.split("\u2026")[0].split("...")[0].strip()
+            base = stem.rstrip("0123456789").rstrip()
+            start = stem[len(base):].strip()
+            for step, index in enumerate(range(first, last + 1)):
+                name = ("%s %d" % (base, int(start) + step) if start
+                        else base)
+                rows.append((index, name, mode))
+            continue
+        try:
+            index = int(number)
+        except ValueError:
+            continue
+        rows.append((index, label.strip(), mode))
+    return rows if header is not None else None
+
+
+def surface_cells(cells, cls, cards):
+    """The surface cells for `cls` against its card in `cards`."""
+    if cards is None:
+        cells.cell("surface", "na(no class cards)")
+        return
+    path = os.path.join(cards, "%s.md" % cls.NAME)
+    if not os.path.isfile(path):
+        cells.cell("surface", "na(no card for %s)" % cls.NAME)
+        return
+    with open(path, encoding="utf-8") as f:
+        rows = card_surface(f.read())
+    if rows is None:
+        cells.cell("surface", "na(no surface table in section 3)")
+        return
+    card = dict((index, (label, mode)) for index, label, mode in rows)
+    labels = cls.MACRO_LABELS
+    ours = dict((i, (labels[i], cls.MACRO_MODES.get(i, "UNIPOLAR")))
+                for i in range(len(labels)))
+    for i in sorted(set(card) | set(ours)):
+        a = ours.get(i)
+        b = card.get(i)
+        if a == b:
+            cells.cell("surface-m%d" % i, "ok")
+            continue
+        cells.cell("surface-m%d" % i, "RED(class %s, card %s)" % (
+            "%r %s" % a if a else "none", "%r %s" % b if b else "none"))
+
+
 def has_changelog_line(name, changelog_text):
     head = "- **`%s`" % name
     for line in changelog_text.splitlines():
@@ -179,10 +287,14 @@ def has_changelog_line(name, changelog_text):
     return False
 
 
-def check(name, text, changelog_text, pin, emit=print, root=ROOT):
-    """The paperwork cells for class `name` whose module source is `text`.
-    Returns the red count."""
+def check(name, text, changelog_text, pin, emit=print, root=ROOT, cls=None,
+          cards=None):
+    """The paperwork cells for class `name` whose module source is `text`
+    (and, given `cls`, its surface against its card in `cards`). Returns
+    the red count."""
     cells = kc.Cells(name, CHECK, emit)
+    if cls is not None:
+        surface_cells(cells, cls, cards)
     cells.cell("changelog", "ok" if has_changelog_line(name, changelog_text)
                else "RED(no CHANGELOG line starts - **`%s`)" % name)
     seen = {}
@@ -204,7 +316,8 @@ def run(cls, emit=print, name=None, **_):
     with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8") as f:
         changelog = f.read()
     pin = Pin(find_checkout(), pin_commit())
-    return check(name or cls.NAME, text, changelog, pin, emit)
+    return check(name or cls.NAME, text, changelog, pin, emit, cls=cls,
+                 cards=find_cards())
 
 
 if __name__ == "__main__":
