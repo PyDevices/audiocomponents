@@ -386,8 +386,10 @@ class AirSpace(_component.Component):
         try:
             position = _component.position_of_midi("UNIPOLAR", value)
             if abs(position - self._macros[index]) > STEP_TOLERANCE:
-                self._snap[index] = abs(value - round(value)) <= 127.0 * (
-                    STEP_TOLERANCE)
+                fraction = value % 1.0
+                limit = 127.0 * STEP_TOLERANCE
+                self._snap[index] = (fraction <= limit
+                                     or fraction >= 1.0 - limit)
             _component.Component.set_macro(
                 self, index, value, channel, note_id, sample_position)
         except Exception:
