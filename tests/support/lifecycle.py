@@ -97,6 +97,15 @@ DECLARED = {
     ("Harmonizer", "E11-", "P4"):
         "moves that reach an interval, a Level's off step or Mix 0 move the"
         " splices, as E4 to E6",
+    ("Harmonizer", "E10-reset", "P4"):
+        "CircuitPython only: its own audiodelays.PitchShift keeps its read"
+        " and write positions across reset_buffer (audiodsp#240 is in"
+        " audiodsp's port only), so a reset before the first pull cannot"
+        " put the splices back where the constructor left them; CPython"
+        " and MicroPython are ok (ruled a CircuitPython-own difference)",
+    ("Harmonizer", "E10-mix0", "P4"):
+        "CircuitPython only: as E10-reset, the return from Mix 0 empties the"
+        " lines but CircuitPython's PitchShift keeps its positions",
     ("Harmonizer", "E4-", "P5"):
         "family limit, disclosed (audiocomponents#117): a control that jumps"
         " makes the output step",
