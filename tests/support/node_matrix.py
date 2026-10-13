@@ -465,5 +465,13 @@ DECLARED = {
         " behind the control's",
 }
 
+#: Ruled N1 (2026-10-13): a control that jumps steps the output in every
+#: node (no in-node ramp yet; audiocomponents docs/control-smoothing.md),
+#: so P5 is declared for every node adapter.
+for _name in NODES:
+    DECLARED[(_name, "E", "P5")] = (
+        "a control that jumps steps the output; the in-node 20 ms ramp is"
+        " planned, not built (docs/control-smoothing.md)")
+
 import lifecycle  # noqa: E402
 lifecycle.DECLARED.update(DECLARED)
