@@ -282,6 +282,10 @@ SKIP = {
         "upstream's GranularPitchShift never returns from a pull on a looped"
         " source that ends empty; audiodsp#243 fixed it on CPython and"
         " MicroPython",
+    ("ShimmerHall", "E8-", "circuitpython"):
+        "Bloom pulls upstream's PitchShift, which never returns from a pull"
+        " on a looped source that ends empty (audiodsp#243 fixed it on"
+        " CPython and MicroPython)",
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")

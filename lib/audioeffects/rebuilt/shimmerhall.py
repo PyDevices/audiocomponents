@@ -33,24 +33,26 @@ Decay, Size, Shimmer and Rise at the top, a steady loud input fills the
 hall to the rail.
 
 `tail_samples` bounds how long the output takes to reach exact zero once
-your input stops. `reset()` empties the hall, the line and the shifter, and
-restores patch 0.
-
-The patches: Octave Bloom (the defaults), Short Stagger, Fifth Halo, Slow
-Rise, Rise Damped, Falling Octaves.
+your input stops: 82 s at Rise 0.9 and Bloom 800 ms. `reset()` empties the
+hall, the line and the shifter, and restores patch 0. The patches: Octave
+Bloom (the defaults), Short Stagger, Fifth Halo, Slow Rise, Rise Damped,
+Falling Octaves.
 
 **Limits**
 
 A control that jumps makes the output step: move it in small steps from the
-host if you need it smooth.
-
-Moving Character or Size empties the hall: the tail drops and the dry
-carries on.
+host if you need it smooth. Moving Character or Size empties the hall: the
+tail drops and the dry carries on.
 
 Interval is a fixed shift in semitones, with no key awareness. Both
-shifters splice, so the shifted copy has a slight flutter. At a lower sample
-rate the band ends lower, so the climb reaches the top of it sooner. A mono source
-gets a mono rack. It needs a board with PSRAM.
+shifters splice, so the shifted copy has a slight flutter. At a lower
+sample rate the band ends lower, so the climb reaches the top of it sooner.
+A mono source gets a mono rack. It needs a board with PSRAM.
+
+When your source ends, the tail rings out as it would on silence. On a
+CircuitPython board, stop the rack from the host if your source can run
+dry in Bloom: CircuitPython's own pitch shifter waits on a source that
+comes back empty.
 
 A value outside a macro's span clamps to the nearer stop, and NaN takes the
 default; an `interval` other than the five raises `ValueError`.

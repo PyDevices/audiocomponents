@@ -797,6 +797,15 @@ class TheSurface(TestCase):
                 finally:
                     e.deinit()
 
+    def test_the_longest_tail(self):
+        for rate in RATES:
+            e = ShimmerHall(_port(rate), character="rise", rise=0.9,
+                            bloom_ms=800.0)
+            try:
+                self.assertEqual(int(e.tail_samples / rate + 0.5), 82)
+            finally:
+                e.deinit()
+
     def test_tail_is_zero_at_mix_0(self):
         e = ShimmerHall(_port(), mix=0.0)
         try:
@@ -1083,8 +1092,9 @@ CLAIMS = (
      "Rise at the top, a steady loud input fills the hall to the rail.",
      "test_the_input_ceiling"),
     ("`tail_samples` bounds how long the output takes to reach exact zero "
-     "once your input stops.",
-     ("test_tail_samples", "test_tail_is_zero_at_mix_0")),
+     "once your input stops: 82 s at Rise 0.9 and Bloom 800 ms.",
+     ("test_tail_samples", "test_tail_is_zero_at_mix_0",
+      "test_the_longest_tail")),
     ("`reset()` empties the hall, the line and the shifter, and restores "
      "patch 0.", "test_reset_empties_the_graph_and_returns_to_patch_0"),
     ("Moving Character or Size empties the hall: the tail drops and the dry "
