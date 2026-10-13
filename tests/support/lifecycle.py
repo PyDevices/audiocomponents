@@ -93,6 +93,21 @@ CONTROL_EVENTS = ("E4-", "E5-", "E6-", "E9-", "E11-")
 #:   comma-separated: ("PitchShifter", "E10-reset", "P4", "circuitpython").
 #:
 #: A row without a scope matches every patch on every interpreter.
+#: ShimmerHall on CircuitPython only (the rows below name it): Bloom's
+#: shifter is CircuitPython's own `audiodelays.PitchShift`, which keeps its
+#: read, write and overlap positions through a clear (audiodsp#240 is in
+#: audiodsp's copy only), so a re-arm's or a reset's priming pulls leave it
+#: at another splice phase than a control that was only built, and the
+#: hall's tank then stays a few LSB off the control's. CPython and
+#: MicroPython are ok; a ruled CircuitPython-own difference.
+_SHIMMER_CP = (
+    "CircuitPython only: its own audiodelays.PitchShift keeps its read,"
+    " write and overlap positions through a clear (audiodsp#240 is in"
+    " audiodsp's copy only), so the reset's or the re-arm's priming pulls"
+    " leave Bloom's shifter at another splice phase than the control's"
+    " and the hall's tank stays a few LSB off it; CPython and MicroPython"
+    " are ok (ruled a CircuitPython-own difference)")
+
 DECLARED = {
     ("StereoWidener", "E4-m0=", "P5"):
         "family limit, disclosed (audiocomponents#117): a control that jumps"
@@ -329,26 +344,35 @@ DECLARED = {
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
     # ShimmerHall: its hall is the rebuilt Reverb, whose rows above say why
     # a tank that was emptied, or fed differently for a moment, never meets
-    # an uninterrupted one byte for byte. A reset renders exactly as a fresh
-    # instance does (the class's reset test); it is the control that never
-    # was reset.
-    ("ShimmerHall", "E1-", "P4"): "reset() empties the hall and restarts its modulation, so it never re-converges with the uninterrupted control (Reverb's E1 P4)",
-    ("ShimmerHall", "E4-m0=", "P4"): "Character re-cuts the wet chain and empties the hall, so it leaves the hall's tank off the control's for good (Reverb's E4 P4)",
+    # an uninterrupted one byte for byte; and Bloom's shifter is a splice
+    # shifter, whose output depends on where its read position sits in the
+    # window (the ruling's N2). A reset renders exactly as a fresh instance
+    # does (the class's reset test); it is the control that never was reset.
+    ("ShimmerHall", "E1-", "P4"): "reset() empties the hall and restarts its modulation, and restarts the shifter's splice, so it never re-converges with the uninterrupted control (Reverb's E1 P4; the splice phase, N2)",
+    ("ShimmerHall", "E4-m0=", "P4"): "Character re-cuts the wet chain, so it empties the hall and restarts the shifter's splice, and leaves the hall's tank off the control's for good (Reverb's E4 P4; the splice phase, N2)",
     ("ShimmerHall", "E4-m1=", "P4"): "Shimmer changes what enters the hall, so it leaves the hall's tank off the control's for good (Reverb's E4 P4)",
     ("ShimmerHall", "E4-m3=", "P4"): "Bloom changes what enters the hall, so it leaves the hall's tank off the control's for good (Reverb's E4 P4)",
-    ("ShimmerHall", "E4-m4=", "P4"): "Interval changes what enters the hall, so it leaves the hall's tank off the control's for good (Reverb's E4 P4)",
+    ("ShimmerHall", "E4-m4=", "P4"): "Interval runs the shifter's read position at another speed, so its splice phase lands elsewhere; putting it back would click (N2)",
     ("ShimmerHall", "E4-m6=", "P4"): "Size re-cuts the hall, so it leaves the hall's tank off the control's for good (Reverb's E4 P4)",
     ("ShimmerHall", "E4-m8=", "P4"): "Mix to 0 and back empties the hall, so it leaves the hall's tank off the control's for good (Reverb's E4 P4)",
-    ("ShimmerHall", "E5-", "P4"): "Mix to 0 and back empties the hall and restarts its modulation (as E1)",
-    ("ShimmerHall", "E6-", "P4"): "a patch move reaches the hall's input or its tank and leaves it off the control's for good (Reverb's E6 P4)",
-    ("ShimmerHall", "E9-", "P4"): "the E5 move: Mix to 0 and back empties the hall (as E1)",
-    ("ShimmerHall", "E11-", "P4"): "moves that reach the hall or empty it leave its tank off the control's for good (Reverb's E11 P4)",
+    ("ShimmerHall", "E5-", "P4"): "Mix to 0 and back empties the hall and restarts its modulation and the shifter's splice (as E1; N2)",
+    ("ShimmerHall", "E6-", "P4"): "a patch move reaches the hall's input or its tank, or the shifter's interval and splice, and leaves them off the control's for good (Reverb's E6 P4; N2)",
+    ("ShimmerHall", "E9-", "P4"): "the E5 move: Mix to 0 and back empties the hall and restarts the shifter's splice (as E1; N2)",
+    ("ShimmerHall", "E11-", "P4"): "moves that reach the hall, empty it, or move the shifter's interval or splice leave them off the control's for good (Reverb's E11 P4; N2)",
     ("ShimmerHall", "E4-m0=", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Character)",
     ("ShimmerHall", "E4-m3=", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Bloom)",
     ("ShimmerHall", "E5-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
     ("ShimmerHall", "E6-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (a patch change)",
     ("ShimmerHall", "E9-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
     ("ShimmerHall", "E11-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (two or three moves before one pull)",
+    ("ShimmerHall", "E10-reset", "P4", "circuitpython"): _SHIMMER_CP,
+    ("ShimmerHall", "E10-mix0", "P4", "circuitpython"): _SHIMMER_CP,
+    ("ShimmerHall", "E10-macros", "P4", "circuitpython"): _SHIMMER_CP,
+    ("ShimmerHall", "E10-patch", "P4", "circuitpython"): _SHIMMER_CP,
+    ("ShimmerHall", "E12-p1", "P4", "circuitpython"): _SHIMMER_CP,
+    ("ShimmerHall", "E12-p2", "P4", "circuitpython"): _SHIMMER_CP,
+    ("ShimmerHall", "E12-mix64", "P4", "circuitpython"): _SHIMMER_CP,
+    ("ShimmerHall", "E12-mix127", "P4", "circuitpython"): _SHIMMER_CP,
 }
 
 #: A control that jumps steps the output (the family's ruled disclosure,
@@ -405,6 +429,16 @@ SKIP = {
 #: phase that keeps it from matching a fresh instance, named (an LFO, a
 #: wow table). A red PR cell of a class named here prints `decl`.
 FREE_PHASE = {}
+
+if sys.implementation.name == "circuitpython":
+    # CircuitPython only, so CPython and MicroPython keep PR live for the
+    # class: its own PitchShift keeps its positions through a clear, so a
+    # reset or a return from Mix 0 (each re-primes Bloom's shifter) sits at
+    # another splice phase than a fresh instance (E5-mix0 and E10-mix0 at
+    # patch 1, the Short Stagger).
+    FREE_PHASE["ShimmerHall"] = (
+        "the splice phase of CircuitPython's own PitchShift, which keeps"
+        " its positions through a clear (audiodsp#240)")
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")
 

@@ -983,6 +983,49 @@ class TheSurface(TestCase):
         finally:
             e.deinit()
 
+    def test_a_rack_holding_it_resets_to_a_fresh_racks_render(self):
+        # The rack puts the pedal back as it built it, through the pedal's
+        # own patch path: the exact constructor values come back, the dry
+        # plays from frame 0, and nothing of the knobs moved before the
+        # reset is left.
+        rack_class = rebuilt.module_class("Rack")
+        frames = 6144
+        off_grid = dict(character="rise", shimmer=0.37, rise=0.71,
+                        bloom_ms=33.3, interval=7, decay=7.7, size=1.2,
+                        damping_hz=2345.0, mix=1.6)
+        moves = (
+            ((CHARACTER_I, 127), (BLOOM_I, 10), (SHIMMER_I, 100),
+             (INTERVAL_I, 0), (MIX_I, 127)),
+            ((MIX_I, 0), (CHARACTER_I, 127), (SIZE_I, 20)),
+        )
+        for rate, channels in ((48000, 2), (22050, 1)):
+            rng = Lcg(5)
+            values = array("h", [rng.next() % 20001 - 10000
+                                 for _ in range(frames * channels)])
+            other = array("h", [-v // 2 for v in values])
+            for options in ({}, dict(mix=2.0), off_grid):
+                chain = ((ShimmerHall, options),)
+                fresh = rack_class.create(
+                    kc.feed(values, rate, channels).port, rate, chain=chain)
+                try:
+                    want = kc.render(fresh, frames)
+                finally:
+                    fresh.deinit()
+                for knobs in moves:
+                    feed = kc.feed(other, rate, channels)
+                    rack = rack_class.create(feed.port, rate, chain=chain)
+                    try:
+                        for index, midi in knobs:
+                            rack.effects[0].set_macro(index, midi)
+                        kc.render(rack, 3000)
+                        feed.point(kc.feed(values, rate, channels).mat)
+                        rack.reset()
+                        got = kc.render(rack, frames)
+                    finally:
+                        rack.deinit()
+                    self.assertEqual(got, want, (rate, channels, options,
+                                                 knobs))
+
     def test_an_output_taken_before_mix_moves_plays_the_old_level_at_first(
             self):
         # The limit the docstring discloses: a host that takes the output

@@ -477,17 +477,18 @@ class ShimmerHall(_component.Component):
         if self._ready:
             self._refresh()
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
-        """Apply patch `index` whole, then refresh the graph once."""
+    def _apply_positions(self, positions, patch_index):
+        """Set the knobs whole, then refresh the graph once: a patch and a
+        rack's put-back after a reset both land here, so neither passes
+        through a Mix 0 or a half-moved Character on the way."""
         ready = self._ready
         self._ready = False
         try:
-            _component.Component.program_change(
-                self, index, channel, note_id, sample_position)
+            _component.Component._apply_positions(self, positions,
+                                                  patch_index)
         finally:
             self._ready = ready
-        if ready and type(self).PATCHES.get(index) is not None:
+        if ready:
             self._refresh()
 
     def _hand(self, node, key, **settings):
