@@ -35,11 +35,11 @@ hall to the rail.
 `tail_samples` bounds how long the output takes to reach exact zero once
 your input stops: 82 s at Rise 0.9 and Bloom 800 ms. `reset()` empties the
 hall, the line and the shifter, and restores patch 0. The patches: Octave
-Bloom (the defaults), Short Stagger, Fifth Halo, Slow Rise, Rise Damped,
-Falling Octaves, Octave Bloom - lean. On an ESP32-S3 the Bloom patches
-(the defaults, Octave Bloom, Short Stagger and Fifth Halo) take longer than
-a block and cannot keep up, so play a Rise patch there. Octave Bloom - lean
-is Rise at Rise 0, for an S3: one octave, once, and the hall starts at once.
+Rise (the defaults), Short Stagger, Fifth Halo, Slow Rise, Rise Damped,
+Falling Octaves, Octave Bloom. Octave Rise is Octave Bloom in Rise at Rise
+0: one octave, once, and the hall starts at once. On an ESP32-S3 the Bloom
+patches (Octave Bloom, Short Stagger and Fifth Halo) take longer than a
+block and cannot keep up; the defaults and every Rise patch keep up.
 
 **Limits**
 
@@ -143,7 +143,7 @@ STEPS = 256
 
 #: Each macro's patch-0 step; the constructor defaults are these steps'
 #: values, so a fresh instance is patch 0.
-DEFAULT_STEPS = (0, 89, 85, 90, 96, 94, 64, 91, 32)
+DEFAULT_STEPS = (127, 89, 0, 90, 96, 94, 64, 91, 32)
 
 
 def _default(index, span):
@@ -160,7 +160,7 @@ DECAY = _default(5, (0.3, 10.0, "log"))
 SIZE = _default(6, (0.5, 1.5))
 DAMPING_HZ = _default(7, (500.0, 16000.0, "log"))
 MIX = _default(8, (0.0, 2.0))
-DEFAULTS = (0.0, SHIMMER, RISE, BLOOM_MS, _default(4, (0.0, 5.0)), DECAY,
+DEFAULTS = (1.0, SHIMMER, RISE, BLOOM_MS, _default(4, (0.0, 5.0)), DECAY,
             SIZE, DAMPING_HZ, MIX)
 
 #: The hall's macros the rack drives, by `Reverb`'s labels.
@@ -279,7 +279,7 @@ class ShimmerHall(_component.Component):
 
     #: `_component.macro_of` of the card's settings.
     PATCHES = {
-        0: ("Octave Bloom", DEFAULT_STEPS),
+        0: ("Octave Rise", DEFAULT_STEPS),
         1: ("Short Stagger", (0, 76, 85, 38, 96, 77, 38, 102, 25)),
         2: ("Fifth Halo", (0, 102, 85, 103, 64, 108, 89, 84, 38)),
         # Damping step 86 (about 5.2 kHz), where the card had 102 (8 kHz):
@@ -287,12 +287,12 @@ class ShimmerHall(_component.Component):
         3: ("Slow Rise", (127, 89, 85, 103, 96, 108, 89, 86, 38)),
         4: ("Rise Damped", (127, 102, 113, 87, 96, 94, 64, 51, 32)),
         5: ("Falling Octaves", (127, 89, 85, 93, 0, 102, 64, 76, 32)),
-        # Patch 0 in Rise at Rise 0: the S3's patch nearest the defaults,
-        # since every Bloom patch runs over a block there.
-        6: ("Octave Bloom - lean", (127, 89, 0, 90, 96, 94, 64, 91, 32)),
+        # Patch 0 in Bloom, at the card's Rise: every Bloom patch runs over
+        # a block on an ESP32-S3, so the defaults are its Rise twin.
+        6: ("Octave Bloom", (0, 89, 85, 90, 96, 94, 64, 91, 32)),
     }
 
-    def _build(self, character="bloom", shimmer=SHIMMER, rise=RISE,
+    def _build(self, character="rise", shimmer=SHIMMER, rise=RISE,
                bloom_ms=BLOOM_MS, interval=12, decay=DECAY, size=SIZE,
                damping_hz=DAMPING_HZ, mix=MIX, patch=None):
         if character not in CHARACTERS:
