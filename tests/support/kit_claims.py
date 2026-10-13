@@ -94,7 +94,7 @@ def sentences(text):
 
 def test_index(path):
     """{method name: [TestCase class names]} by an AST read of `path`."""
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         tree = ast.parse(f.read(), path)
     index = {}
     for node in tree.body:

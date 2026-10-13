@@ -239,8 +239,8 @@ def options_of(cls):
     if owner is None:
         return []
     module = sys.modules[owner.__module__]
-    with open(module.__file__) as f:
-        text = f.read()
+    with open(module.__file__, "rb") as f:
+        text = f.read().decode("utf-8")
     at = text.find("class %s(" % owner.__name__)
     at = text.find("def _build(", at if at >= 0 else 0)
     if at < 0:

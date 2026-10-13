@@ -51,7 +51,7 @@ def pin_commit(root=ROOT):
     if not os.path.isfile(path):
         return None
     commit = None
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#"):
@@ -199,9 +199,9 @@ def check(name, text, changelog_text, pin, emit=print, root=ROOT):
 
 def run(cls, emit=print, name=None, **_):
     module = sys.modules[cls.__module__]
-    with open(module.__file__) as f:
+    with open(module.__file__, encoding="utf-8") as f:
         text = f.read()
-    with open(os.path.join(ROOT, "CHANGELOG.md")) as f:
+    with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8") as f:
         changelog = f.read()
     pin = Pin(find_checkout(), pin_commit())
     return check(name or cls.NAME, text, changelog, pin, emit)
