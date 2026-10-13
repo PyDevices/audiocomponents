@@ -52,10 +52,17 @@ NOTES = {"E1": 41.2, "A1": 55.0, "E2": 82.41, "A2": 110.0, "D3": 146.8,
          "G3": 196.0, "B3": 246.9, "E3": 164.8, "A3": 220.0, "E4": 329.6,
          "A4": 440.0, "E5": 659.3}
 
-#: Each patch's tracking window (card T2 and T5).
+#: Each patch's tracking window (card T2).
 WINDOWS = {0: ("E2", "A2", "D3", "G3", "B3", "E4", "A4"),
            3: ("E1", "A1", "E2", "A2", "D3", "G3"),
            4: ("D3", "G3", "B3", "E4", "A4", "E5")}
+
+#: The notes T5 claims clean at each patch. Patch 0 stops at E4: at A4 a
+#: draw with a weak fundamental drops out, mono and stereo
+#: (`T5_DROPOUTS`).
+T5_WINDOWS = {0: ("E2", "A2", "D3", "G3", "B3", "E4"),
+              3: WINDOWS[3],
+              4: WINDOWS[4]}
 
 
 # --------------------------------------------------------------------------
@@ -360,6 +367,26 @@ def t4_split(cls, rate, channels, name, tones_open):
     return level_db(y, f / 4.0, rate) - level_db(y, 0.75 * f, rate)
 
 
+def t4_decay(cls, rate, name, tones_open):
+    """Octave 2's f/4 over its f/2, per 16/f window, on a sine decaying
+    -6 to -86 dBFS over 4 s at Sensitivity -90 dBFS, over every window
+    that ends before Octave 1's last sound (after the first two)."""
+    f = NOTES[name]
+    n = 4 * rate
+    x = [16384.0 * 10.0 ** (-80.0 * i / n / 20.0)
+         * math.sin(2.0 * math.pi * f * i / rate) for i in range(n)]
+    values = pcm(x)
+    tones = OPEN if tones_open else ()
+    sens = ((SENS, 0),)
+    oct1 = render(cls, values, rate, 1, macros=ONLY1 + tones + sens)
+    oct2 = render(cls, values, rate, 1, macros=ONLY2 + tones + sens)
+    last = max(i for i in range(len(oct1)) if oct1[i])
+    width = int(round(16.0 * rate / f))
+    return [level_db(oct2[k * width:(k + 1) * width], f / 4.0, rate)
+            - level_db(oct2[k * width:(k + 1) * width], f / 2.0, rate)
+            for k in range(2, last // width)]
+
+
 def t5_margin(y, f, rate):
     """Octave 1's f/2 over the strongest of f/4, 3f/4, f and 2f."""
     main = level_db(y, f / 2.0, rate)
@@ -512,6 +539,15 @@ class FourthBelow(Octaver):
             channel_count=self._channel_count))
 
 
+class DefaultThreshold(Octaver):
+    """T4: Octave 2's divider at `SubOctave`'s default threshold, 0.01
+    (-40 dBFS), whatever Sensitivity says: under it the divider stops
+    counting and passes Octave 1's f/2."""
+
+    def _threshold2(self, sensitivity_db):
+        return 0.01
+
+
 class ClockWire(Octaver):
     """T5: both clock filters taken out of the clock leg."""
 
@@ -532,6 +568,17 @@ class DoubleTone(Octaver):
         return self._hz(2.0 * Octaver._tone1_hz(self))
 
 
+class DryVoice(Octaver):
+    """Not a plant: the octave voices held at 0 on the mixer's path, so a
+    test can follow the dry through the wire and back byte for byte."""
+
+    def _levels(self):
+        voices = self._mixer.voice
+        voices[0].level = 1.0
+        voices[1].level = 0.0
+        voices[2].level = 0.0
+
+
 KIT_PLANTS = {
     "T1": PitchShiftOctave,
     "T2-held": (HeldAllPass, 3),
@@ -542,6 +589,7 @@ KIT_PLANTS = {
     "T3-wire": WireOctave,
     "T3-bin": OneBinCurve,
     "T4": (FourthBelow, 1),
+    "T4-thresh": (DefaultThreshold, 1),
     "T5": ClockWire,
     "T6": DoubleTone,
 }
@@ -550,10 +598,12 @@ KIT_PLANTS = {
 # --------------------------------------------------------------------------
 # The trait tests (CPython: unittest)
 
-#: T5's one stereo draw that drops out at the top of patch 0's window
-#: (seed 7, at both rates): its mid's fundamental sits under Sensitivity
-#: once the clock filter has taken 55 dB off it.
-T5_STEREO_DROPOUT = (0, "A4", 7)
+#: The draws of R that drop out at A4 at patch 0, at both rates:
+#: (channels, seed). Their fundamentals are the three weakest of seeds 0 to
+#: 39 (67.0 to 67.7 dB re 1 LSB, the median 73.1; stereo seed 7's mid is
+#: as weak as its left channel), and after the clock filter's 55 dB at
+#: 440 Hz they sit under Sensitivity.
+T5_DROPOUTS = ((1, 13), (1, 34), (2, 7))
 
 
 def _within(value, target, tolerance):
@@ -576,7 +626,7 @@ class T1Divider(TestCase):
     def test_the_onset_is_within_2_ms(self):
         for rate in RATES:
             for channels in (1, 2):
-                for f in (82.41, 110.0, 196.0):
+                for f in self.NOTES_HZ:
                     onset = t1_onset_ms(Octaver, rate, channels, f)
                     self.assertIsNotNone(onset)
                     self.assertLessEqual(onset, 2.0, (rate, channels, f))
@@ -638,11 +688,15 @@ class T2Multiplication(TestCase):
 
 
 class T3Dynamics(TestCase):
-    """(a) On R decaying 40 dB at E2 and A2, Octave 1's f/2 tracks the
-    note's f within 1 dB, median at least -20 dB. (b) Once the clock is
-    3 dB under Sensitivity, Octave 1 is 60 dB under the input."""
+    """(a) On R decaying 40 dB at A2, Octave 1's f/2 tracks the note's f
+    within 1 dB, median at least -20 dB. (b) Once the clock is 3 dB under
+    Sensitivity, Octave 1 is 60 dB under the input."""
 
-    ENVELOPE_NOTES = ("E2", "A2")
+    #: A note is claimed where its worst draw clears the 1 dB bar by more
+    #: than the spread between draws. D3's worst draws cross the bar; E2's
+    #: worst of 32 (0.86 dB) clears it by 0.14 against draws from 0.06 to
+    #: 0.86, so neither is claimed. A2's worst of 32 is 0.29.
+    ENVELOPE_NOTES = ("A2",)
 
     def test_the_octave_follows_the_decay(self):
         for rate in RATES:
@@ -688,6 +742,21 @@ class T4SecondOctave(TestCase):
     def test_a_fourth_below_is_red(self):
         self.assertLess(t4_split(FourthBelow, 48000, 1, "E2", True), 6.0)
 
+    def test_two_octaves_down_as_the_note_dies(self):
+        """A decaying sine: f/4 stays 6 dB over f/2 until Octave 1 stops."""
+        for rate in RATES:
+            for name in ("E2", "A2"):
+                for tones_open in (True, False):
+                    splits = t4_decay(Octaver, rate, name, tones_open)
+                    self.assertGreater(len(splits), 4)
+                    self.assertGreaterEqual(min(splits), 6.0,
+                                            (rate, name, tones_open,
+                                             splits))
+
+    def test_the_default_threshold_is_red(self):
+        splits = t4_decay(DefaultThreshold, 48000, "A2", False)
+        self.assertLess(min(splits), 6.0, splits)
+
 
 class T5Range(TestCase):
     """8/8 draws of R divide cleanly (f/2 20 dB over its neighbours) at
@@ -695,12 +764,8 @@ class T5Range(TestCase):
 
     def _window(self, rate, channels):
         for patch in (0, 3, 4):
-            for name in WINDOWS[patch]:
+            for name in T5_WINDOWS[patch]:
                 clean, low = t5_clean(Octaver, rate, channels, patch, name)
-                if (channels == 2 and (patch, name)
-                        == T5_STEREO_DROPOUT[:2]):
-                    self.assertEqual(clean, 7, (patch, name, rate, low))
-                    continue
                 self.assertEqual(clean, 8, (rate, channels, patch, name,
                                             low))
 
@@ -712,21 +777,19 @@ class T5Range(TestCase):
         for rate in RATES:
             self._window(rate, 2)
 
-    def test_a_stereo_note_can_drop_out_at_the_top(self):
-        patch, name, seed = T5_STEREO_DROPOUT
-        f = NOTES[name]
+    def test_a_weak_fundamental_can_drop_out_at_a4(self):
+        f = NOTES["A4"]
         for rate in RATES:
             n = rate // 2
-            left = rich(f, n, seed, rate)
-            right = rich(f, n, seed, rate, shift=0.3)
-            stereo = render(Octaver, pcm(left, right), rate, 2, patch=patch,
-                            macros=ONLY1)
-            mono = render(Octaver, pcm(left), rate, 1, patch=patch,
-                          macros=ONLY1)
-            self.assertLess(
-                t5_margin(tail_part(channel(stereo, 2)), f, rate), 20.0)
-            self.assertGreaterEqual(t5_margin(tail_part(mono), f, rate),
-                                    20.0)
+            for channels, seed in T5_DROPOUTS:
+                left = rich(f, n, seed, rate)
+                right = rich(f, n, seed, rate, shift=0.3) \
+                    if channels == 2 else None
+                y = render(Octaver, pcm(left, right), rate, channels,
+                           patch=0, macros=ONLY1)
+                self.assertLess(
+                    t5_margin(tail_part(channel(y, channels)), f, rate),
+                    20.0, (rate, channels, seed))
 
     def test_outside_the_window(self):
         rate = 48000
@@ -863,6 +926,44 @@ class TheSurface(TestCase):
                                     raw[BLOCK * 8 * fsize:BLOCK * 16 * fsize])
                 self.assertEqual(last, raw[BLOCK * 16 * fsize:])
 
+    def test_the_wire_keeps_every_frame(self):
+        """Into the wire and back on a source whose buffers are not the
+        class's 256 frames: every source frame comes out once, on time.
+        Into it before the first pull, the voices' primed block is
+        skipped, and nothing else: the rest comes out once, in order, and
+        that block never plays late. The octave voices are held at 0
+        (`DryVoice`), so the output is the source throughout."""
+        import lifecycle
+        rate = 48000
+        for channels in (1, 2):
+            values = self._material(rate, channels)
+            fsize = 2 * channels
+            raw = bytes(values)
+            for kind in ("100", "256", "300", "1000", "raw"):
+                feed = lifecycle.Feed(values, rate, channels, kind,
+                                      loop=False)
+                e = DryVoice(feed.port, sample_rate=rate)
+                out = kc.render(e, BLOCK * 20)
+                e.set_macro(OCT1, 0)
+                out += kc.render(e, BLOCK * 10)
+                e.set_macro(OCT1, 89)
+                out += kc.render(e, BLOCK * 30)
+                e.deinit()
+                self.assertEqual(out, raw[:len(out)], (channels, kind))
+                # Into the wire before anything was pulled: one block on.
+                feed = lifecycle.Feed(values, rate, channels, kind,
+                                      loop=False)
+                e = DryVoice(feed.port, sample_rate=rate)
+                e.set_macro(OCT1, 0)
+                out = kc.render(e, BLOCK * 10)
+                e.set_macro(OCT1, 89)
+                out += kc.render(e, BLOCK * 10)
+                e.deinit()
+                skip = BLOCK * fsize
+                self.assertEqual(out, raw[skip:skip + len(out)],
+                                 (channels, kind))
+                self.assertEqual(len(out), BLOCK * 20 * fsize)
+
     def test_no_latency(self):
         for rate in (48000, 44100, 22050):
             values = array("h", bytes(2 * 4096))
@@ -962,21 +1063,25 @@ class TheSurface(TestCase):
 
     def test_the_peak_gain(self):
         """The kit's square and sine at its own amplitude, at the settings
-        the ceiling found worst and at every patch."""
+        the ceiling found worst, all three levels at full with the Tones at
+        both stops, and at every patch."""
         import kit_ceiling
         rate = 48000
         amp = 3277
         worst = 0.0
-        configs = [(None, k) for k in ((OCT1, 127), (OCT2, 127),
-                                       (TONE1, 0))]
-        configs += [(p, None) for p in sorted(Octaver.PATCHES)]
+        full = ((DIRECT, 127), (OCT1, 127), (OCT2, 127))
+        configs = [(None, (k,)) for k in ((OCT1, 127), (OCT2, 127),
+                                          (TONE1, 0))]
+        configs += [(None, full + ((TONE1, t), (TONE2, t)))
+                    for t in (0, 127)]
+        configs += [(p, ()) for p in sorted(Octaver.PATCHES)]
         for which in ("square", "sine"):
             values = kit_ceiling.material(which, rate, 1, amp)
-            for patch, knob in configs:
+            for patch, knobs in configs:
                 y = render(Octaver, values, rate, 1, patch=patch,
-                           macros=(knob,) if knob else ())
+                           macros=knobs)
                 worst = max(worst, max(abs(v) for v in y) / float(amp))
-        self.assertTrue(2.6 <= worst <= 2.8, worst)
+        self.assertTrue(4.1 <= worst <= 4.3, worst)
         self.assertLessEqual(worst * 10.0 ** (
             Octaver.INPUT_CEILING_DBFS / 20.0), 1.0)
 
@@ -1010,10 +1115,11 @@ CLAIMS = (
      ("T1Divider.test_the_pitch_is_half_the_note",
       "T1Divider.test_the_onset_is_within_2_ms")),
     ("Octave 2 is Octave 1 divided again: two octaves down, not a fourth "
-     "below the note.",
-     "T4SecondOctave.test_two_octaves_down"),
-    ("On low notes, to A2, the octave follows your note's decay within "
-     "1 dB: it has no envelope of its own.",
+     "below the note, until Octave 1 itself stops.",
+     ("T4SecondOctave.test_two_octaves_down",
+      "T4SecondOctave.test_two_octaves_down_as_the_note_dies")),
+    ("On an A2 the octave follows your note's decay within 1 dB: it has "
+     "no envelope of its own.",
      "T3Dynamics.test_the_octave_follows_the_decay"),
     ("Below Sensitivity the octaves are silent, with no ghost and no hum.",
      "T3Dynamics.test_silent_below_sensitivity"),
@@ -1024,9 +1130,9 @@ CLAIMS = (
     ("Turning Tone 1 down thins that fifth more on high notes than on low "
      "ones.",
      "T6Tone.test_tone_1_is_a_two_pole_low_pass"),
-    ("At patch 0, on a mono source, every note from low E (E2) to A4 "
-     "divides cleanly, even with a strong second harmonic.",
-     "T5Range.test_the_windows_mono"),
+    ("At patch 0 every note from low E (E2) to E4 divides cleanly, even "
+     "with a strong second harmonic.",
+     ("T5Range.test_the_windows_mono", "T5Range.test_the_windows_stereo")),
     ("The Bass patch covers E1 to G3, and High on the neck covers D3 to E5.",
      ("T5Range.test_the_windows_mono", "T5Range.test_the_windows_stereo")),
     ("Below the range a low note's second harmonic clocks the divider and "
@@ -1044,20 +1150,24 @@ CLAIMS = (
      "instead of 4.4, on both channels.",
      ("T2Multiplication.test_stereo_45_degrees",
       "T2Multiplication.test_in_phase_stereo_reads_as_mono")),
-    ("So near the top of the range a stereo note whose channels cancel "
-     "each other's fundamental can drop out: one stereo A4 in eight did, "
-     "at patch 0.",
-     ("T5Range.test_a_stereo_note_can_drop_out_at_the_top",
-      "T5Range.test_the_windows_stereo")),
-    ("The output can peak at 2.8 times the input (a square wave, with "
-     "Octave 2 at full), so keep the input under -9 dBFS.",
+    ("At patch 0 a note with a weak fundamental can drop out at A4, mono "
+     "or stereo: after the clock's low-pass its fundamental is under "
+     "Sensitivity.",
+     "T5Range.test_a_weak_fundamental_can_drop_out_at_a4"),
+    ("The output can peak at about 4.2 times the input (a square, all "
+     "three levels at full with the Tones open), so keep the input under "
+     "-13 dBFS.",
      "TheSurface.test_the_peak_gain"),
     ("A control that jumps makes the output step: move it in small steps "
      "from the host if you need it smooth.",
      "DECLARED:Octaver,E4-,P5"),
     ("With both octaves at 0 and Direct at 1 the output is the input, byte "
-     "for byte.",
-     "TheSurface.test_the_wire_is_the_input"),
+     "for byte, however the host's buffers are cut.",
+     ("TheSurface.test_the_wire_is_the_input",
+      "TheSurface.test_the_wire_keeps_every_frame")),
+    ("Reaching that setting before the first block after an octave comes "
+     "in skips that one block of 256 frames.",
+     "TheSurface.test_the_wire_keeps_every_frame"),
     ("There is no latency.", "TheSurface.test_no_latency"),
     ("`tail_samples` covers the all-pass and the two Tone filters ringing "
      "down.",

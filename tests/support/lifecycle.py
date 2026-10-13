@@ -68,6 +68,7 @@ NO_TAIL_WAIT = 10 * 48000
 #: the macro labelled "Mix".
 MIX_INDEX = {
     "SlapbackDelay": 1,        # "Level": the slap's level; 0 is the dry
+    "Octaver": 1,              # "Octave 1": 0 is the wire at patch 0
 }
 
 #: Where a class cannot satisfy a property by design, it says so HERE, one
@@ -97,6 +98,38 @@ DECLARED = {
     ("Octaver", "E11-", "P4"):
         "a flip-flop divider keeps its count: moves that add or drop a"
         " crossing leave the octave inverted",
+    ("Octaver", "E5-", "P4"):
+        "a flip-flop divider keeps its count: the clear on the way back"
+        " from the wire (Octave 1 at 0) leaves the octave inverted for good",
+    ("Octaver", "E9-", "P4"):
+        "a flip-flop divider keeps its count: the clear on the way back"
+        " from the wire (Octave 1 at 0) leaves the octave inverted for good",
+    ("Octaver", "E9-", "P1"):
+        "E9's P1 holds the wire from before the first pull: a voice's play()"
+        " primed one block from the source when the graph was armed, so the"
+        " wire starts one block in (disclosed; no audiocore.get_buffer on a"
+        " board build to hand the primed block out)",
+    ("Octaver", "E10-mix0", "P4"):
+        "the wire and back before the first pull: the way back re-arms the"
+        " voices, which skips the block they primed when the graph was"
+        " built, so the run is one block early against the control for good"
+        " (disclosed; no audiocore.get_buffer on a board build to hand the"
+        " primed block out; the same on the class before the wire fix)",
+    ("Octaver", "E", "P1"):
+        "Octave 1 at 0 is the wire only while Octave 2 is at 0 and Direct"
+        " at 1 (the defaults, patches 0, 3 and 4); at patches 1, 2 and 5,"
+        " and through an event that moves Direct or Octave 2 or changes to"
+        " one of those patches, it is a level move, and the output is not"
+        " the source by design. Where it is the wire, P1 holds it from"
+        " before the first pull, and the block the voices primed when the"
+        " graph was built is skipped (disclosed, as E9's row says); E5's"
+        " P1, a move into the wire mid-stream, is ok",
+    ("Octaver", "E5-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (the octave leaves and comes back)",
+    ("Octaver", "E9-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (the octave leaves and comes back)",
     ("Octaver", "E4-", "P5"):
         "family limit, disclosed (audiocomponents#117): a control that jumps"
         " makes the output step",

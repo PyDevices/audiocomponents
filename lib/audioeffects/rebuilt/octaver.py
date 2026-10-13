@@ -100,21 +100,24 @@ class Octaver(_component.Component):
     **What you hear.** The octave is exactly half your note and sounds
     within 2 ms of it.
     Octave 2 is Octave 1 divided again: two octaves down, not a fourth
-    below the note.
-    On low notes, to A2, the octave follows your note's decay within 1 dB:
-    it has no envelope of its own.
+    below the note, until Octave 1 itself stops.
+    On an A2 the octave follows your note's decay within 1 dB: it has no
+    envelope of its own.
     Below Sensitivity the octaves are silent, with no ghost and no hum.
     With the Tones open the octave carries a fifth above it 4.4 dB
     quieter, as the pedal's multiplication does, wherever Tracking is set.
     Turning Tone 1 down thins that fifth more on high notes than on low
     ones.
 
-    **Its range.** At patch 0, on a mono source, every note from low E
-    (E2) to A4 divides cleanly, even with a strong second harmonic.
+    **Its range.** At patch 0 every note from low E (E2) to E4 divides
+    cleanly, even with a strong second harmonic.
     The Bass patch covers E1 to G3, and High on the neck covers D3 to E5.
     Below the range a low note's second harmonic clocks the divider and it
     skips; above it the clock is low-passed under Sensitivity and the
     octave goes silent.
+    At patch 0 a note with a weak fundamental can drop out at A4, mono or
+    stereo: after the clock's low-pass its fundamental is under
+    Sensitivity.
     Between -90 and -84.5 dBFS Sensitivity changes nothing: that whole
     stretch is one step of the clock.
 
@@ -123,16 +126,16 @@ class Octaver(_component.Component):
     A stereo source is clocked on its mid: with the right channel 45
     degrees ahead of the left, the fifth sits 3.2 dB under the octave
     instead of 4.4, on both channels.
-    So near the top of the range a stereo note whose channels cancel each
-    other's fundamental can drop out: one stereo A4 in eight did, at
-    patch 0.
-    The output can peak at 2.8 times the input (a square wave, with Octave
-    2 at full), so keep the input under -9 dBFS.
+    The output can peak at about 4.2 times the input (a square, all three
+    levels at full with the Tones open), so keep the input under -13 dBFS.
     A control that jumps makes the output step: move it in small steps
     from the host if you need it smooth.
 
     **Wire, latency, tail.** With both octaves at 0 and Direct at 1 the
-    output is the input, byte for byte.
+    output is the input, byte for byte, however the host's buffers are
+    cut.
+    Reaching that setting before the first block after an octave comes in
+    skips that one block of 256 frames.
     There is no latency.
     `tail_samples` covers the all-pass and the two Tone filters ringing
     down.
@@ -153,9 +156,9 @@ class Octaver(_component.Component):
     TAIL_SAMPLES = None
 
     #: The worst peak gain over the kit's material, every patch and every
-    #: stop, is 2.75 (a square, Octave 2 at full): -9 dBFS keeps it inside
-    #: full scale.
-    INPUT_CEILING_DBFS = -9.0
+    #: stop, is 4.24 (a square, all three levels at full with the Tones
+    #: open): -13 dBFS keeps it inside full scale.
+    INPUT_CEILING_DBFS = -13.0
 
     MACRO_LABELS = ("Direct", "Octave 1", "Octave 2", "Tracking", "Tone 1",
                     "Tone 2", "Sensitivity")
@@ -198,12 +201,24 @@ class Octaver(_component.Component):
             array("h", bytes(2 * 2 * channels)),
             sample_rate=rate, channel_count=channels), reset=False)
 
+        # The input adapter: a width-1 MidSide, the identity byte for byte,
+        # that hands the source on in the palette's 256-frame blocks. The
+        # Splitter reads it, and the wire hands it out, so whatever part of
+        # a source buffer it holds plays next whichever way the output
+        # goes. Handing out the source itself skipped what the adapter, the
+        # Splitter and the dry voice had read ahead whenever the host's
+        # buffers were not 256 frames.
+        self._adapter = self._own(audioroute.MidSide(
+            width=1.0, sample_rate=rate, channel_count=channels),
+            reset=False)
+        self._adapter.play(self._source)
+
         # One Splitter, three legs: the dry voice, the signal the octave is
         # made of, and the clock that says when to turn it over. The clock
         # and the signal are kept apart because `SubOctave` clocks on what
         # it divides, so a tracking filter in front of it would darken the
         # octave too (12 dB from E2 to G3, measured on the card's probes).
-        split = self._own(audioroute.Splitter(self._source, taps=3),
+        split = self._own(audioroute.Splitter(self._adapter, taps=3),
                           reset=False)
         self._dry = split.tap(0)
         self._allpass = None
@@ -228,9 +243,12 @@ class Octaver(_component.Component):
         self._tone2.play(self._divider2)
 
         # Not reset: the voices keep the source frames they have taken, and
-        # a Mixer reset is no reset of anything this class holds.
+        # a Mixer reset is no reset of anything this class holds. A Mixer
+        # renders half its buffer per pull, so BLOCK frames take four bytes
+        # a sample: with half that, every other pull left a voice holding
+        # half a block, which a move into the wire then skipped.
         self._mixer = self._own(audiomixer.Mixer(
-            voice_count=3, **self._pcm(BLOCK * channels * 2)), reset=False)
+            voice_count=3, **self._pcm(BLOCK * channels * 4)), reset=False)
         self._output = self._mixer
 
         self._init_macros(tuple(
@@ -243,8 +261,6 @@ class Octaver(_component.Component):
                 self._macros[i] = position
                 self._apply_macro(i, position)
 
-        _component.open_level_gates(self._mixer, self._mixer.voice,
-                                    self._silence)
         self._ready = True
         self._route()
         if patch is not None:
@@ -326,10 +342,19 @@ class Octaver(_component.Component):
             channel_count=self._channel_count))
 
     def _second(self, tap):
-        """Octave 1's output divided again."""
+        """Octave 1's output divided again, counting down to Sensitivity:
+        at `SubOctave`'s own threshold (0.01, -40 dBFS) it would stop
+        counting on every decaying tail and pass Octave 1's f/2."""
         return self._own(audiomath.SubOctave(
-            tap, order=1, mix=1.0, sample_rate=self._sample_rate,
+            tap, order=1, mix=1.0,
+            threshold=self._threshold2(DEFAULTS[SENS_I]),
+            sample_rate=self._sample_rate,
             channel_count=self._channel_count))
+
+    def _threshold2(self, sensitivity_db):
+        """The second divider's threshold: Sensitivity's own level, so it
+        counts as far down as the clock leg does."""
+        return 10.0 ** (sensitivity_db / 20.0)
 
     def _set_tracking(self, hz):
         if self._allpass is not None:
@@ -355,8 +380,9 @@ class Octaver(_component.Component):
         elif index == TONE2_I:
             self._tone2.frequency = self._hz(self._value(TONE2_I))
         elif index == SENS_I:
-            self._comparator.set(
-                pre_gain=self._pre_gain(self._value(SENS_I)))
+            sensitivity = self._value(SENS_I)
+            self._comparator.set(pre_gain=self._pre_gain(sensitivity))
+            self._divider2.set(threshold=self._threshold2(sensitivity))
         else:
             self._route()
 
@@ -372,29 +398,42 @@ class Octaver(_component.Component):
         voices[2].level = self._value(OCTAVE2_I)
 
     def _route(self):
-        """Direct at 1 with both octaves at 0 hands out the source itself;
-        anything else plays the mixer, re-armed if the graph was left."""
+        """Direct at 1 with both octaves at 0 hands out the input adapter,
+        the source byte for byte; anything else plays the mixer, re-armed
+        if the graph was left."""
         if self._is_wire():
-            self._route_around(self._source)
-            self._armed = False
+            self._route_around(self._adapter)
             return
         if not self._ready:
             self._levels()
             return
         if self._rejoin() or not self._armed:
-            # The nodes are clear; the voices still hold the blocks they
-            # had queued. Armed as `_build` arms them: levels, gates,
-            # voices, then the port.
-            self._levels()
-            _component.open_level_gates(self._mixer, self._mixer.voice,
-                                        self._silence)
-            voices = self._mixer.voice
-            voices[0].play(self._dry, loop=True)
-            voices[1].play(self._octave1, loop=True)
-            voices[2].play(self._tone2, loop=True)
+            self._arm()
             self._armed = True
         self._output = self._mixer
         self._levels()
+
+    def _arm(self):
+        """Levels, gates, then the voices, as the graph is first built and
+        whenever it comes back from the wire (its nodes are clear by then).
+
+        A voice's `play()` primes one block from its source, which the next
+        pull plays on time. Between two pulls after that no voice holds a
+        block and every tap is caught up, because the adapter hands
+        256-frame blocks and the Mixer pulls 256 frames: a move into the
+        wire hands out the adapter with nothing left behind. Only a move
+        into the wire before the first pull after arming skips the primed
+        block. Re-arming on the way back, rather than letting the voices
+        carry on, is what keeps that block from playing late, after a
+        stretch of the wire; `audiocore.get_buffer`, which could hand it
+        out at once, is compiled out of CircuitPython's board builds."""
+        self._levels()
+        _component.open_level_gates(self._mixer, self._mixer.voice,
+                                    self._silence)
+        voices = self._mixer.voice
+        voices[0].play(self._dry, loop=True)
+        voices[1].play(self._octave1, loop=True)
+        voices[2].play(self._tone2, loop=True)
 
     @property
     def tail_samples(self):
