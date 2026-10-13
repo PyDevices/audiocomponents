@@ -929,6 +929,9 @@ CLAIMS = (
       "TheSurface.test_patch_0_is_the_defaults_on_the_grid",
       "TheSurface.test_a_fresh_instance_reads_patch_0_and_plays_the_"
       "defaults")),
+    ("A control that jumps makes the output step: move it in small steps "
+     "from the host if you need it smooth.",
+     ("DECLARED:AirSpace,E5-,P5", "DECLARED:AirSpace,E4-m6=,P5")),
     ("Time is the exception: it glides.",
      "T5TimeBendsThePitch.test_the_bend_both_ways_at_every_glide"),
     ("A patch that changes Time glides there too, and the repeats bend "

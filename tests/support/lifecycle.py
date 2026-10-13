@@ -247,11 +247,15 @@ DECLARED = {
     # instance does (the class's TheReset tests); it is the control that
     # never was reset.
     ("AirSpace", "E1-", "P4"): "reset() empties the chamber and restarts its modulation, so it never re-converges with the uninterrupted control (Reverb's E1 P4)",
-    ("AirSpace", "E4-m10=", "P4"): "Mix to 0 and back empties the chamber and restarts its modulation (as E1)",
+    ("AirSpace", "E4-", "P4"): "a move that reaches the tape's loop or the chamber's, or Mix to 0 and back, leaves the tank off the control's for good (Reverb's E4 P4)",
     ("AirSpace", "E5-", "P4"): "Mix to 0 and back empties the chamber and restarts its modulation (as E1)",
     ("AirSpace", "E9-", "P4"): "the E5 move: Mix to 0 and back empties the chamber (as E1)",
     ("AirSpace", "E6-", "P4"): "a patch move reaches the chamber's loop and leaves its tank off the control's for good (Reverb's E6 P4)",
     ("AirSpace", "E11-", "P4"): "moves that reach the chamber's loop or empty it leave its tank off the control's for good (Reverb's E11 P4)",
+    ("AirSpace", "E4-m6=", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Top Cut)",
+    ("AirSpace", "E5-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
+    ("AirSpace", "E6-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (a patch change)",
+    ("AirSpace", "E9-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")
