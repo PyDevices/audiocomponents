@@ -374,7 +374,7 @@ class TestClaims(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             name = "kitfixture_%d" % abs(hash((repr(claims), doc)))
             path = os.path.join(scratch, name + ".py")
-            with open(path, "w") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 f.write(textwrap.dedent(FIXTURE_TESTS % repr(claims)))
             sys.path.insert(0, scratch)
             try:
@@ -517,7 +517,8 @@ class TestPaperwork(unittest.TestCase):
         pin = kit_paperwork.Pin(None, None)
         with tempfile.TemporaryDirectory() as cards:
             if card is not None:
-                with open(os.path.join(cards, "CondKit.md"), "w") as f:
+                with open(os.path.join(cards, "CondKit.md"), "w",
+                          encoding="utf-8") as f:
                     f.write(card)
             lines = []
             kit_paperwork.check("CondKit", "", "", pin, lines.append,
