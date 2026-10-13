@@ -21,7 +21,7 @@ down while it lengthens, up while it shortens. Glide (1 to 10 s) is how long
 a move across the whole Time range takes, so it sets how far they bend: 12 %
 at the default of 4 s.
 
-Keep your input at or under -12 dBFS: at Mix 1 the dry and the chamber are
+Keep your input at or under -17 dBFS: at Mix 1 the dry and the chamber are
 both at unity and add, so a hotter input can reach the rail. Latency is
 zero. `reset()` empties the tape and the chamber and restores patch 0, whose
 Time of 111 ms lands at once instead of gliding.
@@ -206,7 +206,7 @@ class AirSpace(_component.Component):
 
     CAPABILITIES = ()
     LATENCY_SAMPLES = 0
-    INPUT_CEILING_DBFS = -12.0
+    INPUT_CEILING_DBFS = -17.0
     TAIL_SAMPLES = None
 
     #: The exact-value flags, which a rack's reset puts back with the knobs.

@@ -951,12 +951,58 @@ def rail_run(cls, rate, channels, dbfs, patch=None, seconds=2.0,
     return longest
 
 
+#: The cells the ceiling was measured over: (label, patch, macros after the
+#: patch, material). They are the worst of the sweep over every patch, every
+#: other macro at its stops, all macros at 127, six low squares and noise,
+#: at Mix 1 and 12 s: the chamber needs that long to fill. Decay 127 is the
+#: worst (a 220 Hz square gains 16.47 dB); then Time 127 (15.18), Feedback
+#: 127 (14.83), Short Send (13.99), Long Send (13.77), Dark Loop (12.50) and
+#: the macros all open (12.39).
+CEILING_CELLS = (
+    ("Decay 127", None, ((DECAY_I, 127),), 220),
+    ("Time 127", None, ((TIME_I, 127),), 220),
+    ("Feedback 127", None, ((FEEDBACK_I, 127),), 147),
+    ("Short Send", 1, (), 220),
+    ("Long Send", 2, (), 220),
+    ("Dark Loop", 3, (), 147),
+    ("all macros 127", None, tuple((i, 127) for i in range(10)), "noise"),
+)
+CEILING_MARGIN_DB = 0.5
+
+
+def cell_peak(label, patch, macros, material, dbfs, seconds=12.0):
+    """The highest |sample| of a 48 kHz stereo render of one cell at Mix 1."""
+    rate, channels = 48000, 2
+    frames = int(seconds * rate)
+    peak = 32767.0 * 10.0 ** (dbfs / 20.0)
+    if material == "noise":
+        data = lcg_noise(frames, channels, peak / math.sqrt(3.0), 5)
+    else:
+        data = square(float(material), frames, rate, channels, peak)
+    effect = build(AirSpace, data, rate, channels, patch)
+    effect.set_macro(MIX_I, 64)
+    for index, midi in macros:
+        effect.set_macro(index, midi)
+    out = render(effect, frames)
+    effect.deinit()
+    return max(max(out), -min(out))
+
+
 class TheInputCeiling(unittest.TestCase):
 
-    def test_the_ceiling_is_minus_12_dbfs(self):
-        self.assertEqual(AirSpace.INPUT_CEILING_DBFS, -12.0)
+    def test_the_ceiling_is_minus_17_dbfs(self):
+        self.assertEqual(AirSpace.INPUT_CEILING_DBFS, -17.0)
 
-    def test_minus_12_dbfs_reaches_no_rail_at_mix_1_on_every_patch(self):
+    def test_the_ceiling_keeps_the_margin_to_the_rail_in_the_worst_cells(self):
+        ceiling = AirSpace.INPUT_CEILING_DBFS
+        limit = 32767.0 * 10.0 ** (-CEILING_MARGIN_DB / 20.0)
+        for label, patch, macros, material in CEILING_CELLS:
+            with self.subTest(cell=label, material=material):
+                self.assertLess(
+                    cell_peak(label, patch, macros, material, ceiling),
+                    limit)
+
+    def test_the_ceiling_reaches_no_rail_at_mix_1_on_every_patch(self):
         ceiling = AirSpace.INPUT_CEILING_DBFS
         for rate, channels in ((48000, 2), (22050, 1)):
             for patch in sorted(AirSpace.PATCHES):
@@ -964,7 +1010,7 @@ class TheInputCeiling(unittest.TestCase):
                     self.assertLessEqual(
                         rail_run(AirSpace, rate, channels, ceiling, patch), 8)
 
-    def test_minus_12_dbfs_reaches_no_rail_with_each_macro_at_its_stops(self):
+    def test_the_ceiling_reaches_no_rail_with_each_macro_at_its_stops(self):
         ceiling = AirSpace.INPUT_CEILING_DBFS
         for index in range(11):
             if index == MIX_I:
@@ -1265,13 +1311,15 @@ CLAIMS = (
      "takes, so it sets how far they bend: 12 % at the default of 4 s.",
      ("TheSurface.test_the_glide_law",
       "T5TimeBendsThePitch.test_the_bend_both_ways_at_every_glide")),
-    ("Keep your input at or under -12 dBFS: at Mix 1 the dry and the "
+    ("Keep your input at or under -17 dBFS: at Mix 1 the dry and the "
      "chamber are both at unity and add, so a hotter input can reach the "
      "rail.",
-     ("TheInputCeiling.test_the_ceiling_is_minus_12_dbfs",
-      "TheInputCeiling.test_minus_12_dbfs_reaches_no_rail_at_mix_1_on_every_"
+     ("TheInputCeiling.test_the_ceiling_is_minus_17_dbfs",
+      "TheInputCeiling.test_the_ceiling_keeps_the_margin_to_the_rail_in_the_"
+      "worst_cells",
+      "TheInputCeiling.test_the_ceiling_reaches_no_rail_at_mix_1_on_every_"
       "patch",
-      "TheInputCeiling.test_minus_12_dbfs_reaches_no_rail_with_each_macro_at_"
+      "TheInputCeiling.test_the_ceiling_reaches_no_rail_with_each_macro_at_"
       "its_stops",
       "TheInputCeiling.test_a_hotter_input_does")),
     ("Latency is zero.", "TheSurface.test_latency_is_zero"),
