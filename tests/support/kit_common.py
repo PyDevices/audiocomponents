@@ -42,9 +42,9 @@ DECLARED = {
         "T6's faults need a host transport and a tempo change, which the"
         " plant render does not give; the trait test holds them red",
     ("Rack", "ceiling", "sine/48000/2/"):
-        "the probe chain ends in ConvolutionReverb, which rails this 0 dBFS"
-        " sine at its own defaults (its own ceiling cell sine/48000/2/d); a"
-        " rack is exactly its pedals",
+        "ConvolutionReverb's own ceiling at its defaults: it rails this 0"
+        " dBFS sine alone (its own ceiling cell sine/48000/2/d), a finding"
+        " for that class and not a rack defect",
 }
 
 CPYTHON = sys.implementation.name == "cpython"

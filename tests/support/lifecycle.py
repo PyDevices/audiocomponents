@@ -75,10 +75,6 @@ MIX_INDEX = {
 #: cell prints `decl` instead of RED and is counted as a declared exception.
 #: Nothing else skips a cell.
 DECLARED = {
-    ("Rack", "E1-", "P4"):
-        "a rack is exactly its pedals, and two of the probe chain's are E1 P4"
-        " red alone at their defaults, Vibrato ('differs at +4917, bound"
-        " +2870' at 48 kHz stereo) and Fuzz ('+26883, bound +24836')",
     ("AnalogDelay", "E", "P5"):
         "a control that jumps steps the output (family, audiocomponents#117);"
         " a Time move bends the pitch while the line walks, by design",
@@ -1348,7 +1344,8 @@ def _cli(argv):
         # The kit's options table: a class whose defaults are trivial (the
         # generic Rack's empty chain) runs on something real.
         import kit_options
-        run_class(cls, options=kit_options.options_for(cls.NAME), only=only,
+        run_class(cls, options=kit_options.lifecycle_options_for(cls.NAME),
+                  only=only,
                   quick=quick, name=name if name in PLANTS else None)
     print("DONE")
 
