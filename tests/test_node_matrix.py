@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(ROOT, "tests", "support"))
 
 import lifecycle                                          # noqa: E402
 import node_matrix                                        # noqa: E402
-from tests.test_lifecycle_matrix import (FULL, check_known, digest,  # noqa: E402
+from tests.test_lifecycle_matrix import (FULL, check_known,  # noqa: E402
                                    native_binaries, parse, red_cells)
 
 VENDOR = "PyDevices"
