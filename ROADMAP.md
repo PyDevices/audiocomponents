@@ -26,6 +26,14 @@ the real thing.
   respected file by file: GPL-3.0 code informs a design and is never ported.
 - CabinetSim with real cabinet impulse responses, if their licence allows
   shipping them. Until then they serve as a reference for the synthetic one.
+- An auto-wah (an envelope filter that opens as you play harder) and its
+  pedal-swept sibling, Wah. They share one resonant filter that has to move
+  fast enough to sound smooth.
+- SpringReverb, the dispersive "boing" of a spring tank, which a plate or hall
+  reverb cannot give you.
+- Ensemble, a multi-voice chorus where the number of voices is the effect, and
+  FrequencyShifter, which moves every partial by the same number of hertz
+  instead of keeping their ratios (RingMod multiplies; this shifts).
 - AmpSim, an amp and DI model after the Tech 21 SansAmp GT2, built from
   measurements of a hardware unit rather than a component trace alone.
 
