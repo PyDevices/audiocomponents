@@ -1145,6 +1145,51 @@ def t4_pitchshifter(cls, rate, channels):
     return wrong
 
 
+def t4_airspace(cls, rate, channels):
+    """An AirSpace built at Time 112.0813 ms (an exact value on a default's
+    step) comes back from the rack's reset as built: it reads the same
+    macros, and renders what the freshly built rack does, after its knobs
+    were moved before the reset."""
+    wrong = []
+    frames = 12000
+    values = clicks(frames, channels, range(512, frames, 2400))
+    airspace = rebuilt.module_class("AirSpace")
+    chain = ((airspace, {"time_ms": 112.0813}),)
+
+    def before(rack):
+        rack.effects[0].set_macro(0, 100)
+        rack.effects[0].set_macro(4, 30.5)
+        rack.effects[0].set_macro(10, 64)
+
+    def run(rack):
+        return pull(rack.output, frames - 512, channels)
+
+    for line in _against_fresh(cls, rate, channels, chain, values, run,
+                               before):
+        wrong.append("AirSpace: %s" % line)
+    fresh = cls.create(_feed(values, rate, channels).port, rate, chain=chain)
+    rack = cls.create(_feed(values, rate, channels).port, rate, chain=chain)
+    try:
+        want = [fresh.effects[0].macro(i) for i in range(11)]
+        before(rack)
+        rack.reset()
+        got = [rack.effects[0].macro(i) for i in range(11)]
+        if got != want:
+            wrong.append("AirSpace: macros read %r after reset, %r as built"
+                         % (got, want))
+        if want[0] != 112.0813:
+            wrong.append("AirSpace: Time reads %r as built, 112.0813"
+                         % (want[0],))
+        record = rack._built[0]
+        flags = rack.effects[0]._snap
+        if flags is record[2][0]:
+            wrong.append("AirSpace: the rack's record shares its flags")
+    finally:
+        fresh.deinit()
+        rack.deinit()
+    return wrong
+
+
 def t5_patch(cls):
     """A `patch=` the rack refuses releases every pedal it had built."""
     wrong = []
@@ -1344,6 +1389,10 @@ class TestReset(TestCase):
 
     def test_a_pitch_shifter_comes_back_re_armed_and_as_built(self):
         self.assertEqual(t4_pitchshifter(Rack, 48000, 2), [])
+
+    def test_an_airspace_comes_back_with_its_exact_time(self):
+        self.assertEqual(t4_airspace(Rack, 48000, 2), [])
+        self.assertEqual(t4_airspace(Rack, 22050, 1), [])
 
     def test_reset_as_built_faults_are_red(self):
         self.assertNotEqual(t4_mix0(PutBackRack, 48000, 2), [])

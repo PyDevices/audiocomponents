@@ -10,6 +10,15 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`AirSpace` (rebuilt, Phase 6; not yet adopted):** a tape echo sent
+  into a chamber, with the dry untouched beside it, in
+  `audioeffects/rebuilt/airspace.py`. Eleven macros (Time, Feedback, Glide,
+  Drive, Loop Top, Loop Bass, Top Cut, Low Cut, Decay, Damping, Mix) and
+  seven patches replace the old rack's Space, Echo and Tone; the loop
+  darkens each repeat, Top Cut darkens the send once, Feedback stretches the
+  chamber's tail, and a Time move bends the repeats' pitch. The chamber is
+  the rebuilt `Reverb`, and `reset()` renders exactly as a fresh instance.
+  The old `rack.AirSpace` stays what the library serves until adoption.
 - **`Harmonizer` (rebuilt, Phase 6):** three pitch shifters at fixed
   intervals under the dry, after three Eventide H910s played from one
   keyboard. Each voice is its own `audiodelays.PitchShift` on its own
