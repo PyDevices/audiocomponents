@@ -16,11 +16,13 @@ defaults, at every patch, and with each macro alone at each stop (0 and
 **The bars**, each its own clause in a RED verdict:
 
 - `wrap`: two neighbouring samples of opposite sign more than 32768 apart,
-  with the signal running the same way on both sides of the jump (into it
-  before, out of it after), as an int16 sum that overflowed runs, and the
-  input, `latency_samples` earlier, made no such jump. A square's edge
-  is flat on both sides, so it is not one. Not judged on the noise, whose
-  jumps run every way.
+  where the second, moved by 65536, lands within a quarter of the jump of
+  the first, and the signal runs the same way on both sides of the jump
+  (into it before, out of it after): an int16 sum that overflowed, and
+  the input, `latency_samples` earlier, made no such jump. A square's edge
+  is flat on both sides and a click's return lands far from its peak, so
+  neither is one. Not judged on the noise, whose jumps run every way. A
+  flat signal that wraps (a square at twice full scale) is not caught.
 - `rail`: more than 8 frames in a row on a rail (|y| >= 32767) where the
   input, `latency_samples` earlier, was not.
 - `silent`: the last second exactly zero while the input played through
@@ -86,6 +88,10 @@ def wrap_at(out, values, channels, lat):
                 continue
             jump = b - a
             if jump < WRAP_JUMP and -jump < WRAP_JUMP:
+                continue
+            # Unwrapped, b lands next to a: within a quarter of the jump.
+            near = b + 65536 if jump < 0 else b - 65536
+            if 4 * abs(near - a) > abs(jump):
                 continue
             before = a - out[(f - 2) * channels + ch]
             after = out[(f + 1) * channels + ch] - b
