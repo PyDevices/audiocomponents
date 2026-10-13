@@ -10,6 +10,14 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`Harmonizer` (rebuilt, Phase 6):** three pitch shifters at fixed
+  intervals under the dry, after three Eventide H910s played from one
+  keyboard. Each voice is its own `audiodelays.PitchShift` on its own
+  splitter tap and lands on the nearest step the shifter can play; a
+  voice at its Level's bottom step is off and its shifter is not pulled.
+  Ten controls (Pitch, Voice 1 to 3, Level 1 to 3, Detune, Spread, Mix),
+  seven patches including a lean two-voice one, and a `window_ms` option.
+  It drops the old class's `intervals=` and `level=` options.
 - **`PitchShifter` (rebuilt, Phase 6):** a fixed-interval splice shifter
   in the manner of the first harmonizers, on a Pitch, Fine, Mix, Delay and
   Feedback surface. Pitch moves in whole semitones an octave either way and

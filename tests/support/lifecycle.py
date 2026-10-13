@@ -94,6 +94,63 @@ CONTROL_EVENTS = ("E4-", "E5-", "E6-", "E9-", "E11-")
 #:
 #: A row without a scope matches every patch on every interpreter.
 DECLARED = {
+    ("Harmonizer", "E1-", "P4"):
+        "reset() empties the three lines and starts every splice where a"
+        " new instance's starts, so a shifted voice then renders as a fresh"
+        " instance (test_reset_renders_as_fresh), not as the uninterrupted"
+        " control",
+    ("Harmonizer", "E4-", "P4"):
+        "a Pitch, Voice or Detune move runs a shifter's read head at another"
+        " rate, so its splice lands elsewhere and stays there (the node's"
+        " by-design cell); a Level off and back, or Mix 0 and back, empties"
+        " the line and starts the splice as a fresh voice's (T6)",
+    ("Harmonizer", "E5-", "P4"):
+        "Mix 0 and back empties the lines and starts every splice as a"
+        " fresh instance's, not the uninterrupted control's",
+    ("Harmonizer", "E6-", "P4"):
+        "a patch change moves intervals, so the splices land elsewhere, or"
+        " turns a voice off and back, which starts its splice afresh",
+    ("Harmonizer", "E9-", "P4"):
+        "as E5: Mix 0 and back starts every splice afresh, at every source"
+        " buffer size",
+    ("Harmonizer", "E11-", "P4"):
+        "moves that reach an interval, a Level's off step or Mix 0 move the"
+        " splices, as E4 to E6",
+    ("Harmonizer", "E10-reset", "P4", "circuitpython"):
+        "CircuitPython only: its own audiodelays.PitchShift keeps its read"
+        " and write positions across reset_buffer (audiodsp#240 is in"
+        " audiodsp's port only), so a reset before the first pull cannot"
+        " put the splices back where the constructor left them; CPython"
+        " and MicroPython are ok (ruled a CircuitPython-own difference)",
+    ("Harmonizer", "E10-mix0", "P4", "circuitpython"):
+        "CircuitPython only: as E10-reset, the return from Mix 0 empties the"
+        " lines but CircuitPython's PitchShift keeps its positions",
+    ("Harmonizer", "E12-p", "P4", "circuitpython"):
+        "CircuitPython only: a patch moved before the first pull switches"
+        " voices on or off, which empties a shifter's line, and"
+        " CircuitPython's own audiodelays.PitchShift keeps its read and"
+        " write positions through that (audiodsp#240 is in audiodsp's port"
+        " only), so the splices land off an instance built at the patch;"
+        " CPython and MicroPython are ok (ruled a CircuitPython-own"
+        " difference)",
+    ("Harmonizer", "E12-p", "PF", "circuitpython"):
+        "CircuitPython only: as E12-p under P4, the first block carries the"
+        " splice CircuitPython's PitchShift keeps from the line it emptied",
+    ("Harmonizer", "E4-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step",
+    ("Harmonizer", "E5-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Mix)",
+    ("Harmonizer", "E6-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (a patch change)",
+    ("Harmonizer", "E9-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Mix)",
+    ("Harmonizer", "E11-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step",
     # PitchShifter: the splice phase, the ruling's N2. A splice shifter's
     # output depends on where its read position sits in the window, and
     # nothing but a fresh start puts two shifters at the same place.
@@ -551,6 +608,15 @@ FREE_PHASE = {
                     " from Mix 0 leaves it where it was, and a fresh"
                     " instance starts at 0 (CPython and MicroPython match)",
 }
+
+if sys.implementation.name == "circuitpython":
+    #: Harmonizer: CircuitPython's own audiodelays.PitchShift keeps its read
+    #: and write positions through reset_buffer (audiodsp#240 is in
+    #: audiodsp's port only), so after a reset or a return from Mix 0 the
+    #: splices sit where they stood, not where a fresh instance's do. Named
+    #: on CircuitPython alone: CPython and MicroPython keep PR live.
+    FREE_PHASE["Harmonizer"] = ("CircuitPython's own PitchShift splice, kept"
+                                " through reset_buffer")
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")
 
