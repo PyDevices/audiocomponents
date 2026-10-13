@@ -773,9 +773,11 @@ class TheSurface(TestCase):
 
     def test_feedback_near_its_top_stacks_level_far_past_the_input(self):
         # A noise burst peaking at -10.3 dBFS (10000 of 32768), through
-        # Feedback 127 with Delay 0 and Mix 2, an octave up: the repeats
-        # pile up on each other and the shifted voice alone reaches the
-        # rail.
+        # Feedback 127 with Delay 0 and Mix 2: at unison and an octave up
+        # the repeats pile up on each other and the shifted voice alone
+        # reaches the rail; at an octave down and a fourth or a fifth either
+        # way it comes within 4 dB of it.
+        close = 32768 * 10 ** (-4 / 20.0)
         for rate, channels in ((48000, 2), (22050, 1)):
             burst = rate // 10
             values = array("h", bytes(2 * burst * channels))
@@ -783,13 +785,21 @@ class TheSurface(TestCase):
             for i in range(burst * channels):
                 state = (state * 1103515245 + 12345) & 0x7FFFFFFF
                 values[i] = (state >> 8) % 20001 - 10000
+            self.assertTrue(9900 < max(max(values), -min(values)) <= 10000)
             frames = 3 * rate
             padded = values + array("h", bytes(2 * (frames - burst)
                                                * channels))
-            out = render(PitchShifter, padded, rate, channels, frames,
-                         pitch=12.0, mix=2.0, delay_ms=0.0, feedback=0.95)
-            self.assertTrue(max(out) == 32767 or min(out) == -32768,
-                            (rate, channels, max(out), min(out)))
+            for pitch in (-12, -7, -5, 0, 5, 7, 12):
+                out = render(PitchShifter, padded, rate, channels, frames,
+                             pitch=float(pitch), mix=2.0, delay_ms=0.0,
+                             feedback=0.95)
+                peak = max(max(out), -min(out))
+                where = (rate, channels, pitch, peak)
+                if pitch in (0, 12):
+                    self.assertTrue(max(out) == 32767 or min(out) == -32768,
+                                    where)
+                else:
+                    self.assertGreaterEqual(peak, close, where)
 
     def test_a_mono_source_is_one_channel_of_a_stereo_one(self):
         for rate in RATES:
@@ -1032,6 +1042,168 @@ class TheRestart(TestCase):
             self.assertEqual(got[12 * BLOCK * channels:], fresh,
                              (rate, channels))
 
+    def test_a_move_right_after_a_reset_is_a_fresh_instance_at_that_setting(
+            self):
+        # reset() makes the instance new again: until the next pull a patch
+        # or a Mix move re-arms it as it would a new one, so the voices play
+        # the new level from the first frame after the move.
+        for rate, channels in ((48000, 2), (22050, 1)):
+            blocks = 30
+            dc = array("h", [6000] * (blocks * BLOCK * channels))
+            later = dc[12 * BLOCK * channels:]
+            for patch in range(len(PitchShifter.PATCHES)):
+                got = played(dc, rate, channels, blocks,
+                             {12: lambda e, p=patch: (e.reset(),
+                                                      e.program_change(p))})
+                fresh = render(PitchShifter, later, rate, channels,
+                               (blocks - 12) * BLOCK, patch=patch)
+                self.assertEqual(got[12 * BLOCK * channels:], fresh,
+                                 (rate, channels, "patch", patch))
+            for midi in (1, 32, 96, 127):
+                mix = _component.macro_value(
+                    (0.0, 2.0), _component.position_of_midi("BIPOLAR", midi))
+                got = played(dc, rate, channels, blocks,
+                             {12: lambda e, m=midi: (e.reset(),
+                                                     e.set_macro(MIX_I, m))})
+                fresh = render(PitchShifter, later, rate, channels,
+                               (blocks - 12) * BLOCK, mix=mix)
+                self.assertEqual(got[12 * BLOCK * channels:], fresh,
+                                 (rate, channels, "mix", midi))
+
+    def test_a_move_right_after_a_return_from_mix_0_is_a_fresh_instance(
+            self):
+        # The return from Mix 0 re-arms the graph; a patch loaded before the
+        # next pull re-arms it again at the patch's levels.
+        for rate, channels in ((48000, 2), (22050, 1)):
+            blocks = 30
+            dc = array("h", [6000] * (blocks * BLOCK * channels))
+
+            def back(e):
+                e.set_macro(MIX_I, 64)
+                e.program_change(6)
+            got = played(dc, rate, channels, blocks,
+                         {10: lambda e: e.set_macro(MIX_I, 0), 18: back})
+            fresh = render(PitchShifter, dc[18 * BLOCK * channels:], rate,
+                           channels, (blocks - 18) * BLOCK, patch=6)
+            self.assertEqual(got[18 * BLOCK * channels:], fresh,
+                             (rate, channels))
+
+    def test_only_a_move_that_changes_a_voice_level_re_arms(self):
+        # Before the output is first taken, Pitch, Fine, Delay, Feedback and
+        # a patch that leaves both Mixer levels where they are do not re-arm
+        # the graph (a re-arm primes the shifter again); a move that changes
+        # a level does, once, and the same level again does not.
+        def counted(e):
+            count = [0]
+            rearm = e._rearm
+
+            def wrapped():
+                count[0] += 1
+                rearm()
+            e._rearm = wrapped
+            return count
+
+        def mix_of(midi):
+            return _component.macro_value(
+                (0.0, 2.0), _component.position_of_midi("BIPOLAR", midi))
+        for rate, channels in ((48000, 2), (22050, 1)):
+            rng = Lcg(37)
+            frames = 24 * BLOCK
+            values = array("h", [rng.next() % 40001 - 20000
+                                 for _ in range(frames * channels)])
+            neutral = (
+                ("pitch", lambda e: e.set_macro(PITCH_I, 127),
+                 {"pitch": 12.0}),
+                ("delay", lambda e: e.set_macro(DELAY_I, 64),
+                 {"delay_ms": 112.5 * 64 / 127}),
+                ("mix at unity", lambda e: e.set_macro(MIX_I, 64), {}),
+                ("patch 4", lambda e: e.program_change(4), {"patch": 4}),
+                ("patch 4 macro by macro",
+                 lambda e: [e.set_macro(i, m) for i, m in
+                            enumerate(PitchShifter.PATCHES[4][1])],
+                 {"patch": 4}),
+                ("patch 3 and back", lambda e: (e.program_change(3),
+                                                e.program_change(0)), {}),
+            )
+            for name, move, options in neutral:
+                e = PitchShifter(kc.feed(values, rate, channels).port)
+                try:
+                    count = counted(e)
+                    move(e)
+                    got = kc.samples(kc.render(e, frames))
+                finally:
+                    e.deinit()
+                self.assertEqual(count[0], 0, (rate, channels, name))
+                fresh = render(PitchShifter, values, rate, channels,
+                               frames, **options)
+                self.assertEqual(got, fresh, (rate, channels, name))
+            for index, midi in ((FINE_I, 3), (FEEDBACK_I, 90)):
+                e = PitchShifter(kc.feed(values, rate, channels).port)
+                try:
+                    count = counted(e)
+                    e.set_macro(index, midi)
+                finally:
+                    e.deinit()
+                self.assertEqual(count[0], 0, (rate, channels, index))
+            changing = (
+                ("mix 127", lambda e: e.set_macro(MIX_I, 127),
+                 {"mix": 2.0}),
+                ("mix 32", lambda e: e.set_macro(MIX_I, 32),
+                 {"mix": mix_of(32)}),
+                ("patch 6", lambda e: e.program_change(6), {"patch": 6}),
+            )
+            for name, move, options in changing:
+                e = PitchShifter(kc.feed(values, rate, channels).port)
+                try:
+                    count = counted(e)
+                    move(e)
+                    first = count[0]
+                    move(e)
+                    got = kc.samples(kc.render(e, frames))
+                finally:
+                    e.deinit()
+                self.assertEqual((first, count[0]), (1, 1),
+                                 (rate, channels, name))
+                fresh = render(PitchShifter, values, rate, channels, frames,
+                               **options)
+                self.assertEqual(got, fresh, (rate, channels, name))
+            # Once the output has been taken, no move re-arms.
+            e = PitchShifter(kc.feed(values, rate, channels).port)
+            try:
+                count = counted(e)
+                e.output
+                e.program_change(6)
+                e.set_macro(MIX_I, 127)
+            finally:
+                e.deinit()
+            self.assertEqual(count[0], 0, (rate, channels, "taken"))
+
+    def test_an_output_taken_before_a_patch_plays_the_old_level_at_first(
+            self):
+        # The limit the docstring discloses: a host that takes the output
+        # before it loads a patch hears the first block (256 frames) at the
+        # old level, and nothing after it. The class cannot see a pull, so
+        # it has stopped re-arming once the output has been taken.
+        for rate, channels in ((48000, 2), (22050, 1)):
+            frames = 40 * BLOCK
+            dc = array("h", [6000] * (frames * channels))
+            slow = sine(frames, 40.0, rate, 12000, channels, phase=0.3)
+            for name, values in (("dc", dc), ("40 Hz", slow)):
+                e = PitchShifter(kc.feed(values, rate, channels).port)
+                try:
+                    e.output
+                    e.program_change(6)
+                    got = kc.samples(kc.render(e, frames))
+                finally:
+                    e.deinit()
+                fresh = render(PitchShifter, values, rate, channels, frames,
+                               patch=6)
+                differ = [n for n in range(frames)
+                          if got[n * channels:(n + 1) * channels]
+                          != fresh[n * channels:(n + 1) * channels]]
+                self.assertTrue(differ, (rate, channels, name))
+                self.assertLess(max(differ), BLOCK, (rate, channels, name))
+
     def test_the_voice_at_unity_after_a_pitch_move_sits_where_the_splice_left_it(
             self):
         # From a fresh start (test_mix_2_is_the_shifted_voice_alone) or a
@@ -1176,8 +1348,13 @@ CLAIMS = (
      ("test_the_dry_is_untouched", "test_dry_through_shifter_is_red",
       "test_a_hot_input_reaches_the_rail_at_mix_1")),
     ("Feedback stacks level too, far past the input: at Feedback 127, Delay "
-     "0 and Mix 2 a noise burst peaking at -10.3 dBFS reaches the rail.",
+     "0 and Mix 2 a noise burst peaking at -10.3 dBFS reaches the rail at "
+     "unison or an octave up, and comes within 4 dB of it at an octave down "
+     "or a fourth or fifth either way.",
      "test_feedback_near_its_top_stacks_level_far_past_the_input"),
+    ("If your host takes the output before it loads a patch or moves Mix, "
+     "the first 256 frames, 5 ms at 48 kHz, play at the old level.",
+     "test_an_output_taken_before_a_patch_plays_the_old_level_at_first"),
     ("A one-channel source gets a one-channel shifter with the same window.",
      "test_a_mono_source_is_one_channel_of_a_stereo_one"),
     ("Latency is zero samples: the dry is never delayed.",

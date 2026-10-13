@@ -35,9 +35,11 @@ DECLARED = {
 # times the input's peak on a DC, so the rail is reachable below any useful
 # ceiling. The docstring says so ("Feedback stacks level too, far past the
 # input: at Feedback 127, Delay 0 and Mix 2 a noise burst peaking at
-# -10.3 dBFS reaches the rail"), and test_feedback_near_its_top_stacks_
-# level_far_past_the_input holds it. The square, sine and DC cells there, at
-# every rate and channel count.
+# -10.3 dBFS reaches the rail at unison or an octave up, and comes within
+# 4 dB of it at an octave down or a fourth or fifth either way"), and
+# test_feedback_near_its_top_stacks_level_far_past_the_input holds it at each
+# Pitch named. The square, sine and DC cells there, at every rate and channel
+# count.
 for _material in ("square", "sine", "dc"):
     for _rate in RATES:
         for _channels in CHANNELS:

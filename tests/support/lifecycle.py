@@ -114,16 +114,17 @@ DECLARED = {
         "CircuitPython only: as E10-reset, the return from Mix 0 empties the"
         " lines but CircuitPython's PitchShift keeps its positions",
     ("PitchShifter", "E10-macros", "P4"):
-        "CircuitPython only: a macro moved before the first pull re-arms the"
-        " graph so its voice levels hold from frame 0, and the re-arm's"
-        " priming pulls move CircuitPython's own PitchShift off the"
-        " control's splice phase (it keeps its positions through a clear);"
-        " CPython and MicroPython are ok (ruled a CircuitPython-own"
-        " difference)",
+        "CircuitPython only: the macros move to 127 before the first pull,"
+        " which changes the Mixer levels, so the graph is re-armed (only a"
+        " move that changes a level re-arms) and the re-arm's priming pulls"
+        " move CircuitPython's own PitchShift off the control's splice phase"
+        " (it keeps its positions through a clear); CPython and MicroPython"
+        " are ok (ruled a CircuitPython-own difference)",
     ("PitchShifter", "E10-patch", "P4"):
-        "CircuitPython only: as E10-macros, a patch loaded before the first"
-        " pull is re-armed, and CircuitPython's PitchShift keeps its"
-        " positions",
+        "CircuitPython only: as E10-macros, the patch loaded before the first"
+        " pull changes the Mixer levels and is re-armed, and CircuitPython's"
+        " PitchShift keeps its positions (28 of the 32 cells; the four that"
+        " start at patch 2 are ok)",
     ("PitchShifter", "E4-m2=", "P5"):
         "family limit, disclosed (audiocomponents#117): a control that jumps"
         " makes the output step (Mix)",

@@ -137,7 +137,9 @@ class PitchShifter(_component.Component):
     sample, with the shifted voice added on top, so a hot input can reach
     the rail.
     Feedback stacks level too, far past the input: at Feedback 127, Delay 0
-    and Mix 2 a noise burst peaking at -10.3 dBFS reaches the rail.
+    and Mix 2 a noise burst peaking at -10.3 dBFS reaches the rail at unison
+    or an octave up, and comes within 4 dB of it at an octave down or a
+    fourth or fifth either way.
 
     **Mono, latency, tail.** A one-channel source gets a one-channel
     shifter with the same window.
@@ -147,6 +149,8 @@ class PitchShifter(_component.Component):
     `reset()` empties the shifter and both delay lines and returns to
     patch 0.
     The class never reads the host's tempo.
+    If your host takes the output before it loads a patch or moves Mix, the
+    first 256 frames, 5 ms at 48 kHz, play at the old level.
 
     **Limits shared by the family.**
     A control that jumps makes the output step: move it in small steps from
@@ -216,8 +220,11 @@ class PitchShifter(_component.Component):
         self._wired = False
         #: Whether the host has asked for the output yet. Until it has,
         #: nothing has been pulled, and a control that moves a voice's
-        #: level re-arms the graph so the level holds from frame 0.
+        #: level re-arms the graph so the level holds from frame 0. A reset
+        #: or a return from Mix 0 starts that window again.
         self._taken = False
+        #: The two Mixer levels last handed to the voices.
+        self._applied = None
         #: Whether the loop's splicer has run since its line was last
         #: emptied: it then reads half a window later (`_loop_frames`).
         self._engaged = False
@@ -411,11 +418,17 @@ class PitchShifter(_component.Component):
             return frames - self._window * 0.5
         return frames
 
-    def _levels(self):
+    def _level_pair(self):
+        """The dry and the shifted voice's Mixer levels at this Mix."""
         mix = self._mix()
+        return (min(1.0, 2.0 - mix), min(1.0, mix))
+
+    def _levels(self):
         voices = self._mixer.voice
-        voices[0].level = min(1.0, 2.0 - mix)
-        voices[1].level = min(1.0, mix)
+        pair = self._level_pair()
+        voices[0].level = pair[0]
+        voices[1].level = pair[1]
+        self._applied = pair
 
     # -- applying ------------------------------------------------------
 
@@ -462,10 +475,15 @@ class PitchShifter(_component.Component):
             return
         if not self._wired:
             self._wire()
-        elif self._rejoin() or not self._taken:
+        elif self._rejoin():
+            # The graph was emptied: it is new again until it is pulled.
+            self._taken = False
+            self._rearm()
+        elif not self._taken and self._level_pair() != self._applied:
             # Not pulled yet: a level moved now would wait for its voice's
             # next zero crossing, a block of the old level, where an
             # instance built at this setting plays the new one from frame 0.
+            # A move that leaves both levels alone has nothing to wait for.
             self._rearm()
         else:
             self._levels()
@@ -485,6 +503,7 @@ class PitchShifter(_component.Component):
         wired = self._wired
         _component.Component.reset(self)
         if wired:
+            self._taken = False
             self._rearm()
 
     @property
