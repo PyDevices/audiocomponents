@@ -23,6 +23,20 @@ Cells, all on an 8192-frame click and noise train then silence:
   RAIL_RUN); and a NaN build must render exactly what the defaults or the
   option at 0 render.
 
+- `refused-<trigger>`: a call the contract's methods refuse (a negative,
+  boolean or float `sample_position`, a `program_change` of 0.0, 1.0, True,
+  -1, None or "0", a macro index or value of the wrong type, `channel=-1`)
+  leaves the instance exactly as it was. Built at the defaults (`d`), at
+  its last patch (`last`) and with every numeric constructor option moved
+  off its default (`opt`), it takes the call before pull 8; a call that raises must raise ValueError,
+  TypeError or IndexError, and either way (a call that raises, or one that
+  is accepted or ignored as a no-op: `program_change` of an index past the
+  last patch, a macro set to its own readback) every macro reads back the
+  same on the 0-127 grid and as `macro()` plays it, `patch_index` is
+  unchanged (after a raise, or any `program_change`) and the render equals
+  one from an instance that never saw the call. A call not meant to be a no-op that is
+  accepted is not judged (`a`).
+
 A render that is silent throughout cannot show a difference; such a cell
 prints `na(silent)`.
 
@@ -182,6 +196,141 @@ def patch_cell(cls, patch):
     finally:
         _close(e)
     return "ok"
+
+
+# -- refused calls ---------------------------------------------------------
+
+#: The error classes a refusal may raise.
+REFUSED_ERRORS = (ValueError, TypeError, IndexError)
+
+
+def refusals(cls):
+    """[(label, call, noop)]: each call takes the instance. `noop` is True
+    for a call that must leave the instance as it was whether it raises or
+    not; for the others only a raise is judged."""
+    n = len(cls.MACRO_LABELS)
+    past = max(cls.PATCHES) + 1
+    out = [
+        ("pc-negsp", lambda e: e.program_change(0, sample_position=-5),
+         False),
+        ("pc-boolsp", lambda e: e.program_change(0, sample_position=True),
+         False),
+        ("pc-floatsp", lambda e: e.program_change(0, sample_position=1.5),
+         False),
+        ("pc-0.0", lambda e: e.program_change(0.0), False),
+        ("pc-1.0", lambda e: e.program_change(1.0), False),
+        ("pc-true", lambda e: e.program_change(True), False),
+        ("pc-neg", lambda e: e.program_change(-1), False),
+        ("pc-none", lambda e: e.program_change(None), False),
+        ("pc-str", lambda e: e.program_change("0"), False),
+        ("pc-past", lambda e: e.program_change(past), True),
+        ("pc-far", lambda e: e.program_change(1000000), True),
+        ("sm-index-n", lambda e: e.set_macro(n, 5), False),
+        ("sm-index-neg", lambda e: e.set_macro(-1, 5), False),
+        ("sm-index-float", lambda e: e.set_macro(0.0, 5), False),
+        ("sm-index-true", lambda e: e.set_macro(True, 5), False),
+        ("sm-value-str", lambda e: e.set_macro(0, "x"), False),
+        ("sm-value-none", lambda e: e.set_macro(0, None), False),
+    ]
+    for i in sorted(set((0, n - 1))):
+        out += [
+            ("sm-m%d-negchan" % i,
+             lambda e, i=i: e.set_macro(i, e.get_macro(i), channel=-1),
+             True),
+            ("sm-m%d-negsp" % i,
+             lambda e, i=i: e.set_macro(i, e.get_macro(i),
+                                        sample_position=-5), False),
+            ("sm-m%d-floatsp" % i,
+             lambda e, i=i: e.set_macro(i, e.get_macro(i),
+                                        sample_position=1.5), False),
+            ("sm-m%d-nan" % i, lambda e, i=i: e.set_macro(i, NAN), False),
+        ]
+    return out
+
+
+def _state(e):
+    """What the instance reads back: each macro on the 0-127 grid and in
+    its own units, and the patch."""
+    return (gets(e), [e.macro(i) for i in range(len(type(e).MACRO_LABELS))],
+            e.patch_index)
+
+
+def _nudged(cls):
+    """Candidate option sets with every numeric constructor option off its
+    default (a constructor's exact value is state a refused call can
+    drop)."""
+    out = []
+    for m in (0.73, 1.27):
+        out.append(dict((name, d * m if d else 0.37)
+                        for name, d in options_of(cls)
+                        if name not in _BASE))
+    return [o for o in out if o]
+
+
+def refused_cell(cls, label, variant):
+    patch = (max(cls.PATCHES) or None) if variant == "last" else None
+    options = None
+    if variant == "opt":
+        for options in _nudged(cls):
+            try:
+                _close(fresh(cls, 48000, 2, None, options))
+                break
+            except REFUSALS:
+                options = None
+        if options is None:
+            return "na(no option set builds)"
+    call = None
+    noop = False
+    for lab, fn, nop in refusals(cls):
+        if lab == label:
+            call, noop = fn, nop
+    if call is None:
+        return "RED(no such trigger %s)" % label
+    a = fresh(cls, 48000, 2, patch, options)
+    b = fresh(cls, 48000, 2, patch, options)
+    seen = {}
+
+    def take(e):
+        seen["before"] = _state(e)
+        try:
+            call(e)
+            seen["code"] = "a"
+        except REFUSED_ERRORS:
+            seen["code"] = "r"
+        except Exception as exc:                          # noqa: BLE001
+            seen["code"] = "x"
+            seen["exc"] = type(exc).__name__
+        seen["after"] = _state(e)
+
+    try:
+        ra = kc.render(a, FRAMES)
+        rb = kc.render(b, FRAMES, {K_MOVE: take})
+    finally:
+        _close(a)
+        _close(b)
+    code = seen["code"]
+    if code == "x":
+        return "RED(raised %s)" % seen["exc"]
+    if code == "a" and not noop:
+        return "ok(a)", kc.crc(rb)
+    # An accepted set_macro rightly drops the patch; a refusal never does.
+    if seen["after"][2] != seen["before"][2] and (
+            code == "r" or label.startswith("pc-")):
+        return "RED(%s moved patch_index to %r)" % (
+            "a refusal" if code == "r" else "the call", seen["after"][2])
+    for part, what in ((0, "read"), (1, "plays")):
+        for i, (x, y) in enumerate(zip(seen["before"][part],
+                                       seen["after"][part])):
+            if x != y:
+                return "RED(m%d %s %s, now %s)" % (i, what, kc.num(x),
+                                                   kc.num(y))
+    if ra != rb:
+        d = lifecycle._first_diff(ra, rb, 0, len(ra))
+        return "RED(renders differ from frame %d)" % (d // 4 - K_MOVE *
+                                                      kc.BLOCK), kc.crc(rb)
+    if _silent(ra) and _silent(rb):
+        return "na(silent)", kc.crc(rb)
+    return "ok(%s)" % code, kc.crc(rb)
 
 
 # -- constructor options ---------------------------------------------------
@@ -356,6 +505,10 @@ def run(cls, emit=print, quick=False, name=None, options=None):
         cell("bad-m%d" % i, bad_cell, cls, i)
     for patch in sorted(cls.PATCHES):
         cell("patch-p%d" % patch, patch_cell, cls, patch)
+    for label, _call, _noop in refusals(cls):
+        for variant in ("d", "last", "opt"):
+            cell("refused-%s/%s" % (label, variant), refused_cell, cls,
+                 label, variant)
     for option, _default in options_of(cls):
         if option in _BASE:
             continue
