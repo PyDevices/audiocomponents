@@ -25,7 +25,8 @@ sys.path.insert(0, os.path.join(ROOT, "tests", "support"))
 import lifecycle                                          # noqa: E402
 import node_matrix                                        # noqa: E402
 from tests.test_lifecycle_matrix import (FULL, check_known,  # noqa: E402
-                                   native_binaries, parse, red_cells)
+                                   native_binaries, parse, red_cells,
+                                   skipped)
 
 VENDOR = "PyDevices"
 
@@ -99,7 +100,8 @@ class TestNodeMatrix(unittest.TestCase):
             ours = parse(self.cpython[name])
             theirs = parse([l for l in got if l.startswith(name + "|")])
             for key in sorted(set(ours) | set(theirs)):
-                if ours.get(key) != theirs.get(key):
+                if ours.get(key) != theirs.get(key) \
+                        and not skipped(theirs.get(key)):
                     problems.append("%s: %s cpython %s, %s %s" % (
                         family, "|".join(map(str, key)), ours.get(key),
                         family, theirs.get(key)))

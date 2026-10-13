@@ -31,6 +31,10 @@ sys.path.insert(0, os.path.join(ROOT, "tests", "support"))
 import lifecycle                                          # noqa: E402
 from audioeffects import rebuilt                          # noqa: E402
 
+#: `_component` reads VENDOR off the module a class is defined in, and the
+#: skip test's plant is defined here.
+VENDOR = "PyDevices"
+
 PHASE5 = ("DigitalDelay", "SlapbackDelay", "TapeDelay", "PingPongDelay",
           "MultiTapDelay", "AnalogDelay", "Reverb", "ConvolutionReverb")
 
@@ -86,6 +90,13 @@ def parse(lines):
         key = (parts[0], parts[1], int(parts[2]), int(parts[3]), parts[4])
         cells[key] = dict(p.split(":", 1) for p in parts[5:])
     return cells
+
+
+def skipped(props):
+    """True for a cell `lifecycle.SKIP` kept from running: P6 leaves it
+    out, since the interpreter that ran it prints real verdicts."""
+    return props is not None and all(
+        verdict.startswith("na(skip") for prop, verdict in props.items())
 
 
 def red_cells(cells):
@@ -248,7 +259,9 @@ class TestMatrix(unittest.TestCase):
             ours = parse(self.cpython[name])
             theirs = parse([l for l in got if l.startswith(name + "|")])
             keys = [key for key in sorted(set(ours) | set(theirs))
-                    if ours.get(key) != theirs.get(key)]
+                    if ours.get(key) != theirs.get(key)
+                    and not skipped(theirs.get(key))
+                    and not skipped(ours.get(key))]
             entry = KNOWN_P6.get(name)
             if entry is not None:
                 count, dig = (entry[2], entry[3]) if FULL else entry[:2]
@@ -309,6 +322,39 @@ class TestPlants(unittest.TestCase):
             del lifecycle.DECLARED[("LifecyclePlain", "E1-reset@block",
                                     "P1")]
         self.assertEqual(got, "decl")
+
+    def test_a_skipped_cell_prints_na_and_never_runs(self):
+        class Raises(lifecycle.Plain):
+            NAME = "LifecycleRaises"
+
+            def _build(self, *args, **kwargs):
+                raise RuntimeError("the skipped cell ran")
+
+        def e8(emit):
+            lifecycle.run_class(Raises, rates=(48000,), channels=(2,),
+                                patches=[None], only=["E8"], emit=emit)
+
+        # The control: without the row the cell runs, and the plant raises.
+        with self.assertRaises(RuntimeError):
+            e8(lambda line: None)
+        row = ("LifecycleRaises", "E8-", sys.implementation.name)
+        lifecycle.SKIP[row] = "planted skip"
+        try:
+            lines = []
+            e8(lines.append)
+        finally:
+            del lifecycle.SKIP[row]
+        props = parse(lines)[("LifecycleRaises", "E8-end", 48000, 2, "d")]
+        self.assertEqual(props, dict((prop, "na(skip: planted skip)")
+                                     for prop in lifecycle.PROPS))
+        self.assertTrue(skipped(props))
+        # A row for another interpreter leaves the cell to run.
+        lifecycle.SKIP[("LifecycleRaises", "E8-", "elsewhere")] = "planted"
+        try:
+            with self.assertRaises(RuntimeError):
+                e8(lambda line: None)
+        finally:
+            del lifecycle.SKIP[("LifecycleRaises", "E8-", "elsewhere")]
 
     def test_known_red_catches_both_directions(self):
         one = ("X", "E1-a", "P1", 48000, 2, "d")
