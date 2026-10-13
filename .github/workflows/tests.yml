@@ -15,6 +15,17 @@ on:
     paths-ignore: ['docs/**', 'README.md', 'ROADMAP.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE']
   pull_request:
     paths-ignore: ['docs/**', 'README.md', 'ROADMAP.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE']
+  # The full matrix on demand, for a branch that should see every Python
+  # before it merges rather than after.
+  workflow_dispatch:
+
+# A new push to a pull request cancels the run it supersedes: only the newest
+# commit's result is ever read. Pushes to main are never cancelled or queued
+# behind one another (each gets a group of its own), so every commit on main
+# keeps its own full-matrix record.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -22,7 +33,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python: ["3.11", "3.12", "3.13", "3.14"]
+        # Every supported Python on main and on a manual run; on a pull
+        # request only 3.13, the Python the other two platforms run. A failure
+        # only another Python shows surfaces on the push to main, or sooner
+        # from a manual run on the branch.
+        python: ${{ fromJSON(github.event_name == 'pull_request' && '["3.13"]' || '["3.11", "3.12", "3.13", "3.14"]') }}
         include:
           # The components are pure Python; the platform variance comes from
           # audiodsp's extension underneath them, so one Python is enough to
@@ -54,16 +69,33 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "audiodsp pinned at $tag"
 
-      - name: Install audiodsp at the pin
+      # Building audiodsp's extension from source is the slowest install here,
+      # and its output depends only on the pin, the platform and the Python.
+      # Build the wheel once per combination and keep it.
+      - name: Cache the audiodsp wheel
+        id: audiodsp-wheel
+        uses: actions/cache@v6
+        with:
+          path: .audiodsp-wheel
+          key: audiodsp-wheel-v1-${{ steps.pin.outputs.tag }}-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python }}
+
+      - name: Build the audiodsp wheel at the pin
+        if: steps.audiodsp-wheel.outputs.cache-hit != 'true'
         run: >-
-          python -m pip install
+          python -m pip wheel --no-deps --wheel-dir .audiodsp-wheel
           "pydevices-audiodsp @ git+https://github.com/PyDevices/audiodsp@${{ steps.pin.outputs.tag }}"
+
+      - name: Install audiodsp at the pin
+        shell: bash
+        run: python -m pip install .audiodsp-wheel/pydevices_audiodsp-*.whl
 
       # Editable, so the tests exercise lib/ directly rather than a copy, and
       # so each package's own pyproject.toml is exercised too.
       # numpy: two tests need it (test_cpython_asym_table through the ulab
       # bridge, test_rig_comparator directly); the packages themselves do not.
-      - run: python -m pip install numpy
+      # pytest and pytest-xdist run the suite below; the tests are plain
+      # unittest and need neither.
+      - run: python -m pip install numpy pytest pytest-xdist
 
       # --no-deps is load-bearing: without it a floor raised above the pinned
       # release re-resolves pydevices-audiodsp from the index and every
@@ -77,7 +109,12 @@ jobs:
       # a test. The tests would generate them too; this makes it explicit.
       - run: python tools/effect_probes/make_probes.py --ensure
 
-      - run: python -m unittest discover -s tests -p "test_*.py"
+      # The same tests `python -m unittest discover -s tests -p "test_*.py"`
+      # finds, spread across every core the runner has: serially the suite
+      # takes over an hour. A test that writes a file writes it into its own
+      # temporary directory, so no two workers collide. --durations names the
+      # slowest tests, which bound how fast this step can get.
+      - run: python -m pytest tests -n auto -p no:cacheprovider --durations=25
       - run: python tools/validate_api.py
       - run: python tests/parity/effects_library_smoke.py
 
