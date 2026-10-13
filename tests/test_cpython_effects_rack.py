@@ -1100,6 +1100,51 @@ def t4_widener(cls, rate, channels):
     return wrong
 
 
+def t4_pitchshifter(cls, rate, channels):
+    """A PitchShifter in a rack comes back from the rack's reset as built
+    and re-armed: after its knobs were moved it renders what the freshly
+    built rack does, whether it was built playing or at Mix 0, and a Mix
+    move after the reset keeps the repeats."""
+    wrong = []
+    frames = 14000
+    # A held level under the clicks, so the signal never crosses zero: a
+    # level a re-arm leaves unplayed waits for a crossing it does not get.
+    values = clicks(frames, channels, range(512, frames, 2400))
+    for i in range(len(values)):
+        values[i] += 6000
+    shifter = rebuilt.module_class("PitchShifter")
+    cases = (
+        ("defaults", {}, ((0, 40), (1, 100), (2, 90), (3, 50), (4, 90)),
+         ()),
+        ("off the defaults", {"pitch": -5.0, "fine": 20.0, "mix": 1.5,
+                              "delay_ms": 30.0, "feedback": 0.4,
+                              "window_ms": 20.0},
+         ((0, 100), (4, 0), (2, 20)), ()),
+        ("built at Mix 0", {"mix": 0.0, "pitch": 4.0},
+         ((2, 100), (4, 80)), ()),
+        ("Mix 0 after the reset", {"mix": 1.0, "feedback": 0.5},
+         ((0, 20), (2, 40)), ((2, 0), (2, 100))),
+    )
+    for label, options, moves, after in cases:
+        chain = ((shifter, options),)
+
+        def before(rack, moves=moves):
+            for index, value in moves:
+                rack.effects[0].set_macro(index, value)
+
+        def run(rack, after=after):
+            out = pull(rack.output, 4000, channels)
+            for index, value in after:
+                rack.effects[0].set_macro(index, value)
+                out += pull(rack.output, 3000, channels)
+            return out
+
+        for line in _against_fresh(cls, rate, channels, chain, values, run,
+                                   before):
+            wrong.append("PitchShifter, %s: %s" % (label, line))
+    return wrong
+
+
 def t5_patch(cls):
     """A `patch=` the rack refuses releases every pedal it had built."""
     wrong = []
@@ -1296,6 +1341,9 @@ class TestReset(TestCase):
 
     def test_a_stereo_widener_comes_back_with_its_exact_delay(self):
         self.assertEqual(t4_widener(Rack, 48000, 2), [])
+
+    def test_a_pitch_shifter_comes_back_re_armed_and_as_built(self):
+        self.assertEqual(t4_pitchshifter(Rack, 48000, 2), [])
 
     def test_reset_as_built_faults_are_red(self):
         self.assertNotEqual(t4_mix0(PutBackRack, 48000, 2), [])
