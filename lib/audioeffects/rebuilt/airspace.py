@@ -21,9 +21,10 @@ down while it lengthens, up while it shortens. Glide (1 to 10 s) is how long
 a move across the whole Time range takes, so it sets how far they bend: 12 %
 at the default of 4 s.
 
-Keep your input at or under -6 dBFS: the dry is at unity and the chamber
-adds to it, so a hotter input can reach the rail. Latency is zero. `reset()` empties the tape and the chamber and restores
-patch 0, whose Time of 111 ms lands at once instead of gliding.
+Keep your input at or under -12 dBFS: at Mix 1 the dry and the chamber are
+both at unity and add, so a hotter input can reach the rail. Latency is
+zero. `reset()` empties the tape and the chamber and restores patch 0, whose
+Time of 111 ms lands at once instead of gliding.
 
 The patches: Chamber Send (the defaults), Short Send, Long Send, Dark Loop,
 Bright Chamber, Driven Tape, Plain Chamber.
@@ -39,10 +40,14 @@ travels.
 At the defaults the repeats add only a little length to the tail; the
 stretch comes with Feedback above about 0.6 or a long Time.
 
+At a short Time with high Feedback the repeats are heard as a flutter, not a
+longer chamber.
+
 There is always at least 20 ms between the dry and the chamber.
 
-The loop's filters are gentle, and Drive's level is not compensated. The
-chamber's size is fixed, there is no tempo sync, and a mono source gets a
+The loop's filters are gentle, 6 dB per octave, and the Top Cut's is
+steeper: there is no loop bell, no presence EQ and no wow. Drive's level is
+not compensated. The chamber's size is fixed, there is no tempo sync, and a mono source gets a
 mono rack.
 
 At Mix 0 the output is your input, byte for byte, and the tail that was
@@ -116,9 +121,11 @@ DEFAULTS = (111.0, 0.375, 4000.0, 0.2, 6000.0, 100.0, 5000.0, 100.0, 1.8,
             4000.0, 0.35)
 
 #: Each default's step on the 0-127 grid (`_component.macro_of`): patch 0.
-#: While a macro sits on its default's step, the default itself plays, so
-#: a fresh instance, patch 0 and a host echoing `get_macro` all play
-#: exactly 111 ms, not the step's 112.08.
+#: While a macro that arrived as a whole step (the seed, a patch, a whole
+#: `set_macro`) sits on its default's step, the default itself plays, so a
+#: fresh instance, patch 0 and a host echoing `get_macro` all play exactly
+#: 111 ms, not the step's 112.08. A constructor value that is not the
+#: default is not a step and plays as given, even where it lands on one.
 DEFAULT_STEPS = (68, 56, 76, 25, 82, 52, 74, 64, 65, 76, 22)
 
 #: How close a 0..1 position must come to a default's step to play the
@@ -199,7 +206,7 @@ class AirSpace(_component.Component):
 
     CAPABILITIES = ()
     LATENCY_SAMPLES = 0
-    INPUT_CEILING_DBFS = -6.0
+    INPUT_CEILING_DBFS = -12.0
     TAIL_SAMPLES = None
 
     MACRO_LABELS = ("Time", "Feedback", "Glide", "Drive", "Loop Top",
@@ -260,6 +267,11 @@ class AirSpace(_component.Component):
             values.append(_between(_option(value, DEFAULTS[index]),
                                    span[0], span[1]))
 
+        #: Per macro, whether its position arrived as a whole grid step and
+        #: so plays the default on the default's step (`_value`). The
+        #: constructor clears it for a value that is not the default.
+        self._snap = [values[index] == DEFAULTS[index]
+                      for index in range(len(values))]
         #: True once every macro has been seeded; before that a macro is
         #: stored and not pushed.
         self._ready = False
@@ -307,6 +319,10 @@ class AirSpace(_component.Component):
         # keeps.
         self._tail = audioroute.MidSide(
             self._mixer, width=1.0, sample_rate=rate, channel_count=channels)
+        #: Where `audiocore.get_buffer` is compiled out, the one-voice
+        #: mixer `_pull` primes from `_tail`; built the first time it is
+        #: needed.
+        self._puller = None
         self._silence = audiocore.RawSample(
             array("h", bytes(2 * 2 * channels)), sample_rate=rate,
             channel_count=channels)
@@ -344,10 +360,11 @@ class AirSpace(_component.Component):
 
     def _value(self, index):
         """Macro `index` in its own units: the default itself on the
-        default's step, the span's law elsewhere."""
+        default's step when the position arrived as a step, the span's law
+        elsewhere."""
         position = self._macros[index]
         step = DEFAULT_STEPS[index] / 127.0
-        if abs(position - step) <= STEP_TOLERANCE:
+        if self._snap[index] and abs(position - step) <= STEP_TOLERANCE:
             return DEFAULTS[index]
         return _component.macro_value(self._MACRO_RANGES[index], position)
 
@@ -356,6 +373,41 @@ class AirSpace(_component.Component):
         plays, the default itself on the default's step."""
         self._check_live()
         return self._value(index)
+
+    def set_macro(self, index, value, channel=0, note_id=-1,
+                  sample_position=0):
+        """Set macro `index` from the 0-127 scale. A whole step is a step
+        and plays the default on the default's step; a fraction is a value
+        of its own. A call that leaves the position where it is (a host
+        echoing `get_macro`) changes neither."""
+        self._check_live()
+        self._macro_index(index)
+        flags = list(self._snap)
+        try:
+            position = _component.position_of_midi("UNIPOLAR", value)
+            if abs(position - self._macros[index]) > STEP_TOLERANCE:
+                self._snap[index] = abs(value - round(value)) <= 127.0 * (
+                    STEP_TOLERANCE)
+            _component.Component.set_macro(
+                self, index, value, channel, note_id, sample_position)
+        except Exception:
+            self._snap = flags
+            raise
+
+    def program_change(self, index, channel=0, note_id=-1,
+                       sample_position=0):
+        """Apply patch `index`: every macro lands on a whole step."""
+        self._check_live()
+        flags = list(self._snap)
+        if (not isinstance(index, bool) and isinstance(index, int)
+                and type(self).PATCHES.get(index) is not None):
+            self._snap = [True] * len(flags)
+        try:
+            _component.Component.program_change(
+                self, index, channel, note_id, sample_position)
+        except Exception:
+            self._snap = flags
+            raise
 
     def _dry_level(self, mix):
         """The dry voice's level, min(1, 2 - Mix). At one channel unity is
@@ -439,23 +491,9 @@ class AirSpace(_component.Component):
         self._levels()
         if not self._wired:
             self._wire()
-        elif self._rejoin() and getattr(audiocore, "get_buffer", None) is None:
-            self._replay()
+        else:
+            self._rejoin()
         self._output = self._tail
-
-    def _replay(self):
-        """Play the voices again on a return from Mix 0 where
-        `audiocore.get_buffer` is compiled out (a board's own audiocore).
-
-        There the constructor's wiring primes the source's first block into
-        the voices, and a Mix 0 before the first pull leaves that block
-        held while the bypass plays on; without this, the return would play
-        it stale. Mid-stream no voice holds a block, and a re-play primes
-        the source's next block, which the next pull plays on time. Where
-        `get_buffer` exists the wiring is quiet and nothing is held."""
-        voices = self._mixer.voice
-        voices[0].play(self._split.tap(0))
-        voices[1].play(self._wet_source())
 
     def _wire(self):
         """Play the voices, the first time Mix is above 0.
@@ -463,22 +501,46 @@ class AirSpace(_component.Component):
         A voice's `play()` primes a block from its source. With the
         Splitter on `_hush` that block is zeros, and one pull of the mixer
         hands it out, so wiring takes nothing from the borrowed source and
-        leaves no voice holding a block. The graph is then emptied, so the
+        leaves no voice holding a block: whatever the adapter has handed
+        out, the output has played. The graph is then emptied, so the
         chamber's modulation and the tape start where a `reset()` leaves
-        them. Without `audiocore.get_buffer` the voices prime the source's
-        next block, which the next pull plays."""
-        pull = getattr(audiocore, "get_buffer", None)
+        them. The voices first play silence for one pull, which opens
+        their level gates where `audiocore.get_buffer` exists
+        (`_component.open_level_gates`)."""
         voices = self._mixer.voice
-        _component.open_level_gates(self._mixer, voices, self._silence)
-        if pull is None:
-            self._in.play(self._adapter)
+        for voice in voices:
+            voice.play(self._silence, loop=True)
+        self._pull()
         voices[0].play(self._split.tap(0))
         voices[1].play(self._wet_source())
+        self._pull()
+        self._in.play(self._adapter)
+        self._clear_nodes()
+        self._wired = True
+
+    def _pull(self):
+        """Pull one block from the mixer and drop it.
+
+        Where `audiocore.get_buffer` is compiled out (CircuitPython's
+        default board builds), a voice of a one-voice mixer of our own
+        plays `_tail` and stops: its `play()` primes one block, which pulls
+        the mixer once. `_tail` forwards no reset, so the play rewinds
+        nothing behind it."""
+        pull = getattr(audiocore, "get_buffer", None)
         if pull is not None:
             pull(self._mixer)
-            self._in.play(self._adapter)
-            self._clear_nodes()
-        self._wired = True
+            return
+        if self._puller is None:
+            # Nothing ever pulls this mixer, so its own buffers are the
+            # smallest that hold a frame.
+            self._puller = self._own(audiomixer.Mixer(
+                voice_count=1, buffer_size=16,
+                channel_count=self._channel_count, bits_per_sample=16,
+                samples_signed=True, sample_rate=self._sample_rate),
+                reset=False)
+        voice = self._puller.voice[0]
+        voice.play(self._tail)
+        voice.stop()
 
     def _clear_tape(self):
         """Empty the tape. The node then lands its read head on the next

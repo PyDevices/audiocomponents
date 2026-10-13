@@ -527,6 +527,16 @@ class T4HeardAsAChamber(unittest.TestCase):
                         t4_reading(AirSpace, rate, channels, 1, time_ms,
                                    feedback), 0.6)
 
+    def test_a_short_time_with_high_feedback_is_a_flutter(self):
+        # The card's Limits sentence, the other side of the cells above:
+        # at Time 20 to 60 ms and Feedback 0.85 the repeats keep their
+        # rhythm (the reading stays above 0.6) instead of dissolving into
+        # the chamber.
+        for time_ms in (20.0, 40.0, 60.0):
+            with self.subTest(time_ms=time_ms):
+                self.assertGreater(
+                    t4_reading(AirSpace, 48000, 2, 1, time_ms, 0.85), 0.6)
+
     def test_red_on_bare_repeats(self):
         self.assertGreater(t4_reading(plants.BareRepeats, 48000, 2, 1,
                                       200.0, 0.6), 0.6)
@@ -559,6 +569,113 @@ class T5TimeBendsThePitch(unittest.TestCase):
     def test_red_on_a_wire(self):
         self.assertLess(t5_bend_db(Wire, 48000, 2, 4000.0, 111.0, 222.0),
                         40.0)
+
+
+# --------------------------------------------------------------------------
+# The loop's filter (the Limits sentence on 6 dB per octave)
+
+
+def tape_feed(effect, data, rate, channels):
+    """Re-point the tape at `data`, so the tape alone can be read: the
+    chamber and the dry are out of the picture, and what is read is what
+    the class handed the tape."""
+    effect._fd.play(Feed(data, rate, channels))
+
+
+def tape_render(effect, frames):
+    out = array("h")
+    while len(out) < frames * effect.channel_count:
+        _, data = audiocore.get_buffer(effect._fd)
+        out.extend(array("h", bytes(data)))
+    return out[:frames * effect.channel_count]
+
+
+def loop_gain_db(hz, loop_top=1000.0, rate=48000, channels=2):
+    """What one lap of the loop does to a tone of `hz`, in dB: the third
+    repeat's level over the second's, whole periods, at Time 100 ms,
+    Feedback 0.85 and Loop Bass at its lowest. It is the Feedback and the
+    loop's filter at `hz`."""
+    time_frames = law_frames(100.0, rate)
+    on = law_frames(20.0, rate)
+    data = tone(hz, on, rate, channels, 20000.0) + array(
+        "h", bytes(2 * channels * 4 * time_frames))
+    effect = build(AirSpace, data, rate, channels, time_ms=100.0,
+                   feedback=0.85, drive=0.0, loop_top_hz=loop_top,
+                   loop_bass_hz=20.0)
+    tape_feed(effect, data, rate, channels)
+    x = mono(tape_render(effect, 4 * time_frames), channels)
+    effect.deinit()
+    period = int(round(rate / hz))
+    length = (480 // period) * period
+    levels = []
+    for repeat in (2, 3):
+        start = repeat * time_frames + 240
+        window = x[start:start + length]
+        levels.append(sum(v * v for v in window) / len(window))
+    return db_ratio(levels[1], levels[0])
+
+
+class TheLoopFilter(unittest.TestCase):
+
+    FREQS = (250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0)
+
+    def test_it_falls_6_db_per_octave(self):
+        # Two octaves above the corner a one-pole falls 12.3 dB, three
+        # 18.1: 5.8 dB between them; a two-pole falls 12.
+        gain = {hz: loop_gain_db(hz) for hz in (4000.0, 8000.0)}
+        octave = gain[4000.0] - gain[8000.0]
+        self.assertGreater(octave, 4.5)
+        self.assertLess(octave, 7.5)
+
+    def test_it_has_no_bell_and_no_presence_peak(self):
+        # The feedback alone is 20 log10 0.85 = -1.41 dB a lap; a bell or
+        # a presence boost would read above it, and the response never
+        # rises with frequency.
+        feedback_db = 20.0 * math.log10(0.85)
+        gains = [loop_gain_db(hz) for hz in self.FREQS]
+        for hz, gain in zip(self.FREQS, gains):
+            with self.subTest(hz=hz):
+                self.assertLessEqual(gain, feedback_db + 0.1)
+        for low, high in zip(gains, gains[1:]):
+            self.assertLessEqual(high, low + 0.1)
+
+    def test_the_top_cuts_is_steeper(self):
+        # The Top Cut is a biquad on the send: read alone, it falls faster
+        # per octave than the loop's one-pole does.
+        rate, channels = 48000, 2
+        levels = {}
+        for hz in (4000.0, 8000.0):
+            data = tone(hz, rate, rate, channels, 8000.0)
+            effect = build(AirSpace, data, rate, channels, top_cut_hz=1000.0)
+            effect._lp.play(Feed(data, rate, channels))
+            out = array("h")
+            while len(out) < rate * channels:
+                _, block = audiocore.get_buffer(effect._lp)
+                out.extend(array("h", bytes(block)))
+            x = mono(out, channels)[24000:24000 + 4800]
+            effect.deinit()
+            levels[hz] = sum(v * v for v in x) / len(x)
+        self.assertGreater(db_ratio(levels[4000.0], levels[8000.0]), 9.0)
+
+    def test_a_held_tone_comes_back_at_its_own_pitch(self):
+        # No wow: with Time held, the repeats are the tone, delayed. Their
+        # energy sits in the tone's bin, not in sidebands.
+        rate, channels = 48000, 2
+        data = tone(1000.0, 3 * rate, rate, channels, 8000.0)
+        effect = build(AirSpace, data, rate, channels, feedback=0.5,
+                       drive=0.0)
+        tape_feed(effect, data, rate, channels)
+        x = mono(tape_render(effect, 2 * rate + 4800), channels)
+        effect.deinit()
+        # Late enough that every repeat's onset has died away.
+        window = x[2 * rate:2 * rate + 4800]
+        w = 2.0 * math.pi * 1000.0 / rate
+        re = sum(v * math.cos(w * i) for i, v in enumerate(window))
+        im = sum(v * math.sin(w * i) for i, v in enumerate(window))
+        energy = sum(v * v for v in window)
+        self.assertGreater(energy, 0.0)
+        self.assertGreater(
+            2.0 * (re * re + im * im) / (len(window) * energy), 0.9999)
 
 
 # --------------------------------------------------------------------------
@@ -728,6 +845,52 @@ class TheSurface(unittest.TestCase):
             self.assertEqual(effect.macro(index), value)
         effect.deinit()
 
+    def test_a_constructor_value_on_a_defaults_step_plays_as_given(self):
+        # 112.08 ms is the grid step 68, which is also the step of the
+        # default 111 ms: it plays 112.08, not 111, until it is moved.
+        value = law_value(TIME_I, 68)
+        self.assertNotEqual(value, CARD_DEFAULTS[TIME_I])
+        effect = fresh(time_ms=value)
+        self.assertAlmostEqual(effect.macro(TIME_I), value, places=9)
+        self.assertEqual(effect._handed["delay_frames"],
+                         law_frames(value, 48000))
+        # A host echoing `get_macro` back does not move it.
+        effect.set_macro(TIME_I, effect.get_macro(TIME_I))
+        self.assertAlmostEqual(effect.macro(TIME_I), value, places=9)
+        # A whole step that arrives plays the default there: set_macro,
+        # a patch, and reset.
+        effect.set_macro(TIME_I, 70)
+        effect.set_macro(TIME_I, 68)
+        self.assertEqual(effect.macro(TIME_I), 111.0)
+        for arrive in (lambda: effect.program_change(0), effect.reset):
+            effect.set_macro(TIME_I, 67.5)
+            effect.set_macro(TIME_I, 68.5)
+            self.assertNotEqual(effect.macro(TIME_I), 111.0)
+            effect.set_macro(TIME_I, 70)
+            arrive()
+            self.assertEqual(effect.macro(TIME_I), 111.0)
+        effect.deinit()
+
+    def test_the_other_defaults_play_as_given_too(self):
+        for index in range(11):
+            if index == MIX_I:
+                continue
+            step = AirSpace.PATCHES[0][1][index]
+            value = law_value(index, step)
+            if value == CARD_DEFAULTS[index]:
+                continue
+            with self.subTest(index=index):
+                options = dict(zip(
+                    ("time_ms", "feedback", "glide_ms", "drive",
+                     "loop_top_hz", "loop_bass_hz", "top_cut_hz",
+                     "low_cut_hz", "decay", "damping_hz", "mix"),
+                    (value if i == index else CARD_DEFAULTS[i]
+                     for i in range(11))))
+                effect = fresh(**options)
+                self.assertAlmostEqual(effect.macro(index), value,
+                                       delta=abs(value) * 1e-12)
+                effect.deinit()
+
     def test_fixed_size_no_sync_and_mono_in_mono_out(self):
         self.assertNotIn("Size", AirSpace.MACRO_LABELS)
         self.assertEqual(AirSpace.CAPABILITIES, ())
@@ -750,13 +913,30 @@ class TheSurface(unittest.TestCase):
         self.assertFalse(any(out))
 
 
-def rail_run(cls, rate, channels, dbfs, patch=None, seconds=2.0):
-    """The longest run of frames at the rail, on a 50 Hz sine at `dbfs`
-    (the kit's ceiling material that rails first)."""
+def square(hz, frames, rate, channels, peak):
+    """A square at `peak`, its half period `rate / (2 hz)` frames."""
+    half = int(round(rate / (2.0 * hz)))
+    out = array("h", bytes(2 * frames * channels))
+    for n in range(frames):
+        v = int(round(peak)) if (n // half) % 2 == 0 else -int(round(peak))
+        for c in range(channels):
+            out[n * channels + c] = v
+    return out
+
+
+def rail_run(cls, rate, channels, dbfs, patch=None, seconds=2.0,
+             macros=(), **options):
+    """The longest run of frames at the rail, on a 100 Hz square at `dbfs`
+    (the material the kit's ceiling check rails first on, here at Mix 1,
+    where the dry and the chamber are both at unity). `macros` is a tuple of
+    (index, MIDI) taken after the patch."""
     frames = int(seconds * rate)
     peak = 32767.0 * 10.0 ** (dbfs / 20.0)
-    data = tone(50.0, frames, rate, channels, peak)
-    effect = build(cls, data, rate, channels, patch)
+    data = square(100.0, frames, rate, channels, peak)
+    effect = build(cls, data, rate, channels, patch, **options)
+    effect.set_macro(MIX_I, 64)
+    for index, midi in macros:
+        effect.set_macro(index, midi)
     out = render(effect, frames)
     effect.deinit()
     if not any(out[-rate * channels:]):
@@ -773,15 +953,34 @@ def rail_run(cls, rate, channels, dbfs, patch=None, seconds=2.0):
 
 class TheInputCeiling(unittest.TestCase):
 
-    def test_minus_6_dbfs_reaches_no_rail(self):
-        self.assertEqual(AirSpace.INPUT_CEILING_DBFS, -6.0)
+    def test_the_ceiling_is_minus_12_dbfs(self):
+        self.assertEqual(AirSpace.INPUT_CEILING_DBFS, -12.0)
+
+    def test_minus_12_dbfs_reaches_no_rail_at_mix_1_on_every_patch(self):
+        ceiling = AirSpace.INPUT_CEILING_DBFS
         for rate, channels in ((48000, 2), (22050, 1)):
             for patch in sorted(AirSpace.PATCHES):
                 with self.subTest(rate=rate, channels=channels, patch=patch):
                     self.assertLessEqual(
-                        rail_run(AirSpace, rate, channels, -6.0, patch), 8)
+                        rail_run(AirSpace, rate, channels, ceiling, patch), 8)
 
-    def test_full_scale_does(self):
+    def test_minus_12_dbfs_reaches_no_rail_with_each_macro_at_its_stops(self):
+        ceiling = AirSpace.INPUT_CEILING_DBFS
+        for index in range(11):
+            if index == MIX_I:
+                continue
+            for midi in (0, 127):
+                with self.subTest(macro=index, midi=midi):
+                    self.assertLessEqual(
+                        rail_run(AirSpace, 48000, 2, ceiling,
+                                 macros=((index, midi),)), 8)
+
+    def test_a_hotter_input_does(self):
+        # The old ceiling: at Mix 1 with Feedback 0.85 a -6 dBFS square
+        # rails, and so does full scale on the defaults.
+        self.assertGreater(
+            rail_run(AirSpace, 48000, 2, -6.0,
+                     macros=((FEEDBACK_I, 127),)), 8)
         self.assertGreater(rail_run(AirSpace, 48000, 2, 0.0), 8)
 
 
@@ -909,23 +1108,83 @@ def moves_render(data, rate, channels, pulls, actions, hidden):
     return out
 
 
-class WithoutGetBuffer(unittest.TestCase):
-    """A board's own audiocore has no `get_buffer`, so the voices prime
-    the source's first block at construction instead of a block of zeros
-    (the class's `_wire` and `_replay`)."""
+#: The scenarios the two wirings must render alike, by name: a pull index
+#: maps to what the host does before that pull.
+SCENARIOS = {
+    "mix 0 before the first pull, reset at 4": {
+        0: lambda e: e.set_macro(MIX_I, 0), 4: lambda e: e.reset()},
+    "reset before the first pull": {0: lambda e: e.reset()},
+    "reset twice before the first pull": {
+        0: lambda e: (e.reset(), e.reset())},
+    "mix 0 before the first pull, patch 1 at 4": {
+        0: lambda e: e.set_macro(MIX_I, 0),
+        4: lambda e: e.program_change(1)},
+    "mix 0 before the first pull, back at 4": {
+        0: lambda e: e.set_macro(MIX_I, 0),
+        4: lambda e: e.set_macro(MIX_I, 22)},
+    "mix 0 and back mid-stream": {
+        10: lambda e: e.set_macro(MIX_I, 0),
+        14: lambda e: e.set_macro(MIX_I, 22)},
+    "reset twice mid-stream": {10: lambda e: (e.reset(), e.reset())},
+    "untouched": {},
+}
 
-    def test_mix_zero_and_back_mid_stream_renders_the_same(self):
+#: sha1 of `moves_render` at 48 kHz stereo, 40 pulls, LCG noise at 4000 rms
+#: seed 11, with `get_buffer` present, per scenario in the order above:
+#: what the class rendered before `_replay` was taken out (07bf68a).
+GET_BUFFER_RENDERS = (
+    "c80ffad8df5fe4a5ae16ec41c51517575377f23c",
+    "2b4ab24f79b4dfd68f815bdff5f0e5b7e152e055",
+    "2b4ab24f79b4dfd68f815bdff5f0e5b7e152e055",
+    "7e03a853d8fddfa0fbc4b9f7efe034611c2fadd9",
+    "c80ffad8df5fe4a5ae16ec41c51517575377f23c",
+    "bc5deee2233815d6a61d8db1db2700ac1f5b5676",
+    "ae7ef874a87e15d9bbc1d6800aaa48015969c45e",
+    "2b4ab24f79b4dfd68f815bdff5f0e5b7e152e055",
+)
+
+
+class WithoutGetBuffer(unittest.TestCase):
+    """A board's own audiocore has no `get_buffer`, and the class then
+    pulls its mixer through a one-voice mixer of its own (`_pull`): wired
+    either way, no voice holds a block, and the renders are the same bytes."""
+
+    def noise(self, rate, channels):
+        return lcg_noise(rate, channels, 4000.0, 11)
+
+    def test_every_scenario_renders_the_same_bytes(self):
+        rate = 48000
+        for channels in (2, 1):
+            data = self.noise(rate, channels)
+            for name, actions in SCENARIOS.items():
+                with self.subTest(channels=channels, scenario=name):
+                    want = moves_render(data, rate, channels, 40, actions,
+                                        False)
+                    got = moves_render(data, rate, channels, 40, actions,
+                                       True)
+                    self.assertEqual(got, want)
+
+    def test_a_single_block_before_the_first_pull_renders_the_same_bytes(
+            self):
+        rate = 48000
+        for channels in (2, 1):
+            data = burst(BLOCK, rate, channels, 8000.0, 12)
+            for name in list(SCENARIOS)[:5]:
+                with self.subTest(channels=channels, scenario=name):
+                    actions = SCENARIOS[name]
+                    want = moves_render(data, rate, channels, 40, actions,
+                                        False)
+                    got = moves_render(data, rate, channels, 40, actions,
+                                       True)
+                    self.assertEqual(got, want)
+
+    def test_mix_zero_and_back_mid_stream_from_the_first_block(self):
         rate, channels = 48000, 2
-        data = lcg_noise(rate, channels, 4000.0, 11)
-        actions = {10: lambda e: e.set_macro(MIX_I, 0),
-                   14: lambda e: e.set_macro(MIX_I, 22)}
+        data = self.noise(rate, channels)
+        actions = SCENARIOS["mix 0 and back mid-stream"]
         want = moves_render(data, rate, channels, 120, actions, False)
         got = moves_render(data, rate, channels, 120, actions, True)
-        # The first block differs by design: without `get_buffer` the level
-        # gates cannot be opened ahead (`open_level_gates`), so the voices
-        # wait for the first zero crossing, as upstream's do.
-        skip = BLOCK * channels
-        self.assertEqual(got[skip:], want[skip:])
+        self.assertEqual(got, want)
 
     def test_no_stale_block_after_mix_zero_before_the_first_pull(self):
         rate, channels = 48000, 2
@@ -935,18 +1194,30 @@ class WithoutGetBuffer(unittest.TestCase):
         out = moves_render(data, rate, channels, 60, actions, True)
         self.assertFalse(any(out[4 * BLOCK * channels:]))
 
-    def test_red_without_the_replay(self):
+    def test_with_get_buffer_the_renders_are_unchanged(self):
+        import hashlib
         rate, channels = 48000, 2
-        data = burst(BLOCK, rate, channels, 8000.0, 12)
-        actions = {0: lambda e: e.set_macro(MIX_I, 0),
-                   4: lambda e: e.set_macro(MIX_I, 22)}
-        replay = AirSpace._replay
-        AirSpace._replay = lambda self: None
-        try:
-            out = moves_render(data, rate, channels, 60, actions, True)
-        finally:
-            AirSpace._replay = replay
-        self.assertTrue(any(out[4 * BLOCK * channels:]))
+        data = self.noise(rate, channels)
+        for (name, actions), want in zip(SCENARIOS.items(),
+                                         GET_BUFFER_RENDERS):
+            with self.subTest(scenario=name):
+                out = moves_render(data, rate, channels, 40, actions, False)
+                self.assertEqual(hashlib.sha1(bytes(out)).hexdigest(), want)
+
+    def test_red_when_the_wiring_pulls_nothing(self):
+        class NoPull(AirSpace):
+            def _pull(self):
+                pass
+
+        rate, channels = 48000, 2
+        data = self.noise(rate, channels)
+        actions = SCENARIOS["mix 0 before the first pull, back at 4"]
+        want = moves_render(data, rate, channels, 40, actions, False)
+        with HiddenGetBuffer():
+            effect = build(NoPull, data, rate, channels)
+            got = render(effect, 40 * BLOCK, actions)
+        effect.deinit()
+        self.assertNotEqual(got, want)
 
 
 # --------------------------------------------------------------------------
@@ -994,10 +1265,15 @@ CLAIMS = (
      "takes, so it sets how far they bend: 12 % at the default of 4 s.",
      ("TheSurface.test_the_glide_law",
       "T5TimeBendsThePitch.test_the_bend_both_ways_at_every_glide")),
-    ("Keep your input at or under -6 dBFS: the dry is at unity and the "
-     "chamber adds to it, so a hotter input can reach the rail.",
-     ("TheInputCeiling.test_minus_6_dbfs_reaches_no_rail",
-      "TheInputCeiling.test_full_scale_does")),
+    ("Keep your input at or under -12 dBFS: at Mix 1 the dry and the "
+     "chamber are both at unity and add, so a hotter input can reach the "
+     "rail.",
+     ("TheInputCeiling.test_the_ceiling_is_minus_12_dbfs",
+      "TheInputCeiling.test_minus_12_dbfs_reaches_no_rail_at_mix_1_on_every_"
+      "patch",
+      "TheInputCeiling.test_minus_12_dbfs_reaches_no_rail_with_each_macro_at_"
+      "its_stops",
+      "TheInputCeiling.test_a_hotter_input_does")),
     ("Latency is zero.", "TheSurface.test_latency_is_zero"),
     ("`reset()` empties the tape and the chamber and restores patch 0, "
      "whose Time of 111 ms lands at once instead of gliding.",
@@ -1022,6 +1298,15 @@ CLAIMS = (
      "the stretch comes with Feedback above about 0.6 or a long Time.",
      ("T3FeedbackLengthensTheTail.test_the_default_adds_only_a_little",
       "T3FeedbackLengthensTheTail.test_the_bars")),
+    ("At a short Time with high Feedback the repeats are heard as a flutter, "
+     "not a longer chamber.",
+     "T4HeardAsAChamber.test_a_short_time_with_high_feedback_is_a_flutter"),
+    ("The loop's filters are gentle, 6 dB per octave, and the Top Cut's is "
+     "steeper: there is no loop bell, no presence EQ and no wow.",
+     ("TheLoopFilter.test_it_falls_6_db_per_octave",
+      "TheLoopFilter.test_the_top_cuts_is_steeper",
+      "TheLoopFilter.test_it_has_no_bell_and_no_presence_peak",
+      "TheLoopFilter.test_a_held_tone_comes_back_at_its_own_pitch")),
     ("There is always at least 20 ms between the dry and the chamber.",
      ("TheSurface.test_at_least_20_ms_before_the_chamber",
       "T1DryIsUntouched.test_the_times_and_the_hardest_settings")),
