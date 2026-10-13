@@ -62,19 +62,23 @@ DECLARED = {
 # -10.3 dBFS reaches the rail at unison or an octave up, and comes within
 # 4 dB of it at an octave down or a fourth or fifth either way"), and
 # test_feedback_near_its_top_stacks_level_far_past_the_input holds it at each
-# Pitch named. The square, sine and DC cells there, at every rate and channel
-# count.
-for _material in ("square", "sine", "dc"):
+# Pitch named. Every material (the square, sine and DC, and the squares at
+# the wider periods) and each combination that puts Feedback at 127 (alone,
+# with the levels at 127, and with every macro at 127), at every rate and
+# channel count; the cells with Feedback below its top stay live.
+for _material in ("square", "sine", "dc", "sq41", "sq55", "sq82", "sq110",
+                  "sq147"):
     for _rate in RATES:
         for _channels in CHANNELS:
-            DECLARED[("PitchShifter", "ceiling", "%s/%d/%d/m4=127" % (
-                _material, _rate, _channels))] = (
-                "Feedback 0.95 stacks repeats on the dry, up to 21 times the"
-                " input's peak: the class docstring says Feedback stacks"
-                " level far past the input, a -10.3 dBFS noise burst"
-                " reaching the rail at Feedback 127, Delay 0 and Mix 2"
-                " (test_feedback_near_its_top_stacks_level_far_past_the_"
-                "input)")
+            for _cell in ("m4=127", "lv=127+m4=127", "all=127"):
+                DECLARED[("PitchShifter", "ceiling", "%s/%d/%d/%s" % (
+                    _material, _rate, _channels, _cell))] = (
+                    "Feedback 0.95 stacks repeats on the dry, up to 21"
+                    " times the input's peak: the class docstring says"
+                    " Feedback stacks level far past the input, a -10.3"
+                    " dBFS noise burst reaching the rail at Feedback 127,"
+                    " Delay 0 and Mix 2 (test_feedback_near_its_top_stacks_"
+                    "level_far_past_the_input)")
 
 CPYTHON = sys.implementation.name == "cpython"
 

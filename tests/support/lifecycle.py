@@ -144,6 +144,90 @@ DECLARED = {
         " pull changes the Mixer levels and is re-armed, and CircuitPython's"
         " PitchShift keeps its positions (28 of the 32 cells; the four that"
         " start at patch 2 are ok)",
+    ("PitchShifter", "E12-p1", "P4", "circuitpython"):
+        "CircuitPython only: patch 1 before the first pull moves the interval"
+        " or the Mixer levels, so the shifter is primed again (a level move"
+        " re-arms the graph) after the constructor primed it at the old"
+        " ratio, and CircuitPython's own PitchShift keeps its read position"
+        " through a clear, so it sits off the splice phase of an instance"
+        " built at the setting; patch 4 and the defaults, which change"
+        " neither, match, and CPython and MicroPython are ok (ruled a"
+        " CircuitPython-own difference)",
+    ("PitchShifter", "E12-p1", "PF", "circuitpython"):
+        "CircuitPython only: the first block carries the same splice-phase"
+        " difference as P4 (the shifter is primed again and CircuitPython's own"
+        " PitchShift keeps its positions); which rates show it in the first"
+        " block depends on where the phase lands",
+    ("PitchShifter", "E12-p2", "P4", "circuitpython"):
+        "CircuitPython only: patch 2 before the first pull moves the interval"
+        " or the Mixer levels, so the shifter is primed again (a level move"
+        " re-arms the graph) after the constructor primed it at the old"
+        " ratio, and CircuitPython's own PitchShift keeps its read position"
+        " through a clear, so it sits off the splice phase of an instance"
+        " built at the setting; patch 4 and the defaults, which change"
+        " neither, match, and CPython and MicroPython are ok (ruled a"
+        " CircuitPython-own difference)",
+    ("PitchShifter", "E12-p2", "PF", "circuitpython"):
+        "CircuitPython only: the first block carries the same splice-phase"
+        " difference as P4 (the shifter is primed again and CircuitPython's own"
+        " PitchShift keeps its positions); which rates show it in the first"
+        " block depends on where the phase lands",
+    ("PitchShifter", "E12-p3", "P4", "circuitpython"):
+        "CircuitPython only: patch 3 before the first pull moves the interval"
+        " or the Mixer levels, so the shifter is primed again (a level move"
+        " re-arms the graph) after the constructor primed it at the old"
+        " ratio, and CircuitPython's own PitchShift keeps its read position"
+        " through a clear, so it sits off the splice phase of an instance"
+        " built at the setting; patch 4 and the defaults, which change"
+        " neither, match, and CPython and MicroPython are ok (ruled a"
+        " CircuitPython-own difference)",
+    ("PitchShifter", "E12-p3", "PF", "circuitpython"):
+        "CircuitPython only: the first block carries the same splice-phase"
+        " difference as P4 (the shifter is primed again and CircuitPython's own"
+        " PitchShift keeps its positions); which rates show it in the first"
+        " block depends on where the phase lands",
+    ("PitchShifter", "E12-p5", "P4", "circuitpython"):
+        "CircuitPython only: patch 5 before the first pull moves the interval"
+        " or the Mixer levels, so the shifter is primed again (a level move"
+        " re-arms the graph) after the constructor primed it at the old"
+        " ratio, and CircuitPython's own PitchShift keeps its read position"
+        " through a clear, so it sits off the splice phase of an instance"
+        " built at the setting; patch 4 and the defaults, which change"
+        " neither, match, and CPython and MicroPython are ok (ruled a"
+        " CircuitPython-own difference)",
+    ("PitchShifter", "E12-p5", "PF", "circuitpython"):
+        "CircuitPython only: the first block carries the same splice-phase"
+        " difference as P4 (the shifter is primed again and CircuitPython's own"
+        " PitchShift keeps its positions); which rates show it in the first"
+        " block depends on where the phase lands",
+    ("PitchShifter", "E12-p6", "P4", "circuitpython"):
+        "CircuitPython only: patch 6 before the first pull moves the interval"
+        " or the Mixer levels, so the shifter is primed again (a level move"
+        " re-arms the graph) after the constructor primed it at the old"
+        " ratio, and CircuitPython's own PitchShift keeps its read position"
+        " through a clear, so it sits off the splice phase of an instance"
+        " built at the setting; patch 4 and the defaults, which change"
+        " neither, match, and CPython and MicroPython are ok (ruled a"
+        " CircuitPython-own difference)",
+    ("PitchShifter", "E12-p6", "PF", "circuitpython"):
+        "CircuitPython only: the first block carries the same splice-phase"
+        " difference as P4 (the shifter is primed again and CircuitPython's own"
+        " PitchShift keeps its positions); which rates show it in the first"
+        " block depends on where the phase lands",
+    ("PitchShifter", "E12-mix127", "P4", "circuitpython"):
+        "CircuitPython only: Mix 127 before the first pull moves the interval"
+        " or the Mixer levels, so the shifter is primed again (a level move"
+        " re-arms the graph) after the constructor primed it at the old"
+        " ratio, and CircuitPython's own PitchShift keeps its read position"
+        " through a clear, so it sits off the splice phase of an instance"
+        " built at the setting; patch 4 and the defaults, which change"
+        " neither, match, and CPython and MicroPython are ok (ruled a"
+        " CircuitPython-own difference)",
+    ("PitchShifter", "E12-mix127", "PF", "circuitpython"):
+        "CircuitPython only: the first block carries the same splice-phase"
+        " difference as P4 (the shifter is primed again and CircuitPython's own"
+        " PitchShift keeps its positions); which rates show it in the first"
+        " block depends on where the phase lands",
     ("PitchShifter", "E4-m2=", "P5"):
         "family limit, disclosed (audiocomponents#117): a control that jumps"
         " makes the output step (Mix)",
@@ -449,7 +533,12 @@ SKIP = {
 #: excused only here, never in DECLARED: a class NAME -> the free-running
 #: phase that keeps it from matching a fresh instance, named (an LFO, a
 #: wow table). A red PR cell of a class named here prints `decl`.
-FREE_PHASE = {}
+FREE_PHASE = {
+    "PitchShifter": "the splice phase of CircuitPython's own PitchShift,"
+                    " which a clear does not restart: a reset or a return"
+                    " from Mix 0 leaves it where it was, and a fresh"
+                    " instance starts at 0 (CPython and MicroPython match)",
+}
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")
 
