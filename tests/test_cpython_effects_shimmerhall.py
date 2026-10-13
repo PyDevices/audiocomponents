@@ -75,9 +75,11 @@ def law_frames(ms, rate):
 
 
 def law_bloom(ms):
-    """Bloom on its 0-127 grid: 20 to 800 ms, log."""
-    step = int(math.log(ms / 20.0) / math.log(40.0) * 127.0 + 0.5)
-    return 20.0 * 40.0 ** (step / 127.0)
+    """The Bloom a constructor value plays: exactly the ms it was given.
+    The constructor keeps a value off the 0-127 grid as the knob's own
+    position, between steps, so 200 ms plays 200.00 ms and not the 198.42
+    of the nearest step; only a MIDI move lands on a step."""
+    return ms
 
 
 def law_rise(rise):
@@ -342,7 +344,8 @@ def t2_read(cls, rate, character, interval, seed):
     """The energy-weighted mean shift of d = (Shimmer 1) - (Shimmer 0), in
     semitones, over the 500 ms from Bloom."""
     f0, offset = seed_set(seed)
-    bloom = law_bloom(275.0)
+    # The card's patch-0 Bloom, which a default-built instance plays.
+    bloom = 20.0 * 40.0 ** (90.0 / 127.0)
     start = law_frames(bloom, rate) + offset
     span = law_frames(500.0, rate)
     frames = start + span
@@ -879,6 +882,136 @@ class TheSurface(TestCase):
             self.assertGreater(max(abs(x) for x in ringing), 20, character)
             self.assertEqual(max(abs(x) for x in after), 0, character)
 
+    # -- the dry's level from frame 0: a reset, a return from Mix 0, a
+    # Mix move before the first pull ------------------------------------
+
+    def _dc(self, rate, channels, blocks):
+        return array("h", [6000] * (blocks * BLOCK * channels))
+
+    def _same_as_fresh(self, build, moves, fresh_from, fresh_options,
+                       blocks=14, name=""):
+        """Render `build` with `moves`, and a fresh instance built with
+        `fresh_options` fed the DC from block `fresh_from` on; the two must
+        agree byte for byte from there."""
+        for rate, channels in ((48000, 2), (22050, 1)):
+            values = self._dc(rate, channels, blocks)
+            feed = kc.feed(values, rate, channels)
+            e = build(feed.port)
+            try:
+                out = kc.samples(kc.render(e, blocks * BLOCK, moves))
+            finally:
+                e.deinit()
+            start = fresh_from * BLOCK * channels
+            want = render(ShimmerHall, values[start:], rate, channels,
+                          (blocks - fresh_from) * BLOCK, **fresh_options)
+            got = out[start:]
+            differ = [n for n in range(len(want) // channels)
+                      if got[n * channels:(n + 1) * channels]
+                      != want[n * channels:(n + 1) * channels]]
+            self.assertEqual(differ[:3], [], (name, rate, channels,
+                                              len(differ)))
+
+    def test_a_reset_from_mix_2_plays_the_dry_from_frame_0(self):
+        self._same_as_fresh(
+            lambda port: ShimmerHall(port, mix=2.0),
+            {6: lambda e: e.reset()}, 6, {}, name="reset from Mix 2")
+
+    def test_a_reset_before_the_first_pull_plays_the_dry_from_frame_0(self):
+        self._same_as_fresh(
+            lambda port: ShimmerHall(port, mix=2.0),
+            {0: lambda e: e.reset()}, 0, {}, name="reset before a pull")
+
+    def test_a_return_from_mix_0_plays_the_dry_from_frame_0(self):
+        self._same_as_fresh(
+            ShimmerHall,
+            {2: lambda e: e.set_macro(MIX_I, 0),
+             6: lambda e: e.set_macro(MIX_I, 127)}, 6, dict(mix=2.0),
+            name="Mix 0 then 127")
+
+    def test_a_mix_move_before_the_first_pull_plays_the_dry_from_frame_0(
+            self):
+        self._same_as_fresh(
+            ShimmerHall, {0: lambda e: e.set_macro(MIX_I, 127)}, 0,
+            dict(mix=2.0), name="Mix 127 before the first pull")
+        self._same_as_fresh(
+            ShimmerHall, {0: lambda e: e.program_change(1)}, 0,
+            dict(patch=1), name="patch 1 before the first pull")
+
+    def test_a_reset_from_rise_plays_as_a_new_instance(self):
+        self._same_as_fresh(
+            lambda port: ShimmerHall(port, character="rise", mix=2.0),
+            {6: lambda e: e.reset()}, 6, {}, name="reset from Rise")
+
+    def test_only_a_move_that_changes_a_voice_level_re_arms(self):
+        # Before the output is first taken a move that changes a Mixer
+        # level re-arms the graph, once; a move that leaves both levels
+        # alone does not. After it is taken, or after a reset, none does.
+        def counted(e):
+            count = [0]
+            rearm = e._rearm
+
+            def wrapped():
+                count[0] += 1
+                rearm()
+            e._rearm = wrapped
+            return count
+        for name, move, rearms in (
+                ("shimmer", lambda e: e.set_macro(SHIMMER_I, 127), 0),
+                ("interval", lambda e: e.set_macro(INTERVAL_I, 0), 0),
+                ("patch 2", lambda e: e.program_change(2), 1),
+                ("mix 127", lambda e: e.set_macro(MIX_I, 127), 1)):
+            e = ShimmerHall(_port())
+            try:
+                count = counted(e)
+                move(e)
+                move(e)
+            finally:
+                e.deinit()
+            self.assertEqual(count[0], rearms, name)
+        e = ShimmerHall(_port(), mix=2.0)
+        try:
+            count = counted(e)
+            e.output
+            e.program_change(2)
+            e.set_macro(MIX_I, 127)
+            self.assertEqual(count[0], 0, "taken")
+            e.reset()
+            self.assertEqual(count[0], 1, "the reset itself")
+            e.set_macro(MIX_I, 127)
+            e.program_change(2)
+            self.assertEqual(count[0], 1, "after a reset")
+        finally:
+            e.deinit()
+
+    def test_an_output_taken_before_mix_moves_plays_the_old_level_at_first(
+            self):
+        # The limit the docstring discloses: a host that takes the output
+        # before it moves Mix or loads a patch hears the first block (256
+        # frames) at the old level, and nothing after it.
+        for rate, channels in ((48000, 2), (22050, 1)):
+            blocks = 14
+            values = self._dc(rate, channels, blocks)
+            for name, options, move, fresh in (
+                    ("Mix 127", {}, lambda e: e.set_macro(MIX_I, 127),
+                     dict(mix=2.0)),
+                    ("patch 0 from Mix 2", dict(mix=2.0),
+                     lambda e: e.program_change(0), {})):
+                e = ShimmerHall(kc.feed(values, rate, channels).port,
+                                **options)
+                try:
+                    e.output
+                    move(e)
+                    got = kc.samples(kc.render(e, blocks * BLOCK))
+                finally:
+                    e.deinit()
+                want = render(ShimmerHall, values, rate, channels,
+                              blocks * BLOCK, **fresh)
+                differ = [n for n in range(blocks * BLOCK)
+                          if got[n * channels:(n + 1) * channels]
+                          != want[n * channels:(n + 1) * channels]]
+                self.assertTrue(differ, (name, rate, channels))
+                self.assertLess(max(differ), BLOCK, (name, rate, channels))
+
     def test_the_input_ceiling(self):
         # Every level at the top, a steady 100 Hz square: clean at -24
         # dBFS, on the rail at -12.
@@ -1104,6 +1237,10 @@ CLAIMS = (
     ("A control that jumps makes the output step: move it in small steps "
      "from the host if you need it smooth.",
      "DECLARED:ShimmerHall,E6-,P5"),
+    ("If your host takes the output before it loads a patch or moves Mix, "
+     "the first 256 frames, 5 ms at 48 kHz, play at the old level.",
+     ("test_an_output_taken_before_mix_moves_plays_the_old_level_at_first",
+      "test_only_a_move_that_changes_a_voice_level_re_arms")),
     ("Interval is a fixed shift in semitones, with no key awareness.",
      "test_interval_has_five_zones"),
     ("A value outside a macro's span clamps to the nearer stop, and NaN "

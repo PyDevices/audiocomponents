@@ -42,7 +42,9 @@ Falling Octaves.
 
 A control that jumps makes the output step: move it in small steps from the
 host if you need it smooth. Moving Character or Size empties the hall: the
-tail drops and the dry carries on.
+tail drops and the dry carries on. If your host takes the output before it
+loads a patch or moves Mix, the first 256 frames, 5 ms at 48 kHz, play at the
+old level.
 
 Interval is a fixed shift in semitones, with no key awareness. Both
 shifters splice, so the shifted copy has a slight flutter. At a lower
@@ -319,6 +321,15 @@ class ShimmerHall(_component.Component):
         self._ready = False
         #: True once the voices have been played (`_wire`).
         self._wired = False
+        #: Whether the host has asked for the output yet. Until it has,
+        #: nothing has been pulled, and a control that moves a voice's level
+        #: re-arms the graph so the level holds from frame 0. A reset or a
+        #: return from Mix 0 does not start that window again: the class
+        #: cannot see a pull, and a host that keeps the node it took would
+        #: have every later level move empty the hall.
+        self._taken = False
+        #: The two Mixer levels last handed to the voices.
+        self._applied = None
         #: True while the wet chain is Rise's.
         self._rise = None
         #: What each node was last handed, by name.
@@ -535,11 +546,17 @@ class ShimmerHall(_component.Component):
             self._clear_nodes(only=(self._shift, self._fd, self._hall))
         self._route()
 
-    def _levels(self):
+    def _level_pair(self):
+        """The dry and the hall's Mixer levels at this Mix."""
         mix = self._mix()
+        return (min(1.0, 2.0 - mix), min(1.0, mix))
+
+    def _levels(self):
         voices = self._mixer.voice
-        voices[0].level = min(1.0, 2.0 - mix)
-        voices[1].level = min(1.0, mix)
+        pair = self._level_pair()
+        voices[0].level = pair[0]
+        voices[1].level = pair[1]
+        self._applied = pair
 
     def _route(self):
         """Point the output at the source's reader at Mix 0, or at the
@@ -549,10 +566,50 @@ class ShimmerHall(_component.Component):
             return
         if not self._wired:
             self._wire()
+        elif self._rejoin():
+            self._rearm()
+        elif not self._taken and self._level_pair() != self._applied:
+            # Not pulled yet: a level moved now would wait for its voice's
+            # next zero crossing, a block of the old level, where an
+            # instance built at this setting plays the new one from frame 0.
+            # A move that leaves both levels alone has nothing to wait for.
+            self._rearm()
         else:
             self._levels()
-            self._rejoin()
         self._output = self._tail
+
+    @property
+    def output(self):
+        """The node the host plays. Asking for it is the host's first step
+        to pulling, so from here a level that moves is an ordinary move."""
+        self._check_live()
+        self._taken = True
+        return self._output
+
+    def reset(self):
+        """Empty the hall, the line and the shifter, return to patch 0, and
+        play from there as a new instance does."""
+        wired = self._wired
+        _component.Component.reset(self)
+        if not wired:
+            return
+        if self._mix() > 0.0:
+            self._rearm()
+        else:
+            # A rack's put-back can restore Mix 0: the output is the
+            # source's reader, and the graph behind it waits to be armed
+            # when Mix comes back up, as it does in a new instance.
+            self._stranded = True
+
+    def _rearm(self):
+        """Wire the graph again as the constructor does, once it has been
+        cleared: a voice's new level is picked up at its next zero crossing
+        unless the voice is played again, so a graph that is cleared while
+        a level changes would otherwise carry the old level into the first
+        frames. The input goes back to silence first, so no frame is taken
+        from the borrowed source."""
+        self._in.play(self._hush)
+        self._wire()
 
     def _wire(self):
         """Play the voices, the first time the output reaches the mixer.
@@ -575,6 +632,9 @@ class ShimmerHall(_component.Component):
         self._in.play(self._head)
         self._clear_nodes(only=(self._shift, self._fd, self._hall))
         self._wired = True
+        # A control touched at Mix 0 before the first wiring marked the
+        # graph stranded; wiring is what that mark waits for.
+        self._stranded = False
 
     def _pull(self):
         """Pull one block from the mixer and drop it. `_tail` forwards no
