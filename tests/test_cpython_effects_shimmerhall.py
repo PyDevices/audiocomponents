@@ -545,7 +545,162 @@ def t6_read(cls, rate, channels, patch, seed):
     return worst, loud
 
 
-T6_PATCHES = (0, 4)
+T6_PATCHES = (0, 4, 6)
+
+
+# --------------------------------------------------------------------------
+# F: the climb's highest octaves fold back past Nyquist, and the splice
+# can cancel the shifted line itself
+
+
+def fold_chain(f0, semitones, rate, count=8):
+    """Where the loop's passes land: (the in-band lines of the series, the
+    lines each later pass folds down to). A pass that reads past Nyquist
+    comes back reflected into the band, and the passes after it are shifted
+    from there. Lines within 2 % of a harmonic (1 to 6) of an in-band line
+    are dropped from the folds (2 %): the splice's own harmonics sit there."""
+    ratio = 2.0 ** (semitones / 12.0)
+    nyquist = 0.5 * rate
+    series = []
+    folds = []
+    over = False
+    x = f0
+    for _ in range(count):
+        x *= ratio
+        if x >= nyquist:
+            over = True
+        if over:
+            x = x % rate
+            if x > nyquist:
+                x = rate - x
+            folds.append(x)
+        else:
+            series.append(x)
+    kept = []
+    for hz in folds:
+        near = False
+        for line in series:
+            for n in range(1, 7):
+                if abs(hz - n * line) < 0.02 * n * line:
+                    near = True
+        if not near and hz > 30.0:
+            kept.append(hz)
+    return series, kept
+
+
+def fold_peak(values, hz, rate, start, stop, spread=0.0, step=0.0015):
+    """The peak band power near `hz` over frames `start` to `stop`: Hann
+    frames of 4096 frames at 48 kHz and 2048 at 22.05 kHz, a probe every
+    `step` of `hz` out to `spread` of it either side. A pass that folds
+    comes back a little off the line the arithmetic gives (the loop's read
+    is not exactly the interval, and the fold multiplies the error), so the
+    line is looked for, not read."""
+    size = 4096 if rate >= 44100 else 2048
+    window = hann(size)
+    best = 0.0
+    count = int(spread / step + 0.5)
+    stop = min(stop, len(values))
+    for j in range(-count, count + 1):
+        probe = hz * (1.0 + j * step)
+        for at in range(start, stop - size + 1, size // 2):
+            best = max(best, goertzel(values, at, size, probe, rate, window))
+    return best
+
+
+def fold_read(cls, rate, f0, offset, lines=1, **options):
+    """(each fold line's level in dB against the loudest line of the first
+    pass, the lines in Hz) of the shimmer alone: Shimmer 1 less Shimmer 0 at
+    Mix 2 with the shortest hall, so each pass is heard on its own. The
+    first `lines` lines of `fold_chain`, looked for from the pass that first
+    reads past Nyquist on."""
+    options = dict(options, mix=2.0, decay=0.3, size=0.5)
+    bloom = options["bloom_ms"]
+    frames = law_frames(100.0 + 9 * bloom + 400.0, rate) + offset
+    channels = card_channels(rate)
+    one = wet(cls, rate, channels, f0, offset, frames, shimmer=1.0, **options)
+    none = wet(cls, rate, channels, f0, offset, frames, shimmer=0.0,
+               **options)
+    only = [one[n] - none[n] for n in range(frames)]
+    series, folds = fold_chain(f0, options["interval"], rate)
+    folds = folds[:lines]
+    # The first pass is the loudest; the loop's short window moves it by up
+    # to 3.5 semitones, so it is looked for across a quarter-tone grid.
+    gap = law_frames(bloom, rate)
+    loudest = max(fold_peak(only, series[0] * 2.0 ** (q / 48.0), rate,
+                            offset, offset + 2 * gap)
+                  for q in range(-8, 9))
+    start = offset + law_frames((len(series) + 1) * bloom - 50.0, rate)
+    rel = [db(fold_peak(only, hz, rate, start, frames, 0.03)) - db(loudest)
+           for hz in folds]
+    return rel, folds
+
+
+#: Slow Rise's settings less Shimmer and Mix, which a read sets itself.
+def fold_shipped(patch):
+    options = patch_options(ShimmerHall, patch)
+    del options["shimmer"], options["mix"]
+    return options
+
+
+#: What the docstring names: Rise near the top with Damping high, and the
+#: widest interval.
+FOLD_EDGES = (
+    ("Rise 0.9, Damping 16 kHz", dict(rise=0.9, damping_hz=16000.0)),
+    ("+24", dict(interval=24)),
+)
+
+#: (rate, f0) cells, offset 41, where a pass folds clear of the series and
+#: of the splice's harmonics.
+FOLD_CELLS = ((48000, 240.0), (22050, 185.0))
+
+#: A fold line is loud when it stands within 30 dB of the loudest line of
+#: the first pass; the climb is clean when every fold line stays more than
+#: 40 dB under it.
+FOLD_LOUD = -30.0
+FOLD_CLEAN = -40.0
+
+
+#: Held notes in Rise at +12: G3 is one the splice cancels the shifted line
+#: of; E3 is one it does not.
+SPLICE_G3 = 196.0
+SPLICE_E3 = 165.0
+
+
+
+
+def splice_read(cls, rate, f0, character="rise"):
+    """The share of the shimmer's energy within half a semitone of the
+    note an interval above f0, for a note held 0.5 s."""
+    channels = card_channels(rate)
+    length = rate
+    values = array("h", bytes(2 * length * channels))
+    w = 2.0 * math.pi * f0 / rate
+    for n in range(1000, 1000 + rate // 2):
+        v = rint(3000.0 * math.sin(w * n))
+        for c in range(channels):
+            values[n * channels + c] = v
+    outs = []
+    for shimmer in (1.0, 0.0):
+        outs.append(left(render(
+            cls, values, rate, channels, length, character=character,
+            bloom_ms=200.0, shimmer=shimmer, rise=0.0, mix=2.0, interval=12,
+            decay=0.3, size=0.5, damping_hz=16000.0), channels))
+    shimmer = [outs[0][n] - outs[1][n] for n in range(length)]
+    start = law_frames(300.0, rate)
+    size = law_frames(300.0, rate)
+    window = hann(size)
+    # A probe every eighth of a semitone, out to a whole octave either way.
+    target = 2.0 * f0
+    near = total = 0.0
+    for q in range(-96, 97):
+        hz = target * 2.0 ** (q / 96.0)
+        if hz < 20.0 or hz >= 0.5 * rate:
+            continue
+        power = goertzel(shimmer, start, size, hz, rate, window)
+        total += power
+        if abs(q) <= 4:
+            near += power
+    return near / total
 
 
 # --------------------------------------------------------------------------
@@ -634,9 +789,11 @@ class TheSurface(TestCase):
                          ("audioroute", "audioecho", "audioverb"))
         self.assertEqual(ShimmerHall.CAPABILITIES, ())
         self.assertEqual(ShimmerHall.LATENCY_SAMPLES, 0)
-        self.assertEqual([ShimmerHall.PATCHES[i][0] for i in range(6)],
+        self.assertEqual([ShimmerHall.PATCHES[i][0] for i in range(7)],
                          ["Octave Bloom", "Short Stagger", "Fifth Halo",
-                          "Slow Rise", "Rise Damped", "Falling Octaves"])
+                          "Slow Rise", "Rise Damped", "Falling Octaves",
+                          "Octave Bloom - lean"])
+        self.assertEqual(sorted(ShimmerHall.PATCHES), list(range(7)))
 
     def test_the_spans(self):
         e = ShimmerHall(_port())
@@ -1211,6 +1368,112 @@ class T6TheDry(TestCase):
         self.assertGreater(worst, 1000)
 
 
+class TheEdges(TestCase):
+    def test_the_highest_octaves_fold_back_at_the_edges(self):
+        # The same note and the same patch but for the edge: a fold line
+        # stands within 30 dB of the first pass at Rise 0.9 with Damping at
+        # 16 kHz, and at +24, and stays under -40 dB at Slow Rise's and
+        # Rise Damped's own settings.
+        for rate, f0 in FOLD_CELLS:
+            for patch in (3, 4):
+                rel, folds = fold_read(ShimmerHall, rate, f0, 41,
+                                       **fold_shipped(patch))
+                self.assertTrue(folds, (rate, f0, patch))
+                self.assertLess(max(rel), FOLD_CLEAN, (rate, f0, patch, rel))
+            for name, edge in FOLD_EDGES:
+                options = dict(fold_shipped(3), **edge)
+                rel, folds = fold_read(ShimmerHall, rate, f0, 41, **options)
+                self.assertTrue(folds, (rate, f0, name))
+                self.assertGreater(max(rel), FOLD_LOUD,
+                                   (rate, f0, name, rel, folds))
+
+    def test_the_fold_chain_is_the_arithmetic(self):
+        # +12 from 240 Hz at 48 kHz stays in band to 15360, then 30720
+        # reflects to 17280; +24 from 240 Hz: 960, 3840, 15360, then 61440
+        # less 48000.
+        series, folds = fold_chain(240.0, 12, 48000, 8)
+        self.assertEqual([round(x) for x in series],
+                         [480, 960, 1920, 3840, 7680, 15360])
+        self.assertEqual(round(fold_chain(240.0, 24, 48000)[0][-1]), 15360)
+        self.assertEqual(round(fold_chain(240.0, 24, 48000)[1][0]), 13440)
+        self.assertEqual(fold_chain(240.0, -12, 48000)[1], [])
+
+    def test_a_held_note_can_land_beside_the_octave(self):
+        for rate in RATES:
+            beside = splice_read(ShimmerHall, rate, SPLICE_G3)
+            self.assertLess(beside, 0.10, (rate, "G3", beside))
+            on = splice_read(ShimmerHall, rate, SPLICE_E3)
+            self.assertGreater(on, 0.90, (rate, "E3", on))
+
+
+def lean_levels(rate, f0, offset, patch):
+    """(the first pass's loudest line, and the lines a second and a third
+    octave would stand on from their own passes, in dB against it) of the
+    shimmer alone at
+    `patch`, with the shortest hall."""
+    options = fold_shipped(patch)
+    options.update(mix=2.0, decay=0.3, size=0.5)
+    bloom = options["bloom_ms"]
+    frames = law_frames(100.0 + 6 * bloom + 400.0, rate) + offset
+    channels = card_channels(rate)
+    one = wet(ShimmerHall, rate, channels, f0, offset, frames, shimmer=1.0,
+              **options)
+    none = wet(ShimmerHall, rate, channels, f0, offset, frames, shimmer=0.0,
+               **options)
+    only = [one[n] - none[n] for n in range(frames)]
+    # Each octave is looked for from the pass that would carry it on: the
+    # first pass's own harmonics stand on the second octave, but earlier.
+    gap = law_frames(bloom, rate)
+    levels = []
+    for octave in (1, 2, 3):
+        start = offset + (octave - 1) * gap + (
+            0 if octave == 1 else gap - law_frames(50.0, rate))
+        levels.append(max(fold_peak(only, f0 * 2.0 ** (octave + q / 48.0),
+                                    rate, start, frames)
+                          for q in range(-8, 9)))
+    return [db(x) - db(levels[0]) for x in levels]
+
+
+class TheLeanPatch(TestCase):
+    def test_the_lean_patch_is_patch_0_in_rise_at_rise_0(self):
+        steps = list(ShimmerHall.PATCHES[0][1])
+        steps[CHARACTER_I] = 127
+        steps[RISE_I] = 0
+        self.assertEqual(ShimmerHall.PATCHES[6][1], tuple(steps))
+        self.assertEqual(ShimmerHall.PATCHES[6][0], "Octave Bloom - lean")
+        e = ShimmerHall(_port(), patch=6)
+        try:
+            self.assertEqual(e.macro(CHARACTER_I), 1.0)
+            self.assertEqual(e.macro(RISE_I), 0.0)
+            self.assertEqual(e.macro(INTERVAL_I), 12.0)
+        finally:
+            e.deinit()
+
+    def test_the_lean_patch_is_one_octave_once(self):
+        # Rise 0.9 climbs: the second and the third octave are in the
+        # shimmer within 30 dB of the first. At the lean patch only the
+        # first is there, and the others stand more than 40 dB under it.
+        for rate, f0 in ((48000, 247.0), (22050, 220.0)):
+            lean = lean_levels(rate, f0, 13, 6)
+            self.assertLess(max(lean[1:]), -40.0, (rate, lean))
+        climbing = lean_levels(48000, 247.0, 13, 3)
+        self.assertGreater(climbing[1], -30.0, climbing)
+
+    def test_the_lean_hall_starts_at_once(self):
+        # Patch 0 holds the whole hall for Bloom (273 ms); the lean patch
+        # plays the dry into it at once.
+        for rate in RATES:
+            channels = card_channels(rate)
+            frames = law_frames(150.0, rate)
+            heard = []
+            for patch in (0, 6):
+                out = wet(ShimmerHall, rate, channels, 247.0, 0, frames,
+                          **patch_options(ShimmerHall, patch, mix=2.0))
+                heard.append(max(abs(x) for x in out))
+            self.assertEqual(heard[0], 0, (rate, heard))
+            self.assertGreater(heard[1], 100, (rate, heard))
+
+
 #: Every claim sentence of the class docstring and the test that holds it.
 CLAIMS = (
     ("`ShimmerHall` - a hall that rings an octave above what you play.",
@@ -1290,8 +1553,24 @@ CLAIMS = (
      "the first 256 frames, 5 ms at 48 kHz, play at the old level.",
      ("test_an_output_taken_before_mix_moves_plays_the_old_level_at_first",
       "test_only_a_move_that_changes_a_voice_level_re_arms")),
+    ("The patches: Octave Bloom (the defaults), Short Stagger, Fifth Halo, "
+     "Slow Rise, Rise Damped, Falling Octaves, Octave Bloom - lean.",
+     "test_macros_patches_tier_latency"),
+    ("Octave Bloom - lean is Rise at Rise 0, for an S3: one octave, once, "
+     "and the hall starts at once.",
+     ("test_the_lean_patch_is_patch_0_in_rise_at_rise_0",
+      "test_the_lean_patch_is_one_octave_once",
+      "test_the_lean_hall_starts_at_once")),
     ("Interval is a fixed shift in semitones, with no key awareness.",
      "test_interval_has_five_zones"),
+    ("In Rise, on some held notes the shimmer lands beside the octave "
+     "rather than on it: a held G3 at +12 is one.",
+     "test_a_held_note_can_land_beside_the_octave"),
+    ("With Damping high and Rise near the top, or at the widest intervals, "
+     "the highest octaves fold back down as tones outside the series; keep "
+     "Damping lower for a clean climb.",
+     ("test_the_highest_octaves_fold_back_at_the_edges",
+      "test_the_fold_chain_is_the_arithmetic")),
     ("A value outside a macro's span clamps to the nearer stop, and NaN "
      "takes the default; an `interval` other than the five raises "
      "`ValueError`.", "test_the_constructor"),
@@ -1303,6 +1582,8 @@ CLAIMS = (
 
 
 def figures(which=("T1", "T2", "T3", "T4", "T5", "T6", "L")):
+    # "F" (the fold-back and splice rows) is asked for by name: it renders
+    # a few hundred seconds of audio.
     """Print each trait's numbers over every cell the card names, eight
     seed sets each: the evidence pack's rows."""
     name = sys.implementation.name
@@ -1392,6 +1673,32 @@ def figures(which=("T1", "T2", "T3", "T4", "T5", "T6", "L")):
         plant = t6_read(LateDry, 48000, 2, 0, 1)[0]
         print("%s|T6|runs %d|worst %d LSB|loudest %d|plant %d LSB" % (
             name, runs, worst, loud, plant))
+    if "F" in which:
+        for patch in (3, 4, 6):
+            options = fold_shipped(patch)
+            for rate in RATES:
+                worst = -999.0
+                for seed in SEEDS:
+                    f0, offset = seed_set(seed)
+                    rel, _folds = fold_read(ShimmerHall, rate, f0, offset,
+                                            lines=3, **options)
+                    for level in rel:
+                        worst = max(worst, level)
+                print("%s|F|patch %d %s|%d|worst fold line %.1f dB over "
+                      "%d notes|bar %.0f" % (
+                          name, patch, ShimmerHall.PATCHES[patch][0], rate,
+                          worst, len(SEEDS), FOLD_LOUD))
+        for rate, f0 in FOLD_CELLS:
+            for label, edge in FOLD_EDGES:
+                rel, _folds = fold_read(
+                    ShimmerHall, rate, f0, 41, **dict(fold_shipped(3), **edge))
+                print("%s|F|edge %s|%d|f0 %g|fold line %.1f dB|bar %.0f" % (
+                    name, label, rate, f0, max(rel), FOLD_LOUD))
+        for rate in RATES:
+            print("%s|F|splice|%d|G3 %.0f %%|E3 %.0f %%" % (
+                name, rate,
+                100.0 * splice_read(ShimmerHall, rate, SPLICE_G3),
+                100.0 * splice_read(ShimmerHall, rate, SPLICE_E3)))
     if "L" in which:
         for rate in (48000, 44100):
             for channels in (2, 1):
@@ -1419,6 +1726,6 @@ if __name__ == "__main__":
         # By name, not as __main__: a plant reads VENDOR from the module
         # that defines it, and natively __main__ is not one it can find.
         import test_cpython_effects_shimmerhall as module
-        picked = [a for a in sys.argv[1:] if a[:1] in ("T", "L")]
+        picked = [a for a in sys.argv[1:] if a[:1] in ("T", "L", "F")]
         module.figures(tuple(picked)
                        or ("T1", "T2", "T3", "T4", "T5", "T6", "L"))

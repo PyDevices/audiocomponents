@@ -36,7 +36,8 @@ hall to the rail.
 your input stops: 82 s at Rise 0.9 and Bloom 800 ms. `reset()` empties the
 hall, the line and the shifter, and restores patch 0. The patches: Octave
 Bloom (the defaults), Short Stagger, Fifth Halo, Slow Rise, Rise Damped,
-Falling Octaves.
+Falling Octaves, Octave Bloom - lean. Octave Bloom - lean is Rise at Rise 0,
+for an S3: one octave, once, and the hall starts at once.
 
 **Limits**
 
@@ -47,9 +48,12 @@ loads a patch or moves Mix, the first 256 frames, 5 ms at 48 kHz, play at the
 old level.
 
 Interval is a fixed shift in semitones, with no key awareness. Both
-shifters splice, so the shifted copy has a slight flutter. At a lower
-sample rate the band ends lower, so the climb reaches the top of it sooner.
-A mono source gets a mono rack. It needs a board with PSRAM.
+shifters splice, so the shifted copy has a slight flutter. In Rise, on some
+held notes the shimmer lands beside the octave rather than on it: a held G3
+at +12 is one. With Damping high and Rise near the top, or at the widest
+intervals, the highest octaves fold back down as tones outside the series;
+keep Damping lower for a clean climb. A mono source gets a mono rack. It
+needs a board with PSRAM.
 
 When your source ends, the tail rings out as it would on silence. On a
 CircuitPython board, stop the rack from the host if your source can run
@@ -279,6 +283,9 @@ class ShimmerHall(_component.Component):
         3: ("Slow Rise", (127, 89, 85, 103, 96, 108, 89, 102, 38)),
         4: ("Rise Damped", (127, 102, 113, 87, 96, 94, 64, 51, 32)),
         5: ("Falling Octaves", (127, 89, 85, 93, 0, 102, 64, 76, 32)),
+        # Patch 0 in Rise at Rise 0: the S3's fallback if Bloom's line and
+        # second shifter do not fit its memory.
+        6: ("Octave Bloom - lean", (127, 89, 0, 90, 96, 94, 64, 91, 32)),
     }
 
     def _build(self, character="bloom", shimmer=SHIMMER, rise=RISE,
