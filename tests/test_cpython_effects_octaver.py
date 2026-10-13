@@ -367,24 +367,30 @@ def t4_split(cls, rate, channels, name, tones_open):
     return level_db(y, f / 4.0, rate) - level_db(y, 0.75 * f, rate)
 
 
-def t4_decay(cls, rate, name, tones_open):
-    """Octave 2's f/4 over its f/2, per 16/f window, on a sine decaying
-    -6 to -86 dBFS over 4 s at Sensitivity -90 dBFS, over every window
-    that ends before Octave 1's last sound (after the first two)."""
+def t4_decay(cls, rate, name, tones_open, sens=0):
+    """Octave 2's f/4 over the larger of its f/2 and its 3f/4, per 16/f
+    window, on a sine decaying -6 to -86 dBFS over 4 s at the Sensitivity
+    step `sens`, over every window that ends before Octave 1's last sound
+    (after the first two). Under f/2 it is passing Octave 1 on; under 3f/4
+    it has turned into a fourth below the note."""
     f = NOTES[name]
     n = 4 * rate
     x = [16384.0 * 10.0 ** (-80.0 * i / n / 20.0)
          * math.sin(2.0 * math.pi * f * i / rate) for i in range(n)]
     values = pcm(x)
     tones = OPEN if tones_open else ()
-    sens = ((SENS, 0),)
-    oct1 = render(cls, values, rate, 1, macros=ONLY1 + tones + sens)
-    oct2 = render(cls, values, rate, 1, macros=ONLY2 + tones + sens)
+    knob = ((SENS, sens),)
+    oct1 = render(cls, values, rate, 1, macros=ONLY1 + tones + knob)
+    oct2 = render(cls, values, rate, 1, macros=ONLY2 + tones + knob)
     last = max(i for i in range(len(oct1)) if oct1[i])
     width = int(round(16.0 * rate / f))
-    return [level_db(oct2[k * width:(k + 1) * width], f / 4.0, rate)
-            - level_db(oct2[k * width:(k + 1) * width], f / 2.0, rate)
-            for k in range(2, last // width)]
+    splits = []
+    for k in range(2, last // width):
+        part = oct2[k * width:(k + 1) * width]
+        under = level_db(part, f / 4.0, rate)
+        splits.append(under - max(level_db(part, f / 2.0, rate),
+                                  level_db(part, 0.75 * f, rate)))
+    return splits
 
 
 def t5_margin(y, f, rate):
@@ -526,26 +532,29 @@ class OneBinCurve(Octaver):
 class FourthBelow(Octaver):
     """T4: Octave 2 as `SubOctave(order=2)` on the all-passed dry."""
 
-    def _signal_leg(self, tap):
-        node = Octaver._signal_leg(self, tap)
-        fan = self._own(audioroute.Splitter(node, taps=2), reset=False)
-        self._fan = fan
-        return fan.tap(0)
-
-    def _second(self, tap):
+    def _second(self, signal, tick):
+        self._spare = tick
         return self._own(audiomath.SubOctave(
-            self._fan.tap(1), order=2, mix=1.0,
-            sample_rate=self._sample_rate,
+            signal, order=2, mix=1.0, sample_rate=self._sample_rate,
             channel_count=self._channel_count))
 
 
-class DefaultThreshold(Octaver):
-    """T4: Octave 2's divider at `SubOctave`'s default threshold, 0.01
-    (-40 dBFS), whatever Sensitivity says: under it the divider stops
-    counting and passes Octave 1's f/2."""
+class ToneClocked(Octaver):
+    """T4: Octave 2 as a divider on Octave 1's output after Tone 1,
+    counting down to Sensitivity, as the class was first built (then
+    through Tone 1 again, which the clean graph has there): on a
+    decaying note it also counts the near-zero junctions where the
+    multiplication's humps meet, and turns into a fourth below."""
 
-    def _threshold2(self, sensitivity_db):
-        return 0.01
+    def _second(self, signal, tick):
+        self._spare = (signal, tick)
+        fan = self._own(audioroute.Splitter(self._tone1, taps=2),
+                        reset=False)
+        self._octave1 = fan.tap(0)
+        return self._own(audiomath.SubOctave(
+            fan.tap(1), order=1, mix=1.0, threshold=10.0 ** (-80.0 / 20.0),
+            sample_rate=self._sample_rate,
+            channel_count=self._channel_count))
 
 
 class ClockWire(Octaver):
@@ -589,7 +598,7 @@ KIT_PLANTS = {
     "T3-wire": WireOctave,
     "T3-bin": OneBinCurve,
     "T4": (FourthBelow, 1),
-    "T4-thresh": (DefaultThreshold, 1),
+    "T4-tone1": (ToneClocked, 1),
     "T5": ClockWire,
     "T6": DoubleTone,
 }
@@ -743,18 +752,21 @@ class T4SecondOctave(TestCase):
         self.assertLess(t4_split(FourthBelow, 48000, 1, "E2", True), 6.0)
 
     def test_two_octaves_down_as_the_note_dies(self):
-        """A decaying sine: f/4 stays 6 dB over f/2 until Octave 1 stops."""
+        """A decaying sine: f/4 stays 6 dB over f/2 and over 3f/4 until
+        Octave 1 stops, at Sensitivity -90 and -65 dBFS."""
         for rate in RATES:
-            for name in ("E2", "A2"):
+            for name in self.NAMES:
                 for tones_open in (True, False):
-                    splits = t4_decay(Octaver, rate, name, tones_open)
-                    self.assertGreater(len(splits), 4)
-                    self.assertGreaterEqual(min(splits), 6.0,
-                                            (rate, name, tones_open,
-                                             splits))
+                    for sens in (0, 64):
+                        splits = t4_decay(Octaver, rate, name, tones_open,
+                                          sens)
+                        self.assertGreater(len(splits), 4)
+                        self.assertGreaterEqual(
+                            min(splits), 6.0,
+                            (rate, name, tones_open, sens, splits))
 
-    def test_the_default_threshold_is_red(self):
-        splits = t4_decay(DefaultThreshold, 48000, "A2", False)
+    def test_a_divider_on_tone_1_is_red(self):
+        splits = t4_decay(ToneClocked, 48000, "B3", True, 64)
         self.assertLess(min(splits), 6.0, splits)
 
 
@@ -928,41 +940,78 @@ class TheSurface(TestCase):
 
     def test_the_wire_keeps_every_frame(self):
         """Into the wire and back on a source whose buffers are not the
-        class's 256 frames: every source frame comes out once, on time.
-        Into it before the first pull, the voices' primed block is
-        skipped, and nothing else: the rest comes out once, in order, and
-        that block never plays late. The octave voices are held at 0
-        (`DryVoice`), so the output is the source throughout."""
+        class's 256 frames, from the first pull or mid-stream: every
+        source frame comes out once, on time. The octave voices are held at
+        0 (`DryVoice`), so the output is the source throughout."""
         import lifecycle
         rate = 48000
         for channels in (1, 2):
             values = self._material(rate, channels)
-            fsize = 2 * channels
             raw = bytes(values)
             for kind in ("100", "256", "300", "1000", "raw"):
-                feed = lifecycle.Feed(values, rate, channels, kind,
-                                      loop=False)
-                e = DryVoice(feed.port, sample_rate=rate)
-                out = kc.render(e, BLOCK * 20)
-                e.set_macro(OCT1, 0)
-                out += kc.render(e, BLOCK * 10)
-                e.set_macro(OCT1, 89)
-                out += kc.render(e, BLOCK * 30)
-                e.deinit()
-                self.assertEqual(out, raw[:len(out)], (channels, kind))
-                # Into the wire before anything was pulled: one block on.
-                feed = lifecycle.Feed(values, rate, channels, kind,
-                                      loop=False)
-                e = DryVoice(feed.port, sample_rate=rate)
-                e.set_macro(OCT1, 0)
-                out = kc.render(e, BLOCK * 10)
-                e.set_macro(OCT1, 89)
-                out += kc.render(e, BLOCK * 10)
-                e.deinit()
-                skip = BLOCK * fsize
-                self.assertEqual(out, raw[skip:skip + len(out)],
-                                 (channels, kind))
-                self.assertEqual(len(out), BLOCK * 20 * fsize)
+                for steps in (("p20", 0, "p10", 89, "p30"),
+                              (0, "p10", 89, "p10")):
+                    out = self._dry_run(lifecycle, values, rate, channels,
+                                        kind, steps)
+                    self.assertEqual(out, raw[:len(out)],
+                                     (channels, kind, steps))
+
+    #: Moves into the wire and back, resets, before the first pull and in
+    #: one gap between two pulls: "pN" pulls N blocks, a number sets
+    #: Octave 1 (0 is the wire).
+    SKIPS = (
+        (0, "p10"),
+        (0, "reset", 0, "p10"),
+        ("reset", "p10"),
+        ("p4", 0, "p4", 89, 0, 89, 0, "p6"),
+        (0, "p4", 89, 0, 89, 0, 89, 0, "p6"),
+        ("p4", 0, "p4", "reset", 0, "p6"),
+        (0, "p4", 89, 0, "p4", 89, 0, "p4", 89, "p4", 0, "p6"),
+        ("p4", "reset", "reset", "p6"),
+    )
+
+    def test_the_wire_never_skips(self):
+        """Every move in `SKIPS`, with `audiocore.get_buffer` and without
+        it (as on a CircuitPython board build): the output is the source,
+        every frame once and in order."""
+        import lifecycle
+        rate = 48000
+        for channels in (2, 1):
+            values = self._material(rate, channels)
+            raw = bytes(values)
+            for hide in (False, True):
+                for steps in self.SKIPS:
+                    out = self._dry_run(lifecycle, values, rate, channels,
+                                        "256", steps, hide)
+                    self.assertEqual(out, raw[:len(out)],
+                                     (channels, hide, steps))
+
+    def _dry_run(self, lifecycle, values, rate, channels, kind, steps,
+                 hide=False):
+        import types
+        from audioeffects import _component
+        module = sys.modules[Octaver.__module__]
+        real = module.audiocore
+        fake = types.ModuleType("audiocore")
+        for name in dir(real):
+            if name != "get_buffer" or not hide:
+                setattr(fake, name, getattr(real, name))
+        feed = lifecycle.Feed(values, rate, channels, kind, loop=False)
+        out = b""
+        module.audiocore = _component.audiocore = fake
+        try:
+            e = DryVoice(feed.port, sample_rate=rate)
+            for step in steps:
+                if step == "reset":
+                    e.reset()
+                elif isinstance(step, str):
+                    out += kc.render(e, BLOCK * int(step[1:]))
+                else:
+                    e.set_macro(OCT1, step)
+            e.deinit()
+        finally:
+            module.audiocore = _component.audiocore = real
+        return out
 
     def test_no_latency(self):
         for rate in (48000, 44100, 22050):
@@ -1081,7 +1130,7 @@ class TheSurface(TestCase):
                 y = render(Octaver, values, rate, 1, patch=patch,
                            macros=knobs)
                 worst = max(worst, max(abs(v) for v in y) / float(amp))
-        self.assertTrue(4.1 <= worst <= 4.3, worst)
+        self.assertTrue(3.7 <= worst <= 3.8, worst)
         self.assertLessEqual(worst * 10.0 ** (
             Octaver.INPUT_CEILING_DBFS / 20.0), 1.0)
 
@@ -1154,7 +1203,7 @@ CLAIMS = (
      "or stereo: after the clock's low-pass its fundamental is under "
      "Sensitivity.",
      "T5Range.test_a_weak_fundamental_can_drop_out_at_a4"),
-    ("The output can peak at about 4.2 times the input (a square, all "
+    ("The output can peak at about 3.8 times the input (a square, all "
      "three levels at full with the Tones open), so keep the input under "
      "-13 dBFS.",
      "TheSurface.test_the_peak_gain"),
@@ -1164,10 +1213,8 @@ CLAIMS = (
     ("With both octaves at 0 and Direct at 1 the output is the input, byte "
      "for byte, however the host's buffers are cut.",
      ("TheSurface.test_the_wire_is_the_input",
-      "TheSurface.test_the_wire_keeps_every_frame")),
-    ("Reaching that setting before the first block after an octave comes "
-     "in skips that one block of 256 frames.",
-     "TheSurface.test_the_wire_keeps_every_frame"),
+      "TheSurface.test_the_wire_keeps_every_frame",
+      "TheSurface.test_the_wire_never_skips")),
     ("There is no latency.", "TheSurface.test_no_latency"),
     ("`tail_samples` covers the all-pass and the two Tone filters ringing "
      "down.",

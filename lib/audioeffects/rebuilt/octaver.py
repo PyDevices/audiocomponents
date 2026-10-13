@@ -126,7 +126,7 @@ class Octaver(_component.Component):
     A stereo source is clocked on its mid: with the right channel 45
     degrees ahead of the left, the fifth sits 3.2 dB under the octave
     instead of 4.4, on both channels.
-    The output can peak at about 4.2 times the input (a square, all three
+    The output can peak at about 3.8 times the input (a square, all three
     levels at full with the Tones open), so keep the input under -13 dBFS.
     A control that jumps makes the output step: move it in small steps
     from the host if you need it smooth.
@@ -134,8 +134,6 @@ class Octaver(_component.Component):
     **Wire, latency, tail.** With both octaves at 0 and Direct at 1 the
     output is the input, byte for byte, however the host's buffers are
     cut.
-    Reaching that setting before the first block after an octave comes in
-    skips that one block of 256 frames.
     There is no latency.
     `tail_samples` covers the all-pass and the two Tone filters ringing
     down.
@@ -156,7 +154,7 @@ class Octaver(_component.Component):
     TAIL_SAMPLES = None
 
     #: The worst peak gain over the kit's material, every patch and every
-    #: stop, is 4.24 (a square, all three levels at full with the Tones
+    #: stop, is 3.75 (a square, all three levels at full with the Tones
     #: open): -13 dBFS keeps it inside full scale.
     INPUT_CEILING_DBFS = -13.0
 
@@ -213,43 +211,65 @@ class Octaver(_component.Component):
             reset=False)
         self._adapter.play(self._source)
 
-        # One Splitter, three legs: the dry voice, the signal the octave is
-        # made of, and the clock that says when to turn it over. The clock
-        # and the signal are kept apart because `SubOctave` clocks on what
-        # it divides, so a tracking filter in front of it would darken the
-        # octave too (12 dB from E2 to G3, measured on the card's probes).
-        split = self._own(audioroute.Splitter(self._adapter, taps=3),
+        # The graph reads the adapter through a Port. While the voices are
+        # armed it plays a MidSide with no source instead, one block of
+        # zeros per pull, which the arming pull drops (`_arm`): arming
+        # takes nothing from the source, so no voice ever holds a block the
+        # wire would skip.
+        self._hush = self._own(audioroute.MidSide(
+            width=1.0, sample_rate=rate, channel_count=channels),
+            reset=False)
+        self._in = self._own(audioroute.Port(self._hush), reset=False)
+
+        # One Splitter, three legs: the dry voice, the signal the octaves
+        # are made of, and the clock that says when to turn it over. The
+        # clock and the signal are kept apart because `SubOctave` clocks on
+        # what it divides, so a tracking filter in front of it would darken
+        # the octave too (12 dB from E2 to G3, measured on the card's
+        # probes).
+        split = self._own(audioroute.Splitter(self._in, taps=3),
                           reset=False)
         self._dry = split.tap(0)
         self._allpass = None
         self._clock = []
-        signal = self._signal_leg(split.tap(1))
-        square = self._clock_leg(split.tap(2))
-        self._product = self._octave(signal, square)
-        self._tone1 = self._own(audiobiquad.Biquad(
-            mode=audiobiquad.LOW_PASS, frequency=324.0, Q=TONE_Q, mix=1.0,
-            sample_rate=rate, channel_count=channels))
-        self._tone1.play(self._product)
+        signal = self._own(audioroute.Splitter(
+            self._signal_leg(split.tap(1)), taps=2), reset=False)
+        ticks = self._own(audioroute.Splitter(
+            self._clock_leg(split.tap(2)), taps=2), reset=False)
+        self._divider = self._first(ticks.tap(0))
+        self._product = self._octave(signal.tap(0), self._divider)
+        self._tone1 = self._tone(self._product, 324.0)
+        self._octave1 = self._tone1
 
-        # Octave 2 divides Octave 1's filtered output, on that signal's own
-        # crossings, as the pedal's second stage does.
-        split2 = self._own(audioroute.Splitter(self._tone1, taps=2),
-                           reset=False)
-        self._octave1 = split2.tap(0)
-        self._divider2 = self._second(split2.tap(1))
-        self._tone2 = self._own(audiobiquad.Biquad(
-            mode=audiobiquad.LOW_PASS, frequency=70.3, Q=TONE_Q, mix=1.0,
-            sample_rate=rate, channel_count=channels))
-        self._tone2.play(self._divider2)
+        # Octave 2 is the pedal's second flip-flop, clocked by the first:
+        # the signal times a square at a quarter of the note, made from the
+        # same comparator, so it turns over on the crossings Octave 1 does.
+        # Divided on Octave 1's own waveform instead, the divider also
+        # counted the near-zero junctions where the multiplication's humps
+        # meet, and on a decaying note it turned into a fourth below.
+        self._product2 = self._second(signal.tap(1), ticks.tap(1))
+        self._tone1b = self._tone(self._product2, 324.0)
+        self._tone2 = self._tone(self._tone1b, 70.3)
 
-        # Not reset: the voices keep the source frames they have taken, and
+        # Not reset: no voice holds a block between two pulls (`_arm`), and
         # a Mixer reset is no reset of anything this class holds. A Mixer
         # renders half its buffer per pull, so BLOCK frames take four bytes
         # a sample: with half that, every other pull left a voice holding
         # half a block, which a move into the wire then skipped.
         self._mixer = self._own(audiomixer.Mixer(
             voice_count=3, **self._pcm(BLOCK * channels * 4)), reset=False)
-        self._output = self._mixer
+        # The mixer's output: a width-1 MidSide, byte for byte, whose reset
+        # forwards nothing. A host's reset of the output (a mixer voice's
+        # `play()` does one) would otherwise reach the Mixer, and
+        # CircuitPython's own Mixer drops its voices' blocks on one.
+        self._tail = self._own(audioroute.MidSide(
+            self._mixer, width=1.0, sample_rate=rate,
+            channel_count=channels), reset=False)
+        #: Where `audiocore.get_buffer` is compiled out, the one-voice
+        #: mixer `_pull` primes from `_tail`; built the first time it is
+        #: needed.
+        self._puller = None
+        self._output = self._tail
 
         self._init_macros(tuple(
             _component.macro_value(self._MACRO_RANGES[i], grid[i] / 127.0)
@@ -305,9 +325,9 @@ class Octaver(_component.Component):
         return mid
 
     def _clock_leg(self, tap):
-        """Low-pass at Tracking, a comparator with a dead band, and a
-        divider that hands out a +-1 square at half the note (zero while the
-        comparator reads zero)."""
+        """Low-pass at Tracking and a comparator with a dead band: a
+        +-rail square at the note, zero while the clock is under
+        Sensitivity."""
         clock = self._mid(tap)
         for _ in range(2):
             section = self._own(audiobiquad.Biquad(
@@ -323,11 +343,20 @@ class Octaver(_component.Component):
             oversample=1, mix=1.0, pre_gain=self._pre_gain(DEFAULTS[SENS_I]),
             post_gain=1.0))
         self._comparator.play(clock)
-        self._divider = self._own(audiomath.SubOctave(
-            self._comparator, order=1, mix=1.0, threshold=CLOCK_THRESHOLD,
+        return self._comparator
+
+    def _divide(self, tap, order):
+        """A divider on the comparator: a +-1 square at a half (order 1)
+        or a quarter (order 2) of the note, zero while the comparator
+        reads zero. Both orders count the same crossings, so the quarter
+        turns over only where the half does."""
+        return self._own(audiomath.SubOctave(
+            tap, order=order, mix=1.0, threshold=CLOCK_THRESHOLD,
             hold_ms=CLOCK_HOLD_MS, sample_rate=self._sample_rate,
             channel_count=self._channel_count))
-        return self._divider
+
+    def _first(self, tap):
+        return self._divide(tap, 1)
 
     def _curve(self):
         return comparator_curve()
@@ -337,24 +366,26 @@ class Octaver(_component.Component):
 
     def _octave(self, signal, square):
         """The signal times the square: every other cycle turned over."""
+        return self._multiply(signal, square)
+
+    def _multiply(self, signal, square):
         return self._own(audiomath.Multiply(
             signal, square, mix=1.0, sample_rate=self._sample_rate,
             channel_count=self._channel_count))
 
-    def _second(self, tap):
-        """Octave 1's output divided again, counting down to Sensitivity:
-        at `SubOctave`'s own threshold (0.01, -40 dBFS) it would stop
-        counting on every decaying tail and pass Octave 1's f/2."""
-        return self._own(audiomath.SubOctave(
-            tap, order=1, mix=1.0,
-            threshold=self._threshold2(DEFAULTS[SENS_I]),
+    def _second(self, signal, tick):
+        """Octave 2: the signal times the quarter-note square, which is
+        Octave 1 with every other cycle turned over."""
+        return self._multiply(signal, self._divide(tick, 2))
+
+    def _tone(self, source, hz):
+        """A Tone low-pass on `source`."""
+        node = self._own(audiobiquad.Biquad(
+            mode=audiobiquad.LOW_PASS, frequency=hz, Q=TONE_Q, mix=1.0,
             sample_rate=self._sample_rate,
             channel_count=self._channel_count))
-
-    def _threshold2(self, sensitivity_db):
-        """The second divider's threshold: Sensitivity's own level, so it
-        counts as far down as the clock leg does."""
-        return 10.0 ** (sensitivity_db / 20.0)
+        node.play(source)
+        return node
 
     def _set_tracking(self, hz):
         if self._allpass is not None:
@@ -376,13 +407,14 @@ class Octaver(_component.Component):
         if index == TRACKING_I:
             self._set_tracking(self._hz(self._value(TRACKING_I)))
         elif index == TONE1_I:
-            self._tone1.frequency = self._tone1_hz()
+            hz = self._tone1_hz()
+            self._tone1.frequency = hz
+            self._tone1b.frequency = hz
         elif index == TONE2_I:
             self._tone2.frequency = self._hz(self._value(TONE2_I))
         elif index == SENS_I:
             sensitivity = self._value(SENS_I)
             self._comparator.set(pre_gain=self._pre_gain(sensitivity))
-            self._divider2.set(threshold=self._threshold2(sensitivity))
         else:
             self._route()
 
@@ -399,41 +431,65 @@ class Octaver(_component.Component):
 
     def _route(self):
         """Direct at 1 with both octaves at 0 hands out the input adapter,
-        the source byte for byte; anything else plays the mixer, re-armed
-        if the graph was left."""
+        the source byte for byte; anything else plays the mixer, armed the
+        first time it is reached."""
         if self._is_wire():
             self._route_around(self._adapter)
             return
         if not self._ready:
             self._levels()
             return
-        if self._rejoin() or not self._armed:
+        self._rejoin()
+        if not self._armed:
             self._arm()
             self._armed = True
-        self._output = self._mixer
+        self._output = self._tail
         self._levels()
 
     def _arm(self):
-        """Levels, gates, then the voices, as the graph is first built and
-        whenever it comes back from the wire (its nodes are clear by then).
+        """Play the voices, the first time the output reaches the mixer.
 
-        A voice's `play()` primes one block from its source, which the next
-        pull plays on time. Between two pulls after that no voice holds a
-        block and every tap is caught up, because the adapter hands
-        256-frame blocks and the Mixer pulls 256 frames: a move into the
-        wire hands out the adapter with nothing left behind. Only a move
-        into the wire before the first pull after arming skips the primed
-        block. Re-arming on the way back, rather than letting the voices
-        carry on, is what keeps that block from playing late, after a
-        stretch of the wire; `audiocore.get_buffer`, which could hand it
-        out at once, is compiled out of CircuitPython's board builds."""
-        self._levels()
-        _component.open_level_gates(self._mixer, self._mixer.voice,
-                                    self._silence)
+        Each voice first plays silence for one pull, which opens its level
+        gate (as `_component.open_level_gates` does). A voice's `play()`
+        then primes one block from its source: with the Port on `_hush`
+        that block is zeros, and a second pull hands it out, so arming
+        takes nothing from the source. Between two pulls after that no
+        voice holds a block and every tap is caught up, because the adapter
+        hands 256-frame blocks and the Mixer pulls 256 frames: a move into
+        the wire hands out the adapter with nothing left behind, and the
+        way back carries on from where the wire stopped."""
         voices = self._mixer.voice
+        self._levels()
+        for voice in voices:
+            voice.play(self._silence, loop=True)
+        self._pull()
+        self._in.play(self._hush)
         voices[0].play(self._dry, loop=True)
         voices[1].play(self._octave1, loop=True)
         voices[2].play(self._tone2, loop=True)
+        self._pull()
+        self._in.play(self._adapter)
+
+    def _pull(self):
+        """Pull one block from the mixer and drop it.
+
+        Where `audiocore.get_buffer` is compiled out (CircuitPython's
+        default board builds), a voice of a one-voice mixer of our own
+        plays `_tail` and stops: its `play()` primes one block, which pulls
+        the mixer once. `_tail` forwards no reset, so the play rewinds
+        nothing behind it."""
+        pull = getattr(audiocore, "get_buffer", None)
+        if pull is not None:
+            pull(self._mixer)
+            return
+        if self._puller is None:
+            # Nothing ever pulls this mixer, so its own buffers are the
+            # small: two stereo frames.
+            self._puller = self._own(audiomixer.Mixer(
+                voice_count=1, **self._pcm(16)), reset=False)
+        voice = self._puller.voice[0]
+        voice.play(self._tail)
+        voice.stop()
 
     @property
     def tail_samples(self):
@@ -447,7 +503,7 @@ class Octaver(_component.Component):
         ring = 0
         if self._allpass is not None:
             ring = _allpass_ring(self._allpass.coefficient)
-        tones = _component.cascade_ring((self._tone1, self._tone2))
+        tones = _component.cascade_ring((self._tone1b, self._tone2))
         if ring is None or tones is None:
             return None
         return ring + tones

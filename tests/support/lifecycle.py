@@ -72,21 +72,16 @@ MIX_INDEX = {
 }
 
 #: Where a class cannot satisfy a property by design, it says so HERE, one
-#: row per (class NAME, event name prefix, property): reason. A matching
-#: cell prints `decl` instead of RED and is counted as a declared exception.
-#: Nothing else skips a cell.
+#: row per (class NAME, event name prefix, property): reason. A key may add
+#: a fourth element, the patches the row covers (None for the default), when
+#: the reason holds only at those. A matching cell prints `decl` instead of
+#: RED and is counted as a declared exception. Nothing else skips a cell.
 DECLARED = {
     ("Octaver", "E1-", "P4"):
         "a flip-flop divider keeps its count: a reset starts it in"
         " pass-through polarity part-way through the material, so the"
         " octave stays inverted against an instance that was never reset"
         " (it matches a fresh one; the OC-2's flip-flops do the same)",
-    ("Octaver", "E2-", "P4"):
-        "CircuitPython only: its own audiomixer.Mixer resets the voices on"
-        " a host reset, so Tone 2's voice loses the frames it held and"
-        " Octave 2 runs late against the others (audiodsp#229's upstream"
-        " half, ruled to be declared in Phase 6); CPython and MicroPython"
-        " are ok",
     ("Octaver", "E4-", "P4"):
         "a flip-flop divider keeps its count: a move that adds or drops a"
         " crossing (Tracking, Tone 1, Sensitivity) or the clear on the way"
@@ -104,26 +99,31 @@ DECLARED = {
     ("Octaver", "E9-", "P4"):
         "a flip-flop divider keeps its count: the clear on the way back"
         " from the wire (Octave 1 at 0) leaves the octave inverted for good",
-    ("Octaver", "E9-", "P1"):
-        "E9's P1 holds the wire from before the first pull: a voice's play()"
-        " primed one block from the source when the graph was armed, so the"
-        " wire starts one block in (disclosed; no audiocore.get_buffer on a"
-        " board build to hand the primed block out)",
-    ("Octaver", "E10-mix0", "P4"):
-        "the wire and back before the first pull: the way back re-arms the"
-        " voices, which skips the block they primed when the graph was"
-        " built, so the run is one block early against the control for good"
-        " (disclosed; no audiocore.get_buffer on a board build to hand the"
-        " primed block out; the same on the class before the wire fix)",
-    ("Octaver", "E", "P1"):
-        "Octave 1 at 0 is the wire only while Octave 2 is at 0 and Direct"
-        " at 1 (the defaults, patches 0, 3 and 4); at patches 1, 2 and 5,"
-        " and through an event that moves Direct or Octave 2 or changes to"
-        " one of those patches, it is a level move, and the output is not"
-        " the source by design. Where it is the wire, P1 holds it from"
-        " before the first pull, and the block the voices primed when the"
-        " graph was built is skipped (disclosed, as E9's row says); E5's"
-        " P1, a move into the wire mid-stream, is ok",
+    ("Octaver", "E", "P1", (1, 2, 5)):
+        "at patches 1, 2 and 5 Octave 2 is up or Direct is under 1, so"
+        " Octave 1 at 0 is a level move, not the wire, and the output is"
+        " not the source by design",
+    ("Octaver", "E4-m0=", "P1"):
+        "the event moves Direct off 1, so Octave 1 at 0 stops being the"
+        " wire and the output is not the source by design",
+    ("Octaver", "E4-m2=", "P1"):
+        "the event moves Octave 2 up, so Octave 1 at 0 stops being the"
+        " wire and the output is not the source by design",
+    ("Octaver", "E6-p1", "P1"):
+        "the event changes to patch 1, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E6-p2", "P1"):
+        "the event changes to patch 2, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E6-p5", "P1"):
+        "the event changes to patch 5, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E11-mix+patch", "P1"):
+        "the event ends on patch 5, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E11-3moves", "P1"):
+        "the event ends on patch 5, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
     ("Octaver", "E5-", "P5"):
         "family limit, disclosed (audiocomponents#117): a control that jumps"
         " makes the output step (the octave leaves and comes back)",
@@ -836,8 +836,11 @@ def _diagnose(out, expect, frame, fsize, hi):
     return ", not the source near there"
 
 
-def _decl(cls, ev, prop):
-    for (name, prefix, p), reason in DECLARED.items():
+def _decl(cls, ev, prop, patch=None):
+    for key in DECLARED:
+        name, prefix, p = key[:3]
+        if len(key) > 3 and patch not in key[3]:
+            continue
         if name == cls.NAME and p == prop and ev.name.startswith(prefix):
             return True
     return False
@@ -1166,7 +1169,7 @@ def run_cell(cls, ev, rate, channels, patch, options, controls):
                            controls))
     res["P5"] = p5(cls, ev, rate, channels, patch, options, controls)
     for prop in PROPS:
-        if res[prop].startswith("RED") and _decl(cls, ev, prop):
+        if res[prop].startswith("RED") and _decl(cls, ev, prop, patch):
             res[prop] = "decl"
     return res
 
