@@ -439,9 +439,23 @@ class AirSpace(_component.Component):
         self._levels()
         if not self._wired:
             self._wire()
-        else:
-            self._rejoin()
+        elif self._rejoin() and getattr(audiocore, "get_buffer", None) is None:
+            self._replay()
         self._output = self._tail
+
+    def _replay(self):
+        """Play the voices again on a return from Mix 0 where
+        `audiocore.get_buffer` is compiled out (a board's own audiocore).
+
+        There the constructor's wiring primes the source's first block into
+        the voices, and a Mix 0 before the first pull leaves that block
+        held while the bypass plays on; without this, the return would play
+        it stale. Mid-stream no voice holds a block, and a re-play primes
+        the source's next block, which the next pull plays on time. Where
+        `get_buffer` exists the wiring is quiet and nothing is held."""
+        voices = self._mixer.voice
+        voices[0].play(self._split.tap(0))
+        voices[1].play(self._wet_source())
 
     def _wire(self):
         """Play the voices, the first time Mix is above 0.

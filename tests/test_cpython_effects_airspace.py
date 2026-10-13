@@ -868,6 +868,87 @@ class TheReset(unittest.TestCase):
         self.assertGreaterEqual(db_ratio(powers[0], powers[1]), 40.0)
 
 
+class _NoGetBuffer:
+    """`audiocore` as a board's own build has it: no `get_buffer`."""
+
+    def __init__(self, module):
+        self._module = module
+
+    def __getattr__(self, name):
+        if name == "get_buffer":
+            raise AttributeError(name)
+        return getattr(self._module, name)
+
+
+class HiddenGetBuffer:
+    """Hide `audiocore.get_buffer` from the class and `_component` (the
+    renders here keep their own reference to it)."""
+
+    def __enter__(self):
+        from audioeffects import _component
+        self._modules = (sys.modules[AirSpace.__module__], _component)
+        for module in self._modules:
+            module.audiocore = _NoGetBuffer(audiocore)
+        return self
+
+    def __exit__(self, *exc):
+        for module in self._modules:
+            module.audiocore = audiocore
+        return False
+
+
+def moves_render(data, rate, channels, pulls, actions, hidden):
+    if hidden:
+        with HiddenGetBuffer():
+            effect = build(AirSpace, data, rate, channels)
+            out = render(effect, pulls * BLOCK, actions)
+    else:
+        effect = build(AirSpace, data, rate, channels)
+        out = render(effect, pulls * BLOCK, actions)
+    effect.deinit()
+    return out
+
+
+class WithoutGetBuffer(unittest.TestCase):
+    """A board's own audiocore has no `get_buffer`, so the voices prime
+    the source's first block at construction instead of a block of zeros
+    (the class's `_wire` and `_replay`)."""
+
+    def test_mix_zero_and_back_mid_stream_renders_the_same(self):
+        rate, channels = 48000, 2
+        data = lcg_noise(rate, channels, 4000.0, 11)
+        actions = {10: lambda e: e.set_macro(MIX_I, 0),
+                   14: lambda e: e.set_macro(MIX_I, 22)}
+        want = moves_render(data, rate, channels, 120, actions, False)
+        got = moves_render(data, rate, channels, 120, actions, True)
+        # The first block differs by design: without `get_buffer` the level
+        # gates cannot be opened ahead (`open_level_gates`), so the voices
+        # wait for the first zero crossing, as upstream's do.
+        skip = BLOCK * channels
+        self.assertEqual(got[skip:], want[skip:])
+
+    def test_no_stale_block_after_mix_zero_before_the_first_pull(self):
+        rate, channels = 48000, 2
+        data = burst(BLOCK, rate, channels, 8000.0, 12)
+        actions = {0: lambda e: e.set_macro(MIX_I, 0),
+                   4: lambda e: e.set_macro(MIX_I, 22)}
+        out = moves_render(data, rate, channels, 60, actions, True)
+        self.assertFalse(any(out[4 * BLOCK * channels:]))
+
+    def test_red_without_the_replay(self):
+        rate, channels = 48000, 2
+        data = burst(BLOCK, rate, channels, 8000.0, 12)
+        actions = {0: lambda e: e.set_macro(MIX_I, 0),
+                   4: lambda e: e.set_macro(MIX_I, 22)}
+        replay = AirSpace._replay
+        AirSpace._replay = lambda self: None
+        try:
+            out = moves_render(data, rate, channels, 60, actions, True)
+        finally:
+            AirSpace._replay = replay
+        self.assertTrue(any(out[4 * BLOCK * channels:]))
+
+
 # --------------------------------------------------------------------------
 # The docstring's claims, sentence by sentence (KIT.md, claims)
 
