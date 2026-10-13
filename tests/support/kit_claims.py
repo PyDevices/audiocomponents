@@ -7,8 +7,10 @@ table. Each row is `(sentence, test)`: the docstring sentence word for
 word (whitespace aside), and the test that asserts it. `test` is a test
 method's name (`"test_x"`, any TestCase in the module that defines it), a
 `"Class.test_x"`, a tuple of those, or `"DECLARED:<NAME>,<event
-prefix>,<property>"`, naming a row of the lifecycle matrix's DECLARED
-table (a disclosure the matrix holds).
+prefix>,<property>[,<scope>...]"`, naming a row of the lifecycle matrix's
+DECLARED table (a disclosure the matrix holds). A scoped row is named with
+its scopes: `patches=1/2/d` for a patch tuple (`d` the defaults), and each
+interpreter by name (`DECLARED:PitchShifter,E10-reset,P4,circuitpython`).
 
 **The text.** What a player reads: the class's module docstring, then the
 class docstring (a rebuilt module holds one class, and either may carry
@@ -123,10 +125,48 @@ def resolve(target, index):
     return ["%s.%s" % (owner, target) for owner in owners]
 
 
+def _canonical(name, prefix, prop, patches, impls):
+    if patches is not None:
+        patches = tuple(sorted(patches, key=lambda p: -1 if p is None
+                               else p))
+    if impls is not None:
+        impls = tuple(sorted(impls))
+    return (name, prefix, prop, patches, impls)
+
+
+def parse_declared(target):
+    """The canonical row a `DECLARED:` target names, or None. After NAME,
+    prefix and property, a `patches=1/2/d` part scopes it to patches (`d`
+    the defaults), and any other part names an interpreter."""
+    parts = target.split(":", 1)[1].split(",")
+    if len(parts) < 3:
+        return None
+    patches = impls = None
+    for part in parts[3:]:
+        if part.startswith("patches="):
+            patches = []
+            for p in part[8:].split("/"):
+                if p == "d":
+                    patches.append(None)
+                elif p.isdigit():
+                    patches.append(int(p))
+                else:
+                    return None
+        else:
+            impls = (impls or []) + [part]
+    return _canonical(parts[0], parts[1], parts[2], patches, impls)
+
+
 def declared_exists(target):
     import lifecycle
-    parts = target.split(":", 1)[1].split(",")
-    return len(parts) == 3 and tuple(parts) in lifecycle.DECLARED
+    want = parse_declared(target)
+    if want is None:
+        return False
+    for key in lifecycle.DECLARED:
+        patches, impls = lifecycle.declared_scope(key)
+        if _canonical(key[0], key[1], key[2], patches, impls) == want:
+            return True
+    return False
 
 
 def run_tests(module, ids):
