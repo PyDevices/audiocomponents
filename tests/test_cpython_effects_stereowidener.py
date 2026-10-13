@@ -686,51 +686,16 @@ class TheSurface(TestCase):
             self.assertEqual(out[2 * n + 1],
                              values[2 * (1024 + n - tau) + 1], n)
 
-    def test_without_get_buffer(self):
-        # A re-played voice there starts at level 0 until its signal
-        # crosses zero (upstream's level gate, which `open_level_gates`
-        # cannot open without get_buffer), so each read starts a few frames
-        # after the return.
-        frames = 4096
-        settle = 32
-        # Leaving Haas before its first block skips that block, once, and
-        # the block is never played stale.
-        values, out = without_get_buffer(
-            StereoWidener,
-            {0: lambda e: e.program_change(4),
-             4: lambda e: e.program_change(0)})
-        self.assertEqual(left_skip(values, out, 4 * BLOCK + settle, frames),
-                         BLOCK)
-        # Built at a Mid/Side patch, Haas is never wired until it is
-        # reached, and nothing is skipped.
-        values, out = without_get_buffer(
-            lambda src: StereoWidener(src, patch=4),
-            {4: lambda e: e.program_change(0)})
-        self.assertEqual(left_skip(values, out, 4 * BLOCK + settle, frames),
-                         0)
-        # Leaving and coming back once Haas has played skips nothing.
-        values, out = without_get_buffer(
-            StereoWidener,
-            {2: lambda e: e.program_change(4),
-             6: lambda e: e.program_change(0)})
-        self.assertEqual(left_skip(values, out, 6 * BLOCK + settle, frames),
-                         0)
-        self.assertEqual(left_skip(values, out, settle, 2 * BLOCK), 0)
-
-    def test_without_get_buffer_reset(self):
-        # reset() brings Haas back the way program_change(0) does, after
-        # each way of leaving it before its first block.
-        frames = 4096
-        settle = 32
-        leaves = (("a Mid/Side patch", lambda e: e.program_change(4)),
-                  ("Width 0", lambda e: e.set_macro(0, 0)),
-                  ("Character", lambda e: e.set_macro(2, 127)))
-        for name, leave in leaves:
-            values, out = without_get_buffer(
-                StereoWidener, {0: leave, 6: lambda e: e.reset()})
-            self.assertEqual(
-                left_skip(values, out, 6 * BLOCK + settle, frames), BLOCK,
-                name)
+    def test_without_get_buffer_plays_what_it_plays_with_it(self):
+        # Both channels, byte for byte, from the first frame.
+        for rate in (48000, 16000, 8000):
+            for what, build, moves in GET_BUFFER_CASES:
+                with self.subTest(rate=rate, what=what):
+                    _, plain = without_get_buffer(build, moves, rate=rate,
+                                                  hide=False)
+                    _, hidden = without_get_buffer(build, moves, rate=rate)
+                    self.assertEqual(differing_frames(plain, hidden),
+                                     [(0, [], [])] * 2)
 
     def test_a_refused_program_change_keeps_every_macro(self):
         values = array("h", bytes(4 * 512))
@@ -789,15 +754,17 @@ class TheSurface(TestCase):
                 e.deinit()
 
 
-def without_get_buffer(build, moves, frames=4096, seed=3):
+def without_get_buffer(build, moves, frames=4096, seed=3, rate=48000,
+                       hide=True):
     """Render with `audiocore.get_buffer` hidden from the class, as on a
-    CircuitPython board build, while it builds and while it moves."""
+    CircuitPython board build, while it builds and while it moves; with
+    `hide` false, the same render with it in place."""
     import types
     from audioeffects.rebuilt import stereowidener as module
     real = module.audiocore
     fake = types.ModuleType("audiocore")
     for name in dir(real):
-        if name != "get_buffer":
+        if name != "get_buffer" or not hide:
             setattr(fake, name, getattr(real, name))
 
     def hidden(action):
@@ -812,7 +779,7 @@ def without_get_buffer(build, moves, frames=4096, seed=3):
     values = lcg_noise(frames, 2, seed)
     module.audiocore = _component.audiocore = fake
     try:
-        e = build(source(values, 48000))
+        e = build(source(values, rate))
     finally:
         module.audiocore = _component.audiocore = real
     try:
@@ -822,14 +789,52 @@ def without_get_buffer(build, moves, frames=4096, seed=3):
     return values, out
 
 
-def left_skip(values, out, start, frames):
-    """The one shift, in frames, that makes the left from `start` on the
-    source's left, or None."""
-    for shift in (0, BLOCK):
-        if all(out[2 * n] == values[2 * (n + shift)]
-               for n in range(start, frames - shift)):
-            return shift
-    return None
+def differing_frames(a, b):
+    """For each channel, (how many frames differ, the first, the last)."""
+    found = []
+    for channel in (0, 1):
+        frames = [n for n in range(len(a) // 2)
+                  if a[2 * n + channel] != b[2 * n + channel]]
+        found.append((len(frames), frames[:1], frames[-1:]))
+    return found
+
+
+#: Whatever the class is asked, with `get_buffer` hidden or not: (what,
+#: build, moves). Each way out of Haas before its first block, each reset
+#: a voice could meet holding a block it primed, and a constructor Delay
+#: that patch 0 replaces.
+GET_BUFFER_CASES = (
+    ("reset before the first pull", StereoWidener,
+     {0: lambda e: e.reset()}),
+    ("reset twice before the first pull", StereoWidener,
+     {0: lambda e: (e.reset(), e.reset())}),
+    ("built at 1 ms, reset before the first pull",
+     lambda src: StereoWidener(src, delay_ms=1.0),
+     {0: lambda e: e.reset()}),
+    ("leave Haas before its first block, come back", StereoWidener,
+     {0: lambda e: e.program_change(4), 4: lambda e: e.program_change(0)}),
+    ("leave Haas before its first block, reset", StereoWidener,
+     {0: lambda e: e.program_change(4), 6: lambda e: e.reset()}),
+    ("leave Haas before its first block, reset twice", StereoWidener,
+     {0: lambda e: e.program_change(4),
+      6: lambda e: (e.reset(), e.reset())}),
+    ("leave Haas before its first block, program_change(0) and reset",
+     StereoWidener,
+     {0: lambda e: e.program_change(4),
+      6: lambda e: (e.program_change(0), e.reset())}),
+    ("leave Haas after playing, program_change(0) and reset", StereoWidener,
+     {2: lambda e: e.program_change(4),
+      6: lambda e: (e.program_change(0), e.reset())}),
+    ("Width 0 before the first block, reset", StereoWidener,
+     {0: lambda e: e.set_macro(0, 0), 6: lambda e: e.reset()}),
+    ("Character before the first block, reset", StereoWidener,
+     {0: lambda e: e.set_macro(2, 127), 6: lambda e: e.reset()}),
+    ("built at Mid/Side, then Haas",
+     lambda src: StereoWidener(src, patch=4),
+     {4: lambda e: e.program_change(0)}),
+    ("leave Haas after playing, come back", StereoWidener,
+     {2: lambda e: e.program_change(4), 6: lambda e: e.program_change(0)}),
+)
 
 
 class H1TheCopy(TestCase):
@@ -1094,9 +1099,6 @@ CLAIMS = (
      "test_a_centred_part_is_unchanged"),
     ("Peaks below half of full scale never clip at any Width.",
      "test_below_half_scale_never_clips"),
-    ("Where `audiocore.get_buffer` is compiled out, leaving Haas before its "
-     "first block has played skips that one block of the source.",
-     "test_without_get_buffer"),
     ("A one-channel source comes out exactly as it went in, whatever the "
      "controls say.",
      "test_a_mono_source_is_a_wire"),

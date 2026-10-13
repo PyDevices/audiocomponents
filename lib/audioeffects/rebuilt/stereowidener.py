@@ -135,9 +135,6 @@ class StereoWidener(_component.Component):
     `reset()` empties the line and returns to patch 0.
     The class never reads the host's tempo.
 
-    Where `audiocore.get_buffer` is compiled out, leaving Haas before its
-    first block has played skips that one block of the source.
-
     **Limits shared by the family.**
     A control that jumps, Width or Character, makes the output step: move it
     in small steps from the host if you need it smooth.
@@ -243,8 +240,8 @@ class StereoWidener(_component.Component):
             delay_frames=1, feedback=0.0, mix=2.0, damping_hz=0.0,
             cut_hz=0.0, delay_slew=SLEW), reset=self._clear)
         self._line.play(self._split.tap(1))
-        # Not reset by the walk: a voice resets its source, and neither
-        # voice holds a block between two pulls (`_wire`).
+        # Not reset by the walk: neither voice holds a block between two
+        # pulls (`_wire`), so there is nothing of its own to clear.
         self._mixer = self._own(audiomixer.Mixer(
             voice_count=2, buffer_size=BLOCK * 2 * 4, channel_count=2,
             bits_per_sample=16, samples_signed=True, sample_rate=rate),
@@ -259,6 +256,10 @@ class StereoWidener(_component.Component):
             reset=False)
         self._silence = audiocore.RawSample(
             array("h", bytes(2 * 2 * 2)), sample_rate=rate, channel_count=2)
+        #: Where `audiocore.get_buffer` is compiled out, the one-voice
+        #: mixer `_pull` primes from `_tail`; built the first time it is
+        #: needed.
+        self._puller = None
         self._output = self._ms
 
     def _wire(self):
@@ -268,30 +269,45 @@ class StereoWidener(_component.Component):
         Splitter on `_hush` that block is zeros, and one pull of the mixer
         hands it out, so wiring takes nothing from the borrowed source and
         leaves no voice holding a block: whatever the MidSide has handed
-        out, the output has played, at every Width and Character.
-
-        Without `audiocore.get_buffer` (compiled out of CircuitPython's
-        default board builds) the voices prime the source's next block,
-        which the next pull plays. If the output leaves Haas before that
-        pull, the bypass starts a block later and the voices hold the block
-        it skipped; `_route` re-plays them on the way back, so that block
-        is dropped rather than played stale. The skip is disclosed. A
-        re-played voice there starts at level 0 until its signal crosses
-        zero, upstream's level gate, as every class's first block does on
-        such a build."""
-        pull = getattr(audiocore, "get_buffer", None)
+        out, the output has played, at every Width and Character. So a
+        reset or a return to Haas that empties the line never empties a
+        block a voice is still waiting to play, and a voice never plays a
+        block read at a Delay the line has since left. The level gates are
+        opened first, as `_component.open_level_gates` opens them."""
         voices = self._mixer.voice
         self._levels()
-        _component.open_level_gates(self._mixer, voices, self._silence)
-        if pull is None:
-            self._in.play(self._ms)
+        for voice in voices:
+            voice.play(self._silence, loop=True)
+        self._pull()
         voices[0].play(self._split.tap(0))
         voices[1].play(self._line)
+        self._pull()
+        self._in.play(self._ms)
+        self._clear()
+        self._wired = True
+
+    def _pull(self):
+        """Pull one block from the mixer and drop it.
+
+        Where `audiocore.get_buffer` is compiled out (CircuitPython's
+        default board builds), a voice of a one-voice mixer of our own
+        plays `_tail` and stops: its `play()` primes one block, which pulls
+        the mixer once. `_tail` forwards no reset, so the play rewinds
+        nothing behind it."""
+        pull = getattr(audiocore, "get_buffer", None)
         if pull is not None:
             pull(self._mixer)
-            self._in.play(self._ms)
-            self._clear()
-        self._wired = True
+            return
+        if self._puller is None:
+            # Nothing ever pulls this mixer, so its own buffers are the
+            # smallest that hold a stereo frame.
+            self._puller = self._own(audiomixer.Mixer(
+                voice_count=1, buffer_size=16, channel_count=2,
+                bits_per_sample=16, samples_signed=True,
+                sample_rate=self._sample_rate), reset=False)
+        voice = self._puller.voice[0]
+        voice.play(self._tail)
+        voice.stop()
 
     def _clear(self):
         self._line.clear()
@@ -358,24 +374,6 @@ class StereoWidener(_component.Component):
             if ready:
                 self._refresh()
 
-    def reset(self):
-        """Clear the line and return to patch 0. Where the output was
-        routed around the voices (and `audiocore.get_buffer` is absent),
-        they come back re-played, as `program_change(0)` brings them."""
-        self._check_live()
-        replay = self._wired and self._stranded
-        _component.Component.reset(self)
-        if replay and self._haas_live():
-            self._replay()
-
-    def _replay(self):
-        """Without `audiocore.get_buffer`, drop the block the voices still
-        hold and prime the source's next one."""
-        if getattr(audiocore, "get_buffer", None) is None:
-            voices = self._mixer.voice
-            voices[0].play(self._split.tap(0))
-            voices[1].play(self._line)
-
     def _refresh(self):
         if self._ms is None:
             return
@@ -402,9 +400,7 @@ class StereoWidener(_component.Component):
             self._wire()
         else:
             self._levels()
-            if self._rejoin(keep=(self._ms,)):
-                # A voice may still hold the block it primed at wiring.
-                self._replay()
+            self._rejoin(keep=(self._ms,))
         self._output = self._tail
 
     def _haas_live(self):
