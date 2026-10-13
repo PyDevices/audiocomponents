@@ -31,6 +31,10 @@ sys.path.insert(0, os.path.join(ROOT, "tests", "support"))
 import lifecycle                                          # noqa: E402
 from audioeffects import rebuilt                          # noqa: E402
 
+#: `_component` reads VENDOR off the module a class is defined in, and the
+#: skip test's plant is defined here.
+VENDOR = "PyDevices"
+
 PHASE5 = ("DigitalDelay", "SlapbackDelay", "TapeDelay", "PingPongDelay",
           "MultiTapDelay", "AnalogDelay", "Reverb", "ConvolutionReverb")
 
@@ -46,9 +50,25 @@ KNOWN_RED = {}
 
 #: P6 differences today: class -> (cells whose line differs between CPython
 #: and a native interpreter in the quick matrix, their digest, the same for
-#: the full matrix, reason). Both native interpreters print the same lines
-#: as each other for every class.
-KNOWN_P6 = {}
+#: the full matrix, reason). MicroPython prints CPython's lines for every
+#: class; the entries below are CircuitPython's.
+#:
+#: Restated at audiodsp v0.6.6rc1 (30cbbf6). Up to eb2d20d every class,
+#: MultiTapDelay included, printed the same lines on all three
+#: interpreters, and this table was empty. audiodsp#241 fixed a stray
+#: sample in `audiodelays.MultiTapDelay` (and Echo): a line shortened under
+#: the write head wrote one more sample past its new end, which played out
+#: of the silence when the delay grew back. CPython and MicroPython take the
+#: fix; CircuitPython builds upstream's own audiodelays, which still plays
+#: the sample, as audiodsp's upstream-diff.md records. So E4's Time-to-0
+#: move renders other bytes there, with the same verdicts on P1 to P5.
+KNOWN_P6 = {
+    "MultiTapDelay": (
+        4, "2320dde0", None, None,
+        "Time to 0 and back: CircuitPython's own audiodelays plays one "
+        "stray sample when the line grows back, which audiodsp#241 fixed "
+        "on CPython and MicroPython only"),
+}
 
 #: LIFECYCLE_FULL=1 runs the full matrix (every event at every patch);
 #: otherwise the quick one (lifecycle.run_class(quick=True)).
@@ -70,6 +90,13 @@ def parse(lines):
         key = (parts[0], parts[1], int(parts[2]), int(parts[3]), parts[4])
         cells[key] = dict(p.split(":", 1) for p in parts[5:])
     return cells
+
+
+def skipped(props):
+    """True for a cell `lifecycle.SKIP` kept from running: P6 leaves it
+    out, since the interpreter that ran it prints real verdicts."""
+    return props is not None and all(
+        verdict.startswith("na(skip") for prop, verdict in props.items())
 
 
 def red_cells(cells):
@@ -232,7 +259,9 @@ class TestMatrix(unittest.TestCase):
             ours = parse(self.cpython[name])
             theirs = parse([l for l in got if l.startswith(name + "|")])
             keys = [key for key in sorted(set(ours) | set(theirs))
-                    if ours.get(key) != theirs.get(key)]
+                    if ours.get(key) != theirs.get(key)
+                    and not skipped(theirs.get(key))
+                    and not skipped(ours.get(key))]
             entry = KNOWN_P6.get(name)
             if entry is not None:
                 count, dig = (entry[2], entry[3]) if FULL else entry[:2]
@@ -293,6 +322,39 @@ class TestPlants(unittest.TestCase):
             del lifecycle.DECLARED[("LifecyclePlain", "E1-reset@block",
                                     "P1")]
         self.assertEqual(got, "decl")
+
+    def test_a_skipped_cell_prints_na_and_never_runs(self):
+        class Raises(lifecycle.Plain):
+            NAME = "LifecycleRaises"
+
+            def _build(self, *args, **kwargs):
+                raise RuntimeError("the skipped cell ran")
+
+        def e8(emit):
+            lifecycle.run_class(Raises, rates=(48000,), channels=(2,),
+                                patches=[None], only=["E8"], emit=emit)
+
+        # The control: without the row the cell runs, and the plant raises.
+        with self.assertRaises(RuntimeError):
+            e8(lambda line: None)
+        row = ("LifecycleRaises", "E8-", sys.implementation.name)
+        lifecycle.SKIP[row] = "planted skip"
+        try:
+            lines = []
+            e8(lines.append)
+        finally:
+            del lifecycle.SKIP[row]
+        props = parse(lines)[("LifecycleRaises", "E8-end", 48000, 2, "d")]
+        self.assertEqual(props, dict((prop, "na(skip: planted skip)")
+                                     for prop in lifecycle.PROPS))
+        self.assertTrue(skipped(props))
+        # A row for another interpreter leaves the cell to run.
+        lifecycle.SKIP[("LifecycleRaises", "E8-", "elsewhere")] = "planted"
+        try:
+            with self.assertRaises(RuntimeError):
+                e8(lambda line: None)
+        finally:
+            del lifecycle.SKIP[("LifecycleRaises", "E8-", "elsewhere")]
 
     def test_known_red_catches_both_directions(self):
         one = ("X", "E1-a", "P1", 48000, 2, "d")
