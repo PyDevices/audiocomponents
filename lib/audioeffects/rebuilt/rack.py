@@ -63,8 +63,8 @@ class Rack(_component.Component):
     needs whatever modules its pedals need.
 
     `deinit()` releases every pedal, nested racks included, and never your
-    source. If an entry fails to build, the pedals built before it are
-    released before the error reaches you.
+    source. If an entry fails to build, or `patch` is refused, the pedals
+    already built are released before the error reaches you.
     """
 
     NAME = 'Rack'
@@ -88,28 +88,30 @@ class Rack(_component.Component):
                 child = self._child(name, tail, options)
                 built.append(child)
                 tail = child.output
+            self._effects = tuple(built)
+            # What patch 0 and reset() restore: each child's settings as the
+            # rack built it (`_record`).
+            self._built = tuple(_record(child) for child in built)
+            capabilities = []
+            for child in built:
+                for capability in child.capabilities:
+                    if capability not in capabilities:
+                        capabilities.append(capability)
+            self._capabilities = tuple(capabilities)
+            # No port of its own: the rack's output IS the last child's
+            # output (its port), and an empty rack's IS the source. Set
+            # directly, around the `_output` property, which would wrap it
+            # in a new port.
+            self._port = tail
+            # Last, and inside the release: a `patch` the rack refuses
+            # raises here, with every child built.
+            self._init_macros((), patch)
         except BaseException:
             # The constructor never returns, so nobody else can release
             # what was built: do it here, tail first, and re-raise.
             for child in reversed(built):
                 child.deinit()
             raise
-        self._effects = tuple(built)
-        # What patch 0 restores: each child's positions, whole, and its
-        # patch index, as the rack built it.
-        self._built = tuple((list(child._macros), child._patch_index)
-                            for child in built)
-        capabilities = []
-        for child in built:
-            for capability in child.capabilities:
-                if capability not in capabilities:
-                    capabilities.append(capability)
-        self._capabilities = tuple(capabilities)
-        # No port of its own: the rack's output IS the last child's output
-        # (its port), and an empty rack's IS the source. Set directly,
-        # around the `_output` property, which would wrap it in a new port.
-        self._port = tail
-        self._init_macros((), patch)
 
     def _child(self, name, source, options):
         """One chain entry built around `source`, with the rack's transport
@@ -160,11 +162,11 @@ class Rack(_component.Component):
     # -- the surface ----------------------------------------------------
 
     def _apply_positions(self, positions, patch_index):
-        """Patch 0: every child back to the positions and patch index the
-        rack built it with. A nested rack restores inside itself."""
+        """Patch 0: every child back to the settings the rack built it
+        with. A nested rack restores inside itself."""
         _component.Component._apply_positions(self, positions, patch_index)
-        for child, (macros, index) in zip(self._effects, self._built):
-            child._apply_positions(list(macros), index)
+        for child, record in zip(self._effects, self._built):
+            _restore(child, record)
 
     def transport_changed(self):
         self._check_live()
@@ -172,12 +174,26 @@ class Rack(_component.Component):
             child.transport_changed()
 
     def reset(self):
-        """Each child's own reset, tail first, then patch 0. The borrowed
-        source is never named."""
+        """Each child's own reset, tail first, reloading the settings the
+        rack built it with in place of its patch 0, so no child passes
+        through a patch the rack never gave it: one built at Mix 0 would
+        re-arm there and pull a block of the source. A nested rack's reset
+        does the same inside itself. The borrowed source is never named."""
         self._check_live()
-        for child in reversed(self._effects):
-            child.reset()
-        _component.Component.reset(self)
+        for position in range(len(self._effects) - 1, -1, -1):
+            child = self._effects[position]
+            record = self._built[position]
+            if isinstance(child, _component.Component):
+                child._reset_to = record
+                try:
+                    child.reset()
+                finally:
+                    child._reset_to = None
+            else:
+                child.reset()
+                _restore(child, record)
+        self._stranded = False
+        self._patch_index = 0
 
     def deinit(self):
         """Every child's own deinit, tail first. The port is never released
@@ -188,6 +204,22 @@ class Rack(_component.Component):
             child.deinit()
         self._port = None
         self._deinited = True
+
+
+def _record(child):
+    """What puts `child` back as it stands: its `_record()`, or, for a
+    child on the older `_core` base, its positions and patch index."""
+    if isinstance(child, _component.Component):
+        return child._record()
+    return (list(child._macros), child._patch_index)
+
+
+def _restore(child, record):
+    """Put `child` back to `record`, without clearing anything."""
+    if isinstance(child, _component.Component):
+        child._restore(record)
+    else:
+        child._apply_positions(list(record[0]), record[1])
 
 
 def _entry(entry):

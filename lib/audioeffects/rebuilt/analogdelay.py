@@ -216,6 +216,8 @@ class AnalogDelay(_component.Component):
     VERSION = '0.1.0'
 
     TIER = _component.AUDIODSP
+    #: The exact constructor values a rack's reset puts back with the knobs.
+    _KEPT = ('_time_exact',)
     REQUIRES = ("audioecho",)
 
     CAPABILITIES = ("tempo_sync",)

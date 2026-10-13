@@ -417,14 +417,22 @@ class ChildResetOnlyRack(Rack):
 
 
 class PublicRestoreRack(Rack):
-    """T4: patch 0 restores through the public `set_macro`."""
+    """T4: patch 0, and the put-back after each child's own reset, restore
+    through the public `set_macro`."""
 
     def _apply_positions(self, positions, patch_index):
         _component.Component._apply_positions(self, positions, patch_index)
-        for child, (macros, index) in zip(self._effects, self._built):
+        for child, record in zip(self._effects, self._built):
+            macros = record[0]
             for macro in range(len(macros)):
                 child.set_macro(macro, _component.midi_of_position(
                     child._mode(macro), macros[macro]))
+
+    def reset(self):
+        self._check_live()
+        for child in reversed(self._effects):
+            child.reset()
+        _component.Component.reset(self)
 
 
 class SkipNestedRack(Rack):
@@ -432,9 +440,9 @@ class SkipNestedRack(Rack):
 
     def _apply_positions(self, positions, patch_index):
         _component.Component._apply_positions(self, positions, patch_index)
-        for child, (macros, index) in zip(self._effects, self._built):
+        for child, record in zip(self._effects, self._built):
             if not isinstance(child, Rack):
-                child._apply_positions(list(macros), index)
+                child._apply_positions(list(record[0]), record[1])
 
 
 class NoRestoreRack(Rack):
@@ -518,6 +526,39 @@ class ClassCapabilitiesRack(Rack):
     def capabilities(self):
         self._check_live()
         return type(self).CAPABILITIES
+
+
+class PutBackRack(Rack):
+    """T4: each child's own reset, which loads its patch 0, then the
+    positions and patch index the rack built it with put back over the top
+    (the class's first shape)."""
+
+    def reset(self):
+        self._check_live()
+        for child in reversed(self._effects):
+            child.reset()
+        for child, record in zip(self._effects, self._built):
+            child._apply_positions(list(record[0]), record[1])
+        self._patch_index = 0
+
+
+class PositionsOnlyRack(Rack):
+    """T4: the restore puts back positions and patch index alone, not the
+    exact constructor values a child keeps beside them."""
+
+    def _build(self, chain=(), patch=None):
+        Rack._build(self, chain, patch)
+        self._built = tuple((record[0], record[1], ())
+                            for record in self._built)
+
+
+class LeakyPatchRack(Rack):
+    """T5: a refused `patch=` raises with the built pedals unreleased (the
+    class's first shape: the patch is applied outside the release)."""
+
+    def _build(self, chain=(), patch=None):
+        Rack._build(self, chain)
+        self._init_macros((), patch)
 
 
 def _recording_lowpass():
@@ -632,7 +673,7 @@ def t3(cls, rate, channels):
     made, _ = hand(Source(material(1, channels, 4096), rate, channels),
                    rate, K)
     ours = leaves(rack)
-    as_built = [(list(leaf._macros), leaf.patch_index) for leaf in made]
+    as_built = [leaf._record() for leaf in made]
     try:
         if len(ours) != 4 or rack.latency_samples == 0:
             return ["built %d leaves, latency %d" % (
@@ -656,13 +697,13 @@ def t3(cls, rate, channels):
                 ours[leaf].set_macro(macro, value)
                 made[leaf].set_macro(macro, value)
                 read("leaf %d macro %d at %r" % (leaf, macro, value))
-        # The same reset by hand: each leaf's own, tail first, then each
-        # back to the positions it was built with.
+        # The same reset by hand: each leaf's own, tail first, reloading
+        # the settings it was built with in place of its patch 0.
         rack.reset()
-        for leaf in reversed(made):
-            leaf.reset()
-        for leaf, (macros, index) in zip(made, as_built):
-            leaf._apply_positions(list(macros), index)
+        for position in range(len(made) - 1, -1, -1):
+            made[position]._reset_to = as_built[position]
+            made[position].reset()
+            made[position]._reset_to = None
         read("reset")
         if len(set(s[0] for s in seen)) < 3 or \
                 len(set(s[1] for s in seen)) < 2:
@@ -892,6 +933,164 @@ def t6(cls, rate, channels=2):
     return wrong
 
 
+#: Pedals that, built at Mix 0, re-arm their voices when their own reset
+#: loads patch 0 (Mix on), which pulls a block of the source.
+MIX0 = ("Compressor", "Saturation", "Bitcrusher", "DynamicEQ", "Exciter",
+        "Overdrive")
+
+#: Pedals that keep an exact constructor value beside its knob, each built
+#: off the grid, with the knobs moved before the reset and Time after it.
+EXACT = (("DigitalDelay", {"time_ms": 300.0, "glide_ms": 10.0, "mix": 1.0,
+                           "feedback": 0.0}),
+         ("TapeDelay", {"time_ms": 97.3, "glide_ms": 10.0, "mix": 1.0,
+                        "feedback": 0.0}),
+         ("AnalogDelay", {"time_ms": 97.3, "mix": 1.0, "feedback": 0.0}),
+         ("SlapbackDelay", {"time_ms": 97.3}),
+         ("PingPongDelay", {"time_ms": 97.3, "mix": 1.0, "feedback": 0.0}))
+
+
+#: The exact constructor values those pedals keep.
+KEPT = ("_time_exact", "_glide_exact")
+
+
+def _feed(values, rate, channels):
+    """A native-safe source: the lifecycle matrix's Feed, whose port can be
+    pointed at fresh material without the rack seeing a rewind."""
+    import lifecycle
+    return lifecycle.Feed(values, rate, channels, "256", loop=False)
+
+
+def _against_fresh(cls, rate, channels, chain, values, run, before=None):
+    """[] if a `cls` rack fed `values` from just before a mid-stream reset
+    renders what a freshly built `Rack` does under `run(rack)`; else what
+    differed.
+    `before(rack)` moves knobs ahead of the reset."""
+    feed = _feed(values, rate, channels)
+    fresh = Rack.create(feed.port, rate, chain=chain)
+    try:
+        want = run(fresh)
+    finally:
+        fresh.deinit()
+    other = array("h", values)
+    for i in range(len(other)):
+        other[i] = -other[i] // 2
+    feed = _feed(other, rate, channels)
+    rack = cls.create(feed.port, rate, chain=chain)
+    try:
+        if before is not None:
+            before(rack)
+        pull(rack.output, 3000, channels)
+        # The new material goes in ahead of the reset, so a block the reset
+        # pulls is missing from what plays after it.
+        feed.point(_feed(values, rate, channels).mat)
+        rack.reset()
+        got = run(rack)
+    finally:
+        rack.deinit()
+    if got == want:
+        return []
+    a, b = samples(got), samples(want)
+    first = 0
+    while a[first] == b[first]:
+        first += 1
+    return ["after reset %08x, fresh %08x, first difference at frame %d"
+            % (fnv(got), fnv(want), first // channels)]
+
+
+def t4_mix0(cls, rate, channels, names=MIX0):
+    """A pedal built at Mix 0 comes back from the rack's reset as built: on
+    time, and through a later Mix move back up."""
+    wrong = []
+    values = noise_det(16384, 5, channels)
+    for name in names:
+        mix = list(getattr(audioeffects, name).MACRO_LABELS).index("Mix")
+
+        def run(rack):
+            head = pull(rack.output, 4096, channels)
+            rack.effects[0].set_macro(mix, 100)
+            return head + pull(rack.output, 8192, channels)
+
+        for line in _against_fresh(cls, rate, channels,
+                                   ((name, {"mix": 0.0}),), values, run):
+            wrong.append("%s at Mix 0: %s" % (name, line))
+    return wrong
+
+
+def t4_exact(cls, rate, channels, cases=EXACT):
+    """A pedal's exact constructor values come back from the rack's reset:
+    a host's read-back of Time and a Time move after it play what the
+    freshly built rack's do."""
+    wrong = []
+    frames = 36000
+    values = clicks(frames, channels, range(512, frames, 4800))
+    for name, options in cases:
+        labels = list(getattr(audioeffects, name).MACRO_LABELS)
+
+        def before(rack):
+            pedal = rack.effects[0]
+            pedal.set_macro(0, 90)
+            if "Glide" in labels:
+                pedal.set_macro(labels.index("Glide"), 30)
+
+        def run(rack):
+            pedal = rack.effects[0]
+            # A host that reads Time back and writes it keeps the exact one.
+            pedal.set_macro(0, pedal.get_macro(0))
+            head = pull(rack.output, 12000, channels)
+            pedal.set_macro(0, 60)
+            return head + pull(rack.output, frames - 12000, channels)
+
+        for line in _against_fresh(cls, rate, channels,
+                                   ((name, dict(options)),), values, run,
+                                   before):
+            wrong.append("%s %r: %s" % (name, options, line))
+        # The values themselves, which a render at these settings may not
+        # reach (an exact Time a whole frame away from its knob's).
+        fresh = Rack.create(_feed(values, rate, channels).port, rate,
+                            chain=((name, dict(options)),))
+        rack = cls.create(_feed(values, rate, channels).port, rate,
+                          chain=((name, dict(options)),))
+        try:
+            before(rack)
+            rack.reset()
+            for kept in KEPT:
+                want = getattr(fresh.effects[0], kept, None)
+                got = getattr(rack.effects[0], kept, None)
+                if got != want:
+                    wrong.append("%s: %s reads %r after reset, %r as built"
+                                 % (name, kept, got, want))
+        finally:
+            rack.deinit()
+            fresh.deinit()
+    return wrong
+
+
+def t5_patch(cls):
+    """A `patch=` the rack refuses releases every pedal it had built."""
+    wrong = []
+    data = material(1, 2, 4096)
+    for patch in (-1, "x", True):
+        recording = _recording_lowpass()
+        try:
+            cls(_feed(data, 48000, 2).port,
+                chain=(recording, ("Rack", {"chain": (recording,)})),
+                patch=patch)
+            wrong.append("patch=%r built" % (patch,))
+            continue
+        except ValueError:
+            pass
+        if len(recording.built) != 2:
+            wrong.append("patch=%r: %d pedals built" % (
+                patch, len(recording.built)))
+            continue
+        for built in recording.built:
+            live = [n for n in built if not is_released(n)]
+            if not built or live:
+                wrong.append("patch=%r: a LowPass keeps %d of %d nodes live"
+                             % (patch, len(live), len(built)))
+    return wrong
+
+
 # --------------------------------------------------------------------------
 # The tests
 
@@ -1050,6 +1249,28 @@ class TestReset(TestCase):
             self.assertEqual(t4(Rack, rate, 2, (1, 2), chains=("R",)),
                              [], rate)
 
+    def test_a_mix0_pedal_comes_back_as_built(self):
+        for rate, channels in ((48000, 2), (22050, 1)):
+            self.assertEqual(t4_mix0(Rack, rate, channels), [],
+                             (rate, channels))
+
+    def test_exact_constructor_values_come_back(self):
+        for rate, channels in ((48000, 2), (22050, 1)):
+            self.assertEqual(t4_exact(Rack, rate, channels), [],
+                             (rate, channels))
+
+    def test_reset_as_built_faults_are_red(self):
+        self.assertNotEqual(t4_mix0(PutBackRack, 48000, 2), [])
+        for plant in (PutBackRack, PositionsOnlyRack):
+            self.assertNotEqual(t4_exact(plant, 48000, 2), [],
+                                plant.__name__)
+
+    def test_reset_as_built_micropython(self):
+        _native(self, "micropython", "T4")
+
+    def test_reset_as_built_circuitpython(self):
+        _native(self, "circuitpython", "T4")
+
     def test_a_host_reset_clears_the_last_pedal_only(self):
         # A delay into a filter: the host's reset_buffer on the output
         # clears the filter and leaves the delay's repeats playing.
@@ -1089,32 +1310,15 @@ class TestDeinit(TestCase):
                       LeakyBuildRack):
             self.assertNotEqual(t5(plant), [], plant.__name__)
 
-    def _native(self, family):
-        import subprocess
-        import tempfile
-        binaries, root = _native_binaries()
-        binary = binaries[family]
-        if binary is None:
-            self.skipTest("no %s binary: set LIFECYCLE_%s"
-                          % (family, family.upper()))
-        with tempfile.TemporaryDirectory() as scratch:
-            env = dict(os.environ, MICROPYPATH="lib:tests/support",
-                       GCOV_PREFIX=scratch)
-            done = subprocess.run(
-                [binary, "-X", "heapsize=256M",
-                 "tests/test_cpython_effects_rack.py"],
-                capture_output=True, text=True, cwd=root, env=env)
-        lines = [line for line in done.stdout.splitlines()
-                 if not line.startswith("T5|nodes|")]
-        self.assertEqual(lines, ["T5|Rack|ok"] + [
-            "T5|%s|red" % plant.__name__ for plant in NATIVE_PLANTS]
-            + ["DONE"], done.stdout[-2000:] + done.stderr[-2000:])
+    def test_a_refused_patch_releases_every_pedal(self):
+        self.assertEqual(t5_patch(Rack), [])
+        self.assertNotEqual(t5_patch(LeakyPatchRack), [])
 
     def test_deinit_releases_every_pedal_micropython(self):
-        self._native("micropython")
+        _native(self, "micropython", "T5")
 
     def test_deinit_releases_every_pedal_circuitpython(self):
-        self._native("circuitpython")
+        _native(self, "circuitpython", "T5")
 
 class TestTempo(TestCase):
     """T6. A tempo-synced pedal in the rack follows the song's tempo,
@@ -1180,6 +1384,41 @@ class TestSurface(TestCase):
 NATIVE_PLANTS = (LastOnlyDeinitRack, OutputNodeDeinitRack, LeakyBuildRack)
 
 
+def _native_lines(part):
+    """What `_native_main(part)` prints when every check holds."""
+    if part == "T5":
+        return (["T5|Rack|ok"]
+                + ["T5|%s|red" % plant.__name__ for plant in NATIVE_PLANTS]
+                + ["T5|patch|Rack|ok", "T5|patch|LeakyPatchRack|red",
+                   "DONE"])
+    return ["T4|mix0|Rack|ok", "T4|mix0|PutBackRack|red",
+            "T4|exact|Rack|ok", "T4|exact|PutBackRack|red",
+            "T4|exact|PositionsOnlyRack|red", "DONE"]
+
+
+def _native(case, family, part):
+    """Run `_native_main(part)` on a native interpreter and hold its lines
+    to `_native_lines(part)`."""
+    import subprocess
+    import tempfile
+    binaries, root = _native_binaries()
+    binary = binaries[family]
+    if binary is None:
+        case.skipTest("no %s binary: set LIFECYCLE_%s"
+                      % (family, family.upper()))
+    with tempfile.TemporaryDirectory() as scratch:
+        env = dict(os.environ, MICROPYPATH="lib:tests/support",
+                   GCOV_PREFIX=scratch)
+        done = subprocess.run(
+            [binary, "-X", "heapsize=256M",
+             "tests/test_cpython_effects_rack.py", part],
+            capture_output=True, text=True, cwd=root, env=env)
+    lines = [line for line in done.stdout.splitlines()
+             if not line.startswith("T5|nodes|")]
+    case.assertEqual(lines, _native_lines(part),
+                     done.stdout[-2000:] + done.stderr[-2000:])
+
+
 #: Every claim sentence of the class docstring, word for word, and the
 #: tests that hold it.
 CLAIMS = (
@@ -1210,7 +1449,9 @@ CLAIMS = (
      "the pedals in chain order.", "test_effects_is_the_chain_in_order"),
     ("`reset()` clears every pedal and puts each back to the settings the "
      "rack built it with, undoing knob moves made since.",
-     "test_reset_puts_every_pedal_back"),
+     ("test_reset_puts_every_pedal_back",
+      "test_a_mix0_pedal_comes_back_as_built",
+      "test_exact_constructor_values_come_back")),
     ("`program_change(0)` does the putting back alone, without clearing "
      "anything.", "test_reset_puts_every_pedal_back"),
     ("A host's `audiocore.reset_buffer(rack.output)` clears the last pedal "
@@ -1231,19 +1472,38 @@ CLAIMS = (
     ("`deinit()` releases every pedal, nested racks included, and never "
      "your source.", ("test_deinit_releases_every_pedal",
                       "test_an_empty_rack_is_a_patch_cable")),
-    ("If an entry fails to build, the pedals built before it are released "
-     "before the error reaches you.", "test_deinit_releases_every_pedal"),
+    ("If an entry fails to build, or `patch` is refused, the pedals already "
+     "built are released before the error reaches you.",
+     ("test_deinit_releases_every_pedal",
+      "test_a_refused_patch_releases_every_pedal")),
 )
 
 
-def _native_main():
-    """T5 on this interpreter by itself: the clean class, then each plant,
-    which must be red."""
+def _native_main(part="T5"):
+    """T5 (or T4's reset-as-built checks) on this interpreter by itself:
+    the clean class, then each plant, which must be red."""
+    if part == "T4":
+        for label, check, plants in (
+                ("mix0", t4_mix0, (PutBackRack,)),
+                ("exact", t4_exact, (PutBackRack, PositionsOnlyRack))):
+            wrong = check(Rack, 48000, 2)
+            print("T4|%s|Rack|%s" % (label, "ok" if not wrong
+                                     else "RED(%s)" % wrong))
+            for plant in plants:
+                print("T4|%s|%s|%s" % (label, plant.__name__,
+                                       "red" if check(plant, 48000, 2)
+                                       else "GREEN"))
+        print("DONE")
+        return
     wrong = t5(Rack)
     print("T5|Rack|%s" % ("ok" if not wrong else "RED(%s)" % wrong))
     print("T5|nodes|%r|no deinit|%s" % (COUNTED, sorted(NO_DEINIT)))
     for plant in NATIVE_PLANTS:
         print("T5|%s|%s" % (plant.__name__, "red" if t5(plant) else "GREEN"))
+    wrong = t5_patch(Rack)
+    print("T5|patch|Rack|%s" % ("ok" if not wrong else "RED(%s)" % wrong))
+    print("T5|patch|LeakyPatchRack|%s" % (
+        "red" if t5_patch(LeakyPatchRack) else "GREEN"))
     print("DONE")
 
 
@@ -1253,6 +1513,7 @@ if __name__ == "__main__":
         # the module a planted class is defined in.
         sys.path.insert(0, "tests")
         import test_cpython_effects_rack
-        test_cpython_effects_rack._native_main()
+        test_cpython_effects_rack._native_main(
+            sys.argv[1] if len(sys.argv) > 1 else "T5")
     else:
         unittest.main()
