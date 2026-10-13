@@ -10,6 +10,17 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`ShimmerHall` (rebuilt, Phase 6):** a pitch shifter around a hall, in
+  two characters. Bloom sends the shifted copy into the hall once, Bloom
+  after you play, on `audiodelays.PitchShift`; Rise puts the shift inside
+  an `audioecho.FeedbackDelay` loop (`loop_semitones`), so each pass comes
+  back shifted again until Damping darkens it away. Nine macros (Character,
+  Shimmer, Rise, Bloom, Interval, Decay, Size, Damping, Mix) and six
+  patches replace the old Shimmer / Echo / Space / Tone surface and its
+  constructor arguments. The hall is the rebuilt `Reverb`. The dry passes
+  untouched up to Mix 1, Mix 0 is a byte-exact wire, and the input ceiling
+  is -24 dBFS. It lives in `lib/audioeffects/rebuilt/shimmerhall.py`, beside
+  the old class in `rack.py`, until it is promoted.
 - MultiTapDelay: the docstring says which patches need a P4-class board (patch 4 does, patch 3 may), from the boards' figures at audiodsp v0.6.3
 - **`DigitalDelay` (rebuilt, Phase 5; adopted 2026-09-28):** a clean
   interpolated line with the Boss DD-2's control law on one
