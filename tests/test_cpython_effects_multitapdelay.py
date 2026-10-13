@@ -1877,17 +1877,26 @@ class RoundOneRoutes(unittest.TestCase):
                                                 channels)
                 self.assertTrue(result["passed"], (rate, channels, result))
 
-    def test_mixer_tail_plant_is_red(self):
+    def test_mixer_tail_plant_is_inert(self):
         # Since re-audit fix round 1 every wiring is quiet, so no voice
         # holds the source's first block at construction and a host reset
         # that reaches the Mixer drops nothing there (c80ca59 put the 3 000
-        # click at 2 744). Mid-stream it still empties both lines: the
-        # click's heads are gone where the tail leaves them sounding.
+        # click at 2 744).
+        #
+        # Restated at audiodsp v0.6.6rc1 (30cbbf6). Up to eb2d20d a host
+        # reset that reached the Mixer mid-stream re-primed its voices from
+        # the Splitter's taps and dropped the blocks they held, so the
+        # click's heads were gone and this test held the plant red there. That rewind was
+        # the node's defect, fixed in audiodsp#229: a Mixer's host reset
+        # keeps every voice where it was, so the plant renders what the
+        # class does, heads and all, and is green. The class keeps its
+        # output on the tail; that is no longer needed for this, but it is
+        # not wrong.
         self.assertTrue(host_reset_route(MixerTail)["passed"])
         for channels in (2, 1):
             result = host_reset_lines_route(MixerTail, channels=channels)
-            self.assertFalse(result["passed"], result)
-            self.assertEqual(result["hits"], [[7000]] * channels)
+            self.assertTrue(result["passed"], result)
+            self.assertEqual(result["hits"], [result["law"]] * channels)
         result = reach_flag(MixerTail, "_plant_mixer_tail")
         self.assertEqual(result["checked"], 9 * 17 + 7)
 
@@ -2692,7 +2701,7 @@ class ReauditRoundOne(unittest.TestCase):
         self.assertNotEqual(stepped._feedback, stepped.macro(FEEDBACK_I))
         self.assertLess(abs(stepped._feedback - 0.5), 3e-5)
 
-    def _judge_routes(self, results, native):
+    def _judge_routes(self, results):
         """Items 1 and 2 on one interpreter's run."""
         for part in ("FIRSTDRY", "FIRSTHEADS"):
             self.assertEqual(red_cells(results, part, "clean"), [], part)
@@ -2706,19 +2715,23 @@ class ReauditRoundOne(unittest.TestCase):
             red_cells(results, "FIRSTHEADS", "oldwiring"),
             sorted((name, rate, channels) for name in RESYNC_ROUTES
                    for rate in ROUTE_RATES for channels in (2, 1)))
-        # And on a native interpreter, in mono, the dry's first block: all
-        # 256 samples zero. The CPython shim copies the primed block, so
-        # there the dry is kept (which is why this runs natively).
+        # And in mono, the dry's first block: all 256 samples zero.
+        #
+        # Restated at audiodsp v0.6.6rc1 (30cbbf6). Up to eb2d20d the
+        # CPython twin's mono SplitterTap handed out a fresh copy of the
+        # primed block, so on CPython the plant kept the dry and this test
+        # asserted no cell, holding the dry check to the native
+        # interpreters. That copy was the twin's defect, fixed in
+        # audiodsp#228: a mono tap's buffer is the tap's own on CPython as
+        # it is natively, so the plant loses the dry's first block on every
+        # interpreter, and every interpreter is held to it.
         dry = red_cells(results, "FIRSTDRY", "oldwiring")
-        if native:
-            self.assertEqual(dry, sorted(
-                (name, rate, 1) for name in RESYNC_ROUTES
-                for rate in ROUTE_RATES))
-            for name, rate, channels in dry:
-                self.assertEqual(results[("FIRSTDRY", "oldwiring", name,
-                                          rate, channels)], 256)
-        else:
-            self.assertEqual(dry, [])
+        self.assertEqual(dry, sorted(
+            (name, rate, 1) for name in RESYNC_ROUTES
+            for rate in ROUTE_RATES))
+        for name, rate, channels in dry:
+            self.assertEqual(results[("FIRSTDRY", "oldwiring", name,
+                                      rate, channels)], 256)
 
     def _judge_blocks(self, results):
         """Items 3 and 4 on one interpreter's run."""
@@ -2749,7 +2762,7 @@ class ReauditRoundOne(unittest.TestCase):
         results = run_routes(sys.executable, (
             "clean,oldwiring=firstdry,firstheads",
             "clean,adapterreset,sourcebypass=blocks"))
-        self._judge_routes(results, native=False)
+        self._judge_routes(results)
         self._judge_blocks(results)
 
     def test_routes_before_the_first_pull_and_source_buffers_native(self):
@@ -2764,7 +2777,7 @@ class ReauditRoundOne(unittest.TestCase):
             results = run_routes(binary, (
                 "clean,oldwiring=firstdry,firstheads",
                 "clean,adapterreset,sourcebypass=blocks"))
-            self._judge_routes(results, native=True)
+            self._judge_routes(results)
             self._judge_blocks(results)
 
     def test_the_route_plants_are_not_on_the_surface(self):
