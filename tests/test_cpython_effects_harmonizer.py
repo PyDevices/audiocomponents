@@ -1454,6 +1454,10 @@ CLAIMS = (
     ("`reset()` empties the three lines, starts their splices where a new "
      "instance's start, and returns to patch 0.",
      "TheSurface.test_reset_renders_as_fresh"),
+    ("On CircuitPython's own pitch shifter a reset does not restart the "
+     "splices.",
+     ("DECLARED:Harmonizer,E10-reset,P4",
+      "DECLARED:Harmonizer,E10-mix0,P4")),
     ("The class never reads the host's tempo.",
      "TheSurface.test_never_reads_the_tempo"),
 )

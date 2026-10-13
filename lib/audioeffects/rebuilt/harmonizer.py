@@ -151,6 +151,8 @@ class Harmonizer(_component.Component):
     0 at Mix 0 or with every voice off.
     `reset()` empties the three lines, starts their splices where a new
     instance's start, and returns to patch 0.
+    On CircuitPython's own pitch shifter a reset does not restart the
+    splices.
     The class never reads the host's tempo.
     """
 
