@@ -69,6 +69,9 @@ jobs:
       - run: python tools/effect_probes/make_probes.py --ensure
 
       - run: python -m pytest tests -n auto --dist loadscope -p no:cacheprovider
+        env:
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
       - run: python tools/validate_api.py
       - run: python tests/parity/effects_library_smoke.py
 
