@@ -241,6 +241,17 @@ DECLARED = {
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (two or three moves before one pull)',
     ("PingPongDelay", 'E4-m2=', 'P5'):
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    # AirSpace: its chamber is the rebuilt Reverb, whose rows above say why
+    # a tank that was emptied, or moved in its loop, never meets an
+    # uninterrupted one byte for byte. A reset renders exactly as a fresh
+    # instance does (the class's TheReset tests); it is the control that
+    # never was reset.
+    ("AirSpace", "E1-", "P4"): "reset() empties the chamber and restarts its modulation, so it never re-converges with the uninterrupted control (Reverb's E1 P4)",
+    ("AirSpace", "E4-m10=", "P4"): "Mix to 0 and back empties the chamber and restarts its modulation (as E1)",
+    ("AirSpace", "E5-", "P4"): "Mix to 0 and back empties the chamber and restarts its modulation (as E1)",
+    ("AirSpace", "E9-", "P4"): "the E5 move: Mix to 0 and back empties the chamber (as E1)",
+    ("AirSpace", "E6-", "P4"): "a patch move reaches the chamber's loop and leaves its tank off the control's for good (Reverb's E6 P4)",
+    ("AirSpace", "E11-", "P4"): "moves that reach the chamber's loop or empty it leave its tank off the control's for good (Reverb's E11 P4)",
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")

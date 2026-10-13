@@ -29,6 +29,9 @@ RAIL = 32767
 #: cell prints `decl` and is counted as a declared exception. Nothing else
 #: skips a cell.
 DECLARED = {
+    ("AirSpace", "plants", "T5/"): "the glide plant changes only how a"
+    " Time move travels, and the plant check renders at fixed settings, so"
+    " it reads as the clean class; the class's T5 tests move Time",
 }
 
 CPYTHON = sys.implementation.name == "cpython"

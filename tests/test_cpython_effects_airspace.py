@@ -1,0 +1,955 @@
+"""`AirSpace`'s own trait and planted-fault tests.
+
+The card (frozen 2026-10-12) has five traits, T1-T5. Each is measured here
+at a few of its cells, as the card words it, and the same measurement is
+shown red on the card's planted fault; the measurements of T2-T5 are also
+red on the class built as a wire. The full grids (every seed, both rates,
+stereo and mono) are the evidence pack's, from the probe script beside it.
+
+Every law a measurement checks against is written out here from the card,
+never taken from the class. No numpy: plain sums, a radix-2 FFT and
+Goertzel. The planted faults live in `airspace_plants.py`, which the kit
+also runs natively.
+
+The class is reached by `rebuilt.module_class("AirSpace")`.
+"""
+
+import cmath
+import math
+import os
+import sys
+import unittest
+from array import array
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+
+import audiocore                                            # noqa: E402
+import airspace_plants as plants                            # noqa: E402
+from audioeffects import rebuilt                            # noqa: E402
+
+VENDOR = "PyDevices"
+
+AirSpace = rebuilt.module_class("AirSpace")
+
+BLOCK = 256
+TIME_I, FEEDBACK_I, GLIDE_I, DRIVE_I, LOOP_TOP_I, LOOP_BASS_I, TOP_CUT_I, \
+    LOW_CUT_I, DECAY_I, DAMPING_I, MIX_I = range(11)
+
+#: The kit's plant table (KIT.md): one or two planted faults per trait.
+KIT_PLANTS = plants.KIT_PLANTS
+
+
+# --------------------------------------------------------------------------
+# The card's laws, written out independently of the class
+
+
+SPANS = {
+    TIME_I: (20.0, 500.0, True),
+    FEEDBACK_I: (0.0, 0.85, False),
+    GLIDE_I: (1000.0, 10000.0, True),
+    DRIVE_I: (0.0, 1.0, False),
+    LOOP_TOP_I: (1000.0, 16000.0, True),
+    LOOP_BASS_I: (20.0, 1000.0, True),
+    TOP_CUT_I: (1000.0, 16000.0, True),
+    LOW_CUT_I: (20.0, 500.0, True),
+    DECAY_I: (0.3, 10.0, True),
+    DAMPING_I: (500.0, 16000.0, True),
+    MIX_I: (0.0, 2.0, False),
+}
+
+#: The card's section 3 defaults, in macro order.
+CARD_DEFAULTS = (111.0, 0.375, 4000.0, 0.2, 6000.0, 100.0, 5000.0, 100.0,
+                 1.8, 4000.0, 0.35)
+
+PATCH_NAMES = ("Chamber Send", "Short Send", "Long Send", "Dark Loop",
+               "Bright Chamber", "Driven Tape", "Plain Chamber")
+
+
+def law_value(index, midi):
+    low, high, log = SPANS[index]
+    x = midi / 127.0
+    if log:
+        return low * (high / low) ** x
+    return low + (high - low) * x
+
+
+def law_midi(index, value):
+    """The 0-127 position, unquantized, of `value` on macro `index`."""
+    low, high, log = SPANS[index]
+    if log:
+        return 127.0 * math.log(value / low) / math.log(high / low)
+    return 127.0 * (value - low) / (high - low)
+
+
+def law_frames(ms, rate):
+    """Time lands on the nearest whole frame."""
+    return int(math.floor(ms * rate / 1000.0 + 0.5))
+
+
+def law_slew(glide_ms):
+    """Glide is how long a move across the whole 480 ms range takes."""
+    return 480.0 / glide_ms
+
+
+def law_levels(mix):
+    """`audiodelays.Echo`'s Mix: (dry, wet)."""
+    return (1.0 if mix <= 1.0 else 2.0 - mix, mix if mix < 1.0 else 1.0)
+
+
+# --------------------------------------------------------------------------
+# Material and rendering
+
+
+class Feed:
+    """int16 frames in 256-frame blocks, then silence for ever."""
+
+    def __init__(self, data, rate, channels):
+        self.sample_rate = rate
+        self.channel_count = channels
+        self.bits_per_sample = 16
+        self.samples_signed = True
+        self._data = data
+        self._at = 0
+        self._stride = BLOCK * channels
+
+    def _reset_buffer(self, single_channel_output=False, audio_channel=0):
+        pass
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        chunk = self._data[self._at:self._at + self._stride]
+        self._at += self._stride
+        if len(chunk) < self._stride:
+            chunk = chunk + array("h", bytes(2 * (self._stride - len(chunk))))
+        return audiocore.GET_BUFFER_MORE_DATA, memoryview(chunk)
+
+
+def lcg_noise(frames, channels, rms, seed):
+    """Uniform noise at `rms` LSB, its own stream per seed."""
+    amp = rms * math.sqrt(3.0)
+    state = (seed * 7919 + 17) & 0x7FFFFFFF
+    out = array("h", bytes(2 * frames * channels))
+    for i in range(frames * channels):
+        state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+        out[i] = int(round((state / 2147483647.0 * 2.0 - 1.0) * amp))
+    return out
+
+
+def burst(on_frames, total_frames, channels, rms, seed):
+    data = array("h", bytes(2 * total_frames * channels))
+    data[0:on_frames * channels] = lcg_noise(on_frames, channels, rms, seed)
+    return data
+
+
+def tone(hz, frames, rate, channels, peak):
+    out = array("h", bytes(2 * frames * channels))
+    for n in range(frames):
+        v = int(round(peak * math.sin(2.0 * math.pi * hz * n / rate)))
+        for c in range(channels):
+            out[n * channels + c] = v
+    return out
+
+
+def build(cls, data, rate, channels, patch=None, **options):
+    return cls(Feed(data, rate, channels), patch=patch, **options)
+
+
+def render(effect, frames, actions=None):
+    """`frames` frames of the output, int16 interleaved. `actions` maps a
+    pull index to a callable taken before that pull."""
+    channels = effect.channel_count
+    out = array("h")
+    k = 0
+    while len(out) < frames * channels:
+        if actions and k in actions:
+            actions[k](effect)
+        _, data = audiocore.get_buffer(effect.output)
+        out.extend(array("h", bytes(data)))
+        k += 1
+    return out[:frames * channels]
+
+
+def mono(pcm, channels):
+    """Stereo read as the mean of the two channels."""
+    if channels == 1:
+        return [float(v) for v in pcm]
+    return [(pcm[i] + pcm[i + 1]) * 0.5 for i in range(0, len(pcm), 2)]
+
+
+def set_value(effect, index, value):
+    effect.set_macro(index, law_midi(index, value))
+
+
+# --------------------------------------------------------------------------
+# Readers
+
+
+def fft(values):
+    """Radix-2 FFT of a list of complex numbers whose length is a power of
+    two."""
+    n = len(values)
+    out = list(values)
+    j = 0
+    for i in range(1, n):
+        bit = n >> 1
+        while j & bit:
+            j ^= bit
+            bit >>= 1
+        j |= bit
+        if i < j:
+            out[i], out[j] = out[j], out[i]
+    size = 2
+    while size <= n:
+        step = cmath.exp(-2j * math.pi / size)
+        half = size // 2
+        for start in range(0, n, size):
+            w = 1.0
+            for k in range(half):
+                a = out[start + k]
+                b = out[start + k + half] * w
+                out[start + k] = a + b
+                out[start + k + half] = a - b
+                w *= step
+        size *= 2
+    return out
+
+
+def band_energies(x, rate, bands):
+    """Energy of `x` in each (low, high) Hz band, zero-padded to a power
+    of two."""
+    n = 1
+    while n < len(x):
+        n *= 2
+    spectrum = fft([complex(v) for v in x] + [0j] * (n - len(x)))
+    out = []
+    for low, high in bands:
+        k0 = int(math.ceil(low * n / rate))
+        k1 = int(math.floor(high * n / rate))
+        out.append(sum(abs(spectrum[k]) ** 2 for k in range(k0, k1 + 1)))
+    return out
+
+
+def goertzel_power(x, hz, rate):
+    """Goertzel under a Hann window, so a strong tone elsewhere does not
+    leak into the bin read."""
+    w = 2.0 * math.pi * hz / rate
+    coeff = 2.0 * math.cos(w)
+    s1 = s2 = 0.0
+    n = len(x)
+    step = 2.0 * math.pi / (n - 1) if n > 1 else 0.0
+    for i, v in enumerate(x):
+        s0 = v * (0.5 - 0.5 * math.cos(step * i)) + coeff * s1 - s2
+        s2 = s1
+        s1 = s0
+    return s1 * s1 + s2 * s2 - coeff * s1 * s2
+
+
+class Red(Exception):
+    """A window held no energy, or was empty or too short: red, never a
+    pass or a NaN."""
+
+
+def db_ratio(num, den):
+    if num <= 0.0 or den <= 0.0:
+        raise Red("a window held no energy")
+    return 10.0 * math.log10(num / den)
+
+
+# --------------------------------------------------------------------------
+# The traits' measurements
+
+
+def t1_mismatches(cls, rate, channels, mix, seed, patch=None, **options):
+    """T1: a noise burst 1 ms shorter than Time, output against input over
+    frames 0 to Time; the count of frames that differ."""
+    probe = cls(Feed(array("h", bytes(2 * channels * BLOCK)), rate,
+                     channels), patch=patch, **options)
+    time_ms = probe.macro(TIME_I)
+    probe.deinit()
+    frames = law_frames(time_ms, rate)
+    on = frames - law_frames(1.0, rate)
+    data = burst(on, frames + BLOCK, channels, 8000.0, seed)
+    effect = build(cls, data, rate, channels, patch, **options)
+    effect.set_macro(MIX_I, law_midi(MIX_I, mix))
+    out = render(effect, frames)
+    effect.deinit()
+    if not any(out):
+        raise Red("the output was silent")
+    return sum(1 for i in range(frames * channels) if out[i] != data[i])
+
+
+def t2_darkening(cls, rate, channels, seed, loop_top, top_cut):
+    """T2: the 3.5-8 kHz over 200-1000 Hz energy ratio in dB, at 150-450
+    ms minus at 1000-1300 ms, at Mix 2, Feedback 0.85, a 20 ms burst."""
+    total = int(1.35 * rate)
+    data = burst(law_frames(20.0, rate), total, channels, 4000.0, seed)
+    effect = build(cls, data, rate, channels, mix=2.0, feedback=0.85,
+                   loop_top_hz=loop_top, top_cut_hz=top_cut)
+    x = mono(render(effect, total), channels)
+    effect.deinit()
+    bands = ((3500.0, 8000.0), (200.0, 1000.0))
+    early = x[int(0.15 * rate):int(0.45 * rate)]
+    late = x[int(1.0 * rate):int(1.3 * rate)]
+    hi_e, lo_e = band_energies(early, rate, bands)
+    hi_l, lo_l = band_energies(late, rate, bands)
+    return db_ratio(hi_e, lo_e) - db_ratio(hi_l, lo_l)
+
+
+def t2_added(cls, rate, channels, seed, loop_top=16000.0, top_cut=16000.0):
+    """T2's reading: the darkening a setting adds over Loop Top and Top
+    Cut at 16 kHz."""
+    return (t2_darkening(cls, rate, channels, seed, loop_top, top_cut)
+            - t2_darkening(cls, rate, channels, seed, 16000.0, 16000.0))
+
+
+def envelope_db(x, frame):
+    """Mean square in dB per non-overlapping frame of `frame` samples."""
+    out = []
+    for start in range(0, len(x) - frame + 1, frame):
+        power = sum(v * v for v in x[start:start + frame]) / frame
+        out.append(10.0 * math.log10(power) if power > 0.0 else -1e9)
+    return out
+
+
+def t3_tail_s(cls, rate, channels, seed, time_ms, feedback, seconds=12.0):
+    """T3: the time until the 10 ms envelope last sits within 40 dB of
+    its peak, at Mix 2, a 20 ms burst."""
+    total = int(seconds * rate)
+    data = burst(law_frames(20.0, rate), total, channels, 4000.0, seed)
+    effect = build(cls, data, rate, channels, mix=2.0, time_ms=time_ms,
+                   feedback=feedback)
+    x = mono(render(effect, total), channels)
+    effect.deinit()
+    env = envelope_db(x, int(round(0.01 * rate)))
+    peak = max(env)
+    if peak <= -1e8:
+        raise Red("the render held no energy")
+    last = max(i for i, v in enumerate(env) if v >= peak - 40.0)
+    if last >= len(env) - 50:
+        raise Red("the tail ran to the end of the render")
+    return (last + 1) * 0.01
+
+
+def t3_ratio(cls, rate, channels, seed, time_ms, feedback):
+    return (t3_tail_s(cls, rate, channels, seed, time_ms, feedback)
+            / t3_tail_s(cls, rate, channels, seed, time_ms, 0.0))
+
+
+def t4_reading(cls, rate, channels, seed, time_ms=111.0, feedback=0.375,
+               seconds=8.0):
+    """T4: the normalised autocorrelation, at a lag of one Time, of the
+    clamped and detrended 5 ms envelope, at Mix 2, a 10 ms burst."""
+    total = int(seconds * rate)
+    data = burst(law_frames(10.0, rate), total, channels, 4000.0, seed)
+    effect = build(cls, data, rate, channels, mix=2.0, time_ms=time_ms,
+                   feedback=feedback)
+    x = mono(render(effect, total), channels)
+    effect.deinit()
+    env = envelope_db(x, int(round(0.005 * rate)))
+    peak = max(env)
+    if peak <= -1e8:
+        raise Red("the render held no energy")
+    floor = peak - 40.0
+    first = int(round((time_ms + 60.0) / 5.0))
+    last = max(i for i, v in enumerate(env) if v >= floor)
+    lag = int(round(time_ms / 5.0))
+    window = [max(v, floor) for v in env[first:last + 1]]
+    if len(window) < 2 * lag:
+        raise Red("the window was shorter than two lags")
+    n = len(window)
+    mean_i = (n - 1) / 2.0
+    mean_v = sum(window) / n
+    sxx = sum((i - mean_i) ** 2 for i in range(n))
+    slope = sum((i - mean_i) * (v - mean_v)
+                for i, v in enumerate(window)) / sxx
+    resid = [v - (mean_v + slope * (i - mean_i))
+             for i, v in enumerate(window)]
+    energy = sum(v * v for v in resid)
+    if energy <= 0.0:
+        raise Red("the window was flat")
+    return sum(resid[i] * resid[i + lag] for i in range(n - lag)) / energy
+
+
+def t5_bend_db(cls, rate, channels, glide_ms, from_ms, to_ms):
+    """T5: the bent frequency's power over the held render's, from 50 ms
+    into a Time move to 20 ms before its end (at most 1.6 s), on a held
+    1 kHz tone at Mix 2. Returns dB."""
+    slew = law_slew(glide_ms)
+    move_at = int(round(rate / BLOCK))           # the pull nearest 1 s
+    start = move_at * BLOCK
+    travel_s = abs(to_ms - from_ms) / 1000.0 / slew
+    begin = start + int(0.05 * rate)
+    end = start + int(min(travel_s - 0.02, 1.6) * rate)
+    if end <= begin:
+        raise Red("the window was empty")
+    bent = 1000.0 * (1.0 - slew if to_ms > from_ms else 1.0 + slew)
+    data = tone(1000.0, end + BLOCK, rate, channels, 8000.0)
+    powers = []
+    for move in (True, False):
+        effect = build(cls, data, rate, channels, mix=2.0, time_ms=from_ms,
+                       glide_ms=glide_ms)
+        actions = None
+        if move:
+            actions = {move_at: lambda e: set_value(e, TIME_I, to_ms)}
+        x = mono(render(effect, end, actions), channels)
+        effect.deinit()
+        powers.append(goertzel_power(x[begin:end], bent, rate))
+    return db_ratio(powers[0], powers[1])
+
+
+class Wire(AirSpace):
+    """Every measurement's control: the class built as a wire."""
+
+    def _route(self):
+        self._route_around(self._adapter)
+
+
+# --------------------------------------------------------------------------
+# T1
+
+
+class T1DryIsUntouched(unittest.TestCase):
+
+    def test_every_patch_stereo_48k(self):
+        for patch in sorted(AirSpace.PATCHES):
+            for mix in (0.5, 1.0):
+                with self.subTest(patch=patch, mix=mix):
+                    self.assertEqual(
+                        t1_mismatches(AirSpace, 48000, 2, mix, 1, patch), 0)
+
+    def test_the_times_and_the_hardest_settings(self):
+        cells = [dict(time_ms=20.0), dict(time_ms=111.0),
+                 dict(time_ms=500.0),
+                 dict(top_cut_hz=1000.0, loop_top_hz=1000.0, drive=1.0)]
+        for rate in (48000, 22050):
+            for channels in (2, 1):
+                for options in cells:
+                    with self.subTest(rate=rate, channels=channels,
+                                      **options):
+                        self.assertEqual(t1_mismatches(
+                            AirSpace, rate, channels, 1.0, 2, **options), 0)
+
+    def test_red_on_the_top_cut_ahead_of_the_splitter(self):
+        self.assertGreater(
+            t1_mismatches(plants.SendFirst, 48000, 2, 1.0, 1), 0)
+
+
+# --------------------------------------------------------------------------
+# T2
+
+
+class T2EachRepeatDarker(unittest.TestCase):
+
+    CELLS = ((48000, 2), (22050, 1))
+
+    def test_loop_top_darkens_each_repeat(self):
+        for rate, channels in self.CELLS:
+            for loop_top in (2000.0, 4000.0):
+                with self.subTest(rate=rate, channels=channels,
+                                  loop_top=loop_top):
+                    added = t2_added(AirSpace, rate, channels, 1,
+                                     loop_top=loop_top)
+                    if loop_top == 2000.0:
+                        self.assertGreaterEqual(added, 6.0)
+                    else:
+                        self.assertGreater(added, 0.0)
+
+    def test_top_cut_darkens_once(self):
+        for rate, channels in self.CELLS:
+            for top_cut in (2000.0, 4000.0):
+                with self.subTest(rate=rate, channels=channels,
+                                  top_cut=top_cut):
+                    self.assertLessEqual(
+                        t2_added(AirSpace, rate, channels, 1,
+                                 top_cut=top_cut), 1.0)
+
+    def test_red_on_the_loop_filter_moved_onto_the_send(self):
+        self.assertLess(t2_added(plants.LoopOnSend, 48000, 2, 1,
+                                 loop_top=2000.0), 6.0)
+
+    def test_red_on_top_cut_wired_into_the_loop(self):
+        self.assertGreater(t2_added(plants.TopCutInLoop, 48000, 2, 1,
+                                    top_cut=2000.0), 1.0)
+
+    def test_red_on_a_wire(self):
+        with self.assertRaises(Red):
+            t2_added(Wire, 48000, 2, 1, loop_top=2000.0)
+
+
+# --------------------------------------------------------------------------
+# T3
+
+
+class T3FeedbackLengthensTheTail(unittest.TestCase):
+
+    #: (Time ms, Feedback, the card's bar).
+    BARS = ((500.0, 0.375, 1.3), (500.0, 0.6, 2.0), (500.0, 0.85, 3.0),
+            (111.0, 0.85, 1.6))
+
+    def test_the_bars(self):
+        for rate, channels in ((48000, 2), (22050, 1)):
+            for time_ms, feedback, bar in self.BARS:
+                with self.subTest(rate=rate, channels=channels,
+                                  time_ms=time_ms, feedback=feedback):
+                    self.assertGreaterEqual(
+                        t3_ratio(AirSpace, rate, channels, 1, time_ms,
+                                 feedback), bar)
+
+    def test_the_default_adds_only_a_little(self):
+        # Not one of the card's bars: its Limits sentence. The probe read
+        # 1 to 6 %.
+        ratio = t3_ratio(AirSpace, 48000, 2, 1, 111.0, 0.375)
+        self.assertGreaterEqual(ratio, 1.0)
+        self.assertLess(ratio, 1.1)
+
+    def test_red_on_no_feedback(self):
+        self.assertLess(t3_ratio(plants.NoFeedback, 48000, 2, 1, 500.0,
+                                 0.85), 3.0)
+
+    def test_red_on_a_wire(self):
+        self.assertLess(t3_ratio(Wire, 48000, 2, 1, 500.0, 0.85), 3.0)
+
+
+# --------------------------------------------------------------------------
+# T4
+
+
+class T4HeardAsAChamber(unittest.TestCase):
+
+    def test_the_cells(self):
+        cells = ((111.0, 0.375), (200.0, 0.375), (200.0, 0.6))
+        for rate, channels in ((48000, 2), (22050, 1)):
+            for time_ms, feedback in cells:
+                with self.subTest(rate=rate, channels=channels,
+                                  time_ms=time_ms, feedback=feedback):
+                    self.assertLessEqual(
+                        t4_reading(AirSpace, rate, channels, 1, time_ms,
+                                   feedback), 0.6)
+
+    def test_red_on_bare_repeats(self):
+        self.assertGreater(t4_reading(plants.BareRepeats, 48000, 2, 1,
+                                      200.0, 0.6), 0.6)
+
+    def test_red_on_a_wire(self):
+        with self.assertRaises(Red):
+            t4_reading(Wire, 48000, 2, 1, 200.0, 0.6)
+
+
+# --------------------------------------------------------------------------
+# T5
+
+
+class T5TimeBendsThePitch(unittest.TestCase):
+
+    def test_the_bend_both_ways_at_every_glide(self):
+        for rate, channels in ((48000, 2), (22050, 1)):
+            for glide in (1000.0, 4000.0, 10000.0):
+                for from_ms, to_ms in ((111.0, 222.0), (222.0, 111.0)):
+                    with self.subTest(rate=rate, channels=channels,
+                                      glide=glide, move=(from_ms, to_ms)):
+                        self.assertGreaterEqual(
+                            t5_bend_db(AirSpace, rate, channels, glide,
+                                       from_ms, to_ms), 40.0)
+
+    def test_red_on_a_jump(self):
+        self.assertLess(t5_bend_db(plants.JumpTime, 48000, 2, 4000.0,
+                                   111.0, 222.0), 40.0)
+
+    def test_red_on_a_wire(self):
+        self.assertLess(t5_bend_db(Wire, 48000, 2, 4000.0, 111.0, 222.0),
+                        40.0)
+
+
+# --------------------------------------------------------------------------
+# The surface
+
+
+def fresh(rate=48000, channels=2, patch=None, **options):
+    data = array("h", bytes(2 * channels * BLOCK))
+    return build(AirSpace, data, rate, channels, patch, **options)
+
+
+class TheSurface(unittest.TestCase):
+
+    def test_the_spans(self):
+        effect = fresh()
+        for index, (low, high, _log) in SPANS.items():
+            for midi, want in ((0, low), (127, high)):
+                with self.subTest(index=index, midi=midi):
+                    effect.set_macro(index, midi)
+                    self.assertAlmostEqual(effect.macro(index), want,
+                                           delta=abs(want) * 1e-9)
+        effect.deinit()
+
+    def test_the_labels_and_modes(self):
+        self.assertEqual(AirSpace.MACRO_LABELS, (
+            "Time", "Feedback", "Glide", "Drive", "Loop Top", "Loop Bass",
+            "Top Cut", "Low Cut", "Decay", "Damping", "Mix"))
+        self.assertEqual(set(AirSpace.MACRO_MODES.values()), {"UNIPOLAR"})
+
+    def test_time_lands_on_whole_frames(self):
+        for rate in (48000, 44100, 22050):
+            effect = fresh(rate)
+            for ms in (20.0, 37.3, 111.0, 222.0, 499.9):
+                with self.subTest(rate=rate, ms=ms):
+                    set_value(effect, TIME_I, ms)
+                    self.assertEqual(effect._handed["delay_frames"],
+                                     law_frames(effect.macro(TIME_I), rate))
+            effect.deinit()
+
+    def test_what_the_tape_and_the_filter_are_handed(self):
+        for rate in (48000, 22050):
+            effect = fresh(rate)
+            nyquist = rate * 0.5 * 0.98
+            for midi in (0, 40, 127):
+                with self.subTest(rate=rate, midi=midi):
+                    effect.set_macro(FEEDBACK_I, midi)
+                    effect.set_macro(DRIVE_I, midi)
+                    effect.set_macro(LOOP_TOP_I, midi)
+                    effect.set_macro(LOOP_BASS_I, midi)
+                    effect.set_macro(TOP_CUT_I, midi)
+                    handed = effect._handed
+                    self.assertAlmostEqual(
+                        handed["feedback"], law_value(FEEDBACK_I, midi))
+                    self.assertAlmostEqual(
+                        handed["loop_drive"], law_value(DRIVE_I, midi))
+                    self.assertAlmostEqual(
+                        handed["damping_hz"],
+                        min(law_value(LOOP_TOP_I, midi), nyquist))
+                    self.assertAlmostEqual(
+                        handed["cut_hz"], law_value(LOOP_BASS_I, midi))
+                    self.assertAlmostEqual(
+                        handed["top_cut_hz"],
+                        min(law_value(TOP_CUT_I, midi), nyquist))
+            effect.deinit()
+
+    def test_the_glide_law(self):
+        effect = fresh()
+        self.assertAlmostEqual(effect._handed["delay_slew"], 0.12)
+        for midi in (0, 64, 127):
+            with self.subTest(midi=midi):
+                effect.set_macro(GLIDE_I, midi)
+                self.assertAlmostEqual(effect._handed["delay_slew"],
+                                       law_slew(law_value(GLIDE_I, midi)))
+        effect.deinit()
+
+    def test_the_chamber_follows(self):
+        effect = fresh()
+        chamber = effect._chamber
+        pairs = ((LOW_CUT_I, 7), (DECAY_I, 1), (DAMPING_I, 5))
+        for ours, theirs in pairs:
+            self.assertAlmostEqual(chamber.macro(theirs),
+                                   CARD_DEFAULTS[ours], places=9)
+            for midi in (0, 127):
+                with self.subTest(macro=ours, midi=midi):
+                    effect.set_macro(ours, midi)
+                    self.assertAlmostEqual(
+                        chamber.macro(theirs), law_value(ours, midi),
+                        delta=law_value(ours, midi) * 1e-9)
+        # The rest of the chamber stays where the card fixes it.
+        self.assertEqual(chamber._character(), 2)
+        self.assertAlmostEqual(chamber.macro(2), 0.5 + 64 / 127.0)
+        self.assertEqual(chamber.macro(3), 0.0)
+        self.assertEqual(chamber.macro(12), 2.0)
+        effect.deinit()
+
+    def test_the_mix_law(self):
+        for channels in (2, 1):
+            effect = fresh(channels=channels)
+            voices = effect._mixer.voice
+            for mix in (0.35, 0.5, 1.0, 1.5, 2.0):
+                with self.subTest(channels=channels, mix=mix):
+                    set_value(effect, MIX_I, mix)
+                    dry, wet = law_levels(mix)
+                    if channels == 1 and dry == 1.0:
+                        dry = 1.0 - 2.0 ** -15
+                    self.assertAlmostEqual(voices[0].level, dry)
+                    self.assertAlmostEqual(voices[1].level, wet)
+            effect.deinit()
+
+    def test_mix_two_is_the_chamber_alone(self):
+        rate = 48000
+        frames = law_frames(111.0, rate)
+        data = burst(frames - 48, frames + BLOCK, 2, 8000.0, 3)
+        effect = build(AirSpace, data, rate, 2, mix=2.0)
+        out = render(effect, frames)
+        effect.deinit()
+        self.assertFalse(any(out))
+
+    def test_mix_zero_is_a_wire(self):
+        rate, channels = 48000, 2
+        frames = 8192
+        ramp = array("h", bytes(2 * frames * channels))
+        for i in range(frames * channels):
+            ramp[i] = ((i * 37) % 65536) - 32768
+        effect = build(AirSpace, ramp, rate, channels, mix=0.0)
+        self.assertEqual(render(effect, frames), ramp)
+        effect.deinit()
+
+    def test_the_tail_is_gone_when_mix_comes_back(self):
+        rate, channels = 48000, 2
+        data = burst(4800, rate * 3, channels, 8000.0, 4)
+        effect = build(AirSpace, data, rate, channels, mix=1.0,
+                       feedback=0.85, decay=10.0)
+        pulls = int(0.5 * rate / BLOCK)
+        actions = {pulls: lambda e: e.set_macro(MIX_I, 0),
+                   pulls + 8: lambda e: e.set_macro(MIX_I, 127)}
+        out = render(effect, pulls * BLOCK * 2, actions)
+        effect.deinit()
+        before = out[(pulls - 8) * BLOCK * channels:pulls * BLOCK * channels]
+        after = out[(pulls + 8) * BLOCK * channels:]
+        self.assertTrue(any(before))
+        self.assertFalse(any(after))
+
+    def test_latency_is_zero(self):
+        effect = fresh()
+        self.assertEqual(effect.latency_samples, 0)
+        self.assertEqual(AirSpace.LATENCY_SAMPLES, 0)
+        effect.deinit()
+
+    def test_the_patches(self):
+        self.assertEqual(tuple(AirSpace.PATCHES[k][0]
+                               for k in sorted(AirSpace.PATCHES)),
+                         PATCH_NAMES)
+
+    def test_patch_0_is_the_defaults_on_the_grid(self):
+        steps = AirSpace.PATCHES[0][1]
+        for index, value in enumerate(CARD_DEFAULTS):
+            with self.subTest(index=index):
+                self.assertEqual(steps[index],
+                                 int(round(law_midi(index, value))))
+
+    def test_a_fresh_instance_reads_patch_0_and_plays_the_defaults(self):
+        effect = fresh()
+        self.assertEqual([effect.get_macro(i) for i in range(11)],
+                         [float(m) for m in AirSpace.PATCHES[0][1]])
+        for index, value in enumerate(CARD_DEFAULTS):
+            self.assertEqual(effect.macro(index), value)
+        effect.deinit()
+
+    def test_fixed_size_no_sync_and_mono_in_mono_out(self):
+        self.assertNotIn("Size", AirSpace.MACRO_LABELS)
+        self.assertEqual(AirSpace.CAPABILITIES, ())
+        effect = fresh(channels=1)
+        self.assertEqual(effect.channel_count, 1)
+        self.assertEqual(effect.output.channel_count, 1)
+        effect.deinit()
+
+    def test_at_least_20_ms_before_the_chamber(self):
+        # The shortest Time, the most Feedback, the chamber alone: nothing
+        # reaches the output before 20 ms.
+        rate = 48000
+        frames = law_frames(20.0, rate)
+        data = burst(frames, frames + BLOCK, 2, 8000.0, 5)
+        effect = build(AirSpace, data, rate, 2, mix=2.0, time_ms=20.0,
+                       feedback=0.85)
+        self.assertEqual(effect.macro(TIME_I), 20.0)
+        out = render(effect, frames)
+        effect.deinit()
+        self.assertFalse(any(out))
+
+
+def rail_run(cls, rate, channels, dbfs, patch=None, seconds=2.0):
+    """The longest run of frames at the rail, on a 50 Hz sine at `dbfs`
+    (the kit's ceiling material that rails first)."""
+    frames = int(seconds * rate)
+    peak = 32767.0 * 10.0 ** (dbfs / 20.0)
+    data = tone(50.0, frames, rate, channels, peak)
+    effect = build(cls, data, rate, channels, patch)
+    out = render(effect, frames)
+    effect.deinit()
+    if not any(out[-rate * channels:]):
+        raise Red("the output fell silent")
+    longest = run = 0
+    for i in range(frames):
+        if any(abs(out[i * channels + c]) >= 32767 for c in range(channels)):
+            run += 1
+            longest = max(longest, run)
+        else:
+            run = 0
+    return longest
+
+
+class TheInputCeiling(unittest.TestCase):
+
+    def test_minus_6_dbfs_reaches_no_rail(self):
+        self.assertEqual(AirSpace.INPUT_CEILING_DBFS, -6.0)
+        for rate, channels in ((48000, 2), (22050, 1)):
+            for patch in sorted(AirSpace.PATCHES):
+                with self.subTest(rate=rate, channels=channels, patch=patch):
+                    self.assertLessEqual(
+                        rail_run(AirSpace, rate, channels, -6.0, patch), 8)
+
+    def test_full_scale_does(self):
+        self.assertGreater(rail_run(AirSpace, 48000, 2, 0.0), 8)
+
+
+# --------------------------------------------------------------------------
+# reset() and patch changes
+
+
+class StaleTape(AirSpace):
+    """A reset that does not empty the tape, so its read head glides from
+    where it was."""
+
+    def _clear_tape(self):
+        self._reach = self._frames
+
+
+def after_reset(cls, rate, channels, data, from_ms=500.0):
+    """Render `data` after a stretch of noise at `from_ms` and a reset."""
+    frames = (rate // BLOCK) * BLOCK
+    noise = lcg_noise(frames, channels, 4000.0, 9)
+    feed = Feed(noise + data, rate, channels)
+    effect = cls(feed, time_ms=from_ms)
+    render(effect, frames)
+    effect.reset()
+    out = render(effect, len(data) // channels)
+    effect.deinit()
+    return out
+
+
+class TheReset(unittest.TestCase):
+
+    def burst(self, rate, channels):
+        return burst(law_frames(20.0, rate), rate, channels, 4000.0, 6)
+
+    def test_reset_renders_as_a_fresh_instance(self):
+        for rate, channels in ((48000, 2), (22050, 1)):
+            with self.subTest(rate=rate, channels=channels):
+                data = self.burst(rate, channels)
+                effect = build(AirSpace, data, rate, channels)
+                want = render(effect, rate)
+                effect.deinit()
+                self.assertTrue(any(want))
+                self.assertEqual(after_reset(AirSpace, rate, channels, data),
+                                 want)
+
+    def test_reset_restores_patch_0_and_the_chamber(self):
+        effect = fresh(time_ms=500.0, patch=4)
+        lines = fresh()._chamber._lines
+        effect.reset()
+        self.assertEqual(effect.patch_index, 0)
+        self.assertEqual([effect.get_macro(i) for i in range(11)],
+                         [float(m) for m in AirSpace.PATCHES[0][1]])
+        self.assertEqual(effect.macro(TIME_I), 111.0)
+        self.assertEqual(effect._chamber._lines, lines)
+        self.assertAlmostEqual(effect._chamber.macro(1), 1.8, places=12)
+        effect.deinit()
+
+    def test_red_on_a_reset_that_keeps_the_tape(self):
+        rate, channels = 48000, 2
+        data = self.burst(rate, channels)
+        effect = build(AirSpace, data, rate, channels)
+        want = render(effect, rate)
+        effect.deinit()
+        self.assertNotEqual(after_reset(StaleTape, rate, channels, data),
+                            want)
+
+    def test_a_patch_change_glides(self):
+        # Long Send (300 ms) to Plain Chamber (20 ms): the repeats bend
+        # up while the head travels.
+        rate, channels = 48000, 2
+        slew = law_slew(4000.0)
+        at = int(round(rate / BLOCK))
+        begin = at * BLOCK + int(0.05 * rate)
+        end = at * BLOCK + int(0.5 * rate)
+        data = tone(1000.0, end + BLOCK, rate, channels, 8000.0)
+        powers = []
+        for move in (True, False):
+            effect = build(AirSpace, data, rate, channels, patch=2)
+            effect.set_macro(MIX_I, 127)
+            actions = {at: lambda e: e.program_change(6)} if move else None
+            x = mono(render(effect, end, actions), channels)
+            effect.deinit()
+            powers.append(goertzel_power(x[begin:end], 1000.0 * (1 + slew),
+                                         rate))
+        self.assertGreaterEqual(db_ratio(powers[0], powers[1]), 40.0)
+
+
+# --------------------------------------------------------------------------
+# The docstring's claims, sentence by sentence (KIT.md, claims)
+
+
+CLAIMS = (
+    ("You send your signal to a tape echo whose repeats feed an echo "
+     "chamber, and your dry signal comes back exactly as it went in: the "
+     "filters, the drive and the tape act only on the send.",
+     ("T1DryIsUntouched.test_every_patch_stereo_48k",
+      "T1DryIsUntouched.test_the_times_and_the_hardest_settings",
+      "T1DryIsUntouched.test_red_on_the_top_cut_ahead_of_the_splitter")),
+    ("Time (20 to 500 ms) is the gap between repeats and Feedback (0 to "
+     "0.85) how much of each repeat goes round again.",
+     ("TheSurface.test_the_spans",
+      "TheSurface.test_time_lands_on_whole_frames",
+      "TheSurface.test_what_the_tape_and_the_filter_are_handed")),
+    ("Loop Top (1 to 16 kHz) and Loop Bass (20 Hz to 1 kHz) filter the "
+     "loop, so each repeat is darker than the last, and Drive (0 to 1) "
+     "saturates it.",
+     ("TheSurface.test_the_spans",
+      "TheSurface.test_what_the_tape_and_the_filter_are_handed",
+      "T2EachRepeatDarker.test_loop_top_darkens_each_repeat")),
+    ("Top Cut (1 to 16 kHz) darkens everything sent to the chamber, once.",
+     ("TheSurface.test_the_spans",
+      "T2EachRepeatDarker.test_top_cut_darkens_once")),
+    ("Low Cut (20 to 500 Hz), Decay (0.3 to 10 s) and Damping (500 Hz to "
+     "16 kHz) set the chamber.",
+     ("TheSurface.test_the_spans", "TheSurface.test_the_chamber_follows")),
+    ("Mix (0 to 2) is `audiodelays.Echo`'s: the dry at unity up to 1, the "
+     "chamber alone at 2.",
+     ("TheSurface.test_the_mix_law",
+      "TheSurface.test_mix_two_is_the_chamber_alone")),
+    ("More Feedback makes the chamber's tail longer: at Time 500 ms, "
+     "Feedback 0.85 at least triples it.",
+     "T3FeedbackLengthensTheTail.test_the_bars"),
+    ("At the defaults you hear the repeats as a longer chamber, not as a "
+     "rhythm of echoes.",
+     "T4HeardAsAChamber.test_the_cells"),
+    ("Move Time while it plays and the repeats bend in pitch, the way tape "
+     "does: down while it lengthens, up while it shortens.",
+     "T5TimeBendsThePitch.test_the_bend_both_ways_at_every_glide"),
+    ("Glide (1 to 10 s) is how long a move across the whole Time range "
+     "takes, so it sets how far they bend: 12 % at the default of 4 s.",
+     ("TheSurface.test_the_glide_law",
+      "T5TimeBendsThePitch.test_the_bend_both_ways_at_every_glide")),
+    ("Keep your input at or under -6 dBFS: the dry is at unity and the "
+     "chamber adds to it, so a hotter input can reach the rail.",
+     ("TheInputCeiling.test_minus_6_dbfs_reaches_no_rail",
+      "TheInputCeiling.test_full_scale_does")),
+    ("Latency is zero.", "TheSurface.test_latency_is_zero"),
+    ("`reset()` empties the tape and the chamber and restores patch 0, "
+     "whose Time of 111 ms lands at once instead of gliding.",
+     ("TheReset.test_reset_renders_as_a_fresh_instance",
+      "TheReset.test_reset_restores_patch_0_and_the_chamber",
+      "TheReset.test_red_on_a_reset_that_keeps_the_tape")),
+    ("The patches: Chamber Send (the defaults), Short Send, Long Send, "
+     "Dark Loop, Bright Chamber, Driven Tape, Plain Chamber.",
+     ("TheSurface.test_the_patches",
+      "TheSurface.test_patch_0_is_the_defaults_on_the_grid",
+      "TheSurface.test_a_fresh_instance_reads_patch_0_and_plays_the_"
+      "defaults")),
+    ("Time is the exception: it glides.",
+     "T5TimeBendsThePitch.test_the_bend_both_ways_at_every_glide"),
+    ("A patch that changes Time glides there too, and the repeats bend "
+     "while it travels.",
+     "TheReset.test_a_patch_change_glides"),
+    ("At the defaults the repeats add only a little length to the tail; "
+     "the stretch comes with Feedback above about 0.6 or a long Time.",
+     ("T3FeedbackLengthensTheTail.test_the_default_adds_only_a_little",
+      "T3FeedbackLengthensTheTail.test_the_bars")),
+    ("There is always at least 20 ms between the dry and the chamber.",
+     ("TheSurface.test_at_least_20_ms_before_the_chamber",
+      "T1DryIsUntouched.test_the_times_and_the_hardest_settings")),
+    ("The chamber's size is fixed, there is no tempo sync, and a mono "
+     "source gets a mono rack.",
+     "TheSurface.test_fixed_size_no_sync_and_mono_in_mono_out"),
+    ("At Mix 0 the output is your input, byte for byte, and the tail that "
+     "was ringing when Mix went to 0 is gone when it comes back.",
+     ("TheSurface.test_mix_zero_is_a_wire",
+      "TheSurface.test_the_tail_is_gone_when_mix_comes_back")),
+)
+
+
+if __name__ == "__main__":
+    unittest.main()
