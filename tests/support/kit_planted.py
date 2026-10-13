@@ -14,6 +14,9 @@ try:
 except ImportError:                                   # pragma: no cover
     array = None
 
+import audiocore
+import audiomixer
+import lifecycle
 from audioeffects import _component
 
 #: `_component` reads VENDOR off the module a class is defined in.
@@ -307,8 +310,91 @@ class CtorNan(KitPlain):
         return KitPlain._level(self)
 
 
+class ClearsFirst(KitPlain):
+    """Args: program_change zeroes the cached level before it validates,
+    so a refused call leaves the next render quiet."""
+    NAME = "ClearsFirst"
+
+    def program_change(self, index, *args, **kw):
+        self._shaper.set(post_gain=0.0)
+        KitPlain.program_change(self, index, *args, **kw)
+
+
+class ClearsMacro(KitPlain):
+    """Args: a refused set_macro has already dropped the patch, and a
+    refused program_change has already moved a macro."""
+    NAME = "ClearsMacro"
+
+    def set_macro(self, index, value, *args, **kw):
+        self._patch_index = None
+        KitPlain.set_macro(self, index, value, *args, **kw)
+
+    def program_change(self, index, *args, **kw):
+        self._macros[1] = 0.5
+        KitPlain.program_change(self, index, *args, **kw)
+
+
+# -- a board build with no audiocore.get_buffer -----------------------------
+
+
+class FlushKit(lifecycle.Routed):
+    """The control for nogb: Routed, with a voice of its own, primed at
+    construction and flushed by pulling its mixer once. Where
+    `audiocore.get_buffer` is absent it plays that voice again instead, so
+    nothing it renders depends on which it did."""
+    NAME = "FlushKit"
+
+    def _build(self, mix=1.0, gain=1.0, patch=None):
+        ch = self._channel_count
+        self._quiet = self._own(audiomixer.Mixer(
+            voice_count=1, **self._pcm(lifecycle.BLOCK * ch * 2)), reset=False)
+        self._zeros = lifecycle._raw(array("h", bytes(2 * 8 * ch)),
+                                     self._sample_rate, ch)
+        self._quiet.voice[0].play(self._zeros, loop=True)
+        pull = getattr(audiocore, "get_buffer", None)
+        if pull is not None:
+            pull(self._quiet)
+        else:
+            self._quiet.voice[0].play(self._zeros, loop=True)
+        lifecycle.Routed._build(self, mix, gain, patch)
+
+
+class FlushOnly(lifecycle.Routed):
+    """Nogb: the voices are primed whenever the graph is armed (at
+    construction, after a reset, when Mix comes back) and flushed only by
+    pulling the mixer; with no `get_buffer` the primed block stays in the
+    voice and plays later, out of step."""
+    NAME = "FlushOnly"
+
+    def _arm(self):
+        lifecycle.Routed._arm(self)
+        pull = getattr(audiocore, "get_buffer", None)
+        if pull is not None:
+            pull(self._mixer)
+
+
+class DoubleReset(FlushKit):
+    """Nogb: with no `get_buffer`, a second reset in a row plays the voices
+    again, which drops the block they held and takes the source's next one:
+    a block of the render is gone."""
+    NAME = "DoubleReset"
+    _fresh = False
+
+    def reset(self):
+        again = self._fresh
+        FlushKit.reset(self)
+        self._fresh = True
+        if again and getattr(audiocore, "get_buffer", None) is None:
+            lifecycle.Routed._arm(self)
+
+    def set_macro(self, *args, **kw):
+        self._fresh = False
+        FlushKit.set_macro(self, *args, **kw)
+
+
 PLANTS = {}
 for _cls in (KitPlain, Silent, WrapKit, WrapKitQuiet, ClipKit, DeadStop,
              ImplKit, EchoTail, ShortTail, EventTail, NoneSilent, NoneDC,
-             ReadbackOff, StopRaises, NanLevel, PatchStale, CtorNan):
+             ReadbackOff, StopRaises, NanLevel, PatchStale, CtorNan,
+             ClearsFirst, ClearsMacro, FlushKit, FlushOnly, DoubleReset):
     PLANTS[_cls.NAME] = _cls
