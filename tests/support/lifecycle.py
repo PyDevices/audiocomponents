@@ -361,6 +361,8 @@ DECLARED = {
     ("ShimmerHall", "E11-", "P4"): "moves that reach the hall, empty it, or move the shifter's interval or splice leave them off the control's for good (Reverb's E11 P4; N2)",
     ("ShimmerHall", "E4-m0=", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Character)",
     ("ShimmerHall", "E4-m3=", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Bloom)",
+    ("ShimmerHall", "E4-m6=", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Size, which also empties the hall, as the docstring says); at the Rise defaults the hall sounds at once, so the jump lands on sound",
+    ("ShimmerHall", "E4-m8=", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix); at the Rise defaults the hall sounds at once, so the jump lands on sound",
     ("ShimmerHall", "E5-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
     ("ShimmerHall", "E6-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (a patch change)",
     ("ShimmerHall", "E9-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
@@ -371,6 +373,7 @@ DECLARED = {
     ("ShimmerHall", "E10-patch", "P4", "circuitpython"): _SHIMMER_CP,
     ("ShimmerHall", "E12-p1", "P4", "circuitpython"): _SHIMMER_CP,
     ("ShimmerHall", "E12-p2", "P4", "circuitpython"): _SHIMMER_CP,
+    ("ShimmerHall", "E12-p6", "P4", "circuitpython"): _SHIMMER_CP,
     ("ShimmerHall", "E12-mix64", "P4", "circuitpython"): _SHIMMER_CP,
     ("ShimmerHall", "E12-mix127", "P4", "circuitpython"): _SHIMMER_CP,
 }
