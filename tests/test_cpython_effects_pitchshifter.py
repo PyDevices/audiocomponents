@@ -851,21 +851,24 @@ class TheSurface(TestCase):
                 values = array("h", [rng.next() % 40001 - 20000
                                      for _ in range(frames * channels)])
                 at = 12 * BLOCK
-                feed = kc.feed(values, rate, channels)
-                e = PitchShifter(feed.port, patch=5)
-                try:
-                    kc.render(e, at)
-                    e.reset()
-                    self.assertEqual(e.patch_index, 0)
-                    self.assertEqual(
-                        tuple(e.get_macro(i) for i in range(5)),
-                        PitchShifter.PATCHES[0][1])
-                    after = kc.samples(kc.render(e, frames - at))
-                finally:
-                    e.deinit()
-                fresh = render(PitchShifter, values[at * channels:], rate,
-                               channels, frames - at)
-                self.assertEqual(after, fresh, (rate, channels))
+                # Patch 6 moves a Mixer level (the dry goes to nothing), so
+                # its voice must not wait for a zero crossing to come back.
+                for patch in (5, 6):
+                    feed = kc.feed(values, rate, channels)
+                    e = PitchShifter(feed.port, patch=patch)
+                    try:
+                        kc.render(e, at)
+                        e.reset()
+                        self.assertEqual(e.patch_index, 0)
+                        self.assertEqual(
+                            tuple(e.get_macro(i) for i in range(5)),
+                            PitchShifter.PATCHES[0][1])
+                        after = kc.samples(kc.render(e, frames - at))
+                    finally:
+                        e.deinit()
+                    fresh = render(PitchShifter, values[at * channels:],
+                                   rate, channels, frames - at)
+                    self.assertEqual(after, fresh, (rate, channels, patch))
 
     def test_the_tempo_is_never_read(self):
         reads = []
@@ -897,6 +900,107 @@ class TheSurface(TestCase):
                 _, hidden = without_get_buffer(build, moves,
                                                channels=channels)
                 self.assertEqual(plain, hidden, (what, channels))
+
+
+def played(values, rate, channels, blocks, moves, **options):
+    """`blocks` pulls of an instance built with `options` and fed `values`,
+    `moves` mapping a pull index to a callable."""
+    e = PitchShifter(kc.feed(values, rate, channels).port, **options)
+    try:
+        return kc.samples(kc.render(e, blocks * BLOCK, moves))
+    finally:
+        e.deinit()
+
+
+class TheRestart(TestCase):
+    """What an instance plays after a control stranded its graph, or after
+    a reset, against what a fresh instance plays from that point on."""
+
+    def test_a_control_touched_at_mix_0_leaves_the_graph_playing(self):
+        # Built at Mix 0, a control touched there strands the graph; the
+        # first Mix move that wires it must not leave that mark behind, or
+        # the next ordinary Mix move empties the shifter mid-playback.
+        for rate, channels in ((48000, 2), (22050, 1)):
+            rng = Lcg(23)
+            values = array("h", [rng.next() % 40001 - 20000
+                                 for _ in range(60 * BLOCK * channels)])
+
+            def touch(e):
+                position = e.get_macro(DELAY_I)
+                e.set_macro(DELAY_I, 30)
+                e.set_macro(DELAY_I, position)
+            moves = {2: lambda e: e.set_macro(MIX_I, 64),
+                     30: lambda e: e.set_macro(MIX_I, 80)}
+            plain = played(values, rate, channels, 60, moves, mix=0.0,
+                           feedback=0.5, delay_ms=20.0)
+            e = PitchShifter(kc.feed(values, rate, channels).port, mix=0.0,
+                             feedback=0.5, delay_ms=20.0)
+            try:
+                touch(e)
+                touched = kc.samples(kc.render(e, 60 * BLOCK, moves))
+            finally:
+                e.deinit()
+            self.assertEqual(touched, plain, (rate, channels))
+
+    def test_a_return_from_mix_0_is_a_fresh_instance_at_that_mix(self):
+        # The voices' new levels hold from the first frame: a dry that
+        # waited for its next zero crossing would play at unity on a DC
+        # input, where a fresh Mix 2 instance plays nothing yet.
+        for rate, channels in ((48000, 2), (22050, 1)):
+            rng = Lcg(29)
+            noisy = array("h", [rng.next() % 40001 - 20000
+                                for _ in range(40 * BLOCK * channels)])
+            dc = array("h", [6000] * (40 * BLOCK * channels))
+            for name, values in (("noise", noisy), ("dc", dc)):
+                moves = {12: lambda e: e.set_macro(MIX_I, 0),
+                         18: lambda e: e.set_macro(MIX_I, 127)}
+                got = played(values, rate, channels, 40, moves)
+                fresh = render(PitchShifter, values[18 * BLOCK * channels:],
+                               rate, channels, 22 * BLOCK, mix=2.0)
+                self.assertEqual(got[18 * BLOCK * channels:], fresh,
+                                 (rate, channels, name))
+
+    def test_mix_0_and_a_patch_together_is_a_fresh_instance_at_that_patch(
+            self):
+        for rate, channels in ((48000, 2), (22050, 1)):
+            rng = Lcg(31)
+            values = array("h", [rng.next() % 40001 - 20000
+                                 for _ in range(40 * BLOCK * channels)])
+
+            def both(e):
+                e.set_macro(MIX_I, 0)
+                e.program_change(6)
+            got = played(values, rate, channels, 40, {12: both})
+            fresh = render(PitchShifter, values[12 * BLOCK * channels:],
+                           rate, channels, 28 * BLOCK, patch=6)
+            self.assertEqual(got[12 * BLOCK * channels:], fresh,
+                             (rate, channels))
+
+    def test_the_voice_at_unity_after_a_pitch_move_sits_where_the_splice_left_it(
+            self):
+        # From a fresh start (test_mix_2_is_the_shifted_voice_alone) or a
+        # reset the unity voice is O frames late. After Pitch has moved
+        # away and back it is wherever the splice left it, up to W + O.
+        for rate, channels in ((48000, 2), (22050, 1)):
+            window = law_window(30.0, rate)
+            overlap = law_overlap(rate)
+            frames = 40 * BLOCK
+            at = 30 * BLOCK
+            seen = []
+            for away, back in ((5, 8), (3, 4), (5, 9), (2, 11)):
+                values = array("h", bytes(2 * frames * channels))
+                for c in range(channels):
+                    values[at * channels + c] = 20000
+                moves = {away: lambda e: e.set_macro(PITCH_I, 101),
+                         back: lambda e: e.set_macro(PITCH_I, 64)}
+                out = played(values, rate, channels, 40, moves, pitch=0.0,
+                             mix=2.0)
+                first = first_nonzero(out, channels, at, frames)
+                self.assertIsNotNone(first)
+                seen.append(first - at)
+            for late in seen:
+                self.assertTrue(0 <= late <= window + overlap, (rate, late))
+            self.assertTrue(any(late != overlap for late in seen), seen)
 
 
 class T1TheInterval(TestCase):
@@ -991,9 +1095,17 @@ CLAIMS = (
       "test_flat_loop_is_red")),
     ("Off unity, each note comes back anywhere from straight away to one "
      "window and 1.3 ms late, plus Delay, the delay sweeping and jumping at "
-     "every splice; at unity it sits still, 1.3 ms late.",
+     "every splice.",
      ("test_arrivals_drift_between_at_once_and_one_window_late",
-      "test_window_at_48k_is_red", "test_mix_2_is_the_shifted_voice_alone")),
+      "test_window_at_48k_is_red")),
+    ("At unity it sits still, 1.3 ms late, from a fresh start, a reset or a "
+     "return from Mix 0; after a Pitch move it sits wherever the splice "
+     "left it, up to one window and 1.3 ms late.",
+     ("test_mix_2_is_the_shifted_voice_alone",
+      "test_reset_empties_the_graph_and_returns_to_patch_0",
+      "test_a_return_from_mix_0_is_a_fresh_instance_at_that_mix",
+      "test_the_voice_at_unity_after_a_pitch_move_sits_where_the_splice_"
+      "left_it")),
     ("The window is 30 ms unless you pass `window_ms`, 15 to 60, when you "
      "build it: a longer window splices less often and arrives later.",
      ("test_window_ms_is_set_at_construction",

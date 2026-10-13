@@ -80,9 +80,10 @@ DECLARED = {
     # nothing but a fresh start puts two shifters at the same place.
     ("PitchShifter", "E1-", "P4"):
         "reset() starts the shifter and the loop's splicer where new ones"
-        " start (audiodsp#240), so the class then plays what a fresh"
-        " instance plays from that point, not what the uninterrupted"
-        " control plays (N2)",
+        " start (audiodsp#240: the restart is audiodsp's PitchShift;"
+        " CircuitPython's own keeps its positions), so the class then plays"
+        " what a fresh instance plays from that point, not what the"
+        " uninterrupted control plays (N2)",
     ("PitchShifter", "E4-m0=", "P4"):
         "a Pitch move runs the read position at another speed, so the splice"
         " phase lands elsewhere; putting it back would click (N2)",

@@ -123,7 +123,10 @@ class PitchShifter(_component.Component):
     when it runs out.
     Off unity, each note comes back anywhere from straight away to one
     window and 1.3 ms late, plus Delay, the delay sweeping and jumping at
-    every splice; at unity it sits still, 1.3 ms late.
+    every splice.
+    At unity it sits still, 1.3 ms late, from a fresh start, a reset or a
+    return from Mix 0; after a Pitch move it sits wherever the splice left
+    it, up to one window and 1.3 ms late.
     Shifting down drops slices of what you play; shifting up repeats them.
     The window is 30 ms unless you pass `window_ms`, 15 to 60, when you
     build it: a longer window splices less often and arrives later.
@@ -309,6 +312,19 @@ class PitchShifter(_component.Component):
         self._in.play(self._head)
         self._clear_nodes(only=(self._shift, self._line, self._loop))
         self._wired = True
+        # A control touched at Mix 0 before the first wiring marked the
+        # graph stranded; wiring is what that mark waits for.
+        self._stranded = False
+
+    def _rearm(self):
+        """Wire the graph again as the constructor does, once it has been
+        cleared: a voice's new level is picked up at its next zero crossing
+        unless the voice is played again, so a graph that is cleared while
+        a level changes would otherwise carry the old level into the first
+        frames. The input goes back to silence first, so no frame is taken
+        from the borrowed source."""
+        self._in.play(self._hush)
+        self._wire()
 
     def _pull(self):
         """Pull one block from the mixer and drop it.
@@ -438,10 +454,19 @@ class PitchShifter(_component.Component):
             return
         if not self._wired:
             self._wire()
+        elif self._rejoin():
+            self._rearm()
         else:
             self._levels()
-            self._rejoin()
         self._output = self._tail
+
+    def reset(self):
+        """Empty the shifter and both lines, return to patch 0, and play
+        from there as a new instance does."""
+        wired = self._wired
+        _component.Component.reset(self)
+        if wired:
+            self._rearm()
 
     @property
     def tail_samples(self):
