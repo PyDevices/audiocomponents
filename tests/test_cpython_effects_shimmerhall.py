@@ -606,6 +606,12 @@ GET_BUFFER_CASES = (
      {2: lambda e: e.set_macro(MIX_I, 0), 6: lambda e: (e.reset(), e.reset())}),
     ("a Character move and a reset in one block", ShimmerHall,
      {2: lambda e: (e.program_change(4), e.reset())}),
+    ("built at Mix 2, reset after playing",
+     lambda src: ShimmerHall(src, mix=2.0), {3: lambda e: e.reset()}),
+    ("Mix 0 after playing, back to 127", ShimmerHall,
+     {2: lambda e: e.set_macro(MIX_I, 0), 6: lambda e: e.set_macro(MIX_I, 127)}),
+    ("Mix 127 before the first pull", ShimmerHall,
+     {0: lambda e: e.set_macro(MIX_I, 127)}),
 )
 
 
