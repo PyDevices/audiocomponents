@@ -486,7 +486,8 @@ KIT_PLANTS = {
 
 
 def t1_cell(cls, rate, channels, patch, mix_m, material, seed):
-    """(all-on render, sum of the four solos, solo RMS problems)."""
+    """(all-on render, sum of the four solos, solo RMS problems: a
+    channel more than 3 dB from the input's at the voice's gain and pan)."""
     frames = SETTLE + 2048 + BLOCK
     if material == "noise":
         values = gauss(frames, channels, 2000.0, seed)
@@ -499,18 +500,28 @@ def t1_cell(cls, rate, channels, patch, mix_m, material, seed):
                    macros=base + [(LEVEL[k], 0) for k in range(3)])
     problems = []
     x = list(values)
-    x_rms = rms(x[(SETTLE + BLOCK) * channels:])
+    lo = (SETTLE + BLOCK) * channels
     g_wet = gains(mix_of_midi(mix_m))[1]
+    spread = Harmonizer.PATCHES[patch][1][SPREAD] / 127.0
     for k in range(3):
         if not on[k]:
             continue
         macros = base + [(LEVEL[j], 0) for j in range(3) if j != k]
         solo = render(cls, values, rate, channels, patch=patch,
                       macros=macros, mute_dry=True)
-        want = x_rms * 10.0 ** (db_of_midi(on[k]) / 20.0) * g_wet
-        got = rms(solo[(SETTLE + BLOCK) * channels:])
-        if got <= 0.0 or abs(20.0 * math.log10(got / want)) > 3.0:
-            problems.append((k, got, want))
+        gain = 10.0 ** (db_of_midi(on[k]) / 20.0) * g_wet
+        # Each channel against the input's, at the voice's gain and its
+        # pan: voice 1 sits left of centre and voice 2 right by Spread.
+        pan = (-spread, spread, 0.0)[k] if channels == 2 else 0.0
+        if channels == 2:
+            sides = [m / 32768.0 for m in pan_muls(1.0, pan)]
+        else:
+            sides = [1.0]
+        for c in range(channels):
+            want = rms(chan(x[lo:], channels, c)) * gain * sides[c]
+            got = rms(chan(solo[lo:], channels, c))
+            if got <= 0.0 or abs(20.0 * math.log10(got / want)) > 3.0:
+                problems.append((k, c, got, want))
         total = [a + b for a, b in zip(total, solo)]
     return full, total, problems
 
