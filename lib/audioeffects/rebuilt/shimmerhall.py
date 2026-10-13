@@ -36,8 +36,10 @@ hall to the rail.
 your input stops: 82 s at Rise 0.9 and Bloom 800 ms. `reset()` empties the
 hall, the line and the shifter, and restores patch 0. The patches: Octave
 Bloom (the defaults), Short Stagger, Fifth Halo, Slow Rise, Rise Damped,
-Falling Octaves, Octave Bloom - lean. Octave Bloom - lean is Rise at Rise 0,
-for an S3: one octave, once, and the hall starts at once.
+Falling Octaves, Octave Bloom - lean. On an ESP32-S3 the Bloom patches
+(the defaults, Octave Bloom, Short Stagger and Fifth Halo) take longer than
+a block and cannot keep up, so play a Rise patch there. Octave Bloom - lean
+is Rise at Rise 0, for an S3: one octave, once, and the hall starts at once.
 
 **Limits**
 
@@ -285,8 +287,8 @@ class ShimmerHall(_component.Component):
         3: ("Slow Rise", (127, 89, 85, 103, 96, 108, 89, 86, 38)),
         4: ("Rise Damped", (127, 102, 113, 87, 96, 94, 64, 51, 32)),
         5: ("Falling Octaves", (127, 89, 85, 93, 0, 102, 64, 76, 32)),
-        # Patch 0 in Rise at Rise 0: the S3's fallback if Bloom's line and
-        # second shifter do not fit its memory.
+        # Patch 0 in Rise at Rise 0: the S3's patch nearest the defaults,
+        # since every Bloom patch runs over a block there.
         6: ("Octave Bloom - lean", (127, 89, 0, 90, 96, 94, 64, 91, 32)),
     }
 

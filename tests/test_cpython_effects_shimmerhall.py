@@ -1467,6 +1467,24 @@ def lean_levels(rate, f0, offset, patch):
 
 
 class TheLeanPatch(TestCase):
+    def test_the_bloom_patches_are_the_ones_named_for_the_s3(self):
+        # The S3 cost is measured on the boards (the evidence's board
+        # table: every Bloom patch over the bar, every Rise patch under);
+        # this pins the sentence's list to the patches in Bloom.
+        bloom = [name for name, steps in ShimmerHall.PATCHES.values()
+                 if steps[CHARACTER_I] < 64]
+        self.assertEqual(bloom, ["Octave Bloom", "Short Stagger",
+                                 "Fifth Halo"])
+        e = ShimmerHall(_port())
+        try:
+            self.assertEqual(e.macro(CHARACTER_I), 0.0)     # the defaults
+        finally:
+            e.deinit()
+        doc = " ".join(sys.modules[ShimmerHall.__module__].__doc__.split())
+        self.assertIn("the Bloom patches (the defaults, Octave Bloom, Short"
+                      " Stagger and Fifth Halo) take longer than a block",
+                      doc)
+
     def test_the_lean_patch_is_patch_0_in_rise_at_rise_0(self):
         steps = list(ShimmerHall.PATCHES[0][1])
         steps[CHARACTER_I] = 127
@@ -1588,6 +1606,10 @@ CLAIMS = (
     ("The patches: Octave Bloom (the defaults), Short Stagger, Fifth Halo, "
      "Slow Rise, Rise Damped, Falling Octaves, Octave Bloom - lean.",
      "test_macros_patches_tier_latency"),
+    ("On an ESP32-S3 the Bloom patches (the defaults, Octave Bloom, Short "
+     "Stagger and Fifth Halo) take longer than a block and cannot keep up, "
+     "so play a Rise patch there.",
+     "test_the_bloom_patches_are_the_ones_named_for_the_s3"),
     ("Octave Bloom - lean is Rise at Rise 0, for an S3: one octave, once, "
      "and the hall starts at once.",
      ("test_the_lean_patch_is_patch_0_in_rise_at_rise_0",
