@@ -1684,10 +1684,28 @@ def figures(which=("T1", "T2", "T3", "T4", "T5", "T6", "L")):
                                             lines=3, **options)
                     for level in rel:
                         worst = max(worst, level)
-                print("%s|F|patch %d %s|%d|worst fold line %.1f dB over "
-                      "%d notes|bar %.0f" % (
+                # Exact silence where the pass never comes (Rise damped to
+                # nothing, or the lean patch's loop).
+                print("%s|F|patch %d %s|%d|worst fold line %s over %d "
+                      "notes|bar %.0f" % (
                           name, patch, ShimmerHall.PATCHES[patch][0], rate,
-                          worst, len(SEEDS), FOLD_LOUD))
+                          "%.1f dB" % worst if worst > -200.0 else "silent",
+                          len(SEEDS), FOLD_LOUD))
+        # A finer sweep of the note: 165 to 330 Hz in 5 Hz steps, offset 41.
+        for patch in (3, 4):
+            options = fold_shipped(patch)
+            for rate in RATES:
+                worst = (-999.0, 0)
+                for f0 in range(165, 331, 5):
+                    rel, _folds = fold_read(ShimmerHall, rate, float(f0), 41,
+                                            lines=3, **options)
+                    for level in rel:
+                        worst = max(worst, (level, f0))
+                print("%s|F|sweep patch %d %s|%d|worst fold line %s at %d "
+                      "Hz|bar %.0f" % (
+                          name, patch, ShimmerHall.PATCHES[patch][0], rate,
+                          "%.1f dB" % worst[0] if worst[0] > -200.0
+                          else "silent", worst[1], FOLD_LOUD))
         for rate, f0 in FOLD_CELLS:
             for label, edge in FOLD_EDGES:
                 rel, _folds = fold_read(
