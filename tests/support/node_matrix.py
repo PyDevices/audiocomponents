@@ -348,10 +348,69 @@ class NodeEcho(_Node):
             self._node.decay = decay
 
 
+class NodeComparator(_Node):
+    """`audioshaper.Waveshaper` with a step curve: the Octaver's comparator
+    ahead of its divider."""
+    NAME = "NodeComparator"
+    REQUIRES = ("audioshaper",)
+    MACRO_LABELS = ("Mix", "Drive")
+    MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR"}
+    _MACRO_RANGES = ((0.0, 1.0), (1.0, 8.0))
+    PATCHES = {0: ("Square", (127, 0)), 1: ("Driven, half", (64, 127))}
+    _TAIL_S = 0.01
+
+    def _build(self, mix=1.0, drive=1.0, patch=None):
+        from array import array
+        import audioshaper
+        half = 128
+        curve = array("h", [-16000] * half + [0] + [16000] * half)
+        self._node = self._register(audioshaper.Waveshaper(
+            sample_rate=self._sample_rate, curve=curve, oversample=1,
+            channel_count=self._channel_count, mix=mix, pre_gain=drive))
+        self._node.play(self._source)
+        self._output = self._node
+        self._init_macros((mix, drive), patch)
+
+    def _apply_macro(self, index, position):
+        mix, drive = self._values()
+        if index == 0:
+            self._node.set(mix=mix)
+        else:
+            self._node.set(pre_gain=drive)
+
+
+class NodeAllPass(_Node):
+    """`audiobiquad.AllPass`, two stages: the Octaver's signal-path phase
+    match."""
+    NAME = "NodeAllPass"
+    REQUIRES = ("audiobiquad",)
+    MACRO_LABELS = ("Mix", "Frequency")
+    MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR"}
+    _MACRO_RANGES = ((0.0, 1.0), (60.0, 4000.0, "log"))
+    PATCHES = {0: ("Low", (127, 30)), 1: ("High, half", (64, 110))}
+    _TAIL_S = 0.1
+
+    def _build(self, mix=1.0, frequency=300.0, patch=None):
+        self._node = self._register(audiobiquad.AllPass(
+            stages=2, frequency=frequency, mix=mix,
+            sample_rate=self._sample_rate,
+            channel_count=self._channel_count))
+        self._node.play(self._source)
+        self._output = self._node
+        self._init_macros((mix, frequency), patch)
+
+    def _apply_macro(self, index, position):
+        mix, frequency = self._values()
+        if index == 0:
+            self._node.mix = mix
+        else:
+            self._node.frequency = self._hz(frequency)
+
+
 NODES = {}
 for _cls in (NodePitchShift, NodeGranularPitchShift, NodeShimmerLoop,
              NodeSubOctave, NodeSquare, NodeMidSide, NodeSplitMix,
-             NodeBiquad, NodeEcho):
+             NodeBiquad, NodeEcho, NodeComparator, NodeAllPass):
     NODES[_cls.NAME] = _cls
 
 
