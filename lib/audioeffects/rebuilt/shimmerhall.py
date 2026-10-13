@@ -280,7 +280,9 @@ class ShimmerHall(_component.Component):
         0: ("Octave Bloom", DEFAULT_STEPS),
         1: ("Short Stagger", (0, 76, 85, 38, 96, 77, 38, 102, 25)),
         2: ("Fifth Halo", (0, 102, 85, 103, 64, 108, 89, 84, 38)),
-        3: ("Slow Rise", (127, 89, 85, 103, 96, 108, 89, 102, 38)),
+        # Damping step 86 (about 5.2 kHz), where the card had 102 (8 kHz):
+        # at 8 kHz the sixth pass folded back past -30 dB at 22.05 kHz.
+        3: ("Slow Rise", (127, 89, 85, 103, 96, 108, 89, 86, 38)),
         4: ("Rise Damped", (127, 102, 113, 87, 96, 94, 64, 51, 32)),
         5: ("Falling Octaves", (127, 89, 85, 93, 0, 102, 64, 76, 32)),
         # Patch 0 in Rise at Rise 0: the S3's fallback if Bloom's line and

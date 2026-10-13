@@ -636,8 +636,8 @@ def fold_read(cls, rate, f0, offset, lines=1, **options):
 
 
 #: Slow Rise's settings less Shimmer and Mix, which a read sets itself.
-def fold_shipped(patch):
-    options = patch_options(ShimmerHall, patch)
+def fold_shipped(patch, cls=ShimmerHall):
+    options = patch_options(cls, patch)
     del options["shimmer"], options["mix"]
     return options
 
@@ -646,12 +646,20 @@ def fold_shipped(patch):
 #: widest interval.
 FOLD_EDGES = (
     ("Rise 0.9, Damping 16 kHz", dict(rise=0.9, damping_hz=16000.0)),
-    ("+24", dict(interval=24)),
+    ("+24, Damping 8 kHz", dict(interval=24, damping_hz=8000.0)),
 )
 
 #: (rate, f0) cells, offset 41, where a pass folds clear of the series and
 #: of the splice's harmonics.
 FOLD_CELLS = ((48000, 240.0), (22050, 185.0))
+
+class OldSlowRise(ShimmerHall):
+    """The card's Slow Rise, Damping at 8 kHz (step 102): the sweep of
+    `test_no_upward_patch_folds_back` is red on it."""
+
+    PATCHES = dict(ShimmerHall.PATCHES)
+    PATCHES[3] = ("Slow Rise", (127, 89, 85, 103, 96, 108, 89, 102, 38))
+
 
 #: A fold line is loud when it stands within 30 dB of the loudest line of
 #: the first pass; the climb is clean when every fold line stays more than
@@ -863,6 +871,11 @@ class TheSurface(TestCase):
                 else:
                     want.append(_component.macro_of(
                         ShimmerHall._MACRO_RANGES[i], row[i]))
+            if index == 3:
+                # Retuned from the card's 8 kHz: Damping step 86, where the
+                # sixth pass no longer folds back past -30 dB at 22.05 kHz.
+                self.assertEqual(want[DAMPING_I], 102)
+                want[DAMPING_I] = 86
             self.assertEqual(ShimmerHall.PATCHES[index][1], tuple(want),
                              index)
 
@@ -1372,8 +1385,8 @@ class TheEdges(TestCase):
     def test_the_highest_octaves_fold_back_at_the_edges(self):
         # The same note and the same patch but for the edge: a fold line
         # stands within 30 dB of the first pass at Rise 0.9 with Damping at
-        # 16 kHz, and at +24, and stays under -40 dB at Slow Rise's and
-        # Rise Damped's own settings.
+        # 16 kHz, and at +24 with Damping at 8 kHz, and stays under -40 dB
+        # at Slow Rise's and Rise Damped's own settings.
         for rate, f0 in FOLD_CELLS:
             for patch in (3, 4):
                 rel, folds = fold_read(ShimmerHall, rate, f0, 41,
@@ -1386,6 +1399,25 @@ class TheEdges(TestCase):
                 self.assertTrue(folds, (rate, f0, name))
                 self.assertGreater(max(rel), FOLD_LOUD,
                                    (rate, f0, name, rel, folds))
+
+    def test_no_upward_patch_folds_back(self):
+        # Every shipped patch with an upward loop, at both rates, over the
+        # card's range of notes in 10 Hz steps: no fold line comes within 30
+        # dB of the first pass. The card's Slow Rise (Damping 8 kHz) is red
+        # at 22.05 kHz, on 240 and 320 Hz.
+        for patch in (3, 4):
+            options = fold_shipped(patch)
+            for rate in RATES:
+                for f0 in range(165, 331, 10):
+                    rel, _folds = fold_read(ShimmerHall, rate, float(f0), 41,
+                                            lines=3, **options)
+                    for level in rel:
+                        self.assertLess(level, FOLD_LOUD, (patch, rate, f0))
+        old = fold_shipped(3, OldSlowRise)
+        self.assertNotEqual(old, fold_shipped(3))
+        worst = max(max(fold_read(OldSlowRise, 22050, f0, 41, lines=3,
+                                  **old)[0]) for f0 in (240.0, 320.0))
+        self.assertGreater(worst, FOLD_LOUD)
 
     def test_the_fold_chain_is_the_arithmetic(self):
         # +12 from 240 Hz at 48 kHz stays in band to 15360, then 30720
@@ -1570,6 +1602,7 @@ CLAIMS = (
      "the highest octaves fold back down as tones outside the series; keep "
      "Damping lower for a clean climb.",
      ("test_the_highest_octaves_fold_back_at_the_edges",
+      "test_no_upward_patch_folds_back",
       "test_the_fold_chain_is_the_arithmetic")),
     ("A value outside a macro's span clamps to the nearer stop, and NaN "
      "takes the default; an `interval` other than the five raises "
