@@ -97,10 +97,11 @@ at patch 0.
   plays its first block at the old setting, which P4's bound forgives.
 - **PR** (E1-reset@block, E10-reset, E5-mix0, E10-mix0) From the move that
   lands the class on a state it can be built at (a reset: patch 0; a
-  return from Mix 0: the cell's own configuration) on, 4096 frames are
-  byte-identical to a fresh instance built there and fed the source from
-  the same frame. Where the source stands is read off a dry run to the
-  move. No tail is forgiven: a child left at its own patch 0, a line kept
+  return from Mix 0 that routed around the graph, a rejoin: the cell's own
+  configuration; a Mix 0 that keeps the graph running prints `na`) on,
+  4096 frames are byte-identical to a fresh instance built there and fed
+  the source from the same frame. Where the source stands is read off a
+  dry run to the move. No tail is forgiven: a child left at its own patch 0, a line kept
   across a reset or a block primed twice is red here.
 - **P6** The three interpreters print identical lines for every cell. Each
   line carries `h:`, a CRC-32 of the event instance's whole render, so P6

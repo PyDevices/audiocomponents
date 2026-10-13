@@ -1374,6 +1374,19 @@ def _diverge(a, b, frames, fsize):
     return -1
 
 
+def _routes_around(cls, ev, rate, channels, patch, options):
+    """True when the event's move away routes the output around the graph
+    (`_route_around`), so the way back is a rejoin."""
+    feed = Feed(material_for("once", rate, channels), rate, channels, "256",
+                loop=False)
+    e = _build(cls, feed, rate, patch, options)
+    try:
+        act(e, feed, Ctx(e, patch), ev.away)
+        return bool(getattr(e, "_stranded", False))
+    finally:
+        e.deinit()
+
+
 def pr(cls, ev, rate, channels, patch, options):
     """PR: from the move that lands the class (a reset, a return from Mix
     0) on, it renders byte for byte what a fresh instance built at the
@@ -1381,6 +1394,11 @@ def pr(cls, ev, rate, channels, patch, options):
     fsize = 2 * channels
     values = material_for("once", rate, channels)
     upto = _land_pull(ev)
+    if ev.landing == "config" and not _routes_around(cls, ev, rate, channels,
+                                                     patch, options):
+        # Mix 0 that keeps the graph running is not a rejoin: the class
+        # comes back to its own state, not a fresh one's.
+        return "na(Mix 0 keeps the graph running)"
     landing = 0 if ev.landing == "reset" else patch
     fresh = {} if landing is None else {"patch": landing}
     start = 0
