@@ -771,6 +771,26 @@ class TheSurface(TestCase):
         self.assertEqual(max(out), 32767)
         self.assertEqual(min(out), -32768)
 
+    def test_feedback_near_its_top_stacks_level_far_past_the_input(self):
+        # A noise burst peaking at -10.3 dBFS (10000 of 32768), through
+        # Feedback 127 with Delay 0 and Mix 2, an octave up: the repeats
+        # pile up on each other and the shifted voice alone reaches the
+        # rail.
+        for rate, channels in ((48000, 2), (22050, 1)):
+            burst = rate // 10
+            values = array("h", bytes(2 * burst * channels))
+            state = 12345
+            for i in range(burst * channels):
+                state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+                values[i] = (state >> 8) % 20001 - 10000
+            frames = 3 * rate
+            padded = values + array("h", bytes(2 * (frames - burst)
+                                               * channels))
+            out = render(PitchShifter, padded, rate, channels, frames,
+                         pitch=12.0, mix=2.0, delay_ms=0.0, feedback=0.95)
+            self.assertTrue(max(out) == 32767 or min(out) == -32768,
+                            (rate, channels, max(out), min(out)))
+
     def test_a_mono_source_is_one_channel_of_a_stereo_one(self):
         for rate in RATES:
             for options in ({}, dict(patch=4), dict(patch=5, window_ms=15.0),
@@ -960,6 +980,42 @@ class TheRestart(TestCase):
                 self.assertEqual(got[18 * BLOCK * channels:], fresh,
                                  (rate, channels, name))
 
+    def test_a_level_set_before_the_first_pull_plays_from_the_first_frame(
+            self):
+        # A patch or a Mix move before anything has been pulled: the voices
+        # start at the new level, not a block at the old one, byte for byte
+        # what an instance built at that setting plays. A DC input shows a
+        # dry that waited for a zero crossing; the 40 Hz sine one that
+        # crossed late.
+        for rate, channels in ((48000, 2), (22050, 1)):
+            frames = 40 * BLOCK
+            dc = array("h", [6000] * (frames * channels))
+            slow = sine(frames, 40.0, rate, 12000, channels, phase=0.3)
+            for name, values in (("dc", dc), ("40 Hz", slow)):
+                for patch in range(len(PitchShifter.PATCHES)):
+                    got = played(values, rate, channels, 40,
+                                 {0: lambda e, p=patch: e.program_change(p)})
+                    fresh = render(PitchShifter, values, rate, channels,
+                                   frames, patch=patch)
+                    self.assertEqual(got, fresh, (rate, channels, name,
+                                                  "patch", patch))
+                for midi in (0, 1, 32, 63, 64, 65, 96, 126, 127):
+                    mix = _component.macro_value(
+                        (0.0, 2.0), _component.position_of_midi(
+                            "BIPOLAR", midi))
+                    got = played(values, rate, channels, 40,
+                                 {0: lambda e, m=midi: e.set_macro(MIX_I, m)})
+                    fresh = render(PitchShifter, values, rate, channels,
+                                   frames, mix=mix)
+                    self.assertEqual(got, fresh, (rate, channels, name,
+                                                  "mix", midi))
+                got = played(values, rate, channels, 40,
+                             {0: lambda e: (e.reset(), e.program_change(6))})
+                fresh = render(PitchShifter, values, rate, channels, frames,
+                               patch=6)
+                self.assertEqual(got, fresh, (rate, channels, name,
+                                              "reset, patch 6"))
+
     def test_mix_0_and_a_patch_together_is_a_fresh_instance_at_that_patch(
             self):
         for rate, channels in ((48000, 2), (22050, 1)):
@@ -1106,6 +1162,11 @@ CLAIMS = (
       "test_a_return_from_mix_0_is_a_fresh_instance_at_that_mix",
       "test_the_voice_at_unity_after_a_pitch_move_sits_where_the_splice_"
       "left_it")),
+    ("On CircuitPython's own pitch shifter a reset or a return from Mix 0 "
+     "does not restart the splice, so there it sits wherever the splice "
+     "was.",
+     ("DECLARED:PitchShifter,E10-reset,P4",
+      "DECLARED:PitchShifter,E10-mix0,P4")),
     ("The window is 30 ms unless you pass `window_ms`, 15 to 60, when you "
      "build it: a longer window splices less often and arrives later.",
      ("test_window_ms_is_set_at_construction",
@@ -1114,6 +1175,9 @@ CLAIMS = (
      "the shifted voice added on top, so a hot input can reach the rail.",
      ("test_the_dry_is_untouched", "test_dry_through_shifter_is_red",
       "test_a_hot_input_reaches_the_rail_at_mix_1")),
+    ("Feedback stacks level too, far past the input: at Feedback 127, Delay "
+     "0 and Mix 2 a noise burst peaking at -10.3 dBFS reaches the rail.",
+     "test_feedback_near_its_top_stacks_level_far_past_the_input"),
     ("A one-channel source gets a one-channel shifter with the same window.",
      "test_a_mono_source_is_one_channel_of_a_stereo_one"),
     ("Latency is zero samples: the dry is never delayed.",

@@ -33,15 +33,22 @@ DECLARED = {
 
 # PitchShifter at Feedback's top: the repeats stack on the dry, up to 21
 # times the input's peak on a DC, so the rail is reachable below any useful
-# ceiling; the docstring says a hot input can reach it. The square, sine and
-# DC cells there, at every rate and channel count.
+# ceiling. The docstring says so ("Feedback stacks level too, far past the
+# input: at Feedback 127, Delay 0 and Mix 2 a noise burst peaking at
+# -10.3 dBFS reaches the rail"), and test_feedback_near_its_top_stacks_
+# level_far_past_the_input holds it. The square, sine and DC cells there, at
+# every rate and channel count.
 for _material in ("square", "sine", "dc"):
     for _rate in RATES:
         for _channels in CHANNELS:
             DECLARED[("PitchShifter", "ceiling", "%s/%d/%d/m4=127" % (
                 _material, _rate, _channels))] = (
                 "Feedback 0.95 stacks repeats on the dry, up to 21 times the"
-                " input's peak: a hot input reaches the rail by design")
+                " input's peak: the class docstring says Feedback stacks"
+                " level far past the input, a -10.3 dBFS noise burst"
+                " reaching the rail at Feedback 127, Delay 0 and Mix 2"
+                " (test_feedback_near_its_top_stacks_level_far_past_the_"
+                "input)")
 
 CPYTHON = sys.implementation.name == "cpython"
 

@@ -127,6 +127,8 @@ class PitchShifter(_component.Component):
     At unity it sits still, 1.3 ms late, from a fresh start, a reset or a
     return from Mix 0; after a Pitch move it sits wherever the splice left
     it, up to one window and 1.3 ms late.
+    On CircuitPython's own pitch shifter a reset or a return from Mix 0 does
+    not restart the splice, so there it sits wherever the splice was.
     Shifting down drops slices of what you play; shifting up repeats them.
     The window is 30 ms unless you pass `window_ms`, 15 to 60, when you
     build it: a longer window splices less often and arrives later.
@@ -134,6 +136,8 @@ class PitchShifter(_component.Component):
     **The dry.** Up to Mix 1 your dry signal passes untouched, sample for
     sample, with the shifted voice added on top, so a hot input can reach
     the rail.
+    Feedback stacks level too, far past the input: at Feedback 127, Delay 0
+    and Mix 2 a noise burst peaking at -10.3 dBFS reaches the rail.
 
     **Mono, latency, tail.** A one-channel source gets a one-channel
     shifter with the same window.
@@ -210,6 +214,10 @@ class PitchShifter(_component.Component):
         self._overlap = crossfade_frames(rate)
         self._ready = False
         self._wired = False
+        #: Whether the host has asked for the output yet. Until it has,
+        #: nothing has been pulled, and a control that moves a voice's
+        #: level re-arms the graph so the level holds from frame 0.
+        self._taken = False
         #: Whether the loop's splicer has run since its line was last
         #: emptied: it then reads half a window later (`_loop_frames`).
         self._engaged = False
@@ -454,11 +462,22 @@ class PitchShifter(_component.Component):
             return
         if not self._wired:
             self._wire()
-        elif self._rejoin():
+        elif self._rejoin() or not self._taken:
+            # Not pulled yet: a level moved now would wait for its voice's
+            # next zero crossing, a block of the old level, where an
+            # instance built at this setting plays the new one from frame 0.
             self._rearm()
         else:
             self._levels()
         self._output = self._tail
+
+    @property
+    def output(self):
+        """The node the host plays. Asking for it is the host's first step
+        to pulling, so from here a level that moves is an ordinary move."""
+        self._check_live()
+        self._taken = True
+        return self._output
 
     def reset(self):
         """Empty the shifter and both lines, return to patch 0, and play
