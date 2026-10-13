@@ -222,7 +222,7 @@ class Harmonizer(_component.Component):
         channels = self._channel_count
         self._ready = False
         self._armed = False
-        #: Which voices play their shifter; the others play their tap at 0.
+        #: Which voices play their shifter; the others play their tap, silenced.
         self._on = [True, True, True]
         self._puller = None
 
@@ -257,12 +257,29 @@ class Harmonizer(_component.Component):
             self._shifters.append(shifter)
 
         # Each mixer voice plays a Port, so switching a voice between its
-        # shifter and its bare tap re-points the port and primes nothing.
+        # shifter and its silenced tap re-points the port and primes nothing.
         self._ports = [self._own(audioroute.Port(self._taps[0]),
                                  reset=False)]
         for k in range(3):
             self._ports.append(self._own(audioroute.Port(self._shifters[k]),
                                          reset=False))
+        # What a voice that is off plays: its tap, held at level 0 for good.
+        self._drains = []
+        self._feeds = []
+        for k in range(3):
+            feed = self._own(audioroute.Port(self._hush), reset=False)
+            drain = self._own(audiomixer.Mixer(
+                voice_count=1, **self._pcm(1024 * channels)), reset=False)
+            drain.voice[0].level = 0.0
+            drain.voice[0].play(feed, loop=True)
+            # Its play() primed a block of the hush; one pull drops it, so
+            # the drain holds nothing when it first reads its tap.
+            drop = audiomixer.Mixer(voice_count=1, **self._pcm(16))
+            drop.voice[0].play(drain)
+            drop.voice[0].stop()
+            drop.deinit()
+            self._feeds.append(feed)
+            self._drains.append(drain)
         # Not reset by the walk: no voice holds a block between two pulls.
         self._mixer = self._own(audiomixer.Mixer(
             voice_count=4, **self._pcm(1024 * channels)), reset=False)
@@ -328,9 +345,15 @@ class Harmonizer(_component.Component):
         return self._shifters[k]
 
     def _off_source(self, k):
-        """What voice `k` plays while it is off: its bare tap, at level 0,
-        so its shifter is not pulled."""
-        return self._taps[k + 1]
+        """What voice `k` plays while it is off: its tap through a
+        one-voice mixer that has only ever been at level 0. The voice reads
+        the tap, which keeps the split even and does not pull its shifter,
+        and plays silence from the first frame; the bare tap would play the
+        dry at the voice's old level until the voice's level gate closed.
+        The mixer's own voice never plays again, so nothing is primed from
+        the live tap when a voice goes off."""
+        self._feeds[k].play(self._taps[k + 1])
+        return self._drains[k]
 
     def _empty(self, k):
         """Empty voice `k`'s line before it comes back on."""
@@ -428,8 +451,9 @@ class Harmonizer(_component.Component):
         self._output = self._tail
 
     def _switch(self):
-        """Turn voices on and off. A voice going off plays its bare tap at
-        level 0, so the split stays even and its shifter is not pulled; a
+        """Turn voices on and off. A voice going off plays its tap through
+        a mixer held at level 0, so the split stays even, its shifter is
+        not pulled and the dry never leaks at the voice's old level; a
         voice coming back empties its shifter's line, plays it, then takes
         its level."""
         voices = self._mixer.voice

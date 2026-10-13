@@ -376,6 +376,13 @@ class DuckedDry(Harmonizer):
         return Harmonizer._dry_level(self) / (1 + on)
 
 
+class BareTapOff(Harmonizer):
+    """T7: a voice that is off plays its bare tap, the dry, at level 0."""
+
+    def _off_source(self, k):
+        return self._taps[k + 1]
+
+
 class Unrounded(Harmonizer):
     """T2: the node is handed the asked semitones, and floors them."""
 
@@ -1035,6 +1042,78 @@ class T6Return(TestCase):
 
 
 # --------------------------------------------------------------------------
+# T7: a voice turned off plays nothing from the move on
+
+
+def sine(frames, channels, amp, period, lead=BLOCK):
+    """A sine of `period` frames after `lead` frames of silence."""
+    out = array("h", bytes(2 * frames * channels))
+    for i in range(lead, frames):
+        v = int(round(amp * math.sin(2.0 * math.pi * (i - lead) / period)))
+        for c in range(channels):
+            out[i * channels + c] = v
+    return out
+
+
+def t7_leak(cls, rate, channels, hz, mix_m, k, how):
+    """Frames, from the move on, where a render that turns voice `k` off
+    mid-stream differs from an instance built with it off: the dry or a
+    voice playing at an old level for want of the move."""
+    n = 40
+    at = 20
+    values = sine(n * BLOCK, channels, 8000.0, rate / hz)
+    base = [(MIX, mix_m), (SPREAD, 127)]
+    if how == "level":
+        def move(e):
+            e.set_macro(LEVEL[k], 0)
+        first = base
+        built = base + [(LEVEL[k], 0)]
+    else:
+        # Patch 0 with Spread and Mix as asked, then patch 6 (patch 0
+        # without voice 3); the reference is patch 0 with voice 3 off.
+        assert k == 2
+
+        def move(e):
+            e.program_change(6)
+            for index, value in base:
+                e.set_macro(index, value)
+        first = base
+        built = base + [(LEVEL[2], 0)]
+    y = render(cls, values, rate, channels, macros=first,
+               actions={at: move})
+    ref = render(cls, values, rate, channels, macros=built)
+    start = at * BLOCK * channels
+    return sorted(set(i // channels for i in range(start, len(y))
+                      if y[i] != ref[i]))
+
+
+class T7TurnOff(TestCase):
+    """Turning a voice off never lets the dry through at the voice's old
+    level and pan: from the move on, the render is the one of an instance
+    built with the voice off, byte for byte."""
+
+    def _cells(self, cls):
+        for rate in RATES:
+            for channels in CHANNELS:
+                for hz in (41.2, 50.0):
+                    for mix_m in (64, 127):
+                        for k, how in ((0, "level"), (2, "level"),
+                                       (2, "patch")):
+                            yield ((rate, channels, hz, mix_m, k, how),
+                                   t7_leak(cls, rate, channels, hz, mix_m,
+                                           k, how))
+
+    def test_off_plays_nothing(self):
+        for cell, leaked in self._cells(Harmonizer):
+            self.assertEqual(leaked, [], cell)
+
+    def test_the_bare_tap_is_red(self):
+        for cell, leaked in self._cells(BareTapOff):
+            if cell[:3] == (48000, 2, 50.0) and cell[3] == 127:
+                self.assertGreater(len(leaked), 0, cell)
+
+
+# --------------------------------------------------------------------------
 # The surface, the wire, the tail
 
 
@@ -1318,7 +1397,8 @@ CLAIMS = (
       "TheSurface.test_the_window")),
     ("Each voice is its own machine: turning one on or off never changes "
      "the dry or the other voices.",
-     "T1Independent.test_the_sum_of_the_solos"),
+     ("T1Independent.test_the_sum_of_the_solos",
+      "T7TurnOff.test_off_plays_nothing")),
     ("Each voice sits on the closest pitch its shifter can make: within 3.4 "
      "cents of its interval from unison up, 6.8 cents down to an octave "
      "below and 13.7 cents below that.",
