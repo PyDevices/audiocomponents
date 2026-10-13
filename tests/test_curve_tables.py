@@ -119,12 +119,23 @@ def measure(points):
     }
 
 
+#: Tables that are comparators, not shapers: a step is the point of them, so
+#: the step bar does not apply. Monotone and fill still do. Each entry says
+#: why; `test_the_comparators_are_where_they_say` holds every entry to a
+#: table the scan really finds, so a stale entry cannot excuse a new one.
+COMPARATORS = {
+    "audioeffects.rebuilt.octaver._CURVE":
+        "the Octaver's comparator: a dead band, two small ticks, then the"
+        " rails, so its dividers count edges, not a waveform",
+}
+
+
 def verdict(name, reading):
     """The red lines for one table, empty if it meets every bar."""
     red = []
     if not reading["monotone"]:
         red.append("%s is not monotone" % name)
-    if reading["steps_over_bar"]:
+    if reading["steps_over_bar"] and name not in COMPARATORS:
         red.append("%s has %d adjacent steps over %d counts (worst %d, first"
                    " at index %d)"
                    % (name, reading["steps_over_bar"], STEP_BAR,
@@ -236,6 +247,22 @@ class TheTables(unittest.TestCase):
                 reading = measure(both[name])
                 red = verdict(name, reading)
                 self.assertEqual(red, [], "%s: %s" % (name, "; ".join(red)))
+
+    def test_the_comparators_are_where_they_say(self):
+        """Every comparator entry names a table the scan finds, once the
+        class that builds it has been built."""
+        from audioeffects import rebuilt
+        import audiocore
+        from array import array as _array
+        src = audiocore.RawSample(_array("h", [0] * 512),
+                                  sample_rate=48000, channel_count=2)
+        rebuilt.module_class("Octaver")(src).deinit()
+        found = tables_by_value()
+        for name in COMPARATORS:
+            self.assertIn(name, found, "%s is not a table the scan finds"
+                          % name)
+            self.assertTrue(verdict(name, measure(found[name])) == [],
+                            "%s fails a bar the exemption keeps" % name)
 
     def test_the_scan_found_the_drive_tables(self):
         """Absence must not read as agreement.
