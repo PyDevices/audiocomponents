@@ -49,6 +49,10 @@ DECLARED = {
         "ConvolutionReverb's own ceiling at its defaults: it rails this 0"
         " dBFS sine alone (its own ceiling cell sine/48000/2/d), a finding"
         " for that class and not a rack defect",
+    ("Octaver", "ceiling", "clicks/"):
+        "with Direct at 0 only the octaves sound, and one-sample clicks"
+        " through the clock's low-pass stay under Sensitivity, where the"
+        " octaves are silent by design (trait T3 b)",
 }
 
 CPYTHON = sys.implementation.name == "cpython"

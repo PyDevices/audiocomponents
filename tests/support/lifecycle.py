@@ -68,12 +68,14 @@ NO_TAIL_WAIT = 10 * 48000
 #: the macro labelled "Mix".
 MIX_INDEX = {
     "SlapbackDelay": 1,        # "Level": the slap's level; 0 is the dry
+    "Octaver": 1,              # "Octave 1": 0 is the wire at patch 0
 }
 
 #: Where a class cannot satisfy a property by design, it says so HERE, one
-#: row per (class NAME, event name prefix, property): reason. A matching
-#: cell prints `decl` instead of RED and is counted as a declared exception.
-#: Nothing else skips a cell.
+#: row per (class NAME, event name prefix, property): reason. A key may add
+#: a fourth element, the patches the row covers (None for the default), when
+#: the reason holds only at those. A matching cell prints `decl` instead of
+#: RED and is counted as a declared exception. Nothing else skips a cell.
 DECLARED = {
     ("StereoWidener", "E4-m0=", "P5"):
         "family limit, disclosed (audiocomponents#117): a control that jumps"
@@ -94,6 +96,68 @@ DECLARED = {
     ("StereoWidener", "E11-", "P5"):
         "family limit, disclosed (audiocomponents#117): a control that jumps"
         " makes the output step (Width, Character or a patch change)",
+    ("Octaver", "E1-", "P4"):
+        "a flip-flop divider keeps its count: a reset starts it in"
+        " pass-through polarity part-way through the material, so the"
+        " octave stays inverted against an instance that was never reset"
+        " (it matches a fresh one; the OC-2's flip-flops do the same)",
+    ("Octaver", "E4-", "P4"):
+        "a flip-flop divider keeps its count: a move that adds or drops a"
+        " crossing (Tracking, Tone 1, Sensitivity) or the clear on the way"
+        " back from the wire leaves the octave inverted for good",
+    ("Octaver", "E6-", "P4"):
+        "a flip-flop divider keeps its count: a patch change that moves"
+        " Tracking or Tone 1 adds or drops a crossing, and the octave stays"
+        " inverted",
+    ("Octaver", "E11-", "P4"):
+        "a flip-flop divider keeps its count: moves that add or drop a"
+        " crossing leave the octave inverted",
+    ("Octaver", "E5-", "P4"):
+        "a flip-flop divider keeps its count: the clear on the way back"
+        " from the wire (Octave 1 at 0) leaves the octave inverted for good",
+    ("Octaver", "E9-", "P4"):
+        "a flip-flop divider keeps its count: the clear on the way back"
+        " from the wire (Octave 1 at 0) leaves the octave inverted for good",
+    ("Octaver", "E", "P1", (1, 2, 5)):
+        "at patches 1, 2 and 5 Octave 2 is up or Direct is under 1, so"
+        " Octave 1 at 0 is a level move, not the wire, and the output is"
+        " not the source by design",
+    ("Octaver", "E4-m0=", "P1"):
+        "the event moves Direct off 1, so Octave 1 at 0 stops being the"
+        " wire and the output is not the source by design",
+    ("Octaver", "E4-m2=", "P1"):
+        "the event moves Octave 2 up, so Octave 1 at 0 stops being the"
+        " wire and the output is not the source by design",
+    ("Octaver", "E6-p1", "P1"):
+        "the event changes to patch 1, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E6-p2", "P1"):
+        "the event changes to patch 2, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E6-p5", "P1"):
+        "the event changes to patch 5, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E11-mix+patch", "P1"):
+        "the event ends on patch 5, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E11-3moves", "P1"):
+        "the event ends on patch 5, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E5-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (the octave leaves and comes back)",
+    ("Octaver", "E9-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (the octave leaves and comes back)",
+    ("Octaver", "E4-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step",
+    ("Octaver", "E6-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (a patch change moves the levels)",
+    ("Octaver", "E11-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step",
     ("AnalogDelay", "E", "P5"):
         "a control that jumps steps the output (family, audiocomponents#117);"
         " a Time move bends the pitch while the line walks, by design",
@@ -812,8 +876,11 @@ def _diagnose(out, expect, frame, fsize, hi):
     return ", not the source near there"
 
 
-def _decl(cls, ev, prop):
-    for (name, prefix, p), reason in DECLARED.items():
+def _decl(cls, ev, prop, patch=None):
+    for key in DECLARED:
+        name, prefix, p = key[:3]
+        if len(key) > 3 and patch not in key[3]:
+            continue
         if name == cls.NAME and p == prop and ev.name.startswith(prefix):
             return True
     return False
@@ -1152,7 +1219,7 @@ def run_cell(cls, ev, rate, channels, patch, options, controls):
                            controls))
     res["P5"] = p5(cls, ev, rate, channels, patch, options, controls)
     for prop in PROPS:
-        if res[prop].startswith("RED") and _decl(cls, ev, prop):
+        if res[prop].startswith("RED") and _decl(cls, ev, prop, patch):
             res[prop] = "decl"
     return res
 
