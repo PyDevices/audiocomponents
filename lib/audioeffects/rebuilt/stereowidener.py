@@ -44,10 +44,19 @@ HARD = 32767.0 / 32768.0
 #: Splitter tap take per pull.
 BLOCK = 256
 
-#: How close, as a 0..1 knob position, Delay must sit to the grid step the
-#: constructor's `delay_ms` seeded for that exact value to play: 1e-6 is
-#: 1/7 874 of one MIDI step, and holds a single-precision round trip.
+#: How close, as a 0..1 knob position, a Delay write must come to the grid
+#: step the constructor's `delay_ms` seeded to count as a host echoing it
+#: back: 1e-6 is 1/7 874 of one MIDI step, and holds a single-precision
+#: round trip.
 ECHO_TOLERANCE = 1e-6
+
+#: The patches' Delays, exactly, by MIDI step: Delay on one of these steps
+#: plays the round number the patch table names (14 ms, not the step's
+#: 14.06), whichever way it got there.
+DELAY_STEPS = {62: 6.0, 91: 14.0, 111: 25.0}
+
+#: How close, in MIDI steps, Delay must sit to a step in `DELAY_STEPS`.
+STEP_TOLERANCE = 1e-4
 
 WIDTH_I, DELAY_I, CHARACTER_I = range(3)
 
@@ -113,7 +122,7 @@ class StereoWidener(_component.Component):
     Width 0 is mono, 1 is a wire and 2 doubles the sides.
     Above Width 1, a part panned hard left shows up inverted on the right.
     A part that is the same in both channels comes out unchanged.
-    Peaks up to half of full scale never clip at any Width.
+    Peaks below half of full scale never clip at any Width.
 
     **Mono, latency, tail.** A one-channel source comes out exactly as it
     went in, whatever the controls say.
@@ -125,6 +134,9 @@ class StereoWidener(_component.Component):
     Width 0.
     `reset()` empties the line and returns to patch 0.
     The class never reads the host's tempo.
+
+    Where `audiocore.get_buffer` is compiled out, leaving Haas before its
+    first block has played skips that one block of the source.
 
     **Limits shared by the family.**
     A control that jumps, Width or Character, makes the output step: move it
@@ -178,10 +190,10 @@ class StereoWidener(_component.Component):
         width = _between(_option(width, DEFAULT_WIDTH), 0.0, 2.0)
         delay_ms = _between(_option(delay_ms, DEFAULT_DELAY_MS),
                             DELAY_MIN_MS, DELAY_MAX_MS)
-        #: The constructor's Delay, exactly, and the grid step it seeds.
-        #: That exact value plays whenever Delay sits on that step, so a
-        #: fresh instance, its patch 0 and a host echoing `get_macro(1)` all
-        #: play 14.0 ms, not the step's 14.06.
+        #: The constructor's Delay, exactly, and the grid step it seeds, so
+        #: a fresh instance reads a whole MIDI step. The exact value plays
+        #: until Delay moves (a host echoing `get_macro(1)` does not move
+        #: it) or a patch is loaded.
         self._delay_exact = delay_ms
         span = self._MACRO_RANGES[DELAY_I]
         self._delay_seed = _component.position_of_midi(
@@ -204,10 +216,12 @@ class StereoWidener(_component.Component):
                   1.0 if character == CHARACTERS[1] else 0.0)
         self._init_macros(values)
         self._macros[DELAY_I] = self._delay_seed
-        self._ready = True
-        self._refresh()
+        # A constructor patch lands before the graph is first set up, so a
+        # Mid/Side or Width 0 patch never wires the Haas voices (`_wire`).
         if patch is not None:
             self.program_change(patch)
+        self._ready = True
+        self._refresh()
 
     def _build_graph(self):
         rate = self._sample_rate
@@ -254,9 +268,17 @@ class StereoWidener(_component.Component):
         Splitter on `_hush` that block is zeros, and one pull of the mixer
         hands it out, so wiring takes nothing from the borrowed source and
         leaves no voice holding a block: whatever the MidSide has handed
-        out, the output has played, at every Width and Character. Without
-        `audiocore.get_buffer` the voices prime the source's next block,
-        which the next pull plays."""
+        out, the output has played, at every Width and Character.
+
+        Without `audiocore.get_buffer` (compiled out of CircuitPython's
+        default board builds) the voices prime the source's next block,
+        which the next pull plays. If the output leaves Haas before that
+        pull, the bypass starts a block later and the voices hold the block
+        it skipped; `_route` re-plays them on the way back, so that block
+        is dropped rather than played stale. The skip is disclosed. A
+        re-played voice there starts at level 0 until its signal crosses
+        zero, upstream's level gate, as every class's first block does on
+        such a build."""
         pull = getattr(audiocore, "get_buffer", None)
         voices = self._mixer.voice
         self._levels()
@@ -288,9 +310,22 @@ class StereoWidener(_component.Component):
         return self._macros[CHARACTER_I] >= 0.5
 
     def _delay_ms(self):
-        if abs(self._macros[DELAY_I] - self._delay_seed) <= ECHO_TOLERANCE:
+        if self._delay_exact is not None:
             return self._delay_exact
+        midi = _component.midi_of_position("UNIPOLAR",
+                                           self._macros[DELAY_I])
+        step = int(midi + 0.5)
+        if abs(midi - step) <= STEP_TOLERANCE and step in DELAY_STEPS:
+            return DELAY_STEPS[step]
         return self._value(DELAY_I)
+
+    def macro(self, index):
+        """What macro `index` currently stands for, in its own units; for
+        Delay, the milliseconds it plays."""
+        self._check_live()
+        if index == DELAY_I:
+            return self._delay_ms()
+        return _component.Component.macro(self, index)
 
     def _levels(self):
         lead, copy = haas_voices(self._width())
@@ -301,13 +336,17 @@ class StereoWidener(_component.Component):
     # -- applying ------------------------------------------------------
 
     def _apply_macro(self, index, position):
-        del index, position
+        if index == DELAY_I and self._ready and (
+                abs(position - self._delay_seed) > ECHO_TOLERANCE):
+            self._delay_exact = None
         if self._ready:
             self._refresh()
 
     def program_change(self, index, channel=0, note_id=-1,
                        sample_position=0):
         """Apply patch `index` whole, then refresh the graph once."""
+        if type(self).PATCHES.get(index) is not None:
+            self._delay_exact = None
         ready = self._ready
         self._ready = False
         try:
@@ -344,7 +383,13 @@ class StereoWidener(_component.Component):
             self._wire()
         else:
             self._levels()
-            self._rejoin(keep=(self._ms,))
+            if self._rejoin(keep=(self._ms,)) and getattr(
+                    audiocore, "get_buffer", None) is None:
+                # A voice may still hold the block it primed at wiring:
+                # play() again drops it and primes the source's next block.
+                voices = self._mixer.voice
+                voices[0].play(self._split.tap(0))
+                voices[1].play(self._line)
         self._output = self._tail
 
     def _haas_live(self):

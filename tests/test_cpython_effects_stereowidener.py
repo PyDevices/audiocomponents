@@ -66,6 +66,16 @@ def law_delay_ms(midi):
     return 40.0 ** (midi / 127.0)
 
 
+#: Section 3's patch Delays, by MIDI step: a patch plays the round number.
+PATCH_DELAYS = {62: 6.0, 91: 14.0, 111: 25.0}
+
+
+def law_step_ms(midi):
+    """What Delay on a whole MIDI step plays: a patch's round number on its
+    step, the log law elsewhere."""
+    return PATCH_DELAYS.get(midi, law_delay_ms(midi))
+
+
 def delay_midi(ms):
     """The float MIDI position that stands for `ms` exactly."""
     return 127.0 * math.log(ms) / math.log(40.0)
@@ -290,10 +300,9 @@ def h1_read(cls, rate, seed, frames=4096, width=None, delay_ms=None,
     e = cls(source(values, rate), **options)
     try:
         if delay_grid is not None:
-            ms = law_delay_ms(delay_grid)
+            ms = law_step_ms(delay_grid)
         elif patch is not None:
-            midi = StereoWidener.PATCHES[patch][1][DELAY_I]
-            ms = 14.0 if midi == 91 else law_delay_ms(midi)
+            ms = law_step_ms(StereoWidener.PATCHES[patch][1][DELAY_I])
         else:
             ms = 14.0 if delay_ms is None else delay_ms
         tau = law_frames(ms, rate)
@@ -563,6 +572,40 @@ class TheSurface(TestCase):
                 self.assertEqual((left, right), (0, 0), (rate, patch))
                 self.assertEqual(tau, law_frames(14.0, rate))
 
+    def test_patches_play_their_delay_whatever_the_constructor_said(self):
+        for rate in (48000, 44100, 22050):
+            for ctor in (14.0, 14.03, 13.95, 20.0, 6.02, 25.0):
+                e = StereoWidener(source(array("h", bytes(16)), rate),
+                                  delay_ms=ctor)
+                try:
+                    self.assertEqual(e._frames, law_frames(ctor, rate))
+                    e.set_macro(DELAY_I, e.get_macro(DELAY_I))
+                    self.assertEqual(e._frames, law_frames(ctor, rate))
+                    for patch, (_, values) in StereoWidener.PATCHES.items():
+                        e.program_change(patch)
+                        want = law_frames(law_step_ms(values[DELAY_I]), rate)
+                        self.assertEqual(e._frames, want, (rate, ctor, patch))
+                    e.reset()
+                    self.assertEqual(e._frames, law_frames(14.0, rate))
+                finally:
+                    e.deinit()
+
+    def test_the_constructor_delay_plays_until_delay_moves(self):
+        e = StereoWidener(source(array("h", bytes(16)), 48000),
+                          delay_ms=13.95)
+        try:
+            self.assertEqual(e.get_macro(DELAY_I), 91.0)
+            self.assertEqual(e.macro(DELAY_I), 13.95)
+            self.assertEqual(e._frames, 670)
+            e.set_macro(DELAY_I, 90)
+            e.set_macro(DELAY_I, 91)
+            self.assertEqual(e.macro(DELAY_I), 14.0)
+            self.assertEqual(e._frames, 672)
+            e.set_macro(DELAY_I, 92)
+            self.assertAlmostEqual(e.macro(DELAY_I), law_delay_ms(92))
+        finally:
+            e.deinit()
+
     def test_delay_does_nothing_in_mid_side(self):
         values = lcg_noise(2048, 2, 5, peak=16384)
         base = render(StereoWidener, values, 48000, width=1.5,
@@ -643,6 +686,37 @@ class TheSurface(TestCase):
             self.assertEqual(out[2 * n + 1],
                              values[2 * (1024 + n - tau) + 1], n)
 
+    def test_without_get_buffer(self):
+        # A re-played voice there starts at level 0 until its signal
+        # crosses zero (upstream's level gate, which `open_level_gates`
+        # cannot open without get_buffer), so each read starts a few frames
+        # after the return.
+        frames = 4096
+        settle = 32
+        # Leaving Haas before its first block skips that block, once, and
+        # the block is never played stale.
+        values, out = without_get_buffer(
+            StereoWidener,
+            {0: lambda e: e.program_change(4),
+             4: lambda e: e.program_change(0)})
+        self.assertEqual(left_skip(values, out, 4 * BLOCK + settle, frames),
+                         BLOCK)
+        # Built at a Mid/Side patch, Haas is never wired until it is
+        # reached, and nothing is skipped.
+        values, out = without_get_buffer(
+            lambda src: StereoWidener(src, patch=4),
+            {4: lambda e: e.program_change(0)})
+        self.assertEqual(left_skip(values, out, 4 * BLOCK + settle, frames),
+                         0)
+        # Leaving and coming back once Haas has played skips nothing.
+        values, out = without_get_buffer(
+            StereoWidener,
+            {2: lambda e: e.program_change(4),
+             6: lambda e: e.program_change(0)})
+        self.assertEqual(left_skip(values, out, 6 * BLOCK + settle, frames),
+                         0)
+        self.assertEqual(left_skip(values, out, settle, 2 * BLOCK), 0)
+
     def test_the_tempo_is_never_read(self):
         reads = []
 
@@ -679,6 +753,49 @@ class TheSurface(TestCase):
                 e.deinit()
 
 
+def without_get_buffer(build, moves, frames=4096, seed=3):
+    """Render with `audiocore.get_buffer` hidden from the class, as on a
+    CircuitPython board build, while it builds and while it moves."""
+    import types
+    from audioeffects.rebuilt import stereowidener as module
+    real = module.audiocore
+    fake = types.ModuleType("audiocore")
+    for name in dir(real):
+        if name != "get_buffer":
+            setattr(fake, name, getattr(real, name))
+
+    def hidden(action):
+        def run(e):
+            module.audiocore = _component.audiocore = fake
+            try:
+                action(e)
+            finally:
+                module.audiocore = _component.audiocore = real
+        return run
+
+    values = lcg_noise(frames, 2, seed)
+    module.audiocore = _component.audiocore = fake
+    try:
+        e = build(source(values, 48000))
+    finally:
+        module.audiocore = _component.audiocore = real
+    try:
+        out = pull(e, frames, dict((k, hidden(f)) for k, f in moves.items()))
+    finally:
+        e.deinit()
+    return values, out
+
+
+def left_skip(values, out, start, frames):
+    """The one shift, in frames, that makes the left from `start` on the
+    source's left, or None."""
+    for shift in (0, BLOCK):
+        if all(out[2 * n] == values[2 * (n + shift)]
+               for n in range(start, frames - shift)):
+            return shift
+    return None
+
+
 class H1TheCopy(TestCase):
     def test_the_copy_is_the_right_exactly_delay_late(self):
         cells = []
@@ -702,7 +819,7 @@ class H1TheCopy(TestCase):
                 self.assertEqual((left, right), (0, 0), (seed, rate, midi))
 
     def test_the_right_half_above_width_1(self):
-        for seed in SEEDS[:4]:
+        for seed in SEEDS:
             for rate in RATES:
                 for width in (1.5, 2.0):
                     _, right, tau = h1_read(StereoWidener, rate, seed,
@@ -794,12 +911,16 @@ class M1TheMonoSum(TestCase):
                     self.assertLessEqual(side, 1.0, (rate, seed, w))
 
     def test_at_the_mid_side_patches(self):
-        for patch in (4, 5, 6):
-            for w in (0.0, 1.0, 2.0):
-                s, side = m1_read(StereoWidener, 48000, patch, w,
-                                  patch=patch)
-                self.assertLessEqual(s, 1, (patch, w))
-                self.assertLessEqual(side, 1.0, (patch, w))
+        for rate in RATES:
+            for seed in SEEDS:
+                widths = M1_WIDTHS + (m1_random_width(seed),)
+                for patch in (4, 5, 6):
+                    for w in widths:
+                        s, side = m1_read(StereoWidener, rate, seed, w,
+                                          frames=2048, patch=patch)
+                        self.assertLessEqual(s, 1, (rate, seed, patch, w))
+                        self.assertLessEqual(side, 1.0,
+                                             (rate, seed, patch, w))
 
     def test_a_centred_part_is_unchanged(self):
         values = lcg_noise(2048, 1, 4)
@@ -811,8 +932,13 @@ class M1TheMonoSum(TestCase):
                          character="mid_side")
             self.assertEqual(_same_after(out, pair), 0, w)
 
-    def test_half_scale_never_clips(self):
+    def test_below_half_scale_never_clips(self):
+        # Half of full scale is 16384; below it is 16383 and down, which
+        # INPUT_CEILING_DBFS (-6.03 dBFS, 16366) sits under.
         peak = 16383
+        self.assertLessEqual(
+            rint(32767 * 10 ** (StereoWidener.INPUT_CEILING_DBFS / 20.0)),
+            peak)
         for character in ("haas", "mid_side"):
             for w in (0.0, 0.5, 1.0, 1.5, 2.0):
                 for shape in ("anti", "left", "noise"):
@@ -828,6 +954,16 @@ class M1TheMonoSum(TestCase):
                                  character=character)
                     self.assertLess(max(abs(x) for x in out), 32767,
                                     (character, w, shape))
+        # At half scale itself the bound is met: anti-phase 16384 at Width
+        # 2 doubles to 32768, one past the rail.
+        values = array("h", bytes(4 * 512))
+        for n in range(512):
+            v = 16384 if (n // 37) % 2 else -16384
+            values[2 * n] = v
+            values[2 * n + 1] = -v
+        out = render(StereoWidener, values, 48000, width=2.0,
+                     character="mid_side")
+        self.assertIn(32767, out)
 
     def test_level_width_is_red(self):
         for w in M1_WIDTHS:
@@ -859,7 +995,7 @@ class M2TheMatrix(TestCase):
 class WTheWire(TestCase):
     def test_a_mono_source_is_a_wire(self):
         for rate in RATES:
-            for seed in SEEDS[:2]:
+            for seed in SEEDS:
                 for cell in w_mono_cells():
                     self.assertEqual(
                         w_differing(StereoWidener, rate, seed, 1, 1024,
@@ -920,8 +1056,11 @@ CLAIMS = (
      ("test_the_textbook_matrix", "test_late_matrix_is_red")),
     ("A part that is the same in both channels comes out unchanged.",
      "test_a_centred_part_is_unchanged"),
-    ("Peaks up to half of full scale never clip at any Width.",
-     "test_half_scale_never_clips"),
+    ("Peaks below half of full scale never clip at any Width.",
+     "test_below_half_scale_never_clips"),
+    ("Where `audiocore.get_buffer` is compiled out, leaving Haas before its "
+     "first block has played skips that one block of the source.",
+     "test_without_get_buffer"),
     ("A one-channel source comes out exactly as it went in, whatever the "
      "controls say.",
      "test_a_mono_source_is_a_wire"),
@@ -999,8 +1138,10 @@ def figures(seeds=SEEDS):
         print("%s|M2|%d|worst %.3f|R' at 1.5, 2: %r" % (name, rate, worst,
                                                           inverted))
         mono = 0
-        for cell in w_mono_cells():
-            mono += w_differing(StereoWidener, rate, 1, 1, 1024, **cell)
+        for seed in seeds:
+            for cell in w_mono_cells():
+                mono += w_differing(StereoWidener, rate, seed, 1, 1024,
+                                    **cell)
         stereo = 0
         for seed in seeds:
             stereo += w_differing(StereoWidener, rate, seed, 2, width=0.0)
