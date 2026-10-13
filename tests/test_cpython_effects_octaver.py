@@ -57,12 +57,11 @@ WINDOWS = {0: ("E2", "A2", "D3", "G3", "B3", "E4", "A4"),
            3: ("E1", "A1", "E2", "A2", "D3", "G3"),
            4: ("D3", "G3", "B3", "E4", "A4", "E5")}
 
-#: The notes T5 claims clean at each patch. Patch 0 stops at E4: at A4 a
-#: draw with a weak fundamental drops out, mono and stereo
-#: (`T5_DROPOUTS`).
-T5_WINDOWS = {0: ("E2", "A2", "D3", "G3", "B3", "E4"),
-              3: WINDOWS[3],
-              4: WINDOWS[4]}
+#: The notes T5 claims clean at each patch: the whole window. Until the
+#: dividers clocked on the comparator's ticks, patch 0 stopped at E4: at A4
+#: the three draws of seeds 0-39 with the weakest fundamentals had a clock
+#: that crossed one rail and not the other, and played the note.
+T5_WINDOWS = WINDOWS
 
 
 # --------------------------------------------------------------------------
@@ -356,6 +355,93 @@ def t3_sensitivity(cls, rate, name, sens=-50.0):
     return worst
 
 
+def rbj_lowpass(x, fc, q, rate):
+    """The RBJ cookbook two-pole low-pass run over `x`, in float."""
+    w0 = 2.0 * math.pi * fc / rate
+    alpha = math.sin(w0) / (2.0 * q)
+    cw = math.cos(w0)
+    a0 = 1.0 + alpha
+    b0 = (1.0 - cw) / 2.0 / a0
+    b1 = (1.0 - cw) / a0
+    a1 = -2.0 * cw / a0
+    a2 = (1.0 - alpha) / a0
+    y = [0.0] * len(x)
+    x1 = x2 = y1 = y2 = 0.0
+    for i in range(len(x)):
+        v = b0 * x[i] + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2
+        x2, x1, y2, y1 = x1, x[i], y1, v
+        y[i] = v
+    return y
+
+
+#: The decaying notes the one-sided clock showed on: (patch, note, seed).
+#: At 0a69a2f each played its dry note 3 to 17 dB under the input for 54 to
+#: 194 ms at its end, with Octave 1 alone and no dry.
+ONE_SIDED = ((0, "E2", 3), (0, "G3", 1), (3, "D3", 7), (3, "A1", 7),
+             (2, "D3", 2))
+
+
+def t3_one_sided(cls, rate, patch, name, seed):
+    """Octave 1 alone on R decaying 80 dB over 4 s from -6 dBFS peak, at
+    `patch`, per 8/f window after the first two: (the worst of the output's
+    f over the input's f, in dB, over the windows the octave plays all the
+    way through; the same over the windows it stops in; the worst output
+    power against the input's over the windows whose clock peaks 3 dB under
+    Sensitivity, or None where there is none). The clock is the two Q 0.5
+    low-passes at the Tracking the patch shows, run over the input.
+
+    The window the octave stops in is read apart: an octave that ends
+    within a few cycles spreads its f/2 over the bins beside it, f among
+    them, however cleanly it divides."""
+    f = NOTES[name]
+    probe = cls(kc.feed(array("h", bytes(4)), rate, 1).port,
+                sample_rate=rate)
+    probe.program_change(patch)
+    fc = probe.macro(TRACKING)
+    sens = probe.macro(SENS)
+    probe.deinit()
+    n = 4 * rate
+    r = rich(f, n, seed, rate)
+    values = pcm([16384.0 / 12000.0 * r[i] * 10.0 ** (-4.0 * i / n)
+                  for i in range(n)])
+    xin = [float(v) for v in values]
+    clock = rbj_lowpass(rbj_lowpass(xin, fc, 0.5, rate), fc, 0.5, rate)
+    y = render(cls, values, rate, 1, patch=patch, macros=ONLY1)
+    width = int(round(8.0 * rate / f))
+    period = int(rate / f) + 1
+    worst = [-999.0, -999.0]
+    worst_quiet = None
+    edge = 32768.0 * 10.0 ** ((sens - 3.0) / 20.0)
+    for k in range(2, n // width):
+        lo, hi = k * width, (k + 1) * width
+        part = y[lo:hi]
+        if any(part):
+            through = any(part[-period:])
+            worst[not through] = max(worst[not through],
+                                     level_db(part, f, rate)
+                                     - level_db(xin[lo:hi], f, rate))
+        if max(abs(v) for v in clock[lo:hi]) < edge:
+            out = sum(float(v) * v for v in part) / width
+            inp = sum(v * v for v in xin[lo:hi]) / width
+            rel = 10.0 * math.log10(out + 1e-30) - 10.0 * math.log10(inp)
+            worst_quiet = rel if worst_quiet is None else max(worst_quiet,
+                                                              rel)
+    return worst[0], worst[1], worst_quiet
+
+
+def t3_steady_one_sided(cls, rate):
+    """Octave 1 alone on R (seed 7) at D3, -26 dBFS peak, at the Bass
+    patch, whose clock sits at Sensitivity: the output's f over the
+    input's f, in dB, after the first quarter."""
+    f = NOTES["D3"]
+    n = rate // 2
+    gain = 32768.0 * 10.0 ** (-26.0 / 20.0) / 12000.0
+    values = pcm([v * gain for v in rich(f, n, 7, rate)])
+    y = tail_part(render(cls, values, rate, 1, patch=3, macros=ONLY1))
+    return (level_db(y, f, rate)
+            - level_db(tail_part([float(v) for v in values]), f, rate))
+
+
 def t4_split(cls, rate, channels, name, tones_open):
     f = NOTES[name]
     n = rate
@@ -607,14 +693,6 @@ KIT_PLANTS = {
 # --------------------------------------------------------------------------
 # The trait tests (CPython: unittest)
 
-#: The draws of R that drop out at A4 at patch 0, at both rates:
-#: (channels, seed). Their fundamentals are the three weakest of seeds 0 to
-#: 39 (67.0 to 67.7 dB re 1 LSB, the median 73.1; stereo seed 7's mid is
-#: as weak as its left channel), and after the clock filter's 55 dB at
-#: 440 Hz they sit under Sensitivity.
-T5_DROPOUTS = ((1, 13), (1, 34), (2, 7))
-
-
 def _within(value, target, tolerance):
     return abs(value - target) <= tolerance
 
@@ -722,6 +800,47 @@ class T3Dynamics(TestCase):
                 self.assertLessEqual(t3_sensitivity(Octaver, rate, name),
                                      -60.0, (rate, name))
 
+    def test_no_dry_note_as_the_clock_fades(self):
+        """(c) A clock whose peaks are unequal crosses one rail before the
+        other. Octave 1 alone never passes the dry note: on decaying notes
+        its f stays 30 dB under the input's in every window it plays
+        through and 20 dB in the window it stops in, and it is 60 dB under
+        the input once the clock peaks 3 dB under Sensitivity; on a steady
+        note whose clock sits at Sensitivity, 40 dB.
+
+        At 0a69a2f the divider clocked on the rails alone and these read
+        -3 to -13 dB: the dry note. What is left at the edge is the
+        quiet side's peaks crossing its rail on some cycles and not on
+        others, which a clock 3 or 4 LSB high does near -80 dBFS (worst
+        -34.2 dB, patch 0 E2)."""
+        for rate in RATES:
+            for patch, name, seed in ONE_SIDED:
+                worst_f, stop_f, quiet = t3_one_sided(Octaver, rate, patch,
+                                                      name, seed)
+                self.assertLessEqual(worst_f, -30.0,
+                                     (rate, patch, name, seed))
+                self.assertLessEqual(stop_f, -20.0,
+                                     (rate, patch, name, seed))
+                self.assertIsNotNone(quiet)
+                self.assertLessEqual(quiet, -60.0, (rate, patch, name, seed))
+            self.assertLessEqual(t3_steady_one_sided(Octaver, rate), -40.0,
+                                 rate)
+
+    def test_a_quiet_high_note_stops_first(self):
+        """(d) Sensitivity reads the clock, after Tracking's low-pass: a
+        sine at -60 dBFS at patch 0 has its clock 9.4 dB over Sensitivity
+        at E2 (10.6 dB under the note) and 26.3 dB under it at E4 (46.3 dB
+        under the note), by `clock_attenuation`."""
+        amp = 32768.0 * 10.0 ** (-60.0 / 20.0)
+        for rate in RATES:
+            for name, plays in (("E2", True), ("E4", False)):
+                f = NOTES[name]
+                db = 20.0 * math.log10(clock_attenuation(f, 90.0))
+                self.assertEqual(-60.0 + db > -80.0 + 3.0, plays)
+                y = render(Octaver, pcm(sine(f, rate, rate, amp=amp)), rate,
+                           1, macros=ONLY1)
+                self.assertEqual(any(tail_part(y)), plays, (rate, name))
+
     def test_a_compressor_is_red(self):
         spread, _ = t3_envelope(Compressed, 48000, "E2", 0)
         self.assertGreater(spread, 1.0)
@@ -771,8 +890,8 @@ class T4SecondOctave(TestCase):
 
 
 class T5Range(TestCase):
-    """8/8 draws of R divide cleanly (f/2 20 dB over its neighbours) at
-    every note of each patch's window."""
+    """8/8 draws of R, at its 12000 peak (-8.7 dBFS), divide cleanly (f/2
+    20 dB over its neighbours) at every note of each patch's window."""
 
     def _window(self, rate, channels):
         for patch in (0, 3, 4):
@@ -788,20 +907,6 @@ class T5Range(TestCase):
     def test_the_windows_stereo(self):
         for rate in RATES:
             self._window(rate, 2)
-
-    def test_a_weak_fundamental_can_drop_out_at_a4(self):
-        f = NOTES["A4"]
-        for rate in RATES:
-            n = rate // 2
-            for channels, seed in T5_DROPOUTS:
-                left = rich(f, n, seed, rate)
-                right = rich(f, n, seed, rate, shift=0.3) \
-                    if channels == 2 else None
-                y = render(Octaver, pcm(left, right), rate, channels,
-                           patch=0, macros=ONLY1)
-                self.assertLess(
-                    t5_margin(tail_part(channel(y, channels)), f, rate),
-                    20.0, (rate, channels, seed))
 
     def test_outside_the_window(self):
         rate = 48000
@@ -1113,9 +1218,11 @@ class TheSurface(TestCase):
     def test_the_peak_gain(self):
         """The kit's square and sine at its own amplitude, at the settings
         the ceiling found worst, all three levels at full with the Tones at
-        both stops, and at every patch."""
+        both stops, and at every patch; and a square on every semitone from
+        E1 to A2 with all three levels at full, the Tones open and Tracking
+        at both stops, at both rates. The worst is a square near E2 with
+        Tracking at 40 Hz: 5.03 times its peak."""
         import kit_ceiling
-        rate = 48000
         amp = 3277
         worst = 0.0
         full = ((DIRECT, 127), (OCT1, 127), (OCT2, 127))
@@ -1125,14 +1232,23 @@ class TheSurface(TestCase):
                     for t in (0, 127)]
         configs += [(p, ()) for p in sorted(Octaver.PATCHES)]
         for which in ("square", "sine"):
-            values = kit_ceiling.material(which, rate, 1, amp)
+            values = kit_ceiling.material(which, 48000, 1, amp)
             for patch, knobs in configs:
-                y = render(Octaver, values, rate, 1, patch=patch,
+                y = render(Octaver, values, 48000, 1, patch=patch,
                            macros=knobs)
                 worst = max(worst, max(abs(v) for v in y) / float(amp))
-        self.assertTrue(3.7 <= worst <= 3.8, worst)
+        for rate in RATES:
+            for semitone in range(18):
+                period = rate / (41.2034 * 2.0 ** (semitone / 12.0))
+                values = pcm([amp if (i / period) % 1.0 < 0.5 else -amp
+                              for i in range(rate)])
+                for stop in (0, 127):
+                    y = render(Octaver, values, rate, 1,
+                               macros=full + OPEN + ((TRACKING, stop),))
+                    worst = max(worst, max(abs(v) for v in y) / float(amp))
+        self.assertTrue(4.95 <= worst <= 5.1, worst)
         self.assertLessEqual(worst * 10.0 ** (
-            Octaver.INPUT_CEILING_DBFS / 20.0), 1.0)
+            Octaver.INPUT_CEILING_DBFS / 20.0), 0.9)
 
 
 CLAIMS = (
@@ -1153,10 +1269,15 @@ CLAIMS = (
      ("TheSurface.test_the_spans",
       "T6Tone.test_tone_1_is_a_two_pole_low_pass",
       "T6Tone.test_tone_2_is_a_two_pole_low_pass")),
-    ("Sensitivity, from -90 to -40 dBFS, is how quiet a note can get before "
-     "the octaves stop.",
+    ("Sensitivity, from -90 to -40 dBFS, is the level your note must keep "
+     "after Tracking's low-pass for the octaves to play, not the level you "
+     "play at.",
      ("TheSurface.test_the_spans",
       "T3Dynamics.test_silent_below_sensitivity")),
+    ("The higher the note, the more that low-pass takes, so a quiet high "
+     "note stops before a quiet low one: at patch 0 a sine at -60 dBFS "
+     "still has its octave on E2 and none on E4.",
+     "T3Dynamics.test_a_quiet_high_note_stops_first"),
     ("Constructor values land on the nearest of each knob's 128 steps.",
      ("TheSurface.test_constructor_values_land_on_the_grid",
       "TheSurface.test_a_fresh_instance_reads_patch_0")),
@@ -1170,8 +1291,11 @@ CLAIMS = (
     ("On an A2 the octave follows your note's decay within 1 dB: it has "
      "no envelope of its own.",
      "T3Dynamics.test_the_octave_follows_the_decay"),
-    ("Below Sensitivity the octaves are silent, with no ghost and no hum.",
-     "T3Dynamics.test_silent_below_sensitivity"),
+    ("Below Sensitivity the octaves are silent, with no ghost and no hum, "
+     "and as a note fades into it the octave never turns into the note "
+     "itself.",
+     ("T3Dynamics.test_silent_below_sensitivity",
+      "T3Dynamics.test_no_dry_note_as_the_clock_fades")),
     ("With the Tones open the octave carries a fifth above it 4.4 dB "
      "quieter, as the pedal's multiplication does, wherever Tracking is "
      "set.",
@@ -1179,11 +1303,13 @@ CLAIMS = (
     ("Turning Tone 1 down thins that fifth more on high notes than on low "
      "ones.",
      "T6Tone.test_tone_1_is_a_two_pole_low_pass"),
-    ("At patch 0 every note from low E (E2) to E4 divides cleanly, even "
-     "with a strong second harmonic.",
+    ("Played at -8.7 dBFS peak, every note at patch 0 from low E (E2) to A4 "
+     "divides cleanly, even with a strong second harmonic.",
      ("T5Range.test_the_windows_mono", "T5Range.test_the_windows_stereo")),
-    ("The Bass patch covers E1 to G3, and High on the neck covers D3 to E5.",
-     ("T5Range.test_the_windows_mono", "T5Range.test_the_windows_stereo")),
+    ("Played at -8.7 dBFS peak, the Bass patch covers E1 to G3, and High on "
+     "the neck covers D3 to E5; played quieter, each range ends lower.",
+     ("T5Range.test_the_windows_mono", "T5Range.test_the_windows_stereo",
+      "T3Dynamics.test_a_quiet_high_note_stops_first")),
     ("Below the range a low note's second harmonic clocks the divider and "
      "it skips; above it the clock is low-passed under Sensitivity and the "
      "octave goes silent.",
@@ -1199,13 +1325,9 @@ CLAIMS = (
      "instead of 4.4, on both channels.",
      ("T2Multiplication.test_stereo_45_degrees",
       "T2Multiplication.test_in_phase_stereo_reads_as_mono")),
-    ("At patch 0 a note with a weak fundamental can drop out at A4, mono "
-     "or stereo: after the clock's low-pass its fundamental is under "
-     "Sensitivity.",
-     "T5Range.test_a_weak_fundamental_can_drop_out_at_a4"),
-    ("The output can peak at about 3.8 times the input (a square, all "
+    ("The output can peak at about 5 times the input (a low square, all "
      "three levels at full with the Tones open), so keep the input under "
-     "-13 dBFS.",
+     "-15 dBFS.",
      "TheSurface.test_the_peak_gain"),
     ("A control that jumps makes the output step: move it in small steps "
      "from the host if you need it smooth.",

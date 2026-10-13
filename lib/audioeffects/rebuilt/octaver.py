@@ -30,11 +30,22 @@ DIRECT_I, OCTAVE1_I, OCTAVE2_I, TRACKING_I, TONE1_I, TONE2_I, SENS_I = \
 DEFAULTS = (1.0, 0.7, 0.0, 90.0, 324.0, 70.3, -80.0)
 
 #: The comparator's table: 4097 points over the shaper's -1..1, exact zero
-#: across |i - 2048| <= 63 and the rails beyond. Interpolating between two
-#: points of a one-point step is a gain stage, which leaks an octave up and
-#: DC below Sensitivity; a dead band many points wide reads exact zero.
+#: across |i - 2048| <= 7, a tick of +-TICK out to |i - 2048| = 63, and the
+#: rails beyond. Interpolating between two points of a one-point step is a
+#: gain stage, which leaks an octave up and DC below Sensitivity; a dead band
+#: many points wide reads exact zero.
+#:
+#: The rails are Sensitivity: only they reach the octave. The ticks clock the
+#: dividers 18 dB under it, so a clock whose peaks are unequal (a second
+#: harmonic the tracking low-pass left, or the last few LSB of a quiet one)
+#: has crossed both sides by the time either side reaches a rail. Clocked on
+#: the rails alone, such a clock crossed one rail and not the other: the
+#: divider never turned over, and the signal times its one-sided pulses was
+#: the dry note itself.
 CURVE_POINTS = 4097
 DEAD_HALF = 63
+TICK_HALF = 7
+TICK = 2
 #: The comparator reaches the rail where its input times `pre_gain` is
 #: 64/2048, so `pre_gain = EDGE / 10^(Sensitivity/20)` puts the rail at the
 #: clock's level of Sensitivity. 1/32 is exact in every float format.
@@ -45,15 +56,21 @@ EDGE = 0.03125
 CLOCK_Q = 0.5
 TONE_Q = 0.7071
 
-#: The divider of the clock leg: a +-1 square from the comparator's +-rail.
-CLOCK_THRESHOLD = 0.5
+#: The dividers turn over on the comparator's ticks: one LSB, under TICK.
+CLOCK_THRESHOLD = 1.0 / 32768.0
 CLOCK_HOLD_MS = 1.0
+
+#: The table after each divider: the identity, with exact zero for
+#: |x| < 16 LSB, which takes the ticks out of the square and leaves its rails
+#: as they are.
+GATE_HALF = 1
 
 #: Frames a mixer pull hands out, and so what every node and tap takes per
 #: pull: the palette's own block, so the Splitters' rings empty each pull.
 BLOCK = 256
 
 _CURVE = None
+_GATE = None
 
 
 def comparator_curve():
@@ -61,9 +78,26 @@ def comparator_curve():
     global _CURVE
     if _CURVE is None:
         rail = (CURVE_POINTS - 1) // 2 - DEAD_HALF
-        _CURVE = array("h", [-32767] * rail + [0] * (2 * DEAD_HALF + 1)
+        tick = DEAD_HALF - TICK_HALF
+        _CURVE = array("h", [-32767] * rail + [-TICK] * tick
+                       + [0] * (2 * TICK_HALF + 1) + [TICK] * tick
                        + [32767] * rail)
     return _CURVE
+
+
+def gate_curve():
+    """The table after each divider, built once and shared."""
+    global _GATE
+    if _GATE is None:
+        middle = (CURVE_POINTS - 1) // 2
+        _GATE = array("h", [0] * CURVE_POINTS)
+        for i in range(CURVE_POINTS):
+            step = i - middle
+            if abs(step) > GATE_HALF:
+                _GATE[i] = max(-32767, min(32767, 16 * step))
+        _GATE[1] = -32767
+        _GATE[CURVE_POINTS - 2] = 32767
+    return _GATE
 
 
 def pre_gain(sensitivity_db):
@@ -93,8 +127,11 @@ class Octaver(_component.Component):
     follows.
     Tone 1 (100 to 2000 Hz) and Tone 2 (40 to 800 Hz) are two-pole
     low-passes at the hertz they show, on the first and second octave.
-    Sensitivity, from -90 to -40 dBFS, is how quiet a note can get before
-    the octaves stop.
+    Sensitivity, from -90 to -40 dBFS, is the level your note must keep
+    after Tracking's low-pass for the octaves to play, not the level you
+    play at. The higher the note, the more that low-pass takes, so a quiet
+    high note stops before a quiet low one: at patch 0 a sine at -60 dBFS
+    still has its octave on E2 and none on E4.
     Constructor values land on the nearest of each knob's 128 steps.
 
     **What you hear.** The octave is exactly half your note and sounds
@@ -103,21 +140,21 @@ class Octaver(_component.Component):
     below the note, until Octave 1 itself stops.
     On an A2 the octave follows your note's decay within 1 dB: it has no
     envelope of its own.
-    Below Sensitivity the octaves are silent, with no ghost and no hum.
+    Below Sensitivity the octaves are silent, with no ghost and no hum,
+    and as a note fades into it the octave never turns into the note
+    itself.
     With the Tones open the octave carries a fifth above it 4.4 dB
     quieter, as the pedal's multiplication does, wherever Tracking is set.
     Turning Tone 1 down thins that fifth more on high notes than on low
     ones.
 
-    **Its range.** At patch 0 every note from low E (E2) to E4 divides
-    cleanly, even with a strong second harmonic.
-    The Bass patch covers E1 to G3, and High on the neck covers D3 to E5.
+    **Its range.** Played at -8.7 dBFS peak, every note at patch 0 from
+    low E (E2) to A4 divides cleanly, even with a strong second harmonic.
+    Played at -8.7 dBFS peak, the Bass patch covers E1 to G3, and High on
+    the neck covers D3 to E5; played quieter, each range ends lower.
     Below the range a low note's second harmonic clocks the divider and it
     skips; above it the clock is low-passed under Sensitivity and the
     octave goes silent.
-    At patch 0 a note with a weak fundamental can drop out at A4, mono or
-    stereo: after the clock's low-pass its fundamental is under
-    Sensitivity.
     Between -90 and -84.5 dBFS Sensitivity changes nothing: that whole
     stretch is one step of the clock.
 
@@ -126,8 +163,9 @@ class Octaver(_component.Component):
     A stereo source is clocked on its mid: with the right channel 45
     degrees ahead of the left, the fifth sits 3.2 dB under the octave
     instead of 4.4, on both channels.
-    The output can peak at about 3.8 times the input (a square, all three
-    levels at full with the Tones open), so keep the input under -13 dBFS.
+    The output can peak at about 5 times the input (a low square, all
+    three levels at full with the Tones open), so keep the input under
+    -15 dBFS.
     A control that jumps makes the output step: move it in small steps
     from the host if you need it smooth.
 
@@ -153,10 +191,11 @@ class Octaver(_component.Component):
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
 
-    #: The worst peak gain over the kit's material, every patch and every
-    #: stop, is 3.75 (a square, all three levels at full with the Tones
-    #: open): -13 dBFS keeps it inside full scale.
-    INPUT_CEILING_DBFS = -13.0
+    #: The worst peak gain is 5.03: a square near E2 with all three levels
+    #: at full, the Tones open and Tracking at 40 Hz, over every semitone
+    #: from E1 to A2 at both Tracking stops (the kit's own 100 Hz square
+    #: reads 3.75). -15 dBFS keeps it 1 dB inside full scale.
+    INPUT_CEILING_DBFS = -15.0
 
     MACRO_LABELS = ("Direct", "Octave 1", "Octave 2", "Tracking", "Tone 1",
                     "Tone 2", "Sensitivity")
@@ -326,8 +365,8 @@ class Octaver(_component.Component):
 
     def _clock_leg(self, tap):
         """Low-pass at Tracking and a comparator with a dead band: a
-        +-rail square at the note, zero while the clock is under
-        Sensitivity."""
+        +-rail square at the note, a tick of +-TICK while the clock is
+        under Sensitivity and over 18 dB under it, zero below that."""
         clock = self._mid(tap)
         for _ in range(2):
             section = self._own(audiobiquad.Biquad(
@@ -347,13 +386,23 @@ class Octaver(_component.Component):
 
     def _divide(self, tap, order):
         """A divider on the comparator: a +-1 square at a half (order 1)
-        or a quarter (order 2) of the note, zero while the comparator
-        reads zero. Both orders count the same crossings, so the quarter
-        turns over only where the half does."""
-        return self._own(audiomath.SubOctave(
+        or a quarter (order 2) of the note, zero while the comparator is
+        off its rails. Both orders count the same crossings, so the quarter
+        turns over only where the half does.
+
+        The divider turns over on the ticks, and the gate after it takes
+        them out, so what reaches the multiply is the divider's square on
+        the rails and exact zero elsewhere."""
+        divider = self._own(audiomath.SubOctave(
             tap, order=order, mix=1.0, threshold=CLOCK_THRESHOLD,
             hold_ms=CLOCK_HOLD_MS, sample_rate=self._sample_rate,
             channel_count=self._channel_count))
+        gate = self._own(audioshaper.Waveshaper(
+            sample_rate=self._sample_rate,
+            channel_count=self._channel_count, curve=gate_curve(),
+            oversample=1, mix=1.0, pre_gain=1.0, post_gain=1.0))
+        gate.play(divider)
+        return gate
 
     def _first(self, tap):
         return self._divide(tap, 1)
