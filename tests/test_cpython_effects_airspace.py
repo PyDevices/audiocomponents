@@ -687,6 +687,25 @@ def fresh(rate=48000, channels=2, patch=None, **options):
     return build(AirSpace, data, rate, channels, patch, **options)
 
 
+class TheAdoption(unittest.TestCase):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-10-13, so `create()` serves this one. Revert
+        `rebuilt.ADOPTED` and this goes red."""
+        import audiocore
+        import audioeffects
+        from array import array
+        self.assertIn("AirSpace", rebuilt.ADOPTED)
+        self.assertNotIn("AirSpace", rebuilt.parked())
+        self.assertIs(audioeffects.AirSpace, AirSpace)
+        served = audioeffects.create(
+            "AirSpace",
+            audiocore.RawSample(array("h", [0, 0] * 64), sample_rate=48000,
+                                channel_count=2),
+            48000)
+        self.assertIsInstance(served, AirSpace)
+        served.deinit()
+
+
 class TheSurface(unittest.TestCase):
 
     def test_the_spans(self):

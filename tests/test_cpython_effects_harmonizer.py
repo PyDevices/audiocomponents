@@ -1117,6 +1117,25 @@ class T7TurnOff(TestCase):
 # The surface, the wire, the tail
 
 
+class TheAdoption(TestCase):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-10-13, so `create()` serves this one. Revert
+        `rebuilt.ADOPTED` and this goes red."""
+        import audiocore
+        import audioeffects
+        from array import array
+        self.assertIn("Harmonizer", rebuilt.ADOPTED)
+        self.assertNotIn("Harmonizer", rebuilt.parked())
+        self.assertIs(audioeffects.Harmonizer, Harmonizer)
+        served = audioeffects.create(
+            "Harmonizer",
+            audiocore.RawSample(array("h", [0, 0] * 64), sample_rate=48000,
+                                channel_count=2),
+            48000)
+        self.assertIsInstance(served, Harmonizer)
+        served.deinit()
+
+
 class TheSurface(TestCase):
 
     def _fresh(self, rate=48000, channels=2, **options):

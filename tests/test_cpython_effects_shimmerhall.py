@@ -786,6 +786,25 @@ def _port(rate=48000, channels=2):
     return kc.feed(array("h", bytes(4 * channels)), rate, channels).port
 
 
+class TheAdoption(TestCase):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-10-13, so `create()` serves this one. Revert
+        `rebuilt.ADOPTED` and this goes red."""
+        import audiocore
+        import audioeffects
+        from array import array
+        self.assertIn("ShimmerHall", rebuilt.ADOPTED)
+        self.assertNotIn("ShimmerHall", rebuilt.parked())
+        self.assertIs(audioeffects.ShimmerHall, ShimmerHall)
+        served = audioeffects.create(
+            "ShimmerHall",
+            audiocore.RawSample(array("h", [0, 0] * 64), sample_rate=48000,
+                                channel_count=2),
+            48000)
+        self.assertIsInstance(served, ShimmerHall)
+        served.deinit()
+
+
 class TheSurface(TestCase):
     def test_macros_patches_tier_latency(self):
         self.assertEqual(ShimmerHall.MACRO_LABELS,

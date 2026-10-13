@@ -622,6 +622,25 @@ GET_BUFFER_CASES = (
 # The tests
 
 
+class TheAdoption(TestCase):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-10-13, so `create()` serves this one. Revert
+        `rebuilt.ADOPTED` and this goes red."""
+        import audiocore
+        import audioeffects
+        from array import array
+        self.assertIn("PitchShifter", rebuilt.ADOPTED)
+        self.assertNotIn("PitchShifter", rebuilt.parked())
+        self.assertIs(audioeffects.PitchShifter, PitchShifter)
+        served = audioeffects.create(
+            "PitchShifter",
+            audiocore.RawSample(array("h", [0, 0] * 64), sample_rate=48000,
+                                channel_count=2),
+            48000)
+        self.assertIsInstance(served, PitchShifter)
+        served.deinit()
+
+
 class TheSurface(TestCase):
     def test_macros_patches_tier_latency(self):
         self.assertEqual(PitchShifter.MACRO_LABELS,

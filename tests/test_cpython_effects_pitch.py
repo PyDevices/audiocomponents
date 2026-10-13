@@ -18,7 +18,9 @@ import os
 import sys
 import unittest
 
-import audioeffects
+# `pitch.Octaver` is the old class, which `audioeffects.Octaver` served until
+# the Phase 6 rebuild's adoption on 2026-10-13.
+from audioeffects import pitch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 from effects_measure import peak, source  # noqa: E402
@@ -26,11 +28,11 @@ from effects_measure import peak, source  # noqa: E402
 
 class PitchTest(unittest.TestCase):
     def test_an_octaver_reaches_two_octaves_either_way(self):
-        deep = audioeffects.Octaver(source(), down=0.4, down2=0.4)
+        deep = pitch.Octaver(source(), down=0.4, down2=0.4)
         self.assertEqual(deep.down2.semitones, -24.0)
         self.assertIsNone(deep.up)
         self.assertGreater(peak(deep.output, 12), 0.001)
-        high = audioeffects.Octaver(source(), down=0.0, up=0.4, up2=0.4)
+        high = pitch.Octaver(source(), down=0.0, up=0.4, up2=0.4)
         self.assertEqual(high.up2.semitones, 24.0)
         self.assertIsNone(high.down)
 
@@ -38,11 +40,10 @@ class PitchTest(unittest.TestCase):
         # A Splitter fans out to four taps, so the dry signal plus three
         # octaves is the ceiling - and the default, one octave down, should
         # cost one shifter rather than four.
-        one = audioeffects.Octaver(source())
+        one = pitch.Octaver(source())
         self.assertEqual(len(one.mixer.voice), 2)
         with self.assertRaises(ValueError):
-            audioeffects.Octaver(source(), down=0.3, down2=0.3, up=0.3,
-                                 up2=0.3)
+            pitch.Octaver(source(), down=0.3, down2=0.3, up=0.3, up2=0.3)
 
 
 if __name__ == "__main__":
