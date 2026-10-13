@@ -303,6 +303,9 @@ class TestPlants(unittest.TestCase):
         ("latemove", "plain", "E4-m1=0", "P4"),
         ("hardswitch", "plain", "E4-m0=0", "P5"),
         ("busydeinit", "plain", "E3-deinit", "PD"),
+        ("latepatch", "plain", "E12-p1", "PF"),
+        ("resetleak", "routed", "E1-reset@block", "PR"),
+        ("stalemix", "routed", "E5-mix0", "PR"),
     )
 
     def test_each_plant_is_red_and_its_control_green(self):
@@ -322,6 +325,97 @@ class TestPlants(unittest.TestCase):
             del lifecycle.DECLARED[("LifecyclePlain", "E1-reset@block",
                                     "P1")]
         self.assertEqual(got, "decl")
+
+    def test_p4_misses_what_pf_and_pr_catch(self):
+        """P4 forgives a block (and a tail) after the move; PF and PR do
+        not, so these plants are ok on P4 and red only on the new
+        properties."""
+        self.assertEqual(plant_cell("latepatch", "E12-p1", "P4"), "ok")
+        self.assertEqual(plant_cell("resetleak", "E1-reset@block", "P4"),
+                         "ok")
+
+    def test_e12_is_judged_against_a_fresh_instance(self):
+        lines = []
+        lifecycle.run_class(lifecycle.Plain, rates=(48000,), channels=(2,),
+                            patches=[None], only=["E12"], emit=lines.append)
+        got = sorted(k[1] for k in parse(lines))
+        self.assertEqual(got, ["E12-mix0", "E12-mix127", "E12-mix64",
+                               "E12-p0", "E12-p1"])
+        for props in parse(lines).values():
+            self.assertEqual(props["PF"], "ok")
+            self.assertEqual(props["P4"], "ok")
+
+    def test_a_scoped_row_matches_only_its_scope(self):
+        here = sys.implementation.name
+        other = "circuitpython" if here != "circuitpython" else "cpython"
+        cases = (
+            (("LifecyclePlain", "E1-reset@block", "P1", here), None, "decl"),
+            (("LifecyclePlain", "E1-reset@block", "P1", other), None, "RED"),
+            (("LifecyclePlain", "E1-reset@block", "P1", (1,)), None, "RED"),
+            (("LifecyclePlain", "E1-reset@block", "P1", (1,)), 1, "decl"),
+            (("LifecyclePlain", "E1-reset@block", "P1", (None, 1), here),
+             None, "decl"),
+            # The Octaver form, a patch tuple as the fourth element.
+            (("LifecyclePlain", "E1-", "P1", (0, 1)), 1, "decl"),
+        )
+        for row, patch, want in cases:
+            with self.subTest(row=row, patch=patch):
+                lifecycle.DECLARED[row] = "planted"
+                try:
+                    got = plant_cell("droponreset", "E1-reset@block", "P1",
+                                     patch=patch)
+                finally:
+                    del lifecycle.DECLARED[row]
+                self.assertTrue(got.startswith(want), got)
+
+    def test_a_row_shorter_than_an_event_is_refused(self):
+        for prefix in ("E", "E1", "", "X1-"):
+            with self.subTest(prefix=prefix):
+                with self.assertRaises(ValueError) as caught:
+                    lifecycle.check_declared({("X", prefix, "P1"): "r"})
+                self.assertIn("shorter than one whole event name",
+                              str(caught.exception))
+        for bad in (("X", "E1-", "P9"), ("X", "E1-", "P1", "pypy"),
+                    ("X", "E1-", "P1", ("1",)), ("X", "E1-", "PR"),
+                    ("X", "E1-", "P1", (1,), (2,))):
+            with self.subTest(row=bad):
+                with self.assertRaises(ValueError):
+                    lifecycle.check_declared({bad: "r"})
+        lifecycle.check_declared({("X", "E10-reset", "P4", "circuitpython"):
+                                  "r", ("X", "E4-m2=", "P5"): "r"})
+        # run_class checks rows added after import too.
+        lifecycle.DECLARED[("LifecyclePlain", "E", "P1")] = "planted"
+        try:
+            with self.assertRaises(ValueError):
+                plant_cell("plain", "E1-reset@block", "P1")
+        finally:
+            del lifecycle.DECLARED[("LifecyclePlain", "E", "P1")]
+        with self.assertRaises(ValueError):
+            lifecycle.check_declared({}, {"X": ""})
+
+    def test_free_phase_excuses_pr_and_the_summary_counts_cells(self):
+        def e10():
+            lines = []
+            lifecycle.run_class(lifecycle.PLANTS["routed"], rates=(48000,),
+                                channels=(2,), patches=[None], only=["E10"],
+                                emit=lines.append)
+            return lines
+        before = parse(e10())
+        self.assertTrue(before[("LifecycleRouted", "E10-reset", 48000, 2,
+                                "d")]["PR"].startswith("RED"))
+        row = ("LifecycleRouted", "E10-reset", "P1")
+        lifecycle.DECLARED[row] = "planted"
+        lifecycle.FREE_PHASE["LifecycleRouted"] = "a planted phase"
+        try:
+            lines = e10()
+        finally:
+            del lifecycle.DECLARED[row]
+            del lifecycle.FREE_PHASE["LifecycleRouted"]
+        cell = parse(lines)[("LifecycleRouted", "E10-reset", 48000, 2, "d")]
+        self.assertEqual((cell["P1"], cell["PR"]), ("decl", "decl"))
+        # Three declared properties in two cells: the SUMMARY counts cells.
+        self.assertEqual(sum(l.count(":decl") for l in lines), 3)
+        self.assertTrue(lines[-1].endswith("|declared 2"), lines[-1])
 
     def test_a_skipped_cell_prints_na_and_never_runs(self):
         class Raises(lifecycle.Plain):
