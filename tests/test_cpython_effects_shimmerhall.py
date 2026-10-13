@@ -874,13 +874,14 @@ class TheSurface(TestCase):
             verdict, _digest = kit_ceiling.measure(
                 ShimmerHall, 48000, 2, "square", None, None, options)
             self.assertEqual(verdict, "ok", options)
+        stated = ShimmerHall.INPUT_CEILING_DBFS
         try:
             ShimmerHall.INPUT_CEILING_DBFS = -12.0
             verdict, _digest = kit_ceiling.measure(
                 ShimmerHall, 48000, 2, "square", None, None,
                 dict(full, character="bloom"))
         finally:
-            del ShimmerHall.INPUT_CEILING_DBFS
+            ShimmerHall.INPUT_CEILING_DBFS = stated
         self.assertIn("rail", verdict)
 
     def test_a_refused_call_keeps_the_constructors_values(self):
