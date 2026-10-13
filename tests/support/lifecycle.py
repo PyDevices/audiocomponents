@@ -75,6 +75,43 @@ MIX_INDEX = {
 #: cell prints `decl` instead of RED and is counted as a declared exception.
 #: Nothing else skips a cell.
 DECLARED = {
+    ("Harmonizer", "E1-", "P4"):
+        "reset() empties the three lines and starts every splice where a"
+        " new instance's starts, so a shifted voice then renders as a fresh"
+        " instance (test_reset_renders_as_fresh), not as the uninterrupted"
+        " control",
+    ("Harmonizer", "E4-", "P4"):
+        "a Pitch, Voice or Detune move runs a shifter's read head at another"
+        " rate, so its splice lands elsewhere and stays there (the node's"
+        " by-design cell); a Level off and back, or Mix 0 and back, empties"
+        " the line and starts the splice as a fresh voice's (T6)",
+    ("Harmonizer", "E5-", "P4"):
+        "Mix 0 and back empties the lines and starts every splice as a"
+        " fresh instance's, not the uninterrupted control's",
+    ("Harmonizer", "E6-", "P4"):
+        "a patch change moves intervals, so the splices land elsewhere, or"
+        " turns a voice off and back, which starts its splice afresh",
+    ("Harmonizer", "E9-", "P4"):
+        "as E5: Mix 0 and back starts every splice afresh, at every source"
+        " buffer size",
+    ("Harmonizer", "E11-", "P4"):
+        "moves that reach an interval, a Level's off step or Mix 0 move the"
+        " splices, as E4 to E6",
+    ("Harmonizer", "E4-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step",
+    ("Harmonizer", "E5-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Mix)",
+    ("Harmonizer", "E6-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (a patch change)",
+    ("Harmonizer", "E9-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Mix)",
+    ("Harmonizer", "E11-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step",
     ("AnalogDelay", "E", "P5"):
         "a control that jumps steps the output (family, audiocomponents#117);"
         " a Time move bends the pitch while the line walks, by design",

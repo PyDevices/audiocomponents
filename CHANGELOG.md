@@ -10,6 +10,14 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`Harmonizer` (rebuilt, Phase 6):** three pitch shifters at fixed
+  intervals under the dry, after three Eventide H910s played from one
+  keyboard. Each voice is its own `audiodelays.PitchShift` on its own
+  splitter tap and lands on the nearest step the shifter can play; a
+  voice at its Level's bottom step is off and its shifter is not pulled.
+  Ten controls (Pitch, Voice 1 to 3, Level 1 to 3, Detune, Spread, Mix),
+  seven patches including a lean two-voice one, and a `window_ms` option.
+  It drops the old class's `intervals=` and `level=` options.
 - MultiTapDelay: the docstring says which patches need a P4-class board (patch 4 does, patch 3 may), from the boards' figures at audiodsp v0.6.3
 - **`DigitalDelay` (rebuilt, Phase 5; adopted 2026-09-28):** a clean
   interpolated line with the Boss DD-2's control law on one

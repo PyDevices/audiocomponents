@@ -29,6 +29,13 @@ RAIL = 32767
 #: cell prints `decl` and is counted as a declared exception. Nothing else
 #: skips a cell.
 DECLARED = {
+    ("Harmonizer", "plants", "T6a/"):
+        "the plant acts only when a Level comes back from off, a move the"
+        " plant check never makes; T6's own test shows it red on that move",
+    ("Harmonizer", "plants", "T6b/"):
+        "the plant acts only when a Level goes off and comes back, a move"
+        " the plant check never makes; T6's own test shows it red on that"
+        " move",
 }
 
 CPYTHON = sys.implementation.name == "cpython"
