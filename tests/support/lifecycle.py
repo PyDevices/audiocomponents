@@ -241,6 +241,22 @@ DECLARED = {
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (two or three moves before one pull)',
     ("PingPongDelay", 'E4-m2=', 'P5'):
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
+    # ShimmerHall: its hall is the rebuilt Reverb, whose rows above say why
+    # a tank that was emptied, or fed differently for a moment, never meets
+    # an uninterrupted one byte for byte. A reset renders exactly as a fresh
+    # instance does (the class's reset test); it is the control that never
+    # was reset.
+    ("ShimmerHall", "E1-", "P4"): "reset() empties the hall and restarts its modulation, so it never re-converges with the uninterrupted control (Reverb's E1 P4)",
+    ("ShimmerHall", "E4-", "P4"): "a move that reaches the hall, its input or its tank (Character, Bloom, Interval, Size, Mix to 0 and back) leaves the tank off the control's for good (Reverb's E4 P4)",
+    ("ShimmerHall", "E5-", "P4"): "Mix to 0 and back empties the hall and restarts its modulation (as E1)",
+    ("ShimmerHall", "E6-", "P4"): "a patch move reaches the hall's input or its tank and leaves it off the control's for good (Reverb's E6 P4)",
+    ("ShimmerHall", "E9-", "P4"): "the E5 move: Mix to 0 and back empties the hall (as E1)",
+    ("ShimmerHall", "E11-", "P4"): "moves that reach the hall or empty it leave its tank off the control's for good (Reverb's E11 P4)",
+    ("ShimmerHall", "E4-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step",
+    ("ShimmerHall", "E5-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
+    ("ShimmerHall", "E6-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (a patch change)",
+    ("ShimmerHall", "E9-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
+    ("ShimmerHall", "E11-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (two or three moves before one pull)",
 }
 
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")

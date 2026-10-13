@@ -883,6 +883,24 @@ class TheSurface(TestCase):
             del ShimmerHall.INPUT_CEILING_DBFS
         self.assertIn("rail", verdict)
 
+    def test_a_refused_call_keeps_the_constructors_values(self):
+        # The kit's `opt` cells cannot build this class (its nudge moves
+        # `interval` off the five), so they run here with every other
+        # numeric option moved: a refused call changes nothing.
+        import kit_args
+        options = dict(shimmer=0.37, rise=0.71, bloom_ms=33.3, decay=7.7,
+                       size=0.61, damping_hz=777.0, mix=1.37)
+        real = kit_args._nudged
+        kit_args._nudged = lambda cls: [options]
+        try:
+            for label, _call, _noop in kit_args.refusals(ShimmerHall):
+                verdict = kit_args.refused_cell(ShimmerHall, label, "opt")
+                if isinstance(verdict, tuple):
+                    verdict = verdict[0]
+                self.assertTrue(verdict.startswith("ok"), (label, verdict))
+        finally:
+            kit_args._nudged = real
+
     def test_the_tempo_is_never_read(self):
         def transport():
             raise AssertionError("read the transport")
@@ -1064,6 +1082,9 @@ CLAIMS = (
      "carries on.",
      ("test_a_character_move_recuts_the_wet_chain",
       "test_a_size_move_empties_the_hall")),
+    ("A control that jumps makes the output step: move it in small steps "
+     "from the host if you need it smooth.",
+     "DECLARED:ShimmerHall,E6-,P5"),
     ("Interval is a fixed shift in semitones, with no key awareness.",
      "test_interval_has_five_zones"),
     ("A value outside a macro's span clamps to the nearer stop, and NaN "
