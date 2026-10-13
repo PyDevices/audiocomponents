@@ -1265,6 +1265,26 @@ class TheSurface(TestCase):
                     y = render(Harmonizer, material, rate, channels)
                     self.assertLess(max(abs(s) for s in y), 32767)
 
+    def test_the_stated_ceiling_covers_every_setting(self):
+        """At `INPUT_CEILING_DBFS` the loudest settings reach no rail, not
+        only the kit's own: all three Levels at 0 dB at Mix 1 sum to 4.0
+        times the input, and patch 1 with Level 3 at 0 dB to 3.44."""
+        peak = int(32767 * 10.0 ** (Harmonizer.INPUT_CEILING_DBFS / 20.0)
+                   + 0.5)
+        cells = (
+            (None, [(LEVEL[k], 127) for k in range(3)] + [(MIX, 64)]),
+            (1, [(LEVEL[2], 127)]),
+        )
+        for rate in RATES:
+            for channels in CHANNELS:
+                values = kc.square(16384, channels, peak, rate // 100)
+                for patch, macros in cells:
+                    y = render(Harmonizer, values, rate, channels,
+                               patch=patch, macros=macros)
+                    on = sum(1 for s in y if s >= 32767 or s <= -32767)
+                    self.assertEqual(
+                        on, 0, (rate, channels, patch, peak, max(y)))
+
 
 CLAIMS = (
     ("Three pitch shifters, each a fixed interval from your note, blended "

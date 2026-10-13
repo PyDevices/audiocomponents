@@ -166,10 +166,11 @@ class Harmonizer(_component.Component):
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
 
-    #: The loudest sum over every patch and every stop is the dry at unity
-    #: and Level 3 at 0 dB over patch 0's other two voices: 3.0 times the
-    #: input, so -9.6 dBFS keeps it inside full scale.
-    INPUT_CEILING_DBFS = -9.6
+    #: The loudest sum over every setting is the dry at unity and all three
+    #: Levels at 0 dB at Mix 1: 4.0 times the input (patch 1 with Level 3
+    #: at 0 dB sums 3.44), so -12.1 dBFS keeps it inside full scale
+    #: (4.0 times is 12.04 dB, and -12.0 would leave the sum 0.5 % over).
+    INPUT_CEILING_DBFS = -12.1
 
     MACRO_LABELS = ("Pitch", "Voice 1", "Voice 2", "Voice 3", "Level 1",
                     "Level 2", "Level 3", "Detune", "Spread", "Mix")
