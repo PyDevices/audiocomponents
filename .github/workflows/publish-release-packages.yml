@@ -68,7 +68,7 @@ jobs:
       # a test. The tests would generate them too; this makes it explicit.
       - run: python tools/effect_probes/make_probes.py --ensure
 
-      - run: python -m pytest tests -n auto -p no:cacheprovider
+      - run: python -m pytest tests -n auto --dist loadscope -p no:cacheprovider
       - run: python tools/validate_api.py
       - run: python tests/parity/effects_library_smoke.py
 

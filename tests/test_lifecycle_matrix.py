@@ -181,6 +181,26 @@ def run_cpython(name):
     return lines
 
 
+def run_cpython_all(names):
+    """{name: run_cpython(name)}, each class in a process of its own.
+
+    The CPython matrix is most of this file's time, and each class's is
+    independent of the others', so they run side by side on every core.
+    LIFECYCLE_JOBS=1 runs them in this process, one after another.
+    """
+    jobs = int(os.environ.get("LIFECYCLE_JOBS", "0")) or os.cpu_count() or 1
+    jobs = min(jobs, len(names))
+    if jobs <= 1:
+        return {name: run_cpython(name) for name in names}
+    import concurrent.futures
+    import multiprocessing
+    # spawn on every platform: a fork of a process already running threads
+    # (a test runner's, say) can deadlock.
+    with concurrent.futures.ProcessPoolExecutor(
+            jobs, mp_context=multiprocessing.get_context("spawn")) as pool:
+        return dict(zip(names, pool.map(run_cpython, names)))
+
+
 class TestMatrix(unittest.TestCase):
     """Each class's red cells are exactly KNOWN_RED's, and the three
     interpreters print the same line for every cell (P6)."""
@@ -195,9 +215,7 @@ class TestMatrix(unittest.TestCase):
             if binary is not None and cls.names:
                 cls.procs[family] = start_native(binary, cls.names,
                                                  cls.scratch.name)
-        cls.cpython = {}
-        for name in cls.names:
-            cls.cpython[name] = run_cpython(name)
+        cls.cpython = run_cpython_all(cls.names)
         cls.native_lines = {}
         for family, proc in cls.procs.items():
             out, err = proc.communicate()

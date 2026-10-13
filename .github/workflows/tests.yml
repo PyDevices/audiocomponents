@@ -112,9 +112,11 @@ jobs:
       # The same tests `python -m unittest discover -s tests -p "test_*.py"`
       # finds, spread across every core the runner has: serially the suite
       # takes over an hour. A test that writes a file writes it into its own
-      # temporary directory, so no two workers collide. --durations names the
-      # slowest tests, which bound how fast this step can get.
-      - run: python -m pytest tests -n auto -p no:cacheprovider --durations=25
+      # temporary directory, so no two workers collide. loadscope keeps each
+      # class on one worker, in unittest's order, with one setUpClass;
+      # tests/conftest.py starts the slowest class first. --durations names
+      # the slowest tests, which bound how fast this step can get.
+      - run: python -m pytest tests -n auto --dist loadscope -p no:cacheprovider --durations=25
       - run: python tools/validate_api.py
       - run: python tests/parity/effects_library_smoke.py
 
