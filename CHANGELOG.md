@@ -19,7 +19,6 @@ there, and are recorded in its changelog.
   chamber's tail, and a Time move bends the repeats' pitch. The chamber is
   the rebuilt `Reverb`, and `reset()` renders exactly as a fresh instance.
   The old `rack.AirSpace` stays what the library serves until adoption.
-
 - **`StereoWidener` (rebuilt, Phase 6):** two characters on a Width, Delay
   and Character surface. Haas delays the right channel 1 to 40 ms behind the
   left, crossfading the right toward its late copy up to Width 1 and turning
