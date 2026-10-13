@@ -162,17 +162,12 @@ class ConvolutionReverb(_core.Effect):
     def set_mix(self, mix):
         self.node.set(mix=mix)
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
+    def _apply_positions(self, positions, patch_index):
         # Suppress the per-macro rebuild and do one at the end. A patch moves
         # every knob, and four of the five reshape the impulse.
-        if int(index) not in self.PATCHES:
-            return
         self._ready = False
         try:
-            _core.Effect.program_change(self, index, channel=channel,
-                                         note_id=note_id,
-                                         sample_position=sample_position)
+            _core.Effect._apply_positions(self, positions, patch_index)
         finally:
             self._ready = True
         self._rebuild()

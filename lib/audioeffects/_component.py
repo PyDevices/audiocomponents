@@ -740,6 +740,11 @@ class Component:
         #: `Saturation` and `Overdrive` each grew a private flag for the
         #: same hazard; this is the one every class can read.
         self._constructing = True
+        #: True while a class seeds its knobs from its constructor's
+        #: arguments (the class sets it in `_build`) or `_restore` puts them
+        #: back: a class that keeps an exact constructor value beside a knob
+        #: (`_KEPT`) keeps it through a knob applied while this is set.
+        self._seeding = False
 
         try:
             self._build(*options, **keywords)
@@ -1027,11 +1032,60 @@ class Component:
         patch = type(self).PATCHES.get(index)
         if patch is None:
             return
-        for macro in range(len(patch[1])):
-            self._macros[macro] = position_of_midi(self._mode(macro),
-                                                   patch[1][macro])
-            self._apply_macro(macro, self._macros[macro])
-        self._patch_index = index
+        self._apply_positions([position_of_midi(self._mode(macro), value)
+                               for macro, value in enumerate(patch[1])],
+                              index)
+
+    def _apply_positions(self, positions, patch_index):
+        """Set the macros to `positions` (0..1, one per macro from index 0),
+        apply each, and record `patch_index`.
+
+        This is the body of `program_change`, and the one path a patch and a
+        restore share: a rack puts a child back as it built it by handing
+        this the positions and patch index it recorded, which the public
+        `set_macro` cannot do for a class whose grid is coarser than its
+        positions or whose macros are not all live. A class that does work
+        once per patch (a refresh, a re-route) does it here, not in
+        `program_change`, so both paths get it.
+        """
+        for macro in range(len(positions)):
+            self._macros[macro] = positions[macro]
+            self._apply_macro(macro, positions[macro])
+        self._patch_index = patch_index
+
+    #: Attributes beyond the macros and the patch index that a class's
+    #: constructor leaves and a put-back must restore with them: an exact
+    #: constructor value kept beside its knob (`_glide_exact`). A class that
+    #: keeps one names it here; `_record` and `_restore` carry it.
+    _KEPT = ()
+
+    #: What `reset()` reloads in place of patch 0: `None`, or a `_record()`
+    #: a parent hands in for the length of one reset, so a child it built
+    #: comes back as built in one step, never passing through patch 0.
+    _reset_to = None
+
+    def _record(self):
+        """This instance's settings as they stand, for `_restore`: the
+        positions, the patch index and the `_KEPT` values."""
+        return (list(self._macros), self._patch_index,
+                tuple(getattr(self, name) for name in type(self)._KEPT))
+
+    def _restore(self, record):
+        """Put back what `_record` returned, through `_apply_positions`.
+
+        The kept values go back first and the positions are applied with
+        `_seeding` set, the flag a class's constructor holds while it seeds
+        the knobs: a class that drops an exact value when its knob moves
+        keeps it while seeding, so the values and the knobs land together.
+        """
+        positions, patch_index, kept = record
+        for name, value in zip(type(self)._KEPT, kept):
+            setattr(self, name, value)
+        self._seeding = True
+        try:
+            self._apply_positions(list(positions), patch_index)
+        finally:
+            self._seeding = False
 
     def pitch_bend(self, value, channel=0, sample_position=0):
         self._check_live()
@@ -1094,7 +1148,17 @@ class Component:
         # Everything is clear now, so nothing is stranded: patch 0 coming
         # back off a bypass is the reset's own re-arm, not a second clear.
         self._stranded = False
-        self.program_change(0)
+        if self._reset_to is None:
+            self.program_change(0)
+        else:
+            # A parent's reset: straight back to the settings it built this
+            # with. Loading patch 0 on the way could re-arm a graph those
+            # settings route around, and pull the source to do it. Those
+            # settings may route around the graph, but it has not played
+            # since it was cleared, so it is no more stranded than a graph
+            # `_build` routes around.
+            self._restore(self._reset_to)
+            self._stranded = False
 
     def deinit(self):
         """Release every node this class built, tail first. Idempotent, and

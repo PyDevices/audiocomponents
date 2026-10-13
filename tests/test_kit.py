@@ -26,6 +26,7 @@ import kit_args                                           # noqa: E402
 import kit_ceiling                                        # noqa: E402
 import kit_claims                                         # noqa: E402
 import kit_common as kc                                   # noqa: E402
+import kit_nogb                                           # noqa: E402
 import kit_paperwork                                      # noqa: E402
 import kit_planted as kp                                  # noqa: E402
 import kit_plants                                         # noqa: E402
@@ -167,6 +168,32 @@ class TestArgs(unittest.TestCase):
                 self.assertTrue(self.call(fn, kp.KitPlain, args)
                                 .startswith("ok"), key)
 
+    def test_a_refused_call_that_moves_something_is_red(self):
+        # ClearsFirst zeroes the level before it validates (a render that
+        # differs); ClearsMacro moves a macro, or drops the patch, first.
+        for plant, label, variant in (
+                (kp.ClearsFirst, "pc-negsp", "last"),
+                (kp.ClearsFirst, "pc-true", "d"),
+                (kp.ClearsMacro, "pc-0.0", "d"),
+                (kp.ClearsMacro, "sm-index-n", "d"),
+                (kp.ClearsMacro, "sm-m0-negsp", "last")):
+            with self.subTest(plant=plant.NAME, label=label):
+                self.assertTrue(red(self.call(
+                    kit_args.refused_cell, plant, (label, variant))))
+                self.assertTrue(self.call(
+                    kit_args.refused_cell, kp.KitPlain,
+                    (label, variant)).startswith("ok"))
+
+    def test_every_refusal_is_green_on_the_control(self):
+        cells = cells_of(kit_args.run, kp.KitPlain, quick=True)
+        refused = [k for k in (key for (_n, _c, key) in cells)
+                   if k.startswith("refused-")]
+        self.assertEqual(len(refused),
+                         3 * len(kit_args.refusals(kp.KitPlain)))
+        for key in refused:
+            self.assertTrue(verdict(cells, "KitPlain", "args", key)
+                            .startswith("ok"), key)
+
     def test_a_clamp_is_read_as_one(self):
         self.assertEqual(kit_args.bad_cell(kp.KitPlain, 1),
                          "ok(nan:c inf:c -inf:c -1:c 128:c)")
@@ -182,10 +209,75 @@ class TestArgs(unittest.TestCase):
                          [("mix", 1.0), ("gain", 1.0)])
 
 
+def nogb_cells(cls):
+    return cells_of(kit_nogb.run, cls, quick=True)
+
+
+class TestNoGetBuffer(unittest.TestCase):
+
+    def test_the_control_is_green(self):
+        for cls in (kp.KitPlain, kp.FlushKit):
+            with self.subTest(cls=cls.NAME):
+                cells = nogb_cells(cls)
+                self.assertTrue(cells)
+                for key in (k for (_n, _c, k) in cells):
+                    self.assertEqual(verdict(cells, cls.NAME, "nogb", key),
+                                     "ok", key)
+
+    def test_a_flush_that_needs_get_buffer_is_red(self):
+        cells = nogb_cells(kp.FlushOnly)
+        bad = [k for (_n, _c, k) in cells
+               if red(verdict(cells, "FlushOnly", "nogb", k))]
+        self.assertTrue(any(k.startswith("E5-mix0") for k in bad), bad)
+        self.assertTrue(any(k.startswith("bytes-reset-once") for k in bad),
+                        bad)
+
+    def test_a_second_reset_in_a_row_is_red(self):
+        cells = nogb_cells(kp.DoubleReset)
+        bad = sorted(k for (_n, _c, k) in cells
+                     if red(verdict(cells, "DoubleReset", "nogb", k)))
+        self.assertTrue(bad)
+        for k in bad:
+            self.assertTrue(k.startswith(("bytes-reset-first-twice",
+                                          "bytes-resets-apart")), k)
+        self.assertEqual(verdict(cells, "DoubleReset", "nogb",
+                                 "bytes-reset-once/48000/2/d"), "ok")
+
+    def test_every_patch_is_run(self):
+        cells = nogb_cells(kp.MidPatchReset)
+        key = "bytes-reset-first/48000/2/p1"
+        self.assertTrue(red(verdict(cells, "MidPatchReset", "nogb", key)))
+        for other in ("d", "p0", "p2"):
+            self.assertEqual(verdict(cells, "MidPatchReset", "nogb",
+                                     "bytes-reset-first/48000/2/" + other),
+                             "ok", other)
+        control = nogb_cells(kp.FlushKit3)
+        self.assertEqual(verdict(control, "FlushKit3", "nogb", key), "ok")
+
+    def test_get_buffer_is_put_back(self):
+        import audiocore
+        import audioeffects._component as component
+        real = audiocore.get_buffer
+        with kit_nogb.hidden(kp.FlushOnly):
+            self.assertIsNone(getattr(component.audiocore, "get_buffer",
+                                      None))
+            self.assertIsNone(getattr(kp.audiocore, "get_buffer", None))
+            self.assertIs(audiocore.get_buffer, real)
+            self.assertIs(lifecycle.audiocore, audiocore)
+        self.assertIs(component.audiocore, audiocore)
+        self.assertIs(kp.audiocore, audiocore)
+
+    def test_red_numbers_are_not_compared(self):
+        self.assertEqual(kit_nogb._kind("RED(differs at +1)"),
+                         kit_nogb._kind("RED(differs at +9)"))
+        self.assertNotEqual(kit_nogb._kind("ok"), kit_nogb._kind("RED(x)"))
+
+
 class TestCeiling(unittest.TestCase):
 
     def v(self, cls, which="sine", patch=None, knob=None):
-        return kit_ceiling.measure(cls, 48000, 2, which, patch, knob)[0]
+        knobs = [knob] if isinstance(knob, tuple) else knob
+        return kit_ceiling.measure(cls, 48000, 2, which, patch, knobs)[0]
 
     def test_a_wrap_is_red(self):
         self.assertTrue(self.v(kp.WrapKit).startswith("RED(wrap"))
@@ -218,6 +310,41 @@ class TestCeiling(unittest.TestCase):
     def test_a_silent_class_is_red(self):
         self.assertTrue(self.v(kp.Silent).startswith("RED(silent"))
 
+    def sine_cells(self, cls):
+        lines = []
+        kit_ceiling.run(cls, emit=lines.append, quick=True,
+                        materials=("sine",))
+        return dict((k[2], v["V"]) for k, v in kc.parse(lines).items())
+
+    def test_every_macro_is_driven_at_64(self):
+        got = self.sine_cells(kp.MidWrap)
+        self.assertTrue(got["sine/48000/2/m1=64"].startswith("RED(wrap"))
+        self.assertEqual([k for k in got if red(got[k])],
+                         ["sine/48000/2/m1=64"])
+        self.assertEqual(self.sine_cells(kp.CondKit)["sine/48000/2/m1=64"],
+                         "ok")
+
+    def test_the_combined_settings_are_driven(self):
+        self.assertEqual(kit_ceiling.level_like(kp.CondKit), [0, 1])
+        combo = self.sine_cells(kp.ComboWrap)
+        self.assertEqual([k for k in combo if red(combo[k])],
+                         ["sine/48000/2/lv=127+m2=0"])
+        every = self.sine_cells(kp.AllWrap)
+        self.assertEqual(sorted(k for k in every if red(every[k])),
+                         ["sine/48000/2/all=127",
+                          "sine/48000/2/lv=127+m2=127"])
+        control = self.sine_cells(kp.CondKit)
+        self.assertEqual([k for k in control if red(control[k])], [])
+        self.assertIn("sine/48000/2/lv=127+m2=0", control)
+
+    def test_the_low_notes_are_played(self):
+        for which in ("sq41", "sq55"):
+            self.assertTrue(self.v(kp.LowWrap, which).startswith(
+                "RED(wrap"), which)
+            self.assertEqual(self.v(kp.KitPlain, which), "ok", which)
+        for which in ("square", "sine", "clicks", "dc"):
+            self.assertEqual(self.v(kp.LowWrap, which), "ok", which)
+
 
 FIXTURE_TESTS = '''
 import unittest
@@ -247,7 +374,7 @@ class TestClaims(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             name = "kitfixture_%d" % abs(hash((repr(claims), doc)))
             path = os.path.join(scratch, name + ".py")
-            with open(path, "w") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 f.write(textwrap.dedent(FIXTURE_TESTS % repr(claims)))
             sys.path.insert(0, scratch)
             try:
@@ -290,6 +417,25 @@ class TestClaims(unittest.TestCase):
         got = self.run_claims((("The output is the input at Gain 1.",
                                 "DECLARED:%s,%s,%s" % key),))
         self.assertEqual(got["row0"], "ok")
+
+    def test_a_scoped_row_is_named_with_its_scope(self):
+        rows = {("Fixture", "E10-reset", "P4", "circuitpython"): "planted",
+                ("Fixture", "E5-", "P1", (1, None)): "planted"}
+        lifecycle.DECLARED.update(rows)
+        try:
+            claim = "The output is the input at Gain 1."
+            for target, want in (
+                    ("DECLARED:Fixture,E10-reset,P4,circuitpython", "ok"),
+                    ("DECLARED:Fixture,E5-,P1,patches=d/1", "ok"),
+                    ("DECLARED:Fixture,E10-reset,P4", "RED"),
+                    ("DECLARED:Fixture,E10-reset,P4,micropython", "RED"),
+                    ("DECLARED:Fixture,E5-,P1,patches=1", "RED")):
+                with self.subTest(target=target):
+                    got = self.run_claims(((claim, target),))["row0"]
+                    self.assertTrue(got.startswith(want), got)
+        finally:
+            for row in rows:
+                del lifecycle.DECLARED[row]
 
     def test_a_claim_with_no_row_is_red(self):
         got = self.run_claims((), self.DOC + " It never clips.")
@@ -349,6 +495,69 @@ class TestPaperwork(unittest.TestCase):
         self.assertTrue(red(got["cite:_component.py:999999"]))
         self.assertEqual(got["cite:audiodsp_tank.c:1"],
                          "na(no audiodsp checkout)")
+
+    CARD = """# Class card: `CondKit`
+
+## 3. The surface
+
+| # | Label | Mode | Span | Notes |
+|---|---|---|---|---|
+| 0 | `Mix` | UNIPOLAR | 0 … 1 | |
+| 1 | `%s` | UNIPOLAR, log | 0.25 … 1 | a \\| in a cell |
+| 2 | `Tone` | %s | 0 … 1 | |
+
+| Patch | Name | Mix |
+|---|---|---|
+| 0 | Default | 1 |
+
+## 4. Traits
+"""
+
+    def surface(self, card):
+        pin = kit_paperwork.Pin(None, None)
+        with tempfile.TemporaryDirectory() as cards:
+            if card is not None:
+                with open(os.path.join(cards, "CondKit.md"), "w",
+                          encoding="utf-8") as f:
+                    f.write(card)
+            lines = []
+            kit_paperwork.check("CondKit", "", "", pin, lines.append,
+                                cls=kp.CondKit, cards=cards)
+        return dict((k[2], v["V"]) for k, v in kc.parse(lines).items()
+                    if k[2].startswith("surface"))
+
+    def test_the_surface_against_the_card(self):
+        self.assertEqual(self.surface(self.CARD % ("Level", "UNIPOLAR")),
+                         {"surface-m0": "ok", "surface-m1": "ok",
+                          "surface-m2": "ok"})
+        got = self.surface(self.CARD % ("Volume", "BIPOLAR"))
+        self.assertEqual(got["surface-m0"], "ok")
+        self.assertEqual(got["surface-m1"],
+                         "RED(class 'Level' UNIPOLAR, card 'Volume' "
+                         "UNIPOLAR)")
+        self.assertEqual(got["surface-m2"],
+                         "RED(class 'Tone' UNIPOLAR, card 'Tone' BIPOLAR)")
+        short = "\n".join(l for l in (self.CARD % ("Level", "UNIPOLAR"))
+                          .splitlines() if not l.startswith("| 2 "))
+        self.assertTrue(red(self.surface(short)["surface-m2"]))
+        self.assertEqual(self.surface(None),
+                         {"surface": "na(no card for CondKit)"})
+        self.assertEqual(self.surface("# Card\n\n## 3. Traits\n\n"
+                                      "| # | Trait |\n|---|---|\n"),
+                         {"surface": "na(no surface table in section 3)"})
+
+    def test_a_range_row_names_one_macro_per_index(self):
+        rows = kit_paperwork.card_surface(
+            "## 3. The surface\n\n| # | Label | Mode |\n|---|---|---|\n"
+            "| 0 | `Pitch` | BIPOLAR |\n"
+            "| 1\u20133 | `Voice 1` \u2026 `Voice 3` | BIPOLAR |\n"
+            "| 4-5 | `Level 1` ... `Level 2` | UNIPOLAR |\n")
+        self.assertEqual(rows, [(0, "Pitch", "BIPOLAR"),
+                                (1, "Voice 1", "BIPOLAR"),
+                                (2, "Voice 2", "BIPOLAR"),
+                                (3, "Voice 3", "BIPOLAR"),
+                                (4, "Level 1", "UNIPOLAR"),
+                                (5, "Level 2", "UNIPOLAR")])
 
     def test_the_citation_forms(self):
         found = kit_paperwork.citations(

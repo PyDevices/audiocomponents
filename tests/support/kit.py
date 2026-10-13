@@ -1,4 +1,4 @@
-"""The effects kit: six mechanical checks on one class, no model in the loop.
+"""The effects kit: seven mechanical checks on one class, no model in the loop.
 
     python tests/support/kit.py DigitalDelay [--only tail,plants,...]
         [--quick] [--plants-module NAME] [--claims-module NAME] [--no-run]
@@ -6,7 +6,8 @@
 Prints one line per cell, `name|check|key|V:verdict[|h:digest]`, a
 SUMMARY line per check, and DONE. On MicroPython and CircuitPython
 (`MICROPYPATH=lib:tests/support`) it runs the four render checks; the
-claims and paperwork checks read source and git, and run on CPython only.
+claims, paperwork and nogb checks read source and git or patch modules,
+and run on CPython only.
 `KIT.md` beside this file says what each check measures and its bars.
 """
 
@@ -19,8 +20,9 @@ if __name__ == "__main__":
 
 import kit_common as kc
 
-CHECKS = ("paperwork", "claims", "args", "plants", "ceiling", "tail")
-STATIC = ("paperwork", "claims")
+CHECKS = ("paperwork", "claims", "args", "plants", "ceiling", "tail",
+          "nogb")
+STATIC = ("paperwork", "claims", "nogb")
 
 
 def run_check(check, cls, emit=print, quick=False, plants_module=None,
@@ -43,6 +45,14 @@ def run_check(check, cls, emit=print, quick=False, plants_module=None,
         import kit_ceiling
         return kit_ceiling.run(cls, emit, quick=quick, name=name,
                                options=options)
+    if check == "nogb":
+        import kit_nogb
+        # nogb runs the lifecycle events, so it takes the lifecycle's
+        # options (a chain without children whose own defects would read
+        # as the class's).
+        return kit_nogb.run(cls, emit, quick=quick, name=name,
+                            options=kit_options.lifecycle_options_for(
+                                cls.NAME))
     if check == "claims":
         import kit_claims
         return kit_claims.run(cls, emit, module=claims_module,
