@@ -10,6 +10,15 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`PitchShifter` (rebuilt, Phase 6):** a fixed-interval splice shifter
+  in the manner of the first harmonizers, on a Pitch, Fine, Mix, Delay and
+  Feedback surface. Pitch moves in whole semitones an octave either way and
+  Fine detunes by up to 50 cents; the dry passes untouched up to Mix 1;
+  Delay holds the shifted voice back up to 112.5 ms; and with Feedback up
+  every repeat is shifted again, so a fifth climbs a fifth at a time.
+  `window_ms` (15 to 60, 30 by default) sets the splice window at
+  construction. The old `semitones=` option is gone: Pitch and Fine
+  replace it.
 - MultiTapDelay: the docstring says which patches need a P4-class board (patch 4 does, patch 3 may), from the boards' figures at audiodsp v0.6.3
 - **`DigitalDelay` (rebuilt, Phase 5; adopted 2026-09-28):** a clean
   interpolated line with the Boss DD-2's control law on one

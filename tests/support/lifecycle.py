@@ -75,6 +75,55 @@ MIX_INDEX = {
 #: cell prints `decl` instead of RED and is counted as a declared exception.
 #: Nothing else skips a cell.
 DECLARED = {
+    # PitchShifter: the splice phase, the ruling's N2. A splice shifter's
+    # output depends on where its read position sits in the window, and
+    # nothing but a fresh start puts two shifters at the same place.
+    ("PitchShifter", "E1-", "P4"):
+        "reset() starts the shifter and the loop's splicer where new ones"
+        " start (audiodsp#240), so the class then plays what a fresh"
+        " instance plays from that point, not what the uninterrupted"
+        " control plays (N2)",
+    ("PitchShifter", "E4-m0=", "P4"):
+        "a Pitch move runs the read position at another speed, so the splice"
+        " phase lands elsewhere; putting it back would click (N2)",
+    ("PitchShifter", "E4-m1=", "P4"):
+        "a Fine move that changes the ratio step moves the splice phase, as"
+        " Pitch does (N2)",
+    ("PitchShifter", "E4-m2=0", "P4"):
+        "a return from Mix 0 starts the shifter and both lines empty, at a"
+        " fresh splice phase, not the uninterrupted control's (N2)",
+    ("PitchShifter", "E5-", "P4"):
+        "a return from Mix 0 starts the shifter and both lines empty, at a"
+        " fresh splice phase, not the uninterrupted control's (N2)",
+    ("PitchShifter", "E9-", "P4"):
+        "a return from Mix 0 starts the shifter and both lines empty, at a"
+        " fresh splice phase, not the uninterrupted control's (N2)",
+    ("PitchShifter", "E6-", "P4"):
+        "a patch with another interval moves the splice phase (N2)",
+    ("PitchShifter", "E11-", "P4"):
+        "moves of the interval or of Mix through 0 before a pull move the"
+        " splice phase (N2)",
+    ("PitchShifter", "E4-m2=", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Mix)",
+    ("PitchShifter", "E4-m3=", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Delay jumps the line's read)",
+    ("PitchShifter", "E4-m4=", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Feedback)",
+    ("PitchShifter", "E5-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Mix)",
+    ("PitchShifter", "E6-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (a patch change)",
+    ("PitchShifter", "E9-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Mix)",
+    ("PitchShifter", "E11-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Mix and a patch change)",
     ("AnalogDelay", "E", "P5"):
         "a control that jumps steps the output (family, audiocomponents#117);"
         " a Time move bends the pitch while the line walks, by design",
