@@ -16,9 +16,11 @@ there, and are recorded in its changelog.
   an `audioecho.FeedbackDelay` loop (`loop_semitones`), so each pass comes
   back shifted again until Damping darkens it away. Nine macros (Character,
   Shimmer, Rise, Bloom, Interval, Decay, Size, Damping, Mix) and seven
-  patches (the last, "Octave Bloom - lean", is Rise at Rise 0, for a board
-  short of memory) replace the old Shimmer / Echo / Space / Tone surface and its
-  constructor arguments. The hall is the rebuilt `Reverb`. The dry passes
+  patches replace the old Shimmer / Echo / Space / Tone surface and its
+  constructor arguments. The defaults, patch 0 "Octave Rise", are Rise at
+  Rise 0: one octave, once, with the hall starting at once, which an
+  ESP32-S3 keeps up with where the Bloom patches (Octave Bloom, Short
+  Stagger, Fifth Halo) do not. The hall is the rebuilt `Reverb`. The dry passes
   untouched up to Mix 1, Mix 0 is a byte-exact wire, and the input ceiling
   is -24 dBFS. It lives in `lib/audioeffects/rebuilt/shimmerhall.py`, beside
   the old class in `rack.py`, until it is promoted.
