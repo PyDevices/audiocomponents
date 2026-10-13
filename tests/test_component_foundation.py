@@ -203,7 +203,6 @@ class TheOutputPortIsAWire(unittest.TestCase):
         self.assertIs(effect.output, held)
         effect.set_macro(0, 127)
         self.assertIs(effect.output, held)
-        self.assertEqual(1, 2, "planted failure: CI must go red")
 
     def test_port_target_says_what_the_class_is_playing(self):
         effect = RepointsOnAMacro.create(source(), RATE)
