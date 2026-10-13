@@ -150,6 +150,18 @@ DECLARED = {
     ("Octaver", "E6-p5", "P1"):
         "the event changes to patch 5, where Octave 1 at 0 is a level move,"
         " not the wire, so the output is not the source by design",
+    ("Octaver", "E12-p1", "P1"):
+        "the move before the first pull is to patch 1, where Octave 1 at 0"
+        " is a level move, not the wire, so the output is not the source by"
+        " design",
+    ("Octaver", "E12-p2", "P1"):
+        "the move before the first pull is to patch 2, where Octave 1 at 0"
+        " is a level move, not the wire, so the output is not the source by"
+        " design",
+    ("Octaver", "E12-p5", "P1"):
+        "the move before the first pull is to patch 5, where Octave 1 at 0"
+        " is a level move, not the wire, so the output is not the source by"
+        " design",
     ("Octaver", "E11-mix+patch", "P1"):
         "the event ends on patch 5, where Octave 1 at 0 is a level move,"
         " not the wire, so the output is not the source by design",
@@ -826,6 +838,7 @@ def fresh_position(cls, index, midi):
 #: `mix`.
 MIX_KEYWORD = {
     "SlapbackDelay": "level",
+    "Octaver": "octave1",
 }
 
 

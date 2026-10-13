@@ -1174,6 +1174,65 @@ class TheSurface(TestCase):
         e.deinit()
         self.assertEqual(after, render(Octaver, values, rate, 1))
 
+    def _values_of(self, patch):
+        """The constructor keywords that build `patch`'s knobs."""
+        from audioeffects import _component
+        names = ("direct", "octave1", "octave2", "tracking_hz", "tone1_hz",
+                 "tone2_hz", "sensitivity_db")
+        grid = Octaver.PATCHES[patch][1]
+        return {names[i]: _component.macro_value(
+            Octaver._MACRO_RANGES[i],
+            _component.position_of_midi("UNIPOLAR", grid[i]))
+            for i in range(7)}
+
+    def test_a_patch_builds_as_its_values(self):
+        # `patch=` lands every knob before the voices are armed: the
+        # all-pass glides a Tracking move over one block, so a patch
+        # loaded after arming walked its first block from patch 0's 90 Hz.
+        for rate in RATES:
+            values = self._material(rate, 1)
+            for patch in sorted(Octaver.PATCHES):
+                with self.subTest(rate=rate, patch=patch):
+                    self.assertEqual(
+                        render(Octaver, values, rate, 1,
+                               options={"patch": patch}),
+                        render(Octaver, values, rate, 1,
+                               options=self._values_of(patch)))
+
+    def test_a_patch_before_the_first_pull_renders_as_fresh(self):
+        # Arming plays only silence, so the all-pass has heard nothing yet:
+        # a Tracking move before the first pull lands at once, not walked
+        # over the first block from where the arming left it. (Patches 1,
+        # 2 and 5 move Direct, which the mixer takes half a block late.)
+        for rate in RATES:
+            values = self._material(rate, 1)
+            for patch in (0, 3, 4):
+                with self.subTest(rate=rate, patch=patch):
+                    self.assertEqual(
+                        render(Octaver, values, rate, 1, patch=patch),
+                        render(Octaver, values, rate, 1,
+                               options={"patch": patch}))
+
+    def test_a_return_from_the_wire_renders_as_fresh(self):
+        # Octave 1 to 0 is the wire at patches 0, 3 and 4; the way back
+        # renders what a fresh instance built at the patch renders.
+        for rate in RATES:
+            values = self._material(rate, 1)
+            n = len(values)
+            gap = array("h", bytes(2 * BLOCK * 16))
+            for patch in (0, 3, 4):
+                with self.subTest(rate=rate, patch=patch):
+                    feed = kc.feed(values + gap + values, rate, 1)
+                    e = Octaver(feed.port, sample_rate=rate, patch=patch)
+                    kc.render(e, n)
+                    e.set_macro(OCT1, 0)
+                    kc.render(e, len(gap))
+                    e.set_macro(OCT1, Octaver.PATCHES[patch][1][OCT1])
+                    after = kc.samples(kc.render(e, n))
+                    e.deinit()
+                    self.assertEqual(after, render(
+                        Octaver, values, rate, 1, options={"patch": patch}))
+
     def test_never_reads_the_tempo(self):
         calls = []
 

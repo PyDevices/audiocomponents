@@ -319,11 +319,15 @@ class Octaver(_component.Component):
             if self._macros[i] != position:
                 self._macros[i] = position
                 self._apply_macro(i, position)
+        # The patch lands before the voices are armed, so the instance
+        # starts at it: loaded after, the all-pass walked its first block
+        # from patch 0's Tracking and each level waited for a crossing, and
+        # `patch=` did not build what the patch's own values build.
+        if patch is not None:
+            self.program_change(patch)
 
         self._ready = True
         self._route()
-        if patch is not None:
-            self.program_change(patch)
 
     def _grid(self, asked):
         """Each constructor value as its knob's nearest MIDI step: NaN is
@@ -518,6 +522,13 @@ class Octaver(_component.Component):
         voices[2].play(self._tone2, loop=True)
         self._pull()
         self._in.play(self._adapter)
+        # The all-pass glides a Tracking move over one block from the
+        # coefficient it last played at. It has played only the arming's
+        # zeros, so it holds nothing to keep: cleared, its first block of
+        # the source starts at the Tracking then in force, as a rejoin's
+        # does, and a move before the first pull lands at once.
+        if self._allpass is not None:
+            audiocore.reset_buffer(self._allpass)
 
     def _pull(self):
         """Pull one block from the mixer and drop it.
