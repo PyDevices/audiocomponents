@@ -75,6 +75,37 @@ MIX_INDEX = {
 #: cell prints `decl` instead of RED and is counted as a declared exception.
 #: Nothing else skips a cell.
 DECLARED = {
+    ("Octaver", "E1-", "P4"):
+        "a flip-flop divider keeps its count: a reset starts it in"
+        " pass-through polarity part-way through the material, so the"
+        " octave stays inverted against an instance that was never reset"
+        " (it matches a fresh one; the OC-2's flip-flops do the same)",
+    ("Octaver", "E2-", "P4"):
+        "CircuitPython only: its own audiomixer.Mixer resets the voices on"
+        " a host reset, so Tone 2's voice loses the frames it held and"
+        " Octave 2 runs late against the others (audiodsp#229's upstream"
+        " half, ruled to be declared in Phase 6); CPython and MicroPython"
+        " are ok",
+    ("Octaver", "E4-", "P4"):
+        "a flip-flop divider keeps its count: a move that adds or drops a"
+        " crossing (Tracking, Tone 1, Sensitivity) or the clear on the way"
+        " back from the wire leaves the octave inverted for good",
+    ("Octaver", "E6-", "P4"):
+        "a flip-flop divider keeps its count: a patch change that moves"
+        " Tracking or Tone 1 adds or drops a crossing, and the octave stays"
+        " inverted",
+    ("Octaver", "E11-", "P4"):
+        "a flip-flop divider keeps its count: moves that add or drop a"
+        " crossing leave the octave inverted",
+    ("Octaver", "E4-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step",
+    ("Octaver", "E6-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (a patch change moves the levels)",
+    ("Octaver", "E11-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step",
     ("AnalogDelay", "E", "P5"):
         "a control that jumps steps the output (family, audiocomponents#117);"
         " a Time move bends the pitch while the line walks, by design",

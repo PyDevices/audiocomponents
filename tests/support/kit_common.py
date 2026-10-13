@@ -29,6 +29,10 @@ RAIL = 32767
 #: cell prints `decl` and is counted as a declared exception. Nothing else
 #: skips a cell.
 DECLARED = {
+    ("Octaver", "ceiling", "clicks/"):
+        "with Direct at 0 only the octaves sound, and one-sample clicks"
+        " through the clock's low-pass stay under Sensitivity, where the"
+        " octaves are silent by design (trait T3 b)",
 }
 
 CPYTHON = sys.implementation.name == "cpython"

@@ -10,6 +10,13 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`Octaver` (rebuilt, Phase 6):** the analog octave-down, after the
+  Boss OC-2. The octave is your own note with every other cycle turned
+  over, clocked from a low-passed copy and multiplied into an all-passed
+  one, so it keeps your attack and decay and tracks from E2 to A4 at the
+  default. Seven controls: Direct, Octave 1, Octave 2, Tracking, Tone 1,
+  Tone 2 and Sensitivity, and six patches. It drops the shifter-based
+  class's octave up and its `down=`, `up=`, `down2=` and `up2=` options.
 - MultiTapDelay: the docstring says which patches need a P4-class board (patch 4 does, patch 3 may), from the boards' figures at audiodsp v0.6.3
 - **`DigitalDelay` (rebuilt, Phase 5; adopted 2026-09-28):** a clean
   interpolated line with the Boss DD-2's control law on one
