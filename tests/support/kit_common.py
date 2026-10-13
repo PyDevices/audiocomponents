@@ -29,6 +29,10 @@ RAIL = 32767
 #: cell prints `decl` and is counted as a declared exception. Nothing else
 #: skips a cell.
 DECLARED = {
+    ("PitchShifter", "paperwork", "surface-m2"):
+        "Mix is BIPOLAR so MIDI 64 is exactly 1 (the dry at unity at the"
+        " defaults); the card's section 3 says UNIPOLAR and is superseded"
+        " on that point by a recorded ruling",
     ("StereoWidener", "plants", "H3/"):
         "delay_slew acts only while a Delay move walks the read head, and"
         " the kit's render never moves a control; H3's own test shows the"
