@@ -265,6 +265,25 @@ DECLARED = {
     ("ShimmerHall", "E11-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (two or three moves before one pull)",
 }
 
+#: Cells that are not run at all on one interpreter, one row per (class or
+#: adapter NAME, event name prefix, `sys.implementation.name`): reason. A
+#: skipped cell prints `na(skip: <reason>)` on every property and builds
+#: nothing. It is for a cell that cannot finish there, such as a node that
+#: never returns from a pull, so that the rest of the matrix still runs; a
+#: cell that finishes and is red belongs in DECLARED or KNOWN_RED instead.
+SKIP = {
+    ("NodeEcho", "E8-", "circuitpython"):
+        "upstream's Echo never returns from a pull on a looped source that"
+        " ends empty; audiodsp#242 fixed it on CPython and MicroPython",
+    ("NodePitchShift", "E8-", "circuitpython"):
+        "upstream's PitchShift never returns from a pull on a looped source"
+        " that ends empty; audiodsp#243 fixed it on CPython and MicroPython",
+    ("NodeGranularPitchShift", "E8-", "circuitpython"):
+        "upstream's GranularPitchShift never returns from a pull on a looped"
+        " source that ends empty; audiodsp#243 fixed it on CPython and"
+        " MicroPython",
+}
+
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")
 
 
@@ -1114,6 +1133,16 @@ def e3(cls, rate, channels, patch, options):
     return res
 
 
+def _skip(cls, ev, impl=None):
+    """SKIP's reason for this cell on `impl` (this interpreter by
+    default), or None."""
+    impl = impl or sys.implementation.name
+    for (name, prefix, where), reason in SKIP.items():
+        if name == cls.NAME and where == impl and ev.name.startswith(prefix):
+            return reason
+    return None
+
+
 PROPS = ("P1", "P2", "P3", "P4", "P5")
 
 
@@ -1161,8 +1190,13 @@ def run_class(cls, options=None, rates=RATES, channels=CHANNELS,
                         if only is not None and ev.name.split("-")[0] \
                                 not in only:
                             continue
-                        res = run_cell(cls, ev, rate, ch, patch, options,
-                                       controls)
+                        reason = _skip(cls, ev)
+                        if reason is not None:
+                            res = dict((prop, "na(skip: %s)" % reason)
+                                       for prop in PROPS)
+                        else:
+                            res = run_cell(cls, ev, rate, ch, patch, options,
+                                           controls)
                         line = fmt(name, ev.name, rate, ch, patch, res)
                         emit(line)
                         cells += 1

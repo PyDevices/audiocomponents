@@ -105,8 +105,16 @@ free-running LFO) adds a row to `DECLARED` in `lifecycle.py`:
     }
 
 The key is (class `NAME`, event name prefix, property); the cell then prints
-`decl` and counts as a declared exception. Nothing else skips a cell. The
-test file's `KNOWN_RED` is different: it records what is red today, as
+`decl` and counts as a declared exception.
+
+A cell that cannot finish on one interpreter, such as a node there that
+never returns from a pull, is skipped there instead: a row in `SKIP`, keyed
+(class `NAME`, event name prefix, `sys.implementation.name`), makes the cell
+print `na(skip: <reason>)` on every property without building anything, and
+P6 leaves it out. Today's rows are the E8 cells of the three nodes
+CircuitPython takes from upstream's `audiodelays` (Echo, PitchShift and
+GranularPitchShift); a class built on them adds its own. Nothing else skips
+a cell. The test file's `KNOWN_RED` is different: it records what is red today, as
 findings, one row per (class, event prefix, property) with the number and a
 digest of its red cells, so the suite goes red when a cell changes either
 way. The test runs the quick matrix; `LIFECYCLE_FULL=1` runs the full one,
