@@ -46,9 +46,25 @@ KNOWN_RED = {}
 
 #: P6 differences today: class -> (cells whose line differs between CPython
 #: and a native interpreter in the quick matrix, their digest, the same for
-#: the full matrix, reason). Both native interpreters print the same lines
-#: as each other for every class.
-KNOWN_P6 = {}
+#: the full matrix, reason). MicroPython prints CPython's lines for every
+#: class; the entries below are CircuitPython's.
+#:
+#: Restated at audiodsp v0.6.6rc1 (30cbbf6). Up to eb2d20d every class,
+#: MultiTapDelay included, printed the same lines on all three
+#: interpreters, and this table was empty. audiodsp#241 fixed a stray
+#: sample in `audiodelays.MultiTapDelay` (and Echo): a line shortened under
+#: the write head wrote one more sample past its new end, which played out
+#: of the silence when the delay grew back. CPython and MicroPython take the
+#: fix; CircuitPython builds upstream's own audiodelays, which still plays
+#: the sample, as audiodsp's upstream-diff.md records. So E4's Time-to-0
+#: move renders other bytes there, with the same verdicts on P1 to P5.
+KNOWN_P6 = {
+    "MultiTapDelay": (
+        4, "2320dde0", None, None,
+        "Time to 0 and back: CircuitPython's own audiodelays plays one "
+        "stray sample when the line grows back, which audiodsp#241 fixed "
+        "on CPython and MicroPython only"),
+}
 
 #: LIFECYCLE_FULL=1 runs the full matrix (every event at every patch);
 #: otherwise the quick one (lifecycle.run_class(quick=True)).

@@ -291,7 +291,7 @@ there, and are recorded in its changelog.
 
 ### Fixed
 
-- A Time brought back after a shorter one no longer plays a stray sample from before the move in MultiTapDelay and the delays built on `audiodelays.Echo`; PitchShifter, Harmonizer and Octaver start again from scratch on a reset and no longer hang on a source with nothing to give; and a host reset that reaches a Mixer inside an effect keeps the audio its voices hold. All of it is audiodsp's, at the pre-release `AUDIODSP_PIN` now names (v0.6.6rc1).
+- A Time brought back after a shorter one no longer plays a stray sample from before the move in MultiTapDelay and the delays built on `audiodelays.Echo` (on CPython and MicroPython; CircuitPython's own `audiodelays` still plays it); PitchShifter, Harmonizer and Octaver start again from scratch on a reset and no longer hang on a source with nothing to give; and a host reset that reaches a Mixer inside an effect keeps the audio its voices hold. All of it is audiodsp's, at the pre-release `AUDIODSP_PIN` now names (v0.6.6rc1).
 
 - The delays, Reverb and ConvolutionReverb now ring out when their source ends, then rest at exact zero, instead of freezing the tail until the source came back; a one-shot source plays once instead of feeding them for ever. A source that comes up short part-way through a block leaves a whole block with the rest silent, and a host `reset_buffer` on ConvolutionReverb keeps the frames it holds. All of it is audiodsp's, at the commit `AUDIODSP_PIN` now names (audiocomponents#127).
 
