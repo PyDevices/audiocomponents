@@ -174,11 +174,44 @@ def start_native(binary, names, scratch):
         text=True, cwd=ROOT, env=env)
 
 
-def run_cpython(name):
+def run_cpython(name, **only):
     lines = []
     lifecycle.run_class(rebuilt.module_class(name), emit=lines.append,
-                        quick=not FULL)
+                        quick=not FULL, **only)
     return lines
+
+
+def _run_cpython_part(part):
+    name, rate, ch, patch = part
+    return run_cpython(name, rates=(rate,), channels=(ch,), patches=[patch])
+
+
+def run_cpython_all(names):
+    """{name: lines}, the CPython matrix for each class.
+
+    The CPython matrix is most of this file's time, and no cell depends on
+    another, so each class's rates, channel counts and patches run side by
+    side in processes of their own and their lines are joined in run_class's
+    order. Each part prints its own SUMMARY line, which parse() skips.
+    LIFECYCLE_JOBS=1 runs every class in this process, one after another.
+    """
+    jobs = int(os.environ.get("LIFECYCLE_JOBS", "0")) or os.cpu_count() or 1
+    if jobs <= 1 or not names:
+        return {name: run_cpython(name) for name in names}
+    import concurrent.futures
+    import multiprocessing
+    parts = [(name, rate, ch, patch) for name in names
+             for rate in lifecycle.RATES for ch in lifecycle.CHANNELS
+             for patch in [None] + sorted(rebuilt.module_class(name).PATCHES)]
+    out = {name: [] for name in names}
+    # spawn on every platform: a fork of a process already running threads
+    # (a test runner's, say) can deadlock.
+    with concurrent.futures.ProcessPoolExecutor(
+            min(jobs, len(parts)),
+            mp_context=multiprocessing.get_context("spawn")) as pool:
+        for part, lines in zip(parts, pool.map(_run_cpython_part, parts)):
+            out[part[0]] += lines
+    return out
 
 
 class TestMatrix(unittest.TestCase):
@@ -195,9 +228,7 @@ class TestMatrix(unittest.TestCase):
             if binary is not None and cls.names:
                 cls.procs[family] = start_native(binary, cls.names,
                                                  cls.scratch.name)
-        cls.cpython = {}
-        for name in cls.names:
-            cls.cpython[name] = run_cpython(name)
+        cls.cpython = run_cpython_all(cls.names)
         cls.native_lines = {}
         for family, proc in cls.procs.items():
             out, err = proc.communicate()
