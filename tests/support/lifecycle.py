@@ -587,15 +587,17 @@ def events(cls, patch, quick=False):
     out.append(Event("E10-patch", [("patch", npatch - 1 if patch != npatch - 1
                                     else 0)], [("restore",)],
                      moves_mix=True, first=True))
-    if full:
+    if full and labels:
         out.append(Event("E11-2macro", [("macro", 0, 0), ("macro", 0, 127)],
                          [("restore",)], moves_mix=(mix == 0)))
         if mix is not None:
             out.append(Event("E11-mix+patch",
                              [("macro", mix, 0), ("patch", npatch - 1)],
                              [("restore",)], moves_mix=True))
+    if full:
         out.append(Event("E11-2patch", [("patch", npatch - 1), ("patch", 0)],
                          [("restore",)], moves_mix=True))
+    if full and labels:
         out.append(Event("E11-3moves",
                          [("macro", 0, 0), ("macro", 0, 127),
                           ("patch", npatch - 1)],
@@ -1392,8 +1394,12 @@ def _cli(argv):
             if cls is None:
                 print("MISSING|%s" % name)
                 continue
-        run_class(cls, only=only, quick=quick, name=name if name in PLANTS
-                  else None)
+        # The kit's options table: a class whose defaults are trivial (the
+        # generic Rack's empty chain) runs on something real.
+        import kit_options
+        run_class(cls, options=kit_options.lifecycle_options_for(cls.NAME),
+                  only=only,
+                  quick=quick, name=name if name in PLANTS else None)
     print("DONE")
 
 
