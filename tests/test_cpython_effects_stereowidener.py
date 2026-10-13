@@ -717,6 +717,42 @@ class TheSurface(TestCase):
                          0)
         self.assertEqual(left_skip(values, out, settle, 2 * BLOCK), 0)
 
+    def test_without_get_buffer_reset(self):
+        # reset() brings Haas back the way program_change(0) does, after
+        # each way of leaving it before its first block.
+        frames = 4096
+        settle = 32
+        leaves = (("a Mid/Side patch", lambda e: e.program_change(4)),
+                  ("Width 0", lambda e: e.set_macro(0, 0)),
+                  ("Character", lambda e: e.set_macro(2, 127)))
+        for name, leave in leaves:
+            values, out = without_get_buffer(
+                StereoWidener, {0: leave, 6: lambda e: e.reset()})
+            self.assertEqual(
+                left_skip(values, out, 6 * BLOCK + settle, frames), BLOCK,
+                name)
+
+    def test_a_refused_program_change_keeps_every_macro(self):
+        values = array("h", bytes(4 * 512))
+        refused = (dict(index=1, sample_position=-5), dict(index=0.0),
+                   dict(index=1.0), dict(index=True), dict(index=-1))
+        for call in refused:
+            e = StereoWidener(source(values, 48000), delay_ms=20.0)
+            try:
+                before = [e.macro(i) for i in range(3)]
+                frames = e._frames
+                with self.assertRaises(ValueError):
+                    e.program_change(**call)
+                self.assertEqual([e.macro(i) for i in range(3)], before,
+                                 call)
+                self.assertEqual(e.macro(1), 20.0, call)
+                self.assertEqual(e._frames, frames, call)
+                e.set_macro(0, 63)
+                self.assertEqual(e.macro(1), 20.0, call)
+                self.assertEqual(e._frames, frames, call)
+            finally:
+                e.deinit()
+
     def test_the_tempo_is_never_read(self):
         reads = []
 

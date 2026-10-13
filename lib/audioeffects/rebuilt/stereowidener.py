@@ -345,8 +345,6 @@ class StereoWidener(_component.Component):
     def program_change(self, index, channel=0, note_id=-1,
                        sample_position=0):
         """Apply patch `index` whole, then refresh the graph once."""
-        if type(self).PATCHES.get(index) is not None:
-            self._delay_exact = None
         ready = self._ready
         self._ready = False
         try:
@@ -354,8 +352,29 @@ class StereoWidener(_component.Component):
                 self, index, channel, note_id, sample_position)
         finally:
             self._ready = ready
-        if ready and type(self).PATCHES.get(index) is not None:
-            self._refresh()
+        if type(self).PATCHES.get(index) is not None:
+            # Only a call the base accepted drops the constructor's Delay.
+            self._delay_exact = None
+            if ready:
+                self._refresh()
+
+    def reset(self):
+        """Clear the line and return to patch 0. Where the output was
+        routed around the voices (and `audiocore.get_buffer` is absent),
+        they come back re-played, as `program_change(0)` brings them."""
+        self._check_live()
+        replay = self._wired and self._stranded
+        _component.Component.reset(self)
+        if replay and self._haas_live():
+            self._replay()
+
+    def _replay(self):
+        """Without `audiocore.get_buffer`, drop the block the voices still
+        hold and prime the source's next one."""
+        if getattr(audiocore, "get_buffer", None) is None:
+            voices = self._mixer.voice
+            voices[0].play(self._split.tap(0))
+            voices[1].play(self._line)
 
     def _refresh(self):
         if self._ms is None:
@@ -383,13 +402,9 @@ class StereoWidener(_component.Component):
             self._wire()
         else:
             self._levels()
-            if self._rejoin(keep=(self._ms,)) and getattr(
-                    audiocore, "get_buffer", None) is None:
-                # A voice may still hold the block it primed at wiring:
-                # play() again drops it and primes the source's next block.
-                voices = self._mixer.voice
-                voices[0].play(self._split.tap(0))
-                voices[1].play(self._line)
+            if self._rejoin(keep=(self._ms,)):
+                # A voice may still hold the block it primed at wiring.
+                self._replay()
         self._output = self._tail
 
     def _haas_live(self):
