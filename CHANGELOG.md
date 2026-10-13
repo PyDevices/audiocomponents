@@ -10,6 +10,18 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`ShimmerHall` (rebuilt, Phase 6):** a pitch shifter around a hall, in
+  two characters. Bloom sends the shifted copy into the hall once, Bloom
+  after you play, on `audiodelays.PitchShift`; Rise puts the shift inside
+  an `audioecho.FeedbackDelay` loop (`loop_semitones`), so each pass comes
+  back shifted again until Damping darkens it away. Nine macros (Character,
+  Shimmer, Rise, Bloom, Interval, Decay, Size, Damping, Mix) and seven
+  patches (the last, "Octave Bloom - lean", is Rise at Rise 0, for a board
+  short of memory) replace the old Shimmer / Echo / Space / Tone surface and its
+  constructor arguments. The hall is the rebuilt `Reverb`. The dry passes
+  untouched up to Mix 1, Mix 0 is a byte-exact wire, and the input ceiling
+  is -24 dBFS. It lives in `lib/audioeffects/rebuilt/shimmerhall.py`, beside
+  the old class in `rack.py`, until it is promoted.
 - **`AirSpace` (rebuilt, Phase 6; not yet adopted):** a tape echo sent
   into a chamber, with the dry untouched beside it, in
   `audioeffects/rebuilt/airspace.py`. Eleven macros (Time, Feedback, Glide,
