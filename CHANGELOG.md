@@ -10,6 +10,13 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`StereoWidener` (rebuilt, Phase 6):** two characters on a Width, Delay
+  and Character surface. Haas delays the right channel 1 to 40 ms behind the
+  left, crossfading the right toward its late copy up to Width 1 and turning
+  the left down above it; Mid/Side scales the difference between the
+  channels and leaves the sum alone. A mono source passes untouched, and a
+  Delay move glides instead of clicking. The old `delay_ms=`/`width=`
+  options keep their names with these meanings.
 - MultiTapDelay: the docstring says which patches need a P4-class board (patch 4 does, patch 3 may), from the boards' figures at audiodsp v0.6.3
 - **`DigitalDelay` (rebuilt, Phase 5; adopted 2026-09-28):** a clean
   interpolated line with the Boss DD-2's control law on one

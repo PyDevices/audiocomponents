@@ -75,6 +75,25 @@ MIX_INDEX = {
 #: cell prints `decl` instead of RED and is counted as a declared exception.
 #: Nothing else skips a cell.
 DECLARED = {
+    ("StereoWidener", "E4-m0=", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Width: the copy's level, or the route to"
+        " the wire at 0)",
+    ("StereoWidener", "E4-m2=", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Character swaps Haas and Mid/Side)",
+    ("StereoWidener", "E6-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (a patch change moves Width or Character)",
+    ("StereoWidener", "E11-2patch", "P4"):
+        "a Delay move glides by design (the card's H3): from patch 1 or 2,"
+        " Mid/Side and then patch 0 empty the line and land it at 14 ms, and"
+        " the way back walks the read head at 0.1875, 384 frames of delay in"
+        " 2048 at 48 kHz, past the copy's reach that bounds P4; it matches"
+        " once the head lands",
+    ("StereoWidener", "E11-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Width, Character or a patch change)",
     ("AnalogDelay", "E", "P5"):
         "a control that jumps steps the output (family, audiocomponents#117);"
         " a Time move bends the pitch while the line walks, by design",

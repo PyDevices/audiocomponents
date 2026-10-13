@@ -29,6 +29,10 @@ RAIL = 32767
 #: cell prints `decl` and is counted as a declared exception. Nothing else
 #: skips a cell.
 DECLARED = {
+    ("StereoWidener", "plants", "H3/"):
+        "delay_slew acts only while a Delay move walks the read head, and"
+        " the kit's render never moves a control; H3's own test shows the"
+        " plant red on a move, and no macro or patch sets the slew",
 }
 
 CPYTHON = sys.implementation.name == "cpython"
