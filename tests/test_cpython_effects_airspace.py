@@ -968,6 +968,9 @@ CEILING_CELLS = (
     ("all macros 127", None, tuple((i, 127) for i in range(10)), "noise"),
 )
 CEILING_MARGIN_DB = 0.5
+#: The gain the docstring quotes for two or more of Feedback, Decay and Time
+#: open together, and the level it says to keep the input under there.
+QUOTED_COMBINED_GAIN_DB = 25.0
 
 
 def cell_peak(label, patch, macros, material, dbfs, seconds=12.0):
@@ -1001,6 +1004,24 @@ class TheInputCeiling(unittest.TestCase):
                 self.assertLess(
                     cell_peak(label, patch, macros, material, ceiling),
                     limit)
+
+    def test_feedback_and_decay_together_gain_under_25_db(self):
+        # The worst of the pairs and triples of Feedback, Decay and Time
+        # at 127 on every patch, over 110, 147 and 220 Hz squares and 12 s:
+        # Short Send with Feedback and Decay, 24.71 dB on a 220 Hz square.
+        # Read at -40 dBFS, where nothing rails and the chamber is linear.
+        rate, channels, frames = 48000, 2, 12 * 48000
+        peak = 32767.0 * 10.0 ** (-40.0 / 20.0)
+        data = square(220.0, frames, rate, channels, peak)
+        effect = build(AirSpace, data, rate, channels, 1)
+        effect.set_macro(MIX_I, 64)
+        effect.set_macro(FEEDBACK_I, 127)
+        effect.set_macro(DECAY_I, 127)
+        out = render(effect, frames)
+        effect.deinit()
+        gain = 20.0 * math.log10(max(max(out), -min(out)) / peak)
+        self.assertLess(gain, QUOTED_COMBINED_GAIN_DB)
+        self.assertGreater(gain, 24.0)
 
     def test_the_ceiling_reaches_no_rail_at_mix_1_on_every_patch(self):
         ceiling = AirSpace.INPUT_CEILING_DBFS
@@ -1322,6 +1343,15 @@ CLAIMS = (
       "TheInputCeiling.test_the_ceiling_reaches_no_rail_with_each_macro_at_"
       "its_stops",
       "TheInputCeiling.test_a_hotter_input_does")),
+    ("That holds on every patch and with any one macro at either end.",
+     ("TheInputCeiling.test_the_ceiling_reaches_no_rail_at_mix_1_on_every_"
+      "patch",
+      "TheInputCeiling.test_the_ceiling_reaches_no_rail_with_each_macro_at_"
+      "its_stops")),
+    ("Open two or more of Feedback, Decay and Time together and the chamber "
+     "builds further, by up to 25 dB: keep your input at or under -26 dBFS "
+     "there.",
+     "TheInputCeiling.test_feedback_and_decay_together_gain_under_25_db"),
     ("Latency is zero.", "TheSurface.test_latency_is_zero"),
     ("`reset()` empties the tape and the chamber and restores patch 0, "
      "whose Time of 111 ms lands at once instead of gliding.",

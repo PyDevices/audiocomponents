@@ -22,8 +22,10 @@ a move across the whole Time range takes, so it sets how far they bend: 12 %
 at the default of 4 s.
 
 Keep your input at or under -17 dBFS: at Mix 1 the dry and the chamber are
-both at unity and add, so a hotter input can reach the rail. Latency is
-zero. `reset()` empties the tape and the chamber and restores patch 0, whose
+both at unity and add, so a hotter input can reach the rail. That holds on
+every patch and with any one macro at either end. Open two or more of
+Feedback, Decay and Time together and the chamber builds further, by up to
+25 dB: keep your input at or under -26 dBFS there. Latency is zero. `reset()` empties the tape and the chamber and restores patch 0, whose
 Time of 111 ms lands at once instead of gliding.
 
 The patches: Chamber Send (the defaults), Short Send, Long Send, Dark Loop,
