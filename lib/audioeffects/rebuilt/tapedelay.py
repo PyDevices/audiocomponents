@@ -604,18 +604,16 @@ class TapeDelay(_component.Component):
         if not self._deferred:
             self._refresh()
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
-        """Apply patch `index` whole, then refresh the node once, so Time
+    def _apply_positions(self, positions, patch_index):
+        """Apply a patch (or a rack's restore) whole, then refresh the node once, so Time
         is read against the new patch's Sync and moves once."""
         self._deferred = True
         try:
-            _component.Component.program_change(
-                self, index, channel, note_id, sample_position)
+            _component.Component._apply_positions(self, positions,
+                                                  patch_index)
         finally:
             self._deferred = False
-        if type(self).PATCHES.get(index) is not None:
-            self._refresh()
+        self._refresh()
 
     def reset(self):
         _component.Component.reset(self)

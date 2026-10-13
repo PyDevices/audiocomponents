@@ -1027,11 +1027,26 @@ class Component:
         patch = type(self).PATCHES.get(index)
         if patch is None:
             return
-        for macro in range(len(patch[1])):
-            self._macros[macro] = position_of_midi(self._mode(macro),
-                                                   patch[1][macro])
-            self._apply_macro(macro, self._macros[macro])
-        self._patch_index = index
+        self._apply_positions([position_of_midi(self._mode(macro), value)
+                               for macro, value in enumerate(patch[1])],
+                              index)
+
+    def _apply_positions(self, positions, patch_index):
+        """Set the macros to `positions` (0..1, one per macro from index 0),
+        apply each, and record `patch_index`.
+
+        This is the body of `program_change`, and the one path a patch and a
+        restore share: a rack puts a child back as it built it by handing
+        this the positions and patch index it recorded, which the public
+        `set_macro` cannot do for a class whose grid is coarser than its
+        positions or whose macros are not all live. A class that does work
+        once per patch (a refresh, a re-route) does it here, not in
+        `program_change`, so both paths get it.
+        """
+        for macro in range(len(positions)):
+            self._macros[macro] = positions[macro]
+            self._apply_macro(macro, positions[macro])
+        self._patch_index = patch_index
 
     def pitch_bend(self, value, channel=0, sample_position=0):
         self._check_live()

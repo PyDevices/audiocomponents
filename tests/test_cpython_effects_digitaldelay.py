@@ -650,7 +650,7 @@ class PerMacroPatchDelay(DigitalDelay):
     Time is read against the outgoing patch's Sync."""
 
     NAME = 'DigitalDelay'
-    program_change = _component.Component.program_change
+    _apply_positions = _component.Component._apply_positions
 
 
 # --------------------------------------------------------------------------
