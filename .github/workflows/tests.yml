@@ -116,9 +116,8 @@ jobs:
       # class on one worker, in unittest's order, with one setUpClass;
       # tests/conftest.py starts the slowest class first. --durations names
       # the slowest tests, which bound how fast this step can get.
-      # One BLAS thread per process: every core already has a test process
-      # on it, and numpy's spinning BLAS threads on top of them made the
-      # numpy-heavy tests three times slower.
+      # One BLAS thread per process: every core already runs a test process,
+      # and numpy would otherwise start a BLAS thread per core in each one.
       - run: python -m pytest tests -n auto --dist loadscope -p no:cacheprovider --durations=25
         env:
           OMP_NUM_THREADS: "1"
