@@ -545,6 +545,19 @@ class TestPaperwork(unittest.TestCase):
                                       "| # | Trait |\n|---|---|\n"),
                          {"surface": "na(no surface table in section 3)"})
 
+    def test_a_range_row_names_one_macro_per_index(self):
+        rows = kit_paperwork.card_surface(
+            "## 3. The surface\n\n| # | Label | Mode |\n|---|---|---|\n"
+            "| 0 | `Pitch` | BIPOLAR |\n"
+            "| 1\u20133 | `Voice 1` \u2026 `Voice 3` | BIPOLAR |\n"
+            "| 4-5 | `Level 1` ... `Level 2` | UNIPOLAR |\n")
+        self.assertEqual(rows, [(0, "Pitch", "BIPOLAR"),
+                                (1, "Voice 1", "BIPOLAR"),
+                                (2, "Voice 2", "BIPOLAR"),
+                                (3, "Voice 3", "BIPOLAR"),
+                                (4, "Level 1", "UNIPOLAR"),
+                                (5, "Level 2", "UNIPOLAR")])
+
     def test_the_citation_forms(self):
         found = kit_paperwork.citations(
             "`src/shared/a.c:344`, called at :529 (`b.h:3-5`, `:7`); "

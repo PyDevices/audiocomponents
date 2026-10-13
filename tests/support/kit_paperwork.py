@@ -224,13 +224,30 @@ def card_surface(text):
             continue
         if not "".join(cells).strip("-: "):
             continue
-        try:
-            index = int(cells[header.index("#")])
-        except (ValueError, IndexError):
-            continue
-        label = cells[header.index("Label")].strip("`").strip()
         words = cells[header.index("Mode")].replace(",", " ").split()
-        rows.append((index, label, words[0].upper() if words else ""))
+        mode = words[0].upper() if words else ""
+        number = cells[header.index("#")].replace("\u2013", "-")
+        label = cells[header.index("Label")].replace("`", "").strip()
+        if "-" in number:
+            # A range row: "1-3 | `Voice 1` ... `Voice 3`" names one macro
+            # per index, the label's trailing number counting with it.
+            try:
+                first, last = (int(n) for n in number.split("-", 1))
+            except ValueError:
+                continue
+            stem = label.split("\u2026")[0].split("...")[0].strip()
+            base = stem.rstrip("0123456789").rstrip()
+            start = stem[len(base):].strip()
+            for step, index in enumerate(range(first, last + 1)):
+                name = ("%s %d" % (base, int(start) + step) if start
+                        else base)
+                rows.append((index, name, mode))
+            continue
+        try:
+            index = int(number)
+        except ValueError:
+            continue
+        rows.append((index, label.strip(), mode))
     return rows if header is not None else None
 
 
