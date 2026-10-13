@@ -427,6 +427,24 @@ DECLARED = {
         " never-reset one and flip one LSB now and then for good",
     ("NodeBiquad", "E6-", "P4"):
         "as E2: one ulp of filter state after a move and back",
+    ("NodeShimmerLoop", "E1-", "P4"):
+        "clear() restarts the loop shifter's crossfade phase, so the node is"
+        " never in phase with one that was never cleared",
+    ("NodeShimmerLoop", "E2-", "P4"):
+        "as E1: the host reset restarts the loop shifter's phase",
+    ("NodeShimmerLoop", "E4-", "P4"):
+        "a Semitones move runs the free-running shifter phase at another rate",
+    ("NodeShimmerLoop", "E6-", "P4"):
+        "a patch with other semitones moves the free-running shifter phase",
+    ("NodeShimmerLoop", "E11-", "P4"):
+        "moves of Semitones before a pull move the shifter phase",
+    ("NodeEcho", "E4-m0", "P3"):
+        "upstream's Echo holds its line still at mix 0 and plays it when mix"
+        " comes back; a class routes around and rejoins clean",
+    ("NodeEcho", "E5-", "P3"):
+        "as E4: the line held at mix 0 plays when mix comes back",
+    ("NodeEcho", "E9-", "P3"):
+        "as E4, at every source buffer size",
 }
 
 import lifecycle  # noqa: E402
