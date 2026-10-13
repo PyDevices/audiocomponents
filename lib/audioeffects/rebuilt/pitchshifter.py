@@ -149,8 +149,9 @@ class PitchShifter(_component.Component):
     `reset()` empties the shifter and both delay lines and returns to
     patch 0.
     The class never reads the host's tempo.
-    If your host takes the output before it loads a patch or moves Mix, the
-    first 256 frames, 5 ms at 48 kHz, play at the old level.
+    If your host takes the output before it loads a patch or moves Mix, or
+    loads a patch right after a reset, the first 256 frames, 5 ms at
+    48 kHz, play at the old level.
 
     **Limits shared by the family.**
     A control that jumps makes the output step: move it in small steps from
@@ -221,7 +222,9 @@ class PitchShifter(_component.Component):
         #: Whether the host has asked for the output yet. Until it has,
         #: nothing has been pulled, and a control that moves a voice's
         #: level re-arms the graph so the level holds from frame 0. A reset
-        #: or a return from Mix 0 starts that window again.
+        #: or a return from Mix 0 does not start that window again: the
+        #: class cannot see a pull, and a host that keeps the node it took
+        #: would have every later Mix move empty the repeats.
         self._taken = False
         #: The two Mixer levels last handed to the voices.
         self._applied = None
@@ -476,8 +479,6 @@ class PitchShifter(_component.Component):
         if not self._wired:
             self._wire()
         elif self._rejoin():
-            # The graph was emptied: it is new again until it is pulled.
-            self._taken = False
             self._rearm()
         elif not self._taken and self._level_pair() != self._applied:
             # Not pulled yet: a level moved now would wait for its voice's
@@ -503,7 +504,6 @@ class PitchShifter(_component.Component):
         wired = self._wired
         _component.Component.reset(self)
         if wired:
-            self._taken = False
             self._rearm()
 
     @property

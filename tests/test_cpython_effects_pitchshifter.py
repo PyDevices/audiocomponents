@@ -1042,38 +1042,77 @@ class TheRestart(TestCase):
             self.assertEqual(got[12 * BLOCK * channels:], fresh,
                              (rate, channels))
 
-    def test_a_move_right_after_a_reset_is_a_fresh_instance_at_that_setting(
-            self):
-        # reset() makes the instance new again: until the next pull a patch
-        # or a Mix move re-arms it as it would a new one, so the voices play
-        # the new level from the first frame after the move.
+    def test_a_mix_sweep_after_a_reset_does_not_empty_the_repeats(self):
+        # A host that took the output once and keeps the node: a reset does
+        # not hand the re-arm window back, so Mix moves that change a level
+        # while it plays are ordinary moves and the repeats carry on.
+        for rate, channels in ((48000, 2), (22050, 1)):
+            rng = Lcg(41)
+            blocks = 20
+            values = array("h", bytes(2 * blocks * BLOCK * channels))
+            for n in range(6 * BLOCK * channels):
+                values[n] = rng.next() % 40001 - 20000
+            sweep = (70, 76, 82, 88, 94, 100, 106, 112, 118, 124)
+            energies = []
+            rearms = []
+            for with_reset in (True, False):
+                e = PitchShifter(kc.feed(values, rate, channels).port)
+                try:
+                    count = [0]
+                    rearm = e._rearm
+
+                    def wrapped(count=count, rearm=rearm):
+                        count[0] += 1
+                        rearm()
+                    node = e.output
+                    out = []
+                    for k in range(blocks):
+                        if k == 3:
+                            if with_reset:
+                                e.reset()
+                            e.set_macro(FEEDBACK_I, 120)
+                            e.set_macro(DELAY_I, 20)
+                        if k == 5:
+                            e._rearm = wrapped
+                        if k >= 7:
+                            e.set_macro(MIX_I, sweep[k - 7] if k < 17 else 64)
+                        out.append(bytes(kc.audiocore.get_buffer(node)[1]))
+                    rearms.append(count[0])
+                    energies.append(sum(
+                        sum(x * x for x in memoryview(b).cast("h"))
+                        for b in out[8:17]))
+                finally:
+                    e.deinit()
+            self.assertEqual(rearms, [0, 0], (rate, channels))
+            self.assertGreater(energies[0], 0.25 * energies[1],
+                               (rate, channels, energies))
+
+    def test_a_patch_right_after_a_reset_plays_the_old_level_at_first(self):
+        # The limit the docstring discloses beside the early output read:
+        # a reset does not hand the first-block window back, so a patch
+        # loaded right after one plays its first block (256 frames) at the
+        # old level and nothing after it.
         for rate, channels in ((48000, 2), (22050, 1)):
             blocks = 30
             dc = array("h", [6000] * (blocks * BLOCK * channels))
             later = dc[12 * BLOCK * channels:]
-            for patch in range(len(PitchShifter.PATCHES)):
-                got = played(dc, rate, channels, blocks,
-                             {12: lambda e, p=patch: (e.reset(),
-                                                      e.program_change(p))})
-                fresh = render(PitchShifter, later, rate, channels,
-                               (blocks - 12) * BLOCK, patch=patch)
-                self.assertEqual(got[12 * BLOCK * channels:], fresh,
-                                 (rate, channels, "patch", patch))
-            for midi in (1, 32, 96, 127):
-                mix = _component.macro_value(
-                    (0.0, 2.0), _component.position_of_midi("BIPOLAR", midi))
-                got = played(dc, rate, channels, blocks,
-                             {12: lambda e, m=midi: (e.reset(),
-                                                     e.set_macro(MIX_I, m))})
-                fresh = render(PitchShifter, later, rate, channels,
-                               (blocks - 12) * BLOCK, mix=mix)
-                self.assertEqual(got[12 * BLOCK * channels:], fresh,
-                                 (rate, channels, "mix", midi))
+            got = played(dc, rate, channels, blocks,
+                         {12: lambda e: (e.reset(), e.program_change(6))})
+            fresh = render(PitchShifter, later, rate, channels,
+                           (blocks - 12) * BLOCK, patch=6)
+            got = got[12 * BLOCK * channels:]
+            differ = [n for n in range(len(fresh) // (2 * channels))
+                      if got[n * channels:(n + 1) * channels]
+                      != fresh[n * channels:(n + 1) * channels]]
+            self.assertTrue(differ, (rate, channels))
+            self.assertLess(max(differ), BLOCK, (rate, channels))
 
-    def test_a_move_right_after_a_return_from_mix_0_is_a_fresh_instance(
+    def test_a_patch_right_after_a_return_from_mix_0_plays_the_old_level(
             self):
-        # The return from Mix 0 re-arms the graph; a patch loaded before the
-        # next pull re-arms it again at the patch's levels.
+        # The return from Mix 0 re-arms the graph at the Mix it comes back
+        # to (test_a_return_from_mix_0_is_a_fresh_instance_at_that_mix); a
+        # patch loaded after it, once the output has been taken, is an
+        # ordinary move and plays its first block at the old level.
         for rate, channels in ((48000, 2), (22050, 1)):
             blocks = 30
             dc = array("h", [6000] * (blocks * BLOCK * channels))
@@ -1085,8 +1124,12 @@ class TheRestart(TestCase):
                          {10: lambda e: e.set_macro(MIX_I, 0), 18: back})
             fresh = render(PitchShifter, dc[18 * BLOCK * channels:], rate,
                            channels, (blocks - 18) * BLOCK, patch=6)
-            self.assertEqual(got[18 * BLOCK * channels:], fresh,
-                             (rate, channels))
+            got = got[18 * BLOCK * channels:]
+            differ = [n for n in range(len(fresh) // (2 * channels))
+                      if got[n * channels:(n + 1) * channels]
+                      != fresh[n * channels:(n + 1) * channels]]
+            self.assertTrue(differ, (rate, channels))
+            self.assertLess(max(differ), BLOCK, (rate, channels))
 
     def test_only_a_move_that_changes_a_voice_level_re_arms(self):
         # Before the output is first taken, Pitch, Fine, Delay, Feedback and
@@ -1353,8 +1396,12 @@ CLAIMS = (
      "or a fourth or fifth either way.",
      "test_feedback_near_its_top_stacks_level_far_past_the_input"),
     ("If your host takes the output before it loads a patch or moves Mix, "
-     "the first 256 frames, 5 ms at 48 kHz, play at the old level.",
-     "test_an_output_taken_before_a_patch_plays_the_old_level_at_first"),
+     "or loads a patch right after a reset, the first 256 frames, 5 ms at "
+     "48 kHz, play at the old level.",
+     ("test_an_output_taken_before_a_patch_plays_the_old_level_at_first",
+      "test_a_patch_right_after_a_reset_plays_the_old_level_at_first",
+      "test_a_patch_right_after_a_return_from_mix_0_plays_the_old_level",
+      "test_a_mix_sweep_after_a_reset_does_not_empty_the_repeats")),
     ("A one-channel source gets a one-channel shifter with the same window.",
      "test_a_mono_source_is_one_channel_of_a_stereo_one"),
     ("Latency is zero samples: the dry is never delayed.",
