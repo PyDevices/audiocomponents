@@ -1240,6 +1240,25 @@ def _native_binaries():
         found[family] = path if path and os.path.isfile(path) else None
     return found, root
 
+class TheAdoption(TestCase):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-10-13, so `create()` serves this one. Revert
+        `rebuilt.ADOPTED` and this goes red."""
+        import audiocore
+        import audioeffects
+        from array import array
+        self.assertIn("Rack", rebuilt.ADOPTED)
+        self.assertNotIn("Rack", rebuilt.parked())
+        self.assertIs(audioeffects.Rack, Rack)
+        served = audioeffects.create(
+            "Rack",
+            audiocore.RawSample(array("h", [0, 0] * 64), sample_rate=48000,
+                                channel_count=2),
+            48000)
+        self.assertIsInstance(served, Rack)
+        served.deinit()
+
+
 class TestEmptyRack(TestCase):
     """T1. With nothing in it, a rack is a patch cable."""
 

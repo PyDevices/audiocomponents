@@ -957,6 +957,25 @@ class T6Tone(TestCase):
         self.assertGreater(max(misses), 0.25, misses)
 
 
+class TheAdoption(TestCase):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-10-13, so `create()` serves this one. Revert
+        `rebuilt.ADOPTED` and this goes red."""
+        import audiocore
+        import audioeffects
+        from array import array
+        self.assertIn("Octaver", rebuilt.ADOPTED)
+        self.assertNotIn("Octaver", rebuilt.parked())
+        self.assertIs(audioeffects.Octaver, Octaver)
+        served = audioeffects.create(
+            "Octaver",
+            audiocore.RawSample(array("h", [0, 0] * 64), sample_rate=48000,
+                                channel_count=2),
+            48000)
+        self.assertIsInstance(served, Octaver)
+        served.deinit()
+
+
 class TheSurface(TestCase):
     """The controls, the wire, latency, tail, reset and tempo."""
 

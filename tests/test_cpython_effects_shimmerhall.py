@@ -274,15 +274,16 @@ class LateDry(ShimmerHall):
 
 
 #: The kit's plant table. A Rise plant is judged at a Rise patch, a Bloom
-#: plant at the Bloom patch its fault shows plainest at.
+#: plant at the Bloom patch its fault shows plainest at: the defaults are
+#: Rise, so a Bloom plant always names its patch.
 KIT_PLANTS = {
     "T1": (PinnedStagger, 1),
     "T2": (AlwaysOctave, 2),
     "T3": (PinnedLoop, 3),
     "T4": (HeldFeedback, 4),
-    "T4b": RiseInBloom,
+    "T4b": (RiseInBloom, 6),
     "T5": (UndampedLoop, 4),
-    "T6": LateDry,
+    "T6": (LateDry, 6),
 }
 
 
@@ -295,8 +296,10 @@ T1_BLOOMS = (20.0, 200.0, 800.0)
 
 def t1_onset(cls, rate, f0, offset, bloom):
     frames = law_frames(bloom + 400.0, rate) + offset
-    s1 = wet(cls, rate, card_channels(rate), f0, offset, frames, bloom_ms=bloom, shimmer=1.0)
-    s0 = wet(cls, rate, card_channels(rate), f0, offset, frames, bloom_ms=bloom, shimmer=0.0)
+    s1 = wet(cls, rate, card_channels(rate), f0, offset, frames,
+             character="bloom", bloom_ms=bloom, shimmer=1.0)
+    s0 = wet(cls, rate, card_channels(rate), f0, offset, frames,
+             character="bloom", bloom_ms=bloom, shimmer=0.0)
     hz = 2.0 * f0
     size = hann_size(rate)
     window = hann(size)
@@ -344,7 +347,7 @@ def t2_read(cls, rate, character, interval, seed):
     """The energy-weighted mean shift of d = (Shimmer 1) - (Shimmer 0), in
     semitones, over the 500 ms from Bloom."""
     f0, offset = seed_set(seed)
-    # The card's patch-0 Bloom, which a default-built instance plays.
+    # The defaults' Bloom, Octave Bloom's too.
     bloom = 20.0 * 40.0 ** (90.0 / 127.0)
     start = law_frames(bloom, rate) + offset
     span = law_frames(500.0, rate)
@@ -753,27 +756,32 @@ def without_get_buffer(build, moves, frames=4096, seed=3, rate=48000,
     return values, out
 
 
+def _bloom(src, **options):
+    """Built in Bloom: the defaults are Rise."""
+    return ShimmerHall(src, character="bloom", **options)
+
+
 GET_BUFFER_CASES = (
     ("built at the defaults", ShimmerHall, {}),
-    ("built in Rise", lambda src: ShimmerHall(src, character="rise"), {}),
-    ("reset before the first pull", ShimmerHall, {0: lambda e: e.reset()}),
-    ("reset twice before the first pull", ShimmerHall,
+    ("built in Bloom", _bloom, {}),
+    ("reset before the first pull", _bloom, {0: lambda e: e.reset()}),
+    ("reset twice before the first pull", _bloom,
      {0: lambda e: (e.reset(), e.reset())}),
-    ("built at Mix 0, then patch 0", lambda src: ShimmerHall(src, mix=0.0),
-     {3: lambda e: e.program_change(0)}),
-    ("built at Mix 0, reset", lambda src: ShimmerHall(src, mix=0.0),
+    ("built at Mix 0, then Octave Bloom",
+     lambda src: _bloom(src, mix=0.0), {3: lambda e: e.program_change(6)}),
+    ("built at Mix 0, reset", lambda src: _bloom(src, mix=0.0),
      {3: lambda e: e.reset()}),
-    ("Mix 0 before the first block, back", ShimmerHall,
+    ("Mix 0 before the first block, back", _bloom,
      {0: lambda e: e.set_macro(MIX_I, 0), 4: lambda e: e.set_macro(MIX_I, 32)}),
-    ("Mix 0 after playing, reset twice", ShimmerHall,
+    ("Mix 0 after playing, reset twice", _bloom,
      {2: lambda e: e.set_macro(MIX_I, 0), 6: lambda e: (e.reset(), e.reset())}),
-    ("a Character move and a reset in one block", ShimmerHall,
+    ("a Character move and a reset in one block", _bloom,
      {2: lambda e: (e.program_change(4), e.reset())}),
     ("built at Mix 2, reset after playing",
-     lambda src: ShimmerHall(src, mix=2.0), {3: lambda e: e.reset()}),
-    ("Mix 0 after playing, back to 127", ShimmerHall,
+     lambda src: _bloom(src, mix=2.0), {3: lambda e: e.reset()}),
+    ("Mix 0 after playing, back to 127", _bloom,
      {2: lambda e: e.set_macro(MIX_I, 0), 6: lambda e: e.set_macro(MIX_I, 127)}),
-    ("Mix 127 before the first pull", ShimmerHall,
+    ("Mix 127 before the first pull", _bloom,
      {0: lambda e: e.set_macro(MIX_I, 127)}),
 )
 
@@ -784,6 +792,25 @@ GET_BUFFER_CASES = (
 
 def _port(rate=48000, channels=2):
     return kc.feed(array("h", bytes(4 * channels)), rate, channels).port
+
+
+class TheAdoption(TestCase):
+    def test_adopted_is_what_the_package_serves(self):
+        """Adopted on 2026-10-13, so `create()` serves this one. Revert
+        `rebuilt.ADOPTED` and this goes red."""
+        import audiocore
+        import audioeffects
+        from array import array
+        self.assertIn("ShimmerHall", rebuilt.ADOPTED)
+        self.assertNotIn("ShimmerHall", rebuilt.parked())
+        self.assertIs(audioeffects.ShimmerHall, ShimmerHall)
+        served = audioeffects.create(
+            "ShimmerHall",
+            audiocore.RawSample(array("h", [0, 0] * 64), sample_rate=48000,
+                                channel_count=2),
+            48000)
+        self.assertIsInstance(served, ShimmerHall)
+        served.deinit()
 
 
 class TheSurface(TestCase):
@@ -798,9 +825,9 @@ class TheSurface(TestCase):
         self.assertEqual(ShimmerHall.CAPABILITIES, ())
         self.assertEqual(ShimmerHall.LATENCY_SAMPLES, 0)
         self.assertEqual([ShimmerHall.PATCHES[i][0] for i in range(7)],
-                         ["Octave Bloom", "Short Stagger", "Fifth Halo",
+                         ["Octave Rise", "Short Stagger", "Fifth Halo",
                           "Slow Rise", "Rise Damped", "Falling Octaves",
-                          "Octave Bloom - lean"])
+                          "Octave Bloom"])
         self.assertEqual(sorted(ShimmerHall.PATCHES), list(range(7)))
 
     def test_the_spans(self):
@@ -854,13 +881,16 @@ class TheSurface(TestCase):
             e.deinit()
 
     def test_patches_are_the_card_settings_on_the_grid(self):
+        # Patch 0 is the card's Octave Bloom in Rise at Rise 0 (ruled
+        # 2026-10-13); the card's own Octave Bloom is patch 6.
         card = {
-            0: ("bloom", 0.7, 0.6, 275, 12, 4.0, 1.0, 6000, 0.5),
+            0: ("rise", 0.7, 0.0, 275, 12, 4.0, 1.0, 6000, 0.5),
             1: ("bloom", 0.6, 0.6, 60, 12, 2.5, 0.8, 8000, 0.4),
             2: ("bloom", 0.8, 0.6, 400, 7, 6.0, 1.2, 5000, 0.6),
             3: ("rise", 0.7, 0.6, 400, 12, 6.0, 1.2, 8000, 0.6),
             4: ("rise", 0.8, 0.8, 250, 12, 4.0, 1.0, 2000, 0.5),
             5: ("rise", 0.7, 0.6, 300, -12, 5.0, 1.0, 4000, 0.5),
+            6: ("bloom", 0.7, 0.6, 275, 12, 4.0, 1.0, 6000, 0.5),
         }
         zones = dict(zip(INTERVALS, (0, 32, 64, 96, 127)))
         for index, row in card.items():
@@ -886,7 +916,7 @@ class TheSurface(TestCase):
                              ShimmerHall.PATCHES[0][1])
             self.assertEqual(e.patch_index, 0)
             values = [e.macro(i) for i in range(9)]
-            want = [0.0, 0.7008, 0.6024, 273.1, 12.0, 4.0206, 1.00394,
+            want = [1.0, 0.7008, 0.0, 273.1, 12.0, 4.0206, 1.00394,
                     5990.5, 0.5039]
             for got, card in zip(values, want):
                 self.assertAlmostEqual(got, card, delta=abs(card) * 1e-4)
@@ -904,7 +934,7 @@ class TheSurface(TestCase):
             # half-cycle would play at the constructor's Mix.
             for options in ({}, dict(shimmer=0.37, rise=0.71, bloom_ms=33.3,
                                      interval=-5, decay=7.7, size=0.61,
-                                     damping_hz=777.0, character="rise")):
+                                     damping_hz=777.0, character="bloom")):
                 feed = kc.feed(values, 48000, 2)
                 e = ShimmerHall(feed.port, **options)
                 e.program_change(patch)
@@ -945,7 +975,8 @@ class TheSurface(TestCase):
     def test_no_latency(self):
         values = array("h", bytes(2 * 2 * 4096))
         values[2000] = values[2001] = 12000
-        out = render(ShimmerHall, values, 48000, 2, 4096, mix=1.0)
+        out = render(ShimmerHall, values, 48000, 2, 4096, mix=1.0,
+                     character="bloom")
         self.assertEqual(out[2000], 12000)
         self.assertEqual(list(out[:2000]), [0] * 2000)
 
@@ -1015,7 +1046,7 @@ class TheSurface(TestCase):
         # After a Character move, the wet path renders as a fresh
         # instance's in that character, and the dry carries on.
         values = t6_material(48000, 2, 2)
-        for start, end in (("bloom", 3), ("rise", 0)):
+        for start, end in (("bloom", 3), ("rise", 6)):
             fresh_wet = render(ShimmerHall, values[2 * 9728:], 48000, 2,
                                19200, patch=end)
             feed = kc.feed(values, 48000, 2)
@@ -1089,28 +1120,29 @@ class TheSurface(TestCase):
 
     def test_a_reset_from_mix_2_plays_the_dry_from_frame_0(self):
         self._same_as_fresh(
-            lambda port: ShimmerHall(port, mix=2.0),
+            lambda port: _bloom(port, mix=2.0),
             {6: lambda e: e.reset()}, 6, {}, name="reset from Mix 2")
 
     def test_a_reset_before_the_first_pull_plays_the_dry_from_frame_0(self):
         self._same_as_fresh(
-            lambda port: ShimmerHall(port, mix=2.0),
+            lambda port: _bloom(port, mix=2.0),
             {0: lambda e: e.reset()}, 0, {}, name="reset before a pull")
 
     def test_a_return_from_mix_0_plays_the_dry_from_frame_0(self):
         self._same_as_fresh(
-            ShimmerHall,
+            _bloom,
             {2: lambda e: e.set_macro(MIX_I, 0),
-             6: lambda e: e.set_macro(MIX_I, 127)}, 6, dict(mix=2.0),
-            name="Mix 0 then 127")
+             6: lambda e: e.set_macro(MIX_I, 127)}, 6,
+            dict(mix=2.0, character="bloom"), name="Mix 0 then 127")
 
     def test_a_mix_move_before_the_first_pull_plays_the_dry_from_frame_0(
             self):
         self._same_as_fresh(
-            ShimmerHall, {0: lambda e: e.set_macro(MIX_I, 127)}, 0,
-            dict(mix=2.0), name="Mix 127 before the first pull")
+            _bloom, {0: lambda e: e.set_macro(MIX_I, 127)}, 0,
+            dict(mix=2.0, character="bloom"),
+            name="Mix 127 before the first pull")
         self._same_as_fresh(
-            ShimmerHall, {0: lambda e: e.program_change(1)}, 0,
+            _bloom, {0: lambda e: e.program_change(1)}, 0,
             dict(patch=1), name="patch 1 before the first pull")
 
     def test_a_reset_from_rise_plays_as_a_new_instance(self):
@@ -1136,7 +1168,7 @@ class TheSurface(TestCase):
                 ("interval", lambda e: e.set_macro(INTERVAL_I, 0), 0),
                 ("patch 2", lambda e: e.program_change(2), 1),
                 ("mix 127", lambda e: e.set_macro(MIX_I, 127), 1)):
-            e = ShimmerHall(_port())
+            e = _bloom(_port())
             try:
                 count = counted(e)
                 move(e)
@@ -1144,7 +1176,7 @@ class TheSurface(TestCase):
             finally:
                 e.deinit()
             self.assertEqual(count[0], rearms, name)
-        e = ShimmerHall(_port(), mix=2.0)
+        e = _bloom(_port(), mix=2.0)
         try:
             count = counted(e)
             e.output
@@ -1179,7 +1211,8 @@ class TheSurface(TestCase):
             values = array("h", [rng.next() % 20001 - 10000
                                  for _ in range(frames * channels)])
             other = array("h", [-v // 2 for v in values])
-            for options in ({}, dict(mix=2.0), off_grid):
+            for options in ({}, dict(mix=2.0), dict(character="bloom"),
+                            dict(character="bloom", mix=2.0), off_grid):
                 chain = ((ShimmerHall, options),)
                 fresh = rack_class.create(
                     kc.feed(values, rate, channels).port, rate, chain=chain)
@@ -1211,10 +1244,12 @@ class TheSurface(TestCase):
             blocks = 14
             values = self._dc(rate, channels, blocks)
             for name, options, move, fresh in (
-                    ("Mix 127", {}, lambda e: e.set_macro(MIX_I, 127),
-                     dict(mix=2.0)),
-                    ("patch 0 from Mix 2", dict(mix=2.0),
-                     lambda e: e.program_change(0), {})):
+                    ("Mix 127", dict(character="bloom"),
+                     lambda e: e.set_macro(MIX_I, 127),
+                     dict(mix=2.0, character="bloom")),
+                    ("Octave Bloom from Mix 2",
+                     dict(mix=2.0, character="bloom"),
+                     lambda e: e.program_change(6), dict(patch=6))):
                 e = ShimmerHall(kc.feed(values, rate, channels).port,
                                 **options)
                 try:
@@ -1377,7 +1412,7 @@ class T6TheDry(TestCase):
                     self.assertLess(loud, 32767, (rate, channels, patch))
 
     def test_late_dry_is_red(self):
-        worst, _loud = t6_read(LateDry, 48000, 2, 0, 1)
+        worst, _loud = t6_read(LateDry, 48000, 2, 6, 1)
         self.assertGreater(worst, 1000)
 
 
@@ -1466,32 +1501,35 @@ def lean_levels(rate, f0, offset, patch):
     return [db(x) - db(levels[0]) for x in levels]
 
 
-class TheLeanPatch(TestCase):
+class TheDefaults(TestCase):
     def test_the_bloom_patches_are_the_ones_named_for_the_s3(self):
         # The S3 cost is measured on the boards (the evidence's board
         # table: every Bloom patch over the bar, every Rise patch under);
-        # this pins the sentence's list to the patches in Bloom.
+        # this pins the sentence's list to the patches in Bloom, and the
+        # defaults to Rise.
         bloom = [name for name, steps in ShimmerHall.PATCHES.values()
                  if steps[CHARACTER_I] < 64]
-        self.assertEqual(bloom, ["Octave Bloom", "Short Stagger",
-                                 "Fifth Halo"])
+        self.assertEqual(bloom, ["Short Stagger", "Fifth Halo",
+                                 "Octave Bloom"])
         e = ShimmerHall(_port())
         try:
-            self.assertEqual(e.macro(CHARACTER_I), 0.0)     # the defaults
+            self.assertEqual(e.macro(CHARACTER_I), 1.0)     # the defaults
         finally:
             e.deinit()
         doc = " ".join(sys.modules[ShimmerHall.__module__].__doc__.split())
-        self.assertIn("the Bloom patches (the defaults, Octave Bloom, Short"
-                      " Stagger and Fifth Halo) take longer than a block",
+        self.assertIn("the Bloom patches (Octave Bloom, Short Stagger and"
+                      " Fifth Halo) take longer than a block and cannot"
+                      " keep up; the defaults and every Rise patch keep up.",
                       doc)
 
-    def test_the_lean_patch_is_patch_0_in_rise_at_rise_0(self):
-        steps = list(ShimmerHall.PATCHES[0][1])
+    def test_the_defaults_are_octave_bloom_in_rise_at_rise_0(self):
+        steps = list(ShimmerHall.PATCHES[6][1])
         steps[CHARACTER_I] = 127
         steps[RISE_I] = 0
-        self.assertEqual(ShimmerHall.PATCHES[6][1], tuple(steps))
-        self.assertEqual(ShimmerHall.PATCHES[6][0], "Octave Bloom - lean")
-        e = ShimmerHall(_port(), patch=6)
+        self.assertEqual(ShimmerHall.PATCHES[0][1], tuple(steps))
+        self.assertEqual(ShimmerHall.PATCHES[0][0], "Octave Rise")
+        self.assertEqual(ShimmerHall.PATCHES[6][0], "Octave Bloom")
+        e = ShimmerHall(_port())
         try:
             self.assertEqual(e.macro(CHARACTER_I), 1.0)
             self.assertEqual(e.macro(RISE_I), 0.0)
@@ -1499,24 +1537,24 @@ class TheLeanPatch(TestCase):
         finally:
             e.deinit()
 
-    def test_the_lean_patch_is_one_octave_once(self):
+    def test_the_defaults_are_one_octave_once(self):
         # Rise 0.9 climbs: the second and the third octave are in the
-        # shimmer within 30 dB of the first. At the lean patch only the
+        # shimmer within 30 dB of the first. At the defaults only the
         # first is there, and the others stand more than 40 dB under it.
         for rate, f0 in ((48000, 247.0), (22050, 220.0)):
-            lean = lean_levels(rate, f0, 13, 6)
+            lean = lean_levels(rate, f0, 13, 0)
             self.assertLess(max(lean[1:]), -40.0, (rate, lean))
         climbing = lean_levels(48000, 247.0, 13, 3)
         self.assertGreater(climbing[1], -30.0, climbing)
 
-    def test_the_lean_hall_starts_at_once(self):
-        # Patch 0 holds the whole hall for Bloom (273 ms); the lean patch
-        # plays the dry into it at once.
+    def test_the_defaults_hall_starts_at_once(self):
+        # Octave Bloom holds the whole hall for Bloom (273 ms); the
+        # defaults play the dry into it at once.
         for rate in RATES:
             channels = card_channels(rate)
             frames = law_frames(150.0, rate)
             heard = []
-            for patch in (0, 6):
+            for patch in (6, 0):
                 out = wet(ShimmerHall, rate, channels, 247.0, 0, frames,
                           **patch_options(ShimmerHall, patch, mix=2.0))
                 heard.append(max(abs(x) for x in out))
@@ -1603,18 +1641,19 @@ CLAIMS = (
      "the first 256 frames, 5 ms at 48 kHz, play at the old level.",
      ("test_an_output_taken_before_mix_moves_plays_the_old_level_at_first",
       "test_only_a_move_that_changes_a_voice_level_re_arms")),
-    ("The patches: Octave Bloom (the defaults), Short Stagger, Fifth Halo, "
-     "Slow Rise, Rise Damped, Falling Octaves, Octave Bloom - lean.",
-     "test_macros_patches_tier_latency"),
-    ("On an ESP32-S3 the Bloom patches (the defaults, Octave Bloom, Short "
-     "Stagger and Fifth Halo) take longer than a block and cannot keep up, "
-     "so play a Rise patch there.",
+    ("The patches: Octave Rise (the defaults), Short Stagger, Fifth Halo, "
+     "Slow Rise, Rise Damped, Falling Octaves, Octave Bloom.",
+     ("test_macros_patches_tier_latency",
+      "test_a_fresh_instance_reads_patch_0")),
+    ("Octave Rise is Octave Bloom in Rise at Rise 0: one octave, once, and "
+     "the hall starts at once.",
+     ("test_the_defaults_are_octave_bloom_in_rise_at_rise_0",
+      "test_the_defaults_are_one_octave_once",
+      "test_the_defaults_hall_starts_at_once")),
+    ("On an ESP32-S3 the Bloom patches (Octave Bloom, Short Stagger and "
+     "Fifth Halo) take longer than a block and cannot keep up; the defaults "
+     "and every Rise patch keep up.",
      "test_the_bloom_patches_are_the_ones_named_for_the_s3"),
-    ("Octave Bloom - lean is Rise at Rise 0, for an S3: one octave, once, "
-     "and the hall starts at once.",
-     ("test_the_lean_patch_is_patch_0_in_rise_at_rise_0",
-      "test_the_lean_patch_is_one_octave_once",
-      "test_the_lean_hall_starts_at_once")),
     ("Interval is a fixed shift in semitones, with no key awareness.",
      "test_interval_has_five_zones"),
     ("In Rise, on some held notes the shimmer lands beside the octave "
@@ -1725,11 +1764,11 @@ def figures(which=("T1", "T2", "T3", "T4", "T5", "T6", "L")):
                         worst = max(worst, w)
                         loud = max(loud, lo)
                         runs += 1
-        plant = t6_read(LateDry, 48000, 2, 0, 1)[0]
+        plant = t6_read(LateDry, 48000, 2, 6, 1)[0]
         print("%s|T6|runs %d|worst %d LSB|loudest %d|plant %d LSB" % (
             name, runs, worst, loud, plant))
     if "F" in which:
-        for patch in (3, 4, 6):
+        for patch in (3, 4, 0):
             options = fold_shipped(patch)
             for rate in RATES:
                 worst = -999.0
@@ -1740,7 +1779,7 @@ def figures(which=("T1", "T2", "T3", "T4", "T5", "T6", "L")):
                     for level in rel:
                         worst = max(worst, level)
                 # Exact silence where the pass never comes (Rise damped to
-                # nothing, or the lean patch's loop).
+                # nothing, or the defaults' loop at Rise 0).
                 print("%s|F|patch %d %s|%d|worst fold line %s over %d "
                       "notes|bar %.0f" % (
                           name, patch, ShimmerHall.PATCHES[patch][0], rate,
@@ -1779,7 +1818,7 @@ def figures(which=("T1", "T2", "T3", "T4", "T5", "T6", "L")):
                 for c in range(channels):
                     values[1000 * channels + c] = 12000
                 out = render(ShimmerHall, values, rate, channels, 4096,
-                             mix=1.0)
+                             mix=1.0, character="bloom")
                 first = None
                 for n in range(4096):
                     if out[n * channels]:

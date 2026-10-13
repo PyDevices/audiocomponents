@@ -10,19 +10,22 @@ there, and are recorded in its changelog.
 
 ### Added
 
-- **`ShimmerHall` (rebuilt, Phase 6):** a pitch shifter around a hall, in
+- **`ShimmerHall` (rebuilt, Phase 6; adopted 2026-10-13):** a pitch shifter around a hall, in
   two characters. Bloom sends the shifted copy into the hall once, Bloom
   after you play, on `audiodelays.PitchShift`; Rise puts the shift inside
   an `audioecho.FeedbackDelay` loop (`loop_semitones`), so each pass comes
   back shifted again until Damping darkens it away. Nine macros (Character,
   Shimmer, Rise, Bloom, Interval, Decay, Size, Damping, Mix) and seven
-  patches (the last, "Octave Bloom - lean", is Rise at Rise 0, for a board
-  short of memory) replace the old Shimmer / Echo / Space / Tone surface and its
-  constructor arguments. The hall is the rebuilt `Reverb`. The dry passes
+  patches replace the old Shimmer / Echo / Space / Tone surface and its
+  constructor arguments. The defaults, patch 0 "Octave Rise", are Rise at
+  Rise 0: one octave, once, with the hall starting at once, which an
+  ESP32-S3 keeps up with where the Bloom patches (Octave Bloom, Short
+  Stagger, Fifth Halo) do not. The hall is the rebuilt `Reverb`. The dry passes
   untouched up to Mix 1, Mix 0 is a byte-exact wire, and the input ceiling
-  is -24 dBFS. It lives in `lib/audioeffects/rebuilt/shimmerhall.py`, beside
-  the old class in `rack.py`, until it is promoted.
-- **`AirSpace` (rebuilt, Phase 6; not yet adopted):** a tape echo sent
+  is -24 dBFS. It is what `audioeffects.ShimmerHall` and `create()` now
+  serve. It lives in `lib/audioeffects/rebuilt/shimmerhall.py`, beside the
+  old class in `rack.py`, until it is promoted.
+- **`AirSpace` (rebuilt, Phase 6; adopted 2026-10-13):** a tape echo sent
   into a chamber, with the dry untouched beside it, in
   `audioeffects/rebuilt/airspace.py`. Eleven macros (Time, Feedback, Glide,
   Drive, Loop Top, Loop Bass, Top Cut, Low Cut, Decay, Damping, Mix) and
@@ -30,16 +33,18 @@ there, and are recorded in its changelog.
   darkens each repeat, Top Cut darkens the send once, Feedback stretches the
   chamber's tail, and a Time move bends the repeats' pitch. The chamber is
   the rebuilt `Reverb`, and `reset()` renders exactly as a fresh instance.
-  The old `rack.AirSpace` stays what the library serves until adoption.
-- **`Harmonizer` (rebuilt, Phase 6):** three pitch shifters at fixed
+  It is what `audioeffects.AirSpace` and `create()` now serve; the old
+  `rack.AirSpace` stays beside it until the rebuild is promoted.
+- **`Harmonizer` (rebuilt, Phase 6; adopted 2026-10-13):** three pitch shifters at fixed
   intervals under the dry, after three Eventide H910s played from one
   keyboard. Each voice is its own `audiodelays.PitchShift` on its own
   splitter tap and lands on the nearest step the shifter can play; a
   voice at its Level's bottom step is off and its shifter is not pulled.
   Ten controls (Pitch, Voice 1 to 3, Level 1 to 3, Detune, Spread, Mix),
   seven patches including a lean two-voice one, and a `window_ms` option.
-  It drops the old class's `intervals=` and `level=` options.
-- **`PitchShifter` (rebuilt, Phase 6):** a fixed-interval splice shifter
+  It drops the old class's `intervals=` and `level=` options, and is what
+  `audioeffects.Harmonizer` and `create()` now serve.
+- **`PitchShifter` (rebuilt, Phase 6; adopted 2026-10-13):** a fixed-interval splice shifter
   in the manner of the first harmonizers, on a Pitch, Fine, Mix, Delay and
   Feedback surface. Pitch moves in whole semitones an octave either way and
   Fine detunes by up to 50 cents; the dry passes untouched up to Mix 1;
@@ -47,17 +52,19 @@ there, and are recorded in its changelog.
   every repeat is shifted again, so a fifth climbs a fifth at a time.
   `window_ms` (15 to 60, 30 by default) sets the splice window at
   construction. The old `semitones=` option is gone: Pitch and Fine
-  replace it.
-- **`StereoWidener` (rebuilt, Phase 6):** two characters on a Width, Delay
+  replace it. It is what `audioeffects.PitchShifter` and `create()` now
+  serve.
+- **`StereoWidener` (rebuilt, Phase 6; adopted 2026-10-13):** two characters on a Width, Delay
   and Character surface. Haas delays the right channel 1 to 40 ms behind the
   left, crossfading the right toward its late copy up to Width 1 and turning
   the left down above it; Mid/Side scales the difference between the
   channels and leaves the sum alone. A mono source passes untouched, and a
   Delay move glides instead of clicking. The old `delay_ms=`/`width=`
-  options keep their names with these meanings.
-- **`Rack` (rebuilt, Phase 6):** the serial chain on the contract's base, in
+  options keep their names with these meanings. It is what
+  `audioeffects.StereoWidener` and `create()` now serve.
+- **`Rack` (rebuilt, Phase 6; adopted 2026-10-13):** the serial chain on the contract's base, in
   `rebuilt/rack.py` beside the old class, which stays until the rebuild is
-  promoted. `chain=` keeps its meaning and also takes a bare effect class. It
+  promoted. It is what `audioeffects.Rack` and `create()` now serve. `chain=` keeps its meaning and also takes a bare effect class. It
   renders exactly the same pedals patched by hand; `latency_samples` and
   `tail_samples` are live sums; `reset()` clears every pedal and puts each
   back to the settings the rack built it with; `deinit()` releases every
@@ -67,13 +74,14 @@ there, and are recorded in its changelog.
   and a rack's restore now share one private path in the base,
   `_apply_positions`, which the classes that did work once per patch moved
   onto.
-- **`Octaver` (rebuilt, Phase 6):** the analog octave-down, after the
+- **`Octaver` (rebuilt, Phase 6; adopted 2026-10-13):** the analog octave-down, after the
   Boss OC-2. The octave is your own note with every other cycle turned
   over, clocked from a low-passed copy and multiplied into an all-passed
   one, so it keeps your attack and decay and tracks from E2 to A4 at the
   default. Seven controls: Direct, Octave 1, Octave 2, Tracking, Tone 1,
   Tone 2 and Sensitivity, and six patches. It drops the shifter-based
-  class's octave up and its `down=`, `up=`, `down2=` and `up2=` options.
+  class's octave up and its `down=`, `up=`, `down2=` and `up2=` options,
+  and is what `audioeffects.Octaver` and `create()` now serve.
 - MultiTapDelay: the docstring says which patches need a P4-class board (patch 4 does, patch 3 may), from the boards' figures at audiodsp v0.6.3
 - **`DigitalDelay` (rebuilt, Phase 5; adopted 2026-09-28):** a clean
   interpolated line with the Boss DD-2's control law on one
@@ -289,11 +297,12 @@ there, and are recorded in its changelog.
 ### Changed
 
 - **`ShimmerHall` and `AirSpace` keep the classes they were ported
-  against.** With the Phase 5 `TapeDelay` and `Reverb` adopted, the two
-  racks name the old `delay.TapeDelay` and `reverb.Reverb` directly (a
-  `Rack` chain entry may now be a class in place of a `NAME`), so they
-  build and sound as before; moving them onto the rebuilds would re-voice
-  them. A chain that names `"Reverb"` gets the rebuild, which takes
+  against.** With the Phase 5 `TapeDelay` and `Reverb` and the Phase 6
+  `Octaver` adopted, the two old racks (`rack.ShimmerHall` and
+  `rack.AirSpace`) name the old `delay.TapeDelay`, `reverb.Reverb` and
+  `pitch.Octaver` directly (a `Rack` chain entry may now be a class in
+  place of a `NAME`), so they build and sound as before; moving them onto
+  the rebuilds would re-voice them. A chain that names `"Reverb"` gets the rebuild, which takes
   `character=` where the old class took `preset=`.
 - **The audiodsp pin moves to v0.6.3rc3.** The release carries the
   convolution node's two fixes (audiodsp#165: the block in flight kept

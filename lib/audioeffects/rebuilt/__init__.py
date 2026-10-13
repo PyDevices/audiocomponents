@@ -114,6 +114,11 @@ def _present():
 #: (audiocomponents#75); Reverb's patch 7 differs from that build by nine
 #: one-LSB samples of 65536 (audiodsp#183). They stay under this directory
 #: with the first two, for the same reason.
+#:
+#: Phase 6's seven, adopted 2026-10-13: `StereoWidener`, `Rack`, `Octaver`,
+#: `PitchShifter`, `Harmonizer`, `AirSpace` and `ShimmerHall`. They stay
+#: under this directory, and `pitch.py` and `rack.py` keep the old classes,
+#: until they come home.
 ADOPTED = (
     "DigitalDelay",
     "SlapbackDelay",
@@ -123,6 +128,13 @@ ADOPTED = (
     "MultiTapDelay",
     "Reverb",
     "ConvolutionReverb",
+    "StereoWidener",
+    "Rack",
+    "Octaver",
+    "PitchShifter",
+    "Harmonizer",
+    "AirSpace",
+    "ShimmerHall",
 )
 
 
