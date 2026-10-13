@@ -26,6 +26,7 @@ import kit_args                                           # noqa: E402
 import kit_ceiling                                        # noqa: E402
 import kit_claims                                         # noqa: E402
 import kit_common as kc                                   # noqa: E402
+import kit_nogb                                           # noqa: E402
 import kit_paperwork                                      # noqa: E402
 import kit_planted as kp                                  # noqa: E402
 import kit_plants                                         # noqa: E402
@@ -167,6 +168,32 @@ class TestArgs(unittest.TestCase):
                 self.assertTrue(self.call(fn, kp.KitPlain, args)
                                 .startswith("ok"), key)
 
+    def test_a_refused_call_that_moves_something_is_red(self):
+        # ClearsFirst zeroes the level before it validates (a render that
+        # differs); ClearsMacro moves a macro, or drops the patch, first.
+        for plant, label, variant in (
+                (kp.ClearsFirst, "pc-negsp", "last"),
+                (kp.ClearsFirst, "pc-true", "d"),
+                (kp.ClearsMacro, "pc-0.0", "d"),
+                (kp.ClearsMacro, "sm-index-n", "d"),
+                (kp.ClearsMacro, "sm-m0-negsp", "last")):
+            with self.subTest(plant=plant.NAME, label=label):
+                self.assertTrue(red(self.call(
+                    kit_args.refused_cell, plant, (label, variant))))
+                self.assertTrue(self.call(
+                    kit_args.refused_cell, kp.KitPlain,
+                    (label, variant)).startswith("ok"))
+
+    def test_every_refusal_is_green_on_the_control(self):
+        cells = cells_of(kit_args.run, kp.KitPlain, quick=True)
+        refused = [k for k in (key for (_n, _c, key) in cells)
+                   if k.startswith("refused-")]
+        self.assertEqual(len(refused),
+                         3 * len(kit_args.refusals(kp.KitPlain)))
+        for key in refused:
+            self.assertTrue(verdict(cells, "KitPlain", "args", key)
+                            .startswith("ok"), key)
+
     def test_a_clamp_is_read_as_one(self):
         self.assertEqual(kit_args.bad_cell(kp.KitPlain, 1),
                          "ok(nan:c inf:c -inf:c -1:c 128:c)")
@@ -180,6 +207,59 @@ class TestArgs(unittest.TestCase):
                          [("mix", 1.0), ("gain", 1.0)])
         self.assertEqual(kit_args.options_of(kp.CtorNan),
                          [("mix", 1.0), ("gain", 1.0)])
+
+
+def nogb_cells(cls):
+    return cells_of(kit_nogb.run, cls, quick=True)
+
+
+class TestNoGetBuffer(unittest.TestCase):
+
+    def test_the_control_is_green(self):
+        for cls in (kp.KitPlain, kp.FlushKit):
+            with self.subTest(cls=cls.NAME):
+                cells = nogb_cells(cls)
+                self.assertTrue(cells)
+                for key in (k for (_n, _c, k) in cells):
+                    self.assertEqual(verdict(cells, cls.NAME, "nogb", key),
+                                     "ok", key)
+
+    def test_a_flush_that_needs_get_buffer_is_red(self):
+        cells = nogb_cells(kp.FlushOnly)
+        bad = [k for (_n, _c, k) in cells
+               if red(verdict(cells, "FlushOnly", "nogb", k))]
+        self.assertTrue(any(k.startswith("E5-mix0") for k in bad), bad)
+        self.assertTrue(any(k.startswith("bytes-reset-once") for k in bad),
+                        bad)
+
+    def test_a_second_reset_in_a_row_is_red(self):
+        cells = nogb_cells(kp.DoubleReset)
+        bad = sorted(k for (_n, _c, k) in cells
+                     if red(verdict(cells, "DoubleReset", "nogb", k)))
+        self.assertTrue(bad)
+        for k in bad:
+            self.assertTrue(k.startswith(("bytes-reset-first-twice",
+                                          "bytes-resets-apart")), k)
+        self.assertEqual(verdict(cells, "DoubleReset", "nogb",
+                                 "bytes-reset-once/48000/2/d"), "ok")
+
+    def test_get_buffer_is_put_back(self):
+        import audiocore
+        import audioeffects._component as component
+        real = audiocore.get_buffer
+        with kit_nogb.hidden(kp.FlushOnly):
+            self.assertIsNone(getattr(component.audiocore, "get_buffer",
+                                      None))
+            self.assertIsNone(getattr(kp.audiocore, "get_buffer", None))
+            self.assertIs(audiocore.get_buffer, real)
+            self.assertIs(lifecycle.audiocore, audiocore)
+        self.assertIs(component.audiocore, audiocore)
+        self.assertIs(kp.audiocore, audiocore)
+
+    def test_red_numbers_are_not_compared(self):
+        self.assertEqual(kit_nogb._kind("RED(differs at +1)"),
+                         kit_nogb._kind("RED(differs at +9)"))
+        self.assertNotEqual(kit_nogb._kind("ok"), kit_nogb._kind("RED(x)"))
 
 
 class TestCeiling(unittest.TestCase):
