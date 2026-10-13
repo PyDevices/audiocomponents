@@ -135,6 +135,140 @@ class DeadStop(KitPlain):
         return KitPlain._level(self)
 
 
+class CondKit(KitPlain):
+    """The control for the ceiling's mid-stop, combined and low-note
+    cells: three macros (Mix, Level, Tone), no setting of which wraps. Its
+    plants swap in a wrapping table, at unity, at one setting only."""
+    NAME = "CondKit"
+    MACRO_LABELS = ("Mix", "Level", "Tone")
+    MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "UNIPOLAR"}
+    _MACRO_RANGES = ((0.0, 1.0), (0.25, 1.0), (0.0, 1.0))
+    PATCHES = {0: ("Default", (127, 64, 64)), 1: ("Soft", (127, 32, 64))}
+    _TABLES = {}
+
+    def _build(self, mix=1.0, level=0.25 + 0.75 * 64 / 127, tone=64 / 127,
+               patch=None):
+        import audioshaper
+        self._shaper = self._own(audioshaper.Waveshaper(
+            curve=self._table(_same), oversample=1,
+            sample_rate=self._sample_rate,
+            channel_count=self._channel_count))
+        self._arm()
+        self._macros = [0.0, 0.0, 0.0]
+        self._init_macros((mix, level, tone), patch)
+
+    def _table(self, fn):
+        if fn not in CondKit._TABLES:
+            CondKit._TABLES[fn] = _curve(fn)
+        return CondKit._TABLES[fn]
+
+    def _at(self, index, midi):
+        return abs(self._macros[index] - midi / 127.0) < 1e-6
+
+    def _bad(self):
+        return False
+
+    def _apply_macro(self, index, position):
+        if self._bad():
+            self._shaper.set(curve=self._table(_wrap2), post_gain=1.0)
+        else:
+            mix = self.macro(0)
+            self._shaper.set(curve=self._table(_same),
+                             post_gain=1.0 - mix + mix * self.macro(1))
+
+
+class MidWrap(CondKit):
+    """Ceiling: wraps with Level at 64 alone, a position between the
+    stops."""
+    NAME = "MidWrap"
+    PATCHES = {0: ("Default", (127, 96, 64)), 1: ("Soft", (127, 32, 64))}
+
+    def __init__(self, source, *a, **kw):
+        kw.setdefault("level", 0.25 + 0.75 * 96 / 127)
+        CondKit.__init__(self, source, *a, **kw)
+
+    def _bad(self):
+        return self._at(1, 64)
+
+
+class ComboWrap(CondKit):
+    """Ceiling: wraps only with Mix and Level at 127 and Tone at 0
+    together, the combination a docstring calls the worst."""
+    NAME = "ComboWrap"
+
+    def _bad(self):
+        return self._at(0, 127) and self._at(1, 127) and self._at(2, 0)
+
+
+class AllWrap(CondKit):
+    """Ceiling: wraps only with every macro at 127 together."""
+    NAME = "AllWrap"
+
+    def _bad(self):
+        return self._at(0, 127) and self._at(1, 127) and self._at(2, 127)
+
+
+class _LowNote:
+    """A Python-level node (CPython only): half the input, until the input
+    has sat past 0.885 of full scale for 250 frames on one side after
+    crossing from the other; from there it ramps up by 128 a frame and
+    wraps round int16, as a sum that overflowed on a long half-cycle
+    would."""
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.sample_rate = inner.sample_rate
+        self.channel_count = inner.channel_count
+        self.bits_per_sample = 16
+        self.samples_signed = True
+        self._clear()
+
+    def _clear(self):
+        ch = self.channel_count
+        self.run = [0] * ch
+        self.side = [0] * ch
+        self.flipped = [False] * ch
+
+    def _reset_buffer(self, single_channel_output=False, audio_channel=0):
+        self._clear()
+        audiocore.reset_buffer(self.inner)
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        more, data = audiocore.get_buffer(self.inner)
+        x = array("h", bytes(data))
+        ch = self.channel_count
+        for i in range(len(x)):
+            c = i % ch
+            v = x[i]
+            side = 1 if v >= 29000 else (-1 if v <= -29000 else 0)
+            if side and side == self.side[c]:
+                self.run[c] += 1
+            elif side:
+                if self.side[c]:
+                    self.flipped[c] = True
+                self.side[c] = side
+                self.run[c] = 1
+            else:
+                self.run[c] = 0
+            y = v // 2
+            if self.flipped[c] and self.run[c] > 250:
+                y += side * 128 * (self.run[c] - 250)
+                y = (y + 32768) % 65536 - 32768
+            x[i] = y
+        return more, memoryview(bytes(x))
+
+
+class LowWrap(KitPlain):
+    """Ceiling: wraps on a square below about 60 Hz at 48 kHz, and on no
+    material the 100 Hz square, the 50 Hz sine, the clicks or the DC step
+    reach (CPython only: its output is a Python-level node)."""
+    NAME = "LowWrap"
+
+    def _arm(self):
+        self._shaper.play(self._source)
+        self._output = _LowNote(self._shaper)
+
+
 class ImplKit(KitPlain):
     """P6: the level is a hair different off CPython, so every render
     check prints other bytes natively."""
@@ -392,9 +526,31 @@ class DoubleReset(FlushKit):
         FlushKit.set_macro(self, *args, **kw)
 
 
+class FlushKit3(FlushKit):
+    """The control for nogb's every-patch cells: FlushKit with a patch
+    between the first and the last."""
+    NAME = "FlushKit3"
+    PATCHES = {0: ("Unity", (127, 127)), 1: ("Mid", (127, 112)),
+               2: ("Soft", (127, 96))}
+
+
+class MidPatchReset(FlushKit3):
+    """Nogb: at the middle patch only, with no `get_buffer`, a reset plays
+    the voices again, which drops the block they held: a fault neither the
+    defaults nor the last patch reach."""
+    NAME = "MidPatchReset"
+
+    def reset(self):
+        mid = self._patch_index == 1
+        FlushKit3.reset(self)
+        if mid and getattr(audiocore, "get_buffer", None) is None:
+            lifecycle.Routed._arm(self)
+
+
 PLANTS = {}
 for _cls in (KitPlain, Silent, WrapKit, WrapKitQuiet, ClipKit, DeadStop,
-             ImplKit, EchoTail, ShortTail, EventTail, NoneSilent, NoneDC,
+             CondKit, MidWrap, ComboWrap, AllWrap, LowWrap, ImplKit, EchoTail, ShortTail, EventTail, NoneSilent, NoneDC,
              ReadbackOff, StopRaises, NanLevel, PatchStale, CtorNan,
-             ClearsFirst, ClearsMacro, FlushKit, FlushOnly, DoubleReset):
+             ClearsFirst, ClearsMacro, FlushKit, FlushOnly, DoubleReset,
+             FlushKit3, MidPatchReset):
     PLANTS[_cls.NAME] = _cls

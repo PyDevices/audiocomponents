@@ -25,12 +25,41 @@ sys.path.insert(0, os.path.join(ROOT, "tests", "support"))
 import lifecycle                                          # noqa: E402
 import node_matrix                                        # noqa: E402
 from tests.test_lifecycle_matrix import (FULL, check_known,  # noqa: E402
-                                   native_binaries, parse, red_cells)
+                                   digest, native_binaries, parse,
+                                   red_cells, skipped)
 
 VENDOR = "PyDevices"
 
 #: What is red today, in the same shape as test_lifecycle_matrix.KNOWN_RED.
 KNOWN_RED = {}
+
+#: P6 differences today, in the same shape as test_lifecycle_matrix.KNOWN_P6:
+#: node -> (cells whose line differs between CPython and a native
+#: interpreter in the quick matrix, their digest, the same for the full
+#: matrix, reason). MicroPython prints CPython's lines for every node; these
+#: are CircuitPython's. Each is a fix in audiodsp v0.6.6rc1 that CPython and
+#: MicroPython take and CircuitPython does not, because there these nodes
+#: are upstream's own and keep upstream's behaviour (audiodsp's
+#: docs/upstream-diff.md records each).
+KNOWN_P6 = {
+    "NodeEcho": (
+        30, "206fe02a", None, None,
+        "a Time move or a patch change shortens the line under the write "
+        "head: upstream's Echo plays one stray sample when it grows back "
+        "(audiodsp#241)"),
+    "NodePitchShift": (
+        12, "1e08a674", None, None,
+        "upstream's reset keeps the read and write positions, so after a "
+        "reset at the fifth the splice falls elsewhere (audiodsp#240)"),
+    "NodeGranularPitchShift": (
+        4, "91e67a25", None, None,
+        "upstream's reset_buffer keeps the jitter sequence, so the grains "
+        "after it start at other offsets (audiodsp#240)"),
+    "NodeSplitMix": (
+        32, "4f7dcebd", None, None,
+        "a host reset of upstream's Mixer re-primes its voices and drops the "
+        "source frames they held (audiodsp#229)"),
+}
 
 
 def names():
@@ -98,11 +127,19 @@ class TestNodeMatrix(unittest.TestCase):
         for name in self.names:
             ours = parse(self.cpython[name])
             theirs = parse([l for l in got if l.startswith(name + "|")])
-            for key in sorted(set(ours) | set(theirs)):
-                if ours.get(key) != theirs.get(key):
-                    problems.append("%s: %s cpython %s, %s %s" % (
-                        family, "|".join(map(str, key)), ours.get(key),
-                        family, theirs.get(key)))
+            keys = [key for key in sorted(set(ours) | set(theirs))
+                    if ours.get(key) != theirs.get(key)
+                    and not skipped(theirs.get(key))]
+            entry = KNOWN_P6.get(name)
+            if entry is not None:
+                count, dig = (entry[2], entry[3]) if FULL else entry[:2]
+                if count is None or (len(keys), digest(keys)) == (count,
+                                                                  dig):
+                    continue
+            for key in keys:
+                problems.append("%s: %s cpython %s, %s %s" % (
+                    family, "|".join(map(str, key)), ours.get(key),
+                    family, theirs.get(key)))
         self.assertEqual(problems, [], "\n".join(problems[:60]))
 
     def test_p6_micropython(self):

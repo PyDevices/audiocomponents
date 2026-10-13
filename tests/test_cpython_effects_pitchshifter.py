@@ -1380,8 +1380,8 @@ CLAIMS = (
     ("On CircuitPython's own pitch shifter a reset or a return from Mix 0 "
      "does not restart the splice, so there it sits wherever the splice "
      "was.",
-     ("DECLARED:PitchShifter,E10-reset,P4",
-      "DECLARED:PitchShifter,E10-mix0,P4")),
+     ("DECLARED:PitchShifter,E10-reset,P4,circuitpython",
+      "DECLARED:PitchShifter,E10-mix0,P4,circuitpython")),
     ("The window is 30 ms unless you pass `window_ms`, 15 to 60, when you "
      "build it: a longer window splices less often and arrives later.",
      ("test_window_ms_is_set_at_construction",

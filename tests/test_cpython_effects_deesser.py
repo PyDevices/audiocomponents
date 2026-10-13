@@ -1274,17 +1274,35 @@ class PlantedFaults(unittest.TestCase):
 
     def test_state_goes_red_when_a_ring_is_left_full(self):
         """The reset fault of the same kind the dossier's V7-7 measured:
-        skip the ring flush and the class replays what the rings hold."""
+        skip the silence and the ring flush and the class replays the
+        audio it held before the reset."""
         rate = 48000
         values = probe("noise_det", rate, frames=STATE_FRAMES)
         effect, holder = build(rate=rate, values=values)
         quiet = source(silence(len(values) // 2), rate)
-        # The fault: the reset walk without the ring flush, which is what
-        # the class did before `_reset_chain` existed. 32-block pulls fill
-        # the rings; the 4 s file was leftover length.
+        # The fault: the class's reset walk without the silent sample and
+        # the ring flush, so the voices re-prime from the live source and
+        # replay it after the reset (the 3 024 LSB `_reset_chain`'s
+        # docstring measured). 32-block pulls fill the rings; the 4 s file
+        # was leftover length.
+        #
+        # Restated at audiodsp v0.6.6rc1 (30cbbf6). Up to eb2d20d this plant
+        # was the walk the class took before `_reset_chain` existed: a host
+        # reset of the Dynamics and both Mixers, and a Mixer's reset fetched
+        # a chunk into every voice from the taps, which replayed what the
+        # rings held. That refetch was the node's defect, fixed in
+        # audiodsp#229: a Mixer's host reset keeps every voice where it
+        # was, so that walk replays nothing (residual 0) and could no
+        # longer show this check failing. The class never resets a Mixer
+        # (it re-primes the voices, for CircuitPython's sake), so nothing
+        # in it changes.
         render(effect.output, 32 * 256, rate)
-        for node in (effect._duck, effect._pre, effect._out):
+        for node in (effect._lows[0], effect._lows[1], effect._highs[0],
+                     effect._highs[1], effect._duck):
             audiocore.reset_buffer(node)
+        for mixer, index, sample in effect._voices:
+            mixer.voice[index].play(sample)
+        audiocore.reset_buffer(effect._tail)
         effect._adapter.play(quiet)
         after = render(effect.output, 32 * 256, rate)
         residual = int(abs(after.data).max())

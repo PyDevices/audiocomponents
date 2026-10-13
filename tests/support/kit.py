@@ -47,8 +47,12 @@ def run_check(check, cls, emit=print, quick=False, plants_module=None,
                                options=options)
     if check == "nogb":
         import kit_nogb
+        # nogb runs the lifecycle events, so it takes the lifecycle's
+        # options (a chain without children whose own defects would read
+        # as the class's).
         return kit_nogb.run(cls, emit, quick=quick, name=name,
-                            options=options)
+                            options=kit_options.lifecycle_options_for(
+                                cls.NAME))
     if check == "claims":
         import kit_claims
         return kit_claims.run(cls, emit, module=claims_module,

@@ -710,10 +710,13 @@ class TheJumpDoesNotSlam(unittest.TestCase):
             if clear:
                 effect.program_change(after)
             else:
-                # The planted fault: the contract's own program_change,
-                # which leaves every section holding the old curve.
-                audioeffects._component.Component.program_change(
-                    effect, after)
+                # The planted fault: the contract's own patch body, which
+                # leaves every section holding the old curve.
+                component = audioeffects._component
+                audioeffects._component.Component._apply_positions(
+                    effect, [component.position_of_midi(effect._mode(m), v)
+                             for m, v in enumerate(
+                                 type(effect).PATCHES[after][1])], after)
             post = render(effect.output, 48000)
         finally:
             effect.deinit()
