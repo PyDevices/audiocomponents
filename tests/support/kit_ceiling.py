@@ -7,11 +7,18 @@ attribute in dBFS (0 or below). A class that states none is held to 0 dBFS,
 full scale. The material's peak is round(32767 x 10^(dBFS/20)).
 
 **The material**, 2 s at the rate: a 100 Hz square, a 50 Hz sine, one
--sample clicks of alternating sign every 97 frames, LCG noise, and a DC
-step (silence for the first eighth, then the peak held). Each at the
-defaults, at every patch, and with each macro alone at each stop (0 and
-127, and 64 for a bipolar macro); at 48 and 22.05 kHz, stereo and mono
-(`--quick`: 48 kHz stereo).
+-sample clicks of alternating sign every 97 frames, LCG noise, a DC step
+(silence for the first eighth, then the peak held), and squares on the low
+notes 41, 55, 82, 110 and 147 Hz (`sq41` ...), where a filter or a level
+that rings on a long half-cycle shows.
+
+**The settings**: the defaults, every patch, each macro alone at 0, 64 and
+127, and two kinds of combination. `all=127` is every macro at 127
+together. A macro whose label holds Level, Mix, Octave, Direct, Voice or
+Gain is level-like; `lv=127+m<i>=<v>` holds every level-like macro at 127
+and one other macro at each of its stops (0 and 127), the others where the
+defaults put them. A docstring's own worst setting is usually one of these.
+At 48 and 22.05 kHz, stereo and mono (`--quick`: 48 kHz stereo).
 
 **The bars**, each its own clause in a RED verdict:
 
@@ -42,7 +49,12 @@ import lifecycle
 
 CHECK = "ceiling"
 SECONDS = 2
-MATERIALS = ("square", "sine", "clicks", "noise", "dc")
+#: The low notes a square is played on besides 100 Hz: E1, A1, E2, A2, D3.
+LOW_NOTES = (41, 55, 82, 110, 147)
+MATERIALS = ("square", "sine", "clicks", "noise", "dc") + tuple(
+    "sq%d" % hz for hz in LOW_NOTES)
+#: A macro label holding one of these is level-like.
+LEVEL_WORDS = ("Level", "Mix", "Octave", "Direct", "Voice", "Gain")
 WRAP_JUMP = 32768
 
 _MAT = {}
@@ -69,6 +81,8 @@ def material(which, rate, channels, amp):
             values = kc.noise(frames, channels, amp)
         elif which == "dc":
             values = kc.dc(frames, channels, amp, start=frames // 8)
+        elif which.startswith("sq"):
+            values = kc.square(frames, channels, amp, rate // int(which[2:]))
         else:
             raise ValueError(which)
         _MAT.clear()
@@ -132,24 +146,50 @@ def judge(data, values, channels, rate, lat, which):
     return reds
 
 
-def configs(cls):
-    """(key, patch, knob) for the defaults, every patch and every stop."""
-    out = [("d", None, None)]
-    for patch in sorted(cls.PATCHES):
-        out.append(("p%d" % patch, patch, None))
-    for knob in kc.knob_positions(cls):
-        out.append(("m%d=%d" % knob, None, knob))
+def level_like(cls):
+    """The indexes of the macros whose label makes them level-like."""
+    out = []
+    for i in range(len(cls.MACRO_LABELS)):
+        label = cls.MACRO_LABELS[i]
+        for word in LEVEL_WORDS:
+            if word in label:
+                out.append(i)
+                break
     return out
 
 
-def measure(cls, rate, channels, which, patch, knob, options=None):
+def configs(cls):
+    """(key, patch, knobs) for the defaults, every patch, each macro at 0,
+    64 and 127, every macro at 127, and the level-like macros at 127 with
+    each other macro at each stop."""
+    out = [("d", None, None)]
+    for patch in sorted(cls.PATCHES):
+        out.append(("p%d" % patch, patch, None))
+    n = len(cls.MACRO_LABELS)
+    for i in range(n):
+        for v in (0, 64, 127):
+            out.append(("m%d=%d" % (i, v), None, [(i, v)]))
+    if n > 1:
+        out.append(("all=127", None, [(i, 127) for i in range(n)]))
+    levels = level_like(cls)
+    if levels:
+        for i in range(n):
+            if i in levels:
+                continue
+            for v in (0, 127):
+                knobs = [(j, 127) for j in levels] + [(i, v)]
+                out.append(("lv=127+m%d=%d" % (i, v), None, knobs))
+    return out
+
+
+def measure(cls, rate, channels, which, patch, knobs, options=None):
     amp = peak(cls)
     values = material(which, rate, channels, amp)
     feed = kc.feed(values, rate, channels)
     e = kc.build(cls, feed.port, rate, patch, options)
     try:
-        if knob is not None:
-            e.set_macro(knob[0], knob[1])
+        for index, value in knobs or ():
+            e.set_macro(index, value)
         data = kc.render(e, SECONDS * rate)
         reds = judge(data, values, channels, rate, e.latency_samples, which)
     finally:
@@ -170,13 +210,13 @@ def run(cls, emit=print, quick=False, rates=None, channels=None,
     for rate in rates:
         for ch in channels:
             for which in materials:
-                for key, patch, knob in configs(cls):
+                for key, patch, knobs in configs(cls):
                     if only is not None and key not in only:
                         continue
                     ckey = "%s/%d/%d/%s" % (which, rate, ch, key)
                     try:
                         verdict, digest = measure(cls, rate, ch, which,
-                                                  patch, knob, options)
+                                                  patch, knobs, options)
                     except Exception as exc:              # noqa: BLE001
                         verdict, digest = "RED(raised %s: %s)" % (
                             type(exc).__name__, exc), None

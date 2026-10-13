@@ -564,19 +564,17 @@ class MultiTapDelay(_component.Component):
         if not self._deferred:
             self._refresh()
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
-        """Apply patch `index` whole, then refresh once, so Time is never
+    def _apply_positions(self, positions, patch_index):
+        """Apply a patch (or a rack's restore) whole, then refresh once, so Time is never
         read against the outgoing patch's Sync and the graph re-plugs at
         most once."""
         self._deferred = True
         try:
-            _component.Component.program_change(
-                self, index, channel, note_id, sample_position)
+            _component.Component._apply_positions(self, positions,
+                                                  patch_index)
         finally:
             self._deferred = False
-        if type(self).PATCHES.get(index) is not None:
-            self._refresh()
+        self._refresh()
 
     def _refresh(self):
         rate = self._sample_rate

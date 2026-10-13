@@ -471,20 +471,19 @@ class ConvolutionReverb(_component.Component):
         # halving is a power of two, so it adds no rounding of its own.
         self._node.set(mix=self._value(MIX_I) * 0.5)
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
-        """Apply patch `index` whole, then synthesize once. In measured
+    def _apply_positions(self, positions, patch_index):
+        """Apply a patch (or a rack's restore) whole, then synthesize once. In measured
         mode only its Mix is audible; the synthesis positions are stored
         and inert. Inside the constructor the one synthesis is the
         constructor's own."""
         outer = self._deferred
         self._deferred = True
         try:
-            _component.Component.program_change(
-                self, index, channel, note_id, sample_position)
+            _component.Component._apply_positions(self, positions,
+                                                  patch_index)
         finally:
             self._deferred = outer
-        if not outer and type(self).PATCHES.get(index) is not None:
+        if not outer:
             self._refresh()
 
     def _macro_index(self, index):

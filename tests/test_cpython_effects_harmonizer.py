@@ -1292,6 +1292,42 @@ class TheSurface(TestCase):
                     self.assertEqual(list(got), fresh,
                                      (rate, channels, patch))
 
+    def test_a_rack_reset_renders_as_fresh(self):
+        """A Rack holding a Harmonizer built with options, its knobs moved
+        and a patch loaded, renders after `reset()` what a freshly built
+        rack does, fed the same material from that point, and reads the
+        built knobs back."""
+        Rack = rebuilt.module_class("Rack")
+        chain = ((Harmonizer, {"voice1": 3.0, "mix": 0.5,
+                               "window_ms": 80.0}),)
+        for rate in RATES:
+            for channels in CHANNELS:
+                values = gauss(16384, channels, 3000.0, 11, lead=0)
+                cut = 24 * BLOCK
+                rest = values[cut * channels:]
+                fresh = Rack.create(kc.feed(rest, rate, channels).port,
+                                    rate, chain=chain)
+                try:
+                    want = bytes(kc.render(fresh, 16384 - cut))
+                finally:
+                    fresh.deinit()
+                rack = Rack.create(kc.feed(values, rate, channels).port,
+                                   rate, chain=chain)
+                try:
+                    inner = rack.effects[0]
+                    built = [inner.macro(i) for i in range(10)]
+                    inner.program_change(3)
+                    inner.set_macro(VOICE[0], 100)
+                    inner.set_macro(MIX, 127)
+                    kc.render(rack, cut)
+                    rack.reset()
+                    got = bytes(kc.render(rack, 16384 - cut))
+                    self.assertEqual(
+                        [inner.macro(i) for i in range(10)], built)
+                finally:
+                    rack.deinit()
+                self.assertEqual(got, want, (rate, channels))
+
     def test_never_reads_the_tempo(self):
         calls = []
 
@@ -1456,8 +1492,8 @@ CLAIMS = (
      "TheSurface.test_reset_renders_as_fresh"),
     ("On CircuitPython's own pitch shifter a reset does not restart the "
      "splices.",
-     ("DECLARED:Harmonizer,E10-reset,P4",
-      "DECLARED:Harmonizer,E10-mix0,P4")),
+     ("DECLARED:Harmonizer,E10-reset,P4,circuitpython",
+      "DECLARED:Harmonizer,E10-mix0,P4,circuitpython")),
     ("The class never reads the host's tempo.",
      "TheSurface.test_never_reads_the_tempo"),
 )

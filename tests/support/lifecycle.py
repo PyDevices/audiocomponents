@@ -68,12 +68,31 @@ NO_TAIL_WAIT = 10 * 48000
 #: the macro labelled "Mix".
 MIX_INDEX = {
     "SlapbackDelay": 1,        # "Level": the slap's level; 0 is the dry
+    "Octaver": 1,              # "Octave 1": 0 is the wire at patch 0
 }
 
+#: The interpreters a DECLARED or SKIP row can name.
+IMPLS = ("cpython", "micropython", "circuitpython")
+#: The events that move a control (P5 judges only these).
+CONTROL_EVENTS = ("E4-", "E5-", "E6-", "E9-", "E11-")
+
 #: Where a class cannot satisfy a property by design, it says so HERE, one
-#: row per (class NAME, event name prefix, property): reason. A matching
-#: cell prints `decl` instead of RED and is counted as a declared exception.
-#: Nothing else skips a cell.
+#: row per (class NAME, event name prefix, property[, scope...]): reason. A
+#: matching cell prints `decl` instead of RED and is counted as a declared
+#: exception. Nothing else skips a cell.
+#:
+#: The event prefix names at least one whole event number and its dash
+#: ("E1-", "E10-reset", "E4-m2="): a bare "E" or "E1" is refused at import,
+#: since it would also match events its reason does not describe.
+#:
+#: A scope narrows a row; give each kind at most once, in either order:
+#:
+#: - a tuple of patches, the configurations the row covers (None for the
+#:   constructor defaults): ("Octaver", "E5-", "P1", (1, 2, 5));
+#: - a string naming the interpreters it holds on, `sys.implementation.name`,
+#:   comma-separated: ("PitchShifter", "E10-reset", "P4", "circuitpython").
+#:
+#: A row without a scope matches every patch on every interpreter.
 DECLARED = {
     ("Harmonizer", "E1-", "P4"):
         "reset() empties the three lines and starts every splice where a"
@@ -97,15 +116,26 @@ DECLARED = {
     ("Harmonizer", "E11-", "P4"):
         "moves that reach an interval, a Level's off step or Mix 0 move the"
         " splices, as E4 to E6",
-    ("Harmonizer", "E10-reset", "P4"):
+    ("Harmonizer", "E10-reset", "P4", "circuitpython"):
         "CircuitPython only: its own audiodelays.PitchShift keeps its read"
         " and write positions across reset_buffer (audiodsp#240 is in"
         " audiodsp's port only), so a reset before the first pull cannot"
         " put the splices back where the constructor left them; CPython"
         " and MicroPython are ok (ruled a CircuitPython-own difference)",
-    ("Harmonizer", "E10-mix0", "P4"):
+    ("Harmonizer", "E10-mix0", "P4", "circuitpython"):
         "CircuitPython only: as E10-reset, the return from Mix 0 empties the"
         " lines but CircuitPython's PitchShift keeps its positions",
+    ("Harmonizer", "E12-p", "P4", "circuitpython"):
+        "CircuitPython only: a patch moved before the first pull switches"
+        " voices on or off, which empties a shifter's line, and"
+        " CircuitPython's own audiodelays.PitchShift keeps its read and"
+        " write positions through that (audiodsp#240 is in audiodsp's port"
+        " only), so the splices land off an instance built at the patch;"
+        " CPython and MicroPython are ok (ruled a CircuitPython-own"
+        " difference)",
+    ("Harmonizer", "E12-p", "PF", "circuitpython"):
+        "CircuitPython only: as E12-p under P4, the first block carries the"
+        " splice CircuitPython's PitchShift keeps from the line it emptied",
     ("Harmonizer", "E4-", "P5"):
         "family limit, disclosed (audiocomponents#117): a control that jumps"
         " makes the output step",
@@ -121,9 +151,83 @@ DECLARED = {
     ("Harmonizer", "E11-", "P5"):
         "family limit, disclosed (audiocomponents#117): a control that jumps"
         " makes the output step",
-    ("AnalogDelay", "E", "P5"):
-        "a control that jumps steps the output (family, audiocomponents#117);"
-        " a Time move bends the pitch while the line walks, by design",
+    ("StereoWidener", "E4-m0=", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Width: the copy's level, or the route to"
+        " the wire at 0)",
+    ("StereoWidener", "E4-m2=", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Character swaps Haas and Mid/Side)",
+    ("StereoWidener", "E6-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (a patch change moves Width or Character)",
+    ("StereoWidener", "E11-2patch", "P4"):
+        "a Delay move glides by design (the card's H3): from patch 1 or 2,"
+        " Mid/Side and then patch 0 empty the line and land it at 14 ms, and"
+        " the way back walks the read head at 0.1875, 384 frames of delay in"
+        " 2048 at 48 kHz, past the copy's reach that bounds P4; it matches"
+        " once the head lands",
+    ("StereoWidener", "E11-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (Width, Character or a patch change)",
+    ("Octaver", "E1-", "P4"):
+        "a flip-flop divider keeps its count: a reset starts it in"
+        " pass-through polarity part-way through the material, so the"
+        " octave stays inverted against an instance that was never reset"
+        " (it matches a fresh one; the OC-2's flip-flops do the same)",
+    ("Octaver", "E4-", "P4"):
+        "a flip-flop divider keeps its count: a move that adds or drops a"
+        " crossing (Tracking, Tone 1, Sensitivity) or the clear on the way"
+        " back from the wire leaves the octave inverted for good",
+    ("Octaver", "E6-", "P4"):
+        "a flip-flop divider keeps its count: a patch change that moves"
+        " Tracking or Tone 1 adds or drops a crossing, and the octave stays"
+        " inverted",
+    ("Octaver", "E11-", "P4"):
+        "a flip-flop divider keeps its count: moves that add or drop a"
+        " crossing leave the octave inverted",
+    ("Octaver", "E5-", "P4"):
+        "a flip-flop divider keeps its count: the clear on the way back"
+        " from the wire (Octave 1 at 0) leaves the octave inverted for good",
+    ("Octaver", "E9-", "P4"):
+        "a flip-flop divider keeps its count: the clear on the way back"
+        " from the wire (Octave 1 at 0) leaves the octave inverted for good",
+    ("Octaver", "E4-m0=", "P1"):
+        "the event moves Direct off 1, so Octave 1 at 0 stops being the"
+        " wire and the output is not the source by design",
+    ("Octaver", "E4-m2=", "P1"):
+        "the event moves Octave 2 up, so Octave 1 at 0 stops being the"
+        " wire and the output is not the source by design",
+    ("Octaver", "E6-p1", "P1"):
+        "the event changes to patch 1, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E6-p2", "P1"):
+        "the event changes to patch 2, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E6-p5", "P1"):
+        "the event changes to patch 5, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E11-mix+patch", "P1"):
+        "the event ends on patch 5, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E11-3moves", "P1"):
+        "the event ends on patch 5, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
+    ("Octaver", "E5-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (the octave leaves and comes back)",
+    ("Octaver", "E9-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (the octave leaves and comes back)",
+    ("Octaver", "E4-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step",
+    ("Octaver", "E6-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step (a patch change moves the levels)",
+    ("Octaver", "E11-", "P5"):
+        "family limit, disclosed (audiocomponents#117): a control that jumps"
+        " makes the output step",
     ("AnalogDelay", "E2-", "P4"):
         "reset_buffer restarts the modulation triangle (the node's"
         " state_init), so a modulated patch then matches a fresh instance,"
@@ -200,9 +304,6 @@ DECLARED = {
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (a patch change)',
     ("DigitalDelay", 'E11-3moves', 'P5'):
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (the patch change; the Time moves glide)',
-    ("SlapbackDelay", "E", "P5"):
-        "a control that jumps steps the output (family, audiocomponents#117):"
-        " Level, Tone and patch moves have no ramp",
     ("SlapbackDelay", "E1-", "P4"):
         "a reset restarts the Wow wobble where a fresh instance's starts;"
         " the control never stopped, so its wobble is further along and"
@@ -211,10 +312,6 @@ DECLARED = {
         "reset_buffer restarts the Wow wobble where a fresh instance's"
         " starts; the control never stopped, so its wobble is further along"
         " and with Wow above 0 the two never line up again (ok at Wow 0)",
-    ("MultiTapDelay", "E", "P5"):
-        "family limit, disclosed (audiocomponents#117): a control that jumps"
-        " makes the output step (Time and Heads move every head to a new"
-        " grid, Mix, Tilt and a patch change jump a level)",
     ("MultiTapDelay", "E1-", "P4"):
         "reset() empties both lines where the control's hold older laps; they"
         " die to 1 LSB inside tail_samples, and a 1-LSB rounding difference"
@@ -289,7 +386,144 @@ DECLARED = {
         'family limit, disclosed (audiocomponents#117): a control that jumps makes the output step (Mix)',
 }
 
+#: A control that jumps steps the output (the family's ruled disclosure,
+#: audiocomponents#117): P5 at every event that moves a control.
+for _name, _why in (
+    ("AnalogDelay",
+     "a control that jumps steps the output (family, audiocomponents#117);"
+     " a Time move bends the pitch while the line walks, by design"),
+    ("SlapbackDelay",
+     "a control that jumps steps the output (family, audiocomponents#117):"
+     " Level, Tone and patch moves have no ramp"),
+    ("MultiTapDelay",
+     "family limit, disclosed (audiocomponents#117): a control that jumps"
+     " makes the output step (Time and Heads move every head to a new"
+     " grid, Mix, Tilt and a patch change jump a level)"),
+):
+    for _event in CONTROL_EVENTS:
+        DECLARED[(_name, _event, "P5")] = _why
+
+#: At patches 1, 2 and 5 Octave 1 at 0 is a level move, not the wire, so P1
+#: (Mix 0 is the source) does not apply there, on any event.
+for _event in ("E1-", "E2-", "E4-", "E5-", "E6-", "E8-", "E9-", "E10-",
+               "E11-", "E12-"):
+    DECLARED[("Octaver", _event, "P1", (1, 2, 5))] = (
+        "at patches 1, 2 and 5 Octave 2 is up or Direct is under 1, so"
+        " Octave 1 at 0 is a level move, not the wire, and the output is"
+        " not the source by design")
+
+#: Cells that are not run at all on one interpreter, one row per (class or
+#: adapter NAME, event name prefix, `sys.implementation.name`): reason. A
+#: skipped cell prints `na(skip: <reason>)` on every property and builds
+#: nothing. It is for a cell that cannot finish there, such as a node that
+#: never returns from a pull, so that the rest of the matrix still runs; a
+#: cell that finishes and is red belongs in DECLARED or KNOWN_RED instead.
+SKIP = {
+    ("NodeEcho", "E8-", "circuitpython"):
+        "upstream's Echo never returns from a pull on a looped source that"
+        " ends empty; audiodsp#242 fixed it on CPython and MicroPython",
+    ("NodePitchShift", "E8-", "circuitpython"):
+        "upstream's PitchShift never returns from a pull on a looped source"
+        " that ends empty; audiodsp#243 fixed it on CPython and MicroPython",
+    ("NodeGranularPitchShift", "E8-", "circuitpython"):
+        "upstream's GranularPitchShift never returns from a pull on a looped"
+        " source that ends empty; audiodsp#243 fixed it on CPython and"
+        " MicroPython",
+}
+
+#: PR (a reset or a return from Mix 0 renders as a fresh instance) is
+#: excused only here, never in DECLARED: a class NAME -> the free-running
+#: phase that keeps it from matching a fresh instance, named (an LFO, a
+#: wow table). A red PR cell of a class named here prints `decl`.
+FREE_PHASE = {}
+
+if sys.implementation.name == "circuitpython":
+    #: Harmonizer: CircuitPython's own audiodelays.PitchShift keeps its read
+    #: and write positions through reset_buffer (audiodsp#240 is in
+    #: audiodsp's port only), so after a reset or a return from Mix 0 the
+    #: splices sit where they stood, not where a fresh instance's do. Named
+    #: on CircuitPython alone: CPython and MicroPython keep PR live.
+    FREE_PHASE["Harmonizer"] = ("CircuitPython's own PitchShift splice, kept"
+                                " through reset_buffer")
+
 SOURCE_KINDS = ("256", "100", "512", "1000", "raw")
+
+#: Every property a cell can print.
+ALL_PROPS = ("P1", "P2", "P3", "P4", "P5", "PD", "PF", "PR")
+
+
+def _whole_event(prefix):
+    """True when `prefix` names at least one whole event number and its
+    dash: "E4-" and "E10-reset" do, "E" and "E1" do not."""
+    if len(prefix) < 3 or prefix[0] != "E":
+        return False
+    i = 1
+    while i < len(prefix) and "0" <= prefix[i] <= "9":
+        i += 1
+    return i > 1 and i < len(prefix) and prefix[i] == "-"
+
+
+def declared_scope(key):
+    """(patches or None, interpreters or None) of a DECLARED key."""
+    patches = impls = None
+    for scope in key[3:]:
+        if isinstance(scope, tuple):
+            patches = scope
+        else:
+            impls = tuple(scope.split(","))
+    return patches, impls
+
+
+def check_declared(table=None, free=None):
+    """Refuse a malformed DECLARED row with a ValueError that says which.
+    Run at import, and again by `run_class` for rows added since."""
+    table = DECLARED if table is None else table
+    free = FREE_PHASE if free is None else free
+    for key in table:
+        what = "lifecycle DECLARED row %r: " % (key,)
+        if not isinstance(key, tuple) or len(key) < 3:
+            raise ValueError(what + "a row is (NAME, event prefix, property"
+                             "[, scope...])")
+        name, prefix, prop = key[:3]
+        if not _whole_event(prefix):
+            raise ValueError(
+                what + "the event prefix %r is shorter than one whole event"
+                " name, so it would match events its reason does not"
+                " describe; name each event (\"E4-\", \"E10-reset\")"
+                % (prefix,))
+        if prop not in ALL_PROPS:
+            raise ValueError(what + "no property %r" % (prop,))
+        if prop == "PR":
+            raise ValueError(what + "PR is excused only by FREE_PHASE, "
+                             "which names the free-running phase")
+        kinds = []
+        for scope in key[3:]:
+            if isinstance(scope, tuple):
+                kinds.append("patches")
+                for patch in scope:
+                    if patch is not None and not isinstance(patch, int):
+                        raise ValueError(what + "a patch scope holds patch"
+                                         " numbers or None, not %r"
+                                         % (patch,))
+            elif isinstance(scope, str):
+                kinds.append("interpreters")
+                for impl in scope.split(","):
+                    if impl not in IMPLS:
+                        raise ValueError(what + "no interpreter %r (%s)"
+                                         % (impl, ", ".join(IMPLS)))
+            else:
+                raise ValueError(what + "a scope is a tuple of patches or"
+                                 " a string of interpreters, not %r"
+                                 % (scope,))
+        if len(kinds) != len(set(kinds)):
+            raise ValueError(what + "each kind of scope at most once")
+    for name, phase in free.items():
+        if not isinstance(phase, str) or not phase.strip():
+            raise ValueError("lifecycle FREE_PHASE[%r] must name the "
+                             "free-running phase" % (name,))
+
+
+check_declared()
 
 
 # --------------------------------------------------------------------------
@@ -525,6 +759,15 @@ def act(e, feed, ctx, actions):
             e.set_macro(a[1], a[2])
         elif op == "patch":
             e.program_change(a[1])
+        elif op == "mixto":
+            # Land exactly where a constructor given the same value lands,
+            # so the fresh instance E12 compares with stands at the same
+            # position, not one float step away.
+            e.set_macro(a[1], a[2])
+            want = fresh_position(type(e), a[1], a[2])
+            if e._macros[a[1]] != want:
+                e._macros[a[1]] = want
+                e._apply_macro(a[1], want)
         elif op == "restore":
             restore(e, ctx)
         elif op == "end":
@@ -538,8 +781,16 @@ class Event:
     `back` GAP pulls later (in the same gap when `first`)."""
 
     def __init__(self, name, away, back=None, kind="256", moves_mix=False,
-                 control_move=True, post0=False, first=False, gap=GAP):
+                 control_move=True, post0=False, first=False, gap=GAP,
+                 fresh=None, landing=False):
         self.name = name
+        #: E12: the constructor keywords of the fresh instance the cell is
+        #: judged against, in place of the uninterrupted control.
+        self.fresh = fresh
+        #: PR: True when the cell's last action lands the class on a state
+        #: a fresh instance can be built at ("reset": patch 0; "config": the
+        #: configuration the cell runs at).
+        self.landing = landing
         self.away = away
         self.back = back or []
         self.kind = kind
@@ -558,7 +809,7 @@ def events(cls, patch, quick=False):
     full = (not quick) or patch is None
     out = [
         Event("E1-reset@block", [("reset",)], kind="256",
-              control_move=False, post0=True),
+              control_move=False, post0=True, landing="reset"),
         Event("E1-reset@part", [("reset",)], kind="100",
               control_move=False, post0=True),
         Event("E2-reset_buffer", [("rb",)], control_move=False),
@@ -570,7 +821,7 @@ def events(cls, patch, quick=False):
                                  [("restore",)], moves_mix=(i == mix)))
     if mix is not None:
         out.append(Event("E5-mix0", [("macro", mix, 0)], [("restore",)],
-                         moves_mix=True, gap=6))
+                         moves_mix=True, gap=6, landing="config"))
     targets = range(npatch) if full else (0, npatch - 1)
     for q in targets:
         if q == patch:
@@ -584,35 +835,89 @@ def events(cls, patch, quick=False):
                              [("restore",)], kind=kind, moves_mix=True,
                              gap=6))
     out.append(Event("E10-reset", [("reset",)], control_move=False,
-                     post0=True, first=True))
+                     post0=True, first=True, landing="reset"))
     if full:
         out.append(Event("E10-macros",
                          [("macro", i, 127) for i in range(len(labels))],
                          [("restore",)], moves_mix=True, first=True))
     if mix is not None:
         out.append(Event("E10-mix0", [("macro", mix, 0)], [("restore",)],
-                         moves_mix=True, first=True))
+                         moves_mix=True, first=True, landing="config"))
     out.append(Event("E10-patch", [("patch", npatch - 1 if patch != npatch - 1
                                     else 0)], [("restore",)],
                      moves_mix=True, first=True))
-    if full:
+    if full and labels:
         out.append(Event("E11-2macro", [("macro", 0, 0), ("macro", 0, 127)],
                          [("restore",)], moves_mix=(mix == 0)))
         if mix is not None:
             out.append(Event("E11-mix+patch",
                              [("macro", mix, 0), ("patch", npatch - 1)],
                              [("restore",)], moves_mix=True))
+    if full:
         out.append(Event("E11-2patch", [("patch", npatch - 1), ("patch", 0)],
                          [("restore",)], moves_mix=True))
+    if full and labels:
         out.append(Event("E11-3moves",
                          [("macro", 0, 0), ("macro", 0, 127),
                           ("patch", npatch - 1)],
                          [("restore",)], moves_mix=True))
+    if patch is None:
+        # A move before the first pull that stays, against an instance
+        # built there: each patch, and Mix to 0, 64 and 127.
+        for q in sorted(cls.PATCHES):
+            out.append(Event("E12-p%d" % q, [("patch", q)], moves_mix=True,
+                             first=True, fresh={"patch": q}))
+        if mix is not None:
+            for v in (0, 64, 127):
+                out.append(Event("E12-mix%d" % v, [("mixto", mix, v)],
+                                 moves_mix=True, first=True,
+                                 fresh={"mix": v}))
     return out
 
 
 # --------------------------------------------------------------------------
 # Rendering
+
+
+def fresh_position(cls, index, midi):
+    """The 0..1 position a constructor lands macro `index` on when handed
+    the value MIDI `midi` stands for."""
+    span = cls._MACRO_RANGES[index]
+    value = _component.macro_value(span, _component.position_of_midi(
+        cls.MACRO_MODES.get(index, "UNIPOLAR"), midi))
+    return _component.macro_position(span, value)
+
+
+#: The constructor keyword of a class's wet/dry control, where it is not
+#: `mix`.
+MIX_KEYWORD = {
+    "SlapbackDelay": "level",
+}
+
+
+def build_fresh(cls, feed, rate, options, fresh):
+    """A fresh instance built at `fresh`: {"patch": q} is the constructor's
+    `patch=q`, {"mix": v} its Mix keyword at the value MIDI v stands for,
+    and {} the defaults. Raises TypeError when the constructor takes no
+    such keyword."""
+    keywords = dict(options)
+    if "patch" in fresh and fresh["patch"] is not None:
+        keywords["patch"] = fresh["patch"]
+    if "mix" in fresh:
+        index = mix_index(cls)
+        span = cls._MACRO_RANGES[index]
+        keywords[MIX_KEYWORD.get(cls.NAME, "mix")] = _component.macro_value(
+            span, _component.position_of_midi(
+                cls.MACRO_MODES.get(index, "UNIPOLAR"), fresh["mix"]))
+    e = cls(feed.port, sample_rate=rate, **keywords)
+    if "mix" in fresh:
+        index = mix_index(cls)
+        if e._macros[index] != fresh_position(cls, index, fresh["mix"]):
+            e.deinit()
+            raise TypeError("the constructor's %s did not land on Mix %d"
+                            % (MIX_KEYWORD.get(cls.NAME, "mix"),
+                               fresh["mix"]))
+    return e
 
 
 def _build(cls, feed, rate, patch, options, post0=False):
@@ -744,7 +1049,7 @@ def p1(cls, ev, rate, channels, patch, options):
         return "na"
     if ev.name.startswith("E4-m%d=" % mix) and not ev.name.endswith("=0"):
         return "na"
-    if ev.name.startswith("E10-mix"):
+    if _starts(ev.name, ("E10-mix", "E12-mix")):
         return "na"
     values = material_for("once", rate, channels)
     feed = Feed(values, rate, channels, ev.kind, loop=False)
@@ -818,10 +1123,21 @@ def _diagnose(out, expect, frame, fsize, hi):
     return ", not the source near there"
 
 
-def _decl(cls, ev, prop):
-    for (name, prefix, p), reason in DECLARED.items():
-        if name == cls.NAME and p == prop and ev.name.startswith(prefix):
-            return True
+def _decl(cls, ev, prop, patch=None, impl=None):
+    """True when a DECLARED row covers this cell: its class, property and
+    event prefix, and its scopes, if it has any, hold `patch` (None: the
+    defaults) and this interpreter."""
+    impl = impl or sys.implementation.name
+    for key in DECLARED:
+        name, prefix, p = key[:3]
+        if name != cls.NAME or p != prop or not ev.name.startswith(prefix):
+            continue
+        patches, impls = declared_scope(key)
+        if patches is not None and patch not in patches:
+            continue
+        if impls is not None and impl not in impls:
+            continue
+        return True
     return False
 
 
@@ -838,7 +1154,16 @@ def main_render(cls, ev, rate, channels, patch, options, controls):
     # The control is rendered in step with the instance, pull for pull,
     # and compared as it goes: nothing tail-long is kept.
     cfeed = Feed(values, rate, channels, ev.kind, loop=True)
-    c = _build(cls, cfeed, rate, patch, options, ev.post0)
+    c = None
+    if ev.fresh is not None:
+        # E12: judged against an instance built at the move's setting.
+        try:
+            c = build_fresh(cls, cfeed, rate, options, ev.fresh)
+        except TypeError as err:
+            res["P4"] = res["PF"] = "na(no fresh build: %s)" % (
+                str(err).replace("|", "/")[:60])
+    if c is None:
+        c = _build(cls, cfeed, rate, patch, options, ev.post0)
     try:
         out = bytearray()
         at = _schedule_run(e, feed, ctx, ev, out, fsize,
@@ -850,6 +1175,13 @@ def main_render(cls, ev, rate, channels, patch, options, controls):
                 # ended, and stays silent.
                 cfeed.point(cfeed.sil)
             _pull(c, cout)
+        if ev.fresh is not None and "PF" not in res:
+            # The first block: the move must already have landed in it.
+            n = BLOCK * fsize
+            d = _first_diff(out, cout, 0, min(n, len(out), len(cout)))
+            res["PF"] = "ok" if d < 0 else (
+                "RED(first block differs from a fresh instance's at"
+                " frame %d)" % (d // fsize))
         last = at[-1] if at else 0
         tail = _tail(e)
         lat = e.latency_samples
@@ -1138,6 +1470,138 @@ def e3(cls, rate, channels, patch, options):
     return res
 
 
+#: PR compares this many frames from the landing on.
+PR_FRAMES = 16 * BLOCK
+
+
+def _land_pull(ev):
+    """The pull the cell's last action is taken before."""
+    if ev.first:
+        return 0
+    return K0 + ev.gap if ev.back else K0
+
+
+def _drive(e, feed, ctx, ev, upto, land):
+    """Pull up to pull `upto`, taking `ev`'s actions before the pulls they
+    are due at; with `land` the actions due before pull `upto` are taken
+    too (and that pull is not)."""
+    k0 = 0 if ev.first else K0
+    kb = k0 if ev.first else k0 + ev.gap
+    out = bytearray()
+    for k in range(upto + 1):
+        if k == upto and not land:
+            return
+        if k == k0:
+            act(e, feed, ctx, ev.away)
+        if k == kb and ev.back:
+            act(e, feed, ctx, ev.back)
+        if k == upto:
+            return
+        _pull(e, out)
+
+
+def _locate(material, block, fsize):
+    """The frame `block` starts at in `material`, or -1."""
+    i = material.find(block)
+    while i >= 0 and i % fsize:
+        i = material.find(block, i + 1)
+    return -1 if i < 0 else i // fsize
+
+
+def _diverge(a, b, frames, fsize):
+    """The first frame where `a` and `b` render differently, pulled in
+    step for `frames`, or -1."""
+    abuf = bytearray()
+    bbuf = bytearray()
+    base = 0
+    total = frames * fsize
+    while base < total:
+        if not abuf:
+            abuf = bytearray(_pull_some(a, fsize))
+        if not bbuf:
+            bbuf = bytearray(_pull_some(b, fsize))
+        n = min(len(abuf), len(bbuf), total - base)
+        if abuf[:n] != bbuf[:n]:
+            return (base + _first_diff(abuf, bbuf, 0, n)) // fsize
+        abuf = abuf[n:]
+        bbuf = bbuf[n:]
+        base += n
+    return -1
+
+
+def _routes_around(cls, ev, rate, channels, patch, options):
+    """True when the event's move away routes the output around the graph
+    (`_route_around`), so the way back is a rejoin."""
+    feed = Feed(material_for("once", rate, channels), rate, channels, "256",
+                loop=False)
+    e = _build(cls, feed, rate, patch, options)
+    try:
+        act(e, feed, Ctx(e, patch), ev.away)
+        return bool(getattr(e, "_stranded", False))
+    finally:
+        e.deinit()
+
+
+def pr(cls, ev, rate, channels, patch, options):
+    """PR: from the move that lands the class (a reset, a return from Mix
+    0) on, it renders byte for byte what a fresh instance built at the
+    landing state renders, fed the same source from the same frame."""
+    fsize = 2 * channels
+    values = material_for("once", rate, channels)
+    upto = _land_pull(ev)
+    if ev.landing == "config" and not _routes_around(cls, ev, rate, channels,
+                                                     patch, options):
+        # Mix 0 that keeps the graph running is not a rejoin: the class
+        # comes back to its own state, not a fresh one's.
+        return "na(Mix 0 keeps the graph running)"
+    landing = 0 if ev.landing == "reset" else patch
+    fresh = {} if landing is None else {"patch": landing}
+    start = 0
+    if not ev.first:
+        # Where the source stands at the landing: a dry run to it, then
+        # the source's next block, found in the material.
+        feed = Feed(values, rate, channels, "256", loop=False)
+        e = _build(cls, feed, rate, patch, options)
+        try:
+            _drive(e, feed, Ctx(e, patch), ev, upto, False)
+            block = bytes(audiocore.get_buffer(feed.mat)[1])
+        finally:
+            e.deinit()
+        start = _locate(bytes(values), block, fsize)
+        if start < 0:
+            return "na(source position not found)"
+    feed = Feed(values, rate, channels, "256", loop=False)
+    e = _build(cls, feed, rate, patch, options)
+    f = None
+    try:
+        _drive(e, feed, Ctx(e, patch), ev, upto, True)
+        ffeed = Feed(values[start * channels:], rate, channels, "256",
+                     loop=False)
+        try:
+            f = build_fresh(cls, ffeed, rate, options, fresh)
+        except TypeError as err:
+            return "na(no fresh build: %s)" % (
+                str(err).replace("|", "/")[:60])
+        d = _diverge(e, f, PR_FRAMES, fsize)
+    finally:
+        e.deinit()
+        if f is not None:
+            f.deinit()
+    if d < 0:
+        return "ok"
+    return "RED(differs from a fresh instance at +%d)" % d
+
+
+def _skip(cls, ev, impl=None):
+    """SKIP's reason for this cell on `impl` (this interpreter by
+    default), or None."""
+    impl = impl or sys.implementation.name
+    for (name, prefix, where), reason in SKIP.items():
+        if name == cls.NAME and where == impl and ev.name.startswith(prefix):
+            return reason
+    return None
+
+
 PROPS = ("P1", "P2", "P3", "P4", "P5")
 
 
@@ -1147,8 +1611,13 @@ def run_cell(cls, ev, rate, channels, patch, options, controls):
     res.update(main_render(cls, ev, rate, channels, patch, options,
                            controls))
     res["P5"] = p5(cls, ev, rate, channels, patch, options, controls)
-    for prop in PROPS:
-        if res[prop].startswith("RED") and _decl(cls, ev, prop):
+    if ev.landing:
+        res["PR"] = pr(cls, ev, rate, channels, patch, options)
+        if res["PR"].startswith("RED") and cls.NAME in FREE_PHASE:
+            res["PR"] = "decl"
+    for prop in PROPS + ("PF",):
+        if prop in res and res[prop].startswith("RED") and \
+                _decl(cls, ev, prop, patch):
             res[prop] = "decl"
     return res
 
@@ -1167,6 +1636,7 @@ def run_class(cls, options=None, rates=RATES, channels=CHANNELS,
     line last. Returns (cells, red, declared)."""
     options = options or {}
     name = name or cls.NAME
+    check_declared()
     if patches is None:
         patches = [None] + sorted(cls.PATCHES)
     cells = red = decl = 0
@@ -1185,13 +1655,18 @@ def run_class(cls, options=None, rates=RATES, channels=CHANNELS,
                         if only is not None and ev.name.split("-")[0] \
                                 not in only:
                             continue
-                        res = run_cell(cls, ev, rate, ch, patch, options,
-                                       controls)
+                        reason = _skip(cls, ev)
+                        if reason is not None:
+                            res = dict((prop, "na(skip: %s)" % reason)
+                                       for prop in PROPS)
+                        else:
+                            res = run_cell(cls, ev, rate, ch, patch, options,
+                                           controls)
                         line = fmt(name, ev.name, rate, ch, patch, res)
                         emit(line)
                         cells += 1
                         red += 1 if "RED" in line else 0
-                        decl += line.count(":decl")
+                        decl += 1 if ":decl" in line else 0
                 finally:
                     for ctl in controls.values():
                         ctl.close()
@@ -1352,8 +1827,65 @@ class BusyDeinit(Plain):
         return 0
 
 
+class _FirstPull:
+    """A Python-level output (CPython only) that calls `hook` once, after
+    the first block it hands on."""
+
+    def __init__(self, inner, hook):
+        self.inner = inner
+        self.hook = hook
+        self.sample_rate = inner.sample_rate
+        self.channel_count = inner.channel_count
+        self.bits_per_sample = 16
+        self.samples_signed = True
+
+    def _reset_buffer(self, single_channel_output=False, audio_channel=0):
+        audiocore.reset_buffer(self.inner)
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        got = audiocore.get_buffer(self.inner)
+        hook = self.hook
+        if hook is not None:
+            self.hook = None
+            hook()
+        return got
+
+
+class LatePatch(Plain):
+    """PF: a move made before the first pull lands one block late, so the
+    first block plays at the level the class was built at (CPython only:
+    its output is a Python-level node)."""
+    NAME = "LifecycleLatePatch"
+
+    def _build(self, mix=1.0, gain=1.0, patch=None):
+        self._pulled = False
+        Plain._build(self, mix, gain, patch)
+        self._output = _FirstPull(self._mixer, self._first)
+
+    def _first(self):
+        self._pulled = True
+        Plain._apply_macro(self, 0, self._macros[0])
+
+    def _apply_macro(self, index, position):
+        if self._constructing or self._pulled:
+            Plain._apply_macro(self, index, position)
+
+
+class ResetLeak(Routed):
+    """PR: reset() keeps the echo line, so the 5 ms it held plays after the
+    reset where a fresh instance plays silence; inside tail_samples, so P4
+    reads it as ok."""
+    NAME = "LifecycleResetLeak"
+
+    def reset(self):
+        self._check_live()
+        self._clear_nodes(keep=(self._echo,))
+        self._stranded = False
+        self.program_change(0)
+
+
 PLANTS = {"plain": Plain, "routed": Routed, "droponreset": DropOnReset,
-          "holddc": HoldDC,
+          "holddc": HoldDC, "latepatch": LatePatch, "resetleak": ResetLeak,
           "stalemix": StaleMix, "latemove": LateMove,
           "hardswitch": HardSwitch, "busydeinit": BusyDeinit,
           "implplant": ImplPlant}
@@ -1385,8 +1917,12 @@ def _cli(argv):
             if cls is None:
                 print("MISSING|%s" % name)
                 continue
-        run_class(cls, only=only, quick=quick, name=name if name in PLANTS
-                  else None)
+        # The kit's options table: a class whose defaults are trivial (the
+        # generic Rack's empty chain) runs on something real.
+        import kit_options
+        run_class(cls, options=kit_options.lifecycle_options_for(cls.NAME),
+                  only=only,
+                  quick=quick, name=name if name in PLANTS else None)
     print("DONE")
 
 

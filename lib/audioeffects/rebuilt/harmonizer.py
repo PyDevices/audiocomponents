@@ -397,29 +397,33 @@ class Harmonizer(_component.Component):
         if self._ready:
             self._refresh()
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
-        """Apply patch `index` whole, then set the graph once."""
+    def _apply_positions(self, positions, patch_index):
+        """Apply a patch (or a rack's restore) whole, then set the graph
+        once."""
         ready = self._ready
         self._ready = False
         try:
-            _component.Component.program_change(
-                self, index, channel, note_id, sample_position)
+            _component.Component._apply_positions(self, positions,
+                                                  patch_index)
         finally:
             self._ready = ready
-        if ready and type(self).PATCHES.get(index) is not None:
+        if ready:
             self._refresh()
 
     def reset(self):
         """Empty the three lines, return their splices to a new node's
-        start, and restore patch 0."""
+        start, and restore patch 0 (or, under a rack, what the rack built
+        this with)."""
         self._check_live()
         self._clear_nodes()
         self._stranded = False
         # The voices are armed again, as the constructor arms them, the
         # next time the output reaches the mixer.
         self._armed = False
-        self.program_change(0)
+        if self._reset_to is None:
+            self.program_change(0)
+        else:
+            self._restore(self._reset_to)
 
     def _refresh(self):
         for k in range(3):

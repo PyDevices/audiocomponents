@@ -321,5 +321,29 @@
 # plants that #211 made inert; and the lifecycle matrix's E8-dry event,
 # retired because a native source that runs dry has ended.
 #
+# 2026-10-12: eb2d20d -> v0.6.6rc1 (30cbbf6), a pre-release of the next
+# patch, for the effects program's Phase 6; TestPyPI only, so CI's
+# `git+...@v0.6.6rc1` install is the one that reaches it. The pyproject
+# floors stay at the last final release: the pin is not the floor. What
+# moved beneath the components, by `git log eb2d20d..v0.6.6rc1 -- src`:
+# audiodelays.Echo and MultiTapDelay start a line shortened under the write
+# head at its top, so a Time brought back after a shorter one plays nothing
+# from before, and the CPython Echo clears past a shorter line as the native
+# one does (audiodsp#241); Echo lets go of a looped source that comes back
+# empty instead of hanging the pull (#242); PitchShift and
+# GranularPitchShift start again from a new node's state on a reset (#240)
+# and return from a pull when the source has nothing to give (#243), and
+# PitchShift gains upstream's freeze (#222); Convolver's load() keeps the
+# audio in flight and crossfades the block being played, as synthesize()
+# already did (#237); a Mixer's host reset keeps every voice where it was
+# (#229); a set() on FeedbackDelay, Tank, Dynamics, Waveshaper, Ladder and
+# Bank is staged off the lock and lands whole (#233); an audiopump swap
+# that outlasts the ring fades out and back in (#234); Tank's filters and
+# modulation brought back from 0 start from what is playing (#227); a mono
+# SplitterTap's buffer is the tap's own on CPython too (#228); FeedbackDelay
+# takes its wow and pitch coast rate from what played, and the CPython Echo
+# holds its line still at mix 0 (#226); audiovorbis (#238, #239); and an
+# fmod-free angle reduction for the RP2040 (#225).
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-eb2d20daa7f3be2965f8f641b3fdf2d9a55aca9c eb2d20daa7f3be2965f8f641b3fdf2d9a55aca9c
+v0.6.6rc1 30cbbf619751ab6ff7c40d99336907af0a081fa6
