@@ -10,6 +10,32 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`AirSpace` (rebuilt, Phase 6; not yet adopted):** a tape echo sent
+  into a chamber, with the dry untouched beside it, in
+  `audioeffects/rebuilt/airspace.py`. Eleven macros (Time, Feedback, Glide,
+  Drive, Loop Top, Loop Bass, Top Cut, Low Cut, Decay, Damping, Mix) and
+  seven patches replace the old rack's Space, Echo and Tone; the loop
+  darkens each repeat, Top Cut darkens the send once, Feedback stretches the
+  chamber's tail, and a Time move bends the repeats' pitch. The chamber is
+  the rebuilt `Reverb`, and `reset()` renders exactly as a fresh instance.
+  The old `rack.AirSpace` stays what the library serves until adoption.
+- **`Harmonizer` (rebuilt, Phase 6):** three pitch shifters at fixed
+  intervals under the dry, after three Eventide H910s played from one
+  keyboard. Each voice is its own `audiodelays.PitchShift` on its own
+  splitter tap and lands on the nearest step the shifter can play; a
+  voice at its Level's bottom step is off and its shifter is not pulled.
+  Ten controls (Pitch, Voice 1 to 3, Level 1 to 3, Detune, Spread, Mix),
+  seven patches including a lean two-voice one, and a `window_ms` option.
+  It drops the old class's `intervals=` and `level=` options.
+- **`PitchShifter` (rebuilt, Phase 6):** a fixed-interval splice shifter
+  in the manner of the first harmonizers, on a Pitch, Fine, Mix, Delay and
+  Feedback surface. Pitch moves in whole semitones an octave either way and
+  Fine detunes by up to 50 cents; the dry passes untouched up to Mix 1;
+  Delay holds the shifted voice back up to 112.5 ms; and with Feedback up
+  every repeat is shifted again, so a fifth climbs a fifth at a time.
+  `window_ms` (15 to 60, 30 by default) sets the splice window at
+  construction. The old `semitones=` option is gone: Pitch and Fine
+  replace it.
 - **`StereoWidener` (rebuilt, Phase 6):** two characters on a Width, Delay
   and Character surface. Haas delays the right channel 1 to 40 ms behind the
   left, crossfading the right toward its late copy up to Width 1 and turning
