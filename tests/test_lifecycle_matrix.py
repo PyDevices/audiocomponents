@@ -68,6 +68,19 @@ KNOWN_P6 = {
         "Time to 0 and back: CircuitPython's own audiodelays plays one "
         "stray sample when the line grows back, which audiodsp#241 fixed "
         "on CPython and MicroPython only"),
+    # audiodsp v0.6.6's splice lands each splice in phase (audiodsp#245),
+    # and its reset starts the splices where a new node does (#240);
+    # CircuitPython's own PitchShift does neither, so nearly every cell
+    # that splices live audio renders other bytes there, with the same
+    # verdicts but PR. Counted at v0.6.6rc4.
+    "Harmonizer": (
+        644, "7c09e916", None, None,
+        "CircuitPython's own PitchShift: upstream's splice and reset "
+        "(audiodsp#245, #240)"),
+    "PitchShifter": (
+        600, "6aea4833", None, None,
+        "CircuitPython's own PitchShift: upstream's splice and reset "
+        "(audiodsp#245, #240)"),
 }
 
 #: LIFECYCLE_FULL=1 runs the full matrix (every event at every patch);

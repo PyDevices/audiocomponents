@@ -1295,8 +1295,7 @@ class Component:
             self._constructing = False
         # Stranded, so the refresh's `_rejoin` arms the graph (and clears
         # it again, which changes nothing). A patch 0 at Mix 0 routes
-        # around instead and leaves it stranded, so the Mix move off 0
-        # arms it then.
+        # around instead; the Mix move off 0 arms it then.
         self._stranded = True
         self._lazy_pending = []
         # Lazily only where the primed silence can be handed up before the
@@ -1310,6 +1309,11 @@ class Component:
             rearm()
         finally:
             self._arming_lazily = False
+        # Settings that route around the graph leave it as `_build` leaves
+        # a graph it routes around: cleared and not played since, so not
+        # stranded. A later Mix move then arms it as a fresh instance's
+        # does, rather than clearing it again through `_rejoin`.
+        self._stranded = False
         pending = self._lazy_pending
         self._lazy_pending = []
         if pending:
