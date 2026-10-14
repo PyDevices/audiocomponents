@@ -607,6 +607,12 @@ class Exciter(_component.Component):
         self._ready = True
         self._prime_if_wet()
 
+    def reset(self):
+        """Clear every node and restore patch 0, then arm the graph as
+        `_build` does, so a reset is a fresh instance (no block primed
+        through the chain before it was cleared plays after it)."""
+        self._reset_rearmed(self._prime_if_wet, ("_primed",))
+
     def _value(self, index):
         return _component.macro_value(self._MACRO_RANGES[index],
                                       self._macros[index])

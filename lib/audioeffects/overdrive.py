@@ -784,6 +784,12 @@ class Overdrive(_component.Component):
             if getattr(self, "_ready", False):
                 self._settle_dc()
 
+    def reset(self):
+        """Clear every node and restore patch 0, then arm the graph as
+        `_build` does, so a reset is a fresh instance (no block primed
+        through the chain before it was cleared plays after it)."""
+        self._reset_rearmed(self._prime_if_wet, ("_primed",))
+
     def _prime_if_wet(self):
         mix = self._value(3)
         level = self._value(2)

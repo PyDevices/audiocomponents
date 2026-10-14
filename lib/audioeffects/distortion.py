@@ -590,6 +590,8 @@ class Distortion(_component.Component):
         self._wet_latency = CLICK_DELAY_SAMPLES[self._oversample]
         self._latency = self._wet_latency
         self._scoop = False
+        #: Set by `_rebuild` outside the constructor, read by `reset()`.
+        self._rebuilt = False
         self._rat_curve = array("h", _CURVE_RAT_DIODE)
         self._ds1_curve = array("h", _CURVE_DS1_DIODE)
         self._ds1_asym = array("h", _CURVE_DS1_ASYM)
@@ -824,6 +826,7 @@ class Distortion(_component.Component):
         # method. Now the new graph is standing and the port is pointed at it
         # before a single old node is told to let go, so nothing is ever
         # pulled after it is released.
+        self._rebuilt = True
         old_nodes = self._nodes
         self._nodes = []
         self._resets = []
@@ -858,6 +861,26 @@ class Distortion(_component.Component):
             release = getattr(node, "deinit", None)
             if release is not None:
                 release()
+
+    def reset(self):
+        """Clear every node and restore patch 0, then arm the graph as
+        `_build` does, so a reset is a fresh instance (no block primed
+        through the chain before it was cleared plays after it)."""
+        self._rebuilt = False
+        self._reset_rearmed(self._rearm, (), building=True)
+
+    def _rearm(self):
+        """After a reset's walk. A patch 0 that crossed the Character
+        boundary built a new graph while the patch went in, unconnected as
+        `_build` leaves it, so it is connected now, at patch 0's levels, as
+        `_build` connects it. Otherwise the graph is re-armed from its
+        bypass branch."""
+        if self._rebuilt:
+            self._stranded = False
+            if self.macro(MIX) > 0.0:
+                self._connect()
+            return
+        self._push()
 
     def _push(self):
         if not self._macros:

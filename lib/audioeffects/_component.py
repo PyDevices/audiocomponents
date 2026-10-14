@@ -447,6 +447,17 @@ def macro_of(span, value, mode="UNIPOLAR"):
     return int(round(midi_of_position(mode, macro_position(span, value))))
 
 
+def release(node):
+    """Let go of a node no graph points at any more (None is fine): its
+    `release_all()` where it has one, then its `deinit()`."""
+    if node is None:
+        return
+    for name in ("release_all", "deinit"):
+        call = getattr(node, name, None)
+        if call is not None:
+            call()
+
+
 # --------------------------------------------------------------------------
 # Level gates
 
@@ -1172,6 +1183,55 @@ class Component:
             # `_build` routes around.
             self._restore(self._reset_to)
             self._stranded = False
+
+    def _reset_rearmed(self, rearm, primed=(), building=False):
+        """`reset()` for a class whose mixer voices each hold a block they
+        primed ahead, and which arms them once, the way `_build` does.
+
+        The base walk clears the nodes behind a voice but not the block the
+        voice already took through them, so the first block after a reset
+        was the old chain's and the next one a cleared chain's: a step of a
+        few to a few hundred LSB where a fresh instance has none. Here every
+        voice of every mixer this class owns is stopped, the `primed` flags
+        are dropped, patch 0 goes in with the graph unarmed (`_ready` off,
+        so no macro primes a voice part-way through the patch), and then
+        `rearm()` arms the graph as coming back from a bypass does: the
+        class's own refresh, called with the graph marked stranded so its
+        `_rejoin` branch runs. With `building`, the patch goes in with
+        `_constructing` set, for a class that builds part of its graph again
+        on a macro and must not connect it part-way through the patch.
+        Saturation keeps its own `reset()`.
+        """
+        self._check_live()
+        self._clear_nodes()
+        for node in self._nodes:
+            voices = getattr(node, "voice", None)
+            if voices is None:
+                continue
+            for voice in voices:
+                voice.stop()
+        for name in primed:
+            setattr(self, name, False)
+        ready = getattr(self, "_ready", None)
+        self._ready = False
+        self._stranded = False
+        # `building`: the patch goes in as a constructor's `patch=` does,
+        # for a class that builds part of its graph again on a macro.
+        self._constructing = bool(building)
+        try:
+            if self._reset_to is None:
+                self.program_change(0)
+            else:
+                self._restore(self._reset_to)
+        finally:
+            self._ready = ready
+            self._constructing = False
+        # Stranded, so the refresh's `_rejoin` arms the graph (and clears
+        # it again, which changes nothing). A patch 0 at Mix 0 routes
+        # around instead and leaves it stranded, so the Mix move off 0
+        # arms it then.
+        self._stranded = True
+        rearm()
 
     def deinit(self):
         """Release every node this class built, tail first. Idempotent, and
