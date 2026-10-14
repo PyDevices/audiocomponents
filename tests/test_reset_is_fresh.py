@@ -80,6 +80,9 @@ class AResetIsAFreshInstance(unittest.TestCase):
     def test_ringmod(self):
         self.check("RingMod")
 
+    def test_phaser(self):
+        self.check("Phaser")
+
     # Stale state: a flat section's settings, a mixer re-played at the
     # outgoing patch's levels.
     def test_parametriceq(self):

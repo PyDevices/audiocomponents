@@ -425,6 +425,17 @@ class Phaser(_component.Component):
         return _component.macro_value(self._MACRO_RANGES[index],
                                       self._macros[index])
 
+    def reset(self):
+        """Clear every node, restore patch 0 and start the sweep again.
+
+        The sweep is a `synthio.LFO` the walk does not reach, so it ran on
+        through a reset from wherever it was; patch 0 now builds a fresh
+        one, which starts where a fresh instance's does, as Vibrato's does
+        on its clear."""
+        self._check_live()
+        self._lfo = None
+        _component.Component.reset(self)
+
     def _apply_macro(self, index, position):
         if index == 5:
             stages = _choice(STAGES_CHOICES, position)
