@@ -13,7 +13,6 @@ import os
 import sys
 import unittest
 
-import audioeffects
 from tools.validate_metadata import validate_component
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
@@ -25,12 +24,18 @@ from effects_measure import SAMPLE_RATE, peak, source  # noqa: E402
 # how `ShimmerHall` and `AirSpace` keep it; these tests do the same.
 from audioeffects import reverb  # noqa: E402
 
+# `rack.Rack`, `rack.ShimmerHall` and `rack.AirSpace` are the old classes,
+# which `audioeffects.Rack` and the other two served until the Phase 6
+# rebuilds' adoption on 2026-10-13. These tests are about the old kind, so
+# they name it from its module.
+from audioeffects import rack as rack_module  # noqa: E402
+
 
 class RackTest(unittest.TestCase):
     """The rack kind: one component whose graph is several effects.
 
     Ported from micropython-vst3's soundtrack racks; the mechanism is
-    `audioeffects.Rack` and the two shared presets are `ShimmerHall` and
+    `rack.Rack` and the two shared presets are `ShimmerHall` and
     `AirSpace`. A rack has exactly the effect shape, so everything the
     catalogue-wide tests assert already covers these three classes - what
     is here is the rack-specific behavior.
@@ -40,8 +45,8 @@ class RackTest(unittest.TestCase):
              (reverb.Reverb, {"preset": "plate", "mix": 0.25}))
 
     def test_a_chain_spec_builds_children_in_order_and_renders(self):
-        rack = audioeffects.create("Rack", source(), SAMPLE_RATE,
-                                   chain=self.CHAIN)
+        rack = rack_module.Rack.create(source(), SAMPLE_RATE,
+                                       chain=self.CHAIN)
         self.assertEqual([type(child).__name__ for child in rack.effects],
                          ["Overdrive", "Reverb"])
         # Each child is fed the previous one's output, and the rack's
@@ -51,13 +56,13 @@ class RackTest(unittest.TestCase):
         self.assertGreater(peak(rack.output, 8), 0.001)
 
     def test_a_bare_name_is_a_valid_chain_entry(self):
-        rack = audioeffects.Rack(source(), chain=("Saturation", "Reverb"))
+        rack = rack_module.Rack(source(), chain=("Saturation", "Reverb"))
         self.assertEqual(len(rack.effects), 2)
         self.assertGreater(peak(rack.output, 8), 0.001)
 
     def test_an_empty_rack_is_a_wire(self):
         src = source()
-        rack = audioeffects.create("Rack", src, SAMPLE_RATE)
+        rack = rack_module.Rack.create(src, SAMPLE_RATE)
         self.assertIs(rack.output, src)
         self.assertEqual(rack.latency_samples, 0)
         self.assertEqual(rack.tail_samples, 0)
@@ -65,20 +70,20 @@ class RackTest(unittest.TestCase):
 
     def test_a_malformed_chain_entry_is_refused(self):
         with self.assertRaises(ValueError):
-            audioeffects.Rack(source(), chain=(42,))
+            rack_module.Rack(source(), chain=(42,))
         with self.assertRaises(ImportError):
-            audioeffects.Rack(source(), chain=("NoSuchEffect",))
+            rack_module.Rack(source(), chain=("NoSuchEffect",))
 
     def test_racks_nest(self):
         # "Racks may contain and be used by other racks" - both directions.
-        inner = ("Rack", {"chain": (("Saturation", {"drive_db": 6.0}),)})
-        outer = audioeffects.Rack(source(), chain=(
+        inner = (rack_module.Rack, {"chain": (("Saturation", {"drive_db": 6.0}),)})
+        outer = rack_module.Rack(source(), chain=(
             inner, (reverb.Reverb, {"preset": "room", "mix": 0.2})))
         self.assertEqual(type(outer.effects[0]).__name__, "Rack")
         self.assertGreater(peak(outer.output, 8), 0.001)
 
     def test_latency_and_tail_are_the_whole_graph(self):
-        rack = audioeffects.Rack(source(), chain=self.CHAIN)
+        rack = rack_module.Rack(source(), chain=self.CHAIN)
         self.assertEqual(rack.latency_samples,
                          sum(child.latency_samples
                              for child in rack.effects))
@@ -89,7 +94,7 @@ class RackTest(unittest.TestCase):
 
     def test_deinit_releases_the_children_but_not_the_source(self):
         src = source()
-        rack = audioeffects.Rack(src, chain=self.CHAIN)
+        rack = rack_module.Rack(src, chain=self.CHAIN)
         children = list(rack.effects)
         rack.deinit()
         rack.deinit()
@@ -102,15 +107,14 @@ class RackTest(unittest.TestCase):
         self.assertGreater(peak(src, 2), 0.001)
 
     def test_rack_metadata_is_valid_component_metadata(self):
-        from audioeffects import rack as module
-        for cls in (audioeffects.Rack, audioeffects.ShimmerHall,
-                    audioeffects.AirSpace):
+        for cls in (rack_module.Rack, rack_module.ShimmerHall,
+                    rack_module.AirSpace):
             validate_component(cls, kind="effect",
                                expected_name=cls.__name__,
-                               vendor_owner=module)
+                               vendor_owner=rack_module)
 
     def test_a_preset_rack_macro_moves_its_child(self):
-        rack = audioeffects.ShimmerHall(source())
+        rack = rack_module.ShimmerHall(source())
         self.assertEqual(rack.patch_index, 0)
         rack.set_macro(0, 0)
         self.assertEqual(rack.octave.mixer.voice[1].level, 0.0)
@@ -124,7 +128,7 @@ class RackTest(unittest.TestCase):
 
     def test_the_preset_racks_chain_audio_through_their_children(self):
         for name in ("ShimmerHall", "AirSpace"):
-            rack = getattr(audioeffects, name)(source())
+            rack = getattr(rack_module, name)(source())
             self.assertGreaterEqual(len(rack.effects), 3)
             self.assertGreater(peak(rack.output, 8), 0.001, name)
 

@@ -430,10 +430,7 @@ class PerMacroPatch(AnalogDelay):
 
     NAME = 'AnalogDelay'
 
-    def program_change(self, index, channel=0, note_id=-1,
-                       sample_position=0):
-        _component.Component.program_change(self, index, channel, note_id,
-                                            sample_position)
+    _apply_positions = _component.Component._apply_positions
 
 
 # --------------------------------------------------------------------------

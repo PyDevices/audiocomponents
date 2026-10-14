@@ -866,10 +866,12 @@ class TheAdoptionGate(unittest.TestCase):
         # `DigitalDelay` and `SlapbackDelay`, were adopted on 2026-09-28 on
         # rulings of that day, and are served from here until they come home.
         # Phase 5's last six followed on 2026-09-29, on the board session
-        # at audiodsp v0.6.3.
+        # at audiodsp v0.6.3. Phase 6's seven were adopted on 2026-10-13.
         self.assertEqual(rebuilt.ADOPTED, (
             "DigitalDelay", "SlapbackDelay", "TapeDelay", "AnalogDelay",
-            "PingPongDelay", "MultiTapDelay", "Reverb", "ConvolutionReverb"))
+            "PingPongDelay", "MultiTapDelay", "Reverb", "ConvolutionReverb",
+            "StereoWidener", "Rack", "Octaver", "PitchShifter",
+            "Harmonizer", "AirSpace", "ShimmerHall"))
         self.assertEqual(rebuilt.adopted(), rebuilt.ADOPTED)
         for name in rebuilt.ADOPTED:
             self.assertIs(rebuilt.load(name), rebuilt.module_class(name))

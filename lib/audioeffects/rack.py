@@ -21,11 +21,12 @@ patches the way any patchable effect here does. Racks may contain and be
 used by other racks: a `chain` entry may itself be a `("Rack", {...})`.
 
 Those two racks name the classes they were ported against, `delay.py`'s
-`TapeDelay` and `reverb.py`'s `Reverb`, directly rather than by NAME: the
-rebuilt classes the package serves under those names since their adoption
-on 2026-09-29 take different settings (no `preset`, no `wow`) and sound
-different, and moving a rack onto them is a re-voicing of the rack, not a
-part of the adoption.
+`TapeDelay`, `pitch.py`'s `Octaver` and `reverb.py`'s `Reverb`, directly
+rather than by NAME: the rebuilt classes the package serves under those
+names (since 2026-09-29 for the delay and reverb, 2026-10-13 for the
+octaver) take different settings (no `preset`, no `wow`, no `down` or `up`)
+and sound different, and moving a rack onto them is a re-voicing of the
+rack, not a part of the adoption.
 """
 
 VENDOR = "PyDevices"
@@ -35,6 +36,7 @@ from ._component import macro_position as _macro_position
 from ._component import midi_of_position as _midi_of_position
 from ._component import port_target as _port_target
 from .delay import TapeDelay as _OldTapeDelay
+from .pitch import Octaver as _OldOctaver
 from .reverb import Reverb as _OldReverb
 
 
@@ -192,7 +194,7 @@ class ShimmerHall(Rack):
         # macro moves the branch's mixer level, and a branch that was
         # skipped for starting at zero could never come back.
         Rack.__init__(self, source, chain=(
-            ("Octaver", {"down": 0.0, "up": 1.0}),
+            (_OldOctaver, {"down": 0.0, "up": 1.0}),
             (_OldTapeDelay, {"time_ms": 420.0, "feedback": 0.5,
                              "wow": 0.3, "drive": 0.2}),
             (_OldReverb, {"preset": "hall"}),
