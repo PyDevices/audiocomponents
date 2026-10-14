@@ -1,16 +1,16 @@
 # The effects kit
 
-Seven mechanical checks that run on one effect class with no model in the
+Eight mechanical checks that run on one effect class with no model in the
 loop: every verdict is arithmetic on rendered bytes, or on the source. They
 sit beside the [lifecycle matrix](LIFECYCLE.md) and catch the kinds of
 defect that kept turning up class after class: a tail that outlasts
 `tail_samples`, a planted fault a knob can reach, a docstring promise no
 test holds, a control that does not read back what it was set to, an input
 level that wraps, a citation that no longer resolves, a refused call that
-leaves a trace, and a class that only behaves where `audiocore.get_buffer`
-exists.
+leaves a trace, a class that only behaves where `audiocore.get_buffer`
+exists, and a reset that does not come back as a fresh instance.
 
-To run all seven on one class, from the repo root:
+To run all eight on one class, from the repo root:
 
     python tests/support/kit.py DigitalDelay
     python tests/support/kit.py DigitalDelay --only tail,ceiling --quick
@@ -28,8 +28,8 @@ It prints one line per cell, `name|check|key|V:verdict[|h:digest]`, a
 why), `RED(...)` with what was measured, or `decl`. `h:` is a CRC-32 of the
 cell's render, so two interpreters' lines agree only when their bytes do.
 
-The four render checks (tail, plants, args, ceiling) are numpy-free and
-print the same lines on CPython, MicroPython and CircuitPython. The claims,
+The five render checks (tail, plants, args, ceiling, fresh) are numpy-free
+and print the same lines on CPython, MicroPython and CircuitPython. The claims,
 paperwork and nogb checks read source, unittest and git, or patch modules,
 and run on CPython only; a native run prints `SKIP` for them.
 
@@ -198,6 +198,33 @@ run that has it.
 CPython only. A module that imports `get_buffer` inside a function is not
 reached.
 
+**fresh** (`kit_fresh.py`). A reset comes back as a fresh instance, from
+every patch. The contract says a reset restores patch 0 and that a fresh
+instance and one given patch 0 are the same, so:
+
+- `boot/<rate>/<ch>`: a fresh instance and one handed `program_change(0)`
+  before its first pull render the same bytes and read back the same
+  macros (exactly, not within a tolerance), `patch_index`, `tail_samples`
+  and `latency_samples`. A constructor default off patch 0's 0-127 grid
+  is red here.
+- `reset@<k>/<rate>/<ch>/<d|pK>`: built at the defaults or a patch, played
+  `k` pulls (0, before the first pull, and 8), then `reset()`. From that
+  pull on it renders byte for byte what a fresh instance handed patch 0
+  before its first pull renders (so a default off the grid is red once, in
+  `boot`, and hides no reset fault), fed the source from the frame the reset left it at (found off a
+  dry run), and reads back what the fresh one reads. No tail is forgiven:
+  a block a voice still held, a line the reset kept, a filter's memory or
+  a delay left from the patch before is red.
+- `reset@8+m<i>=<v>/...`: the same, then the same move on both four pulls
+  later, each macro to each stop, and the readback after it. A state the
+  reset left that only a move wakes (a line length, a lane) is red here.
+
+Each cell compares 2 s from the reset and stops at the first difference.
+Grid: 48 and 22.05 kHz, stereo and mono, the defaults and every patch;
+`--quick` runs 48 kHz and the move cells from the defaults and the last
+patch only. A class whose reset cannot meet a cell by design declares it
+in `DECLARED`.
+
 ## Known gaps
 
 - **Several levels.** Every render check plays its material at one level
@@ -245,7 +272,10 @@ a fixture card whose surface table differs (paperwork), `FlushOnly` and `DoubleR
 on `get_buffer` to flush a primed voice, the second drops a block on a
 second reset in a row without it; `FlushKit`, which primes a voice of its own
 and plays it again where it cannot flush, is the control; `MidPatchReset`
-does it at a middle patch only, against `FlushKit3`), and `Silent`, which
+does it at a middle patch only, against `FlushKit3`), `OffGrid`,
+`PatchLeak` and `MoveLeak` (fresh: a Gain default a hair under patch 0's
+127; a reset from patch 1 only that keeps the repeat line; a first move
+after a reset that lands 1 % off, against `FreshKit`), and `Silent`, which
 does nothing. Its native half
 holds the render checks to the same lines on all three interpreters, and
 shows that agreement can fail with `ImplKit`, whose level differs off

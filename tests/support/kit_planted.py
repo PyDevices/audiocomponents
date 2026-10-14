@@ -547,10 +547,67 @@ class MidPatchReset(FlushKit3):
             lifecycle.Routed._arm(self)
 
 
+# -- reset equals fresh -------------------------------------------------------
+
+
+class FreshKit(EchoTail):
+    """The control for the fresh check: EchoTail with a second patch; a
+    reset clears the repeat line and lands on patch 0, which is where the
+    constructor's defaults sit."""
+    NAME = "FreshKit"
+
+
+class OffGrid(FreshKit):
+    """Fresh: the constructor's Gain default is a hair under patch 0's 127,
+    so a fresh instance is not patch 0 and a reset does not land where a
+    fresh instance starts."""
+    NAME = "OffGrid"
+
+    def _build(self, mix=1.0, gain=0.999, patch=None):
+        FreshKit._build(self, mix, gain, patch)
+
+
+class PatchLeak(FreshKit):
+    """Fresh: from patch 1 only, reset() keeps the repeat line, so the
+    20 ms it held plays after the reset; from the defaults and patch 0 the
+    reset is clean."""
+    NAME = "PatchLeak"
+
+    def reset(self):
+        if self._patch_index != 1:
+            FreshKit.reset(self)
+            return
+        self._check_live()
+        self._clear_nodes(keep=(self._delay,))
+        self._stranded = False
+        self.program_change(0)
+
+
+class MoveLeak(FreshKit):
+    """Fresh: the reset itself is clean, but the first macro move after it
+    lands a hair off where the same move on a fresh instance lands, as a
+    state the reset left behind and only a move wakes would."""
+    NAME = "MoveLeak"
+    _after_reset = False
+
+    def reset(self):
+        FreshKit.reset(self)
+        self._after_reset = True
+
+    def _apply_macro(self, index, position):
+        level = self._level()
+        if self._after_reset and not self._constructing \
+                and self._patch_index is None:
+            level = level * 0.99
+            self._after_reset = False
+        self._shaper.set(post_gain=level)
+
+
 PLANTS = {}
 for _cls in (KitPlain, Silent, WrapKit, WrapKitQuiet, ClipKit, DeadStop,
              CondKit, MidWrap, ComboWrap, AllWrap, LowWrap, ImplKit, EchoTail, ShortTail, EventTail, NoneSilent, NoneDC,
              ReadbackOff, StopRaises, NanLevel, PatchStale, CtorNan,
              ClearsFirst, ClearsMacro, FlushKit, FlushOnly, DoubleReset,
-             FlushKit3, MidPatchReset):
+             FlushKit3, MidPatchReset, FreshKit, OffGrid, PatchLeak,
+             MoveLeak):
     PLANTS[_cls.NAME] = _cls
