@@ -691,31 +691,22 @@ class MultiTapDelay(_component.Component):
         the source, and a second or third `_resync` before the next pull
         leaves exactly what the first did.
 
-        **Every wiring is quiet** where `audiocore.get_buffer` exists
-        (`_wire`): the Splitter reads `_hush` while the voices prime, and
-        one pull of the Mixer hands the primed zeros out, so the graph is
-        left as it is between two pulls mid-stream and nothing is taken
-        from the source. Up to re-audit fix round 1 a wiring outside
-        `reset()` primed the dry voice with the source's first block, and
-        a `_resync` before the first pull then dropped that block's heads
-        (tap 1 held it, not yet heard) and, in mono on a native build,
-        refilled the tap's own buffer the voice was pointing into, so the
-        dry's first 256 samples played as zeros. Inside `reset()` the
-        wiring is quiet on every build, because a reset must take nothing
-        from the source.
+        **Every wiring is quiet** (`_wire`): the Splitter reads `_hush`
+        while the voices prime, and one pull of the Mixer hands the primed
+        zeros out, so the graph is left as it is between two pulls
+        mid-stream and nothing is taken from the source. Up to re-audit fix
+        round 1 a wiring outside `reset()` primed the dry voice with the
+        source's first block, and a `_resync` before the first pull then
+        dropped that block's heads (tap 1 held it, not yet heard) and, in
+        mono on a native build, refilled the tap's own buffer the voice was
+        pointing into, so the dry's first 256 samples played as zeros.
 
-        Where `get_buffer` is left out, a wiring outside `reset()` primes
-        the source's first block into the dry voice, and nothing here can
-        pull it out. The first pull plays it on time. A Mix-0 route before
-        that pull hands out the adapter, which has already given that block
-        away, so the run plays the source one block early without it; the
-        voice keeps the block, and plays it at the return (or the reset)
-        with tap 1's copy going into the lines, since `_resync` cannot swap
-        it, so its heads follow it. A wiring inside `reset()` opens the
-        output with the one silent block it primed, and a reset or a return
-        from Mix 0 lets tap 1's pending block into the lines, its heads
-        late by any Mix-0 run between. The module docstring says all of
-        this in a host's terms.
+        Where `audiocore.get_buffer` is left out (CircuitPython's default
+        board builds), every pull here goes through `_pull`: a scratch
+        mixer voice primes one block through a width-1 MidSide standing on
+        the node, which moves the node exactly as `get_buffer` would. So
+        the wiring is quiet and `_resync` swaps tap 1's block on every
+        build, and a board renders what a desktop does, byte for byte.
         """
         if not self._ready:
             return
@@ -764,11 +755,9 @@ class MultiTapDelay(_component.Component):
         return self._through
 
     def _quiet_wiring(self):
-        """Whether `_wire` primes the voices from `_hush`: wherever
-        `audiocore.get_buffer` can hand the primed zeros out, and always
-        inside `reset()`, which must take nothing from the source."""
-        return self._resetting or \
-            getattr(audiocore, "get_buffer", None) is not None
+        """Whether `_wire` primes the voices from `_hush`: always, since
+        `_pull` hands the primed zeros out on every build."""
+        return True
 
     def _wire(self, quiet=False):
         """Play every node once, the first time Mix is above 0 (`_route`).
@@ -782,7 +771,6 @@ class MultiTapDelay(_component.Component):
         block would point into a mono `SplitterTap`'s own buffer, which
         `_resync` refills, and tap 1 would hold audio whose dry had not
         played yet, which `_resync` drops."""
-        pull = getattr(audiocore, "get_buffer", None)
         self._fd.play(self._tap1)
         self._feed.play(self._hush)
         self._tapnode.play(self._feed, loop=False)
@@ -796,8 +784,7 @@ class MultiTapDelay(_component.Component):
         self._plugged = self._lean
         if quiet:
             self._in.play(self._adapter)
-            if pull is not None:
-                pull(self._mixer)
+            self._pull(self._mixer)
 
     def _resync(self):
         """Empty both lines and swap the block tap 1 holds for the tap node
@@ -815,16 +802,14 @@ class MultiTapDelay(_component.Component):
         holding a block, so right after construction this is that state
         too: the dry tap's pull refills no buffer a voice still points
         into, and what tap 1 drops was never audio."""
-        pull = getattr(audiocore, "get_buffer", None)
         self._fd.clear()
         audiocore.reset_buffer(self._tapnode)
-        if pull is not None:
-            self._in.play(self._hush)
-            try:
-                pull(self._tap1)
-                pull(self._dry)
-            finally:
-                self._in.play(self._adapter)
+        self._in.play(self._hush)
+        try:
+            self._pull(self._tap1)
+            self._pull(self._dry)
+        finally:
+            self._in.play(self._adapter)
         self._feed.play(self._target(self._lean))
         self._plugged = self._lean
 

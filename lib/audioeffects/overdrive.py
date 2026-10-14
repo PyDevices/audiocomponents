@@ -56,10 +56,9 @@ branch carries one more int16 node, which is worth **3.4 dB of alias
 floor at the constructor default at 48 kHz** (-81.291 -> -77.939, 1.8 dB
 at 44.1, 0.3 dB at 22.05), and a live macro move that changes the offset
 re-charges the pole, which costs **one block of input** (5.3 ms at
-48 kHz). On a build with no `audiocore.get_buffer` - CircuitPython's
-default board build compiles it out - the charge is skipped and the
-class's first block after a change is a step of up to 4461 LSB that
-decays to zero in 62 ms.
+48 kHz). A CircuitPython board build, which has no
+`audiocore.get_buffer`, charges it too, and renders byte for byte what a
+desktop does.
 
 **Latency: zero samples** at every macro setting. The dry tap is a copy.
 `oversample` puts group delay on the *clip branch only*: 3.3 samples at
@@ -693,12 +692,11 @@ class Overdrive(_component.Component):
 
         It costs nothing at Symmetry 0, where there is no offset to
         settle. On a build with no `audiocore.get_buffer` - CircuitPython's
-        default board build compiles it out - this does nothing and the
-        thump is back; the class docstring says so.
+        default board build compiles it out - the pole is pulled the same
+        way from a scratch mixer voice (`_pull`), which can't read the
+        blocks back, so it runs all `DC_SETTLE_BLOCKS` and the pole lands
+        where the early stop leaves it, to the byte.
         """
-        pull = getattr(audiocore, "get_buffer", None)
-        if pull is None:
-            return False
         if not (self._clip_bias or self._dc_charged):
             return False
         self._dc_charged = bool(self._clip_bias)
@@ -709,7 +707,12 @@ class Overdrive(_component.Component):
                 # oversampler, which costs a few samples of ramp at the
                 # top of each block and nothing at all to the charge.
                 self._shaper.play(self._quiet)
-                _state, data = pull(self._dc)
+                got = self._pull(self._dc)
+                if got is False:
+                    break
+                if got is None:
+                    continue
+                _state, data = got
                 if not data:
                     break
                 # The first block back is the one the pole was holding

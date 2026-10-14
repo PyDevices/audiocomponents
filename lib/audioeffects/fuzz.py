@@ -875,17 +875,23 @@ class Fuzz(_component.Component):
         place.
 
         On a build with no `audiocore.get_buffer` - CircuitPython's default
-        board build compiles it out - this does nothing and the bang is
-        back.
+        board build compiles it out - the pole is pulled the same way from a
+        scratch mixer voice (`_pull`), which can't read the blocks back, so
+        it runs all `CHARGE_BLOCKS` and the pole lands where the early stop
+        leaves it, to the byte.
         """
-        pull = getattr(audiocore, "get_buffer", None)
-        if pull is None or self._charge_tap is None:
+        if self._charge_tap is None:
             return False
         self._charged_bias = self._value(3)
         for index in range(CHARGE_BLOCKS):
             for node, _source in self._charge_wiring:
                 node.play(self._quiet)
-            _state, data = pull(self._charge_tap)
+            got = self._pull(self._charge_tap)
+            if got is False:
+                break
+            if got is None:
+                continue
+            _state, data = got
             if not data:
                 break
             # The first block back is what the pole was holding before the

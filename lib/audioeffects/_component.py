@@ -1318,6 +1318,44 @@ class Component:
             self._lazy_zero = silence
         return silence
 
+    def _pull(self, node):
+        """Pull one block of `node` through the graph from the control
+        side, and return what `audiocore.get_buffer` returns, or None where
+        the build has none (CircuitPython's default board builds compile it
+        out). There a scratch one-voice Mixer primes from a width-1
+        `audioroute.MidSide` standing on `node`: the voice's `play()` resets
+        the MidSide, which forwards nothing upstream, and takes one block,
+        so `node` is pulled once (for blocks of 256 frames or more) and its
+        state moves exactly as a `get_buffer` would move it. The block
+        itself can't be read back, and the voice is stopped again, so a
+        later pull of the scratch Mixer reaches nothing. Returns False
+        where neither way exists (no `audioroute`)."""
+        pull = getattr(audiocore, "get_buffer", None)
+        if pull is not None:
+            return pull(node)
+        if PORT is None:
+            return False
+        scratch = getattr(self, "_puller", None)
+        if scratch is not None and not _named(scratch[0], self._nodes):
+            scratch = None
+        if scratch is not None and node is scratch[0]:
+            return None
+        if scratch is None:
+            import audiomixer
+            import audioroute
+            mixer = self._own(audiomixer.Mixer(
+                voice_count=1, **self._pcm(512 * self._channel_count)),
+                reset=False)
+            shim = self._own(audioroute.MidSide(
+                width=1.0, sample_rate=self._sample_rate,
+                channel_count=self._channel_count), reset=False)
+            scratch = self._puller = (mixer, shim)
+        mixer, shim = scratch
+        shim.play(node)
+        mixer.voice[0].play(shim)
+        mixer.voice[0].stop()
+        return None
+
     def _reset_rearmed(self, rearm, primed=(), building=False):
         """`reset()` for a class whose mixer voices each hold a block they
         primed ahead, and which arms them once, the way `_build` does.
@@ -1340,9 +1378,9 @@ class Component:
         silence instead; each mixer is pulled once, which hands those up;
         and then the voices' stand-ins are pointed at their real sources,
         so the next pull fetches as a fresh build's next pull does. Where
-        `audiocore.get_buffer` is compiled out nothing could hand the
-        silence up, so the voices prime from their sources, as a build's
-        do. Saturation keeps its own `reset()`.
+        `audiocore.get_buffer` is compiled out, `_pull` hands the silence
+        up, so a board resets as a desktop does. Saturation keeps its own
+        `reset()`.
         """
         self._check_live()
         self._clear_nodes()
@@ -1373,13 +1411,11 @@ class Component:
         # around instead; the Mix move off 0 arms it then.
         self._stranded = True
         self._lazy_pending = []
-        # Lazily only where the primed silence can be handed up before the
-        # next pull. Where `audiocore.get_buffer` is compiled out it would
-        # play first, 256 frames of silence after every reset, so there the
-        # voices prime from their sources as a fresh build's do: the block
-        # they take is the one a fresh instance would play first.
+        # Lazily wherever the primed silence can be handed up before the
+        # next pull: by `get_buffer`, or where it is compiled out by `_pull`
+        # (a snapshot of the nodes, since `_pull` may own its scratch mixer).
         pull = getattr(audiocore, "get_buffer", None)
-        self._arming_lazily = pull is not None
+        self._arming_lazily = PORT is not None
         try:
             rearm()
         finally:
@@ -1394,9 +1430,13 @@ class Component:
         if pending:
             # The graph as it stands now: a patch that builds part of it
             # again has new mixers.
-            for node in self._nodes:
-                if getattr(node, "voice", None) is not None:
+            for node in list(self._nodes):
+                if getattr(node, "voice", None) is None:
+                    continue
+                if pull is not None:
                     _drain(pull, node)
+                else:
+                    self._pull(node)
             for _voice, port, source in pending:
                 port.play(source)
 
