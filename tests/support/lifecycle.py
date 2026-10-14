@@ -470,6 +470,9 @@ DECLARED = {
     # it is the control that never was reset that the output does not meet
     # again (the classes' TheReset... tests).
     ("Vibrato", "E1-", "P4"): "reset() restarts the LFO as a fresh instance starts it, so the sweep never meets the uninterrupted control's phase again",
+    # Tremolo the same way (ruled 2026-10-14): red at every E1 cell, both
+    # placements, every rate, channel count and patch; PR stays live.
+    ("Tremolo", "E1-", "P4"): "reset() restarts the LFO as a fresh instance starts it, so the throb never meets the uninterrupted control's phase again",
     ("Fuzz", "E1-", "P4"): "the 10.5 and 12.4 Hz coupling sections keep a few LSB of the material before a reset in float state for seconds, and the 36 dB stage raises it to a few hundred LSB (held under 1024)",
     ("Reverb", "E11-", "P4"): "moves that reach the loop leave the tank a few LSB off a fresh one for good",
     # The ruling of 2026-09-28, disclosed in the docstring's "Limits
