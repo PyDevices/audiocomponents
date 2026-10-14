@@ -1602,9 +1602,11 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
         self.assertEqual(before, 0)
         self.assertGreater(after, 1000)
         # A wrong cure: cleared but not re-armed, so the voices keep the
-        # block they queued at construction.
+        # block they queued at construction. Since `LAZY_BUILD` that block
+        # is silence, so the plant primes the source's as the old build did.
         self.assertGreater(stale.first_blip(
-            stale.planted(self.CLS, stale.ClearOnlyRejoin), self.MIX), 1000)
+            stale.planted(self.CLS, stale.EagerClearOnlyRejoin), self.MIX),
+            1000)
 
 
 if __name__ == "__main__":
@@ -1618,6 +1620,12 @@ class TheScoopBuildsWithoutGetBuffer(unittest.TestCase):
     scoop tables answer zero with zero, so the output capacitor has
     nothing to settle."""
 
+    @unittest.skipUnless(
+        hasattr(rebuilt._component.Component, "_pull"),
+        "LAZY_BUILD arms on silence only where get_buffer, or `_pull`"
+        " without it, hands the silence up: with neither, the build primes"
+        " the source's first block and a patch set before the first pull"
+        " meets it")
     def test_every_patch_builds_and_resets(self):
         import kit_nogb
         scenarios = dict(kit_nogb.SCENARIOS)

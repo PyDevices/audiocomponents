@@ -3296,8 +3296,10 @@ def mute_dry(effect, *, voices=None):
         mixer_voices = getattr(node, "voice", None)
         if not isinstance(mixer_voices, (list, tuple)):
             continue
+        # Through a `Port`: a voice armed lazily (`Component._play_voice`)
+        # plays a stand-in pointed at the tap, not the tap itself.
         bare = [index for index, voice in enumerate(mixer_voices)
-                if any(getattr(voice, "_sample", None) is tap
+                if any(port_target(getattr(voice, "_sample", None)) is tap
                        for tap in taps)]
         # A mixer where EVERY voice plays a bare tap is not a blend, it is a
         # selector: a fan-in choosing which copy of the input goes on to be

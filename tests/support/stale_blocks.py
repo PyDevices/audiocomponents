@@ -217,6 +217,22 @@ class ClearOnlyRejoin:
         return False
 
 
+class EagerStaleRejoin(StaleRejoin):
+    """Planted: the old behaviour from before `LAZY_BUILD` too. The voices
+    prime the source's first block at construction, and a bypass left
+    before the first pull is taken back untouched, so that block plays."""
+
+    LAZY_BUILD = False
+
+
+class EagerClearOnlyRejoin(ClearOnlyRejoin):
+    """Planted: the wrong cure on a build that primes the source's first
+    block at construction. A `LAZY_BUILD` class primes silence there, so a
+    clear-only cure has nothing left to replay and only shows on this."""
+
+    LAZY_BUILD = False
+
+
 def planted(cls, fault):
     """`cls` with `fault` mixed in, under the same provider name."""
     return type(cls.__name__ + fault.__name__, (fault, cls),

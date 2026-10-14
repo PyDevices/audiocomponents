@@ -163,6 +163,11 @@ _LAZY_NOGB = {
     "Saturation": ("E10-mix0/", "E10-reset/", "E6-p8/"),
     "Exciter": ("E1-", "E10-mix0/", "E10-reset/"),
 }
+# `Component._pull` hands the silence up without get_buffer too, and then
+# there is nothing to declare.
+from audioeffects import _component as _lazy_component   # noqa: E402
+if hasattr(_lazy_component.Component, "_pull"):
+    _LAZY_NOGB = {}
 for _name in _LAZY_NOGB:
     for _prefix in _LAZY_NOGB[_name] + ("bytes-",):
         DECLARED.setdefault((_name, "nogb", _prefix), (

@@ -1477,9 +1477,11 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
         self.assertEqual(before, 0)
         self.assertGreater(after, 1000)
         # A wrong cure: cleared but not re-armed, so the voices keep the
-        # block they queued at construction.
+        # block they queued at construction. Since `LAZY_BUILD` that block
+        # is silence, so the plant primes the source's as the old build did.
         self.assertGreater(stale.first_blip(
-            stale.planted(self.CLS, stale.ClearOnlyRejoin), self.MIX), 1000)
+            stale.planted(self.CLS, stale.EagerClearOnlyRejoin), self.MIX),
+            1000)
 
 
 if __name__ == "__main__":
