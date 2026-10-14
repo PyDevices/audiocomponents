@@ -103,7 +103,7 @@ def nothing(effect):
 
 
 SYNCED = ("DigitalDelay", "TapeDelay", "AnalogDelay", "PingPongDelay",
-          "MultiTapDelay", "Phaser", "AutoPan", "Tremolo")
+          "MultiTapDelay", "Phaser", "AutoPan", "Tremolo", "Flanger")
 
 
 class TheSyncedClasses(unittest.TestCase):
