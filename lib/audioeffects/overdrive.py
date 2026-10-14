@@ -803,9 +803,9 @@ class Overdrive(_component.Component):
             self._rearm(level)
             return
         if not self._primed:
-            self._circuit.voice[0].play(self._dry)
-            self._circuit.voice[1].play(self._dc)
-            self._out.voice[0].play(self._lp)
+            self._play_voice(self._circuit.voice[0], self._dry)
+            self._play_voice(self._circuit.voice[1], self._dc)
+            self._play_voice(self._out.voice[0], self._lp)
             self._primed = True
         self._output = self._out
         self._circuit.voice[0].level = 1.0
@@ -845,9 +845,9 @@ class Overdrive(_component.Component):
             self._silence)
         _component.open_level_gates(self._out, [self._out.voice[0]],
                                     self._silence)
-        self._circuit.voice[0].play(self._dry)
-        self._circuit.voice[1].play(self._dc)
-        self._out.voice[0].play(self._lp)
+        self._play_voice(self._circuit.voice[0], self._dry)
+        self._play_voice(self._circuit.voice[1], self._dc)
+        self._play_voice(self._out.voice[0], self._lp)
         self._primed = True
         if self._clip_bias:
             self._shaper.set(post_gain=self._post_gain)

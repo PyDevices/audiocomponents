@@ -400,9 +400,9 @@ class DynamicEQ(_component.Component):
                 and self._macros[self._LISTEN] < 0.5:
             self._primed = False
             return
-        self._mixer.play(self._taps[0], voice=0, loop=True)
-        self._mixer.play(self._notch, voice=1, loop=True)
-        self._mixer.play(self._cell, voice=2, loop=True)
+        self._play_voice(self._mixer.voice[0], self._taps[0], loop=True)
+        self._play_voice(self._mixer.voice[1], self._notch, loop=True)
+        self._play_voice(self._mixer.voice[2], self._cell, loop=True)
         self._primed = True
 
     def _refresh_output(self):

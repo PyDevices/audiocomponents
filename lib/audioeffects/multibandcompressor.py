@@ -472,10 +472,10 @@ class MultibandCompressor(_component.Component):
         if self._mix <= 0.0:
             self._primed = False
             return
-        self._mixer.play(self._taps[0], voice=0, loop=True)
+        self._play_voice(self._mixer.voice[0], self._taps[0], loop=True)
         for band in range(self._bands):
-            self._mixer.play(self._detectors[band], voice=band + 1,
-                             loop=True)
+            self._play_voice(self._mixer.voice[band + 1],
+                             self._detectors[band], loop=True)
         self._primed = True
 
     def reset(self):

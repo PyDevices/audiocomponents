@@ -355,8 +355,9 @@ class Compressor(_component.Component):
         """
         _component.open_level_gates(self._mixer, [self._wet, self._dry],
                                     self._silence)
-        self._wet.play(self._fast if self._lean() else self._slow)
-        self._dry.play(self._dry_tap)
+        self._play_voice(self._wet,
+                         self._fast if self._lean() else self._slow)
+        self._play_voice(self._dry, self._dry_tap)
         self._primed = True
 
     def _refresh_output(self):

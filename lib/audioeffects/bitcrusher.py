@@ -1565,6 +1565,16 @@ class Bitcrusher(_component.Component):
         self._output_gain = _component.db_to_gain(output_db)
         self._prime_if_wet()
 
+    def reset(self):
+        """Clear every node and restore patch 0, then arm the graph as
+        `_build` does, lazily, so a reset is a fresh instance and takes
+        nothing from the source."""
+        # The hold is played again as `_build` plays it, so its accumulator
+        # starts where a fresh one's does.
+        self._hold_source = None
+        self._reset_rearmed(self._prime_if_wet,
+                            ("_dither_primed", "_blend_primed"))
+
     def _prime_if_wet(self):
         mix = getattr(self, "_mix", 1.0)
         if mix <= 0.0:
@@ -1611,9 +1621,11 @@ class Bitcrusher(_component.Component):
                 # and an open gate plays the dither out of silence until it
                 # closes. Closed is what silence would have left it.
                 self._clear_nodes(only=(self._dither_gate,))
-                self._dither_mix.voice[0].play(hold)
-                self._dither_mix.voice[1].play(self._dither_a, loop=True)
-                self._dither_mix.voice[2].play(self._dither_b, loop=True)
+                self._play_voice(self._dither_mix.voice[0], hold)
+                self._play_voice(self._dither_mix.voice[1], self._dither_a,
+                                 loop=True)
+                self._play_voice(self._dither_mix.voice[2], self._dither_b,
+                                 loop=True)
                 self._dither_gate.play(self._dither_mix)
                 self._dither_primed = True
             self._shaper.play(self._dither_gate)
@@ -1621,8 +1633,8 @@ class Bitcrusher(_component.Component):
             self._dither_primed = False
             self._shaper.play(hold)
         if not self._blend_primed:
-            self._blend.voice[0].play(self._dry)
-            self._blend.voice[1].play(self._shaper)
+            self._play_voice(self._blend.voice[0], self._dry)
+            self._play_voice(self._blend.voice[1], self._shaper)
             self._blend_primed = True
         self._output = self._blend
         self._set_levels()

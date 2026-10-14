@@ -667,7 +667,7 @@ class Distortion(_component.Component):
             _component.open_level_gates(
                 mixer, list(mixer.voice), self._silence)
         for voice, source in self._wiring:
-            voice.play(source)
+            self._play_voice(voice, source)
 
     def _charge_output_cap(self):
         """Settle `_out_hp` on the bias before the first block is asked for.

@@ -43,28 +43,24 @@ class AResetIsAFreshInstance(unittest.TestCase):
     def test_compressor(self):
         self.check("Compressor")
 
-    @unittest.expectedFailure
     def test_bitcrusher(self):
-        # Held for a ruling: re-arming takes a block of the source at the
-        # reset, as a fresh build does at construction, and Bitcrusher's
-        # own STATE test (reset, then a silent source, output exactly zero)
-        # forbids that. Unfixed, a reset before the first pull plays the
-        # block primed at construction.
         self.check("Bitcrusher")
 
     def test_overdrive(self):
-        got = [line for line in reds("Overdrive")
-               if "/48000/1/" not in line]
+        got = reds("Overdrive")
         self.assertEqual(got, [], "\n".join(got[:8]))
 
     @unittest.expectedFailure
     def test_overdrive_mono(self):
-        # Open: in mono a reset mid-stream (reset@8) leaves the first 8
-        # frames after it at about 0.78 of a fresh instance's (789 LSB at
-        # most), with or without the re-arm, and not from the adapter, the
-        # filters' or the shaper's reset. Stereo is green.
-        got = [line for line in reds("Overdrive") if "/48000/1/" in line]
-        self.assertEqual(got, [], "\n".join(got[:8]))
+        # Open, and declared in kit_common.DECLARED with its bound: in mono
+        # a fresh build's construction-primed first block renders its first
+        # 8 frames about 1.28x what a running instance renders (789 LSB at
+        # most); the reset matches the running instance. Read past the
+        # declaration, cell by cell.
+        for patch in kc.patches(kc.resolve("Overdrive")):
+            self.assertEqual(kit_fresh.reset_cell(
+                kc.resolve("Overdrive"), 48000, 1, patch, {},
+                kit_fresh.RESET_AT), "ok", patch)
 
     def test_distortion(self):
         self.check("Distortion")
@@ -93,6 +89,35 @@ class AResetIsAFreshInstance(unittest.TestCase):
 
     def test_multibandcompressor(self):
         self.check("MultibandCompressor")
+
+
+class AResetTakesNothingFromTheSource(unittest.TestCase):
+    """The arming is lazy (`Component._reset_rearmed`): a voice primes a
+    block of silence, so the next block the source hands out after a reset
+    is the one it would have handed without it."""
+
+    NAMES = ("Bitcrusher", "Exciter", "Compressor", "Distortion",
+             "Overdrive", "DynamicEQ", "MultibandCompressor")
+
+    def test_the_source_stands_where_it_stood(self):
+        import audiocore
+        for name in self.NAMES:
+            cls = kc.resolve(name)
+            for patch in kc.patches(cls):
+                for ch in (2, 1):
+                    values = kit_fresh._material(48000, ch)
+                    where = []
+                    for reset in (False, True):
+                        feed = kit_fresh._feed(values, 48000, ch)
+                        e = kc.build(cls, feed.port, 48000, patch)
+                        for _ in range(8):
+                            kc.pull(e)
+                        if reset:
+                            e.reset()
+                        where.append(bytes(
+                            audiocore.get_buffer(feed.mat)[1]))
+                        e.deinit()
+                    self.assertEqual(where[0], where[1], (name, patch, ch))
 
 
 if __name__ == "__main__":

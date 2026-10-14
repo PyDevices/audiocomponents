@@ -708,8 +708,8 @@ class Exciter(_component.Component):
             self._primed = False
         if not self._primed:
             self._dc.play(self._shaper)
-            self._blend.voice[0].play(self._dry)
-            self._blend.voice[1].play(self._dc)
+            self._play_voice(self._blend.voice[0], self._dry)
+            self._play_voice(self._blend.voice[1], self._dc)
             self._primed = True
         self._output = self._blend
         self._blend.voice[0].level = out
