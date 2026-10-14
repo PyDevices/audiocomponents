@@ -289,6 +289,8 @@ class AirSpace(_component.Component):
         #: shorter Time walks the head down, so the old one holds until the
         #: tape is next emptied.
         self._reach = 1
+        #: True from a tape clear to the next Time handed (`_clear_tape`).
+        self._landing = False
 
         # The borrowed source's only reader: a width-1 MidSide passes it
         # byte for byte in the palette's blocks, and Mix 0 hands it out, so
@@ -467,8 +469,12 @@ class AirSpace(_component.Component):
             if frames < 1:
                 frames = 1
             self._frames = frames
-            if frames > self._reach:
+            if frames > self._reach or self._landing:
+                # A tape just emptied lands its head on this Time, so the
+                # head reaches no further than it (a reset from a longer
+                # patch used to keep the longer Time in the tail).
                 self._reach = frames
+            self._landing = False
             self._hand_tape(delay_frames=frames)
         elif index == FEEDBACK_I:
             self._hand_tape(feedback=value)
@@ -565,6 +571,7 @@ class AirSpace(_component.Component):
         Time it is handed instead of gliding there."""
         self._fd.clear()
         self._reach = self._frames
+        self._landing = True
 
     def _reset_chamber(self):
         """The chamber's own reset lands on its one patch; the rack's three

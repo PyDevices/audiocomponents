@@ -1417,5 +1417,21 @@ CLAIMS = (
 )
 
 
+class TestResetIsFresh(unittest.TestCase):
+    """A reset comes back as a fresh instance at patch 0 (kit `fresh`)."""
+
+    def test_the_tail_after_a_reset_from_a_longer_time(self):
+        # The reset emptied the tape with the outgoing patch's Time as the
+        # head's reach, then patch 0's shorter Time kept it: from patch 2
+        # the tail read 361 384 frames where a fresh instance reads 251 836.
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__),
+                                        "support"))
+        import kit_fresh
+        for patch in sorted(AirSpace.PATCHES):
+            for k in (0, kit_fresh.RESET_AT):
+                self.assertEqual(kit_fresh.reset_cell(
+                    AirSpace, 48000, 2, patch, {}, k), "ok", (patch, k))
+
+
 if __name__ == "__main__":
     unittest.main()
