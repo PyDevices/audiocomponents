@@ -678,8 +678,14 @@ class Distortion(_component.Component):
         at its own silence buffer and the chain downstream of it is pulled
         until the pole has settled, which happens before anything reads the
         Splitter, so no tap is starved and the real source is not touched.
+
+        On a build with no `audiocore.get_buffer` - CircuitPython's default
+        board build compiles it out - nothing can pull the pole, so this
+        does nothing. The scoop tables answer zero with zero, so there is
+        no offset to settle and nothing renders differently.
         """
-        if self._out_hp is None or not self._macros:
+        pull = getattr(audiocore, "get_buffer", None)
+        if pull is None or self._out_hp is None or not self._macros:
             return
         # Ten time constants of the pole, in whole blocks. The silence
         # buffer is one block long, so it is re-played each time round.
@@ -687,7 +693,7 @@ class Distortion(_component.Component):
                      / (2.0 * math.pi * OUT_HP_HZ * 256.0)) + 1
         for _ in range(blocks):
             self._shaper.play(self._silence)
-            if not audiocore.get_buffer(self._out_hp)[1]:
+            if not pull(self._out_hp)[1]:
                 break
         self._shaper.play(self._booster)
 

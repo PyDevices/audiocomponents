@@ -237,6 +237,18 @@ def _patch(rate, depth_cents, rise, engage, delay_ms, tone_hz, body_hz,
     )
 
 
+def _pull(sample, single_channel_output, audio_channel):
+    """One block of `sample`, the way one node pulls another.
+
+    The two sources below exist only on the CPython twin (a native
+    `FeedbackDelay` will not play a Python source), and the twin's nodes
+    pull each other with `audiocore._borrow`. `audiocore.get_buffer` is the
+    script-facing entry, and CircuitPython's board builds compile it out.
+    The caller copies what it keeps.
+    """
+    return audiocore._borrow(sample, single_channel_output, audio_channel)
+
+
 class _RampTap:
     """Re-blocking source in front of the delay. Advances the Engage
     envelope once per 256-frame native block, then forwards at most that
@@ -267,9 +279,8 @@ class _RampTap:
         while len(self._pending) < need:
             if self._source is None:
                 break
-            result, data = audiocore.get_buffer(self._source,
-                                                single_channel_output,
-                                                audio_channel)
+            result, data = _pull(self._source, single_channel_output,
+                                 audio_channel)
             chunk = bytes(data)
             if not chunk:
                 break
@@ -304,9 +315,8 @@ class _SplitOut:
     def _get_buffer(self, single_channel_output=False, audio_channel=0):
         need = SPLIT_FRAMES * self.channel_count * 2
         while len(self._pending) < need:
-            result, data = audiocore.get_buffer(self._delay,
-                                                single_channel_output,
-                                                audio_channel)
+            result, data = _pull(self._delay, single_channel_output,
+                                 audio_channel)
             chunk = bytes(data)
             if not chunk:
                 break

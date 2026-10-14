@@ -108,6 +108,12 @@ _SHIMMER_CP = (
     " and the hall's tank stays a few LSB off it; CPython and MicroPython"
     " are ok (ruled a CircuitPython-own difference)")
 
+#: Saturation's AC coupling, under the rows that name it below.
+_SAT_COUPLING = (
+    "its AC coupling is a 5-20 Hz pole on a Q15 kernel, which keeps a 1 to"
+    " 2 LSB rounding residue that never re-converges with the control's"
+    " once what reached it differed")
+
 DECLARED = {
     ("Harmonizer", "E1-", "P4"):
         "reset() empties the three lines and starts every splice where a"
@@ -631,6 +637,30 @@ DECLARED = {
     ("AirSpace", "E5-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
     ("AirSpace", "E6-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (a patch change)",
     ("AirSpace", "E9-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
+    # Saturation: its AC coupling (the plate pole, the playback head's, the
+    # flux high-pass) is a pole at 5-20 Hz on a Q15 kernel, and once what
+    # reaches it has differed, it carries a rounding residue of 1 to 2 LSB
+    # that never re-converges while signal plays (measured 1.4 s on). Tone
+    # and Speed moves, which reach only the shelves after it, re-converge
+    # and stay live.
+    ("Saturation", "E1-", "P4"): _SAT_COUPLING,
+    ("Saturation", "E4-m0=", "P4"): _SAT_COUPLING,
+    ("Saturation", "E4-m1=", "P4"): _SAT_COUPLING,
+    ("Saturation", "E4-m2=0", "P4"): _SAT_COUPLING,
+    ("Saturation", "E4-m3=", "P4"): _SAT_COUPLING,
+    ("Saturation", "E4-m4=", "P4"): _SAT_COUPLING,
+    ("Saturation", "E4-m7=", "P4"): _SAT_COUPLING,
+    ("Saturation", "E5-", "P4"): _SAT_COUPLING,
+    ("Saturation", "E6-", "P4"): _SAT_COUPLING,
+    ("Saturation", "E9-", "P4"): _SAT_COUPLING,
+    ("Saturation", "E10-", "P4"): _SAT_COUPLING,
+    ("Saturation", "E11-", "P4"): _SAT_COUPLING,
+    ("Saturation", "E12-", "P4"): _SAT_COUPLING,
+    # DeEsser: PR holds a reset to a fresh instance byte for byte.
+    ("DeEsser", "E1-", "P4"): "reset() clears the detector and the"
+    " crossover, which come back to an uninterrupted instance's bytes"
+    " within five blocks of the reset (7 LSB, then 3, 1, 1), on signal,"
+    " whatever Release and Attack are; the audio tail is 256 as declared",
 }
 
 #: A control that jumps steps the output (the family's ruled disclosure,

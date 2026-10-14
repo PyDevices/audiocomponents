@@ -145,6 +145,34 @@ def render(node, frames, rate, channels=2, **axes):
                              interpreter="cpython", **axes)
 
 
+def reset_onto(effect, quiet):
+    """`reset()` with `quiet` already under the class.
+
+    A reset is a fresh instance (`AResetIsAFreshInstance`), and a fresh
+    instance takes its first block from its source as it is built. So
+    "nothing stale survives a reset" is read with the silent source in
+    place before the reset, not swapped in after it: swapped in after, the
+    first block is the source's own, as it would be for a fresh instance.
+    """
+    effect._source = quiet
+    effect._adapter.play(quiet)
+    effect.reset()
+
+
+class _NodesNow:
+    """The class's nodes as they stand when the harness reads them: a reset
+    builds the graph again, so a list taken before it names released
+    nodes."""
+
+    def __init__(self, effect):
+        self.effect = effect
+
+    def __iter__(self):
+        return iter([("node%d" % index, node)
+                     for index, node in enumerate(self.effect._nodes)
+                     if hasattr(node, "_get_buffer")])
+
+
 def build(rate=48000, channels=2, values=None, frames=None, cls=None,
           **options):
     """A DeEsser over `values`, through the contract's own boundary."""
@@ -600,9 +628,11 @@ class Tier1(unittest.TestCase):
             frames = (len(values) // channels)
             quiet = source(silence(frames, channels), rate,
                            channels=channels)
-            nodes = [("node%d" % index, node)
-                     for index, node in enumerate(effect._nodes)
-                     if hasattr(node, "_get_buffer")]
+            nodes = _NodesNow(effect)
+            real_reset = effect.reset
+            effect.reset = (lambda q=quiet, e=effect, r=real_reset:
+                            (setattr(e, "_source", q), e._adapter.play(q),
+                             r()))
             # Read before `M.state` runs: its last act is `deinit()`,
             # after which every property on the live surface raises.
             self.assertEqual(effect.capabilities, ())
@@ -1316,8 +1346,7 @@ class PlantedFaults(unittest.TestCase):
                                               frames=STATE_FRAMES))
         quiet2 = source(silence(len(values) // 2), rate)
         render(effect2.output, 32 * 256, rate)
-        effect2.reset()
-        effect2._adapter.play(quiet2)
+        reset_onto(effect2, quiet2)
         clean = render(effect2.output, 32 * 256, rate)
         print("  STATE control (class reset): residual %d LSB"
               % int(abs(clean.data).max()))
@@ -1659,3 +1688,77 @@ class KitChecks(unittest.TestCase):
 
 if __name__ == "__main__":       # pragma: no cover
     unittest.main()
+
+
+class TheResetNeedsNoGetBuffer(unittest.TestCase):
+    """`reset()` empties the Splitter rings without `audiocore.get_buffer`,
+    which CircuitPython's board builds compile out: with it hidden, a
+    reset at every patch renders the bytes it renders with it."""
+
+    def test_every_patch_resets_the_same(self):
+        import kit_nogb
+        scenarios = dict(kit_nogb.SCENARIOS)
+        for patch in [None] + sorted(deesser.DeEsser.PATCHES):
+            for label in ("reset-once", "reset-twice", "reset-first"):
+                with self.subTest(patch=patch, scenario=label):
+                    self.assertEqual(kit_nogb._bytes_cell(
+                        deesser.DeEsser, {}, 48000, 2, patch,
+                        scenarios[label]), "ok")
+
+
+class AResetIsAFreshInstance(unittest.TestCase):
+    """`reset()` comes back as a fresh instance at patch 0, byte for byte
+    (lifecycle E1's PR), from the defaults and from every patch; and a
+    fresh instance is patch 0 exactly, so the two are one state. (P4, the
+    reset against an instance that never stopped, is not this: the fresh
+    detector learns the level again, which takes longer than the tail.)"""
+
+    def test_reset_renders_as_fresh(self):
+        import lifecycle
+        lines = []
+        lifecycle.run_class(deesser.DeEsser, rates=(48000,), only=("E1",),
+                            emit=lines.append)
+        cells = [line for line in lines if not line.startswith("SUMMARY")]
+        self.assertTrue(cells)
+        for line in cells:
+            with self.subTest(cell=line.split("|h:")[0]):
+                self.assertNotIn("PR:RED", line)
+
+    def test_a_fresh_instance_is_patch_0(self):
+        quiet = audiocore.RawSample(array.array("h", bytes(2 * 2 * 1024)),
+                                    sample_rate=48000, channel_count=2)
+        fresh = deesser.DeEsser(quiet)
+        given = deesser.DeEsser(quiet)
+        try:
+            given.program_change(0)
+            for index in range(len(deesser.DeEsser.MACRO_LABELS)):
+                self.assertEqual(fresh.get_macro(index),
+                                 given.get_macro(index), index)
+        finally:
+            fresh.deinit()
+            given.deinit()
+
+
+class AResetPartWayThroughABufferDropsNothing(unittest.TestCase):
+    """A reset that lands part-way through a source buffer keeps the frames
+    the class has already taken from it: from five blocks after the reset
+    the render is the uninterrupted instance's, with 100-frame source
+    buffers as with 256. Building the input stage again dropped the rest
+    of the buffer, and the render stayed shifted until the source ended."""
+
+    def test_the_render_comes_back(self):
+        import kit_common as kc
+        import lifecycle
+        material = lifecycle.material_for("once", 48000, 2)
+
+        def render_with(actions):
+            feed = lifecycle.Feed(material, 48000, 2, "100", loop=False)
+            effect = kc.build(deesser.DeEsser, feed.port, 48000, None, {})
+            try:
+                return array.array("h", kc.render(effect, 16384, actions))
+            finally:
+                effect.deinit()
+        reset = render_with({12: lambda e: e.reset()})
+        plain = render_with({})
+        start = 2 * 256 * (12 + 5)
+        self.assertEqual(reset[start:], plain[start:])

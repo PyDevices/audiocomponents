@@ -18,17 +18,19 @@ is where Bias's operating-point shift goes instead of onto the output.
 
 **Controls moved and moved back play nothing out of silence**
 (audiocomponents#113). Mix back up from 0 comes back as the class was
-built - cleared, the pole charged on the bias, the voices re-armed - where
-it used to play what it held, up to 7 927 LSB. Off centre the pole holds
-`curve(bias) * post_gain`, so Bias back to the centre now drains it (it bled
-out as a 29 058 LSB thump), and Drive, Output, Headroom and Hysteresis
-re-charge it as Bias does. Hysteresis back in starts its play operator at
-the centre instead of where it froze (314 LSB). Off centre each charge
-leaves at most 1 LSB, as the constructor's does. And a Bias re-charge no
-longer pulls a block off the dry tap: that put the dry leg 256 frames ahead
-of the wet one after every `program_change`, a comb at patch 7 (Mix 44),
-and left a block of old audio in the Splitter for the next Mix move off 0
-to play (13 071 LSB).
+built - cleared, the voices re-armed - where it used to play what it held,
+up to 7 927 LSB. **Bias is folded into the table**, which answers silence
+with exactly zero at every Bias, so the plate pole never holds an offset:
+off centre (patches 4 and 6) silence in is silence out from the first
+frame, and a Bias, Drive, Output, Headroom or Hysteresis move leaves the
+pole nothing to bleed out. That holds where `audiocore.get_buffer` is
+compiled out (CircuitPython's board builds) as well, because nothing is
+charged by pulling. Hysteresis back in starts its play operator at the
+centre instead of where it froze (314 LSB). And a Bias move pulls no block
+off the dry tap: that once put the dry leg 256 frames ahead of the wet one
+after every `program_change`, a comb at patch 7 (Mix 44), and left a block
+of old audio in the Splitter for the next Mix move off 0 to play
+(13 071 LSB).
 
 **What the default surrenders.** Mix 1, Drive 0 dB, Headroom 0, Bias 0,
 Tilt 0, Hysteresis 0, Speed 15 ips (inert on tube).
@@ -172,15 +174,15 @@ for exactly that reason, so the sign moved into
 `saturation_curve.tube_points()` and no harmonic magnitude moved with it.
 Mix now walks −15.011 → −16.515 → −18.301 → −20.469 → −23.125.
 
-**The plate coupling pole is charged before the first block.** `Bias` is
-an offset into an asymmetric curve, so the shaper answers silence with a
-constant and the pole behind it blocked the constant but not the step:
-shipped patches 4 and 6 put **8 489 and 7 044 LSB** out of digital
-silence. They put **1 LSB** now. A live Bias move is not re-charged — the
-wet leg comes off a `Splitter` — and settles through the pole instead;
-Bias +0.30 still settles to a **−5 LSB** floor and Bias +1.0 to −11, which
-is the class's stated residual and is what `±1 LSB at the input of this
-much gain` looks like at the steepest part of the curve.
+**Silence answers silence at every Bias.** `Bias` is an offset into an
+asymmetric curve. As the node's own offset it made the shaper answer
+silence with a constant, and the pole behind it passed the step that
+started it: shipped patches 4 and 6 put **8 489 and 7 044 LSB** out of
+digital silence, and charging the pole by pulling it left 1 LSB. The class
+now builds the table the shapers read: the curve at `(1 + |Bias|) * u +
+Bias`, less its value at `u = 0`, so silence reads exactly zero and the
+curve's rails sit where they did. It is built in integers on a grid of
+1/256 of a table step, so a board builds the table a desktop builds.
 
 **Tail.** `TAIL_SAMPLES = 65536` (1.365 s at 48 kHz), measured: a 200 ms
 0 dBFS burst's residual reaches 0 LSB **3282 frames** after the burst on
@@ -495,13 +497,14 @@ MAKEUP_SHELF_HZ = 10.0
 #: frames against 0.0672 at 256**, 8.7 % of what the sub-graph costs.
 MIXER_BUFFER_BYTES = 1024
 
-#: How many blocks `_charge_coupling` pulls, and how long the zero sample
-#: it pulls through is. The plate coupling pole is 6.8 Hz, so its charge is
-#: about 0.23 s; 32 blocks of 512 frames is 16 384 and covers it at every
-#: rate. The shaper's native `play()` takes no `loop`, so the sample is a
-#: block long and is re-played each pull.
-CHARGE_BLOCKS = 32
+#: The zero sample the shapers are re-pointed through on a rewire. The
+#: shaper's native `play()` takes no `loop`; one block is all a re-point
+#: needs.
 CHARGE_FRAMES = 512
+#: Bias is folded into the table in steps of 1/256 of one table step: a
+#: grid a board's single precision and a desktop's double land on alike
+#: (audiocomponents#75), and 0.00001 of the curve's input span.
+BIAS_STEPS = 256
 TILT_HZ = 1000.0
 PLATE_HZ = 20.0
 # 20 Hz, not the 5 Hz this was while it sat at the grid. The node's kernel
@@ -724,15 +727,10 @@ class Saturation(_component.Component):
         self._ready = False
         self._attached = False
         self._bias = 0.0
-        #: Whether the plate pole was last charged on an offset, so a Bias
-        #: move back to the centre drains it rather than leaving it to
-        #: bleed out as a thump (audiocomponents#113).
-        self._charged = False
         #: The Hysteresis the shapers were last handed; see `_apply_macro`.
         self._hysteresis = 0.0
-        #: The shapers' `post_gain`, and what it was at the last charge.
+        #: The shapers' `post_gain`, as the node is handed it.
         self._post = 1.0
-        self._charged_post = 1.0
         self._wet_head = 1.0
         self._group_delay = _group_delay_samples(oversample,
                                                  self._extra_delay)
@@ -752,6 +750,11 @@ class Saturation(_component.Component):
             blob = IRON_CURVE
         curve_h = _q15_array(blob)
         self._curve = curve_h
+        #: What the shapers read: the curve with Bias folded in and the
+        #: answer to silence taken out (`_fold_bias`).
+        self._table = array("h", curve_h)
+        self._span = 1.0
+        self._table_gain = 1.0
 
         head = wet_in
         self._couple = None
@@ -770,14 +773,11 @@ class Saturation(_component.Component):
 
         self._shaper = self._own(audioshaper.Waveshaper(
             sample_rate=rate, channel_count=channels,
-            curve=curve_h, oversample=oversample,
+            curve=self._table, oversample=oversample,
             pre_gain=1.0, post_gain=1.0, mix=1.0, bias=0.0,
             hysteresis=0.0))
-        # Wired to the zero sample until `_charge_coupling` has run: the
-        # plate's coupling pole is behind the shaper and starts cold, so a
-        # Bias off centre banged its whole offset out of the first block -
-        # 8 489 LSB at shipped patch 4 (audit 3 (p)6, ruling (n)).
-        # Re-pointing it at `head` afterwards is the one `play()` the
+        # Wired to the zero sample until the end of construction.
+        # Re-pointing it at `head` then is the one `play()` the
         # caller was always paying for; doing it the other way round reads
         # the split's wet tap twice and leaves the dry one a block behind.
         self._quiet = self._own(audiocore.RawSample(
@@ -794,7 +794,7 @@ class Saturation(_component.Component):
         if self._lean_oversample < oversample:
             self._lean = self._own(audioshaper.Waveshaper(
                 sample_rate=rate, channel_count=channels,
-                curve=curve_h, oversample=self._lean_oversample,
+                curve=self._table, oversample=self._lean_oversample,
                 pre_gain=1.0, post_gain=1.0, mix=1.0, bias=0.0,
                 hysteresis=0.0))
             self._lean.play(self._quiet)
@@ -866,7 +866,6 @@ class Saturation(_component.Component):
             (drive_db, output_db, mix, headroom_db, bias, speed_ips,
              tilt_db, hysteresis),
             patch)
-        self._charge_coupling()
         for shaper in self._shapers():
             shaper.play(self._shaper_head)
         _component.open_level_gates(
@@ -876,69 +875,98 @@ class Saturation(_component.Component):
         self._refresh_output()
 
     def _charge_coupling(self, rewire=False):
-        """Settle the plate coupling pole on the bias before block one.
+        """Re-point the shapers through the zero sample, on a rewire.
 
-        `Bias` is an offset into an asymmetric curve, so the shaper answers
-        a silent input with a constant, and the pole behind it blocks the
-        constant but not the step that starts it: shipped patches 4 and 6
-        put **8 489 and 7 044 LSB** out of digital silence and settled to
-        +-1 LSB over about 0.2 s (audit 3 (p)6). This pulls the offset
-        through the pole with the shapers fed the class's own zero sample -
-        **the split is not pulled and no source frame is consumed** - and
-        stops as soon as a whole block comes back zero.
+        There is no plate pole to charge any more. `Bias` used to be the
+        node's own offset into an asymmetric curve, so the shaper answered
+        silence with a constant and the pole behind it passed the step that
+        started it: 8 489 and 7 044 LSB out of digital silence at shipped
+        patches 4 and 6 (audit 3 (p)6). The class pulled the offset through
+        the pole before the first block, which left up to 1 LSB, needed
+        `audiocore.get_buffer` (compiled out of CircuitPython's board
+        builds, where the bang came back), and had to run again at every
+        move of Bias, Drive, Output, Headroom and Hysteresis
+        (audiocomponents#113). Bias is now folded into the table, which
+        answers silence with exactly zero at every Bias (`_fold_bias`), so
+        nothing waits behind the shaper to be charged.
 
-        A **live** Bias move - a `program_change` onto silence, most of
-        all - re-charges with `rewire=True`. Without it a change onto patch
-        4 banged 8 489 LSB out of nothing.
-
-        **The re-point costs no block, so nothing is pulled to level the
-        split.** This used to pull one block off the dry tap after the
-        re-point, on the belief that `Waveshaper.play()` takes one from the
-        wet tap. It does not - measured on CPython, desktop MicroPython and
-        CircuitPython, a `play()` onto a source takes nothing from it (only
-        `audiofilters.Filter.play` and `MixerVoice.play` do) - so the pull
-        put the dry leg a block **ahead** of the wet one at every
-        `program_change` and every Bias move, and left the wet tap a block
-        behind in the Splitter's ring. The dry leg's impulse came out 256
-        frames early at patch 4, 512 after one more Bias move; at shipped
-        patch 7 (Mix 44), where the dry leg is heard, that is a comb; and
-        the block left behind in the ring is old audio that the next Mix
-        move off 0 played out of silence, 13 071 LSB (audiocomponents#113).
-
-        A Bias move **back to the centre** drains the pole the same way:
-        the shaper then answers silence with zero, and the charge the pole
-        holds from the old offset would otherwise bleed out of silence as a
-        thump - 29 058 LSB after Bias went to its bottom stop and back
-        (audiocomponents#113).
-
-        On a build with no `audiocore.get_buffer` this does nothing and the
-        bang is back.
+        The re-point is kept as it was: a `play()` takes nothing from its
+        source, so it costs the split no block.
         """
-        pull = getattr(audiocore, "get_buffer", None)
-        if pull is None or self._after is None:
-            return False
-        if not self._bias and not self._charged:
-            if rewire:
-                for shaper in self._shapers():
-                    shaper.play(self._quiet)
-                    shaper.play(self._shaper_head)
-            return False
-        self._charged = bool(self._bias)
-        self._charged_post = self._post
-        for index in range(CHARGE_BLOCKS):
+        if rewire and self._after is not None:
             for shaper in self._shapers():
                 shaper.play(self._quiet)
-            _state, data = pull(self._makeup_shelf)
-            if not data:
-                break
-            # The first block back is what the pole held before the
-            # shapers were re-pointed, so it says nothing about this bias.
-            if index and not any(array("h", bytes(data))):
-                break
-        if rewire:
-            for shaper in self._shapers():
                 shaper.play(self._shaper_head)
-        return True
+        return False
+
+    def _fold_bias(self):
+        """Fill `self._table` with the curve as a Bias of `self._bias`
+        reads it, less what that answers silence with.
+
+        The node's input `u` (after `pre_gain`) reads the curve at
+        `span * u + bias`, `span = 1 + |bias|`, so the table still covers
+        everything the node's own bias reached: past its ends the curve's
+        rails, as before. The point `u = 0` is the old operating point and
+        reads exactly zero, so silence in is silence out and the plate pole
+        never holds an offset. `pre_gain` is divided by `span` to match.
+        Integers throughout, on a 1/`BIAS_STEPS` grid, so a board and a
+        desktop build the same table. A table that would pass the rails
+        once the offset is taken out is scaled to fit, and `post_gain`
+        carries the scale back (`self._table_gain`).
+        """
+        curve = self._curve
+        table = self._table
+        last = len(curve) - 1
+        mid = last // 2
+        shift = int(round(self._bias * mid * BIAS_STEPS))
+        widen = shift if shift >= 0 else -shift
+        unit = mid * BIAS_STEPS
+        step = unit + widen
+        base = unit * mid + shift * mid
+
+        def at(index):
+            pos = base + (index - mid) * step
+            if pos <= 0:
+                return curve[0]
+            whole = pos // unit
+            if whole >= last:
+                return curve[last]
+            part = pos - whole * unit
+            low = curve[whole]
+            return low + ((curve[whole + 1] - low) * part + unit // 2) // unit
+
+        if shift == 0:
+            # The centre: the curve itself, which reads zero at zero.
+            for index in range(last + 1):
+                table[index] = curve[index]
+            self._table_gain = 1.0
+            self._span = 1.0
+            for shaper in self._shapers():
+                shaper.set(curve=table)
+            return
+        rest = at(mid)
+        values = [at(index) - rest for index in range(last + 1)]
+        peak = 0
+        for value in values:
+            if value > peak:
+                peak = value
+            elif -value > peak:
+                peak = -value
+        if peak > 32767:
+            for index in range(last + 1):
+                value = values[index]
+                if value >= 0:
+                    table[index] = (value * 65534 + peak) // (2 * peak)
+                else:
+                    table[index] = -((-value * 65534 + peak) // (2 * peak))
+            self._table_gain = peak / 32767.0
+        else:
+            for index in range(last + 1):
+                table[index] = values[index]
+            self._table_gain = 1.0
+        self._span = step / unit
+        for shaper in self._shapers():
+            shaper.set(curve=table)
 
     def _attach(self):
         """Hand the mixer its real sources, once and not before they are
@@ -992,23 +1020,15 @@ class Saturation(_component.Component):
     def _apply_macro(self, index, position):
         value = _component.macro_value(self._MACRO_RANGES[index], position)
         if index in (0, 1, 3):
+            # The folded table answers silence with zero, so `post_gain`
+            # scales no offset and a gain move leaves the pole nothing.
             self._push_gains()
-            # Drive, Output and Headroom move `post_gain`, and off centre
-            # the offset the plate pole holds is `curve(bias) * post_gain`,
-            # so they move it as much as Bias does: Headroom at patch 4 and
-            # back banged 4 885 LSB out of silence. Re-charged the way a
-            # Bias move is (audiocomponents#113). At the centre there is no
-            # offset and nothing runs.
-            if self._ready and (self._bias or self._charged) \
-                    and self._post != self._charged_post:
-                self._charge_coupling(rewire=True)
         elif index == 2:
             self._push_mix()
             self._refresh_output()
         elif index == 4:
             self._bias = value
-            for shaper in self._shapers():
-                shaper.set(bias=value)
+            self._fold_bias()
             self._push_gains()
             if self._ready:
                 self._charge_coupling(rewire=True)
@@ -1027,7 +1047,6 @@ class Saturation(_component.Component):
         elif index == 7:
             back_in = (value > 0.0 and self._hysteresis <= 0.0
                        and not self._constructing)
-            moved = value != self._hysteresis
             self._hysteresis = value
             for shaper in self._shapers():
                 shaper.set(hysteresis=value)
@@ -1038,24 +1057,15 @@ class Saturation(_component.Component):
                 # first sample back steps from there - an offset out of
                 # silence, 314 LSB through the plate pole. Cleared, it
                 # starts at the centre, which is where silence would have
-                # left it (audiocomponents#113). Clearing a shaper clears
-                # its oversampler too, and off centre the offset then has to
-                # climb back through the half-band - a dip the charged pole
-                # passes as a thump, 7 560 LSB at patch 4 - so off centre
-                # the pole is re-charged behind it, as a Bias move does,
-                # with the operator already engaged so the charge settles
-                # where it will sit.
+                # left it (audiocomponents#113). With Bias folded into the
+                # table the centre is zero at every Bias, so there is no
+                # offset to climb back to and nothing to re-charge.
                 self._clear_nodes(only=self._shapers())
-            if moved and self._ready and (self._bias or self._charged):
-                # Off centre the operator rests a half-width below the bias,
-                # so any Hysteresis move - off included - moves the offset
-                # the pole holds: 14 LSB out of silence at patch 4 after
-                # Hysteresis went off and came back.
-                self._charge_coupling(rewire=True)
 
     def _curve_at(self, x):
-        """The table at `x`, interpolated the way the node interpolates."""
-        table = self._curve
+        """The table the shapers read at `x`, interpolated the way the node
+        interpolates."""
+        table = self._table
         last = len(table) - 1
         if x <= -1.0:
             return float(table[0])
@@ -1078,9 +1088,8 @@ class Saturation(_component.Component):
         window's two ends. Two interpolated lookups per gain write, not a
         sweep, which is what a board can afford in `_apply_macro`.
         """
-        bias = self._bias
-        lo = self._curve_at(bias - pre)
-        hi = self._curve_at(bias + pre)
+        lo = self._curve_at(-pre)
+        hi = self._curve_at(pre)
         if lo < 0.0:
             lo = -lo
         if hi < 0.0:
@@ -1114,8 +1123,10 @@ class Saturation(_component.Component):
         gain = drive / head
         if gain > ceiling:
             gain = ceiling
-        pre = self._pre0() * gain
-        post = self._makeup() * output / gain
+        # The node's own gains: the folded table reads `span` of the
+        # curve's input per unit and holds it at `1 / table_gain`.
+        pre = self._pre0() * gain / self._span
+        post = self._makeup() * output / gain * self._table_gain
         ask = post * self._reach(pre)
         if ask > NODE_CEILING:
             move = NODE_CEILING / ask
@@ -1177,12 +1188,11 @@ class Saturation(_component.Component):
         oversamplers - and each voice the block it had queued; `_rejoin` has
         cleared the nodes. The mixer is left out of that walk on purpose:
         its registered reset re-plays the voices there and then, through a
-        pole not yet charged. So the order is `_build`'s: the pole charged
-        on the bias with the shapers on the zero sample, the shapers pointed
-        back at the chain, the gates opened at the levels, and the voices
+        pole whose input has not been re-pointed. So the order is
+        `_build`'s: the shapers re-pointed through the zero sample and back
+        at the chain, the gates opened at the levels, and the voices
         re-played (audiocomponents#113).
         """
-        self._charged = False
         self._charge_coupling(rewire=True)
         _component.open_level_gates(
             self._mix, [self._mix.voice[0], self._mix.voice[1]],

@@ -1609,3 +1609,36 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheScoopBuildsWithoutGetBuffer(unittest.TestCase):
+    """Where `audiocore.get_buffer` is compiled out (CircuitPython's board
+    builds) the scoop patches build, take a patch change and reset without
+    raising, and every patch renders the bytes it renders with it: the
+    scoop tables answer zero with zero, so the output capacitor has
+    nothing to settle."""
+
+    def test_every_patch_builds_and_resets(self):
+        import kit_nogb
+        scenarios = dict(kit_nogb.SCENARIOS)
+        for patch in [None] + sorted(rebuilt.Distortion.PATCHES):
+            for label in ("reset-once", "patch-reset"):
+                with self.subTest(patch=patch, scenario=label):
+                    got = kit_nogb._bytes_cell(
+                        rebuilt.Distortion, {}, RATE, 2, patch,
+                        scenarios[label])
+                    self.assertEqual(got, "ok")
+
+    def test_a_program_change_onto_a_scoop_patch(self):
+        import kit_nogb
+        source = audiocore.RawSample(array.array("h", bytes(2 * 2 * 4096)),
+                                     sample_rate=RATE, channel_count=2)
+        with kit_nogb.hidden(rebuilt.Distortion):
+            effect = rebuilt.Distortion(source)
+            try:
+                for patch in (6, 7, 8, 9, 0):
+                    effect.program_change(patch)
+                    audiocore.get_buffer(effect.output)
+                    effect.reset()
+            finally:
+                effect.deinit()

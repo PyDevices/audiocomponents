@@ -69,6 +69,21 @@ def _table(effect=None):
     return rebuilt._q15_array(rebuilt.TUBE_CURVE)
 
 
+def _fold_planted(effect, transform):
+    """Fold Bias into `transform(curve)` instead of the curve, so a planted
+    curve holds at every Bias, as it did when Bias was the node's own."""
+    planted = getattr(effect, "_planted_curve", None)
+    if planted is None:
+        planted = transform(effect._curve)
+        effect._planted_curve = planted
+    real = effect._curve
+    effect._curve = planted
+    try:
+        Saturation._fold_bias(effect)
+    finally:
+        effect._curve = real
+
+
 def odd_part_curve(table=None):
     """The built curve with its even part removed: f_odd(x)=(f(x)-f(-x))/2.
 
@@ -140,30 +155,24 @@ class OddTube(Saturation):
     """
     NAME = 'Saturation'
 
-    def _build(self, **options):
-        Saturation._build(self, **options)
-        for shaper in self._shapers():
-            shaper.set(curve=odd_part_curve(self._curve))
+    def _fold_bias(self):
+        _fold_planted(self, odd_part_curve)
 
 
 class HardClip(Saturation):
     """TU2's guard: a symmetric ceiling, so neither side keeps giving."""
     NAME = 'Saturation'
 
-    def _build(self, **options):
-        Saturation._build(self, **options)
-        for shaper in self._shapers():
-            shaper.set(curve=hard_clip_curve(self._curve))
+    def _fold_bias(self):
+        _fold_planted(self, hard_clip_curve)
 
 
 class RoughCurve(Saturation):
     """A4's guard, and the one that fires at the constructor default."""
     NAME = 'Saturation'
 
-    def _build(self, **options):
-        Saturation._build(self, **options)
-        for shaper in self._shapers():
-            shaper.set(curve=rough_curve(self._curve))
+    def _fold_bias(self):
+        _fold_planted(self, rough_curve)
 
 
 class FixedLoss(Saturation):
@@ -869,9 +878,12 @@ class A4AliasFloor(unittest.TestCase):
             (rows["Output -12"][0] - rows["Output -18"][0])
             + (rows["Output -12"][1] - rows["Output -18"][1]),
             0.0, delta=0.5, msg=rows)
-        # the shipped patches' Bias range is inside the bar; +-0.25 is not
+        # the shipped patches' Bias range is inside the bar; +-0.25 sits on
+        # it (just over before Bias was folded into the table, -60.047
+        # after: the node no longer spends headroom on the offset)
         self.assertLessEqual(rows["Bias +0.1"][0], -60.0, rows)
-        self.assertGreater(rows["Bias +0.25"][0], -60.0, rows)
+        self.assertAlmostEqual(rows["Bias +0.25"][0], -60.0, delta=0.5,
+                               msg=rows)
         self.assertGreater(rows["console"][0], -60.0, rows)
 
     def test_the_lean_patch_is_reported_not_graded(self):
@@ -1674,32 +1686,19 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
             stale.planted(self.CLS, stale.ClearOnlyRejoin), self.MIX), 1000)
 
 
-class DrainlessSaturation(rebuilt.Saturation):
-    """Planted: the class before the fix. Bias back to the centre charges
-    nothing, so the pole bleeds the old offset out as a thump."""
+class NodeBiasSaturation(rebuilt.Saturation):
+    """Planted: Bias as the node's own offset, as it was before it was
+    folded into the table, with the pole charge gone. Silence answers a
+    constant, so a Bias move off silence, and Hysteresis back in off
+    centre, step the plate pole: a thump."""
 
-    def _charge_coupling(self, rewire=False):
-        if not self._bias:
-            self._charged = False
-        return rebuilt.Saturation._charge_coupling(self, rewire)
-
-
-class UnchargedHysteresis(rebuilt.Saturation):
-    """Planted, a wrong cure: Hysteresis back in clears the shapers and
-    charges nothing, so off centre the half-band's climb back to the offset
-    passes the charged pole as a thump."""
-
-    def _apply_macro(self, index, position):
-        if index != 7:
-            return rebuilt.Saturation._apply_macro(self, index, position)
-        value = rebuilt._component.macro_value(self._MACRO_RANGES[7],
-                                               position)
-        if value > 0.0 and self._hysteresis <= 0.0 \
-                and not self._constructing:
-            self._clear_nodes(only=self._shapers())
-        self._hysteresis = value
+    def _fold_bias(self):
+        for index in range(len(self._curve)):
+            self._table[index] = self._curve[index]
+        self._span = 1.0
+        self._table_gain = 1.0
         for shaper in self._shapers():
-            shaper.set(hysteresis=value)
+            shaper.set(curve=self._table, bias=self._bias)
 
 
 class LevellingSaturation(rebuilt.Saturation):
@@ -1752,12 +1751,63 @@ class TheOperatingPointComesBackClean(unittest.TestCase):
         self.assertLessEqual(stale.in_step(self.CLS, 4, 64, 0, patch=7), 3)
 
     def test_the_old_class_and_a_wrong_cure_are_red(self):
-        self.assertGreater(stale.blip(DrainlessSaturation, 4, 64, 0)[1],
+        self.assertGreater(stale.blip(NodeBiasSaturation, 4, 64, 0)[1],
                            10000)
-        self.assertGreater(stale.blip(UnchargedHysteresis, 7, 127, 0,
+        self.assertGreater(stale.blip(NodeBiasSaturation, 7, 127, 0,
                                       patch=4)[1], 1000)
         self.assertGreater(stale.in_step(LevellingSaturation, 4, 64, 0,
                                          patch=7), 1000)
+
+
+
+def _silent_render(patch, hide, frames=16384, channels=2):
+    """A fresh instance at `patch` on silence, `frames` frames of its output."""
+    import audiocore
+    import kit_nogb
+    import kit_common as kc
+    source = audiocore.RawSample(array("h", bytes(2 * channels * frames)),
+                                 sample_rate=RATE, channel_count=channels)
+
+    def go():
+        effect = rebuilt.Saturation(source, patch=patch)
+        try:
+            return array("h", kc.render(effect, frames))
+        finally:
+            effect.deinit()
+    if hide:
+        with kit_nogb.hidden(rebuilt.Saturation):
+            return go()
+    return go()
+
+
+class SilenceAnswersSilenceOffCentre(unittest.TestCase):
+    """Bias is folded into the table, which answers silence with exactly
+    zero at every Bias, so the plate pole has nothing to charge: off centre
+    (patches 4 and 6) silence in is silence out from the first frame, with
+    `audiocore.get_buffer` and without it (CircuitPython's board builds),
+    and a render does not depend on which."""
+
+    def test_silence_is_silence_from_frame_zero(self):
+        for patch in (4, 6):
+            for hide in (False, True):
+                with self.subTest(patch=patch, hidden=hide):
+                    out = _silent_render(patch, hide)
+                    self.assertEqual(max(abs(v) for v in out), 0)
+
+    def test_no_get_buffer_renders_the_same(self):
+        import kit_nogb
+        scenarios = dict(kit_nogb.SCENARIOS)
+        for patch in (4, 6):
+            for ch in (2, 1):
+                # Not "reset-first": a reset before the first pull is not
+                # yet a fresh instance with get_buffer or without; that is
+                # the reset's own fault.
+                for label in ("reset-once", "reset-twice", "patch-reset",
+                              "reset-patch"):
+                    with self.subTest(patch=patch, ch=ch, scenario=label):
+                        self.assertEqual(kit_nogb._bytes_cell(
+                            rebuilt.Saturation, {}, RATE, ch, patch,
+                            scenarios[label]), "ok")
 
 
 if __name__ == "__main__":

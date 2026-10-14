@@ -142,12 +142,6 @@ _BUTTERWORTH_Q = 0.7071067811865476
 #: thing in both paths.
 _DETECTOR_CORNER = 1.0 / 1.5537739740300374
 
-#: What a reset has to push through a Splitter's ring. The ring is 8192
-#: frames (`audiodsp/src/shared/audiodsp_splitter.h:20`) and one take is at
-#: most 256 (`audiodsp_splitter.c:64-70`), so this many pulls a tap empties
-#: any backlog it can be holding.
-_FLUSH_PULLS = 8192 // 256 + 1
-
 #: Detector averaging. The manual gives none ("dbx patented RMS level
 #: detectors" and no time constant), so this is a design choice, and it was
 #: measured rather than picked: the RMS filter sits *before* the attack
@@ -217,8 +211,14 @@ class DeEsser(_component.Component):
     _ATTACK = 5
     _LISTEN = 6
 
-    def _build(self, frequency=2500.0, range_db=12.0, sensitivity_db=30.0,
-               hf_only=False, release_ms=3.5, attack_ms=2.0, listen=False,
+    #: What each option left out stands for: patch 0's step, rounded
+    #: (Frequency 2500 Hz is grid 63, 2507 Hz). An option left out plays
+    #: the step itself, so a fresh instance is patch 0 exactly and a reset
+    #: lands where it starts; a value you pass plays as passed.
+    _OPTION_DEFAULTS = (2500.0, 12.0, 30.0, False, 3.5, 2.0, False)
+
+    def _build(self, frequency=None, range_db=None, sensitivity_db=None,
+               hf_only=None, release_ms=None, attack_ms=None, listen=None,
                patch=None):
         """Build the graph the dossier's section 4 draws.
 
@@ -229,6 +229,12 @@ class DeEsser(_component.Component):
         sets.
         """
         rate, channels = self._sample_rate, self._channel_count
+        raw = (frequency, range_db, sensitivity_db, hf_only, release_ms,
+               attack_ms, listen)
+        seeded = tuple(value is None for value in raw)
+        (frequency, range_db, sensitivity_db, hf_only, release_ms, attack_ms,
+         listen) = (self._OPTION_DEFAULTS[index] if seeded[index]
+                    else raw[index] for index in range(len(raw)))
 
         # The block adapter. `audioroute.MidSide` at width 1 is the exact
         # identity (its own docstring says so, and it is measured in the
@@ -237,9 +243,11 @@ class DeEsser(_component.Component):
         # 8192-frame ring - and its `play()` does not reset its source,
         # where `audiofilters.Filter.play()` does. The reset flush below
         # depends on that.
-        adapter = audioroute.MidSide(width=1.0, sample_rate=rate,
-                                     channel_count=channels)
-        adapter.play(self._source)
+        adapter = getattr(self, "_kept_adapter", None)
+        if adapter is None:
+            adapter = audioroute.MidSide(width=1.0, sample_rate=rate,
+                                         channel_count=channels)
+            adapter.play(self._source)
 
         top = audioroute.Splitter(adapter, taps=4)
         raw = audioroute.Splitter(top.tap(3), taps=2)
@@ -330,7 +338,7 @@ class DeEsser(_component.Component):
         # What each mixer voice plays, in the order a reset has to re-prime
         # them: `pre` before `out`, because `out`'s voice 3 pulls through
         # `pre`. `MixerVoice.play()` is the only clear a mixer has that
-        # works on all three interpreters - see `_reset_chain`.
+        # works on all three interpreters.
         self._voices = ((pre, 0, raw.tap(0)), (pre, 1, band.tap(0)),
                         (out, 0, raw.tap(1)), (out, 1, lows[1]),
                         (out, 2, band.tap(1)), (out, 3, duck))
@@ -341,28 +349,17 @@ class DeEsser(_component.Component):
             sample_rate=rate, channel_count=channels)
 
         # `deinit()` walks this list backwards, tail first, which is what
-        # the order below is for. `reset()` cannot use the same walk, and
-        # the reason is worth stating rather than discovering: a
-        # `Splitter`'s ring cannot be cleared - the type exposes `tap()` and
-        # nothing else on every target, and `SplitterTap.reset_buffer` is
-        # "deliberately nothing" - so the rings have to be pushed empty
-        # against a silent source, and `audiomixer.Mixer._reset_buffer`
-        # refetches a chunk into every voice, so both mixers have to be
-        # cleared *while* that silent source is still on. One ordered
-        # routine can express that and a per-node walk cannot, so the tail
-        # carries `_reset_chain` and every other node declines its own
-        # reset. Nothing is skipped: `_reset_chain` names all seven
-        # resettable nodes explicitly, and the list below is what the class
-        # is held to.
-        self._own(tail, reset=self._reset_chain)
+        # the order below is for. `reset()` does not walk it: it builds the
+        # graph again (see there), so every node declines a reset walk.
+        self._own(tail, reset=False)
         self._own(out, reset=False)
         self._own(pre, reset=False)
         self._own(duck, reset=False)
         for node in (highs[1], highs[0], lows[1], lows[0]):
             self._own(node, reset=False)
         for splitter in (band, raw, top):
-            # No `reset_buffer` and no `clear`, so `_reset_chain()` is what
-            # clears these. `deinit()` it does have, since audiodsp#58, and
+            # No `reset_buffer` and no `clear`; `reset()` builds them
+            # again. `deinit()` it does have, since audiodsp#58, and
             # asking for one an older audiodsp lacks is skipped by `getattr`.
             self._own(splitter, reset=False)
         self._own(adapter, reset=False)
@@ -370,8 +367,8 @@ class DeEsser(_component.Component):
         # too, and they belong on the list for the reason the paragraph
         # above gives: `deinit()` walks it, and a node missing from it is a
         # node nothing releases. Both decline their own reset - a tap's
-        # `reset_buffer` is deliberately nothing and `_reset_chain()` empties
-        # the rings by pulling them, and the filler holds no state to clear.
+        # `reset_buffer` is deliberately nothing and `reset()` builds them
+        # again, and the filler holds no state to clear.
         # `Splitter.tap(n)` returns the same object each call, so these are
         # the same eight taps `self._voices` plays.
         for tap in self._taps:
@@ -383,7 +380,7 @@ class DeEsser(_component.Component):
         self._ready = False
         self._init_macros((frequency, range_db, sensitivity_db,
                            1.0 if hf_only else 0.0, release_ms, attack_ms,
-                           1.0 if listen else 0.0), patch)
+                           1.0 if listen else 0.0), patch, defaults=seeded)
         self._prime()
         self._ready = True
         self._refresh_output()
@@ -464,46 +461,54 @@ class DeEsser(_component.Component):
 
     # -- reset ---------------------------------------------------------
 
-    def _reset_chain(self):
-        """Clear every node this class built, in the one order that works.
+    def reset(self):
+        """Come back as a fresh instance at patch 0: the graph is built
+        again and the old one released.
 
-        Measured on the way to this routine, and the reason it is not a
-        per-node walk: clearing every node but the rings still replayed
-        **19999 LSB** of stale audio and did not reach an all-zero block
-        until frame 512; clearing the rings first but restoring the source
-        before the mixers still left **3024 LSB**, because
-        `audiomixer.Mixer._reset_buffer` refetches a chunk into every voice
-        and that fetch pulled live audio through.
-
-        So: the silent sample goes on first, every tap is pulled until its
-        backlog is gone, every clearable node is cleared while the silence
-        is still there - the mixers' refetch then fetches silence - and the
-        borrowed source goes back on last. The source itself is never reset
-        and never rewound; `audioroute.MidSide.play()` sets its source and
-        drops its own pending bytes, and does nothing else.
+        A reset that cleared this graph in place never came back fresh.
+        A `Splitter`'s ring cannot be cleared - the type exposes `tap()`
+        and nothing else, and `SplitterTap.reset_buffer` is "deliberately
+        nothing" - so the old reset pushed eight taps empty with
+        `audiocore.get_buffer` (compiled out of CircuitPython's board
+        builds, where it raised), and with the rings empty it still
+        differed from a fresh instance from the first frame of material
+        on. A graph built again is a fresh instance, by construction, on
+        every interpreter. The output port is re-pointed at the new tail
+        before the old graph is released, so a pump holding the port never
+        reads a released node. The borrowed source is not reset or
+        rewound; it plays on from where it stands, as a fresh instance
+        handed it would.
         """
-        self._adapter.play(self._silence)
-        for tap in self._taps:
-            for _ in range(_FLUSH_PULLS):
-                audiocore.get_buffer(tap)
-        for node in (self._lows[0], self._lows[1], self._highs[0],
-                     self._highs[1], self._duck):
-            audiocore.reset_buffer(node)
-        # The mixers are re-primed rather than reset. `reset_buffer` on a
-        # Mixer stops every voice for good on CircuitPython (see `_build`),
-        # and `MixerVoice.play()` is what does the same job on all three: it
-        # resets the voice's own source and refills the voice, which is
-        # exactly a rewind. It runs while the silent sample is still on the
-        # adapter, so what the voices refill with is silence.
-        # At Range 0 the voices have never left `self._silence`, so there is
-        # nothing stale in them and re-playing would only prime a graph the
-        # bypass does not use.
-        if self._primed:
-            for mixer, index, sample in self._voices:
-                mixer.voice[index].play(sample)
-        self._adapter.play(self._source)
-        audiocore.reset_buffer(self._adapter)
-        audiocore.reset_buffer(self._tail)
+        self._check_live()
+        # The adapter is kept, not built again: it may hold the rest of a
+        # source buffer it has already taken, and a new one would drop
+        # those frames - up to a whole buffer of the source, gone, at every
+        # reset that lands part-way through one.
+        self._kept_adapter = self._adapter
+        old = [(node, release) for node, release
+               in zip(self._nodes, self._deinits)
+               if node is not self._adapter]
+        self._nodes = []
+        self._resets = []
+        self._deinits = []
+        self._constructing = True
+        try:
+            if self._reset_to is None:
+                self._build(patch=0)
+            else:
+                self._build()
+                self._restore(self._reset_to)
+        finally:
+            self._constructing = False
+            self._kept_adapter = None
+        self._stranded = False
+        for node, release in reversed(old):
+            if release is False:
+                continue
+            if release is True:
+                release = getattr(node, "deinit", None)
+            if release is not None:
+                release()
 
     # -- macros --------------------------------------------------------
 

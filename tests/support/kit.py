@@ -5,9 +5,9 @@
 
 Prints one line per cell, `name|check|key|V:verdict[|h:digest]`, a
 SUMMARY line per check, and DONE. On MicroPython and CircuitPython
-(`MICROPYPATH=lib:tests/support`) it runs the four render checks; the
-claims, paperwork and nogb checks read source and git or patch modules,
-and run on CPython only.
+(`MICROPYPATH=lib:tests/support`) it runs the four render checks and
+nogb; the claims and paperwork checks read source and git, and run on
+CPython only.
 `KIT.md` beside this file says what each check measures and its bars.
 """
 
@@ -22,7 +22,7 @@ import kit_common as kc
 
 CHECKS = ("paperwork", "claims", "args", "plants", "ceiling", "tail",
           "nogb")
-STATIC = ("paperwork", "claims", "nogb")
+STATIC = ("paperwork", "claims")
 
 
 def run_check(check, cls, emit=print, quick=False, plants_module=None,
