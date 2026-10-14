@@ -243,9 +243,11 @@ class DeEsser(_component.Component):
         # 8192-frame ring - and its `play()` does not reset its source,
         # where `audiofilters.Filter.play()` does. The reset flush below
         # depends on that.
-        adapter = audioroute.MidSide(width=1.0, sample_rate=rate,
-                                     channel_count=channels)
-        adapter.play(self._source)
+        adapter = getattr(self, "_kept_adapter", None)
+        if adapter is None:
+            adapter = audioroute.MidSide(width=1.0, sample_rate=rate,
+                                         channel_count=channels)
+            adapter.play(self._source)
 
         top = audioroute.Splitter(adapter, taps=4)
         raw = audioroute.Splitter(top.tap(3), taps=2)
@@ -478,7 +480,14 @@ class DeEsser(_component.Component):
         handed it would.
         """
         self._check_live()
-        old = list(zip(self._nodes, self._deinits))
+        # The adapter is kept, not built again: it may hold the rest of a
+        # source buffer it has already taken, and a new one would drop
+        # those frames - up to a whole buffer of the source, gone, at every
+        # reset that lands part-way through one.
+        self._kept_adapter = self._adapter
+        old = [(node, release) for node, release
+               in zip(self._nodes, self._deinits)
+               if node is not self._adapter]
         self._nodes = []
         self._resets = []
         self._deinits = []
@@ -491,6 +500,7 @@ class DeEsser(_component.Component):
                 self._restore(self._reset_to)
         finally:
             self._constructing = False
+            self._kept_adapter = None
         self._stranded = False
         for node, release in reversed(old):
             if release is False:

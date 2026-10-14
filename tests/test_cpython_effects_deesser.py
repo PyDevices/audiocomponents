@@ -1737,3 +1737,28 @@ class AResetIsAFreshInstance(unittest.TestCase):
         finally:
             fresh.deinit()
             given.deinit()
+
+
+class AResetPartWayThroughABufferDropsNothing(unittest.TestCase):
+    """A reset that lands part-way through a source buffer keeps the frames
+    the class has already taken from it: from five blocks after the reset
+    the render is the uninterrupted instance's, with 100-frame source
+    buffers as with 256. Building the input stage again dropped the rest
+    of the buffer, and the render stayed shifted until the source ended."""
+
+    def test_the_render_comes_back(self):
+        import kit_common as kc
+        import lifecycle
+        material = lifecycle.material_for("once", 48000, 2)
+
+        def render_with(actions):
+            feed = lifecycle.Feed(material, 48000, 2, "100", loop=False)
+            effect = kc.build(deesser.DeEsser, feed.port, 48000, None, {})
+            try:
+                return array.array("h", kc.render(effect, 16384, actions))
+            finally:
+                effect.deinit()
+        reset = render_with({12: lambda e: e.reset()})
+        plain = render_with({})
+        start = 2 * 256 * (12 + 5)
+        self.assertEqual(reset[start:], plain[start:])
