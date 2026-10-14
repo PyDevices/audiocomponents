@@ -244,7 +244,7 @@ class StateTest(unittest.TestCase):
 
     def test_a_delay_line_left_full_after_reset_is_red(self):
         options = {"time_ms": 150.0, "feedback": 0.5, "mix": 0.5}
-        control = self._run(faults._OldDigitalDelay, **options)
+        control = self._run(faults._Delay, **options)
         self.assertTrue(control["passed"], control["red"])
         self.assertEqual(control["values"]["reset_residual_lsb"], 0)
         self.assertTrue(control["values"]["resumed"])
@@ -260,7 +260,8 @@ class StateTest(unittest.TestCase):
         options = {"time_ms": 150.0, "feedback": 0.5, "mix": 0.5}
         result = self._run(faults.LiveIntermediateDelay, **options)
         self.assertFalse(result["passed"])
-        self.assertEqual(result["values"]["live_nodes_after_deinit"], ["pre"])
+        self.assertEqual(result["values"]["live_nodes_after_deinit"],
+                         ["pre (unregistered)"])
         self.assertEqual(result["values"]["reset_residual_lsb"], 0)
         self.assertEqual(len(result["red"]), 1)
 

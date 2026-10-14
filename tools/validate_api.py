@@ -3,7 +3,7 @@
 
 This is intentionally a small runtime check rather than an inheritance check:
 the public contract is structural and a future rack or third-party provider
-may implement it without using audioeffects._core.Effect.
+may implement it without using audioeffects._component.Component.
 """
 
 import array

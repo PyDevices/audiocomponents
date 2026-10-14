@@ -36,19 +36,12 @@ from tools.validate_metadata import validate_effects
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 from effects_measure import SAMPLE_RATE, build, peak, source  # noqa: E402
 
-# `reverb.Reverb` is the old `_core.Effect` class, the one with `preset` and
-# no macro surface, which `audioeffects.Reverb` served until the Phase 5
-# rebuild's adoption on 2026-09-29. The two tests that name it are about
-# those two properties of that class.
-from audioeffects import reverb  # noqa: E402
-
 #: Every name the package exports as an effect. `ALL` is the catalogue the
 #: contract freezes - the provider names, computed by the package itself -
 #: so these tests read it rather than deriving the set from `dir()` again.
 CLASSES = audioeffects.ALL
 
-#: The classes that carry a patch surface. Optional, and most do not yet -
-#: see audioeffects._core.Effect.
+#: The classes that carry a patch surface.
 PATCHABLE = tuple(name for name in CLASSES
                   if getattr(audioeffects, name).MACRO_LABELS)
 
@@ -88,7 +81,7 @@ class EffectsLibraryTest(unittest.TestCase):
         drive = audioeffects.Exciter(source(), tune=2500.0, harmonics=0.4)
         comp = audioeffects.Compressor(drive.output, threshold_db=-30.0,
                                        ratio=6.0, character="optical")
-        verb = reverb.Reverb(comp.output, preset="hall", mix=0.35)
+        verb = audioeffects.Reverb(comp.output)
         self.assertGreater(peak(verb.output, 12), 0.001)
 
     def test_an_instrument_feeds_an_effect(self):
@@ -162,7 +155,7 @@ class EffectsLibraryTest(unittest.TestCase):
         self.assertEqual(effect._macros, before)
 
     def test_a_class_without_macros_declares_an_empty_macro_surface(self):
-        plain = reverb.Reverb(source())
+        plain = audioeffects.Rack(source())
         self.assertEqual(plain.MACRO_LABELS, ())
         self.assertEqual(plain.MACRO_MODES, {})
         self.assertEqual(plain.PATCHES, {0: ("Default", ())})

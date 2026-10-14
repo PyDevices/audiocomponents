@@ -307,6 +307,13 @@ there, and are recorded in its changelog.
 
 ### Changed
 
+- **`_core.py` is gone, and with it the old classes the rebuilds replaced.**
+  `delay.py`, `reverb.py`, `pitch.py` and `rack.py` held only the
+  pre-contract classes, which no public name had served since the Phase 5
+  and Phase 6 adoptions; they are deleted. The public classes, `ALL` and
+  `create()` are unchanged. `configure()`, `sample_rate()` and
+  `channel_count()` stay, but only record a format: every effect takes its
+  format from its source, as it already did.
 - **`ShimmerHall` and `AirSpace` keep the classes they were ported
   against.** With the Phase 5 `TapeDelay` and `Reverb` and the Phase 6
   `Octaver` adopted, the two old racks (`rack.ShimmerHall` and
@@ -427,6 +434,9 @@ version number. The release carries repository tooling and docs only.
 
 ### Fixed
 
+- `Tremolo`: touching a knob, or a host re-sending the same value, no longer throws the throb back to the top of its cycle. The LFO takes the new shape and rate in place, so a slow sweep of any knob moves the pulse smoothly instead of stuttering.
+- `Fuzz`: with Bias off centre, `tail_samples` is None. The output settles near zero rather than on it there, so the 24 576 it reported was a bound the class never met. The docstring now says what stays: a few LSB of wander, or at Bias -1 a DC constant of up to 177 LSB.
+- `Bitcrusher`: the dither tail is 9 728 samples, where 8 192 fell short at maximum Dither, and `tail_samples` is None where the dither alone is louder than its gate (maximum Dither at 12 bits, and any deeper crush with Dither up), because there the dither never stops.
 - **`pydevices-audioeffects` installs and imports.** The 0.3.0 wheel left out
   `audioeffects.rebuilt`, so the published package failed on import; 0.3.0 of
   `audioinstruments` was unaffected. The wheel now ships the subpackage, and a
@@ -958,6 +968,13 @@ version number. The release carries repository tooling and docs only.
 
 ### Changed
 
+- **`_core.py` is gone, and with it the old classes the rebuilds replaced.**
+  `delay.py`, `reverb.py`, `pitch.py` and `rack.py` held only the
+  pre-contract classes, which no public name had served since the Phase 5
+  and Phase 6 adoptions; they are deleted. The public classes, `ALL` and
+  `create()` are unchanged. `configure()`, `sample_rate()` and
+  `channel_count()` stay, but only record a format: every effect takes its
+  format from its source, as it already did.
 - **The core is `audiodsp` now.** The repository these packages are built on
   was renamed on 2026-09-21, and everything here that named it follows: the
   dependency is `pydevices-audiodsp>=0.5.1` (its first published release
@@ -989,6 +1006,9 @@ version number. The release carries repository tooling and docs only.
 
 ### Fixed
 
+- `Tremolo`: touching a knob, or a host re-sending the same value, no longer throws the throb back to the top of its cycle. The LFO takes the new shape and rate in place, so a slow sweep of any knob moves the pulse smoothly instead of stuttering.
+- `Fuzz`: with Bias off centre, `tail_samples` is None. The output settles near zero rather than on it there, so the 24 576 it reported was a bound the class never met. The docstring now says what stays: a few LSB of wander, or at Bias -1 a DC constant of up to 177 LSB.
+- `Bitcrusher`: the dither tail is 9 728 samples, where 8 192 fell short at maximum Dither, and `tail_samples` is None where the dither alone is louder than its gate (maximum Dither at 12 bits, and any deeper crush with Dither up), because there the dither never stops.
 - **A bipolar macro's centre is MIDI 64 now, and it is exact** (#87). The
   0-127 grid has an even number of steps and so no middle of its own —
   64/127 is 0.50394 — so until now no patch could ask for the centre of a
@@ -1134,6 +1154,13 @@ version number. The release carries repository tooling and docs only.
 
 ### Changed
 
+- **`_core.py` is gone, and with it the old classes the rebuilds replaced.**
+  `delay.py`, `reverb.py`, `pitch.py` and `rack.py` held only the
+  pre-contract classes, which no public name had served since the Phase 5
+  and Phase 6 adoptions; they are deleted. The public classes, `ALL` and
+  `create()` are unchanged. `configure()`, `sample_rate()` and
+  `channel_count()` stay, but only record a format: every effect takes its
+  format from its source, as it already did.
 - **`RingMod` (Phase 3, M4 claim dropped).** M4 is **disconfirmed**,
   not a shipped claim: the same-kind plant is inert at constructor
   Frequency 220 (**0.0022 dB**) and moves **8.6 dB** only at 2 Hz.
@@ -1901,6 +1928,9 @@ version number. The release carries repository tooling and docs only.
 
 ### Fixed
 
+- `Tremolo`: touching a knob, or a host re-sending the same value, no longer throws the throb back to the top of its cycle. The LFO takes the new shape and rate in place, so a slow sweep of any knob moves the pulse smoothly instead of stuttering.
+- `Fuzz`: with Bias off centre, `tail_samples` is None. The output settles near zero rather than on it there, so the 24 576 it reported was a bound the class never met. The docstring now says what stays: a few LSB of wander, or at Bias -1 a DC constant of up to 177 LSB.
+- `Bitcrusher`: the dither tail is 9 728 samples, where 8 192 fell short at maximum Dither, and `tail_samples` is None where the dither alone is louder than its gate (maximum Dither at 12 bits, and any deeper crush with Dither up), because there the dither never stops.
 - `tests/parity/effects_library_smoke.py` walked one instance through all of
   a class's patches on a **4096-frame** probe and pulled eight output blocks
   per patch, so a class whose output block is the contract's own 256 frames
@@ -1931,6 +1961,13 @@ the first release from this repository is 0.2.0.
 
 ### Changed
 
+- **`_core.py` is gone, and with it the old classes the rebuilds replaced.**
+  `delay.py`, `reverb.py`, `pitch.py` and `rack.py` held only the
+  pre-contract classes, which no public name had served since the Phase 5
+  and Phase 6 adoptions; they are deleted. The public classes, `ALL` and
+  `create()` are unchanged. `configure()`, `sample_rate()` and
+  `channel_count()` stay, but only record a format: every effect takes its
+  format from its source, as it already did.
 - Phase 1 of the accuracy program: the ten drum machines — `cr78`, `dmx`,
   `drumtraks`, `linndrum`, `simmons_sdsv`, `sp1200`, `tr606`, `tr707`,
   `tr808`, `tr909` — rebuilt as fixed circuits against named references, each

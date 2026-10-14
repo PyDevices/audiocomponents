@@ -16,8 +16,8 @@ audio_out.play(hall.output)
 ```
 
 The package factory is the host-facing construction boundary: it receives the
-source and sample rate explicitly. Direct class construction remains
-supported for local code after a call to `configure()`.
+source and sample rate explicitly. Direct class construction is supported
+for local code too, and reads the format off the source it is handed.
 
 Every class takes its audio source as the first argument - a synthesizer, an
 `audioinstruments` instrument's `output`, a host input, or another effect's
@@ -36,7 +36,8 @@ all effects in that source file. The complete provider rules are in
 For host integration, every public class also has the explicit factory
 `EffectClass.create(source, sample_rate, **options)`, and the package helper
 `audioeffects.create(name, source, sample_rate, **options)`. Direct class
-construction remains supported for local code after a call to `configure()`.
+construction is supported for local code too, and reads the format off the
+source.
 
 Five nodes make the deeper processors possible: `audiodynamics.Dynamics` (an
 envelope-follower gain computer with sidechain filtering, lookahead and

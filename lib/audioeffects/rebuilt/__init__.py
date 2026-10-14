@@ -117,8 +117,8 @@ def _present():
 #:
 #: Phase 6's seven, adopted 2026-10-13: `StereoWidener`, `Rack`, `Octaver`,
 #: `PitchShifter`, `Harmonizer`, `AirSpace` and `ShimmerHall`. They stay
-#: under this directory, and `pitch.py` and `rack.py` keep the old classes,
-#: until they come home.
+#: under this directory until they come home; the old classes they replaced
+#: were deleted with `_core.py`.
 ADOPTED = (
     "DigitalDelay",
     "SlapbackDelay",

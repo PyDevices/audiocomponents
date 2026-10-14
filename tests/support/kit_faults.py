@@ -40,11 +40,9 @@ from audioeffects.lowpass import LowPass
 VENDOR = "PyDevices"
 import audiofilters
 import synthio
-from audioeffects import _core
-# The STATE faults below are written against the old `_core.Effect` delay,
-# which `delay.py` keeps until the rebuilt `DigitalDelay` (adopted
-# 2026-09-28) comes home; `audioeffects.DigitalDelay` is the rebuild now.
-from audioeffects.delay import DigitalDelay as _OldDigitalDelay
+from audioeffects import _component
+# The STATE faults below subclass the delay the package serves.
+from audioeffects import DigitalDelay as _Delay
 
 #: `_component` reads VENDOR off the module a class is defined in, and the
 #: CLICK fault below is a subclass of a rebuilt class. Without this the fault
@@ -158,7 +156,7 @@ class H2Inject(_Node):
         return frames + self._k * frames * frames
 
 
-class TwoStageRelease(_core.Effect):
+class TwoStageRelease(_component.Component):
     """A compressor whose release has two stages: fast down to `switch_db`
     of remaining gain reduction, slow below it.
 
@@ -177,11 +175,12 @@ class TwoStageRelease(_core.Effect):
     MACRO_MODES = {}
     PATCHES = {0: ("Default", ())}
 
-    def __init__(self, source, threshold_db=-24.0, ratio=4.0,
-                 fast_ms=30.0, slow_ms=300.0, switch_db=4.5,
-                 detector_ms=5.0, collapsed=False):
-        self.node = _TwoStageNode(source, threshold_db, ratio, fast_ms,
-                                  slow_ms, switch_db, detector_ms, collapsed)
+    def _build(self, threshold_db=-24.0, ratio=4.0, fast_ms=30.0,
+               slow_ms=300.0, switch_db=4.5, detector_ms=5.0,
+               collapsed=False):
+        self.node = self._own(_TwoStageNode(
+            self._source, threshold_db, ratio, fast_ms, slow_ms, switch_db,
+            detector_ms, collapsed))
         self._output = self.node
 
 
@@ -242,11 +241,11 @@ def under_reporting_limiter(samples):
                  "latency_samples": property(reported)})
 
 
-class NoResetDelay(_OldDigitalDelay):
+class NoResetDelay(_Delay):
     """STATE's first fault: a delay line left full after `reset()`.
 
-    The base class resets the node's buffer; this one keeps everything else
-    and skips exactly that, which is the shape the vision names.
+    The base class clears every node it owns; this one keeps everything
+    else and skips exactly that, which is the shape the vision names.
     """
 
     def reset(self):
@@ -254,21 +253,30 @@ class NoResetDelay(_OldDigitalDelay):
         self.program_change(0)
 
 
-class LiveIntermediateDelay(_OldDigitalDelay):
+class LiveIntermediateDelay(_Delay):
     """STATE's second fault: an intermediate node left live after
     `deinit()`.
 
-    `_core.Effect.deinit` deinitialises the chain tail. A class that builds a
-    node *in front* of its tail has to deinitialise that one itself; this
-    subclass builds one and does not.
+    `deinit()` walks the nodes a class registered with `_own`. This
+    subclass builds one *in front* of the delay and never registers it.
     """
 
-    def __init__(self, source, **options):
+    def _build(self, **options):
+        source = self._source
         self.pre = audiofilters.Filter(
             filter=synthio.Biquad(synthio.FilterMode.LOW_PASS, 8000.0,
-                                  Q=0.707), **_core.pcm())
+                                  Q=0.707),
+            sample_rate=self._sample_rate,
+            channel_count=self._channel_count, bits_per_sample=16,
+            samples_signed=True, buffer_size=2048)
         self.pre.play(source)
-        _OldDigitalDelay.__init__(self, self.pre, **options)
+        # The delay is built around `pre`; the borrowed source stays the
+        # source.
+        self._source = self.pre
+        try:
+            _Delay._build(self, **options)
+        finally:
+            self._source = source
 
 
 class UnreleasableSectionLowPass(LowPass):

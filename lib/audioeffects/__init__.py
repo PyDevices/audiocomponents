@@ -10,16 +10,39 @@ exposes its chain tail as `output`. See README.md for the catalogue.
     audio_out.play(comp.output)
 
 The package factory receives the source and sample rate explicitly. Direct
-class construction remains supported for local code after `configure()`.
+class construction is supported for local code too, and reads the format
+off the source it is handed.
 
 Some classes also carry patches - named settings on the 0-127 MIDI grid, the
 way an instrument does. See README.md, "A note on patches".
 """
 
 from . import _component
-from . import _core
 from . import rebuilt as _rebuilt
-from ._core import channel_count, configure, sample_rate
+
+
+#: What `configure()` last set. No class reads it: every effect takes its
+#: format from the source it is built around. It stays so the
+#: `configure(48000)` idiom in existing code keeps working.
+_FORMAT = [48000, 2]
+
+
+def configure(rate, channel_count=2):
+    """Record a default format. Kept for code that calls it; an effect's
+    format always comes from its source, so this changes no effect."""
+    _FORMAT[0] = int(rate)
+    _FORMAT[1] = int(channel_count)
+
+
+def sample_rate():
+    """The rate `configure()` last recorded (48000 until it is called)."""
+    return _FORMAT[0]
+
+
+def channel_count():
+    """The channel count `configure()` last recorded (2 until it is called)."""
+    return _FORMAT[1]
+
 
 from .compressor import Compressor
 from .limiter import Limiter
@@ -37,9 +60,16 @@ from .notch import Notch
 from .ladderfilter import LadderFilter
 from .combfilter import CombFilter
 from .dynamiceq import DynamicEQ
-from .reverb import Reverb, ConvolutionReverb
-from .delay import (DigitalDelay, SlapbackDelay, TapeDelay, AnalogDelay,
-                    PingPongDelay, MultiTapDelay)
+# Phase 5's and Phase 6's classes are served from `rebuilt/` until they
+# come home as one file each.
+from .rebuilt.reverb import Reverb
+from .rebuilt.convolutionreverb import ConvolutionReverb
+from .rebuilt.digitaldelay import DigitalDelay
+from .rebuilt.slapbackdelay import SlapbackDelay
+from .rebuilt.tapedelay import TapeDelay
+from .rebuilt.analogdelay import AnalogDelay
+from .rebuilt.pingpongdelay import PingPongDelay
+from .rebuilt.multitapdelay import MultiTapDelay
 from .chorus import Chorus
 from .phaser import Phaser
 from .tremolo import Tremolo
@@ -54,8 +84,13 @@ from .cabinetsim import CabinetSim
 from .fuzz import Fuzz
 from .saturation import Saturation
 from .exciter import Exciter
-from .pitch import PitchShifter, Harmonizer, Octaver, StereoWidener
-from .rack import Rack, ShimmerHall, AirSpace
+from .rebuilt.pitchshifter import PitchShifter
+from .rebuilt.harmonizer import Harmonizer
+from .rebuilt.octaver import Octaver
+from .rebuilt.stereowidener import StereoWidener
+from .rebuilt.rack import Rack
+from .rebuilt.shimmerhall import ShimmerHall
+from .rebuilt.airspace import AirSpace
 
 
 #: The package's whole surface, grouped as the modules above are. Every
@@ -89,15 +124,12 @@ __all__ = [
 def _is_provider(candidate):
     """Whether `candidate` is one of this package's public effect classes.
 
-    Two bases, on purpose: `_core.Effect` for the families this program has
-    not rebuilt yet, `_component.Component` for the ones it has. The test is
-    structural rather than a base-class list a consumer must know about --
-    the contract is structural too (`docs/audio-component-api.md`).
+    Every class the package ships is a `_component.Component` subclass that
+    carries a `NAME`; the base itself is not a provider.
     """
     return (isinstance(candidate, type)
-            and candidate is not _core.Effect
             and candidate is not _component.Component
-            and issubclass(candidate, (_core.Effect, _component.Component))
+            and issubclass(candidate, _component.Component)
             and getattr(candidate, "NAME", None) is not None)
 
 
@@ -116,11 +148,13 @@ def _adopt(namespace, names):
     Chorus, Phaser, Tremolo, Vibrato, RingMod) and all seven of Phase 4's
     (Overdrive, Distortion, Fuzz, Saturation, Bitcrusher, Exciter,
     CabinetSim) have come home as one file per effect beside this module, so
-    they are imported above rather than substituted. The machinery stays for
-    the phases still to come: `rebuilt.load()` answers
-    `None` for a parked name (or a name with no file), and
-    `rebuilt.module_class()` is how a tool or a class's own tests reach a
-    rebuild that has not come home yet.
+    they are imported above rather than substituted, and Phase 5's and
+    Phase 6's are imported above straight from `rebuilt/`, where they live
+    until they come home. Every name is therefore already the class this
+    would substitute; the walk stays so a rebuild can still land as one new
+    file: `rebuilt.load()` answers `None` for a parked name (or a name with
+    no file), and `rebuilt.module_class()` is how a tool or a class's own
+    tests reach a rebuild that has not come home yet.
     """
     for exported in names:
         current = namespace.get(exported)
