@@ -200,26 +200,24 @@ run that has it.
 CPython only. A module that imports `get_buffer` inside a function is not
 reached.
 
-**fresh** (`kit_fresh.py`). A reset comes back as a fresh instance, from
-every patch. The contract says a reset restores patch 0 and that a fresh
-instance and one given patch 0 are the same, so:
+**fresh** (`kit_fresh.py`). A reset comes back as a fresh instance at
+patch 0, from every patch:
 
-- `boot/<rate>/<ch>`: a fresh instance and one handed `program_change(0)`
-  before its first pull render the same bytes and read back the same
-  macros (exactly, not within a tolerance), `patch_index`, `tail_samples`
-  and `latency_samples`. A constructor default off patch 0's 0-127 grid
-  is red here.
 - `reset@<k>/<rate>/<ch>/<d|pK>`: built at the defaults or a patch, played
   `k` pulls (0, before the first pull, and 8), then `reset()`. From that
   pull on it renders byte for byte what a fresh instance built at patch 0
-  (the constructor's `patch=`) renders (so a default off the grid is red once, in
-  `boot`, and hides no reset fault), fed the source from the frame the reset left it at (found off a
-  dry run), and reads back what the fresh one reads. No tail is forgiven:
-  a block a voice still held, a line the reset kept, a filter's memory or
-  a delay left from the patch before is red.
+  (the constructor's `patch=`) renders, fed the source from the frame the
+  reset left it at (found off a dry run), and reads back what the fresh one
+  reads. No tail is forgiven: a block a voice still held, a line the reset
+  kept, a filter's memory or a delay left from the patch before is red.
 - `reset@8+m<i>=<v>/...`: the same, then the same move on both four pulls
   later, each macro to each stop, and the readback after it. A state the
-  reset left that only a move wakes (a line length, a lane) is red here.
+  reset left that only a move wakes (a line length, a write head) is red
+  here.
+- `boot/<rate>/<ch>`, informational: whether a fresh instance at its
+  defaults is patch 0 exactly. Patch values are integers and a declared
+  default may sit off their grid ([audio-components.md](../../docs/audio-components.md)),
+  so a difference prints `na(info: ...)` and is never red.
 
 Each cell compares 2 s from the reset and stops at the first difference.
 Grid: 48 and 22.05 kHz, stereo and mono, the defaults and every patch;
@@ -252,7 +250,9 @@ A class that cannot meet a cell by design adds a row to `DECLARED` in
     }
 
 The key is (class `NAME`, check, cell key prefix); a matching red cell
-prints `decl` and counts as declared. Nothing else skips a cell.
+prints `decl` and counts as declared. A fourth element names the one
+interpreter the row holds on (`circuitpython`), so the cell stays live on
+the other two. Nothing else skips a cell.
 
 ## The plants
 
@@ -274,10 +274,10 @@ a fixture card whose surface table differs (paperwork), `FlushOnly` and `DoubleR
 on `get_buffer` to flush a primed voice, the second drops a block on a
 second reset in a row without it; `FlushKit`, which primes a voice of its own
 and plays it again where it cannot flush, is the control; `MidPatchReset`
-does it at a middle patch only, against `FlushKit3`), `OffGrid`,
-`PatchLeak` and `MoveLeak` (fresh: a Gain default a hair under patch 0's
-127; a reset from patch 1 only that keeps the repeat line; a first move
-after a reset that lands 1 % off, against `FreshKit`), and `Silent`, which
+does it at a middle patch only, against `FlushKit3`), `PatchLeak`
+and `MoveLeak` (fresh: a reset from patch 1 only that keeps the repeat line;
+a first move after a reset that lands 1 % off, against `FreshKit` and
+`OffGrid`, whose Gain default sits a hair off patch 0 and is never red), and `Silent`, which
 does nothing. Its native half
 holds the render checks to the same lines on all three interpreters, and
 shows that agreement can fail with `ImplKit`, whose level differs off

@@ -1,25 +1,22 @@
 """Reset equals fresh: after `reset()`, from every patch, a class renders
-byte for byte what a fresh instance renders.
+byte for byte what a fresh instance at patch 0 renders.
 
-The contract says a reset clears every node and restores patch 0, and that
-a fresh component and one given patch 0 are the same. So three things must
-hold, and each is a cell:
+The contract says a reset clears every node and restores patch 0. So:
 
-- `boot/<rate>/<ch>`: a fresh instance and a fresh instance handed
-  `program_change(0)` before its first pull render the same bytes and read
-  back the same macros, `tail_samples` and `latency_samples`. A constructor
-  default off patch 0's 0-127 grid is red here.
 - `reset@<k>/<rate>/<ch>/<from>`: built at the defaults or at a patch,
   played for `k` pulls (0: before the first), then `reset()`. From that
-  pull on it renders what a fresh instance built at patch 0 renders, fed the
-  source from the frame the reset left it at, and reads back what the fresh
-  one reads. (Against patch 0, not the bare defaults, so a default off the
-  grid reads red once, in `boot`, and does not hide a reset fault.) No tail is forgiven: a block a voice still held, a line the
-  reset kept or a filter's memory is red.
+  pull on it renders what a fresh instance built at patch 0 renders, fed
+  the source from the frame the reset left it at, and reads back what the
+  fresh one reads. No tail is forgiven: a block a voice still held, a line
+  the reset kept or a filter's memory is red.
 - `reset@8+m<i>=<v>/<rate>/<ch>/<from>`: the same, then the same macro
   move on both, four pulls later. A state the reset left that only a move
-  wakes (an old line length, a lane the reset did not empty) is red here
-  and not in the cell before.
+  wakes (an old line length, a write head the reset did not move) is red
+  here and not in the cell before.
+- `boot/<rate>/<ch>`, informational: whether a fresh instance at its
+  defaults is patch 0 exactly. Patch values are integers and a declared
+  default may sit off their grid (docs/audio-components.md), so a
+  difference prints `na(info: ...)` and is never red.
 
 Every cell compares `WINDOW_S` seconds from the reset, block by block,
 stopping at the first difference. Numpy-free: the lines are the same on
@@ -47,8 +44,7 @@ MOVE_AFTER = 4
 #: How long past the reset each cell compares, in seconds.
 WINDOW_S = 2.0
 #: The patch the fresh instance a reset is judged against is built at (the
-#: constructor's `patch=`). Patch 0, where a reset lands; `boot` holds the
-#: defaults to it on its own.
+#: constructor's `patch=`). Patch 0, where a reset lands.
 FRESH_PATCH = 0
 
 
@@ -173,7 +169,8 @@ def reset_cell(cls, rate, ch, patch, options, k, move=None):
 
 
 def boot_cell(cls, rate, ch, options):
-    """A fresh instance against one handed patch 0 before its first pull."""
+    """Informational: a fresh instance against one handed patch 0 before
+    its first pull. "ok", or "na(info: ...)" saying how they differ."""
     fsize = 2 * ch
     values = _material(rate, ch)
     e = kc.build(cls, _feed(values, rate, ch).port, rate, None, options)
@@ -181,16 +178,15 @@ def boot_cell(cls, rate, ch, options):
     try:
         said = _says(_readback(f), _readback(e))
         if said:
-            return "RED(patch 0: %s)" % said
-        pos = [p for p in e._macros]
-        if pos != list(f._macros):
-            for i in range(len(pos)):
-                if pos[i] != f._macros[i]:
-                    return ("RED(macro %d sits at %r fresh, %r at patch 0)"
-                            % (i, pos[i], f._macros[i]))
+            return "na(info: off patch 0, %s)" % said
+        for i in range(len(e._macros)):
+            if e._macros[i] != f._macros[i]:
+                return ("na(info: macro %d sits at %r fresh, %r at patch 0)"
+                        % (i, e._macros[i], f._macros[i]))
         d = _lockstep(f, e, int(WINDOW_S * rate), fsize, {})
         if d >= 0:
-            return "RED(patch 0 renders differently from fresh at +%d)" % d
+            return "na(info: patch 0 renders differently from fresh at +%d)" \
+                % d
         return "ok"
     finally:
         e.deinit()

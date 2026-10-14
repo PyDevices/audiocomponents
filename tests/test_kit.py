@@ -293,13 +293,12 @@ class TestFresh(unittest.TestCase):
         for key, value in cells.items():
             self.assertEqual(value["V"], "ok", key)
 
-    def test_a_default_off_patch_0_is_red(self):
+    def test_a_default_off_patch_0_is_never_red(self):
+        # Declared defaults may sit off patch 0's grid: boot only says so.
         cells = fresh_cells(kp.OffGrid)
-        self.assertTrue(red(verdict(cells, "OffGrid", "fresh",
-                                    "boot/48000/2")))
-        # Once, in boot: the reset cells judge against patch 0.
-        reds = self.reds(kp.OffGrid)
-        self.assertEqual(reds, ["boot/48000/1", "boot/48000/2"])
+        self.assertEqual(self.reds(kp.OffGrid), [])
+        self.assertTrue(verdict(cells, "OffGrid", "fresh",
+                                "boot/48000/2").startswith("na(info"))
 
     def test_a_reset_that_keeps_a_line_is_red_from_its_patch_only(self):
         reds = self.reds(kp.PatchLeak)

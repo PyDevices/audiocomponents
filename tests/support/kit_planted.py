@@ -558,9 +558,9 @@ class FreshKit(EchoTail):
 
 
 class OffGrid(FreshKit):
-    """Fresh: the constructor's Gain default is a hair under patch 0's 127,
-    so a fresh instance is not patch 0 and a reset does not land where a
-    fresh instance starts."""
+    """A control for the fresh check: the constructor's Gain default is a
+    hair under patch 0's 127, which a declared default may be. Its reset is
+    clean, so it is never red; `boot` reports the difference."""
     NAME = "OffGrid"
 
     def _build(self, mix=1.0, gain=0.999, patch=None):

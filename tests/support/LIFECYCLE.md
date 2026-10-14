@@ -106,8 +106,7 @@ at patch 0.
   PR runs on the reset events at the cell's own configuration. The kit's
   `fresh` check ([KIT.md](KIT.md)) holds the same property more widely: a
   reset from every patch, before the first pull and mid-stream, the
-  readback after it, each macro moved after the reset, and a fresh
-  instance's defaults held to patch 0 exactly.
+  readback after it, and each macro moved after the reset.
 - **P6** The three interpreters print identical lines for every cell. Each
   line carries `h:`, a CRC-32 of the event instance's whole render, so P6
   compares bytes, not only verdicts.
