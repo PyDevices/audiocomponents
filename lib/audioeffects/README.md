@@ -80,7 +80,7 @@ docstring of any of them lists its controls and limits.
 - `Chorus` thickens a part with one analog-style swept voice.
 - `Flanger` sweeps a comb of notches through the sound.
 - `Phaser` sweeps an all-pass cascade for a softer, swirling version of the same idea.
-- `Tremolo` pulses the level, in bias-vary or optical style.
+- `Tremolo` pulses the level, in bias-vary or optical style. Default is bias, Depth 0.5, Rate 5 Hz — not the optical standout and not L1's Depth 1. Wet peak at the default is −1.341 dB vs a 16000-LSB tone, not the ~6 dB `synthio` `>>16` ceiling; Depth 0 is still a wire. At 22.05 kHz the default's L1 bar is measured at the constructor, not assumed. Optical L1/L2 are disconfirmed; O1–O4 unmeasured at the constructor. L1 holds on sine at every rate, and misses by 0.16 dB on SQUARE material at 44.1 kHz only (−79.844 against −80; 48 kHz holds at −82.01).
 - `AutoPan` moves the sound left and right on an LFO.
 - `Vibrato` wobbles the pitch.
 - `RingMod` multiplies your signal by a carrier for bell-like and metallic tones.
@@ -351,9 +351,8 @@ the measurements and the one-line coefficient fix.
 `audioeffects.ALL` to the contract - exports and metadata, the factory,
 building and rendering, chaining, the patch surface - under CPython. What
 each class *sounds* like is measured beside it, one module per family:
-`test_cpython_effects_dynamics_eq.py`, `..._modulation.py`, `..._time.py`,
-`..._pitch.py` and `..._racks.py` - plus one module per class that has
-its own - with
+`test_cpython_effects_dynamics_eq.py` and `..._modulation.py`, plus one
+module per class that has its own, with
 `test_cpython_convolve_node.py` for the audioconvolve node underneath the
 convolvers. `tests/parity/effects_library_smoke.py` is the coarse half of
 all that in portable Python, so MicroPython and patched CircuitPython can
