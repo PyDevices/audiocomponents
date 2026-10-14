@@ -82,6 +82,20 @@ for _ch in CHANNELS:
             " a reset, so a shorter Time after it keeps another stretch of"
             " the line; audiodsp's node resets them")
 
+# The pitch shifters on CircuitPython: its audiodelays.PitchShift is
+# upstream's own, whose reset keeps the read and write positions, so a
+# reset does not start the splices where a new node starts them
+# (audiodsp#240 fixed it in audiodsp's node; each class's docstring says
+# so, and the lifecycle matrix declares the same cells there).
+for _name in ("Harmonizer", "PitchShifter"):
+    DECLARED[(_name, "fresh", "reset@", "circuitpython")] = (
+        "CircuitPython's own PitchShift keeps its read and write positions"
+        " across a reset, so the splices do not start where a new node's"
+        " do; audiodsp's node resets them (audiodsp#240)")
+DECLARED[("ShimmerHall", "fresh", "reset@8+m0=0/", "circuitpython")] = (
+    "Octave Bloom, then Rise after a reset: CircuitPython's own PitchShift"
+    " keeps its read and write positions across the reset (audiodsp#240)")
+
 # Overdrive in mono: a fresh instance's first block, the one its voices
 # prime at construction, renders the first 8 frames of material that is
 # already sounding at frame 0 about 1.28 times as loud as a running
