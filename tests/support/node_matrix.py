@@ -348,6 +348,40 @@ class NodeEcho(_Node):
             self._node.decay = decay
 
 
+class NodeMultiTapDelay(_Node):
+    """`audiodelays.MultiTapDelay`: the heads of the class of the same
+    name, whose line and write heads a reset must leave as a fresh node
+    has them."""
+    NAME = "NodeMultiTapDelay"
+    TIER = _component.STOCK
+    REQUIRES = ()
+    MACRO_LABELS = ("Mix", "Time", "Decay")
+    MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "UNIPOLAR"}
+    _MACRO_RANGES = ((0.0, 1.0), (20.0, 300.0), (0.0, 0.5))
+    PATCHES = {0: ("Two heads", (64, 64, 0)), 1: ("Short", (127, 10, 64)),
+               2: ("Long repeats", (96, 127, 127))}
+    #: 0.5 ** n * 32768 < 1 at n = 16 repeats of the longest time; the
+    #: node rounds each repeat, so it is given 24.
+    _TAIL_S = 24 * 0.3 + 0.3
+
+    def _build(self, mix=0.5, time_ms=150.0, decay=0.0, patch=None):
+        self._node = self._register(audiodelays.MultiTapDelay(
+            max_delay_ms=320, delay_ms=time_ms, decay=decay, mix=mix,
+            taps=((1.0, 1.0), (0.5, 0.7)), **self._pcm(512)))
+        self._node.play(self._source, loop=True)
+        self._output = self._node
+        self._init_macros((mix, time_ms, decay), patch)
+
+    def _apply_macro(self, index, position):
+        mix, time_ms, decay = self._values()
+        if index == 0:
+            self._node.mix = mix
+        elif index == 1:
+            self._node.delay_ms = time_ms
+        else:
+            self._node.decay = decay
+
+
 class NodeFlanger(_Node):
     """`audiodelays.Flanger`: CircuitPython's flanger node, which Phase 7's
     `Flanger` is rebuilt on. Mix is a wire at 0."""
@@ -441,7 +475,8 @@ class NodeAllPass(_Node):
 NODES = {}
 for _cls in (NodePitchShift, NodeGranularPitchShift, NodeShimmerLoop,
              NodeSubOctave, NodeSquare, NodeMidSide, NodeSplitMix,
-             NodeBiquad, NodeEcho, NodeFlanger, NodeComparator,
+             NodeBiquad, NodeEcho, NodeMultiTapDelay, NodeFlanger,
+             NodeComparator,
              NodeAllPass):
     NODES[_cls.NAME] = _cls
 

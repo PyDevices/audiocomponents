@@ -447,6 +447,38 @@ def macro_of(span, value, mode="UNIPOLAR"):
     return int(round(midi_of_position(mode, macro_position(span, value))))
 
 
+#: Frames in one block of `_lazy_silence` (an `audioroute.MidSide` with no
+#: source hands out this many per pull).
+_SILENCE_FRAMES = 256
+
+
+def _drain(pull, mixer):
+    """Pull `mixer` until each voice on the lazy silence has handed up the
+    whole silent block it primed and holds nothing: a mixer that pulls
+    fewer frames than the block (128 at two channels on some classes) left
+    the rest to play first, and the output started half a block late."""
+    total = 0
+    for _ in range(64):
+        state, data = pull(mixer)
+        frames = len(data) // (2 * mixer.channel_count) if data else 0
+        if not frames:
+            return
+        total += frames
+        if total % _SILENCE_FRAMES == 0:
+            return
+
+
+def release(node):
+    """Let go of a node no graph points at any more (None is fine): its
+    `release_all()` where it has one, then its `deinit()`."""
+    if node is None:
+        return
+    for name in ("release_all", "deinit"):
+        call = getattr(node, name, None)
+        if call is not None:
+            call()
+
+
 # --------------------------------------------------------------------------
 # Level gates
 
@@ -1172,6 +1204,117 @@ class Component:
             # `_build` routes around.
             self._restore(self._reset_to)
             self._stranded = False
+
+    #: Set inside `_reset_rearmed`: `_play_voice` hands a voice a stand-in.
+    _arming_lazily = False
+
+    def _play_voice(self, voice, source, loop=False):
+        """`voice.play(source)`, except while `_reset_rearmed` arms the
+        graph: then the voice is played on a Port standing on silence, so
+        priming it takes nothing from the source, and the Port is pointed
+        at `source` once the voice has given its silent block up. The next
+        pull then fetches from `source` itself, which is what a fresh
+        build's voice does after the block it primed has played."""
+        if not self._arming_lazily or PORT is None:
+            voice.play(source, loop=loop)
+            return
+        ports = getattr(self, "_lazy_ports", None)
+        if ports is None:
+            ports = self._lazy_ports = {}
+        port = ports.get(id(voice))
+        if port is None:
+            port = self._own(PORT(source), reset=False)
+            ports[id(voice)] = port
+        port.play(self._lazy_silence())
+        voice.play(port, loop=loop)
+        self._lazy_pending.append((voice, port, source))
+
+    def _lazy_silence(self):
+        """A source that hands one block of zeros per pull and never ends:
+        a width-1 `audioroute.MidSide` with nothing to play (MultiTapDelay's
+        `_hush`). A two-frame sample would end, and a voice that saw it end
+        would stop."""
+        silence = getattr(self, "_lazy_zero", None)
+        if silence is None:
+            import audioroute
+            silence = self._own(audioroute.MidSide(
+                width=1.0, sample_rate=self._sample_rate,
+                channel_count=self._channel_count), reset=False)
+            self._lazy_zero = silence
+        return silence
+
+    def _reset_rearmed(self, rearm, primed=(), building=False):
+        """`reset()` for a class whose mixer voices each hold a block they
+        primed ahead, and which arms them once, the way `_build` does.
+
+        The base walk clears the nodes behind a voice but not the block the
+        voice already took through them, so the first block after a reset
+        was the old chain's and the next one a cleared chain's: a step of a
+        few to a few hundred LSB where a fresh instance has none. Here every
+        voice of every mixer this class owns is stopped, the `primed` flags
+        are dropped, patch 0 goes in with the graph unarmed (`_ready` off,
+        so no macro primes a voice part-way through the patch), and then
+        `rearm()` arms the graph as coming back from a bypass does: the
+        class's own refresh, called with the graph marked stranded so its
+        `_rejoin` branch runs. With `building`, the patch goes in with
+        `_constructing` set, for a class that builds part of its graph again
+        on a macro and must not connect it part-way through the patch.
+
+        **The arming is lazy: a reset takes nothing from the source.** Each
+        voice the class plays through `_play_voice` primes a block of
+        silence instead; each mixer is pulled once, which hands those up;
+        and then the voices' stand-ins are pointed at their real sources,
+        so the next pull fetches as a fresh build's next pull does. Where
+        `audiocore.get_buffer` is compiled out the silent block plays
+        first. Saturation keeps its own `reset()`.
+        """
+        self._check_live()
+        self._clear_nodes()
+        for node in self._nodes:
+            voices = getattr(node, "voice", None)
+            if voices is None:
+                continue
+            for voice in voices:
+                voice.stop()
+        for name in primed:
+            setattr(self, name, False)
+        ready = getattr(self, "_ready", None)
+        self._ready = False
+        self._stranded = False
+        # `building`: the patch goes in as a constructor's `patch=` does,
+        # for a class that builds part of its graph again on a macro.
+        self._constructing = bool(building)
+        try:
+            if self._reset_to is None:
+                self.program_change(0)
+            else:
+                self._restore(self._reset_to)
+        finally:
+            self._ready = ready
+            self._constructing = False
+        # Stranded, so the refresh's `_rejoin` arms the graph (and clears
+        # it again, which changes nothing). A patch 0 at Mix 0 routes
+        # around instead and leaves it stranded, so the Mix move off 0
+        # arms it then.
+        self._stranded = True
+        self._lazy_pending = []
+        self._arming_lazily = True
+        try:
+            rearm()
+        finally:
+            self._arming_lazily = False
+        pending = self._lazy_pending
+        self._lazy_pending = []
+        if pending:
+            pull = getattr(audiocore, "get_buffer", None)
+            if pull is not None:
+                # The graph as it stands now: a patch that builds part of
+                # it again has new mixers.
+                for node in self._nodes:
+                    if getattr(node, "voice", None) is not None:
+                        _drain(pull, node)
+            for _voice, port, source in pending:
+                port.play(source)
 
     def deinit(self):
         """Release every node this class built, tail first. Idempotent, and

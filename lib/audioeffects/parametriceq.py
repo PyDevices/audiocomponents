@@ -317,7 +317,12 @@ class ParametricEQ(_component.Component):
             (low_hz, low_boost, low_atten,
              bell1_hz, bell1_db, bell2_hz, bell2_db, bell3_hz, bell3_db,
              bandwidth, high_hz, high_boost, atten_hz, high_atten,
-             q_law, output_db), patch)
+             q_law, output_db))
+        #: Where the constructor's own values left the knobs, before any
+        #: patch: what every section was last handed on a fresh instance.
+        self._built_positions = list(self._macros)
+        if patch is not None:
+            self.program_change(patch)
 
     # -- the control laws ----------------------------------------------
 
@@ -382,6 +387,26 @@ class ParametricEQ(_component.Component):
     def _refresh_output(self):
         self._set(self._output_trim, OUTPUT_CORNER_HZ, SHELF_Q,
                   self._value(15))
+
+    def reset(self):
+        """Clear every section and restore patch 0, from the settings a
+        fresh instance's sections hold: built, then the constructor's
+        values, then patch 0. A section patch 0 leaves flat is only taken
+        out (`mix` 0), so it kept the outgoing patch's corner, Q and gain,
+        and a later move that brought it in moved from those instead of
+        from a fresh section's."""
+        self._check_live()
+        for node in self._nodes:
+            node.mix = 0.0
+            node.frequency = 1000.0
+            node.Q = SHELF_Q
+            node.gain_db = 0.0
+        # As `_init_macros` seeds them: every position first, then each
+        # applied, so no section is handed a mix of two settings.
+        self._macros = list(self._built_positions)
+        for index in range(len(self._macros)):
+            self._apply_macro(index, self._macros[index])
+        _component.Component.reset(self)
 
     def _apply_macro(self, index, position):
         if index in (0, 1, 2):

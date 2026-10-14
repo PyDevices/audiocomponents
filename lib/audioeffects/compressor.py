@@ -337,6 +337,12 @@ class Compressor(_component.Component):
         self._ready = True
         self._refresh_output()
 
+    def reset(self):
+        """Clear every node and restore patch 0, then arm the graph as
+        `_build` does, so a reset is a fresh instance (no block primed
+        through the chain before it was cleared plays after it)."""
+        self._reset_rearmed(self._refresh_output, ("_primed",))
+
     def _prime(self):
         """Open the mixer's level gates, then hand its voices their sources.
 
@@ -349,8 +355,9 @@ class Compressor(_component.Component):
         """
         _component.open_level_gates(self._mixer, [self._wet, self._dry],
                                     self._silence)
-        self._wet.play(self._fast if self._lean() else self._slow)
-        self._dry.play(self._dry_tap)
+        self._play_voice(self._wet,
+                         self._fast if self._lean() else self._slow)
+        self._play_voice(self._dry, self._dry_tap)
         self._primed = True
 
     def _refresh_output(self):

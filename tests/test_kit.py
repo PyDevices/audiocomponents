@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(ROOT, "tests", "support"))
 import kit_args                                           # noqa: E402
 import kit_ceiling                                        # noqa: E402
 import kit_claims                                         # noqa: E402
+import kit_fresh                                          # noqa: E402
 import kit_common as kc                                   # noqa: E402
 import kit_nogb                                           # noqa: E402
 import kit_paperwork                                      # noqa: E402
@@ -304,6 +305,48 @@ class TestNoGetBuffer(unittest.TestCase):
         self.assertEqual(kit_nogb._kind("RED(differs at +1)"),
                          kit_nogb._kind("RED(differs at +9)"))
         self.assertNotEqual(kit_nogb._kind("ok"), kit_nogb._kind("RED(x)"))
+
+
+def fresh_cells(cls):
+    return cells_of(kit_fresh.run, cls, quick=True)
+
+
+class TestFresh(unittest.TestCase):
+    """Reset equals fresh: each plant is red on its own cells and nowhere
+    the fault does not reach, and the control is green on every cell."""
+
+    def reds(self, cls):
+        cells = fresh_cells(cls)
+        return sorted(k for (name, check, k), v in cells.items()
+                      if red(v["V"]))
+
+    def test_the_control_is_green(self):
+        cells = fresh_cells(kp.FreshKit)
+        self.assertTrue(cells)
+        for key, value in cells.items():
+            self.assertEqual(value["V"], "ok", key)
+
+    def test_a_default_off_patch_0_is_never_red(self):
+        # Declared defaults may sit off patch 0's grid: boot only says so.
+        cells = fresh_cells(kp.OffGrid)
+        self.assertEqual(self.reds(kp.OffGrid), [])
+        self.assertTrue(verdict(cells, "OffGrid", "fresh",
+                                "boot/48000/2").startswith("na(info"))
+
+    def test_a_reset_that_keeps_a_line_is_red_from_its_patch_only(self):
+        reds = self.reds(kp.PatchLeak)
+        self.assertIn("reset@8/48000/2/p1", reds)
+        self.assertIn("reset@8/48000/1/p1", reds)
+        for key in reds:
+            self.assertTrue(key.endswith("/p1"), key)
+        # Before the first pull the line holds nothing to keep.
+        self.assertNotIn("reset@0/48000/2/p1", reds)
+
+    def test_a_fault_only_a_move_wakes_is_red_on_the_move_cells(self):
+        reds = self.reds(kp.MoveLeak)
+        self.assertIn("reset@8+m1=0/48000/2/d", reds)
+        for key in reds:
+            self.assertIn("+m", key)
 
 
 class TestCeiling(unittest.TestCase):
@@ -644,7 +687,7 @@ def run_kit(binary, args):
 
 
 RENDER = ["--quick", "--plants-module=kit_planted",
-          "--only=args,plants,ceiling,tail"]
+          "--only=args,plants,ceiling,tail,fresh"]
 
 
 class TestNative(unittest.TestCase):

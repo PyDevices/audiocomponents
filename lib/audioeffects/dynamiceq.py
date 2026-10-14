@@ -400,9 +400,9 @@ class DynamicEQ(_component.Component):
                 and self._macros[self._LISTEN] < 0.5:
             self._primed = False
             return
-        self._mixer.play(self._taps[0], voice=0, loop=True)
-        self._mixer.play(self._notch, voice=1, loop=True)
-        self._mixer.play(self._cell, voice=2, loop=True)
+        self._play_voice(self._mixer.voice[0], self._taps[0], loop=True)
+        self._play_voice(self._mixer.voice[1], self._notch, loop=True)
+        self._play_voice(self._mixer.voice[2], self._cell, loop=True)
         self._primed = True
 
     def _refresh_output(self):
@@ -446,6 +446,19 @@ class DynamicEQ(_component.Component):
             self._play_voices()
         self._output = self._tail
 
+    def reset(self):
+        """Clear every node and restore patch 0, then hand the voices their
+        sources at patch 0's levels, as `_build` does. The walk used to
+        re-play them at the outgoing patch's levels, before patch 0 went
+        in, so the levels moved after the gates had opened and landed late,
+        a few LSB (up to 70 here) off a fresh instance for the first
+        blocks."""
+        self._resetting = True
+        try:
+            self._reset_rearmed(self._refresh_output, ("_primed",))
+        finally:
+            self._resetting = False
+
     def _reset_mixer(self):
         """Clear the Mixer, then hand its voices back their sources.
 
@@ -459,6 +472,12 @@ class DynamicEQ(_component.Component):
         Mixer is owned first and so walked last, that chunk comes through
         nodes this reset has already cleared.
         """
+        if getattr(self, "_resetting", False):
+            # `reset()` stops the voices and plays them once the patch is in
+            # (`_reset_rearmed`). A host reset of CircuitPython's stock
+            # Mixer here reached the voices' sources and cost the reset a
+            # block of the source, as it did Saturation's.
+            return
         audiocore.reset_buffer(self._mixer)
         self._play_voices()
 

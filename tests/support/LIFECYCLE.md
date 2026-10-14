@@ -103,6 +103,10 @@ at patch 0.
   the source from the same frame. Where the source stands is read off a
   dry run to the move. No tail is forgiven: a child left at its own patch 0, a line kept
   across a reset or a block primed twice is red here.
+  PR runs on the reset events at the cell's own configuration. The kit's
+  `fresh` check ([KIT.md](KIT.md)) holds the same property more widely: a
+  reset from every patch, before the first pull and mid-stream, the
+  readback after it, and each macro moved after the reset.
 - **P6** The three interpreters print identical lines for every cell. Each
   line carries `h:`, a CRC-32 of the event instance's whole render, so P6
   compares bytes, not only verdicts.

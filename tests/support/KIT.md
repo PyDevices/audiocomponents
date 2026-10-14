@@ -1,16 +1,16 @@
 # The effects kit
 
-Seven mechanical checks that run on one effect class with no model in the
+Eight mechanical checks that run on one effect class with no model in the
 loop: every verdict is arithmetic on rendered bytes, or on the source. They
 sit beside the [lifecycle matrix](LIFECYCLE.md) and catch the kinds of
 defect that kept turning up class after class: a tail that outlasts
 `tail_samples`, a planted fault a knob can reach, a docstring promise no
 test holds, a control that does not read back what it was set to, an input
 level that wraps, a citation that no longer resolves, a refused call that
-leaves a trace, and a class that only behaves where `audiocore.get_buffer`
-exists.
+leaves a trace, a class that only behaves where `audiocore.get_buffer`
+exists, and a reset that does not come back as a fresh instance.
 
-To run all seven on one class, from the repo root:
+To run all eight on one class, from the repo root:
 
     python tests/support/kit.py DigitalDelay
     python tests/support/kit.py DigitalDelay --only tail,ceiling --quick
@@ -28,10 +28,11 @@ It prints one line per cell, `name|check|key|V:verdict[|h:digest]`, a
 why), `RED(...)` with what was measured, or `decl`. `h:` is a CRC-32 of the
 cell's render, so two interpreters' lines agree only when their bytes do.
 
-The four render checks (tail, plants, args, ceiling) are numpy-free and
-print the same lines on CPython, MicroPython and CircuitPython. nogb runs
-on all three too. The claims and paperwork checks read source, unittest and
-git, and run on CPython only; a native run prints `SKIP` for them.
+The five render checks (tail, plants, args, ceiling, fresh) are numpy-free
+and print the same lines on CPython, MicroPython and CircuitPython. nogb
+runs on all three too. The claims and paperwork checks read source,
+unittest and git, and run on CPython only; a native run prints `SKIP` for
+them.
 
 A class that does nothing at all must not read as a pass: the tail and
 args checks print `na(silent)` for a render that was zero throughout, and
@@ -114,7 +115,9 @@ hands it:
   patch's values, and `program_change(0)` reads back what a fresh instance
   read (the contract: a fresh component and one given patch 0 are the
   same).
-- `ctor-<option>`: each numeric keyword of `_build` at 0 and NaN. A raise is
+- `ctor-<option>`: each numeric keyword of `_build` at 0 and NaN (a
+  keyword whose default is `None`, left out to play patch 0's step, counts
+  when the class names its number in `_OPTION_DEFAULTS`). A raise is
   ValueError or TypeError; a build reports readable latency and tail,
   finite macros, renders without raising or sitting on a rail the input
   was not on; and a NaN build renders exactly what the defaults or the
@@ -210,6 +213,31 @@ only off CPython is checked there and nowhere else. Run it on each:
 
 A module that imports `get_buffer` inside a function is not reached.
 
+**fresh** (`kit_fresh.py`). A reset comes back as a fresh instance at
+patch 0, from every patch:
+
+- `reset@<k>/<rate>/<ch>/<d|pK>`: built at the defaults or a patch, played
+  `k` pulls (0, before the first pull, and 8), then `reset()`. From that
+  pull on it renders byte for byte what a fresh instance built at patch 0
+  (the constructor's `patch=`) renders, fed the source from the frame the
+  reset left it at (found off a dry run), and reads back what the fresh one
+  reads. No tail is forgiven: a block a voice still held, a line the reset
+  kept, a filter's memory or a delay left from the patch before is red.
+- `reset@8+m<i>=<v>/...`: the same, then the same move on both four pulls
+  later, each macro to each stop, and the readback after it. A state the
+  reset left that only a move wakes (a line length, a write head) is red
+  here.
+- `boot/<rate>/<ch>`, informational: whether a fresh instance at its
+  defaults is patch 0 exactly. Patch values are integers and a declared
+  default may sit off their grid ([audio-components.md](../../docs/audio-components.md)),
+  so a difference prints `na(info: ...)` and is never red.
+
+Each cell compares 2 s from the reset and stops at the first difference.
+Grid: 48 and 22.05 kHz, stereo and mono, the defaults and every patch;
+`--quick` runs 48 kHz and the move cells from the defaults and the last
+patch only. A class whose reset cannot meet a cell by design declares it
+in `DECLARED`.
+
 ## Known gaps
 
 - **Several levels.** Every render check plays its material at one level
@@ -235,7 +263,9 @@ A class that cannot meet a cell by design adds a row to `DECLARED` in
     }
 
 The key is (class `NAME`, check, cell key prefix); a matching red cell
-prints `decl` and counts as declared. Nothing else skips a cell.
+prints `decl` and counts as declared. A fourth element names the one
+interpreter the row holds on (`circuitpython`), so the cell stays live on
+the other two. Nothing else skips a cell.
 
 ## The plants
 
@@ -264,7 +294,10 @@ does it at a middle patch only, against `FlushKit3`; `PatchPulls` calls
 as one `run` cell for the whole class, and is red on that patch's `run`
 cells alone; `NativeFlush` leans on `get_buffer` only off CPython, so it
 is clean on CPython and red on MicroPython and CircuitPython, where the
-check once did not run), and `Silent`, which
+check once did not run), `PatchLeak`
+and `MoveLeak` (fresh: a reset from patch 1 only that keeps the repeat line;
+a first move after a reset that lands 1 % off, against `FreshKit` and
+`OffGrid`, whose Gain default sits a hair off patch 0 and is never red), and `Silent`, which
 does nothing. Its native half
 holds the render checks to the same lines on all three interpreters, and
 shows that agreement can fail with `ImplKit`, whose level differs off

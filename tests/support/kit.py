@@ -1,11 +1,11 @@
-"""The effects kit: seven mechanical checks on one class, no model in the loop.
+"""The effects kit: eight mechanical checks on one class, no model in the loop.
 
     python tests/support/kit.py DigitalDelay [--only tail,plants,...]
         [--quick] [--plants-module NAME] [--claims-module NAME] [--no-run]
 
 Prints one line per cell, `name|check|key|V:verdict[|h:digest]`, a
 SUMMARY line per check, and DONE. On MicroPython and CircuitPython
-(`MICROPYPATH=lib:tests/support`) it runs the four render checks and
+(`MICROPYPATH=lib:tests/support`) it runs the five render checks and
 nogb; the claims and paperwork checks read source and git, and run on
 CPython only.
 `KIT.md` beside this file says what each check measures and its bars.
@@ -21,7 +21,7 @@ if __name__ == "__main__":
 import kit_common as kc
 
 CHECKS = ("paperwork", "claims", "args", "plants", "ceiling", "tail",
-          "nogb")
+          "nogb", "fresh")
 STATIC = ("paperwork", "claims")
 
 
@@ -53,6 +53,10 @@ def run_check(check, cls, emit=print, quick=False, plants_module=None,
         return kit_nogb.run(cls, emit, quick=quick, name=name,
                             options=kit_options.lifecycle_options_for(
                                 cls.NAME))
+    if check == "fresh":
+        import kit_fresh
+        return kit_fresh.run(cls, emit, quick=quick, name=name,
+                             options=options)
     if check == "claims":
         import kit_claims
         return kit_claims.run(cls, emit, module=claims_module,

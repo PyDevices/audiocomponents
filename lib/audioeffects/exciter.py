@@ -607,6 +607,12 @@ class Exciter(_component.Component):
         self._ready = True
         self._prime_if_wet()
 
+    def reset(self):
+        """Clear every node and restore patch 0, then arm the graph as
+        `_build` does, so a reset is a fresh instance (no block primed
+        through the chain before it was cleared plays after it)."""
+        self._reset_rearmed(self._prime_if_wet, ("_primed",))
+
     def _value(self, index):
         return _component.macro_value(self._MACRO_RANGES[index],
                                       self._macros[index])
@@ -702,8 +708,8 @@ class Exciter(_component.Component):
             self._primed = False
         if not self._primed:
             self._dc.play(self._shaper)
-            self._blend.voice[0].play(self._dry)
-            self._blend.voice[1].play(self._dc)
+            self._play_voice(self._blend.voice[0], self._dry)
+            self._play_voice(self._blend.voice[1], self._dc)
             self._primed = True
         self._output = self._blend
         self._blend.voice[0].level = out

@@ -3290,5 +3290,33 @@ class TheClaims(unittest.TestCase):
                 ctl.close()
 
 
+class TestResetIsFresh(unittest.TestCase):
+    """A reset comes back as a fresh instance at patch 0 (kit `fresh`)."""
+
+    def test_a_time_move_after_a_reset_plays_as_on_a_fresh_instance(self):
+        # audiodelays.MultiTapDelay's reset_buffer used to empty the line
+        # and leave the write head where it was, where a fresh node's
+        # starts at the top. A shorter Time then kept another stretch of the
+        # line, so a Time 0 move after a reset played an extra full-level
+        # echo a fresh instance did not (from +1027, 10 146 LSB at most).
+        # The node puts the head at the top now (audiodsp, Phase 7 7d);
+        # CircuitPython's own node still keeps it.
+        import kit_fresh
+        for patch in (None, 0, 3, 6):
+            for ch in (2, 1):
+                self.assertEqual(kit_fresh.reset_cell(
+                    MultiTapDelay, RATE, ch, patch, {}, kit_fresh.RESET_AT,
+                    (mtd.TIME_I, 0)), "ok", (patch, ch))
+
+    def test_a_reset_alone_is_a_fresh_instance(self):
+        import kit_fresh
+        for patch in (None, 0, 3, 6):
+            for ch in (2, 1):
+                for k in (0, kit_fresh.RESET_AT):
+                    self.assertEqual(kit_fresh.reset_cell(
+                        MultiTapDelay, RATE, ch, patch, {}, k), "ok",
+                        (patch, ch, k))
+
+
 if __name__ == "__main__":
     unittest.main()

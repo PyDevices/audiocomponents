@@ -331,6 +331,22 @@ class Tremolo(_component.Component):
         return _component.macro_value(self._MACRO_RANGES[index],
                                       self._macros[index])
 
+    def reset(self):
+        """Clear every node, restore patch 0 and start the LFO again.
+
+        The LFO is a note on a `synthio.Synthesizer`, which the walk does
+        not reach: it played on, holding a block it had rendered before the
+        reset, and the note it was asked for next started on top of the old
+        one's release. A fresh synthesizer, which patch 0 then presses, is
+        the LFO a fresh instance starts with."""
+        self._check_live()
+        old = self._synth
+        self._synth = synthio.Synthesizer(
+            sample_rate=self._sample_rate,
+            channel_count=self._channel_count)
+        _component.Component.reset(self)
+        _component.release(old)
+
     def _apply_macro(self, index, position):
         del position
         self._refresh()

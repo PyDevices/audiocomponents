@@ -663,7 +663,8 @@ class Saturation(_component.Component):
 
     CAPABILITIES = ()
     #: The shipped x4 group delay, 3.3 samples. The instance property is the
-    #: one to read: Mix 0 is 0, the lean patch's x2 is 2, `console` adds 2.
+    #: one to read: Mix 0 is 0, and it is the onset
+    #: `CLICK_ONSET_SAMPLES` measures at the running character and factor.
     LATENCY_SAMPLES = 3
     #: Measured, not inherited. The longest memory in the graph is the 20 Hz
     #: plate capacitor - 5 Hz on `console`, which is the slow one. A 200 ms
@@ -725,6 +726,8 @@ class Saturation(_component.Component):
                              if character == "console" else 0.0)
         self._routed_lean = False
         self._ready = False
+        #: True inside `reset()`, whose walk must not re-play the voices.
+        self._resetting = False
         self._attached = False
         self._bias = 0.0
         #: The Hysteresis the shapers were last handed; see `_apply_macro`.
@@ -987,10 +990,52 @@ class Saturation(_component.Component):
         self._mix.voice[1].play(self._makeup_shelf)
 
     def _reset_mixers(self):
+        if self._resetting:
+            # Inside `reset()` the voices only let go: it arms them again
+            # once the chain behind them is clear. A host reset of the
+            # Mixer here reached the voices' sources on CircuitPython's
+            # stock `audiomixer` and cost the reset a block of the source.
+            for voice in self._mix.voice:
+                voice.stop()
+            return
         audiocore.reset_buffer(self._mix)
         if self._attached:
             self._mix.voice[0].play(self._dry)
             self._mix.voice[1].play(self._makeup_shelf)
+
+    def reset(self):
+        """Clear every node and come back as `_build` leaves a fresh
+        instance at patch 0.
+
+        The walk clears the mixer first (it is registered last), and its
+        voices used to be re-played there: a play primes a voice with a
+        block of its source, so the wet voice took one from a chain the
+        walk had not cleared yet and the first block after the reset was
+        the old audio, 1504 LSB at the defaults. Here the voices are
+        stopped, the patch goes in with the graph unarmed, and the graph is
+        armed the way `_build` arms it: the shapers re-pointed, the level
+        gates opened, then the voices played.
+        """
+        self._check_live()
+        self._resetting = True
+        try:
+            self._clear_nodes()
+        finally:
+            self._resetting = False
+        self._stranded = False
+        self._ready = False
+        try:
+            if self._reset_to is None:
+                self.program_change(0)
+            else:
+                self._restore(self._reset_to)
+        finally:
+            self._ready = True
+        self._rearm()
+        self._refresh_output()
+        # Armed just now: a Mix 0 it lands on routes around a graph that
+        # has not played since it was cleared, as `_build`'s does.
+        self._stranded = False
 
     def _value(self, index):
         return _component.macro_value(self._MACRO_RANGES[index],
@@ -1215,7 +1260,10 @@ class Saturation(_component.Component):
         factor = self._lean_oversample if lean else self._oversample
         self._after.play(shaper)
         self._routed_lean = lean
-        self._wet_delay = _group_delay_samples(factor, self._extra_delay)
+        # The onset, as `_build` declares it: the group delay here made a
+        # visit to the lean patch leave `latency_samples` reading the
+        # centroid (3 at tube x4) where a fresh instance reads 1.
+        self._wet_delay = _click_onset_samples(self._character, factor)
         self._refresh_output()
 
     @property

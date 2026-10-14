@@ -69,6 +69,37 @@ DECLARED = {
         " octaves are silent by design (trait T3 b)",
 }
 
+# MultiTapDelay on CircuitPython: its audiodelays.MultiTapDelay is
+# upstream's own, whose reset_buffer keeps the write heads where they were,
+# so a Time 0 move after a reset keeps another stretch of the line than on
+# a fresh node. audiodsp's node puts them at the top (docs/upstream-diff.md
+# there); CPython and MicroPython keep the cells live.
+for _ch in CHANNELS:
+    for _rate in RATES:
+        DECLARED[("MultiTapDelay", "fresh", "reset@8+m0=0/%d/%d/" % (
+            _rate, _ch), "circuitpython")] = (
+            "CircuitPython's own MultiTapDelay keeps its write heads across"
+            " a reset, so a shorter Time after it keeps another stretch of"
+            " the line; audiodsp's node resets them")
+
+# Overdrive in mono: a fresh instance's first block, the one its voices
+# prime at construction, renders the first 8 frames of material that is
+# already sounding at frame 0 about 1.28 times as loud as a running
+# instance does (-37 against -29 LSB at the first frame, 789 LSB apart at
+# most); one fed a block of silence first renders what the reset instance
+# renders. So the reset is right and the fresh build's first block is the
+# odd one; it shows only where the reset lands in the noise burst
+# (reset@8). Stereo is exact. Declared with that bound until it is found
+# (audiocomponents#142).
+for _rate in RATES:
+    for _key in ["reset@8/"] + ["reset@8+m%d=%d/" % (_i, _v)
+                                for _i in range(7) for _v in (0, 64, 127)]:
+        DECLARED[("Overdrive", "fresh", "%s%d/1/" % (_key, _rate))] = (
+            "in mono a fresh build's construction-primed first block renders"
+            " its first 8 frames about 1.28x a running instance's (at most"
+            " 789 LSB apart); the reset matches the running instance"
+            " (audiocomponents#142)")
+
 # PitchShifter at Feedback's top: the repeats stack on the dry, up to 21
 # times the input's peak on a DC, so the rail is reachable below any useful
 # ceiling. The docstring says so ("Feedback stacks level too, far past the
@@ -314,8 +345,15 @@ def resolve(name):
 # Cells
 
 
-def declared(name, check, key):
-    for (cname, ccheck, prefix), _reason in DECLARED.items():
+def declared(name, check, key, impl=None):
+    """A row of DECLARED covers the cell. A row with a fourth element names
+    the one interpreter (`sys.implementation.name`) it holds on, so the
+    cell stays live on the other two."""
+    impl = impl or sys.implementation.name
+    for row, _reason in DECLARED.items():
+        cname, ccheck, prefix = row[:3]
+        if len(row) > 3 and row[3] != impl:
+            continue
         if cname == name and ccheck == check and key.startswith(prefix):
             return True
     return False
