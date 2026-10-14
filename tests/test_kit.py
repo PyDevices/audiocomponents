@@ -194,6 +194,14 @@ class TestArgs(unittest.TestCase):
             self.assertTrue(verdict(cells, "KitPlain", "args", key)
                             .startswith("ok"), key)
 
+    def test_a_refused_or_misplaced_value_is_red(self):
+        # The contract clamps: a raise on NaN is red, and so is a NaN that
+        # lands anywhere but the bottom stop. The control clamps all five.
+        for plant in (kp.NanRaises, kp.NanTop):
+            with self.subTest(plant=plant.NAME):
+                self.assertTrue(red(kit_args.bad_cell(plant, 1)),
+                                kit_args.bad_cell(plant, 1))
+
     def test_a_clamp_is_read_as_one(self):
         self.assertEqual(kit_args.bad_cell(kp.KitPlain, 1),
                          "ok(nan:c inf:c -inf:c -1:c 128:c)")

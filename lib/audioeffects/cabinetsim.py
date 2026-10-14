@@ -557,7 +557,10 @@ class CabinetSim(_component.Component):
         except (TypeError, ValueError):
             pass
         else:
-            value = float(int(value + 0.5)) if value >= 0.0 else 0.0
+            # The clamp first, so +inf is the top stop and never reaches
+            # int(); NaN fails `>= 0` and is the bottom stop, as in the base.
+            value = (float(int(min(value, 127.0) + 0.5)) if value >= 0.0
+                     else 0.0)
         return _component.Component.set_macro(self, index, value,
                                               channel=channel,
                                               note_id=note_id,

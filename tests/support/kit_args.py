@@ -7,12 +7,11 @@ Cells, all on an 8192-frame click and noise train then silence:
   changes no byte of the render, at the defaults and at every patch.
 - `stops-m<i>`: 0, 64 and 127 are accepted and `get_macro` reads each
   back within 1e-4.
-- `bad-m<i>`: NaN, +inf, -inf, -1 and 128. The contract does not say
-  whether an out-of-range macro value raises or clamps, so either passes:
-  a raise must be ValueError or TypeError and leave every macro where it
-  was (`r`); a clamp must read back a finite value in 0..127 (0 below the
-  range, 127 above it) and render exactly what `set_macro(i, readback)`
-  renders (`c`).
+- `bad-m<i>`: NaN, +inf, -inf, -1 and 128. The contract
+  (audio-component-api.md, "Macro and patch state") clamps: NaN, -inf and
+  -1 read back 0, +inf and 128 read back 127, and each renders exactly
+  what `set_macro(i, readback)` renders (`c`). A raise of any kind is
+  red.
 - `patch-p<k>`: from a fresh instance, `program_change(k)` sets
   `patch_index` and reads back the patch's values within 1e-4, and
   `program_change(0)` reads back what the fresh instance read.
@@ -145,17 +144,16 @@ def bad_cell(cls, index):
             before = gets(a)
             try:
                 a.set_macro(index, v)
-            except REFUSALS:
-                if gets(a) != before:
-                    return "RED(%s raised and moved the macros)" % label
-                codes.append("%s:r" % label)
-                continue
             except Exception as exc:                      # noqa: BLE001
-                return "RED(%s raised %s)" % (label, type(exc).__name__)
+                moved = " and moved the macros" if gets(a) != before else ""
+                return "RED(%s raised %s%s; the contract clamps)" % (
+                    label, type(exc).__name__, moved)
             r = a.get_macro(index)
             if not kc.finite(r) or r < 0 or r > 127:
                 return "RED(%s reads back %s)" % (label, kc.num(r))
-            want = 0 if v < 0 else (127 if v > 127 else None)
+            # The contract: NaN and below 0 are the bottom stop, above 127
+            # the top.
+            want = 127 if v > 127 else 0
             if want is not None and abs(r - want) > READBACK_TOL:
                 return "RED(%s reads back %s, not %d)" % (label, kc.num(r),
                                                           want)
