@@ -190,11 +190,12 @@ class ConvolutionReverb(_component.Component):
     A single Room with Damping in can take more than 15 % longer.
     At Damping's 500 Hz stop, low material comes back louder than it went
     in.
-    A synthesized room is clean up to -21 dBFS in, its input ceiling: at
-    Damping's 500 Hz stop with the room alone, a low square comes back
-    about 21 dB louder, so anything hotter reaches the rail there.
-    Every shipped patch is clean to -12 dBFS in: four of their rooms carry
-    a level trim to get there.
+    Every shipped patch takes at least -12 dBFS in without reaching the
+    rail: four of their rooms carry a level trim to get there.
+    Anywhere on the knobs, a synthesized room is clean up to -21 dBFS in,
+    its input ceiling and the worst case: at Damping's 500 Hz stop with the
+    room alone, a low square comes back about 21 dB louder, so anything
+    hotter reaches the rail there.
     Each side of a stereo room is normalised on its own, so the room sits in
     the middle.
 

@@ -3034,12 +3034,14 @@ CLAIMS = (
      "test_a_single_room_can_take_more_than_15_percent_longer"),
     ("At Damping's 500 Hz stop, low material comes back louder than it went "
      "in.", "test_a_dark_room_lifts_low_material"),
-    ("A synthesized room is clean up to -21 dBFS in, its input ceiling: at "
-     "Damping's 500 Hz stop with the room alone, a low square comes back "
-     "about 21 dB louder, so anything hotter reaches the rail there.",
+    ("Every shipped patch takes at least -12 dBFS in without reaching the "
+     "rail: four of their rooms carry a level trim to get there.",
+     "test_every_patch_is_clean_to_12_dbfs"),
+    ("Anywhere on the knobs, a synthesized room is clean up to -21 dBFS in, "
+     "its input ceiling and the worst case: at Damping's 500 Hz stop with "
+     "the room alone, a low square comes back about 21 dB louder, so "
+     "anything hotter reaches the rail there.",
      "test_clean_up_to_its_input_ceiling"),
-    ("Every shipped patch is clean to -12 dBFS in: four of their rooms carry "
-     "a level trim to get there.", "test_every_patch_is_clean_to_12_dbfs"),
     ("Each side of a stereo room is normalised on its own, so the room sits "
      "in the middle.", "test_no_cell_of_the_slice_is_past_the_bound"),
     ("Hand it `impulse=`, int16 frames or the path to a 16-bit PCM WAV at "
