@@ -200,13 +200,17 @@ class MultibandCompressor(_component.Component):
     **Latency 0 at every setting**, and no option here can add any. The
     crossover is IIR; the detectors do not look ahead.
 
-    **Cost.** This is the most expensive class in the Dynamics family, and
-    it is over its budget on both boards: measured 2026-09-07 at
-    construction defaults, **44.3 % of a 256-frame stereo block on an
-    ESP32-P4 and 83.6 % on an ESP32-S3**, against a dossier budget of 25 %
-    and 45 %. It runs in real time on both - the S3 figure is 4.910 ms of a
-    5.333 ms block - and it leaves 8 % of that block for everything else on
-    the chip. At three bands it owns **18 nodes**, eight of them biquads,
+    **On an ESP32-S3, build it with `bands=2`.** At three bands no patch
+    keeps up there and the sound breaks up; at two bands it does, with the
+    split at Crossover Low and the Mid macros idle. No patch can stand in
+    for this: every macro position builds the same graph.
+
+    **Cost.** This is the most expensive class in the Dynamics family.
+    Measured in October 2026, its costliest patch (Loudness; all five sit
+    within 0.2 ms of each other) takes **54.0 % of a 256-frame stereo block
+    on an ESP32-P4 and 107.0 % on an ESP32-S3**, so the S3 cannot run it in
+    real time; built with `bands=2` it is **34.2 % and 71.1 %**. At three
+    bands it owns **18 nodes**, eight of them biquads,
     and pulls 72 of them per eight blocks; `bands=2` is the cheaper build
     at **12 nodes and 48 pulls** - four biquads, two detectors, three mixer
     voices - and on the desktop it measured between 75 % and 79 % of the

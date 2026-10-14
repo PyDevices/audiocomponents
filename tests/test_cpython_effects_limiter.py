@@ -380,13 +380,13 @@ class L1SamplePeak(unittest.TestCase):
             label="Limiter new L1 SlowAttack")
         self.assertEqual(out["target"], 10.0)
         self.assertEqual(out["clean"], 0.0)
-        self.assertEqual(out["checked"], 108)
+        self.assertEqual(out["checked"], 109)
 
     def test_no_surface_position_restores_the_sample_ceiling(self):
         # Rebuild at every kit grid cell and every shipped patch. A
         # 0 dBFS burst against Ceiling 127 (0 dBFS) never enters the
         # limiter - material cannot reach the mechanism - so that one
-        # cell is not a restore. Every other cell, and all six patches,
+        # cell is not a restore. Every other cell, and all seven patches,
         # stays red.
         positions = tuple(range(0, 128, 8)) + (127,)
         labels = rebuilt.Limiter.MACRO_LABELS
@@ -411,7 +411,7 @@ class L1SamplePeak(unittest.TestCase):
             checked += 1
             if over <= 0.1:
                 healthy.append(("patch", index, over, ceiling))
-        self.assertEqual(checked, 108)
+        self.assertEqual(checked, 109)
         unrestorable = [(label, pos, over, ceil)
                         for label, pos, over, ceil in healthy
                         if not (label == "Ceiling" and ceil >= -0.05)]
@@ -955,6 +955,28 @@ class TheTruePeakReserve(unittest.TestCase):
                         reading = self._over(name, rate=rate,
                                              lookahead_ms=lookahead)
                         self.assertTrue(reading["passed"], reading["red"])
+
+    def test_the_lean_delivery_ceiling_holds_the_same_true_peak(self):
+        # Patch 6 is Delivery Ceiling with True Peak off (the S3 cannot run
+        # the 4x detector on both stages) and the ceiling 3 dB lower. A
+        # worst-phase f_s/4 tone driven 6 dB into it stays at or under
+        # Delivery Ceiling's own -0.94 dB, measured on the reconstruction.
+        name, patch = rebuilt.Limiter.PATCHES[6]
+        self.assertEqual(name, "Delivery Ceiling - lean")
+        self.assertEqual(patch[4], 0)
+        self.assertEqual(patch[2], rebuilt.Limiter.PATCHES[4][1][2])
+        pcm, frames = self._kit_probe("tone_fs4")
+        driven = array("h", (max(-32768, min(32767, 2 * x)) for x in pcm))
+        driven.extend([0] * 8192)
+        effect = build(probe=driven, patch=6)
+        latency = effect.latency_samples
+        result = render(effect, frames + latency, label="tone_fs4")
+        effect.deinit()
+        window = kit.Render.from_pcm(result.pcm[latency * 4:], RATE, 2,
+                                     probe="tone_fs4", block=256,
+                                     interpreter="cpython")
+        reading = kit.truepeak(window, ceiling_dbfs=-0.94, tolerance_db=0.0)
+        self.assertLessEqual(reading["values"]["true_peak_dbtp"], -0.94)
 
     def test_at_lookahead_zero_it_is_a_sample_ceiling_and_says_so(self):
         # The bound, asserted as a bound. An inter-sample peak cannot be

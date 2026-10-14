@@ -156,6 +156,14 @@ class Limiter(_component.Component):
     samples of the Lookahead macro are the catch stage's, so True Peak still
     adds no latency of its own; every shipped patch that turns it on asks
     for lookahead too, and those patches are P4 only.
+
+    **On an ESP32-S3, Catch The Peaks, Delivery Ceiling and Loud (True
+    Peak) can't keep up and the sound breaks up; play Delivery Ceiling -
+    lean instead.** It keeps Delivery Ceiling's lookahead and release,
+    turns True Peak off, and sits 3 dB lower (-3.97 dB), which is the most a
+    peak between samples was measured to rise over a sample ceiling: a
+    worst-phase tone driven 6 dB into it reads **-0.96 dB TP**, where
+    Delivery Ceiling reads -0.77.
     """
 
     NAME = 'Limiter'
@@ -198,6 +206,7 @@ class Limiter(_component.Component):
         3: ("Soft Ceiling", (116, 0, 0, 78, 0, 95)),
         4: ("Delivery Ceiling", (122, 0, 25, 72, 127, 0)),
         5: ("Loud (True Peak)", (125, 64, 38, 38, 127, 0)),
+        6: ("Delivery Ceiling - lean", (106, 0, 25, 72, 0, 0)),
     }
 
     #: `DYN_LIMIT` has no knee term in its gain computer at all
