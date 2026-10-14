@@ -365,5 +365,11 @@
 # above (audiodsp#245, #247), the same node tree as f7a86c9 outside VERSION
 # and CHANGELOG.md, so CI can install it from GitHub.
 #
+#
+# Moved to v0.6.6rc4 (8d5c282) on 2026-10-14: MultiTapDelay's reset puts the
+# write heads back where a fresh node has them, and audioconvolve.Convolver
+# gains wet_gain (default 1.0, byte-identical there), which
+# ConvolutionReverb uses to trim its four darkest rooms (audiodsp#248).
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.6rc3 a9d36e6993885b6c65730cf4f77908a6986d2ccc
+v0.6.6rc4 8d5c2820d3289a637b40f839acdf728074342282
