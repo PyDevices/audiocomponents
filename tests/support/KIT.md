@@ -209,8 +209,8 @@ instance and one given patch 0 are the same, so:
   is red here.
 - `reset@<k>/<rate>/<ch>/<d|pK>`: built at the defaults or a patch, played
   `k` pulls (0, before the first pull, and 8), then `reset()`. From that
-  pull on it renders byte for byte what a fresh instance handed patch 0
-  before its first pull renders (so a default off the grid is red once, in
+  pull on it renders byte for byte what a fresh instance built at patch 0
+  (the constructor's `patch=`) renders (so a default off the grid is red once, in
   `boot`, and hides no reset fault), fed the source from the frame the reset left it at (found off a
   dry run), and reads back what the fresh one reads. No tail is forgiven:
   a block a voice still held, a line the reset kept, a filter's memory or

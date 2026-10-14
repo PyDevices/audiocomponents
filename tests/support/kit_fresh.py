@@ -11,7 +11,7 @@ hold, and each is a cell:
   default off patch 0's 0-127 grid is red here.
 - `reset@<k>/<rate>/<ch>/<from>`: built at the defaults or at a patch,
   played for `k` pulls (0: before the first), then `reset()`. From that
-  pull on it renders what a fresh instance handed patch 0 renders, fed the
+  pull on it renders what a fresh instance built at patch 0 renders, fed the
   source from the frame the reset left it at, and reads back what the fresh
   one reads. (Against patch 0, not the bare defaults, so a default off the
   grid reads red once, in `boot`, and does not hide a reset fault.) No tail is forgiven: a block a voice still held, a line the
@@ -46,9 +46,9 @@ RESET_AT = 8
 MOVE_AFTER = 4
 #: How long past the reset each cell compares, in seconds.
 WINDOW_S = 2.0
-#: The patch the fresh instance a reset is judged against is handed before
-#: its first pull. Patch 0, where a reset lands; `boot` holds the defaults
-#: to it on its own.
+#: The patch the fresh instance a reset is judged against is built at (the
+#: constructor's `patch=`). Patch 0, where a reset lands; `boot` holds the
+#: defaults to it on its own.
 FRESH_PATCH = 0
 
 
@@ -100,6 +100,19 @@ def _lockstep(e, f, frames, fsize, actions):
     return -1
 
 
+def _fresh_at(cls, port, rate, options):
+    """A fresh instance built at `FRESH_PATCH` by the constructor's own
+    `patch=`, the way the lifecycle's PR builds one: a live
+    `program_change` on a built instance may glide or wait for a zero
+    crossing, and a reset is held to a build, not to a move."""
+    keywords = dict(options)
+    keywords["patch"] = FRESH_PATCH
+    try:
+        return cls(port, sample_rate=rate, **keywords)
+    except TypeError:
+        return kc.build(cls, port, rate, FRESH_PATCH, options)
+
+
 def _source_at(cls, rate, ch, patch, options, k):
     """The frame of the material the source stands at after `k` pulls of
     an instance built at `patch`, just before its reset, or -1.
@@ -133,8 +146,8 @@ def reset_cell(cls, rate, ch, patch, options, k, move=None):
         for _ in range(k):
             kc.pull(e)
         e.reset()
-        f = kc.build(cls, _feed(values[start * ch:], rate, ch).port, rate,
-                     FRESH_PATCH, options)
+        f = _fresh_at(cls, _feed(values[start * ch:], rate, ch).port,
+                      rate, options)
         said = _says(_readback(e), _readback(f))
         if said:
             return "RED(after the reset: %s)" % said

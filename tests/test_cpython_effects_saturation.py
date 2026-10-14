@@ -1222,8 +1222,11 @@ class DriveCeilingAndLean(unittest.TestCase):
                          "Saturation - lean")
         probe = sine(1010, 48000, -6.0)
         lean, latency = self._lean_render(probe)
-        self.assertEqual(latency, 2)
         plain = build(probe=probe, oversample=2, patch=0)
+        # The x2 build's onset, as `CLICK_ONSET_SAMPLES` declares it (this
+        # used to read 2, the group delay, which no build reports).
+        self.assertEqual(latency, plain.latency_samples)
+        self.assertEqual(latency, rebuilt.CLICK_ONSET_SAMPLES[("tube", 2)])
         two = render(plain, 48000).float[24000:, 0]
         plain.deinit()
         eight = build(probe=probe)
@@ -1238,9 +1241,12 @@ class DriveCeilingAndLean(unittest.TestCase):
 
     def test_leaving_the_lean_patch_restores_the_factor(self):
         effect = build()
+        fresh = effect.latency_samples
         effect.program_change(rebuilt.LEAN_PATCH)
         effect.program_change(0)
-        self.assertEqual(effect.latency_samples, 3)
+        # The onset a fresh instance reports, not the group delay (3).
+        self.assertEqual(effect.latency_samples, fresh)
+        self.assertEqual(fresh, rebuilt.CLICK_ONSET_SAMPLES[("tube", 4)])
         effect.deinit()
 
     def test_one_priming_path_for_every_interpreter(self):
@@ -1758,6 +1764,34 @@ class TheOperatingPointComesBackClean(unittest.TestCase):
                                       patch=4)[1], 1000)
         self.assertGreater(stale.in_step(LevellingSaturation, 4, 64, 0,
                                          patch=7), 1000)
+
+
+class TestResetIsFresh(unittest.TestCase):
+    """A reset comes back as a fresh instance at patch 0 (kit `fresh`)."""
+
+    def test_a_reset_plays_no_stale_block(self):
+        # The mixer's voices were re-primed inside the reset, before the
+        # chain behind them was cleared, so the first block after a reset
+        # was the old chain's (1504 LSB at the defaults).
+        import kit_fresh
+        for patch in (None, 0, 1, 2, 3):
+            for ch in (2, 1):
+                for k in (0, kit_fresh.RESET_AT):
+                    self.assertEqual(kit_fresh.reset_cell(
+                        Saturation, RATE, ch, patch, {}, k), "ok",
+                        (patch, ch, k))
+
+    def test_latency_after_the_lean_patch_is_the_onset_again(self):
+        effect = build()
+        fresh = effect.latency_samples
+        effect.program_change(rebuilt.LEAN_PATCH)
+        self.assertEqual(effect.latency_samples,
+                         rebuilt.CLICK_ONSET_SAMPLES[("tube", 2)])
+        effect.program_change(0)
+        self.assertEqual(effect.latency_samples, fresh)
+        effect.program_change(rebuilt.LEAN_PATCH)
+        effect.reset()
+        self.assertEqual(effect.latency_samples, fresh)
 
 
 if __name__ == "__main__":
