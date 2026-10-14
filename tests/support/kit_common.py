@@ -130,6 +130,14 @@ for _name in ("Flanger", "ExampleStock"):
         " first pull plays that block where a fresh build primes the next;"
         " dropping it takes a play(), which resets the host's source")
 
+# Overdrive at patch 6, a patch moved and restored before the first pull:
+# without get_buffer the pole charge runs all 64 blocks (`_pull` cannot read
+# a block back), with it the charge stops at the first zero block, and P4
+# reads that residue against the control only with get_buffer. Not audible.
+DECLARED[("Overdrive", "nogb", "E10-patch/48000/2/6")] = (
+    "the board path charges the pole 64 blocks where the get_buffer path"
+    " stops at the first zero block; P4 differs only with get_buffer")
+
 # The lazy re-arm (`Component._reset_rearmed`) without get_buffer: nothing
 # can hand a silent primed block up, so a reset arms the voices from their
 # sources, as a build does, and the first block after it is the source's
@@ -137,8 +145,7 @@ for _name in ("Flanger", "ExampleStock"):
 # block already taken through patch 0's graph: the second reset drops it
 # and takes the next, the patch change plays it at patch 0. One reset, and
 # resets a block apart, match a run with get_buffer. Waiting on a ruling.
-for _name in ("Bitcrusher", "Exciter", "Compressor", "Distortion",
-              "Overdrive", "DynamicEQ", "MultibandCompressor"):
+for _name in ("Distortion", "MultibandCompressor"):
     for _scenario in ("reset-twice", "reset-first-twice", "reset-patch"):
         DECLARED[(_name, "nogb", "bytes-%s/" % _scenario)] = (
             "without get_buffer a reset primes the voices from the source,"
