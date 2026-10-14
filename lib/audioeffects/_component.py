@@ -309,6 +309,51 @@ def static_transport():
     return (False, 0.0, 120.0, 4, 4)
 
 
+#: The tempo and the quarter notes in a bar a synced class follows until a
+#: transport it can read says otherwise: `static_transport`'s 120 bpm, 4/4.
+GOOD_BEAT = (120.0, 4.0)
+
+#: The largest numerator or denominator of a time signature `synced_beat`
+#: follows. A bar of 128/1 is 512 quarter notes; past it a synced sweep
+#: would stand still.
+METER_LIMIT = 128.0
+
+
+def _field(state, index):
+    """`state[index]` as a finite float, or None for a field that is missing
+    or is not a finite number."""
+    try:
+        value = float(state[index])
+    except (TypeError, ValueError, OverflowError, IndexError):
+        return None
+    if value != value or value in (float("inf"), float("-inf")):
+        return None
+    return value
+
+
+def synced_beat(state, last=GOOD_BEAT):
+    """(bpm, quarter notes in one bar) read off a host transport tuple
+    `(playing, position, bpm, numerator, denominator)`: numerator x 4 /
+    denominator quarters, so 4/4 is 4, 3/4 is 3 and 6/8 is 3.
+
+    What a host gets wrong keeps the last good reading, `last`, rather than
+    raising or standing the sweep still: a tempo that is missing, None, NaN,
+    infinite, or 0 or below keeps `last`'s tempo, and a signature with a
+    field missing, or a numerator or denominator that is not a number from
+    1 to `METER_LIMIT`, keeps `last`'s bar. A tempo below 1 bpm is 1."""
+    bpm, quarters = last
+    tempo = _field(state, 2)
+    if tempo is not None and tempo > 0.0:
+        bpm = max(1.0, tempo)
+    numerator = _field(state, 3)
+    denominator = _field(state, 4)
+    if numerator is not None and denominator is not None \
+            and 1.0 <= numerator <= METER_LIMIT \
+            and 1.0 <= denominator <= METER_LIMIT:
+        quarters = numerator * 4.0 / denominator
+    return bpm, quarters
+
+
 def biquad_ring(node):
     """Frames an `audiobiquad.Biquad` rings for after its input stops, from
     any state, as an upper bound, read off the coefficients in force.
@@ -394,6 +439,16 @@ def macro_position(span, value):
     return min(1.0, max(0.0, position))
 
 
+def clamped_midi(value):
+    """`value` on the 0-127 MIDI scale as a float, clamped to it: NaN is 0,
+    and an int too large for a float (10**400) is the stop on its side."""
+    try:
+        value = float(value)
+    except OverflowError:
+        return 127.0 if value > 0 else 0.0
+    return min(127.0, max(0.0, value))
+
+
 def position_of_midi(mode, midi):
     """The 0-127 MIDI grid -> a macro's 0..1 position, by the macro's mode.
 
@@ -417,7 +472,7 @@ def position_of_midi(mode, midi):
     continuous at 64 and takes floats, so a host with finer resolution than
     7 bits still lands where its knob says.
     """
-    midi = min(127.0, max(0.0, float(midi)))
+    midi = clamped_midi(midi)
     if mode != "BIPOLAR":
         return midi / 127.0
     if midi >= 64.0:
@@ -1176,6 +1231,16 @@ class Component:
         self._followed_bpm = bpm
         self._apply_macro(index, self._macros[index])
 
+    def _synced_beat(self):
+        """`synced_beat` of the transport as it reads now, against the last
+        good reading this instance took (`GOOD_BEAT` before the first),
+        which it then keeps."""
+        transport = self._transport
+        state = transport() if callable(transport) else transport
+        beat = synced_beat(state, getattr(self, "_good_beat", GOOD_BEAT))
+        self._good_beat = beat
+        return beat
+
     def poly_pressure(self, pitch, value, channel=0, note_id=-1,
                       sample_position=0):
         self._check_live()
@@ -1383,7 +1448,7 @@ def _midi_value(value, name):
 
 
 def _bounded_midi(value):
-    return min(127.0, max(0.0, float(value)))
+    return clamped_midi(value)
 
 
 def _pitch_bend(value):

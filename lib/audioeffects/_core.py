@@ -29,6 +29,7 @@ import math
 #: their subclasses). `_component` imports nothing from this module, so the
 #: dependency runs one way only.
 from ._component import PORT as _PORT
+from ._component import clamped_midi as _clamped_midi
 from ._component import output_port as _output_port
 from ._component import port_target as _port_target
 
@@ -344,7 +345,7 @@ class Effect:
             raise IndexError("%s has %d macros; no index %d"
                              % (type(self).__name__, len(self.MACRO_LABELS),
                                 index))
-        self._macros[index] = min(1.0, max(0.0, float(value) / 127.0))
+        self._macros[index] = _clamped_midi(value) / 127.0
         self._patch_index = None
         self._apply_macro(index, self._macros[index])
 
@@ -490,8 +491,7 @@ def _midi_value(value, name):
 
 
 def _bounded_midi(value):
-    value = float(value)
-    return min(127.0, max(0.0, value))
+    return _clamped_midi(value)
 
 
 def _pitch_bend(value):

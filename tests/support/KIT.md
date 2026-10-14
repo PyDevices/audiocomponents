@@ -106,10 +106,12 @@ hands it:
 - `rt-m<i>`: `set_macro(i, get_macro(i))` mid-stream changes no byte, at
   the defaults and every patch.
 - `stops-m<i>`: 0, 64 and 127 are accepted and read back within 1e-4.
-- `bad-m<i>`: NaN, +-inf, -1 and 128, held to the contract's one answer
+- `bad-m<i>`: NaN, +-inf, -1, 128 and +-10**400 (an int past float's
+  range), held to the contract's one answer
   ([audio-component-api.md](../../docs/audio-component-api.md#macro-and-patch-state)):
-  a value off the range is clamped, never refused. NaN, -inf and -1 read
-  back 0, +inf and 128 read back 127, and each renders exactly what
+  a value off the range is clamped, never refused. NaN, -inf, -1 and
+  -10**400 read back 0, +inf, 128 and 10**400 read back 127, and each
+  renders exactly what
   `set_macro(i, readback)` renders (`c`). A raise of any kind is red.
 - `patch-p<k>`: `program_change(k)` sets `patch_index` and reads back the
   patch's values, and `program_change(0)` reads back patch 0's. Not what a
