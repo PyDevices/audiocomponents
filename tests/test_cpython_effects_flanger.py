@@ -200,8 +200,9 @@ def triangle_ms(n, lfo, rate, manual, depth, clamp=True):
     return lo_f + (top_f - lo_f) * tri / 65536.0
 
 
-def tempo_rate(bpm, beats_per_bar, bars):
-    return bpm / (60.0 * beats_per_bar * bars)
+def tempo_rate(bpm, quarters, bars):
+    """One sweep per `bars` bars of `quarters` quarter notes."""
+    return bpm / (60.0 * quarters * bars)
 
 
 # --------------------------------------------------------------------------
@@ -403,21 +404,25 @@ def fit_rate(readings, rate, manual, depth, guess, start_phase=0,
 
 
 class Transport:
-    """A host transport whose tempo and meter a test moves."""
+    """A host transport whose tempo and time signature a test moves, in
+    the API's order: (playing, seconds, bpm, numerator, denominator)."""
 
-    def __init__(self, bpm, beats_per_bar):
+    def __init__(self, bpm, numerator, denominator=4):
         self.bpm = bpm
-        self.beats_per_bar = beats_per_bar
+        self.numerator = numerator
+        self.denominator = denominator
 
     def __call__(self):
-        return (True, 0.0, self.bpm, 0, self.beats_per_bar)
+        return (True, 0.0, self.bpm, self.numerator, self.denominator)
 
 
-def synced_period_error(cls, rate, bpm, beats_per_bar, bars, seed):
-    """The fitted sweep's period against Division bars at the tempo, as a
+def synced_period_error(cls, rate, bpm, numerator, bars, seed,
+                        denominator=4):
+    """The fitted sweep's period against Division bars of
+    numerator x 4 / denominator quarter notes at the tempo, as a
     fraction."""
-    transport = Transport(bpm, beats_per_bar)
-    want = tempo_rate(bpm, beats_per_bar, bars)
+    transport = Transport(bpm, numerator, denominator)
+    want = tempo_rate(bpm, numerator * 4.0 / denominator, bars)
     manual, depth = 1.0, 0.6
     readings = sweep_readings(
         cls, rate, want, depth, manual, seed,
@@ -465,7 +470,7 @@ def meter_change_error(cls, rate, seed):
     boundary = change * BLOCK
 
     def move(e):
-        transport.beats_per_bar = 3
+        transport.numerator = 3
         e.transport_changed()
     frames = boundary + int(rate / second * 1.05) + int(0.012 * rate)
     # A host calls `transport_changed()` once a block: the first call has
@@ -903,6 +908,16 @@ class T5Sync(TestCase):
             for seed in SEEDS:
                 self.assertLessEqual(tempo_change_error(Flanger, rate, seed),
                                      0.005, (rate, seed))
+
+    def test_the_bar_is_the_time_signature(self):
+        # 3/4 is three quarter notes, 6/8 three, 7/8 three and a half; the
+        # class once read the denominator alone as the beats in a bar.
+        for numerator, denominator in ((3, 4), (6, 8), (7, 8)):
+            for rate in RATES:
+                err = synced_period_error(Flanger, rate, 120.0, numerator,
+                                          1.0, 0, denominator)
+                self.assertLessEqual(err, 0.005,
+                                     (numerator, denominator, rate))
 
     def test_a_meter_change(self):
         for rate in RATES:
