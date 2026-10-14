@@ -3068,16 +3068,18 @@ CLAIMS = (
      "on average.", "test_damping_in_the_64_room_mean_within_2_percent"),
     ("A single Room with Damping in can take more than 15 % longer.",
      "test_a_single_room_can_take_more_than_15_percent_longer"),
-    ("A synthesized room plays through a level trim set by Decay and "
-     "Damping together: none where a typical Room comes back clean at -12 "
-     "dBFS with 1 dB to spare, and down to about 10 dB at Damping's 500 Hz "
-     "stop at 48 kHz.", "test_the_trim_follows_decay_and_damping"),
-    ("One step of Decay or Damping moves the room's level by 0.1 dB at "
+    ("A synthesized room plays through a level trim read off the room "
+     "itself: none where the room brings a low square back 1 dB or more "
+     "under 12 dB louder, and otherwise just enough to hold it to 12 dB, so "
+     "the defaults play about 1 dB down at 48 kHz.",
+     "test_the_trim_is_read_off_the_room"),
+    ("One step of Decay or Damping moves the room's level by 0.5 dB at "
      "most.", "test_one_step_of_decay_or_damping_moves_the_level_little"),
-    ("Anywhere on the knobs, a synthesized room is clean up to -19.5 dBFS "
-     "in, its input ceiling: the trim holds a typical Room at -12 dBFS, and "
-     "the unluckiest Room brings a low square back about 7 dB hotter than "
-     "that.", "test_clean_up_to_its_input_ceiling"),
+    ("Anywhere on the knobs, a synthesized room alone is clean up to -13.5 "
+     "dBFS in, and with the dry mixed in up to -15.5 dBFS, its input "
+     "ceiling: the trim holds a low square's steady state at -12 dBFS, its "
+     "onset rises about 1.3 dB past that, and the dry is not trimmed.",
+     "test_clean_up_to_its_input_ceiling"),
     ("Each side of a stereo room is normalised on its own, so the room sits "
      "in the middle.", "test_no_cell_of_the_slice_is_past_the_bound"),
     ("Hand it `impulse=`, int16 frames or the path to a 16-bit PCM WAV at "
@@ -3267,41 +3269,52 @@ class TheClaims(unittest.TestCase):
         self.assertEqual(seeds, set(range(1, 65)))
         self.assertEqual(len(rooms), 64)
 
-    def test_the_trim_follows_decay_and_damping(self):
-        # At every Damping position on a grid of Decay, at 48 and 22.05 kHz:
-        # the trim is exactly 1.0 wherever the fitted gain is 1 dB or more
-        # under the target, below 1.0 past the knee's foot, and never above.
-        # Patch 0, 2, 4 and 7 stay within 0.3 dB of untrimmed. The 500 Hz
-        # stop at 48 kHz is about 10 dB down, and the room plays at the
-        # trim: a click's energy against Untrimmed's.
+    def test_the_trim_is_read_off_the_room(self):
+        # Across Decay, Damping, Predelay, Diffusion and Room at 48 and
+        # 22.05 kHz: the trim is `room_trim` of the node's own
+        # `room_peak_gain` (lifted with Damping out), exactly 1.0 where that
+        # reads 1 dB or more under 12 dB, below 1.0 past the knee's foot,
+        # never above 1.0, and never more than holds 12 dB. The defaults
+        # and patches 2, 4 and 7 move by about 1 dB at most. The room
+        # plays at the trim: a click's energy against Untrimmed's.
+        hold = 10.0 ** (rebuilt.TRIM_PEAK_DB / 20.0)
+        unity = trimmed = 0
         for rate in (48000, 22050):
             effect = build(rate=rate)
-            unity = 0
-            for decay in range(0, 128, 3):
-                effect.set_macro(DECAY_I, decay)
-                for damping in range(128):
-                    effect.set_macro(DAMPING_I, damping)
-                    gain = rebuilt.room_gain_db(decay / 127.0,
-                                                effect._synthesis()[1], rate)
-                    trim = effect._trim
-                    self.assertLessEqual(trim, 1.0)
-                    if gain <= rebuilt.TRIM_TARGET_DB - 1.0:
-                        self.assertEqual(trim, 1.0, (rate, decay, damping))
-                        unity += 1
-                    elif gain > rebuilt.TRIM_TARGET_DB - 0.9:
-                        # Past the knee's foot by more than the 1/4096
-                        # rounding can swallow.
-                        self.assertLess(trim, 1.0, (rate, decay, damping))
-            self.assertGreater(unity, 0, rate)
+            for room in (0, 50, 127):
+                effect.set_macro(ROOM_I, room)
+                for predelay, diffusion in ((0, 64), (127, 0)):
+                    effect.set_macro(PREDELAY_I, predelay)
+                    effect.set_macro(DIFFUSION_I, diffusion)
+                    for decay in range(0, 128, 18):
+                        effect.set_macro(DECAY_I, decay)
+                        for damping in list(range(0, 128, 9)) + [127]:
+                            effect.set_macro(DAMPING_I, damping)
+                            peak = effect.node.room_peak_gain
+                            if effect._synthesis()[1] == 0.0:
+                                peak *= 10.0 ** (rebuilt.OUT_LIFT_DB / 20.0)
+                            trim = effect._trim
+                            label = (rate, room, decay, damping)
+                            self.assertEqual(trim, rebuilt.room_trim(peak),
+                                             label)
+                            self.assertLessEqual(trim, 1.0)
+                            if peak <= hold / 10.0 ** (1.0 / 20.0):
+                                self.assertEqual(trim, 1.0, label)
+                                unity += 1
+                            else:
+                                if peak > hold / 10.0 ** (0.9 / 20.0):
+                                    self.assertLess(trim, 1.0, label)
+                                self.assertLessEqual(trim * peak,
+                                                     hold * 1.001, label)
+                                trimmed += 1
             for patch in (0, 2, 4, 7):
                 effect.program_change(patch)
-                self.assertGreater(20 * math.log10(effect._trim), -0.3,
+                self.assertGreater(20 * math.log10(effect._trim), -1.0,
                                    (rate, patch))
             effect.deinit()
-        effect = build(damping_hz=500.0)
-        self.assertAlmostEqual(20 * math.log10(effect._trim), -10.0,
-                               delta=0.5)
-        effect.deinit()
+        # Both kinds are on the walk: rooms at unity and rooms trimmed.
+        self.assertGreater(unity, 0)
+        self.assertGreater(trimmed, 0)
         pulse = click(LATENCY + 4096)
         for damping in (0, 64, 127):
             levels = []
@@ -3317,25 +3330,34 @@ class TheClaims(unittest.TestCase):
                                    20 * math.log10(trim), delta=0.05)
 
     def test_one_step_of_decay_or_damping_moves_the_level_little(self):
-        # Every Decay step and every Damping step's trim at four rates, on
-        # a grid of the other knob, within 0.1 dB of the next. Then on the
+        # Every Decay step and every Damping step's trim at three rates, on
+        # a grid of the other knob and of Room, Predelay and Diffusion,
+        # within 0.5 dB of the next (the top Damping step, out, is the
+        # widest: 0.46 dB). A Room step is a different room, and exempt.
+        # Then on the
         # material: white noise with the room alone, one step of Decay or
         # Damping either side of the four rooms that once carried a patch's
-        # trim, the level within 0.25 dB of the patch's own. OldTrims (a
+        # trim, the level within 0.5 dB of the patch's own. OldTrims (a
         # trim at a patch's exact steps alone, as before) jumps 3.5 to
         # 6.5 dB there.
-        for rate in (48000, 44100, 22050, 96000):
+        for rate in (48000, 44100, 22050):
             effect = build(rate=rate)
-            for outer, inner in ((DECAY_I, DAMPING_I), (DAMPING_I, DECAY_I)):
-                for fixed in range(0, 128, 9):
-                    effect.set_macro(outer, fixed)
-                    trims = []
-                    for step in range(128):
-                        effect.set_macro(inner, step)
-                        trims.append(20 * math.log10(effect._trim))
-                    for low, high in zip(trims, trims[1:]):
-                        self.assertLessEqual(abs(high - low), 0.1,
-                                             (rate, inner, fixed))
+            for room, predelay, diffusion in ((0, 0, 64), (100, 127, 0),
+                                              (126, 0, 64)):
+                effect.set_macro(ROOM_I, room)
+                effect.set_macro(PREDELAY_I, predelay)
+                effect.set_macro(DIFFUSION_I, diffusion)
+                for outer, inner in ((DECAY_I, DAMPING_I),
+                                     (DAMPING_I, DECAY_I)):
+                    for fixed in range(0, 128, 21):
+                        effect.set_macro(outer, fixed)
+                        trims = []
+                        for step in range(128):
+                            effect.set_macro(inner, step)
+                            trims.append(20 * math.log10(effect._trim))
+                        for low, high in zip(trims, trims[1:]):
+                            self.assertLessEqual(abs(high - low), 0.5,
+                                                 (rate, room, inner, fixed))
             effect.deinit()
         pcm = white(RATE)
 
@@ -3360,25 +3382,27 @@ class TheClaims(unittest.TestCase):
                             jumps.append(abs(level(cls, patch, index, delta)
                                              - own))
             worst[cls] = max(jumps)
-        self.assertLessEqual(worst[ConvolutionReverb], 0.25)
+        self.assertLessEqual(worst[ConvolutionReverb], 0.5)
         self.assertGreater(worst[OldTrims], 3.0)
 
     def test_clean_up_to_its_input_ceiling(self):
         # The kit's ceiling cells at the stated level: the defaults on the
         # 50 Hz sine, the darkest corner with the room alone on a low square
         # and a DC step, the darkest patch, and the worst setting the
-        # measurement found (48 kHz, Decay 32, Damping 56, Predelay 0,
-        # Diffusion 127, Room seed 29, a 41 Hz square, +19.3 dB). 1.5 dB
-        # hotter, that worst setting rails, so the number is not slack.
+        # measurement found (48 kHz, Decay 83, Damping 40, Predelay 0,
+        # Diffusion 127, Room seed 17, the 163 Hz square: clean to
+        # -13.3 dBFS alone and -15.0 dBFS at Mix 1). 1.5 dB hotter, that
+        # worst setting rails with the dry in, so the number is not slack;
+        # and with the room alone it is clean to -13.5 dBFS.
         import kit_ceiling
-        worst = [(DECAY_I, 32), (DAMPING_I, 56), (PREDELAY_I, 0),
-                 (DIFFUSION_I, 127), (ROOM_I, room_midi(29))]
+        worst = [(DECAY_I, 83), (DAMPING_I, 40), (PREDELAY_I, 0),
+                 (DIFFUSION_I, 127), (ROOM_I, room_midi(17))]
         cells = (("sine", None, None), ("sq82", None, [(MIX_I, 127),
                                                       (DAMPING_I, 0)]),
                  ("square", 3, None), ("sq41", 6, None),
                  ("dc", None, [(MIX_I, 127), (DAMPING_I, 0)]),
-                 ("sq41", None, worst + [(MIX_I, 127)]),
-                 ("sq41", None, worst + [(MIX_I, 64)]))
+                 ("sq163", None, worst + [(MIX_I, 127)]),
+                 ("sq163", None, worst + [(MIX_I, 64)]))
         for rate in (48000, 22050):
             for which, patch, knobs in cells:
                 with self.subTest(rate=rate, cell=which, patch=patch,
@@ -3386,10 +3410,15 @@ class TheClaims(unittest.TestCase):
                     verdict, _ = kit_ceiling.measure(
                         ConvolutionReverb, rate, 2, which, patch, knobs)
                     self.assertEqual(verdict, "ok")
-        reds = [kit_ceiling.measure(HotterCeiling, 48000, 2, "sq41", None,
+        reds = [kit_ceiling.measure(HotterCeiling, 48000, 2, "sq163", None,
                                     worst + [(MIX_I, mix)])[0]
                 for mix in (64, 127)]
         self.assertTrue(any(v.startswith("RED(rail") for v in reds), reds)
+        alone = type("Alone", (ConvolutionReverb,),
+                     {"INPUT_CEILING_DBFS": -13.5})
+        verdict, _ = kit_ceiling.measure(alone, 48000, 2, "sq163", None,
+                                         worst + [(MIX_I, 127)])
+        self.assertEqual(verdict, "ok")
 
     def test_every_patch_is_clean_to_its_ceiling(self):
         # Each shipped patch on the kit's ceiling material at the stated

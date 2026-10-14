@@ -148,7 +148,9 @@ at, on the worst material, the output does not wrap, sit on a rail, or go
 silent. The class states `INPUT_CEILING_DBFS` (dBFS, 0 or below); with
 none it is held to 0 dBFS. The material, 2 s at the peak: a 100 Hz square,
 a 50 Hz sine, one-sample clicks of alternating sign, noise, a DC step, and
-squares on the low notes 41, 55, 82, 110 and 147 Hz (`sq41` ...). The
+squares on the low notes 41, 55, 82, 110, 147 and 163 Hz (`sq41` ...;
+163 Hz is where ConvolutionReverb's default room peaks highest, between the
+notes the others are on). The
 settings: the defaults, every patch, each macro alone at 0, 64 and 127,
 every macro at 127 together (`all=127`), and every level-like macro (a
 label holding Level, Mix, Octave, Direct, Voice or Gain) at 127 with each
