@@ -613,11 +613,6 @@ class OldTrims(ConvolutionReverb):
         return 1.0
 
 
-class AtMinus12(ConvolutionReverb):
-    """The class held to -12 dBFS, where every shipped patch is clean."""
-    INPUT_CEILING_DBFS = -12.0
-
-
 class HotterCeiling(ConvolutionReverb):
     """The stated input ceiling, 1.5 dB hotter."""
     INPUT_CEILING_DBFS = getattr(ConvolutionReverb, "INPUT_CEILING_DBFS",
@@ -3073,18 +3068,16 @@ CLAIMS = (
      "on average.", "test_damping_in_the_64_room_mean_within_2_percent"),
     ("A single Room with Damping in can take more than 15 % longer.",
      "test_a_single_room_can_take_more_than_15_percent_longer"),
-    ("A synthesized room plays through a level trim that follows Damping "
-     "and nothing else: 7.4 dB down with Damping bright or out, and further "
-     "as it darkens, about 19 dB at the 500 Hz stop at 48 kHz.",
-     "test_the_trim_follows_damping_alone"),
-    ("One step of Decay or Damping moves the room's level by 0.15 dB at "
+    ("A synthesized room plays through a level trim set by Decay and "
+     "Damping together: none where a typical Room comes back clean at -12 "
+     "dBFS with 1 dB to spare, and down to about 10 dB at Damping's 500 Hz "
+     "stop at 48 kHz.", "test_the_trim_follows_decay_and_damping"),
+    ("One step of Decay or Damping moves the room's level by 0.1 dB at "
      "most.", "test_one_step_of_decay_or_damping_moves_the_level_little"),
-    ("Every shipped patch takes at least -12 dBFS in without reaching the "
-     "rail.", "test_every_patch_is_clean_to_12_dbfs"),
-    ("Anywhere on the knobs, a synthesized room is clean up to -12 dBFS in, "
-     "its input ceiling: the darker a room, the more of its energy sits "
-     "low, and the trim turns it down by that much and the worst Room's "
-     "luck besides.", "test_clean_up_to_its_input_ceiling"),
+    ("Anywhere on the knobs, a synthesized room is clean up to -19.5 dBFS "
+     "in, its input ceiling: the trim holds a typical Room at -12 dBFS, and "
+     "the unluckiest Room brings a low square back about 7 dB hotter than "
+     "that.", "test_clean_up_to_its_input_ceiling"),
     ("Each side of a stereo room is normalised on its own, so the room sits "
      "in the middle.", "test_no_cell_of_the_slice_is_past_the_bound"),
     ("Hand it `impulse=`, int16 frames or the path to a 16-bit PCM WAV at "
@@ -3274,30 +3267,40 @@ class TheClaims(unittest.TestCase):
         self.assertEqual(seeds, set(range(1, 65)))
         self.assertEqual(len(rooms), 64)
 
-    def test_the_trim_follows_damping_alone(self):
-        # The wet gain the class hands its node, at every Decay and every
-        # Damping position: Decay never moves it, Damping bright or out is
-        # 7.4 dB down (within 0.15 dB), and the 500 Hz stop at 48 kHz about
-        # 19 dB. It only ever turns the room down, and it is what the room
-        # plays at: a click's energy against Untrimmed's is the trim.
-        for rate in RATES:
+    def test_the_trim_follows_decay_and_damping(self):
+        # At every Damping position on a grid of Decay, at 48 and 22.05 kHz:
+        # the trim is exactly 1.0 wherever the fitted gain is 1 dB or more
+        # under the target, below 1.0 past the knee's foot, and never above.
+        # Patch 0, 2, 4 and 7 stay within 0.3 dB of untrimmed. The 500 Hz
+        # stop at 48 kHz is about 10 dB down, and the room plays at the
+        # trim: a click's energy against Untrimmed's.
+        for rate in (48000, 22050):
             effect = build(rate=rate)
-            for damping in range(128):
-                effect.set_macro(DAMPING_I, damping)
-                trims = set()
-                for decay in range(0, 128, 9):
-                    effect.set_macro(DECAY_I, decay)
-                    trims.add(effect._trim)
-                self.assertEqual(len(trims), 1, (rate, damping))
-                trim = trims.pop()
-                self.assertLess(trim, 1.0)
-                if damping >= 126:
-                    self.assertAlmostEqual(20 * math.log10(trim), -7.4,
-                                           delta=0.15)
+            unity = 0
+            for decay in range(0, 128, 3):
+                effect.set_macro(DECAY_I, decay)
+                for damping in range(128):
+                    effect.set_macro(DAMPING_I, damping)
+                    gain = rebuilt.room_gain_db(decay / 127.0,
+                                                effect._synthesis()[1], rate)
+                    trim = effect._trim
+                    self.assertLessEqual(trim, 1.0)
+                    if gain <= rebuilt.TRIM_TARGET_DB - 1.0:
+                        self.assertEqual(trim, 1.0, (rate, decay, damping))
+                        unity += 1
+                    elif gain > rebuilt.TRIM_TARGET_DB - 0.9:
+                        # Past the knee's foot by more than the 1/4096
+                        # rounding can swallow.
+                        self.assertLess(trim, 1.0, (rate, decay, damping))
+            self.assertGreater(unity, 0, rate)
+            for patch in (0, 2, 4, 7):
+                effect.program_change(patch)
+                self.assertGreater(20 * math.log10(effect._trim), -0.3,
+                                   (rate, patch))
             effect.deinit()
         effect = build(damping_hz=500.0)
-        self.assertAlmostEqual(20 * math.log10(effect._trim), -19.0,
-                               delta=0.25)
+        self.assertAlmostEqual(20 * math.log10(effect._trim), -10.0,
+                               delta=0.5)
         effect.deinit()
         pulse = click(LATENCY + 4096)
         for damping in (0, 64, 127):
@@ -3314,21 +3317,26 @@ class TheClaims(unittest.TestCase):
                                    20 * math.log10(trim), delta=0.05)
 
     def test_one_step_of_decay_or_damping_moves_the_level_little(self):
-        # Every Damping step's trim at four rates, within 0.15 dB of the
-        # next; Decay moves none (above). Then on the material: white noise
-        # with the room alone, one step of Decay or Damping either side of
-        # the four rooms that once carried a patch's trim, the level within
-        # 0.25 dB of the patch's own. OldTrims (a trim at a patch's exact
-        # steps alone, as before) jumps 3.5 to 6.5 dB there.
+        # Every Decay step and every Damping step's trim at four rates, on
+        # a grid of the other knob, within 0.1 dB of the next. Then on the
+        # material: white noise with the room alone, one step of Decay or
+        # Damping either side of the four rooms that once carried a patch's
+        # trim, the level within 0.25 dB of the patch's own. OldTrims (a
+        # trim at a patch's exact steps alone, as before) jumps 3.5 to
+        # 6.5 dB there.
         for rate in (48000, 44100, 22050, 96000):
             effect = build(rate=rate)
-            trims = []
-            for damping in range(128):
-                effect.set_macro(DAMPING_I, damping)
-                trims.append(20 * math.log10(effect._trim))
+            for outer, inner in ((DECAY_I, DAMPING_I), (DAMPING_I, DECAY_I)):
+                for fixed in range(0, 128, 9):
+                    effect.set_macro(outer, fixed)
+                    trims = []
+                    for step in range(128):
+                        effect.set_macro(inner, step)
+                        trims.append(20 * math.log10(effect._trim))
+                    for low, high in zip(trims, trims[1:]):
+                        self.assertLessEqual(abs(high - low), 0.1,
+                                             (rate, inner, fixed))
             effect.deinit()
-            for low, high in zip(trims, trims[1:]):
-                self.assertLessEqual(abs(high - low), 0.15, rate)
         pcm = white(RATE)
 
         def level(cls, patch, index=None, delta=0):
@@ -3359,11 +3367,11 @@ class TheClaims(unittest.TestCase):
         # The kit's ceiling cells at the stated level: the defaults on the
         # 50 Hz sine, the darkest corner with the room alone on a low square
         # and a DC step, the darkest patch, and the worst setting the
-        # measurement found (48 kHz, Decay 72, Damping 50, Predelay and
-        # Diffusion 127, Room seed 29, a 41 Hz square, +11.58 dB). 1.5 dB
+        # measurement found (48 kHz, Decay 32, Damping 56, Predelay 0,
+        # Diffusion 127, Room seed 29, a 41 Hz square, +19.3 dB). 1.5 dB
         # hotter, that worst setting rails, so the number is not slack.
         import kit_ceiling
-        worst = [(DECAY_I, 72), (DAMPING_I, 50), (PREDELAY_I, 127),
+        worst = [(DECAY_I, 32), (DAMPING_I, 56), (PREDELAY_I, 0),
                  (DIFFUSION_I, 127), (ROOM_I, room_midi(29))]
         cells = (("sine", None, None), ("sq82", None, [(MIX_I, 127),
                                                       (DAMPING_I, 0)]),
@@ -3383,27 +3391,20 @@ class TheClaims(unittest.TestCase):
                 for mix in (64, 127)]
         self.assertTrue(any(v.startswith("RED(rail") for v in reds), reds)
 
-    def test_every_patch_is_clean_to_12_dbfs(self):
-        # Each shipped patch on the kit's ceiling material at -12 dBFS, both
-        # rates, stereo and mono: Short Room, Dark Room, Soft Onset and
-        # Tight Room railed there before their rooms carried a trim.
-        # OldTrims one Decay step off Dark Room rails there again.
+    def test_every_patch_is_clean_to_its_ceiling(self):
+        # Each shipped patch on the kit's ceiling material at the stated
+        # input ceiling, both rates, stereo and mono.
         import kit_ceiling
         for patch in sorted(ConvolutionReverb.PATCHES):
             for rate in (48000, 22050):
                 for channels in (2, 1):
                     for which in kit_ceiling.MATERIALS:
                         verdict, _ = kit_ceiling.measure(
-                            AtMinus12, rate, channels, which, patch, None)
+                            ConvolutionReverb, rate, channels, which, patch,
+                            None)
                         with self.subTest(patch=patch, rate=rate,
                                           channels=channels, cell=which):
                             self.assertEqual(verdict, "ok")
-        off = type("OffDark", (OldTrims,), {"INPUT_CEILING_DBFS": -12.0})
-        verdicts = [kit_ceiling.measure(off, 48000, 2, which, 3,
-                                        [(DECAY_I, 101)])[0]
-                    for which in kit_ceiling.MATERIALS]
-        self.assertTrue(any(v.startswith("RED") for v in verdicts),
-                        verdicts)
 
     def test_what_measured_mode_refuses(self):
         with tempfile.TemporaryDirectory() as folder:

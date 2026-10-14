@@ -49,37 +49,62 @@ START_MAX_MS = 200.0
 #: Room seeds: 1 + round(position * 63), 64 rooms.
 ROOMS = 64
 
-#: The wet trim, from the room's damping. The room is normalised to unit
-#: energy, so the darker its one-pole (coefficient a), the more of that
-#: energy sits low: a low square comes back about sqrt((2 - a) / a) times
-#: louder, times the luck of the room's draw. So the wet is turned down by
-#: sqrt(a / (2 - a)) and by `TRIM_DB` more, the worst draw measured over the
-#: 64 Rooms, both sides, Decay, Predelay and Diffusion at 48 and 22.05 kHz
-#: (3.5 dB, at 48 kHz) and 0.5 dB to spare. It is smooth across Damping and
-#: does not depend on Decay at all, which the measurement does not need:
-#: one step of either moves the wet level by 0.15 dB at most. Damping out is
-#: trimmed as the brightest damped room, so its top step moves the level no
-#: more than the steps below it. The trim only ever turns the wet down.
-TRIM_DB = -4.0
-_TRIM_SCALE = 10.0 ** (TRIM_DB / 20.0)
+#: The wet trim. The room is normalised to unit energy, so the darker its
+#: one-pole (coefficient a) and the longer it rings, the more of that energy
+#: sits low and the louder a low square comes back. `room_gain_db` is that
+#: gain, fitted to the median over the 64 Rooms, both sides and Predelay and
+#: Diffusion at their ends, of the room alone's peak on the kit's ceiling
+#: material, over a Decay x Damping grid at 48 and 22.05 kHz: within
+#: 0.21 dB of every grid cell. Where it is 1 dB or more under `TRIM_TARGET_DB`
+#: (a -12 dBFS input then clean with 1 dB to spare) the trim is exactly 1.0;
+#: above `TRIM_TARGET_DB + TRIM_KNEE_DB` it takes the excess off, which
+#: holds the median room at -12 dBFS; between, a quadratic knee joins the
+#: two with no corner. A Room's own luck is not in the fit: the worst Room
+#: sits about 5 dB above the median (`INPUT_CEILING_DBFS`).
+TRIM_TARGET_DB = 12.0
+TRIM_KNEE_DB = 1.0
+#: `room_gain_db`'s fit: 10 log10((2 - a) / a) plus a polynomial in a, the
+#: Decay position d and log2(rate / 48 kHz) r:
+#: c0 + c1 a + c2 a^2 + c3 d + c4 d a + c5 r + c6 r a.
+GAIN_FIT = (6.2975, 1.5080, -1.3091, 0.4944, 0.1430, 0.8104, 0.1766)
+_DB10 = 10.0 / math.log(10.0)
+_R_LOW = math.log(22050.0 / 48000.0) / math.log(2.0)
 
 
-def room_trim(damping_hz, rate):
-    """The wet gain for a synthesized room damped at `damping_hz` (0: out)
-    on a graph at `rate`: sqrt(a / (2 - a)) x `TRIM_DB`, a the node's
-    one-pole coefficient (`audiodsp_convolve.c:318-321`), never above 1.0.
-    Damping out is read as the brightest damped room the rate plays
-    (Damping's step below its top), which is darker than out, so out is
-    trimmed a little more than it needs and its step is as small as the
-    others. Rounded to 1/4096, so it is the same number in single and double
-    precision."""
+def room_gain_db(decay, damping_hz, rate):
+    """The fitted low-frequency gain, dB, of a synthesized room at Decay
+    position `decay` (0..1) damped at `damping_hz` on a graph at `rate`.
+    `a` is the node's one-pole coefficient (`audiodsp_convolve.c:318-321`);
+    Damping out (0, or a quarter of the rate and up) is read as the
+    brightest damped room the rate plays, Damping's step below its top, so
+    the top step moves the trim no more than the steps below it."""
     if not 0.0 < damping_hz < rate * 0.25:
         damping_hz = min(DAMPING_HIGH_HZ, DAMPING_CLAMP * rate)
     a = 1.0 - math.exp(-2.0 * math.pi * damping_hz / rate)
-    trim = _TRIM_SCALE * math.sqrt(a / (2.0 - a))
-    if trim > 1.0:
-        trim = 1.0
-    return int(trim * 4096.0 + 0.5) / 4096.0
+    # The fit's rate term, held inside the rates it was measured at.
+    r = math.log(rate / 48000.0) / math.log(2.0)
+    if r > 0.0:
+        r = 0.0
+    elif r < _R_LOW:
+        r = _R_LOW
+    c = GAIN_FIT
+    return (_DB10 * math.log((2.0 - a) / a) + c[0] + a * (c[1] + c[2] * a)
+            + decay * (c[3] + c[4] * a) + r * (c[5] + c[6] * a))
+
+
+def room_trim(decay, damping_hz, rate):
+    """The wet gain for that room: 1.0 up to the knee, then down by the
+    fitted gain's excess over `TRIM_TARGET_DB`, through a quadratic soft
+    knee `TRIM_KNEE_DB` either side of it. Never above 1.0. Rounded to
+    1/4096, so it is the same number in single and double precision."""
+    excess = room_gain_db(decay, damping_hz, rate) - TRIM_TARGET_DB
+    if excess <= -TRIM_KNEE_DB:
+        return 1.0
+    if excess < TRIM_KNEE_DB:
+        db = -(excess + TRIM_KNEE_DB) ** 2 / (4.0 * TRIM_KNEE_DB)
+    else:
+        db = -excess
+    return int(10.0 ** (db / 20.0) * 4096.0 + 0.5) / 4096.0
 
 
 DECAY_I, DAMPING_I, PREDELAY_I, DIFFUSION_I, ROOM_I, MIX_I = range(6)
@@ -209,16 +234,14 @@ class ConvolutionReverb(_component.Component):
     With Damping in, the 64 Rooms fall 60 dB within 2 % of the Decay time on
     average.
     A single Room with Damping in can take more than 15 % longer.
-    A synthesized room plays through a level trim that follows Damping and
-    nothing else: 7.4 dB down with Damping bright or out, and further as it
-    darkens, about 19 dB at the 500 Hz stop at 48 kHz.
-    One step of Decay or Damping moves the room's level by 0.15 dB at most.
-    Every shipped patch takes at least -12 dBFS in without reaching the
-    rail.
-    Anywhere on the knobs, a synthesized room is clean up to -12 dBFS in,
-    its input ceiling: the darker a room, the more of its energy sits low,
-    and the trim turns it down by that much and the worst Room's luck
-    besides.
+    A synthesized room plays through a level trim set by Decay and Damping
+    together: none where a typical Room comes back clean at -12 dBFS with
+    1 dB to spare, and down to about 10 dB at Damping's 500 Hz stop at
+    48 kHz.
+    One step of Decay or Damping moves the room's level by 0.1 dB at most.
+    Anywhere on the knobs, a synthesized room is clean up to -19.5 dBFS in,
+    its input ceiling: the trim holds a typical Room at -12 dBFS, and the
+    unluckiest Room brings a low square back about 7 dB hotter than that.
     Each side of a stereo room is normalised on its own, so the room sits in
     the middle.
 
@@ -280,15 +303,15 @@ class ConvolutionReverb(_component.Component):
     LATENCY_SAMPLES = PARTITION
     TAIL_SAMPLES = None
     #: Where no synthesized setting reaches the rail, after `room_trim`.
-    #: Measured on the kit's ceiling material at 48 and 22.05 kHz over the
-    #: Decay x Damping grid at every Room, both sides, Predelay and
-    #: Diffusion at their ends, and 6000 settings drawn at random besides:
-    #: the worst, a 41 Hz square at 48 kHz in a dark room, comes back 3.79
-    #: times its peak (+11.58 dB), so it is clean to -11.6 dBFS, and this
-    #: rounds that down. Before the trim followed Damping it was -21 dBFS.
-    #: A loaded impulse brings its own level and `ir_gain_db` and is not
-    #: covered.
-    INPUT_CEILING_DBFS = -12.0
+    #: Measured on the kit's ceiling material at 48 and 22.05 kHz, at every
+    #: Room and both sides, over the Decay x Damping grid with Predelay and
+    #: Diffusion at their ends, and 3000 settings drawn at random besides:
+    #: the worst, Decay 32, Damping 56, Predelay 0, Diffusion 127, Room
+    #: seed 29, a 41 Hz square at 48 kHz, comes back 9.2 times its peak
+    #: (+19.3 dB), and this rounds that down. The trim holds the median Room
+    #: at -12 dBFS; a Room's own luck is up to 7 dB on top. A loaded impulse
+    #: brings its own level and `ir_gain_db` and is not covered.
+    INPUT_CEILING_DBFS = -19.5
 
     MACRO_LABELS = ("Decay", "Damping", "Predelay", "Diffusion", "Room",
                     "Mix")
@@ -520,8 +543,8 @@ class ConvolutionReverb(_component.Component):
             trim = self._room_trim(room)
             if trim != self._trim:
                 # Before the synthesis, so the block in flight fades from the
-                # old room at its level to the new at its own. Only a move
-                # of Damping moves it, by 0.15 dB a step at most.
+                # old room at its level to the new at its own. A step of
+                # Decay or Damping moves it by 0.1 dB at most.
                 self._node.set(wet_gain=trim)
                 self._trim = trim
             if room != self._loaded:
@@ -536,7 +559,7 @@ class ConvolutionReverb(_component.Component):
     def _room_trim(self, room):
         """The wet gain of the room the knobs stand on (`room_trim`),
         wherever Mix is."""
-        return room_trim(room[1], self._sample_rate)
+        return room_trim(self._macros[DECAY_I], room[1], self._sample_rate)
 
     def _apply_positions(self, positions, patch_index):
         """Apply a patch (or a rack's restore) whole, then synthesize once. In measured
