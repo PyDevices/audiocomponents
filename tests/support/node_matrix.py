@@ -348,6 +348,37 @@ class NodeEcho(_Node):
             self._node.decay = decay
 
 
+class NodeFlanger(_Node):
+    """`audiodelays.Flanger`: CircuitPython's flanger node, which Phase 7's
+    `Flanger` is rebuilt on. Mix is a wire at 0."""
+    NAME = "NodeFlanger"
+    TIER = _component.STOCK
+    REQUIRES = ()
+    MACRO_LABELS = ("Mix", "Rate", "Depth", "Feedback")
+    MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "UNIPOLAR",
+                   3: "BIPOLAR"}
+    _MACRO_RANGES = ((0.0, 1.0), (0.0, 5.0), (0.0, 1.0), (-0.9, 0.9))
+    PATCHES = {0: ("Jet", (127, 13, 127, 115)),
+               1: ("Slow sweep", (64, 3, 96, 80)),
+               2: ("Negative", (96, 26, 64, 13))}
+    #: 0.9 ** n * 32768 < 1 at n = 99 repeats of the 10 ms line, plus one
+    #: sweep's worth of line.
+    _TAIL_S = 99 * 0.010 + 0.02
+
+    def _build(self, mix=0.5, rate=0.5, depth=0.5, feedback=0.5,
+               patch=None):
+        self._node = self._register(audiodelays.Flanger(
+            max_delay_ms=10, min_delay_ms=1.0, rate=rate, depth=depth,
+            feedback=feedback, mix=mix, **self._pcm(512)))
+        self._node.play(self._source, loop=True)
+        self._output = self._node
+        self._init_macros((mix, rate, depth, feedback), patch)
+
+    def _apply_macro(self, index, position):
+        name = ("mix", "rate", "depth", "feedback")[index]
+        setattr(self._node, name, self._values()[index])
+
+
 class NodeComparator(_Node):
     """`audioshaper.Waveshaper` with a step curve: the Octaver's comparator
     ahead of its divider."""
@@ -410,7 +441,8 @@ class NodeAllPass(_Node):
 NODES = {}
 for _cls in (NodePitchShift, NodeGranularPitchShift, NodeShimmerLoop,
              NodeSubOctave, NodeSquare, NodeMidSide, NodeSplitMix,
-             NodeBiquad, NodeEcho, NodeComparator, NodeAllPass):
+             NodeBiquad, NodeEcho, NodeFlanger, NodeComparator,
+             NodeAllPass):
     NODES[_cls.NAME] = _cls
 
 
@@ -448,6 +480,13 @@ DECLARED = {
     ("NodePitchShift", "E2-", "P4"):
         "reset_buffer restarts the splice phase, so the node matches a fresh"
         " one, not the uninterrupted control",
+    ("NodePitchShift", "E1-", "P4"):
+        "as E2: a reset starts the splice again, and the splice's move"
+        " depends on what played, so the node matches a fresh one, not the"
+        " uninterrupted control",
+    ("NodePitchShift", "E4-m2=127", "P4"):
+        "a freeze set while a splice crossfades finishes that splice's move"
+        " first, so the frozen loop reads from where the control's does not",
     ("NodePitchShift", "E4-m1", "P4"):
         "a Semitones move runs the read position at another rate, so the"
         " splice phase lands elsewhere; putting it back would click",
@@ -455,6 +494,18 @@ DECLARED = {
         "as E4: a patch with other semitones moves the splice phase",
     ("NodePitchShift", "E11-", "P4"):
         "as E4: moves before a pull move the splice phase",
+    ("NodeFlanger", "E1-", "P4"):
+        "a reset starts the sweep's LFO again from the top, so the node"
+        " matches a fresh one, not the uninterrupted control",
+    ("NodeFlanger", "E2-", "P4"):
+        "as E1: the host reset starts the sweep again",
+    ("NodeFlanger", "E4-m1=", "P4"):
+        "a Rate move runs the free-running sweep at another rate, so its"
+        " phase lands elsewhere; putting it back would jump the sweep",
+    ("NodeFlanger", "E6-", "P4"):
+        "as E4: a patch with another Rate moves the sweep's phase",
+    ("NodeFlanger", "E11-", "P4"):
+        "as E4: Rate moves before a pull move the sweep's phase",
     ("NodeGranularPitchShift", "E1-", "P4"):
         "a reset restarts the grain clock, so grains never line up with the"
         " uninterrupted control again",

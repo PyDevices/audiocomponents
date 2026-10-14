@@ -345,5 +345,20 @@
 # holds its line still at mix 0 (#226); audiovorbis (#238, #239); and an
 # fmod-free angle reduction for the RP2040 (#225).
 #
+# 2026-10-13: v0.6.6rc1 -> bd7f409, the effects program's Phase 7 node batch
+# (step 7b): the candidate for audiodsp's next pre-release, v0.6.6rc2, and
+# the final pin of the phase. Named by commit until the tag is cut; the tag
+# names the same source. What moves beneath the components, by `git log
+# v0.6.6rc1..bd7f409 -- src`: audiodelays.Flanger lets go of a looped source that
+# comes back empty and gives a stalled one silence, instead of spinning the
+# pull; audioecho.FeedbackDelay's upward loop_semitones writes its line
+# through a band limit at 0.7 of the frequency the next pass would carry to
+# Nyquist, so a climb fades out at the top instead of folding back; and both
+# shifters (the loop's two taps and audiodelays.PitchShift's splice) move a
+# splice's incoming side into phase with the outgoing one, so a held note
+# plays its shifted pitch instead of cancelling. Unshifted and downward
+# FeedbackDelay renders, silence and a lone click through either shifter, and
+# a frozen PitchShift window render the bytes they did.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.6rc1 30cbbf619751ab6ff7c40d99336907af0a081fa6
+bd7f4096a4aa9e4fb467c3c5e1b0d45434142a66 bd7f4096a4aa9e4fb467c3c5e1b0d45434142a66

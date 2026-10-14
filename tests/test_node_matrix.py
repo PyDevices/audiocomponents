@@ -48,9 +48,11 @@ KNOWN_P6 = {
         "head: upstream's Echo plays one stray sample when it grows back "
         "(audiodsp#241)"),
     "NodePitchShift": (
-        12, "1e08a674", None, None,
-        "upstream's reset keeps the read and write positions, so after a "
-        "reset at the fifth the splice falls elsewhere (audiodsp#240)"),
+        285, "3c88af12", None, None,
+        "upstream's splice lands wherever the window does and ours moves "
+        "each splice's incoming side into phase (audiodsp 7b), so nearly "
+        "every cell that splices live audio renders other bytes; and "
+        "upstream's reset keeps the read and write positions (audiodsp#240)"),
     "NodeGranularPitchShift": (
         4, "91e67a25", None, None,
         "upstream's reset_buffer keeps the jitter sequence, so the grains "
