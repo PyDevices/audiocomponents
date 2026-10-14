@@ -681,7 +681,8 @@ class Distortion(_component.Component):
 
         On a build with no `audiocore.get_buffer` - CircuitPython's default
         board build compiles it out - nothing can pull the pole, so this
-        does nothing and the scoop patches start with the step.
+        does nothing. The scoop tables answer zero with zero, so there is
+        no offset to settle and nothing renders differently.
         """
         pull = getattr(audiocore, "get_buffer", None)
         if pull is None or self._out_hp is None or not self._macros:

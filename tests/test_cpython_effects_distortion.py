@@ -1614,8 +1614,9 @@ if __name__ == "__main__":
 class TheScoopBuildsWithoutGetBuffer(unittest.TestCase):
     """Where `audiocore.get_buffer` is compiled out (CircuitPython's board
     builds) the scoop patches build, take a patch change and reset without
-    raising, and the patches with no output capacitor to charge render the
-    bytes they render with it."""
+    raising, and every patch renders the bytes it renders with it: the
+    scoop tables answer zero with zero, so the output capacitor has
+    nothing to settle."""
 
     def test_every_patch_builds_and_resets(self):
         import kit_nogb
@@ -1626,9 +1627,7 @@ class TheScoopBuildsWithoutGetBuffer(unittest.TestCase):
                     got = kit_nogb._bytes_cell(
                         rebuilt.Distortion, {}, RATE, 2, patch,
                         scenarios[label])
-                    self.assertNotIn("raised", got)
-                    if patch is not None and patch < 6:
-                        self.assertEqual(got, "ok")
+                    self.assertEqual(got, "ok")
 
     def test_a_program_change_onto_a_scoop_patch(self):
         import kit_nogb
