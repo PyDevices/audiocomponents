@@ -49,8 +49,11 @@ import lifecycle
 
 CHECK = "ceiling"
 SECONDS = 2
-#: The low notes a square is played on besides 100 Hz: E1, A1, E2, A2, D3.
-LOW_NOTES = (41, 55, 82, 110, 147)
+#: The low notes a square is played on besides 100 Hz: E1, A1, E2, A2, D3,
+#: and 163 Hz, between D3 and E3, where ConvolutionReverb's default room peaks
+#: highest and none of the others reached (a full 1/8-octave walk from 40 to
+#: 160 Hz would be 17 squares, near three times the cells).
+LOW_NOTES = (41, 55, 82, 110, 147, 163)
 MATERIALS = ("square", "sine", "clicks", "noise", "dc") + tuple(
     "sq%d" % hz for hz in LOW_NOTES)
 #: A macro label holding one of these is level-like.

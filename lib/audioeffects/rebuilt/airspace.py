@@ -391,6 +391,9 @@ class AirSpace(_component.Component):
         self._macro_index(index)
         flags = list(self._snap)
         try:
+            # Clamped first: an int past float's range (10**400) is the top
+            # stop, and `%` on it would raise.
+            value = _component.clamped_midi(value)
             position = _component.position_of_midi("UNIPOLAR", value)
             if abs(position - self._macros[index]) > STEP_TOLERANCE:
                 fraction = value % 1.0

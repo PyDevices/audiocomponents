@@ -13,6 +13,11 @@ The contract says a reset clears every node and restores patch 0. So:
   move on both, four pulls later. A state the reset left that only a move
   wakes (an old line length, a write head the reset did not move) is red
   here and not in the cell before.
+- `rpr<K>@8/<rate>/<ch>/d`: built at the defaults, played 8 pulls, then
+  `reset()`, `program_change(K)` and `reset()` again. Held to the same
+  fresh instance. A patch that builds part of the graph again between two
+  resets must not leave the second reset reaching for a node the rebuild
+  released (Distortion's scoop patches once raised here).
 - `boot/<rate>/<ch>`, informational: whether a fresh instance at its
   defaults is patch 0 exactly. Patch values are integers and a declared
   default may sit off their grid (docs/audio-components.md), so a
@@ -109,7 +114,15 @@ def _fresh_at(cls, port, rate, options):
         return kc.build(cls, port, rate, FRESH_PATCH, options)
 
 
-def _source_at(cls, rate, ch, patch, options, k):
+def _between(e, between):
+    """`reset()` then `program_change(between)`, the first reset of an
+    `rpr` cell and the patch it lands between the two; nothing for None."""
+    if between is not None:
+        e.reset()
+        e.program_change(between)
+
+
+def _source_at(cls, rate, ch, patch, options, k, between=None):
     """The frame of the material the source stands at after `k` pulls of
     an instance built at `patch`, just before its reset, or -1.
 
@@ -122,17 +135,19 @@ def _source_at(cls, rate, ch, patch, options, k):
     try:
         for _ in range(k):
             kc.pull(e)
+        _between(e, between)
         block = bytes(audiocore.get_buffer(feed.mat)[1])
     finally:
         e.deinit()
     return lifecycle._locate(bytes(values), block, 2 * ch)
 
 
-def reset_cell(cls, rate, ch, patch, options, k, move=None):
-    """One reset cell's verdict."""
+def reset_cell(cls, rate, ch, patch, options, k, move=None, between=None):
+    """One reset cell's verdict. `between`, a patch: reset, that patch, and
+    then the reset the cell judges."""
     fsize = 2 * ch
     values = _material(rate, ch)
-    start = _source_at(cls, rate, ch, patch, options, k)
+    start = _source_at(cls, rate, ch, patch, options, k, between)
     if start < 0:
         return "na(source position not found)"
     feed = _feed(values, rate, ch)
@@ -141,6 +156,7 @@ def reset_cell(cls, rate, ch, patch, options, k, move=None):
     try:
         for _ in range(k):
             kc.pull(e)
+        _between(e, between)
         e.reset()
         f = _fresh_at(cls, _feed(values[start * ch:], rate, ch).port,
                       rate, options)
@@ -209,6 +225,12 @@ def run(cls, emit=print, quick=False, name=None, options=None):
                 for k in (0, RESET_AT):
                     todo.append(("reset@%d/%s" % (k, tail), reset_cell,
                                  (cls, rate, ch, patch, options, k)))
+                if patch is None:
+                    for between in sorted(cls.PATCHES):
+                        todo.append(("rpr%d@%d/%s" % (
+                            between, RESET_AT, tail), reset_cell,
+                            (cls, rate, ch, patch, options, RESET_AT, None,
+                             between)))
                 if patch not in moving:
                     continue
                 for index, value in kc.knob_positions(cls):

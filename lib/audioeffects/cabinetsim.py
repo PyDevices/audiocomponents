@@ -553,7 +553,7 @@ class CabinetSim(_component.Component):
         `get_macro` reads back the snapped number, not the one sent.
         """
         try:
-            value = float(value)
+            value = _component.clamped_midi(value)
         except (TypeError, ValueError):
             pass
         else:

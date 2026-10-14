@@ -7,9 +7,10 @@ Cells, all on an 8192-frame click and noise train then silence:
   changes no byte of the render, at the defaults and at every patch.
 - `stops-m<i>`: 0, 64 and 127 are accepted and `get_macro` reads each
   back within 1e-4.
-- `bad-m<i>`: NaN, +inf, -inf, -1 and 128. The contract
-  (audio-component-api.md, "Macro and patch state") clamps: NaN, -inf and
-  -1 read back 0, +inf and 128 read back 127, and each renders exactly
+- `bad-m<i>`: NaN, +inf, -inf, -1, 128 and +-10**400 (an int past
+  float's range). The contract (audio-component-api.md, "Macro and patch
+  state") clamps: NaN, -inf, -1 and -10**400 read back 0, +inf, 128 and
+  10**400 read back 127, and each renders exactly
   what `set_macro(i, readback)` renders (`c`). A raise of any kind is
   red.
 - `patch-p<k>`: from a fresh instance, `program_change(k)` sets
@@ -59,7 +60,8 @@ READBACK_TOL = 1e-4
 
 NAN = float("nan")
 INF = float("inf")
-BAD = (("nan", NAN), ("inf", INF), ("-inf", -INF), ("-1", -1), ("128", 128))
+BAD = (("nan", NAN), ("inf", INF), ("-inf", -INF), ("-1", -1), ("128", 128),
+       ("10**400", 10 ** 400), ("-10**400", -10 ** 400))
 REFUSALS = (ValueError, TypeError)
 
 _PROBE = {}

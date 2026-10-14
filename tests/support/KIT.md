@@ -106,10 +106,12 @@ hands it:
 - `rt-m<i>`: `set_macro(i, get_macro(i))` mid-stream changes no byte, at
   the defaults and every patch.
 - `stops-m<i>`: 0, 64 and 127 are accepted and read back within 1e-4.
-- `bad-m<i>`: NaN, +-inf, -1 and 128, held to the contract's one answer
+- `bad-m<i>`: NaN, +-inf, -1, 128 and +-10**400 (an int past float's
+  range), held to the contract's one answer
   ([audio-component-api.md](../../docs/audio-component-api.md#macro-and-patch-state)):
-  a value off the range is clamped, never refused. NaN, -inf and -1 read
-  back 0, +inf and 128 read back 127, and each renders exactly what
+  a value off the range is clamped, never refused. NaN, -inf, -1 and
+  -10**400 read back 0, +inf, 128 and 10**400 read back 127, and each
+  renders exactly what
   `set_macro(i, readback)` renders (`c`). A raise of any kind is red.
 - `patch-p<k>`: `program_change(k)` sets `patch_index` and reads back the
   patch's values, and `program_change(0)` reads back patch 0's. Not what a
@@ -146,7 +148,9 @@ at, on the worst material, the output does not wrap, sit on a rail, or go
 silent. The class states `INPUT_CEILING_DBFS` (dBFS, 0 or below); with
 none it is held to 0 dBFS. The material, 2 s at the peak: a 100 Hz square,
 a 50 Hz sine, one-sample clicks of alternating sign, noise, a DC step, and
-squares on the low notes 41, 55, 82, 110 and 147 Hz (`sq41` ...). The
+squares on the low notes 41, 55, 82, 110, 147 and 163 Hz (`sq41` ...;
+163 Hz is where ConvolutionReverb's default room peaks highest, between the
+notes the others are on). The
 settings: the defaults, every patch, each macro alone at 0, 64 and 127,
 every macro at 127 together (`all=127`), and every level-like macro (a
 label holding Level, Mix, Octave, Direct, Voice or Gain) at 127 with each
@@ -229,6 +233,11 @@ patch 0, from every patch:
   later, each macro to each stop, and the readback after it. A state the
   reset left that only a move wakes (a line length, a write head) is red
   here.
+- `rpr<K>@8/<rate>/<ch>/d`: built at the defaults, played 8 pulls, then
+  `reset()`, `program_change(K)` and `reset()` again, for every patch K,
+  and held to the same fresh instance. A patch that builds part of the
+  graph again between two resets must not leave the second one reaching
+  for a node the rebuild released.
 - `boot/<rate>/<ch>`, informational: whether a fresh instance at its
   defaults is patch 0 exactly. Patch values are integers and a declared
   default may sit off their grid ([audio-components.md](../../docs/audio-components.md)),

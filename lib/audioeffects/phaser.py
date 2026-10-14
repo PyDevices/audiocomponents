@@ -265,28 +265,6 @@ def _choice(choices, position):
     return choices[min(last, max(0, int(round(position * last))))]
 
 
-def _bar_quarters(numerator, denominator):
-    """Quarter notes in one bar of a `numerator`/`denominator` time
-    signature (the transport's fourth and fifth fields): 4/4 is 4, 3/4 is
-    3, 6/8 is 3. A signature that is not two positive numbers is 4/4."""
-    try:
-        numerator = float(numerator)
-        denominator = float(denominator)
-    except (TypeError, ValueError):
-        return 4.0
-    if not (numerator > 0.0 and denominator > 0.0):
-        return 4.0
-    quarters = numerator * 4.0 / denominator
-    if not quarters < float("inf"):
-        return 4.0
-    return quarters
-
-
-def _same(a, b):
-    """Equal, with NaN the same as NaN (the base's rule for a tempo)."""
-    return a == b or (a != a and b != b)
-
-
 def _patch(*engineering):
     return tuple(_component.macro_of(span, value)
                  for span, value in zip(_RANGES, engineering))
@@ -472,11 +450,9 @@ class Phaser(_component.Component):
     def _lfo_rate_hz(self):
         rate = self._value(0)
         if self._value(8) >= 0.5:
-            state = self._transport()
+            tempo, quarters = self._synced_beat()
             bars = _choice(DIVISION_BARS, self._macros[9])
-            beats = _bar_quarters(state[3], state[4]) * bars
-            tempo = max(1.0, float(state[2]))
-            rate = tempo / (60.0 * beats)
+            rate = tempo / (60.0 * quarters * bars)
         return rate
 
     def transport_changed(self):
@@ -489,13 +465,11 @@ class Phaser(_component.Component):
         index = type(self)._SYNC_MACRO
         if index is None or self._macros[index] < 0.5:
             return
-        state = self._transport() if callable(self._transport) \
-            else self._transport
-        followed = (state[2], state[3], state[4])
-        last = self._followed_bpm
-        if last is not _component._UNREAD and _same(followed[0], last[0]) \
-                and _same(followed[1], last[1]) \
-                and _same(followed[2], last[2]):
+        # What the host got wrong (a tempo of None or NaN, a field missing,
+        # a signature of 4/0 or 10**400/4) keeps the last good reading, so
+        # it is no change and the sweep plays on as it was.
+        followed = self._synced_beat()
+        if followed == self._followed_bpm:
             return
         self._followed_bpm = followed
         self._apply_macro(index, self._macros[index])

@@ -81,28 +81,6 @@ def _option(value, default, span):
     return min(span[1], max(span[0], value))
 
 
-def _bar_quarters(numerator, denominator):
-    """Quarter notes in one bar of a `numerator`/`denominator` time
-    signature (the transport's fourth and fifth fields): 4/4 is 4, 3/4 is
-    3, 6/8 is 3. A signature that is not two positive numbers is 4/4."""
-    try:
-        numerator = float(numerator)
-        denominator = float(denominator)
-    except (TypeError, ValueError):
-        return 4.0
-    if not (numerator > 0.0 and denominator > 0.0):
-        return 4.0
-    quarters = numerator * 4.0 / denominator
-    if not quarters < float("inf"):
-        return 4.0
-    return quarters
-
-
-def _same(a, b):
-    """Equal, with NaN the same as NaN (the base's rule for a tempo)."""
-    return a == b or (a != a and b != b)
-
-
 def tail_frames(color, top_ms, rate):
     """Frames until the ring is exact silence, for Color `color` and a
     sweep whose top is `top_ms`, at `rate` (the card's section 5).
@@ -300,11 +278,9 @@ class Flanger(_component.Component):
         notes of its time signature (Phaser's rule)."""
         if self._macros[SYNC_I] < 0.5:
             return self._value(RATE_I)
-        state = self._transport() if callable(self._transport) \
-            else self._transport
+        tempo, quarters = self._synced_beat()
         bars = _choice(DIVISION_BARS, self._macros[DIVISION_I])
-        beats = _bar_quarters(state[3], state[4]) * bars
-        return max(1.0, float(state[2])) / (60.0 * beats)
+        return tempo / (60.0 * quarters * bars)
 
     def _top_ms(self):
         manual = self._value(MANUAL_I)
@@ -358,13 +334,11 @@ class Flanger(_component.Component):
         index = type(self)._SYNC_MACRO
         if index is None or self._macros[index] < 0.5:
             return
-        state = self._transport() if callable(self._transport) \
-            else self._transport
-        followed = (state[2], state[3], state[4])
-        last = self._followed_bpm
-        if last is not _component._UNREAD and _same(followed[0], last[0]) \
-                and _same(followed[1], last[1]) \
-                and _same(followed[2], last[2]):
+        # What the host got wrong (a tempo of None or NaN, a field missing,
+        # a signature of 4/0 or 10**400/4) keeps the last good reading, so
+        # it is no change and the sweep plays on as it was.
+        followed = self._synced_beat()
+        if followed == self._followed_bpm:
             return
         self._followed_bpm = followed
         # The base's own path: the Sync switch applied where it stands.
