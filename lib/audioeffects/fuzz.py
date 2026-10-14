@@ -195,11 +195,16 @@ is still not zero at 16 627 frames at the constructor default and **18 750
 at patch 5**, and 100 Hz is over it at patches 1, 5 and 7 (audit 3 (p)1).
 The declaration covers the worst of 40, 100, 220 and 1000 Hz at those four
 settings at all three rates, and it is a −6 dBFS reading - the tail is
-shorter at every quieter input. **With Bias off centre it never
-reaches digital zero** - a wander of at most 16 LSB (−66.2 dBFS) stays,
-because ±1 LSB at the input of a 36 dB gain stage is ±63 LSB at the
-steepest part of the curve. Everything above 16 LSB is gone within **9 441**
-frames (patch 2, 40 Hz). Patch 2 ships Bias −0.85 and has it.
+shorter at every quieter input. **With Bias off centre there is no
+bound, and `tail_samples` is None** (Mix 0 aside, which is the dry alone).
+The shaper answers silence with a constant and the coupling poles behind it
+settle near zero rather than on it: on `germanium` the output was still
+nonzero 6 s after the input at every Bias stop but the three either side of
+centre, and on `cascade` it settled at some stops and not at others. What
+stays is small: a wander of about ±11 LSB at patch 2's Bias −0.85 and ±3 at
+Bias +1, and at Bias −1 a constant that depends on what was played - 177 LSB
+(−45.3 dBFS) after a −6 dBFS DC step, 44 after full-scale noise - which is
+DC and not heard. Patch 2 ships Bias −0.85 and has it.
 
 **The output pole is charged before the first block.** S1's third
 capacitor is the output one and its section is behind the shaper, but it
@@ -226,8 +231,8 @@ of that clipper. In the band it costs **1.268 dB at 40 Hz, 0.053 at 100
 and 0.000 at 482 Hz and above**. Walked over 108 cells (3 rates × 2 characters × 9 Bias
 stops × built-at-the-value and moved-to-it-live), the **settled mean is at
 most 7.1 LSB and the peak at most 13**, both on `germanium`; `cascade`'s
-worst is 6 LSB of each, inside the 16 LSB residual this class already
-states. What it takes with it is C3's Bias clause and C4's Fuzz span,
+worst is 6 LSB of each. That walk played tones; after a DC step at Bias
+−1 the constant left is 177 LSB (the tail paragraph above). What it takes with it is C3's Bias clause and C4's Fuzz span,
 both restated above; **C1 does not move** (h2 −79.059 → −79.379, peak
 growth 0.012 → 0.013 dB).
 
@@ -608,10 +613,9 @@ class Fuzz(_component.Component):
     #: 16 627 frames at the constructor default, **18 750 at patch 5**, and
     #: 100 Hz is over it at patches 1, 5 and 7 (audit 3 (p)1). This covers
     #: the worst of 40, 100, 220 and 1000 Hz at the default and at patches
-    #: 1, 5 and 7, at all three rates, after a -6 dBFS burst. What it does
-    #: **not** cover is said in the docstring: with Bias off centre the
-    #: class never reaches digital zero, and that wander is bounded at
-    #: 16 LSB.
+    #: 1, 5 and 7, at all three rates, after a -6 dBFS burst. It holds with
+    #: Bias centred; off centre the output settles near zero rather than on
+    #: it, and `tail_samples` is None there (see the docstring).
     TAIL_SAMPLES = 24576
 
     MACRO_LABELS = ("Fuzz", "Level", "Tone", "Bias", "Load", "Mix",
@@ -1040,3 +1044,21 @@ class Fuzz(_component.Component):
     def latency_samples(self):
         self._check_live()
         return int(self._latency)
+
+    @property
+    def tail_samples(self):
+        """`TAIL_SAMPLES` with Bias centred or Mix at 0, and None anywhere
+        else.
+
+        Off centre the shaper answers silence with a constant, the coupling
+        poles behind it settle into a wander of a few LSB rather than onto
+        zero, and nothing bounds when (or whether) it stops: on `germanium`
+        it was still there 6 s after the input at every Bias stop but the
+        three either side of centre, and on `cascade` it settled at some
+        stops and not at others. A bound there would be a guess, and the
+        contract's None is the honest answer. Mix 0 is the dry alone, and
+        the wander is not in it."""
+        self._check_live()
+        if self._value(3) != 0.0 and self._value(5) > 0.0:
+            return None
+        return type(self).TAIL_SAMPLES
