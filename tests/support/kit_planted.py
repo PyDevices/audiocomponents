@@ -547,10 +547,44 @@ class MidPatchReset(FlushKit3):
             lifecycle.Routed._arm(self)
 
 
+class PatchPulls(FlushKit3):
+    """Nogb: at the middle patch only, the build pulls its quiet mixer
+    with `audiocore.get_buffer` unconditionally, so where that is compiled
+    out it raises AttributeError there and nowhere else (Distortion's
+    patches 6 to 9 did this)."""
+    NAME = "PatchPulls"
+
+    def _build(self, mix=1.0, gain=1.0, patch=None):
+        FlushKit3._build(self, mix, gain, patch)
+        if patch == 1:
+            audiocore.get_buffer(self._quiet)
+
+    def program_change(self, index, *args, **kw):
+        FlushKit3.program_change(self, index, *args, **kw)
+        if index == 1:
+            audiocore.get_buffer(self._quiet)
+
+
+class NativeFlush(FlushKit):
+    """Nogb: FlushOnly's fault on MicroPython and CircuitPython only (a
+    path a class takes off CPython, as Vibrato's native graph and
+    Saturation's CircuitPython reset do): a check that runs on CPython
+    alone reads it as clean."""
+    NAME = "NativeFlush"
+
+    def _arm(self):
+        FlushKit._arm(self)
+        if sys.implementation.name == "cpython":
+            return
+        pull = getattr(audiocore, "get_buffer", None)
+        if pull is not None:
+            pull(self._mixer)
+
+
 PLANTS = {}
 for _cls in (KitPlain, Silent, WrapKit, WrapKitQuiet, ClipKit, DeadStop,
              CondKit, MidWrap, ComboWrap, AllWrap, LowWrap, ImplKit, EchoTail, ShortTail, EventTail, NoneSilent, NoneDC,
              ReadbackOff, StopRaises, NanLevel, PatchStale, CtorNan,
              ClearsFirst, ClearsMacro, FlushKit, FlushOnly, DoubleReset,
-             FlushKit3, MidPatchReset):
+             FlushKit3, MidPatchReset, PatchPulls, NativeFlush):
     PLANTS[_cls.NAME] = _cls

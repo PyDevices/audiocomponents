@@ -254,6 +254,31 @@ class TestNoGetBuffer(unittest.TestCase):
         control = nogb_cells(kp.FlushKit3)
         self.assertEqual(verdict(control, "FlushKit3", "nogb", key), "ok")
 
+    def test_a_patch_that_raises_is_its_own_cell(self):
+        cells = nogb_cells(kp.PatchPulls)
+        for ch in (2, 1):
+            key = "run/48000/%d/p1" % ch
+            self.assertIn("raised without get_buffer: AttributeError",
+                          verdict(cells, "PatchPulls", "nogb", key))
+            for other in ("p0", "p2"):
+                self.assertEqual(verdict(cells, "PatchPulls", "nogb",
+                                         "run/48000/%d/%s" % (ch, other)),
+                                 "ok", other)
+        # The patches that do not raise are still judged.
+        self.assertEqual(verdict(cells, "PatchPulls", "nogb",
+                                 "bytes-reset-once/48000/2/p2"), "ok")
+        control = nogb_cells(kp.FlushKit3)
+        self.assertEqual(verdict(control, "FlushKit3", "nogb",
+                                 "run/48000/2/p1"), "ok")
+
+    def test_a_native_only_flush_is_clean_here(self):
+        # NativeFlush leans on get_buffer only off CPython; TestNative
+        # holds it red on MicroPython and CircuitPython.
+        cells = nogb_cells(kp.NativeFlush)
+        for key in (k for (_n, _c, k) in cells):
+            self.assertEqual(verdict(cells, "NativeFlush", "nogb", key),
+                             "ok", key)
+
     def test_get_buffer_is_put_back(self):
         import audiocore
         import audioeffects._component as component
@@ -636,6 +661,25 @@ class TestNative(unittest.TestCase):
 
     def test_circuitpython_agrees(self):
         self.agree("circuitpython")
+
+    def nogb_native(self, family):
+        binary = self.binary(family)
+        args = ["NativeFlush", "FlushKit", "--only=nogb", "--quick"]
+        cells = kc.parse(run_kit(binary, args))
+        bad = sorted(k for (n, _c, k), v in cells.items()
+                     if n == "NativeFlush" and red(v["V"]))
+        self.assertTrue(any(k.startswith("bytes-reset-once") for k in bad),
+                        bad)
+        self.assertTrue(any(k.startswith("E5-mix0") for k in bad), bad)
+        for (n, _c, k), v in cells.items():
+            if n == "FlushKit":
+                self.assertEqual(v["V"], "ok", k)
+
+    def test_nogb_runs_on_micropython(self):
+        self.nogb_native("micropython")
+
+    def test_nogb_runs_on_circuitpython(self):
+        self.nogb_native("circuitpython")
 
     def test_agreement_can_fail(self):
         binary = self.binary("micropython")

@@ -29,9 +29,9 @@ why), `RED(...)` with what was measured, or `decl`. `h:` is a CRC-32 of the
 cell's render, so two interpreters' lines agree only when their bytes do.
 
 The four render checks (tail, plants, args, ceiling) are numpy-free and
-print the same lines on CPython, MicroPython and CircuitPython. The claims,
-paperwork and nogb checks read source, unittest and git, or patch modules,
-and run on CPython only; a native run prints `SKIP` for them.
+print the same lines on CPython, MicroPython and CircuitPython. nogb runs
+on all three too. The claims and paperwork checks read source, unittest and
+git, and run on CPython only; a native run prints `SKIP` for them.
 
 A class that does nothing at all must not read as a pass: the tail and
 args checks print `na(silent)` for a render that was zero throughout, and
@@ -185,6 +185,11 @@ stand-in that has everything but `get_buffer`, and puts it back; the
 matrix's own pulls keep the real one) and compares two things with the
 run that has it.
 
+- `run/48000/<channels>/<d|pK>`: the lifecycle events below, at the
+  defaults and at each patch, each its own run. Red when the class raises
+  there, with `get_buffer` or without, so a class that calls it
+  unconditionally at one patch says which, and every other patch is still
+  judged.
 - Lifecycle cells (E1, E5, E6, E10 at 48 kHz, stereo and mono, every
   patch): P1 to P4 must be the same kind of verdict (ok, na, RED), so a
   cell is red when the class is fine with `get_buffer` and not without. The
@@ -195,8 +200,16 @@ run that has it.
   apart, at the defaults and every patch. A class whose first block is rightly gated differently without
   `get_buffer` declares the cell in `DECLARED`.
 
-CPython only. A module that imports `get_buffer` inside a function is not
-reached.
+On all three interpreters. On MicroPython and CircuitPython the class's
+own Python loses `get_buffer` while the native nodes under it are the real
+ones, which is what a board build without it runs; a path a class takes
+only off CPython is checked there and nowhere else. Run it on each:
+
+    python tests/support/kit.py Saturation --only nogb
+    MICROPYPATH=lib:tests/support micropython -X heapsize=256M \
+        tests/support/kit.py Saturation --only nogb
+
+A module that imports `get_buffer` inside a function is not reached.
 
 ## Known gaps
 
@@ -245,7 +258,12 @@ a fixture card whose surface table differs (paperwork), `FlushOnly` and `DoubleR
 on `get_buffer` to flush a primed voice, the second drops a block on a
 second reset in a row without it; `FlushKit`, which primes a voice of its own
 and plays it again where it cannot flush, is the control; `MidPatchReset`
-does it at a middle patch only, against `FlushKit3`), and `Silent`, which
+does it at a middle patch only, against `FlushKit3`; `PatchPulls` calls
+`get_buffer` unconditionally at a middle patch, which an earlier nogb read
+as one `run` cell for the whole class, and is red on that patch's `run`
+cells alone; `NativeFlush` leans on `get_buffer` only off CPython, so it
+is clean on CPython and red on MicroPython and CircuitPython, where the
+check once did not run), and `Silent`, which
 does nothing. Its native half
 holds the render checks to the same lines on all three interpreters, and
 shows that agreement can fail with `ImplKit`, whose level differs off

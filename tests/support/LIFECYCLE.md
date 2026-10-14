@@ -112,6 +112,16 @@ A verdict is `ok`, `na(...)` (the property does not apply to that cell,
 said why: `tail None`, a whole RawSample, a class that never falls silent),
 `RED(...)` with what was measured, or `decl`.
 
+## Without `get_buffer`
+
+CircuitPython's default board builds compile `audiocore.get_buffer` out.
+The kit's nogb check ([KIT.md](KIT.md#the-checks), `kit_nogb.py`) runs
+E1, E5, E6 and E10 of this matrix at 48 kHz, at the defaults and at every
+patch, each its own run, once as it is and once with `get_buffer` hidden
+from the class's own modules, on CPython, MicroPython and CircuitPython.
+A run that raises is a red `run/<rate>/<channels>/<patch>` cell; a cell
+whose P1 to P4 verdicts change kind without `get_buffer` is red.
+
 ## Declaring an exception
 
 A class that cannot satisfy a property by design (a glide, a reverb tail, a
