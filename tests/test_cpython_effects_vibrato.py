@@ -771,3 +771,20 @@ class TheFiltersRingIsInTheTail(unittest.TestCase):
             got, bound = tail_ring.ring("Vibrato", rate, 2,
                                         start=((6, 0),), cls=OldTail)
             self.assertGreater(got, bound, rate)
+
+
+class TheGraphPullsWithoutGetBuffer(unittest.TestCase):
+    """Vibrato's own re-blocking sources pull the graph the way the
+    twin's nodes do, not through the script-facing `audiocore.get_buffer`
+    that CircuitPython's board builds compile out: with it hidden, every
+    patch renders the bytes it renders with it, through a reset."""
+
+    def test_every_patch_renders_the_same(self):
+        import kit_nogb
+        scenarios = dict(kit_nogb.SCENARIOS)
+        for patch in [None] + sorted(rebuilt.Vibrato.PATCHES):
+            for label in ("reset-once", "reset-first"):
+                with self.subTest(patch=patch, scenario=label):
+                    self.assertEqual(kit_nogb._bytes_cell(
+                        rebuilt.Vibrato, {}, RATE, 2, patch,
+                        scenarios[label]), "ok")
