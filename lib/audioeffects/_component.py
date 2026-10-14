@@ -1265,8 +1265,9 @@ class Component:
         silence instead; each mixer is pulled once, which hands those up;
         and then the voices' stand-ins are pointed at their real sources,
         so the next pull fetches as a fresh build's next pull does. Where
-        `audiocore.get_buffer` is compiled out the silent block plays
-        first. Saturation keeps its own `reset()`.
+        `audiocore.get_buffer` is compiled out nothing could hand the
+        silence up, so the voices prime from their sources, as a build's
+        do. Saturation keeps its own `reset()`.
         """
         self._check_live()
         self._clear_nodes()
@@ -1298,7 +1299,13 @@ class Component:
         # arms it then.
         self._stranded = True
         self._lazy_pending = []
-        self._arming_lazily = True
+        # Lazily only where the primed silence can be handed up before the
+        # next pull. Where `audiocore.get_buffer` is compiled out it would
+        # play first, 256 frames of silence after every reset, so there the
+        # voices prime from their sources as a fresh build's do: the block
+        # they take is the one a fresh instance would play first.
+        pull = getattr(audiocore, "get_buffer", None)
+        self._arming_lazily = pull is not None
         try:
             rearm()
         finally:
@@ -1306,13 +1313,11 @@ class Component:
         pending = self._lazy_pending
         self._lazy_pending = []
         if pending:
-            pull = getattr(audiocore, "get_buffer", None)
-            if pull is not None:
-                # The graph as it stands now: a patch that builds part of
-                # it again has new mixers.
-                for node in self._nodes:
-                    if getattr(node, "voice", None) is not None:
-                        _drain(pull, node)
+            # The graph as it stands now: a patch that builds part of it
+            # again has new mixers.
+            for node in self._nodes:
+                if getattr(node, "voice", None) is not None:
+                    _drain(pull, node)
             for _voice, port, source in pending:
                 port.play(source)
 

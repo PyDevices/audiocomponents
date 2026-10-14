@@ -704,6 +704,10 @@ SKIP = {
     ("NodeEcho", "E8-", "circuitpython"):
         "upstream's Echo never returns from a pull on a looped source that"
         " ends empty; audiodsp#242 fixed it on CPython and MicroPython",
+    ("NodeMultiTapDelay", "E8-", "circuitpython"):
+        "upstream's MultiTapDelay never returns from a pull on a looped"
+        " source that ends empty (the E8 run spun past 590 s at v0.6.6rc4);"
+        " CPython and MicroPython finish it",
     ("NodePitchShift", "E8-", "circuitpython"):
         "upstream's PitchShift never returns from a pull on a looped source"
         " that ends empty; audiodsp#243 fixed it on CPython and MicroPython",

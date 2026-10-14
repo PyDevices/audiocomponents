@@ -115,6 +115,21 @@ for _name in ("Flanger", "ExampleStock"):
         " first pull plays that block where a fresh build primes the next;"
         " dropping it takes a play(), which resets the host's source")
 
+# The lazy re-arm (`Component._reset_rearmed`) without get_buffer: nothing
+# can hand a silent primed block up, so a reset arms the voices from their
+# sources, as a build does, and the first block after it is the source's
+# own. A second reset, or a patch change, before the next pull finds that
+# block already taken through patch 0's graph: the second reset drops it
+# and takes the next, the patch change plays it at patch 0. One reset, and
+# resets a block apart, match a run with get_buffer. Waiting on a ruling.
+for _name in ("Bitcrusher", "Exciter", "Compressor", "Distortion",
+              "Overdrive", "DynamicEQ", "MultibandCompressor"):
+    for _scenario in ("reset-twice", "reset-first-twice", "reset-patch"):
+        DECLARED[(_name, "nogb", "bytes-%s/" % _scenario)] = (
+            "without get_buffer a reset primes the voices from the source,"
+            " as a build does; a second reset or a patch change before the"
+            " next pull meets that block already primed")
+
 # PitchShifter at Feedback's top: the repeats stack on the dry, up to 21
 # times the input's peak on a DC, so the rail is reachable below any useful
 # ceiling. The docstring says so ("Feedback stacks level too, far past the

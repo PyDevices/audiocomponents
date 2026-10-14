@@ -47,6 +47,12 @@ KNOWN_P6 = {
         "a Time move or a patch change shortens the line under the write "
         "head: upstream's Echo plays one stray sample when it grows back "
         "(audiodsp#241)"),
+    "NodeMultiTapDelay": (
+        12, "60b768a5", None, None,
+        "upstream's MultiTapDelay keeps its write heads across a reset, so "
+        "a Time move or a patch change after one reads another stretch of "
+        "the line; audiodsp v0.6.6rc4 puts them back at the top (E4, E6 and "
+        "E11; counted at rc4, one event at a time, E8 skipped)"),
     "NodePitchShift": (
         285, "3c88af12", None, None,
         "upstream's splice lands wherever the window does and ours moves "
