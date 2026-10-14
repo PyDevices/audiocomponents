@@ -833,10 +833,24 @@ class Component:
         #: (`_KEPT`) keeps it through a knob applied while this is set.
         self._seeding = False
 
+        # A `LAZY_BUILD` class's constructor arms lazily, as a reset does
+        # (`_play_voice`): a voice primes a block of silence, not the
+        # source's first block, so a Mix 0 set before the first pull hands
+        # out the source from frame 0 rather than from frame 256. The
+        # silence is handed up by `get_buffer`, or where it is compiled out
+        # by `_pull` when this module has one; with neither, the voices
+        # prime from their sources as before.
+        pull = getattr(audiocore, "get_buffer", None)
+        self._lazy_pending = []
+        self._arming_lazily = bool(
+            cls.LAZY_BUILD and PORT is not None
+            and (pull is not None or hasattr(Component, "_pull")))
         try:
             self._build(*options, **keywords)
         finally:
             self._constructing = False
+            self._arming_lazily = False
+        self._hand_up_lazy(pull)
 
         if self._output is None:
             raise TypeError("%s._build() set no output" % cls.NAME)
@@ -1270,13 +1284,21 @@ class Component:
             self._restore(self._reset_to)
             self._stranded = False
 
-    #: Set inside `_reset_rearmed`: `_play_voice` hands a voice a stand-in.
+    #: Set inside `_reset_rearmed`, and inside the constructor for a class
+    #: with `LAZY_BUILD`: `_play_voice` hands a voice a stand-in.
     _arming_lazily = False
+    #: Whether the constructor arms the voices the way a reset does: on
+    #: silence, so building takes nothing from the source. A class that
+    #: primes at construction and then routes around its graph at Mix 0
+    #: wants it; without it a Mix 0 set before the first pull hands out a
+    #: source that has already given its first block to a voice.
+    LAZY_BUILD = False
 
     def _play_voice(self, voice, source, loop=False):
-        """`voice.play(source)`, except while `_reset_rearmed` arms the
-        graph: then the voice is played on a Port standing on silence, so
-        priming it takes nothing from the source, and the Port is pointed
+        """`voice.play(source)`, except while `_reset_rearmed` (or a
+        `LAZY_BUILD` constructor) arms the graph: then the voice is played
+        on a Port standing on silence, so priming it takes nothing from the
+        source, and the Port is pointed
         at `source` once the voice has given its silent block up. The next
         pull then fetches from `source` itself, which is what a fresh
         build's voice does after the block it primed has played."""
@@ -1438,6 +1460,31 @@ class Component:
                 else:
                     self._pull(node)
             for _voice, port, source in pending:
+                port.play(source)
+
+    def _hand_up_lazy(self, pull):
+        """The constructor's half of the lazy arming: pull each mixer
+        once, so the voices `_play_voice` armed on silence hand that
+        silence up, then point their stand-ins at the real sources, so the
+        first pull fetches as an eagerly primed build's would. `pull` is
+        `get_buffer`, or None where it is compiled out and `_pull` does
+        it."""
+        pending = self._lazy_pending
+        self._lazy_pending = []
+        if not pending:
+            return
+        # The graph as it stands now (a snapshot: `_pull` may own its
+        # scratch mixer): a patch that builds part of it again has new
+        # mixers, and released the old voices' stand-ins.
+        for node in list(self._nodes):
+            if getattr(node, "voice", None) is None:
+                continue
+            if pull is not None:
+                _drain(pull, node)
+            else:
+                self._pull(node)
+        for _voice, port, source in pending:
+            if _named(port, self._nodes):
                 port.play(source)
 
     def deinit(self):

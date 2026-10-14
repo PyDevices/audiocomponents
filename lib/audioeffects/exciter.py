@@ -481,6 +481,9 @@ CURVE = array("h", CURVE_BYTES)
 class Exciter(_component.Component):
     """Dry plus a one-sided high-passed harmonic branch (Aphex structure)."""
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'Exciter'
     DISPLAY_NAME = 'Exciter'
     CATEGORIES = ('Distortion',)

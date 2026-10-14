@@ -181,6 +181,9 @@ _DEFAULTS = {
 class Compressor(_component.Component):
     """Four compressor characters on two `audiodynamics.Dynamics` nodes."""
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'Compressor'
     DISPLAY_NAME = 'Compressor'
     CATEGORIES = ('Dynamics',)

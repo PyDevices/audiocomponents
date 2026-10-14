@@ -716,6 +716,9 @@ class PlantedFaults(unittest.TestCase):
         def ducker(effect):
             effect._cell.play(effect._taps[0])
             effect._cell.key(effect._band)
+            # The cell is tap 0's reader now: the dry voice lets go of it
+            # (two readers on one tap starve whichever pulls second).
+            effect._mixer.voice[0].stop()
             effect._mixer.voice[0].level = 0.0
             effect._mixer.voice[1].level = 0.0
             effect._mixer.voice[2].level = 1.0
@@ -1018,9 +1021,11 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
         self.assertEqual(before, 0)
         self.assertGreater(after, 1000)
         # A wrong cure: cleared but not re-armed, so the voices keep the
-        # block they queued at construction.
+        # block they queued at construction. Since `LAZY_BUILD` that block
+        # is silence, so the plant primes the source's as the old build did.
         self.assertGreater(stale.first_blip(
-            stale.planted(self.CLS, stale.ClearOnlyRejoin), self.MIX), 1000)
+            stale.planted(self.CLS, stale.EagerClearOnlyRejoin), self.MIX),
+            1000)
 
     def test_mono_renders_one_block_at_a_time(self):
         # The mixer used to render 512 mono frames at a time, and the tail

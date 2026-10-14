@@ -465,6 +465,13 @@ def _fo_lp(frequency, rate):
     return f0, q
 
 
+def _rbj_a1(f0, q, rate):
+    """An RBJ section's normalised a1, -2 cos(w0) / (1 + alpha): above 0
+    its poles are on the negative real side, and near 2 they sit at -1."""
+    w0 = 2.0 * math.pi * f0 / rate
+    return -2.0 * math.cos(w0) / (1.0 + math.sin(w0) / (2.0 * q))
+
+
 def _fo_hp(frequency, rate):
     """Parked-pole first-order high-pass: `_fo_lp` read the other way up.
 
@@ -486,6 +493,9 @@ class Distortion(_component.Component):
     Boss DS-1. Mix 0 is the wire. Distortion 0 is clean only in `filter`.
     """
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'Distortion'
     DISPLAY_NAME = 'Distortion'
     CATEGORIES = ('Drive',)
@@ -1026,8 +1036,24 @@ class Distortion(_component.Component):
         p = self.macro(FILT)
         fc = 1.0 / (2.0 * math.pi * (FILTER_R0 + p * FILTER_POT) * FILTER_C)
         f0, q = _fo_lp(self._hz(fc), self._sample_rate)
-        self._filt.frequency = f0
-        self._filt.Q = q
+        filt = self._filt
+        before = _rbj_a1(filt.frequency, filt.Q, self._sample_rate)
+        filt.frequency = f0
+        filt.Q = q
+        # The Filter pot's open end puts this section's poles near -1 at
+        # 44.1 and 48 kHz (Filter 0's corner is above Nyquist, so both
+        # sit at the top of the band), where they ring at Nyquist. Swung
+        # there from a darker corner - Filter 64 to 0, `Clean Edge` from
+        # patch 0 - the state the old section left is in the wrong
+        # coordinates for the new one, and the ring went rail to rail
+        # every sample for a dozen frames: a full-scale crack even at
+        # -40 dBFS in. Starting the section from rest there costs one
+        # step of the size of the material instead. The bound: a landing
+        # with a1 above 1 (Filter 0 to 1 at 48 kHz, 0 to 2 at 44.1 kHz),
+        # from a1 at least 0.5 lower; a sweep there moves it less a step.
+        after = _rbj_a1(f0, q, self._sample_rate)
+        if after > 1.0 and after - before > 0.5:
+            filt.clear()
 
     def _blend_curve(self, asymmetry):
         """Mix the two DS-1 tables at `asymmetry`, in place, in integers.

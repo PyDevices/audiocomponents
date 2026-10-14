@@ -275,7 +275,10 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
                                         channels=channels), (0, 0))
 
     def test_the_old_rejoin_and_a_clear_without_rearming_are_red(self):
-        for fault in (stale.StaleRejoin, stale.ClearOnlyRejoin):
+        # Only a block primed at construction was ever stale here, and since
+        # `LAZY_BUILD` that block is silence: each plant primes the source's
+        # first block as the old build did.
+        for fault in (stale.EagerStaleRejoin, stale.EagerClearOnlyRejoin):
             self.assertGreater(stale.first_blip(
                 stale.planted(self.CLS, fault), self.MIX), 10000)
 

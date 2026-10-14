@@ -1331,6 +1331,9 @@ def _rect_table(frames, channels, seed):
 class Bitcrusher(_component.Component):
     """12-bit linear hold: Bits and Rate, informed by the SP-1200."""
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'Bitcrusher'
     DISPLAY_NAME = 'Bitcrusher'
     CATEGORIES = ('Distortion',)
