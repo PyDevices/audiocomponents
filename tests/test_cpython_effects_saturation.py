@@ -26,9 +26,9 @@ VENDOR = "PyDevices"
 RATE = 48000
 Saturation = rebuilt.Saturation
 
-#: A position where the probe cannot be read at all - `Bias` +-1 cuts the
-#: stage off and there is no fundamental left, on the clean class as much
-#: as on a faulted one. Those are named and counted, never dropped.
+#: A position where the probe cannot be read at all - there is no
+#: fundamental left, on the clean class as much as on a faulted one (Bias's
+#: ends were, until its tube reach stopped at +-1.25 V of grid). Those are named and counted, never dropped.
 _UNREADABLE = tuple(
     getattr(kit, name) for name in
     ("SilentRenderError", "ExhaustedProbeError", "MeasurementRefused")
@@ -135,7 +135,7 @@ def rough_curve(table=None, step=1024):
 
     A single discontinuity at the origin was tried first and rejected: the
     `Bias` macro walks the operating point off it, and shipped patch 4
-    (Bias -0.1) read a healthy floor on the faulted class. A step
+    (Bias -0.75) read a healthy floor on the faulted class. A step
     everywhere has nowhere to stand.
     """
     table = _table() if table is None else table
@@ -520,7 +520,7 @@ class TU1EvenLead(unittest.TestCase):
         The row used to say "51 checked, 49 gradable, 0 healthy" and ask
         the clean class at `tape` and `console` only. Run its own `_tu1`
         on the clean class at all 51 and the clean class is red at most of
-        them - Bias at either end has no fundamental, Mix 0 is the wire,
+        them - Bias off centre moves A1 and the lead, Mix 0 is the wire,
         Drive 0 barely shapes - so the denominator was inflated three
         times over (audit 3 (p)5, ruling (a)). What is graded here is the
         positions where the trait is claimed *and readable*, and the
@@ -549,9 +549,8 @@ class TU1EvenLead(unittest.TestCase):
             try:
                 clean = self._tu1(frames=12000, **keywords)
             except _UNREADABLE as error:
-                # Bias at either end cuts the stage off and Mix 0 is the
-                # wire: there is no fundamental to read on the clean class
-                # either, so the trait is not claimed there.
+                # Mix 0 is the wire: there is no fundamental to read on the
+                # clean class either, so the trait is not claimed there.
                 clean_red.append((label, [type(error).__name__]))
                 continue
             if not clean["passed"]:
@@ -808,8 +807,8 @@ class A4AliasFloor(unittest.TestCase):
             checked += 1
             clean = self._headline(**keywords)
             if not clean["passed"]:
-                # Bias +-1 cuts the stage off: the clean class has no
-                # fundamental to read there either, so it is not a position
+                # Where the clean class does not shape (or reads the
+                # floor badly for its own reasons) it is not a position
                 # where the trait is claimed and not one a fault can
                 # restore. Counted and named, never silently dropped.
                 skipped.append((label, clean["red"]))
@@ -824,12 +823,15 @@ class A4AliasFloor(unittest.TestCase):
         # table: Mix 64 used to read a high THD because the wet leg
         # *cancelled* the dry one, and a notch is not a class being
         # shaped. It is a skipped position now, named below.
-        self.assertEqual(graded, 37, (graded, skipped))
+        # 41 since Bias's tube reach stopped at +-1.25 V of grid (sweep
+        # finding 4): its four off-centre stops used to cut the stage off
+        # and were skipped; now they shape, and the rough fault is red at
+        # every one of them.
+        self.assertEqual(graded, 41, (graded, skipped))
         self.assertEqual(sorted(name for name, _ in skipped), sorted(
             ["macro 0 MIDI 0", "macro 1 MIDI 0", "macro 2 MIDI 0",
              "macro 2 MIDI 32", "macro 2 MIDI 64", "macro 3 MIDI 96",
-             "macro 3 MIDI 127", "macro 4 MIDI 0", "macro 4 MIDI 32",
-             "macro 4 MIDI 96", "macro 4 MIDI 127", "patch 7", "tape",
+             "macro 3 MIDI 127", "patch 7", "tape",
              "console"]),
             skipped)
 
@@ -841,10 +843,11 @@ class A4AliasFloor(unittest.TestCase):
         **Eight are the driving clause, not the floor**: Drive -12,
         Headroom +6 and +12, Mix 0 and 0.35, patch 7 (Mix 0.35), `tape`
         and `console` at Drive 0 all shape to under 1 % THD, so there is
-        nothing for a fault to break. **Two are the operating point**:
-        Bias at +-0.75 and +-1 walks the stage to cutoff or into grid
-        conduction, where the clean class rectifies (-27.136 at Bias +1)
-        or goes silent (fundamental -240 dBFS at Bias -0.5). **Three are
+        nothing for a fault to break. The four off-centre Bias stops used
+        to be here too, cut off or pinned by a reach of +-10 V of grid
+        (-27.136 at Bias +1, fundamental -240 dBFS at Bias -0.5); since
+        that reach stopped at +-1.25 V they shape and are graded, and
+        their ends are held to the bar below. **Three are
         the same thing and it is the most useful number here**: A4 is a
         RATIO and 16 bits is an ABSOLUTE floor, so wherever the class's
         own output is quiet the ratio reads badly whatever the shaper did.
@@ -863,8 +866,8 @@ class A4AliasFloor(unittest.TestCase):
                 ("Output -18", {"macros": {1: -18.0}}, 1010.0),
                 ("Output -12", {"macros": {1: -12.0}}, 1010.0),
                 ("console", {"character": "console"}, 1010.0),
-                ("Bias +0.25", {"macros": {4: 0.25}}, 1010.0),
-                ("Bias +0.1", {"macros": {4: 0.1}}, 1010.0)):
+                ("Bias -1", {"macros": {4: -1.0}}, 3700.0),
+                ("Bias +1", {"macros": {4: 1.0}}, 3700.0)):
             values = self._floor(hz=probe, drive_db=0.0, **keywords)
             rows[label] = (round(values["alias_floor_db"], 3),
                            round(values["fundamental_dbfs"], 2))
@@ -878,12 +881,11 @@ class A4AliasFloor(unittest.TestCase):
             (rows["Output -12"][0] - rows["Output -18"][0])
             + (rows["Output -12"][1] - rows["Output -18"][1]),
             0.0, delta=0.5, msg=rows)
-        # the shipped patches' Bias range is inside the bar; +-0.25 sits on
-        # it (just over before Bias was folded into the table, -60.047
-        # after: the node no longer spends headroom on the offset)
-        self.assertLessEqual(rows["Bias +0.1"][0], -60.0, rows)
-        self.assertAlmostEqual(rows["Bias +0.25"][0], -60.0, delta=0.5,
-                               msg=rows)
+        # Bias's whole travel is inside the bar since its tube reach
+        # stopped at +-1.25 V of grid (-71.770 / -72.135 at 3700 Hz); +0.25
+        # of the old +-10 V reach sat on it and +1 read -27.136
+        self.assertLessEqual(rows["Bias -1"][0], -60.0, rows)
+        self.assertLessEqual(rows["Bias +1"][0], -60.0, rows)
         self.assertGreater(rows["console"][0], -60.0, rows)
 
     def test_the_lean_patch_is_reported_not_graded(self):
@@ -1532,7 +1534,9 @@ class TheTierOneRowsAtEveryShippedPatch(unittest.TestCase):
     """
 
     #: Empty since the third fix round. Patches 4 and 6 offset the tape on
-    #: purpose -- Bias MIDI 58 and 70, -0.095 and +0.095 -- and an offset
+    #: purpose -- Bias MIDI 16 and 112 since sweep finding 4 (MIDI 58 and
+    #: 70 before Bias's tube reach was cut eightfold; the same offset into
+    #: the table either way, so the same bytes) -- and an offset
     #: into an asymmetric transfer is a mean the plate's coupling pole has
     #: to hold. **The pole was there and started cold**, so those two put
     #: 8 489 and 7 044 LSB out of digital silence before they decayed
@@ -1822,6 +1826,212 @@ class SilenceAnswersSilenceOffCentre(unittest.TestCase):
                         self.assertEqual(kit_nogb._bytes_cell(
                             rebuilt.Saturation, {}, RATE, ch, patch,
                             scenarios[label]), "ok")
+
+
+def bias_levels(bias, move=None, seconds=2.5, window=4800, channels=1,
+                dbfs=-6.0, hz=1000.0, character="tube"):
+    """A 1 kHz sine at -6 dBFS through `character` at Bias `bias` (the
+    knob's engineering value), as dBFS per `window` frames. With `move`,
+    the class is built at Bias 0 and the knob goes to `bias` after `move`
+    frames, mid-stream; only the windows after the move come back.
+    Numpy-free, so the same numbers come out of MicroPython and
+    CircuitPython."""
+    import audiocore
+    import kit_common as kc
+    frames = int(seconds * RATE) + (move or 0)
+    level = 10.0 ** (dbfs / 20.0) * 32767.0
+    samples = array("h")
+    for index in range(frames):
+        value = int(round(level * math.sin(2.0 * math.pi * hz * index
+                                           / RATE)))
+        for _ in range(channels):
+            samples.append(value)
+    source = audiocore.RawSample(samples, sample_rate=RATE,
+                                 channel_count=channels)
+    span = rebuilt._RANGES[4]
+    position = rebuilt._component.macro_of(span, bias, "BIPOLAR")
+    if move is None:
+        effect = rebuilt.Saturation(source, bias=bias, character=character)
+        skip = 0
+    else:
+        effect = rebuilt.Saturation(source, character=character)
+        skip = move
+    try:
+        if move is not None:
+            kc.render(effect, move)
+            effect.set_macro(4, position)
+        data = array("h", kc.render(effect, frames - skip))
+    finally:
+        effect.deinit()
+    out = []
+    step = window * channels
+    for start in range(0, len(data) - step + 1, step):
+        total = 0
+        for index in range(start, start + step, channels):
+            total += data[index] * data[index]
+        rms = math.sqrt(total / float(window)) / 32768.0
+        out.append(20.0 * math.log10(rms) if rms > 0.0 else -240.0)
+    return out
+
+
+class BiasStaysAudible(unittest.TestCase):
+    """Bias is audible over its whole travel, and holds: no position fades
+    the sound away. On `tube` the knob's ends are +-1.25 V of grid, inside
+    the stage's live window between cutoff (about -2.5 V) and grid
+    conduction. It reached +-10 V, and past about a quarter of its travel
+    either way the stage was cut off or pinned: Bias -0.4 rendered digital
+    silence and +1 was 37 dB down (sweep finding 4)."""
+
+    #: The most a Bias position may take off the Bias 0 level at the probe.
+    REACH_DB = 12.0
+    #: How far a held position's level may wander, window to window, after
+    #: its first 0.1 s.
+    HOLD_DB = 1.0
+
+    def _check(self, rows, centre):
+        for label, levels in rows.items():
+            held = levels[1:]
+            self.assertGreater(min(held), centre - self.REACH_DB,
+                               (label, centre, levels))
+            self.assertLess(max(held) - min(held), self.HOLD_DB,
+                            (label, levels))
+
+    def test_every_position_sounds_and_holds(self):
+        centre = bias_levels(0.0)[-1]
+        rows = {}
+        for bias in (-1.0, -0.75, -0.5, -0.25, 0.25, 0.5, 0.75, 1.0):
+            rows["Bias %+.2f" % bias] = bias_levels(bias)
+        self._check(rows, centre)
+
+    def test_a_move_mid_stream_sounds_and_holds(self):
+        centre = bias_levels(0.0)[-1]
+        rows = {}
+        for bias in (-1.0, -0.5, 0.5, 1.0):
+            rows["move to %+.2f" % bias] = bias_levels(bias, move=24000)
+        self._check(rows, centre)
+
+    def test_tape_and_console_keep_their_whole_span(self):
+        for character in ("tape", "console"):
+            centre = bias_levels(0.0, seconds=1.0, character=character)[-1]
+            rows = {}
+            for bias in (-1.0, 1.0):
+                rows["%s %+.0f" % (character, bias)] = bias_levels(
+                    bias, seconds=1.0, character=character)
+            self._check(rows, centre)
+
+
+def hysteresis_jump(index, midi, frames=2048, settle=96000, rate=RATE,
+                    channels=2, character="tube"):
+    """The largest sample the four blocks after a move of macro `index` to
+    `midi` play, where the move lands in silence after material at
+    Hysteresis 1 and Drive at its top. The play operator freezes wherever the
+    material left it, so the shaper answers silence with a constant the
+    plate pole has taken out; a move that changes that constant used to step
+    straight through the pole. Numpy-free."""
+    import audiocore
+    import kit_common as kc
+    samples = array("h")
+    for index_ in range(frames):
+        phase = (index_ * 440.0 / rate) % 1.0
+        value = int(16000 * (4.0 * abs(phase - 0.5) - 1.0))
+        for _ in range(channels):
+            samples.append(value)
+    for _ in range((settle + 4 * 256) * channels):
+        samples.append(0)
+    source = audiocore.RawSample(samples, sample_rate=rate,
+                                 channel_count=channels)
+    effect = rebuilt.Saturation(source, character=character, drive_db=15.0,
+                                hysteresis=1.0)
+    try:
+        kc.render(effect, frames + settle - 2048)
+        quiet = array("h", kc.render(effect, 2048))
+        if max(abs(v) for v in quiet):
+            return None
+        effect.set_macro(index, midi)
+        after = array("h", kc.render(effect, 4 * 256))
+    finally:
+        effect.deinit()
+    return max(abs(v) for v in after)
+
+
+def _lifecycle_cell(event, rate, channels, patch=None):
+    """One lifecycle matrix cell on the class, with its DECLARED rows lifted
+    so the raw verdict shows."""
+    import lifecycle
+    ev = [e for e in lifecycle.events(Saturation, patch)
+          if e.name == event][0]
+    saved = dict(lifecycle.DECLARED)
+    for key in list(lifecycle.DECLARED):
+        if key[0] == "Saturation":
+            del lifecycle.DECLARED[key]
+    controls = {}
+    try:
+        return lifecycle.run_cell(Saturation, ev, rate, channels, patch, {},
+                                  controls)
+    finally:
+        lifecycle.DECLARED.clear()
+        lifecycle.DECLARED.update(saved)
+        for ctl in controls.values():
+            ctl.close()
+
+
+class HysteresisMovesInSilencePlayNothing(unittest.TestCase):
+    """With Hysteresis on, a Drive, Output, Headroom, Bias or Hysteresis
+    move that lands in silence plays nothing. The play operator holds
+    whatever position the material left it at, the shaper answers silence
+    with the curve there, and the plate pole has taken that constant out;
+    the move changed the constant and the pole passed the step, up to 1763
+    LSB at Drive's top. The shaper re-centres its operator once its input
+    has been silent a block, and the pole is cleared with it.
+    """
+
+    MOVES = ((0, 0), (0, 64), (1, 0), (1, 127), (3, 127), (3, 0),
+             (4, 0), (4, 127), (7, 0), (7, 64))
+
+    def test_a_move_in_silence_is_silent(self):
+        for index, midi in self.MOVES:
+            for character in ("tube", "tape"):
+                with self.subTest(index=index, midi=midi,
+                                  character=character):
+                    self.assertEqual(
+                        hysteresis_jump(index, midi, character=character), 0)
+
+    def test_under_signal_a_move_renders_what_it_did(self):
+        import audiocore
+        import kit_common as kc
+        values = array("h")
+        for index in range(48000):
+            value = int(12000 * math.sin(2.0 * math.pi * 220.0 * index
+                                         / RATE))
+            values.append(value)
+            values.append(value)
+
+        def run(settle):
+            source = audiocore.RawSample(values, sample_rate=RATE,
+                                         channel_count=2)
+            effect = rebuilt.Saturation(source, drive_db=6.0,
+                                        hysteresis=1.0)
+            if not settle:
+                effect._let_go_in_silence = lambda: None
+            try:
+                out = kc.render(effect, 40 * 256)
+                for index, midi in self.MOVES:
+                    effect.set_macro(index, midi)
+                    out += kc.render(effect, 4 * 256)
+                return out
+            finally:
+                effect.deinit()
+        self.assertEqual(run(True), run(False))
+
+    def test_every_macro_to_its_top_and_back_plays_nothing(self):
+        # The lifecycle matrix's E10-macros P3: every macro to 127 before
+        # the first pull (Hysteresis among them), the material, silence,
+        # then the macros back.
+        for rate in (48000, 22050):
+            for channels in (2, 1):
+                with self.subTest(rate=rate, channels=channels):
+                    self.assertEqual(_lifecycle_cell(
+                        "E10-macros", rate, channels)["P3"], "ok")
 
 
 class TestResetIsFresh(unittest.TestCase):

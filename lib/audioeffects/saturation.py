@@ -32,6 +32,15 @@ after every `program_change`, a comb at patch 7 (Mix 44), and left a block
 of old audio in the Splitter for the next Mix move off 0 to play
 (13 071 LSB).
 
+**Bias sounds over its whole travel.** On `tube` its ends move the
+operating point **±1.25 V** of grid (`TUBE_BIAS_REACH`), towards cutoff one
+way and grid conduction the other, and stop short of both: at −6 dBFS the
+ends read 5.6 and 7.0 dB under Bias 0 and hold there. Bias used to reach
+±10 V, and past about a quarter of its travel either way the stage was cut
+off or pinned, so the sound died away within a tenth of a second of the
+move (Bias −0.4 rendered digital silence). `tape` and `console` keep the
+whole span, whose ends read 6.8 and 6.9 dB down.
+
 **What the default surrenders.** Mix 1, Drive 0 dB, Headroom 0, Bias 0,
 Tilt 0, Hysteresis 0, Speed 15 ips (inert on tube).
 
@@ -51,9 +60,9 @@ plate has long since pinned by then.
 quiet the ratio reads badly whatever the shaper did, one dB for one:
 Output −12 / −18 / −24 read **−69.007 / −63.233 / −57.301**, and
 `character="console"` reads **−46.094** at Drive 0 because its 5 Hz flux
-pair takes 25 dB out before the jack. Bias past ±0.25 walks the stage to
-cutoff or into grid conduction and the floor goes with it (**−47.491** at
-+0.25, −27.136 at +1); the shipped patches use ±0.1, which reads −64.160.
+pair takes 25 dB out before the jack. Bias holds the bar over its whole
+travel: its ends read **−71.770 / −72.135** at 3700 Hz and Drive 0, and
+−71.521 / −63.075 at maximum Drive.
 Over the whole Drive × Headroom plane at 48 kHz the worst cell is
 **−63.863** (3700 Hz, maximum Drive, Headroom −3) and every cell clears.
 **At 44.1 kHz the 3700 Hz probe cannot reach the bar at any factor**
@@ -162,7 +171,9 @@ multiplied two numbers in Python and never rendered (audit 3 (p)1, ruling
 note lives, 0.02 dB down at 100 Hz — and it carries the excess. Rendered,
 +3 / +6 / +9 / +12 dB of Output now deliver within **0.25 dB** of what
 they say, on `tube` and on `console`. It is 0 dB at 63 of the 75 shipped
-positions, whose bytes do not move.
+positions, whose bytes do not move. **Output adds up to +12 dB, so a
+full-scale input can clip at the rails**: with every macro at its top, a
+0 dBFS sine or noise does.
 
 **The tube table does not invert any more.** A triode inverts, and a table
 that carried the inversion put the wet leg 180° out of phase with the dry
@@ -505,6 +516,25 @@ CHARGE_FRAMES = 512
 #: grid a board's single precision and a desktop's double land on alike
 #: (audiocomponents#75), and 0.00001 of the curve's input span.
 BIAS_STEPS = 256
+#: How far Bias's ends move `tube`'s operating point, in the table's own
+#: input units (x = +-1 is +-10 V of grid): **+-1.25 V**. The 12AX7 in this
+#: netlist is cut off below about -2.5 V and pinned by grid conduction
+#: above about +1.5 V, and Bias used to be the table's whole span, +-10 V,
+#: so past about a quarter of its travel either way the stage had no slope
+#: left: at -6 dBFS Bias -0.4 rendered digital silence and +1 was 37 dB
+#: down (sweep finding 4). At +-1.25 V the ends read 5.6 and 7.0 dB under
+#: Bias 0 and the operating point is still well off centre. A power of two,
+#: so shipped patches 4 and 6 (now Bias -0.75 and +0.762, MIDI 16 and 112,
+#: eight times the 58 and 70 they were) land on the table offset they
+#: always had and their bytes do not move on `tube`. `tape` and `console`
+#: are odd Langevin curves with slope to the table's ends and keep the
+#: whole span: their ends read 6.8 and 6.9 dB under Bias 0. Patches 4 and 6
+#: built on either of those do move, to the eightfold Bias they now name.
+TUBE_BIAS_REACH = 0.125
+#: The macros whose move changes what the shaper answers silence with while
+#: Hysteresis holds the play operator off centre: Drive, Output, Headroom,
+#: Bias and Hysteresis itself (`_let_go_in_silence`).
+HELD_BY_THE_PLAY_OPERATOR = (0, 1, 3, 4, 7)
 TILT_HZ = 1000.0
 PLATE_HZ = 20.0
 # 20 Hz, not the 5 Hz this was while it sat at the grid. The node's kernel
@@ -695,11 +725,11 @@ class Saturation(_component.Component):
         3: ("Tape at seven and a half",
             _patch(6.0, 0.0, 1.0, 0.0, 0.0, 7.5, 0.0, 0.0)),
         4: ("Under-biased and bright",
-            _patch(6.0, 0.0, 1.0, 0.0, -0.1, 15.0, 3.0, 0.0)),
+            _patch(6.0, 0.0, 1.0, 0.0, -0.75, 15.0, 3.0, 0.0)),
         5: ("Iron, low end working",
             _patch(0.0, 0.0, 1.0, -6.0, 0.0, 15.0, 0.0, 0.0)),
         6: ("Offset, even harmonics",
-            _patch(6.0, 0.0, 1.0, 0.0, 0.1, 15.0, 0.0, 0.0)),
+            _patch(6.0, 0.0, 1.0, 0.0, 0.762, 15.0, 0.0, 0.0)),
         7: ("Mix back",
             _patch(6.0, 0.0, 0.35, 0.0, 0.0, 15.0, 0.0, 0.0)),
         LEAN_PATCH: ("Saturation - lean",
@@ -1067,6 +1097,37 @@ class Saturation(_component.Component):
 
     def _apply_macro(self, index, position):
         value = _component.macro_value(self._MACRO_RANGES[index], position)
+        if (index in HELD_BY_THE_PLAY_OPERATOR and self._hysteresis > 0.0
+                and self._ready and not self._constructing):
+            self._let_go_in_silence()
+        self._apply_one(index, value)
+
+    def _let_go_in_silence(self):
+        """Let go of what the play operator holds, if the input is silent.
+
+        With Hysteresis on, the operator keeps the position the material
+        left it at when the input stops, so the shaper answers silence with
+        the curve there, times `post_gain`, and the plate pole (the flux
+        high-pass on `console`) has taken that constant out. A Drive,
+        Output, Headroom, Bias or Hysteresis move changes the constant, and
+        the pole passed the step: up to 1763 LSB out of silence at Drive's
+        top. So before such a move the shaper re-centres its operator, which
+        it does only once its input has been silent a whole block, and then
+        answers silence with exactly zero; the pole is cleared with it and
+        has nothing to let go of. Under signal neither moves, and the loop
+        plays on as it was.
+        """
+        routed = self._lean if self._routed_lean else self._shaper
+        recentre = getattr(routed, "recentre", None)
+        if recentre is None:
+            return
+        if recentre():
+            for shaper in self._shapers():
+                if shaper is not routed:
+                    shaper.recentre()
+            self._clear_nodes(only=(self._after,))
+
+    def _apply_one(self, index, value):
         if index in (0, 1, 3):
             # The folded table answers silence with zero, so `post_gain`
             # scales no offset and a gain move leaves the pole nothing.
@@ -1075,6 +1136,8 @@ class Saturation(_component.Component):
             self._push_mix()
             self._refresh_output()
         elif index == 4:
+            if self._character == "tube":
+                value = value * TUBE_BIAS_REACH
             self._bias = value
             self._fold_bias()
             self._push_gains()
