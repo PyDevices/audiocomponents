@@ -46,7 +46,9 @@ delay 0). No lookahead, partition or window is offered, so there is no
 latency-adding option to default off and none to name in milliseconds.
 
 `capabilities = ("tempo_sync",)`: Sync on reads `self._transport()` and
-locks Rate to Division in bars.
+locks Rate to Division in bars of the host's time signature (numerator x 4
+/ denominator quarter notes), and `transport_changed()` follows a move of
+the tempo or the time signature.
 
 This class lives in `phaser.py` and is what the package serves.
 """
@@ -263,6 +265,28 @@ def _choice(choices, position):
     return choices[min(last, max(0, int(round(position * last))))]
 
 
+def _bar_quarters(numerator, denominator):
+    """Quarter notes in one bar of a `numerator`/`denominator` time
+    signature (the transport's fourth and fifth fields): 4/4 is 4, 3/4 is
+    3, 6/8 is 3. A signature that is not two positive numbers is 4/4."""
+    try:
+        numerator = float(numerator)
+        denominator = float(denominator)
+    except (TypeError, ValueError):
+        return 4.0
+    if not (numerator > 0.0 and denominator > 0.0):
+        return 4.0
+    quarters = numerator * 4.0 / denominator
+    if not quarters < float("inf"):
+        return 4.0
+    return quarters
+
+
+def _same(a, b):
+    """Equal, with NaN the same as NaN (the base's rule for a tempo)."""
+    return a == b or (a != a and b != b)
+
+
 def _patch(*engineering):
     return tuple(_component.macro_of(span, value)
                  for span, value in zip(_RANGES, engineering))
@@ -437,13 +461,33 @@ class Phaser(_component.Component):
     def _lfo_rate_hz(self):
         rate = self._value(0)
         if self._value(8) >= 0.5:
-            playing, _pos, bpm, _beats, beats_per_bar = self._transport()
-            del playing
+            state = self._transport()
             bars = _choice(DIVISION_BARS, self._macros[9])
-            beats = max(1.0, float(beats_per_bar)) * bars
-            tempo = max(1.0, float(bpm))
+            beats = _bar_quarters(state[3], state[4]) * bars
+            tempo = max(1.0, float(state[2]))
             rate = tempo / (60.0 * beats)
         return rate
+
+    def transport_changed(self):
+        """With Sync on, follow the host's tempo and its time signature: a
+        move of either sets the sweep's rate again. The base follows the
+        tempo alone, so a 4/4 to 3/4 change at one tempo would keep the old
+        rate. A NaN read twice is no change, as the base has it for a
+        tempo."""
+        self._check_live()
+        index = type(self)._SYNC_MACRO
+        if index is None or self._macros[index] < 0.5:
+            return
+        state = self._transport() if callable(self._transport) \
+            else self._transport
+        followed = (state[2], state[3], state[4])
+        last = self._followed_bpm
+        if last is not _component._UNREAD and _same(followed[0], last[0]) \
+                and _same(followed[1], last[1]) \
+                and _same(followed[2], last[2]):
+            return
+        self._followed_bpm = followed
+        self._apply_macro(index, self._macros[index])
 
     def _fb_span(self):
         centre_notch = self._hz(self._value(2))

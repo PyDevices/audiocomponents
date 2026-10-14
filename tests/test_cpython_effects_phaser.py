@@ -710,3 +710,95 @@ def _notch_floor_h(wet_bytes, dry_bytes):
     mag = num[band] / np.maximum(den[band], 1.0)
     mean = float(np.mean(mag))
     return 20.0 * math.log10(float(np.min(mag)) / max(mean, 1e-12))
+
+
+class Meter:
+    """A host transport whose tempo and time signature a test moves, in
+    the API's order: (playing, seconds, bpm, numerator, denominator)."""
+
+    def __init__(self, bpm=120.0, numerator=4, denominator=4):
+        self.bpm = bpm
+        self.numerator = numerator
+        self.denominator = denominator
+
+    def __call__(self):
+        return (True, 0.0, self.bpm, self.numerator, self.denominator)
+
+
+class MeterDeaf(Phaser):
+    """The base's `transport_changed()`: it follows the tempo alone, so a
+    meter change at one tempo keeps the old rate."""
+
+    def transport_changed(self):
+        _component.Component.transport_changed(self)
+
+
+def synced(cls=Phaser, meter=None):
+    """A Phaser with Sync on under `meter`, having read it once."""
+    meter = meter or Meter()
+    effect = built(cls=cls, transport=meter)
+    effect.set_macro(SYNC_I, 127)
+    effect.transport_changed()
+    return effect, meter
+
+
+def bar_rate(effect, bpm, quarters):
+    """The sweep's rate for Division at `quarters` quarter notes a bar."""
+    bars = phaser_module._choice(phaser_module.DIVISION_BARS,
+                                 effect._macros[DIV_I])
+    return bpm / (60.0 * quarters * bars)
+
+
+class TestPhaserFollowsTheMeter(unittest.TestCase):
+    """With Sync on the sweep lasts Division bars, and a bar is the host's
+    time signature: numerator x 4 / denominator quarter notes at its
+    tempo (the transport's fourth and fifth fields)."""
+
+    def test_the_bar_is_the_time_signature(self):
+        for numerator, denominator, quarters in (
+                (4, 4, 4.0), (3, 4, 3.0), (6, 8, 3.0), (7, 8, 3.5),
+                (2, 2, 4.0), (5, 4, 5.0)):
+            with self.subTest(meter="%d/%d" % (numerator, denominator)):
+                effect, _ = synced(meter=Meter(120.0, numerator,
+                                               denominator))
+                self.assertAlmostEqual(effect._lfo.rate,
+                                       bar_rate(effect, 120.0, quarters),
+                                       places=9)
+
+    def test_a_meter_change_is_followed(self):
+        # 4/4 to 3/4 at one tempo, `transport_changed()` after it: the rate
+        # is the one a fresh instance built in 3/4 has.
+        for cls, follows in ((Phaser, True), (MeterDeaf, False)):
+            with self.subTest(cls=cls.__name__):
+                effect, meter = synced(cls)
+                before = effect._lfo.rate
+                meter.numerator = 3
+                effect.transport_changed()
+                fresh, _ = synced(meter=Meter(120.0, 3, 4))
+                if follows:
+                    self.assertEqual(effect._lfo.rate, fresh._lfo.rate)
+                    self.assertNotEqual(effect._lfo.rate, before)
+                else:
+                    self.assertEqual(effect._lfo.rate, before)
+
+    def test_a_held_meter_reads_once_and_moves_nothing(self):
+        effect, meter = synced()
+        rate = effect._lfo.rate
+        for _ in range(4):
+            effect.transport_changed()
+        self.assertEqual(effect._lfo.rate, rate)
+
+    def test_a_nan_meter_is_unchanged_as_a_nan_tempo_is(self):
+        # The base's rule for a tempo: a NaN read twice is no change.
+        effect, meter = synced(meter=Meter(120.0, float("nan"), 4))
+        calls = []
+        orig = effect._apply_macro
+
+        def counting(index, position):
+            calls.append(index)
+            orig(index, position)
+        effect._apply_macro = counting
+        effect.transport_changed()
+        self.assertEqual(calls, [])
+        self.assertAlmostEqual(effect._lfo.rate, bar_rate(effect, 120.0, 4.0),
+                               places=9)
