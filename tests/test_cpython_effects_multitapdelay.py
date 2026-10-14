@@ -3290,5 +3290,34 @@ class TheClaims(unittest.TestCase):
                 ctl.close()
 
 
+class TestResetIsFresh(unittest.TestCase):
+    """A reset comes back as a fresh instance at patch 0 (kit `fresh`)."""
+
+    @unittest.expectedFailure
+    def test_a_time_move_after_a_reset_plays_as_on_a_fresh_instance(self):
+        # Red: audiodelays.MultiTapDelay's reset_buffer empties the line
+        # but leaves the write head where it was, and a fresh node's starts
+        # at the top. A shorter Time then keeps a different stretch of the
+        # line, so a Time 0 move after a reset plays repeats a fresh
+        # instance does not (from +1027, 35 frames apart, 10 146 LSB at
+        # most). The cure is the node's: a reset puts its write head back
+        # at the top. Nothing the class can reach moves the head.
+        import kit_fresh
+        for patch in (None, 0, 3, 6):
+            for ch in (2, 1):
+                self.assertEqual(kit_fresh.reset_cell(
+                    MultiTapDelay, RATE, ch, patch, {}, kit_fresh.RESET_AT,
+                    (mtd.TIME_I, 0)), "ok", (patch, ch))
+
+    def test_a_reset_alone_is_a_fresh_instance(self):
+        import kit_fresh
+        for patch in (None, 0, 3, 6):
+            for ch in (2, 1):
+                for k in (0, kit_fresh.RESET_AT):
+                    self.assertEqual(kit_fresh.reset_cell(
+                        MultiTapDelay, RATE, ch, patch, {}, k), "ok",
+                        (patch, ch, k))
+
+
 if __name__ == "__main__":
     unittest.main()
