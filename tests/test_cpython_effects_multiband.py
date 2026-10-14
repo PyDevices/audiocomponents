@@ -600,6 +600,11 @@ class TierOne(unittest.TestCase):
         # own behaviour rather than an invention: clear the Mixer and do not
         # hand its voices back their sources.
         class ClearOnly(CLASS):
+            # The base walk alone: since 7d the class's own reset hands the
+            # voices back after patch 0 goes in, not from the walk.
+            def reset(self):
+                _component.Component.reset(self)
+
             def _reset_mixer(self):
                 audiocore.reset_buffer(self._mixer)
                 for voice in self._mixer.voice:
@@ -620,9 +625,16 @@ class TierOne(unittest.TestCase):
         # its voice's source and then pulls a chunk through it, so a walk
         # that reaches the Mixer before the biquads lands their tail in the
         # voice buffer, where nothing later in the walk can reach it.
+        # Since 7d the class re-plays its voices after the walk, so the walk's
+        # order cannot land a tail in them; the plant is the old reset, which
+        # re-played them from inside the walk.
+        class OldTailFirst(MixerResetTailFirst):
+            def reset(self):
+                _component.Component.reset(self)
+
         values, on = probes.burst_silence(hz=80.0, on_ms=40.0,
                                           total_s=0.3, dbfs=-2.0)
-        effect = build(MixerResetTailFirst, probe=values, **UNITY)
+        effect = build(OldTailFirst, probe=values, **UNITY)
         try:
             render(effect, on + 64)
             effect.reset()

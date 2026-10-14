@@ -446,6 +446,19 @@ class DynamicEQ(_component.Component):
             self._play_voices()
         self._output = self._tail
 
+    def reset(self):
+        """Clear every node and restore patch 0, then hand the voices their
+        sources at patch 0's levels, as `_build` does. The walk used to
+        re-play them at the outgoing patch's levels, before patch 0 went
+        in, so the levels moved after the gates had opened and landed late,
+        a few LSB (up to 70 here) off a fresh instance for the first
+        blocks."""
+        self._resetting = True
+        try:
+            self._reset_rearmed(self._refresh_output, ("_primed",))
+        finally:
+            self._resetting = False
+
     def _reset_mixer(self):
         """Clear the Mixer, then hand its voices back their sources.
 
@@ -460,6 +473,9 @@ class DynamicEQ(_component.Component):
         nodes this reset has already cleared.
         """
         audiocore.reset_buffer(self._mixer)
+        if getattr(self, "_resetting", False):
+            # `reset()` plays them once the patch is in (`_reset_rearmed`).
+            return
         self._play_voices()
 
     # -- the live surface ---------------------------------------------
