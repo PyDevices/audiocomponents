@@ -115,7 +115,9 @@ hands it:
   patch's values, and `program_change(0)` reads back what a fresh instance
   read (the contract: a fresh component and one given patch 0 are the
   same).
-- `ctor-<option>`: each numeric keyword of `_build` at 0 and NaN. A raise is
+- `ctor-<option>`: each numeric keyword of `_build` at 0 and NaN (a
+  keyword whose default is `None`, left out to play patch 0's step, counts
+  when the class names its number in `_OPTION_DEFAULTS`). A raise is
   ValueError or TypeError; a build reports readable latency and tail,
   finite macros, renders without raising or sitting on a rail the input
   was not on; and a NaN build renders exactly what the defaults or the

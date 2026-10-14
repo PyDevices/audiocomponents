@@ -125,6 +125,10 @@ DIVISION_BEATS = (0.125, 1.0 / 6.0, 0.1875, 0.25, 1.0 / 3.0, 0.375, 0.5,
 TIME_I, FEEDBACK_I, MIX_I, GLIDE_I, SYNC_I, DIVISION_I, TONE_I, CUT_I = \
     range(8)
 
+#: `_build`'s defaults in the macros' units: patch 0's steps, rounded. An
+#: option left out plays the step itself.
+DEFAULTS = (350.0, 0.35, 0.3, 4000.0, 0.0, 6.0, 16000.0, 20.0)
+
 
 def nominal_cut_hz(corner_hz, sample_rate):
     """`cut_hz` whose one-pole high-pass -3 dB is `corner_hz` at
@@ -354,9 +358,27 @@ class DigitalDelay(_component.Component):
         5: ("Band Limited Repeats", (102, 77, 19, 89, 0, 51, 92, 29)),
     }
 
-    def _build(self, time_ms=350.0, feedback=0.35, mix=0.3, glide_ms=4000.0,
-               sync=False, division=6, tone_hz=16000.0, cut_hz=20.0,
+    #: The number each option left out stands for (patch 0's step,
+    #: rounded), for a reader of the signature.
+    _OPTION_DEFAULTS = {"time_ms": 350.0, "feedback": 0.35, "mix": 0.3,
+                        "glide_ms": 4000.0, "division": 6,
+                        "tone_hz": 16000.0, "cut_hz": 20.0}
+
+    def _build(self, time_ms=None, feedback=None, mix=None, glide_ms=None,
+               sync=None, division=None, tone_hz=None, cut_hz=None,
                max_time_ms=TIME_MAX_MS, patch=None):
+        # An option left out plays patch 0's step, so a fresh instance is
+        # patch 0 exactly and a reset lands where it starts
+        # (`_init_macros`): Time 350 ms is grid 102, 352.8 ms, and the two
+        # used to play side by side. `DEFAULTS` is each step rounded. A
+        # value you pass plays as passed.
+        raw = (time_ms, feedback, mix, glide_ms, sync, division, tone_hz,
+               cut_hz)
+        seeded = tuple(value is None for value in raw)
+        time_ms, feedback, mix, glide_ms, sync, division, tone_hz, cut_hz = (
+            DEFAULTS[index] if seeded[index] else raw[index]
+            for index in range(len(raw)))
+        sync = bool(sync)
         max_time_ms = float(max_time_ms)
         # `not <=` catches NaN, which would otherwise pass both clamps and
         # size the line from nothing.
@@ -403,7 +425,8 @@ class DigitalDelay(_component.Component):
             # 0, a negative and NaN are the jump; a NaN slew would neither
             # walk nor jump, and the Time knob would do nothing.
             glide_ms = 0.0
-        self._glide_exact = glide_ms
+        # A Glide left out plays its grid step, so it is not kept exact.
+        self._glide_exact = None if seeded[GLIDE_I] else glide_ms
         self._seeding = True
         self._delay = audioecho.FeedbackDelay(
             sample_rate=self._sample_rate,
@@ -428,8 +451,9 @@ class DigitalDelay(_component.Component):
         self._init_macros((time_ms, feedback, mix,
                            max(GLIDE_MIN_MS, glide_ms),
                            1.0 if sync else 0.0, float(division), tone_hz,
-                           cut_hz))
-        if self._glide_exact > 0.0 and self._macros[GLIDE_I] < GLIDE_FLOOR:
+                           cut_hz), defaults=seeded)
+        if self._glide_exact is not None and self._glide_exact > 0.0 \
+                and self._macros[GLIDE_I] < GLIDE_FLOOR:
             self._macros[GLIDE_I] = GLIDE_FLOOR
         self._seeding = False
         if patch is not None:

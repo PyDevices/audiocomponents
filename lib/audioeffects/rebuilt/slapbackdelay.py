@@ -59,7 +59,8 @@ ECHO_TOLERANCE = 1e-6
 
 TIME_I, LEVEL_I, SATURATION_I, TONE_I, WOW_I, REPEATS_I = range(6)
 
-#: The constructor defaults, which NaN falls back to.
+#: The constructor defaults, which NaN falls back to: patch 0's steps,
+#: rounded. An option left out plays the step itself.
 DEFAULTS = (135.0, 0.35, 0.15, TONE_MAX_HZ, 1.0, 0.0)
 
 
@@ -102,6 +103,15 @@ def _option(value, default):
     return value
 
 
+def _unset(value):
+    """True for an option left out (None) or NaN, which takes patch 0's
+    step."""
+    if value is None:
+        return True
+    value = float(value)
+    return value != value
+
+
 def _between(value, low, high):
     if value < low:
         return low
@@ -116,7 +126,7 @@ class SlapbackDelay(_component.Component):
     Your dry signal passes untouched, and one copy of it comes back a moment
     later, a little quieter: the two-machine tape echo on Sam Phillips' Sun
     sides.
-    By default the repeat comes 135 ms after the dry, once.
+    By default the repeat comes 134.4 ms after the dry, once.
 
     **The controls.** Time is the gap between the dry and the repeat. Level
     is the console's return. Saturation is how hard the return drove the
@@ -210,8 +220,23 @@ class SlapbackDelay(_component.Component):
         5: ("Dark Slap", (84, 22, 19, 51, 36, 0)),
     }
 
-    def _build(self, time_ms=135.0, level=0.35, saturation=0.15,
-               tone_hz=TONE_MAX_HZ, wow_cents=1.0, repeats=0.0, patch=None):
+    #: The number each option left out stands for (patch 0's step,
+    #: rounded), for a reader of the signature.
+    _OPTION_DEFAULTS = dict(zip(("time_ms", "level", "saturation",
+                                 "tone_hz", "wow_cents", "repeats"),
+                                DEFAULTS))
+
+    def _build(self, time_ms=None, level=None, saturation=None,
+               tone_hz=None, wow_cents=None, repeats=None, patch=None):
+        # An option left out (or NaN) plays patch 0's step, so a fresh
+        # instance is patch 0 exactly and a reset lands where it starts
+        # (`_init_macros`); `DEFAULTS` is that step rounded to a readable
+        # number. A value you pass plays as passed.
+        raw = (time_ms, level, saturation, tone_hz, wow_cents, repeats)
+        seeded = tuple(_unset(value) for value in raw)
+        time_ms, level, saturation, tone_hz, wow_cents, repeats = (
+            DEFAULTS[index] if seeded[index] else raw[index]
+            for index in range(len(raw)))
         self._frames = 1
         #: The longest delay, in whole frames, the read head may still sit
         #: at. The walk starts from wherever the head is and the class cannot
@@ -267,10 +292,12 @@ class SlapbackDelay(_component.Component):
         self._own(self._delay, reset=self._clear)
         self._delay.play(self._source)
         self._output = self._delay
-        self._time_exact = time_ms
+        # A Time left out is patch 0's step, grid 84 (134.4 ms); only a
+        # Time you pass is kept exact.
+        self._time_exact = None if seeded[TIME_I] else time_ms
         self._deferred = True
         try:
-            self._init_macros(values)
+            self._init_macros(values, defaults=seeded)
         finally:
             self._deferred = False
             self._seeding = False

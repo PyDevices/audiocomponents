@@ -899,17 +899,30 @@ class Component:
             return 1.0
         return frequency
 
-    def _init_macros(self, values, patch=None):
+    def _init_macros(self, values, patch=None, defaults=None):
         """Seed the knobs from `_build`'s own arguments, in the macros' own
         units, and apply a patch over the top if one was asked for. This is
         deliberately the only route into `_apply_macro`, so the constructor
-        and a later `set_macro` cannot drift apart."""
+        and a later `set_macro` cannot drift apart.
+
+        `defaults`, when given, holds one flag per value: True where the
+        caller did not choose it (the argument was left out). That value is
+        seeded on patch 0's step for its macro rather than at the value
+        itself, so a fresh instance is patch 0 exactly, as the contract
+        says, and a reset lands where a fresh instance starts. A value the
+        caller passed is seeded where it is."""
         cls = type(self)
         if len(values) != len(cls.MACRO_LABELS):
             raise TypeError("%s seeded %d macros for %d labels"
                             % (cls.NAME, len(values), len(cls.MACRO_LABELS)))
         self._macros = [macro_position(span, value)
                         for span, value in zip(cls._MACRO_RANGES, values)]
+        if defaults is not None:
+            steps = cls.PATCHES[0][1]
+            for index in range(len(values)):
+                if defaults[index]:
+                    self._macros[index] = position_of_midi(
+                        self._mode(index), steps[index])
         for index in range(len(self._macros)):
             self._apply_macro(index, self._macros[index])
         self._patch_index = 0

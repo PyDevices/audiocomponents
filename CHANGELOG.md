@@ -364,6 +364,8 @@ there, and are recorded in its changelog.
 
 ### Fixed
 
+- `Saturation`: `reset()` no longer plays one block of the audio from before it, and after the lean patch `latency_samples` reads the onset again (1 at tube x4, 0 on the lean patch itself) instead of the group delay.
+- `DigitalDelay` and `SlapbackDelay`: an option you leave out plays patch 0's step, so a fresh instance is patch 0 exactly and a reset sounds and reports its tail as a fresh instance does. At the defaults Time is 352.8 ms on `DigitalDelay` (it was 350) and 134.4 ms on `SlapbackDelay` (it was 135), and the other controls move by under a step; a value you pass plays as passed.
 - A Time brought back after a shorter one no longer plays a stray sample from before the move in MultiTapDelay and the delays built on `audiodelays.Echo` (on CPython and MicroPython; CircuitPython's own `audiodelays` still plays it); PitchShifter, Harmonizer and Octaver start again from scratch on a reset and no longer hang on a source with nothing to give; and a host reset that reaches a Mixer inside an effect keeps the audio its voices hold. All of it is audiodsp's, at the pre-release `AUDIODSP_PIN` now names (v0.6.6rc1).
 
 - The delays, Reverb and ConvolutionReverb now ring out when their source ends, then rest at exact zero, instead of freezing the tail until the source came back; a one-shot source plays once instead of feeding them for ever. A source that comes up short part-way through a block leaves a whole block with the rest silent, and a host `reset_buffer` on ConvolutionReverb keeps the frames it holds. All of it is audiodsp's, at the commit `AUDIODSP_PIN` now names (audiocomponents#127).

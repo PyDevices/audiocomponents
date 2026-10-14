@@ -410,6 +410,10 @@ def options_of(cls):
         if name in ("self", "patch") or name.startswith("*") or not _sep:
             continue
         value = _number(default.strip(), module)
+        if value is None and default.strip() == "None":
+            # An option whose default is "left out" (patch 0's step) names
+            # the number it stands for in the class's `_OPTION_DEFAULTS`.
+            value = getattr(owner, "_OPTION_DEFAULTS", {}).get(name)
         if value is not None:
             out.append((name, value))
     return out

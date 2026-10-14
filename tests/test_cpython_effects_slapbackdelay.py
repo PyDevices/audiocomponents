@@ -64,6 +64,14 @@ SlapbackDelay = rebuilt.module_class("SlapbackDelay")
 # The dossier's laws, written out independently of the class
 
 
+#: The dossier's section 6 settings, which the constructor's defaults were
+#: until a fresh instance became patch 0 (its grid steps: 134.4 ms, Level
+#: 0.346, Saturation 0.150, Wow 0.99 cents). Figures measured there are
+#: read with these passed, and a value passed plays as passed.
+DOSSIER = {"time_ms": 135.0, "level": 0.35, "saturation": 0.15,
+           "wow_cents": 1.0}
+
+
 def law_frames(time_ms, rate):
     """Section 6: the nearest whole frame, floor(ms fs / 1000 + 0.5)."""
     return int(math.floor(time_ms * rate / 1000.0 + 0.5))
@@ -481,11 +489,13 @@ def render(cls, values, rate=RATE, channels=2, macros=None, **options):
 
 def cell_time_and_wow(options):
     """The cell's Time and Wow by the dossier's laws: a constructor value
-    as given, a patch at its grid values."""
+    as given, a patch at its grid values, and an option left out at patch
+    0's (a fresh instance is patch 0)."""
+    midi = SlapbackDelay.PATCHES[options.get("patch", 0)][1]
     if "patch" in options:
-        midi = SlapbackDelay.PATCHES[options["patch"]][1]
         return law_time_ms(midi[TIME_I]), 3.5 * midi[WOW_I] / 127.0
-    return options.get("time_ms", 135.0), options.get("wow_cents", 1.0)
+    return (options.get("time_ms", law_time_ms(midi[TIME_I])),
+            options.get("wow_cents", 3.5 * midi[WOW_I] / 127.0))
 
 
 # --------------------------------------------------------------------------
@@ -732,6 +742,8 @@ def dbfs_amp(dbfs):
 def presence_db(cls, values, rate=RATE, **options):
     """Level 2: (non-zero frames before T - (ceil(wow) + 2), the energy
     after that against the source's over the same number of frames)."""
+    if "patch" not in options:
+        options = dict(DOSSIER, **options)
     time_ms, wow = cell_time_and_wow(options)
     T = law_frames(time_ms, rate)
     w = law_wow_frames(wow, rate) + 2
@@ -782,7 +794,8 @@ def t4_out_differing(cls, rate=RATE, channels=2, seconds=OUT_SECONDS):
     frames = int(seconds * rate)
     data = probes.noise_det(frames=frames, dbfs=0.0, channels=channels)
     effect = cls(probes.ArraySource(data, rate=rate, channels=channels,
-                                    block=BLOCK), sample_rate=rate)
+                                    block=BLOCK), sample_rate=rate,
+                 **DOSSIER)
     out = pull(effect, frames, channels).reshape(-1)
     ref = node_pull(rate, channels, data,
                     delay_ms=law_frames(135.0, rate) * 1000.0 / rate,
@@ -1110,7 +1123,8 @@ class TheSurface(unittest.TestCase):
         for rate, frames in ((48000, (6480, 1920, 12000)),
                              (44100, (5954, 1764, 11025)),
                              (22050, (2977, 882, 5513))):
-            effect = SlapbackDelay(silence_src(64, 2, rate), sample_rate=rate)
+            effect = SlapbackDelay(silence_src(64, 2, rate), sample_rate=rate,
+                                   time_ms=135.0)
             got = [effect._frames]
             for midi in (0, 127):
                 effect.set_macro(TIME_I, midi)
@@ -1164,7 +1178,7 @@ class TheSurface(unittest.TestCase):
             values = np.zeros(frames + 64)
             values[0] = 20000
             y = render(cls, values, rate, macros={TIME_I: 60}, level=2.0,
-                       wow_cents=0.0)[:, 0]
+                       saturation=0.15, wow_cents=0.0)[:, 0]
             return [int(v) for v in y[frames - 1:frames + 2]]
 
         self.assertEqual(window(SlapbackDelay, 44100), [0, 19618, 10])
@@ -1178,16 +1192,18 @@ class TheSurface(unittest.TestCase):
         # 135.0 ms keeps 5 954 frames at 44.1 kHz; the old behaviour,
         # planted, drops to 5 953. Any other position still moves it.
         for rate, frames in ((48000, 6480), (44100, 5954), (22050, 2977)):
-            effect = SlapbackDelay(silence_src(64, 2, rate), sample_rate=rate)
+            effect = SlapbackDelay(silence_src(64, 2, rate), sample_rate=rate,
+                                   time_ms=135.0)
             effect.set_macro(TIME_I, effect.get_macro(TIME_I))
             self.assertEqual(effect._frames, frames, rate)
             effect.set_macro(TIME_I, effect.get_macro(TIME_I))
             self.assertEqual(effect._frames, frames, rate)
         old = EchoForgetsTimeSlapback(silence_src(64, 2, 44100),
-                                      sample_rate=44100)
+                                      sample_rate=44100, time_ms=135.0)
         old.set_macro(TIME_I, old.get_macro(TIME_I))
         self.assertEqual(old._frames, 5953)
-        effect = SlapbackDelay(silence_src(64, 2, 44100), sample_rate=44100)
+        effect = SlapbackDelay(silence_src(64, 2, 44100), sample_rate=44100,
+                               time_ms=135.0)
         effect.set_macro(TIME_I, effect.get_macro(TIME_I) + 0.01)
         self.assertIsNone(effect._time_exact)
         effect = SlapbackDelay(silence_src(64, 2, 44100), sample_rate=44100)
@@ -1225,11 +1241,17 @@ class TheSurface(unittest.TestCase):
     def test_tail_samples_follows_time_tone_wow_and_repeats(self):
         # laps x (reach + ceil(wow) + 1 + memory); one lap at Repeats 0.
         for rate, declared in ((48000, 6488), (44100, 5961), (22050, 2981)):
-            effect = SlapbackDelay(silence_src(64, 2, rate), sample_rate=rate)
+            effect = SlapbackDelay(silence_src(64, 2, rate), sample_rate=rate,
+                                   **DOSSIER)
             self.assertEqual(effect.tail_samples, declared, rate)
             self.assertEqual(declared, law_frames(135.0, rate)
                              + law_wow_frames(1.0, rate) + 1)
-        effect = SlapbackDelay(silence_src(64), sample_rate=RATE)
+            # Left out, the options are patch 0's steps, as after a reset.
+            fresh = SlapbackDelay(silence_src(64, 2, rate), sample_rate=rate)
+            self.assertEqual(fresh.tail_samples,
+                             law_frames(law_time_ms(84), rate)
+                             + law_wow_frames(3.5 * 36 / 127.0, rate) + 1)
+        effect = SlapbackDelay(silence_src(64), sample_rate=RATE, **DOSSIER)
         self.assertEqual(sd.laps_to_zero(0.35), 11)
         self.assertEqual(sd.laps_to_zero(0.6), 21)
         effect.set_macro(REPEATS_I, 127)
@@ -1248,7 +1270,7 @@ class TheSurface(unittest.TestCase):
         # the node is handed 0.5 itself, and the bound takes its landing
         # lap there (111 758 frames; 105 184 with the retired stepping).
         effect = SlapbackDelay(silence_src(64), sample_rate=RATE,
-                               tone_hz=2000.0, repeats=0.5)
+                               **dict(DOSSIER, tone_hz=2000.0, repeats=0.5))
         self.assertEqual(effect._feedback, 0.5)
         self.assertAlmostEqual(effect.get_macro(REPEATS_I), 127 * 0.5 / 0.6)
         self.assertEqual(effect.tail_samples, 111758)
@@ -1258,11 +1280,12 @@ class TheSurface(unittest.TestCase):
         effect = SlapbackDelay(silence_src(64), sample_rate=RATE,
                                time_ms=nan, level=nan, saturation=nan,
                                tone_hz=nan, wow_cents=nan, repeats=nan)
+        # NaN takes patch 0's step, as an option left out does.
         self.assertEqual([effect.macro(i) for i in (1, 2, 5)],
-                         [0.35, 0.15, 0.0])
-        self.assertEqual(effect._frames, 6480)
+                         [2.0 * 22 / 127.0, 19 / 127.0, 0.0])
+        self.assertEqual(effect._frames, law_frames(law_time_ms(84), RATE))
         self.assertEqual(effect._damping, 0.0)
-        self.assertAlmostEqual(effect._wow_ms, law_wow_ms(1.0))
+        self.assertAlmostEqual(effect._wow_ms, law_wow_ms(3.5 * 36 / 127.0))
         for options, frames in (({"time_ms": 0.0, "tone_hz": 0.0}, 1920),
                                 ({"time_ms": -5.0, "tone_hz": -1.0}, 1920),
                                 ({"time_ms": 900.0, "tone_hz": 1e6}, 12000)):
@@ -1705,7 +1728,8 @@ class Tier1Fast(unittest.TestCase):
         values[:loud] = 30000 * np.sin(2 * math.pi * 300.0
                                        * np.arange(loud) / rate)
         source, _ = to_source(values, channels, rate)
-        effect = cls(source, sample_rate=rate, tone_hz=2000.0, level=level)
+        options = dict(DOSSIER, tone_hz=2000.0, level=level)
+        effect = cls(source, sample_rate=rate, **options)
 
         def move(frame):
             if frame == loud:
@@ -1756,7 +1780,8 @@ class Tier1Fast(unittest.TestCase):
         at = 15616
         values = 12000 * np.sin(2 * math.pi * 997.0 * np.arange(RATE) / RATE)
         source, _ = to_source(values)
-        effect = cls(source, sample_rate=RATE, level=2.0)
+        options = dict(DOSSIER, level=2.0)
+        effect = cls(source, sample_rate=RATE, **options)
         effect.set_macro(WOW_I, start)
 
         def move(frame):
@@ -1872,7 +1897,7 @@ class InputCeiling(unittest.TestCase):
 #: that asserts it). Every sentence in the docstring that makes a claim is
 #: here; one that could not be tied to a test was struck.
 CLAIMS = (
-    ("By default the repeat comes 135 ms after the dry, once.",
+    ("By default the repeat comes 134.4 ms after the dry, once.",
      "test_defaults_three_rates_stereo_and_mono"),
     ("Time runs from 40 to 250 ms, Level from 0 to 2, Saturation from 0 to "
      "1, Tone from 2 kHz to out at its top stop, Wow from 0 to 3.5 cents "
@@ -2227,8 +2252,9 @@ class TheRetiredFaultsAreDialable(unittest.TestCase):
 
     def test_frames_at_44k_are_a_time_at_48k(self):
         x = self._noise(48000)
-        a = render(Frames441Slapback, x, 48000)
-        b = render(SlapbackDelay, x, 48000, time_ms=5954 * 1000.0 / 48000)
+        a = render(Frames441Slapback, x, 48000, **DOSSIER)
+        b = render(SlapbackDelay, x, 48000,
+                   **dict(DOSSIER, time_ms=5954 * 1000.0 / 48000))
         self.assertEqual(int(np.count_nonzero(a != b)), 0)
 
     def test_the_open_top_is_a_constructor_tone(self):
@@ -2252,6 +2278,36 @@ class NullBuildRed(unittest.TestCase):
                     SlapbackDelay, measure, label="SlapbackDelay %s" % name)
                 self.assertFalse(result["null"]["passed"], name)
                 self.assertTrue(result["control"]["passed"], name)
+
+
+class TestAFreshInstanceIsPatch0(unittest.TestCase):
+    """The contract: a fresh instance and one given patch 0 are the same,
+    so a reset lands where a fresh instance starts (kit `fresh`). Time was
+    built off the 0-127 grid: patch 0's Time is the nearest step, and a
+    fresh instance played the exact default beside it."""
+
+    def test_a_fresh_instance_is_patch_0(self):
+        import kit_fresh
+        for rate in (48000, 22050):
+            for ch in (2, 1):
+                self.assertEqual(kit_fresh.boot_cell(sd.SlapbackDelay, rate, ch, {}),
+                                 "ok", (rate, ch))
+
+    def test_the_tail_after_a_reset_is_a_fresh_instance_s(self):
+        import kit_common as kc
+        import kit_fresh
+        values = kit_fresh._material(48000, 2)
+        for patch in kc.patches(sd.SlapbackDelay):
+            fresh = kc.build(sd.SlapbackDelay, kit_fresh._feed(values, 48000, 2).port,
+                             48000)
+            e = kc.build(sd.SlapbackDelay, kit_fresh._feed(values, 48000, 2).port,
+                         48000, patch)
+            for _ in range(8):
+                kc.pull(e)
+            e.reset()
+            self.assertEqual(e.tail_samples, fresh.tail_samples, patch)
+            e.deinit()
+            fresh.deinit()
 
 
 if __name__ == "__main__":
