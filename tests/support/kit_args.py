@@ -175,7 +175,6 @@ def bad_cell(cls, index):
 def patch_cell(cls, patch):
     e = fresh(cls)
     try:
-        start = gets(e)
         e.program_change(patch)
         if e.patch_index != patch:
             return "RED(patch_index reads %r)" % (e.patch_index,)
@@ -185,12 +184,17 @@ def patch_cell(cls, patch):
             if abs(got[i] - want[i]) > READBACK_TOL:
                 return "RED(m%d reads %s, the patch says %d)" % (
                     i, kc.num(got[i]), want[i])
+        # Back at patch 0 it reads patch 0's values, not a fresh
+        # instance's: a declared default may sit off patch 0's grid
+        # (docs/audio-components.md; the kit holds reset-equals-fresh, not
+        # fresh-equals-patch-0, ruled 2026-10-14).
         e.program_change(0)
         back = gets(e)
-        for i in range(len(start)):
-            if abs(back[i] - start[i]) > READBACK_TOL:
-                return "RED(back at patch 0, m%d reads %s, fresh read %s)" \
-                    % (i, kc.num(back[i]), kc.num(start[i]))
+        zero = cls.PATCHES[0][1]
+        for i in range(len(zero)):
+            if abs(back[i] - zero[i]) > READBACK_TOL:
+                return "RED(back at patch 0, m%d reads %s, patch 0 says %d)" \
+                    % (i, kc.num(back[i]), zero[i])
     finally:
         _close(e)
     return "ok"

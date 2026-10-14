@@ -112,9 +112,11 @@ hands it:
   back 0, +inf and 128 read back 127, and each renders exactly what
   `set_macro(i, readback)` renders (`c`). A raise of any kind is red.
 - `patch-p<k>`: `program_change(k)` sets `patch_index` and reads back the
-  patch's values, and `program_change(0)` reads back what a fresh instance
-  read (the contract: a fresh component and one given patch 0 are the
-  same).
+  patch's values, and `program_change(0)` reads back patch 0's. Not what a
+  fresh instance read: a declared default may sit off patch 0's grid
+  ([audio-components.md](../../docs/audio-components.md)), so the kit
+  holds a reset to a fresh instance (`fresh`), not a fresh instance to
+  patch 0.
 - `ctor-<option>`: each numeric keyword of `_build` at 0 and NaN (a
   keyword whose default is `None`, left out to play patch 0's step, counts
   when the class names its number in `_OPTION_DEFAULTS`). A raise is
