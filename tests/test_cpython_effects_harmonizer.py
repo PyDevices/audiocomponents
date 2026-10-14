@@ -17,6 +17,18 @@ position the shifter read. A splice is a burst of steps outside 0..4; a
 clean stretch is 256 frames clear of one, across which the output rises by
 exactly the node's step `k`.
 
+Since audiodsp v0.6.6 (audiodsp#245) the node moves each splice's incoming
+side, by up to a fiftieth of a second, to where its first channel matches
+the outgoing side best, so a held note keeps its shifted pitch through the
+crossfade. On a ramp the best match is always the farthest move, so the
+splices crowd together. In stereo the probe therefore holds the first
+channel silent, where the search finds a tie and the node splices exactly
+where it always did, and reads the ramp in the second channel. A mono probe
+has no quiet channel, so a mono cell is held to the stereo probe with the
+ramp in both channels: its one channel is that render's first, byte for
+byte. At a 60 ms Window every splice on the ramp makes the whole move, and
+the gap is `(window - rate / 50) * 256 / |k - 256|`, stereo and mono.
+
 The default run takes two of the card's eight seeds or ramp offsets per
 cell; `HARMONIZER_FULL=1` runs all eight. The module is numpy-free and
 imports on MicroPython and CircuitPython, where `unittest` is absent: the
@@ -100,6 +112,25 @@ def splice_gap(frames, k):
     if k == 256:
         return None
     return frames * 256.0 / abs(k - 256)
+
+
+def align_span(rate):
+    """How far the node moves a splice's incoming side, at most: a
+    fiftieth of a second (audiodsp's `audiodsp_pitchshift.c`)."""
+    return rate // 50
+
+
+def moved_gap(frames, k, rate):
+    """Frames between two splices on a ramp in the first channel, at a
+    Window longer than the move: every splice moves the whole span toward
+    the outgoing side, so it regains the window less the span."""
+    if k == 256:
+        return None
+    return (frames - align_span(rate)) * 256.0 / abs(k - 256)
+
+
+#: The Window the moved law is read at: longer than the move at both rates.
+MOVED_WINDOW_MS = 60.0
 
 
 def semis_of_midi(m):
@@ -236,16 +267,17 @@ def chord(frames, channels, rate, seed, peak=6000.0, lead=BLOCK):
     return out
 
 
-def ramp(offset, channels):
+def ramp(offset, channels, quiet_first=False):
     """The ramp probe: `offset` + 1 frames of silence (a zero opens every
     level gate at once), then one LSB per frame from -16384 to +16383, the
-    same in every channel."""
+    same in every channel, or with `quiet_first` silent in the first."""
     lead = offset + 1
     frames = lead + 32768
     out = array("h", bytes(2 * frames * channels))
+    first = 1 if (quiet_first and channels > 1) else 0
     for i in range(lead, frames):
         v = -16384 + i - lead
-        for c in range(channels):
+        for c in range(first, channels):
             out[i * channels + c] = v
     return out
 
@@ -336,12 +368,16 @@ def splices(jl, fade):
 
 
 def ramp_read(cls, rate, channels, k_voice, macros, offset, options=None,
-              patch=None):
-    """One voice alone on the ramp: (output channel, analysis start)."""
-    values = ramp(offset, channels)
+              patch=None, quiet=False):
+    """One voice alone on the ramp: (output channel, analysis start). With
+    `quiet` a stereo probe holds its first channel silent and is read in
+    the second, at Spread 0 so the voice reaches it at unity."""
+    quiet = quiet and channels == 2
+    values = ramp(offset, channels, quiet_first=quiet)
+    extra = [(SPREAD, 0)] if quiet else []
     y = render(cls, values, rate, channels, options=options, patch=patch,
-               macros=alone(k_voice) + list(macros))
-    which = 1 if (channels == 2 and k_voice == 1) else 0
+               macros=alone(k_voice) + list(macros) + extra)
+    which = 1 if (channels == 2 and (quiet or k_voice == 1)) else 0
     ms = (options or {}).get("window_ms", 1024.0 / 48.0)
     w = window_frames(ms, rate)
     return chan(y, channels, which), offset + 1 + w + crossfade(w) + 8
@@ -355,6 +391,19 @@ def asked(pitch_m, voice_m, detune_m, k_voice):
 def claimed_stretch(w, k):
     gap = splice_gap(w, k)
     return gap is None or gap >= 256 + crossfade(w) + 8
+
+
+def mono_is_stereo(cls, rate, k_voice, macros, offset, options=None,
+                   patch=None):
+    """Whether one voice alone on a mono ramp renders, byte for byte, the
+    first channel of the same voice on a stereo ramp (Spread 0, which a
+    mono source ignores)."""
+    plays = alone(k_voice) + list(macros) + [(SPREAD, 0)]
+    mono = render(cls, ramp(offset, 1), rate, 1, options=options,
+                  patch=patch, macros=plays)
+    stereo = render(cls, ramp(offset, 2), rate, 2, options=options,
+                    patch=patch, macros=plays)
+    return mono == chan(stereo, 2)
 
 
 # --------------------------------------------------------------------------
@@ -592,8 +641,13 @@ def t2_cell(cls, rate, channels, k_voice, pitch_m, voice_m, detune_m,
     macros = [(PITCH, pitch_m), (VOICE[k_voice], voice_m),
               (DETUNE, detune_m)]
     for offset in offsets:
+        if channels == 1:
+            if not mono_is_stereo(cls, rate, k_voice, macros, offset,
+                                  patch=patch):
+                bad.append((offset, "mono"))
+            continue
         y, start = ramp_read(cls, rate, channels, k_voice, macros, offset,
-                             patch=patch)
+                             patch=patch, quiet=True)
         rises = stretches(y, start, jumps(y, start))
         if len(rises) < 8 or any(r != k for r in rises):
             bad.append((offset, k, len(rises), sorted(set(rises))[:4]))
@@ -706,9 +760,17 @@ def t3_cell(cls, rate, channels, patch, detune_m, offsets=OFFSETS):
     beyond = cents > 1200.0 * math.log(k0 / (k0 - 0.5)) / math.log(2.0)
     for offset in offsets:
         ks = []
+        if channels == 1:
+            for k_voice in (0, 1):
+                if not mono_is_stereo(cls, rate, k_voice,
+                                      [(DETUNE, detune_m)], offset,
+                                      patch=patch):
+                    bad.append((offset, k_voice, "mono"))
+            continue
         for k_voice in (0, 1):
             y, start = ramp_read(cls, rate, channels, k_voice,
-                                 [(DETUNE, detune_m)], offset, patch=patch)
+                                 [(DETUNE, detune_m)], offset, patch=patch,
+                                 quiet=True)
             rises = stretches(y, start, jumps(y, start))
             if len(rises) < 8 or len(set(rises)) != 1:
                 bad.append((offset, k_voice, len(rises),
@@ -756,19 +818,26 @@ T4_INTERVALS = (4, 7, 12, -5, -7, -12)
 T4_WINDOWS = (5.0, 1024.0 / 48.0, 60.0)
 
 
-def t4_cell(cls, rate, channels, window_ms, interval, offsets=OFFSETS):
-    """None if not claimed, else [(offset, measured mean gap or None)]."""
+def t4_cell(cls, rate, channels, window_ms, interval, offsets=OFFSETS,
+            quiet=True):
+    """None if not claimed, else [(offset, measured mean gap or None)].
+    `quiet`: the stereo probe with its first channel silent, held to the
+    plain law; otherwise the ramp in every channel, held to the moved
+    law."""
     w = window_frames(window_ms, rate)
     k = step_of(interval)
-    gap = splice_gap(w, k)
+    if quiet and channels == 2:
+        gap = splice_gap(w, k)
+    else:
+        gap = moved_gap(w, k, rate)
     start = w + crossfade(w) + 8
-    if 5 * gap > 32768 - start:
+    if gap <= 0 or 5 * gap > 32768 - start:
         return None
     out = []
     for offset in offsets:
         y, start = ramp_read(cls, rate, channels, 0,
                              [(VOICE[0], midi_of_semis(interval))], offset,
-                             options={"window_ms": window_ms})
+                             options={"window_ms": window_ms}, quiet=quiet)
         starts = splices(jumps(y, start), crossfade(w))
         if len(starts) < 5:
             out.append((offset, None, gap))
@@ -784,24 +853,51 @@ def t4_bad(cells):
 
 
 class T4Window(TestCase):
-    """The mean gap between splices is `window_frames * 256 / |k - 256|`,
-    the same at every rate and on mono."""
+    """Where the first channel gives the splice nothing to match, the mean
+    gap between splices is `window_frames * 256 / |k - 256|`, the same at
+    every rate. Where it does, each splice moves up to a fiftieth of a
+    second, and on a ramp at a 60 ms Window the gap is
+    `(window_frames - rate / 50) * 256 / |k - 256|`, stereo and mono
+    alike."""
 
     def test_the_gap(self):
+        # Restated 2026-10-14 for audiodsp#245's splice fix: the plain law
+        # is read on the stereo probe with a silent first channel (it held
+        # on the ramp in every channel before the node moved its splices),
+        # and a mono cell plays the stereo ramp's first channel.
+        claimed = 0
+        for rate in RATES:
+            for ms in T4_WINDOWS:
+                for interval in T4_INTERVALS:
+                    cells = t4_cell(Harmonizer, rate, 2, ms, interval)
+                    if cells is None:
+                        continue
+                    claimed += 1
+                    self.assertEqual(
+                        t4_bad(cells), [],
+                        (rate, ms, interval, cells))
+                    macros = [(VOICE[0], midi_of_semis(interval))]
+                    for offset in OFFSETS:
+                        self.assertTrue(mono_is_stereo(
+                            Harmonizer, rate, 0, macros, offset,
+                            options={"window_ms": ms}),
+                            (rate, ms, interval, offset))
+        self.assertGreater(claimed, 20)
+
+    def test_a_splice_moves_toward_the_match(self):
         claimed = 0
         for rate in RATES:
             for channels in CHANNELS:
-                for ms in T4_WINDOWS:
-                    for interval in T4_INTERVALS:
-                        cells = t4_cell(Harmonizer, rate, channels, ms,
-                                        interval)
-                        if cells is None:
-                            continue
-                        claimed += 1
-                        self.assertEqual(
-                            t4_bad(cells), [],
-                            (rate, channels, ms, interval, cells))
-        self.assertGreater(claimed, 40)
+                for interval in T4_INTERVALS:
+                    cells = t4_cell(Harmonizer, rate, channels,
+                                    MOVED_WINDOW_MS, interval, quiet=False)
+                    if cells is None:
+                        continue
+                    claimed += 1
+                    self.assertEqual(
+                        t4_bad(cells), [],
+                        (rate, channels, interval, cells))
+        self.assertGreaterEqual(claimed, 20)
 
     def test_a_fifth_up_splices_every_43_ms(self):
         for rate in RATES:
@@ -849,14 +945,21 @@ class T4Window(TestCase):
                 self.assertLessEqual(max(lag), w)
 
     def test_a_window_in_bytes_is_red(self):
-        cells = t4_cell(WindowInBytes, 48000, 1, 1024.0 / 48.0, 7,
-                        offsets=(0,))
+        cells = t4_cell(WindowInBytes, 48000, 1, MOVED_WINDOW_MS, 7,
+                        offsets=(0,), quiet=False)
         self.assertTrue(t4_bad(cells))
+        self.assertFalse(t4_bad(t4_cell(Harmonizer, 48000, 1,
+                                        MOVED_WINDOW_MS, 7, offsets=(0,),
+                                        quiet=False)))
+        macros = [(VOICE[0], midi_of_semis(7))]
+        self.assertFalse(mono_is_stereo(WindowInBytes, 48000, 0, macros, 0))
 
     def test_a_window_at_48k_is_red(self):
         cells = t4_cell(WindowAt48k, 22050, 2, 1024.0 / 48.0, 7,
                         offsets=(0,))
         self.assertTrue(t4_bad(cells))
+        self.assertFalse(t4_bad(t4_cell(Harmonizer, 22050, 2,
+                                        1024.0 / 48.0, 7, offsets=(0,))))
 
 
 # --------------------------------------------------------------------------
@@ -1469,9 +1572,13 @@ CLAIMS = (
      "T3SteadyDetune.test_every_eighth_position"),
     ("Each voice glitches as it splices, more often the further it is "
      "shifted and the shorter the window: at the default window a fifth up "
-     "splices every 43 ms, at any sample rate.",
+     "splices every 43 ms, at any sample rate, where the first channel is "
+     "silent.",
      ("T4Window.test_the_gap",
       "T4Window.test_a_fifth_up_splices_every_43_ms")),
+    ("Where it is not, each splice moves by up to a fiftieth of a second to "
+     "land in phase, so the splices come sooner.",
+     "T4Window.test_a_splice_moves_toward_the_match"),
     ("A voice at exact unison never splices: it is a fixed short delay, and "
      "it combs with the dry.",
      "T4Window.test_unison_never_splices"),
