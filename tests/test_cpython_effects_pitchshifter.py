@@ -792,11 +792,15 @@ class TheSurface(TestCase):
 
     def test_feedback_near_its_top_stacks_level_far_past_the_input(self):
         # A noise burst peaking at -10.3 dBFS (10000 of 32768), through
-        # Feedback 127 with Delay 0 and Mix 2: at unison and an octave up
-        # the repeats pile up on each other and the shifted voice alone
-        # reaches the rail; at an octave down and a fourth or a fifth either
-        # way it comes within 4 dB of it.
-        close = 32768 * 10 ** (-4 / 20.0)
+        # Feedback 127 with Delay 0 and Mix 2: at unison the repeats pile up
+        # on each other and the shifted voice alone reaches the rail; at an
+        # octave and a fourth or a fifth either way it comes within 6 dB of
+        # it. Restated 2026-10-14 for audiodsp#245's splice fix, measured
+        # at v0.6.6rc4: an octave up no longer reaches the rail (24 054 at
+        # 48 kHz stereo, 21 738 at 22.05 kHz mono), and the lowest stack is
+        # a fourth up at 22.05 kHz mono, 16 930 (-5.7 dBFS), where the bar
+        # was 4 dB (20 675).
+        close = 32768 * 10 ** (-6 / 20.0)
         for rate, channels in ((48000, 2), (22050, 1)):
             burst = rate // 10
             values = array("h", bytes(2 * burst * channels))
@@ -814,7 +818,7 @@ class TheSurface(TestCase):
                              feedback=0.95)
                 peak = max(max(out), -min(out))
                 where = (rate, channels, pitch, peak)
-                if pitch in (0, 12):
+                if pitch == 0:
                     self.assertTrue(max(out) == 32767 or min(out) == -32768,
                                     where)
                 else:
@@ -1411,8 +1415,8 @@ CLAIMS = (
       "test_a_hot_input_reaches_the_rail_at_mix_1")),
     ("Feedback stacks level too, far past the input: at Feedback 127, Delay "
      "0 and Mix 2 a noise burst peaking at -10.3 dBFS reaches the rail at "
-     "unison or an octave up, and comes within 4 dB of it at an octave down "
-     "or a fourth or fifth either way.",
+     "unison, and comes within 6 dB of it at an octave or a fourth or fifth "
+     "either way.",
      "test_feedback_near_its_top_stacks_level_far_past_the_input"),
     ("If your host takes the output before it loads a patch or moves Mix, "
      "or loads a patch right after a reset, the first 256 frames, 5 ms at "
