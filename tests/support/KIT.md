@@ -229,6 +229,11 @@ patch 0, from every patch:
   later, each macro to each stop, and the readback after it. A state the
   reset left that only a move wakes (a line length, a write head) is red
   here.
+- `rpr<K>@8/<rate>/<ch>/d`: built at the defaults, played 8 pulls, then
+  `reset()`, `program_change(K)` and `reset()` again, for every patch K,
+  and held to the same fresh instance. A patch that builds part of the
+  graph again between two resets must not leave the second one reaching
+  for a node the rebuild released.
 - `boot/<rate>/<ch>`, informational: whether a fresh instance at its
   defaults is patch 0 exactly. Patch values are integers and a declared
   default may sit off their grid ([audio-components.md](../../docs/audio-components.md)),

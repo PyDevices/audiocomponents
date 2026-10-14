@@ -1222,6 +1222,11 @@ class Component:
         if ports is None:
             ports = self._lazy_ports = {}
         port = ports.get(id(voice))
+        # A graph built again since (Distortion's Character) released the
+        # Port with the voice it stood in for; and a new voice may have the
+        # old one's id.
+        if port is not None and not _named(port, self._nodes):
+            port = None
         if port is None:
             port = self._own(PORT(source), reset=False)
             ports[id(voice)] = port
@@ -1235,6 +1240,11 @@ class Component:
         `_hush`). A two-frame sample would end, and a voice that saw it end
         would stop."""
         silence = getattr(self, "_lazy_zero", None)
+        # Only while this graph still owns it: a graph built again since (a
+        # patch across Distortion's Character) released it with the rest,
+        # and a second reset that reached for it raised "deinitialized".
+        if silence is not None and not _named(silence, self._nodes):
+            silence = None
         if silence is None:
             import audioroute
             silence = self._own(audioroute.MidSide(
