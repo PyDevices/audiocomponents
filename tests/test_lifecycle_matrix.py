@@ -169,10 +169,29 @@ def check_known(name, red, table=None, full=None):
     return problems
 
 
+def effect_class(name):
+    """The class `lifecycle.py NAME` runs: the one in `rebuilt/`, or the
+    one the package serves once it has come home."""
+    cls = rebuilt.module_class(name)
+    if cls is None:
+        import audioeffects
+        cls = getattr(audioeffects, name, None)
+    return cls
+
+
 def classes():
+    """The classes to run: LIFECYCLE_CLASSES, or the Phase 5 set. A name
+    LIFECYCLE_CLASSES gives that resolves to no class is an error, not a
+    run with nothing in it."""
     wanted = os.environ.get("LIFECYCLE_CLASSES")
-    names = wanted.split(",") if wanted else PHASE5
-    return [n for n in names if rebuilt.module_class(n) is not None]
+    if not wanted:
+        return [n for n in PHASE5 if effect_class(n) is not None]
+    names = wanted.split(",")
+    missing = [n for n in names if effect_class(n) is None]
+    if missing:
+        raise LookupError("LIFECYCLE_CLASSES names no class: %s"
+                          % ", ".join(missing))
+    return names
 
 
 def native_binaries():
@@ -221,7 +240,9 @@ def start_native(binary, names, scratch):
 
 def run_cpython(name, **only):
     lines = []
-    lifecycle.run_class(rebuilt.module_class(name), emit=lines.append,
+    import kit_options
+    lifecycle.run_class(effect_class(name), emit=lines.append,
+                        options=kit_options.lifecycle_options_for(name),
                         quick=not FULL, **only)
     return lines
 
@@ -247,7 +268,7 @@ def run_cpython_all(names):
     import multiprocessing
     parts = [(name, rate, ch, patch) for name in names
              for rate in lifecycle.RATES for ch in lifecycle.CHANNELS
-             for patch in [None] + sorted(rebuilt.module_class(name).PATCHES)]
+             for patch in [None] + sorted(effect_class(name).PATCHES)]
     out = {name: [] for name in names}
     # spawn on every platform: a fork of a process already running threads
     # (a test runner's, say) can deadlock.
