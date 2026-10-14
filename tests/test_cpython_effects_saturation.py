@@ -1973,19 +1973,13 @@ class HysteresisMovesInSilencePlayNothing(unittest.TestCase):
     whatever position the material left it at, the shaper answers silence
     with the curve there, and the plate pole has taken that constant out;
     the move changed the constant and the pole passed the step, up to 1763
-    LSB at Drive's top.
-
-    **Red, and held red on purpose.** The class cannot settle it alone: the
-    one call that re-centres the operator, the node's `clear()`, empties its
-    half-band memories too, and under signal that is a 2 231 LSB tick at
-    every knob move (a gentle Drive move steps 165 to 1 604 LSB on its
-    own). It wants the node to re-centre the operator by itself.
+    LSB at Drive's top. The shaper re-centres its operator once its input
+    has been silent a block, and the pole is cleared with it.
     """
 
     MOVES = ((0, 0), (0, 64), (1, 0), (1, 127), (3, 127), (3, 0),
              (4, 0), (4, 127), (7, 0), (7, 64))
 
-    @unittest.expectedFailure
     def test_a_move_in_silence_is_silent(self):
         for index, midi in self.MOVES:
             for character in ("tube", "tape"):
@@ -1994,7 +1988,33 @@ class HysteresisMovesInSilencePlayNothing(unittest.TestCase):
                     self.assertEqual(
                         hysteresis_jump(index, midi, character=character), 0)
 
-    @unittest.expectedFailure
+    def test_under_signal_a_move_renders_what_it_did(self):
+        import audiocore
+        import kit_common as kc
+        values = array("h")
+        for index in range(48000):
+            value = int(12000 * math.sin(2.0 * math.pi * 220.0 * index
+                                         / RATE))
+            values.append(value)
+            values.append(value)
+
+        def run(settle):
+            source = audiocore.RawSample(values, sample_rate=RATE,
+                                         channel_count=2)
+            effect = rebuilt.Saturation(source, drive_db=6.0,
+                                        hysteresis=1.0)
+            if not settle:
+                effect._let_go_in_silence = lambda: None
+            try:
+                out = kc.render(effect, 40 * 256)
+                for index, midi in self.MOVES:
+                    effect.set_macro(index, midi)
+                    out += kc.render(effect, 4 * 256)
+                return out
+            finally:
+                effect.deinit()
+        self.assertEqual(run(True), run(False))
+
     def test_every_macro_to_its_top_and_back_plays_nothing(self):
         # The lifecycle matrix's E10-macros P3: every macro to 127 before
         # the first pull (Hysteresis among them), the material, silence,

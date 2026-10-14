@@ -531,6 +531,10 @@ BIAS_STEPS = 256
 #: whole span: their ends read 6.8 and 6.9 dB under Bias 0. Patches 4 and 6
 #: built on either of those do move, to the eightfold Bias they now name.
 TUBE_BIAS_REACH = 0.125
+#: The macros whose move changes what the shaper answers silence with while
+#: Hysteresis holds the play operator off centre: Drive, Output, Headroom,
+#: Bias and Hysteresis itself (`_let_go_in_silence`).
+HELD_BY_THE_PLAY_OPERATOR = (0, 1, 3, 4, 7)
 TILT_HZ = 1000.0
 PLATE_HZ = 20.0
 # 20 Hz, not the 5 Hz this was while it sat at the grid. The node's kernel
@@ -1090,6 +1094,37 @@ class Saturation(_component.Component):
 
     def _apply_macro(self, index, position):
         value = _component.macro_value(self._MACRO_RANGES[index], position)
+        if (index in HELD_BY_THE_PLAY_OPERATOR and self._hysteresis > 0.0
+                and self._ready and not self._constructing):
+            self._let_go_in_silence()
+        self._apply_one(index, value)
+
+    def _let_go_in_silence(self):
+        """Let go of what the play operator holds, if the input is silent.
+
+        With Hysteresis on, the operator keeps the position the material
+        left it at when the input stops, so the shaper answers silence with
+        the curve there, times `post_gain`, and the plate pole (the flux
+        high-pass on `console`) has taken that constant out. A Drive,
+        Output, Headroom, Bias or Hysteresis move changes the constant, and
+        the pole passed the step: up to 1763 LSB out of silence at Drive's
+        top. So before such a move the shaper re-centres its operator, which
+        it does only once its input has been silent a whole block, and then
+        answers silence with exactly zero; the pole is cleared with it and
+        has nothing to let go of. Under signal neither moves, and the loop
+        plays on as it was.
+        """
+        routed = self._lean if self._routed_lean else self._shaper
+        recentre = getattr(routed, "recentre", None)
+        if recentre is None:
+            return
+        if recentre():
+            for shaper in self._shapers():
+                if shaper is not routed:
+                    shaper.recentre()
+            self._clear_nodes(only=(self._after,))
+
+    def _apply_one(self, index, value):
         if index in (0, 1, 3):
             # The folded table answers silence with zero, so `post_gain`
             # scales no offset and a gain move leaves the pole nothing.
