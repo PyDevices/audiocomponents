@@ -454,6 +454,66 @@ def tempo_change_error(cls, rate, seed):
     return abs(got / second - 1.0)
 
 
+def meter_change_error(cls, rate, seed):
+    """4/4 to 3/4 at 120 bpm, one bar, `transport_changed()` between two
+    pulls: the next full period against the new bar."""
+    transport = Transport(120.0, 4)
+    first = tempo_rate(120.0, 4, 1.0)
+    second = tempo_rate(120.0, 3, 1.0)
+    manual, depth = 1.0, 0.6
+    change = 120
+    boundary = change * BLOCK
+
+    def move(e):
+        transport.beats_per_bar = 3
+        e.transport_changed()
+    frames = boundary + int(rate / second * 1.05) + int(0.012 * rate)
+    # A host calls `transport_changed()` once a block: the first call has
+    # read 120 bpm in 4/4 long before the meter moves.
+    readings = sweep_readings(
+        cls, rate, first, depth, manual, seed, frames=frames,
+        options={"rate": 0.25, "sync": True, "division": 1.0},
+        transport=transport,
+        actions={1: lambda e: e.transport_changed(), change: move})
+    inc1 = int(min(first / rate, 0.5) * 4294967296.0)
+    phase = (boundary * inc1) & 0xFFFFFFFF
+    after = [(n, d) for n, d in readings if n >= boundary + 300]
+    got = fit_rate(after, rate, manual, depth, second, start_phase=phase,
+                   start_frame=boundary - 1)
+    return abs(got / second - 1.0)
+
+
+def knob_pair_db(cls, rate, macros, patch=None):
+    """The comb's level against the input, dB, at its first peak k/tau
+    (a dip once Polarity is minus), Range 0, with the polarity set by
+    `macros` or `patch` after construction."""
+    feed = kc.feed(array("h", [0, 0]), rate, 1)
+    e = cls(feed.port, sample_rate=rate, **held(144, rate, color=0.5))
+    if patch is not None:
+        e.program_change(patch)
+        e.set_macro(RANGE, 0)
+    for index, value in macros:
+        e.set_macro(index, value)
+    delay = e.macro(MANUAL) * rate / 1000.0
+    e.deinit()
+    frames = int(rate * 0.6)
+    f = rate / delay
+    x = sine(f, rate, frames, 1000)
+    feed = kc.feed(x, rate, 1)
+    e = cls(feed.port, sample_rate=rate, **held(144, rate, color=0.5))
+    try:
+        if patch is not None:
+            e.program_change(patch)
+            e.set_macro(RANGE, 0)
+        for index, value in macros:
+            e.set_macro(index, value)
+        y = kc.samples(kc.render(e, frames))
+        color = e.macro(COLOR)
+    finally:
+        e.deinit()
+    return db(amp_at(y, f, rate, frames // 2) / 1000.0), color
+
+
 # --------------------------------------------------------------------------
 # The planted faults
 
@@ -521,6 +581,41 @@ class FourBeatBar(Flanger):
         bars = flanger_module._choice(flanger_module.DIVISION_BARS,
                                       self._macros[DIVISION])
         return max(1.0, float(state[2])) / (60.0 * 4.0 * bars)
+
+
+class MeterDeaf(Flanger):
+    """T5: `transport_changed()` follows the tempo and not the meter."""
+    NAME = 'Flanger'
+
+    def transport_changed(self):
+        from audioeffects import _component
+        _component.Component.transport_changed(self)
+
+
+class FrozenPolarity(Flanger):
+    """T6: Polarity read from the constructor, so the knob does nothing."""
+    NAME = 'Flanger'
+
+    def _build(self, polarity="positive", **options):
+        self._frozen = polarity == "negative"
+        Flanger._build(self, polarity=polarity, **options)
+
+    def _negative(self):
+        return self._frozen
+
+
+class FrozenSync(Flanger):
+    """T5: Sync read from the constructor, so the knob does nothing."""
+    NAME = 'Flanger'
+
+    def _build(self, sync=False, **options):
+        self._frozen = bool(sync)
+        Flanger._build(self, sync=sync, **options)
+
+    def _rate_hz(self):
+        if not self._frozen:
+            return self._value(RATE)
+        return Flanger._rate_hz(self)
 
 
 class InvertOnly(Flanger):
@@ -803,6 +898,31 @@ class T5Sync(TestCase):
                 self.assertLessEqual(tempo_change_error(Flanger, rate, seed),
                                      0.005, (rate, seed))
 
+    def test_a_meter_change(self):
+        for rate in RATES:
+            for seed in SEEDS:
+                self.assertLessEqual(meter_change_error(Flanger, rate, seed),
+                                     0.005, (rate, seed))
+        self.assertGreater(meter_change_error(MeterDeaf, 48000, 0), 0.005)
+
+    def test_the_sync_knob(self):
+        """Sync turned on from its knob, and from patch 5."""
+        transport = Transport(90.0, 3)
+        want = tempo_rate(90.0, 3, 1.0)
+        for cls, red in ((Flanger, False), (FrozenSync, True)):
+            readings = sweep_readings(
+                cls, 48000, want, 0.6, 1.0, 0,
+                frames=int(48000 / want * 1.05) + 576,
+                options={"rate": 0.25}, transport=transport,
+                actions={0: lambda e: e.set_macro(SYNC, 127)})
+            err = abs(fit_rate(readings, 48000, 1.0, 0.6, want) / want - 1)
+            self.assertEqual(err > 0.005, red, cls)
+            feed = kc.feed(array("h", [0, 0]), 48000, 1)
+            e = cls(feed.port, sample_rate=48000, transport=transport)
+            e.program_change(5)
+            self.assertEqual(abs(e._node.rate - want) > 1e-9, red, cls)
+            e.deinit()
+
     def test_rate_is_ignored_and_20_hz_is_the_stop(self):
         transport = Transport(700.0, 4)
         self.assertGreater(tempo_rate(700.0, 4, 0.125), 20.0)
@@ -836,6 +956,16 @@ class T6Polarity(TestCase):
                                              (rate, color, seed, at_k))
                     else:
                         self.assertLessEqual(at_k, -40.0)
+
+    def test_the_polarity_knob_and_patch_3(self):
+        low, _ = color_laws(q15(0.5), negative=True)
+        for cls, red in ((Flanger, False), (FrozenPolarity, True)):
+            at_k, _ = knob_pair_db(cls, 48000, ((POLARITY, 127),))
+            self.assertEqual(abs(at_k - db(low)) > 0.25, red, (cls, at_k))
+            # Patch 3, "Negative jet", held still: its first peak is a dip.
+            at_k, color = knob_pair_db(cls, 48000, (), patch=3)
+            low3, _ = color_laws(q15(color), negative=True)
+            self.assertEqual(abs(at_k - db(low3)) > 1.0, red, (cls, at_k))
 
     def test_color_0_subtracts_the_copy(self):
         for rate in RATES:
@@ -964,6 +1094,20 @@ class TheSurface(TestCase):
         self.assertEqual(node.mix, 0.77)
         e.program_change(4)
         self.assertNotEqual(node.mix, 0.77)
+        e.deinit()
+
+    def test_a_restore_puts_the_exact_values_back(self):
+        e = self._fresh(rate=0.3, depth=0.33, manual_ms=1.7, color=0.41,
+                        mix=0.77)
+        record = e._record()
+        e.program_change(2)
+        e._reset_to = record
+        e.reset()
+        e._reset_to = None
+        node = e._node
+        self.assertEqual((node.rate, node.depth, node.min_delay_ms,
+                          node.feedback, node.mix),
+                         (0.3, 0.33, 1.7, 0.41, 0.77))
         e.deinit()
 
     def test_mix_s_first_step_is_a_wire_and_its_second_36_db_down(self):
@@ -1096,14 +1240,16 @@ CLAIMS = (
      "eighth) at the host's tempo and meter, and Rate is ignored.",
      ("T5Sync.test_the_period", "T5Sync.test_a_tempo_change",
       "TheSurface.test_the_spans",
-      "TheSurface.test_rate_is_ignored_while_sync_is_on")),
+      "TheSurface.test_rate_is_ignored_while_sync_is_on",
+      "T5Sync.test_a_meter_change", "T5Sync.test_the_sync_knob")),
     ("Polarity minus turns the comb over and puts a notch at DC.",
      ("T6Polarity.test_the_comb_turns_over",
+      "T6Polarity.test_the_polarity_knob_and_patch_3",
       "T6Polarity.test_color_0_subtracts_the_copy")),
     ("Constructor values play exactly until their knob first moves or a "
      "patch loads.",
-     "TheSurface.test_constructor_values_play_exactly_until_their_knob_"
-     "moves"),
+     ("TheSurface.test_constructor_values_play_exactly_until_their_knob_"
+      "moves", "TheSurface.test_a_restore_puts_the_exact_values_back")),
     ("The copy is your signal exactly Manual late, added at Mix.",
      "T1Comb.test_the_comb_is_the_sum_in_integers"),
     ("At Color 0 and Mix 1 a tone on a notch comes out at least 40 dB "
@@ -1116,10 +1262,12 @@ CLAIMS = (
      "reaches its top once a sweep.",
      ("T4Sweep.test_the_triangle",
       "T4Sweep.test_the_sweep_starts_at_manual_and_again_after_a_reset")),
-    ("The ring lasts at most about 0.4 s to -60 dB at 3 ms and full Color, "
-     "and about 0.7 s at 5 ms; it never oscillates on its own.",
+    ("The ring lasts about 0.4 s to -60 dB at 3 ms and full Color, and "
+     "about 0.7 s at 5 ms; it grows as Range sweeps the delay longer, and "
+     "it never oscillates on its own.",
      ("T3Ring.test_the_longest_rings",
-      "T3Ring.test_the_ring_follows_its_laws")),
+      "T3Ring.test_the_ring_follows_its_laws",
+      "T3Ring.test_the_swept_ring_is_inside_the_tail")),
     ("It is linear only to about -28 dBFS on a resonant frequency at full "
      "Color, and -7.5 dBFS at Color 0: above that the output is squashed "
      "and gritty, not louder.",

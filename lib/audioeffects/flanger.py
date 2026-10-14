@@ -123,8 +123,9 @@ class Flanger(_component.Component):
     notches to 6 dB under it.
     The sweep is a triangle in milliseconds that starts at Manual and
     reaches its top once a sweep.
-    The ring lasts at most about 0.4 s to -60 dB at 3 ms and full Color,
-    and about 0.7 s at 5 ms; it never oscillates on its own.
+    The ring lasts about 0.4 s to -60 dB at 3 ms and full Color, and
+    about 0.7 s at 5 ms; it grows as Range sweeps the delay longer, and it
+    never oscillates on its own.
 
     **Limits.** It is linear only to about -28 dBFS on a resonant frequency
     at full Color, and -7.5 dBFS at Color 0: above that the output is
@@ -325,6 +326,22 @@ class Flanger(_component.Component):
         node.feedback = -color if negative else color
         node.invert = negative
         node.mix = self._value(MIX_I)
+
+    def transport_changed(self):
+        """With Sync on, follow the host's tempo and its meter: a move of
+        either sets the sweep's rate again. The base follows the tempo
+        alone, so a 4/4 to 3/4 change at one tempo would keep the old
+        rate."""
+        self._check_live()
+        if self._macros[SYNC_I] < 0.5:
+            return
+        state = self._transport() if callable(self._transport) \
+            else self._transport
+        followed = (state[2], state[4])
+        if followed == self._followed_bpm:
+            return
+        self._followed_bpm = followed
+        self._refresh()
 
     def macro(self, index):
         """What macro `index` currently stands for, in its own units; for
