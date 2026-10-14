@@ -215,7 +215,11 @@ class DeEsser(_component.Component):
     #: (Frequency 2500 Hz is grid 63, 2507 Hz). An option left out plays
     #: the step itself, so a fresh instance is patch 0 exactly and a reset
     #: lands where it starts; a value you pass plays as passed.
-    _OPTION_DEFAULTS = (2500.0, 12.0, 30.0, False, 3.5, 2.0, False)
+    _OPTION_DEFAULTS = {"frequency": 2500.0, "range_db": 12.0,
+                        "sensitivity_db": 30.0, "hf_only": False,
+                        "release_ms": 3.5, "attack_ms": 2.0, "listen": False}
+    _OPTION_NAMES = ("frequency", "range_db", "sensitivity_db", "hf_only",
+                     "release_ms", "attack_ms", "listen")
 
     def _build(self, frequency=None, range_db=None, sensitivity_db=None,
                hf_only=None, release_ms=None, attack_ms=None, listen=None,
@@ -233,8 +237,9 @@ class DeEsser(_component.Component):
                attack_ms, listen)
         seeded = tuple(value is None for value in raw)
         (frequency, range_db, sensitivity_db, hf_only, release_ms, attack_ms,
-         listen) = (self._OPTION_DEFAULTS[index] if seeded[index]
-                    else raw[index] for index in range(len(raw)))
+         listen) = (self._OPTION_DEFAULTS[self._OPTION_NAMES[index]]
+                    if seeded[index] else raw[index]
+                    for index in range(len(raw)))
 
         # The block adapter. `audioroute.MidSide` at width 1 is the exact
         # identity (its own docstring says so, and it is measured in the
