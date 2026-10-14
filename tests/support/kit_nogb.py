@@ -198,12 +198,17 @@ def _raised(exc):
     return "%s: %s" % (type(exc).__name__, exc)
 
 
-def run(cls, emit=print, quick=False, name=None, options=None):
-    """Every nogb cell for `cls`; returns the red count."""
+def run(cls, emit=print, quick=False, name=None, options=None,
+        patches=None):
+    """Every nogb cell for `cls`; returns the red count. `patches` limits
+    the run to some of `[None] + sorted(cls.PATCHES)` (None the defaults),
+    so a slow class can be run a patch at a time."""
     cells = kc.Cells(name or cls.NAME, CHECK, emit)
     present = {}
     absent = {}
-    for patch in [None] + sorted(cls.PATCHES):
+    if patches is None:
+        patches = [None] + sorted(cls.PATCHES)
+    for patch in patches:
         for ch in (2, 1):
             # One lifecycle run per patch and layout, each in its own
             # cell, so a class that raises without get_buffer at one patch
