@@ -6,7 +6,7 @@ separately in `audio-components.md`.
 
 The contract is structural. A provider does not have to inherit from an
 `audiodsp` helper class, but it must expose the required attributes and methods.
-The helper classes in `audioinstruments._support` and `audioeffects._core` are
+The helper classes in `audioinstruments._support` and `audioeffects._component` are
 implementation conveniences, not a requirement imposed on consumers.
 
 ## Construction
@@ -340,10 +340,11 @@ control. An effect rack has exactly the effect shape even when its internal
 graph contains serial, parallel, or mixed effects. Racks may contain and be
 used by other racks.
 
-**Shipped status:** rack providers ship in `lib/audioeffects/rack.py`.
+**Shipped status:** rack providers ship in `lib/audioeffects/rebuilt/`
+(`rack.py`, `shimmerhall.py`, `airspace.py`).
 `Rack` is the generic mechanism — a serial chain of the package's own
 effects described by portable literals
-(`create("Rack", source, rate, chain=(("Reverb", {"preset": "hall"}),))`) —
+(`create("Rack", source, rate, chain=(("Reverb", {"character": "hall"}),))`) —
 and `ShimmerHall` and `AirSpace` are fixed-topology racks with a macro
 surface over their children, ported from micropython-vst3's shared
 soundtrack racks. A rack is one more `audioeffects` provider: it is

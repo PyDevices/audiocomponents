@@ -205,7 +205,7 @@ def choose(scope, modules):
                 why.append("%s edited" % stem)
         elif path.startswith("lib/audioeffects/"):
             stem = os.path.basename(path)[:-3].lower()
-            if stem in ("__init__", "_core", "_component"):
+            if stem in ("__init__", "_component"):
                 picked.update(_effects_only(modules))
                 why.append("%s is shared by every effect, so every effect "
                            "test runs (instruments stay off)"

@@ -208,7 +208,7 @@ class Rack(_component.Component):
 
 def _record(child):
     """What puts `child` back as it stands: its `_record()`, or, for a
-    child on the older `_core` base, its positions and patch index."""
+    child on another base, its positions and patch index."""
     if isinstance(child, _component.Component):
         return child._record()
     return (list(child._macros), child._patch_index)

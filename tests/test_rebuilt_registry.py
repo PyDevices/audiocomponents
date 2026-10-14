@@ -142,7 +142,7 @@ class TheLookup(unittest.TestCase):
                 else:
                     self.assertIsNot(exported, found)
                     self.assertTrue(issubclass(
-                        exported, audioeffects._core.Effect))
+                        exported, _component.Component))
         self.assertEqual(misses + hits, len(audioeffects.ALL))
 
     def test_the_rebuilt_classes_are_what_the_registry_reports(self):
@@ -180,7 +180,7 @@ class TheLookup(unittest.TestCase):
                             exported, _component.Component))
                     else:
                         self.assertTrue(issubclass(
-                            exported, audioeffects._core.Effect))
+                            exported, _component.Component))
                 else:
                     self.assertTrue(issubclass(found, _component.Component))
                     self.assertEqual(found.NAME, name)
@@ -188,8 +188,9 @@ class TheLookup(unittest.TestCase):
                         self.assertIs(exported, found)
                     else:
                         self.assertIsNot(exported, found)
-        # Until Phase 6 retires `_core`, the miss branch above is reached by
-        # real names and not only by `NoSuchEffectAnywhere`.
+        # The classes that came home have no file here, so the miss branch
+        # above is reached by real names and not only by
+        # `NoSuchEffectAnywhere`.
         self.assertGreater(misses, 0)
 
     def test_every_one_of_the_46_either_misses_or_resolves_to_its_own_name(
@@ -236,7 +237,7 @@ class TheLookup(unittest.TestCase):
                             exported, _component.Component))
                     else:
                         self.assertTrue(issubclass(
-                            exported, audioeffects._core.Effect))
+                            exported, _component.Component))
                 else:
                     self.assertEqual(found.NAME, name)
                     self.assertTrue(issubclass(found, _component.Component))
@@ -336,7 +337,7 @@ class TheLookup(unittest.TestCase):
                 else:
                     self.assertIsNot(exported, found)
                     self.assertTrue(issubclass(
-                        exported, audioeffects._core.Effect))
+                        exported, _component.Component))
         # And the fallback branch is still exercised by the real catalogue,
         # not only by the fixtures. When the last of the 46 is rebuilt this
         # assertion is the one that has to go, deliberately (Phase 6).
@@ -371,7 +372,7 @@ class TheLookup(unittest.TestCase):
                             exported, _component.Component))
                     else:
                         self.assertTrue(issubclass(
-                            exported, audioeffects._core.Effect))
+                            exported, _component.Component))
                 else:
                     self.assertEqual(found.NAME, name)
                     self.assertTrue(issubclass(found, _component.Component))
@@ -414,7 +415,7 @@ class TheLookup(unittest.TestCase):
                 else:
                     self.assertIsNot(exported, found)
                     self.assertTrue(issubclass(
-                        exported, audioeffects._core.Effect))
+                        exported, _component.Component))
 
     def test_known_lists_what_is_there__lp(self):
         # The two fixtures are always here; a rebuilt class joins them, and
@@ -447,7 +448,7 @@ class TheLookup(unittest.TestCase):
                             exported, _component.Component))
                     else:
                         self.assertTrue(issubclass(
-                            exported, audioeffects._core.Effect))
+                            exported, _component.Component))
                 else:
                     self.assertEqual(found.NAME, name)
                     self.assertTrue(issubclass(found, _component.Component))
@@ -518,7 +519,7 @@ class TheLookup(unittest.TestCase):
                 else:
                     self.assertIsNot(exported, found)
                     self.assertTrue(issubclass(
-                        exported, audioeffects._core.Effect))
+                        exported, _component.Component))
 
     def test_known_lists_what_is_there__nt(self):
         # The two fixtures are always here; a rebuilt class joins them, and
@@ -557,8 +558,6 @@ class TheLookup(unittest.TestCase):
                 found = getattr(audioeffects, name)
                 self.assertEqual(found.NAME, name)
                 self.assertTrue(issubclass(found, _component.Component))
-                self.assertFalse(
-                    issubclass(found, audioeffects._core.Effect))
 
     def test_known_lists_what_is_there__lf(self):
         listed = set(rebuilt.known())
@@ -605,7 +604,7 @@ class TheLookup(unittest.TestCase):
                 else:
                     self.assertIsNot(exported, found)
                     self.assertTrue(issubclass(
-                        exported, audioeffects._core.Effect))
+                        exported, _component.Component))
         self.assertEqual(misses + hits, len(audioeffects.ALL))
 
     def test_known_lists_what_is_there__deq(self):
@@ -673,12 +672,10 @@ class TheReplacement(unittest.TestCase):
         self.assertIs(namespace["configure"], audioeffects.configure)
 
     def test_both_bases_count_as_providers(self):
-        # `_core.Effect` for the families not rebuilt yet, `Component` for
-        # the ones that are; neither base itself is a provider.
+        # Every shipped class is a `Component`; the base is not a provider.
         self.assertTrue(audioeffects._is_provider(audioeffects.Compressor))
         self.assertTrue(
             audioeffects._is_provider(rebuilt.module_class("ExampleStock")))
-        self.assertFalse(audioeffects._is_provider(audioeffects._core.Effect))
         self.assertFalse(audioeffects._is_provider(_component.Component))
         self.assertFalse(audioeffects._is_provider(42))
 
@@ -1015,8 +1012,8 @@ class TheAdoptionGate(unittest.TestCase):
 class TheMetadataValidatorCoversBothBases(unittest.TestCase):
     """`validate_effects` used to select on `_core.Effect` alone, so a
     rebuilt class would have been skipped in silence -- and an unvalidated
-    class reads exactly like a valid one. It now selects on both bases and
-    checks the count it validated against `ALL`."""
+    class reads exactly like a valid one. It selects on `Component` now that
+    `_core` is retired, and checks the count it validated against `ALL`."""
 
     def test_it_validates_all_46(self):
         self.assertEqual(len(validate_effects(audioeffects)),

@@ -12,7 +12,6 @@ repository map, public component flow, and contributor boundary.
 ```python
 import audioinstruments, audioeffects
 
-audioeffects.configure(48000)
 minimoog = audioinstruments.create("minimoog", sample_rate=48000)
 chain = audioeffects.create("TapeDelay", minimoog.output, sample_rate=48000)
 ```
@@ -78,9 +77,9 @@ What's planned next is in [ROADMAP.md](ROADMAP.md).
 
 - `lib/audioinstruments/` — one module per instrument, plus `_support.py`
   (the shared voice/patch/wavetable machinery) and `midi_cc.py`
-- `lib/audioeffects/` — the effect catalogue by family (`dynamics`, `eq`,
-  `delay`, `reverb`, `modulation`, `drive`, `pitch`) plus `rack.py` and
-  `_core.py`
+- `lib/audioeffects/` — one module per effect, plus `_component.py` (the
+  base every effect is built on) and `rebuilt/` (the delay, reverb, pitch
+  and rack classes, which live there for now)
 - `docs/audio-component-api.md` — the runtime contract every component
   satisfies; `docs/audio-components.md` — the static metadata manifest;
   `docs/sequencing.md` — writing a part that keeps time in frames
@@ -134,7 +133,7 @@ Most work does not need that full suite. `tools/scoped_tests.py` picks the files
 | Work | Scope |
 |---|---|
 | One class | `tools/scoped_tests.py class:DeEsser` (that class's tests plus the contract) |
-| Kit, `__init__`, `_core`, or `_component` | `tools/scoped_tests.py auto` (widens from `git diff`) |
+| Kit, `__init__`, or `_component` | `tools/scoped_tests.py auto` (widens from `git diff`) |
 | Every effect, no instruments | `tools/scoped_tests.py effects` |
 | Shared promises only | `tools/scoped_tests.py contract` |
 | Gate, integration, audit, release | `tools/scoped_tests.py full` |

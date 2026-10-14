@@ -135,7 +135,7 @@ def deliver(effect, event):
 class Transport:
     """What `--transport` gives a class that reads one.
 
-    An effect's transport is the callable `_core.static_transport` stands in
+    An effect's transport is the callable `_component.static_transport` stands in
     for: it returns ``(playing, position_seconds, bpm, numerator,
     denominator)``. `audiorender/tempo.py:12`'s `TempoMap` is the model for
     the map itself - a list of ``(beat, bpm)`` or ``(beat, bpm, num, den)``

@@ -1700,6 +1700,22 @@ class TheOutputStage(unittest.TestCase):
             tail = int(over[-1]) + 1 if len(over) else 0
             self.assertLess(tail, Fuzz.TAIL_SAMPLES, (options, tail))
 
+    def test_bias_off_centre_declares_no_bound(self):
+        """Off centre the output settles near zero rather than on it, so
+        `tail_samples` is None there; Mix 0 is the dry alone and keeps
+        the bound."""
+        effect = build(bias=0.0)
+        self.assertEqual(effect.tail_samples, Fuzz.TAIL_SAMPLES)
+        for midi in (0, 32, 96, 127):
+            effect.set_macro(3, midi)
+            self.assertIsNone(effect.tail_samples, midi)
+        effect.set_macro(5, 0)
+        self.assertEqual(effect.tail_samples, Fuzz.TAIL_SAMPLES)
+        effect.deinit()
+        effect = build(bias=-0.85)
+        self.assertIsNone(effect.tail_samples)
+        effect.deinit()
+
     def test_bias_off_centre_never_reaches_digital_zero_and_says_so(self):
         """The disclosure as a claim: it does not settle, and what stays is
         under 16 LSB."""
@@ -2067,11 +2083,18 @@ class TheCascadeOutputPole(unittest.TestCase):
                 over = np.nonzero(np.abs(values) > 16)[0]
                 ring = int(over[-1]) + 1 if len(over) else 0
                 with self.subTest(character=character, midi=midi):
+                    # Off centre the class declares no bound (it settles
+                    # near zero, not on it); what is over 16 LSB still ends
+                    # inside the centred bound.
+                    if midi == 64:
+                        self.assertEqual(declared, Fuzz.TAIL_SAMPLES)
+                    else:
+                        self.assertIsNone(declared)
                     self.assertLessEqual(
-                        ring, declared,
+                        ring, Fuzz.TAIL_SAMPLES,
                         "a 220 Hz burst on %s at Bias %d rings %d frames "
-                        "over 16 LSB against a declared %d"
-                        % (character, midi, ring, declared))
+                        "over 16 LSB against %d"
+                        % (character, midi, ring, Fuzz.TAIL_SAMPLES))
 
     def test_the_live_recharge_leaves_the_input_split_in_step(self):
         """What the third round thought re-charging `cascade` live would

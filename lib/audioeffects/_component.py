@@ -1,11 +1,10 @@
 """The construction shape every rebuilt effect class is built on.
 
-`_core.py` is the pre-contract shape: a module-level `configure()` holds the
-sample rate, and `Effect.__new__` sniffs the format off whatever it is handed.
-The effects roadmap (§3, "What the contract freezes") frees that, and this
-module is the replacement. It lands beside `_core.py` rather than over it:
-the families not yet rebuilt keep importing `_core`, untouched, until Phase 6
-retires it with the last of them.
+It replaced `_core.py`, the pre-contract shape, in which a module-level
+`configure()` held the sample rate and `Effect.__new__` sniffed the format
+off whatever it was handed. The effects roadmap (§3, "What the contract
+freezes") freed that; every family was rebuilt on this module, and
+`_core.py` was retired in Phase 7.
 
 What is different here, and why:
 
@@ -18,7 +17,7 @@ What is different here, and why:
   earlier, which is the failure `configure()` invited.
 
 * **A class enumerates the nodes it builds**, with `self._own(node)`, and
-  `reset()` and `deinit()` walk that list. `_core.reset()` touches the output
+  `reset()` and `deinit()` walk that list. `_core.reset()` touched the output
   node only, so what a chain's reset actually clears depends on which node
   happened to be last. Every node clears something different:
   `audiofilters.Filter` and `Phaser` clear their own delay buffers and
@@ -249,8 +248,8 @@ def _set_output(effect, node):
 #: port itself is `deinit`'s job and not this setter's, because the order
 #: matters there and a plain attribute store is no place to say so.
 #:
-#: Both bases carry it -- `_core.Effect` imports this very object -- so the
-#: pre-contract classes get the same fix without being rebuilt first.
+#: The pre-contract `_core.Effect` base carried this same object until it
+#: was retired, so its classes had the fix too.
 output_port = property(_get_output, _set_output)
 
 

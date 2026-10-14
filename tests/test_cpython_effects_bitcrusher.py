@@ -266,6 +266,37 @@ class TheSurface(unittest.TestCase):
         self.assertGreater(worst, 256)
 
 
+class TheDitherTail(unittest.TestCase):
+    """The dither gate's tail at maximum Dither, and where there is none."""
+
+    def test_maximum_dither_rings_inside_the_bound(self):
+        import kit_tail
+        events = dict((name, ev) for name, ev, _placement
+                      in kit_tail.tail_events(Bitcrusher, None, True))
+        for channels in (2, 1):
+            for which in kit_tail.MATERIALS:
+                verdict, _digest = kit_tail.measure(
+                    Bitcrusher, RATE, channels, None, which,
+                    events["E4-m2=127"], "held")
+                self.assertNotIn("RED", verdict, (channels, which))
+
+    def test_past_the_gate_there_is_no_bound_and_no_silence(self):
+        for bits_midi in (0, 64):
+            frames = 2 * RATE
+            pcm = np.zeros(frames * 2, dtype=np.int16)
+            pcm[0:1024] = 12000
+            effect = Bitcrusher.create(
+                probes.ArraySource(pcm, rate=RATE, channels=2, block=256),
+                RATE)
+            effect.set_macro(0, bits_midi)
+            effect.set_macro(2, 127)
+            self.assertIsNone(effect.tail_samples)
+            wet = probes.render(effect.output, frames, rate=RATE)
+            effect.deinit()
+            last = np.asarray(wet.data)[-RATE:]
+            self.assertGreater(int(np.max(np.abs(last))), 0, bits_midi)
+
+
 class TheInvariants(unittest.TestCase):
 
     def test_mix_zero_is_a_wire(self):
