@@ -292,6 +292,8 @@ class Tremolo(_component.Component):
                lag_ms=35.0, bias=0.5, speed_link=1.0, stereo_phase=0.0,
                sync=0.0, patch=None):
         self._mod_sample = None
+        self._notes = None
+        self._applied = None
         self._synth = synthio.Synthesizer(
             sample_rate=self._sample_rate,
             channel_count=self._channel_count)
@@ -341,6 +343,8 @@ class Tremolo(_component.Component):
         the LFO a fresh instance starts with."""
         self._check_live()
         old = self._synth
+        self._notes = None
+        self._applied = None
         self._synth = synthio.Synthesizer(
             sample_rate=self._sample_rate,
             channel_count=self._channel_count)
@@ -371,6 +375,15 @@ class Tremolo(_component.Component):
                 bpm = float(state[2])
             if bpm > 0.0:
                 rate = snap_rate(rate, bpm)
+
+        # A knob that lands where it already was (a host re-sending its
+        # automation, a reset onto the same patch) changes nothing; the
+        # LFO runs on rather than being baked and pressed again.
+        applied = (character, rate, depth, shape, lag_ms, idle, linked,
+                   phase_deg)
+        if applied == self._applied:
+            return
+        self._applied = applied
 
         if depth <= DEPTH_WIRE:
             self._mul.set(mix=0.0)
@@ -438,6 +451,7 @@ class Tremolo(_component.Component):
             frames, channels, depth, shape, idle, phase_r)
 
     def _modulate_raw(self, table, fs, channels):
+        self._notes = None
         release = getattr(self._synth, "release_all", None)
         if release is not None:
             release()
@@ -451,23 +465,39 @@ class Tremolo(_component.Component):
         self._mul.modulate(sample)
 
     def _modulate_synth(self, table, played, channels):
+        """Hand the LFO its new period. The notes already playing take the
+        new waveform and frequency in place, as `AutoPan` does, so a knob
+        moves the throb from where it is in its cycle; only the first
+        period (and the first after a reset or a raw table) presses notes."""
         if self._mod_sample is not None:
             deinit = getattr(self._mod_sample, "deinit", None)
             if deinit is not None:
                 deinit()
             self._mod_sample = None
         left = self._channel_of(table, channels, 0)
+        right = None if channels == 1 else self._channel_of(
+            table, channels, 1)
+        notes = self._notes
+        if notes is not None:
+            notes[0].waveform = left
+            notes[0].frequency = played
+            if right is not None:
+                notes[1].waveform = right
+                notes[1].frequency = played
+            return
         release = getattr(self._synth, "release_all", None)
         if release is not None:
             release()
-        if channels == 1:
-            self._synth.press(synthio.Note(frequency=played, waveform=left))
+        if right is None:
+            notes = (synthio.Note(frequency=played, waveform=left),)
+            self._synth.press(notes[0])
         else:
-            right = self._channel_of(table, channels, 1)
-            self._synth.press((
+            notes = (
                 synthio.Note(frequency=played, waveform=left, panning=-1.0),
                 synthio.Note(frequency=played, waveform=right, panning=1.0),
-            ))
+            )
+            self._synth.press(notes)
+        self._notes = notes
         self._mul.modulate(self._synth)
 
     @staticmethod
