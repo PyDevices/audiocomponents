@@ -508,10 +508,13 @@ class MultibandCompressor(_component.Component):
         walked last, that chunk comes through nodes this reset has already
         cleared.
         """
-        audiocore.reset_buffer(self._mixer)
         if getattr(self, "_resetting", False):
-            # `reset()` plays them once the patch is in (`_reset_rearmed`).
+            # `reset()` stops the voices and plays them once the patch is in
+            # (`_reset_rearmed`). A host reset of CircuitPython's stock
+            # Mixer here reached the voices' sources and cost the reset a
+            # block of the source, as it did Saturation's.
             return
+        audiocore.reset_buffer(self._mixer)
         self._play_voices()
 
     # -- the live surface ---------------------------------------------
