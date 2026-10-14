@@ -10,6 +10,16 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`Limiter` patch 6, *Delivery Ceiling - lean*:** Delivery Ceiling for an
+  ESP32-S3, where Catch The Peaks, Delivery Ceiling and Loud (True Peak)
+  cannot keep up. It keeps the lookahead and release, turns True Peak off
+  and sits 3 dB lower (-3.97 dB), so a worst-phase tone driven into it
+  still reads -0.96 dB TP. The docstring now says which patches an S3
+  cannot play.
+- **`MultibandCompressor`'s docstring says to build it with `bands=2` on an
+  ESP32-S3**, where no three-band patch keeps up (107 % of a block; two
+  bands is 71 %). No patch can do this instead: every macro position builds
+  the same graph.
 - **`Flanger` (rebuilt, Phase 7):** a thin class on CircuitPython's own
   `audiodelays.Flanger`, so it now runs on a stock CircuitPython board.
   Eight macros (Rate, Range, Manual, Color, Mix, Polarity, Sync, Division)
