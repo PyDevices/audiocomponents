@@ -1,6 +1,5 @@
 """One module per rebuilt effect class, named after the class's `NAME` in
-lower case: `rebuilt/flanger.py` holds parked `Flanger` until that program
-comes home.
+lower case: `rebuilt/octaver.py` holds `Octaver` until it comes home.
 
 **Nothing in this file lists the classes.** A rebuild adds exactly one file
 and edits nothing else -- not this module, not the family module it
@@ -21,7 +20,7 @@ have come home, and so have Phase 3's THROUGH classes plus RingMod
 `ringmod.py`) and all seven of Phase 4's (`overdrive.py`, `distortion.py`,
 `fuzz.py`, `saturation.py`, `bitcrusher.py`, `exciter.py`,
 `cabinetsim.py`). This directory keeps the substitution machinery, the two
-`Example` fixtures and the parked Phase 3 rebuild (`flanger.py`). `ADOPTED`
+`Example` fixtures and the later phases' classes. `ADOPTED`
 below no longer
 names the classes that have come home -- there is nothing left here for it
 to arbitrate for them -- and it will name later phases' classes until those
@@ -89,7 +88,8 @@ def _present():
 #: shipped patch, and all three are inside it). `drive.py` is deleted, and
 #: there is nothing left here to arbitrate for any of them.
 #:
-#: What stays parked under this directory: Phase 3's `Flanger`.
+#: Nothing is parked under this directory now: Phase 3's parked `Flanger`
+#: was deleted in Phase 7, and `Flanger` is served from `flanger.py`.
 #:
 #: Phase 5's first two, adopted 2026-09-28 on the rulings of that date:
 #: `DigitalDelay` and `SlapbackDelay`. Both are THROUGH on the desktop half

@@ -572,6 +572,22 @@ DECLARED = {
     # shifter, whose output depends on where its read position sits in the
     # window (the ruling's N2). A reset renders exactly as a fresh instance
     # does (the class's reset test); it is the control that never was reset.
+    # Flanger: the sweep is the node's own free-running triangle, so
+    # anything that restarts it or runs it at another rate leaves it off
+    # the uninterrupted control's phase for good; PR holds (a reset is a
+    # fresh instance). P5 is the family limit the docstring discloses (N1).
+    ("Flanger", "E1-", "P4"): "a reset starts the sweep again from Manual, so the class matches a fresh instance (PR), not the uninterrupted control",
+    ("Flanger", "E2-", "P4"): "as E1: the host's reset of the node starts the sweep again",
+    ("Flanger", "E4-m0=", "P4"): "a Rate move runs the free-running sweep at another rate, so its phase lands elsewhere; putting it back would jump the sweep",
+    ("Flanger", "E4-m6=", "P4"): "Sync on runs the sweep at the tempo's rate, so its phase lands elsewhere (as m0)",
+    ("Flanger", "E4-m7=", "P4"): "a Division move with Sync on runs the sweep at another rate (as m0)",
+    ("Flanger", "E6-", "P4"): "a patch with another Rate or Sync moves the sweep's phase (as E4-m0)",
+    ("Flanger", "E11-", "P4"): "moves before a pull that reach Rate or the patch move the sweep's phase (as E4-m0)",
+    ("Flanger", "E4-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step",
+    ("Flanger", "E5-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
+    ("Flanger", "E6-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (a patch change)",
+    ("Flanger", "E9-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
+    ("Flanger", "E11-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (two or three moves before one pull)",
     ("ShimmerHall", "E1-", "P4"): "reset() empties the hall and restarts its modulation, and restarts the shifter's splice, so it never re-converges with the uninterrupted control (Reverb's E1 P4; the splice phase, N2)",
     ("ShimmerHall", "E4-m0=", "P4"): "Character re-cuts the wet chain, so it empties the hall and restarts the shifter's splice, and leaves the hall's tank off the control's for good (Reverb's E4 P4; the splice phase, N2)",
     ("ShimmerHall", "E4-m1=", "P4"): "Shimmer changes what enters the hall, so it leaves the hall's tank off the control's for good (Reverb's E4 P4)",
@@ -663,6 +679,10 @@ SKIP = {
     ("NodeFlanger", "E8-", "circuitpython"):
         "upstream's Flanger never returns from a pull on a looped source"
         " that ends empty; audiodsp 7b fixed it on CPython and MicroPython",
+    ("Flanger", "E8-", "circuitpython"):
+        "the class is upstream's Flanger, which never returns from a pull on"
+        " a looped source that ends empty; audiodsp 7b fixed it on CPython"
+        " and MicroPython",
     ("ShimmerHall", "E8-", "circuitpython"):
         "Bloom pulls upstream's PitchShift, which never returns from a pull"
         " on a looped source that ends empty (audiodsp#243 fixed it on"
@@ -2168,6 +2188,10 @@ def _cli(argv):
         else:
             from audioeffects import rebuilt
             cls = rebuilt.module_class(name)
+            if cls is None:
+                # A class that has come home: the one the package serves.
+                import audioeffects
+                cls = getattr(audioeffects, name, None)
             if cls is None:
                 print("MISSING|%s" % name)
                 continue

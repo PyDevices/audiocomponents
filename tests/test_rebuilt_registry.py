@@ -45,7 +45,8 @@ from tools.validate_metadata import MetadataError, validate_effects
 FIXTURES = ("ExampleAudiodsp", "ExampleStock")
 
 #: Every class of the 46 that has come home: Phase 2's sixteen, Phase 3's
-#: five THROUGH classes plus RingMod, and Phase 4's four adopted. Coming
+#: five THROUGH classes plus RingMod, Phase 4's adopted, and Phase 7's
+#: Flanger. Coming
 #: home is what puts a name here, so `rebuilt.module_class` misses each one
 #: and the package imports it from its own file. `TheLookup.REBUILT` is this
 #: same tuple.
@@ -55,7 +56,7 @@ REBUILT = ("Compressor", "Limiter", "Expander", "NoiseGate", "DeEsser",
            "LadderFilter", "CombFilter", "DynamicEQ",
            "AutoPan", "Chorus", "Phaser", "Tremolo", "Vibrato", "RingMod",
            "Overdrive", "Distortion", "Fuzz", "Saturation", "Bitcrusher",
-           "Exciter", "CabinetSim")
+           "Exciter", "CabinetSim", "Flanger")
 
 
 def source(channels=2, rate=48000):
@@ -562,7 +563,7 @@ class TheLookup(unittest.TestCase):
     def test_known_lists_what_is_there__lf(self):
         listed = set(rebuilt.known())
         self.assertTrue(set(FIXTURES) <= listed)
-        self.assertIn("Flanger", listed)
+        self.assertNotIn("Flanger", listed)
         for name in listed:
             if name not in FIXTURES:
                 self.assertIn(name, audioeffects.ALL)
@@ -813,7 +814,7 @@ class TheCatalogueIsUnchanged(unittest.TestCase):
             self.assertIn(name, audioeffects.__all__)
         listed = set(rebuilt.known())
         self.assertTrue(set(FIXTURES) <= listed)
-        self.assertIn("Flanger", listed)
+        self.assertNotIn("Flanger", listed)
         for name in listed:
             if name not in FIXTURES:
                 self.assertIn(name, audioeffects.ALL)
@@ -884,7 +885,7 @@ class TheAdoptionGate(unittest.TestCase):
         self.assertEqual(parked, known - set(rebuilt.ADOPTED))
         self.assertTrue(parked - set(FIXTURES) <= set(audioeffects.ALL))
         self.assertTrue(known - set(FIXTURES) <= set(audioeffects.ALL))
-        self.assertIn("Flanger", parked)
+        self.assertNotIn("Flanger", parked)
         self.assertNotIn("RingMod", parked)
         self.assertNotIn("AutoPan", parked)
         self.assertNotIn("Chorus", parked)

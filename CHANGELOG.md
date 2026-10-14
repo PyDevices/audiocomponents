@@ -10,6 +10,17 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`Flanger` (rebuilt, Phase 7):** a thin class on CircuitPython's own
+  `audiodelays.Flanger`, so it now runs on a stock CircuitPython board.
+  Eight macros (Rate, Range, Manual, Color, Mix, Polarity, Sync, Division)
+  and six patches; `create("Flanger")` serves it from
+  `audioeffects/flanger.py`. Both old flangers are gone:
+  `modulation.Flanger` (and `modulation.py` with it) and the parked Phase 3
+  rebuild under `rebuilt/`. The old `depth_ms=` and `feedback=` keywords
+  give way to the macros; `rate=` and `mix=` keep their names, and Mix 1 is
+  now the default. The long ring and the bucket-brigade sweep of the parked
+  rebuild do not carry: the node stops Color at 0.95 (about 0.4 s to -60 dB
+  at 3 ms) and sweeps a triangle in milliseconds.
 - **`ShimmerHall` (rebuilt, Phase 6; adopted 2026-10-13):** a pitch shifter around a hall, in
   two characters. Bloom sends the shifted copy into the hall once, Bloom
   after you play, on `audiodelays.PitchShift`; Rise puts the shift inside

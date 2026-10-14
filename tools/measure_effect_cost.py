@@ -385,6 +385,14 @@ def _chorus(probe):
     return node, (), (node,)
 
 
+def _flanger(probe):
+    import audiodelays
+    node = audiodelays.Flanger(max_delay_ms=10, min_delay_ms=1.0, rate=0.25,
+                               depth=0.6, feedback=0.7, mix=1.0, **pcm())
+    node.play(probe.output)
+    return node, (), (node,)
+
+
 def _echo(probe):
     import audiodelays
     node = audiodelays.Echo(max_delay_ms=300, delay_ms=180.0, decay=0.45,
@@ -908,6 +916,7 @@ NODES = {
     "audiofilters.Distortion": _distortion,
     "audiodelays.Chorus": _chorus,
     "audiodelays.Echo": _echo,
+    "audiodelays.Flanger": _flanger,
     "audiodelays.MultiTapDelay": _multitap,
     "audiodelays.PitchShift": _pitch_shift,
     "audiofreeverb.Freeverb": _freeverb,
@@ -1094,7 +1103,7 @@ def _rebuilt(name):
 BESIDE = {
     "DigitalDelay": "audioecho.FeedbackDelay@options",
     "SlapbackDelay": "audioecho.FeedbackDelay@options",
-    "Flanger": "audioecho.FeedbackDelay@options",
+    "Flanger": "audiodelays.Flanger",
 }
 
 

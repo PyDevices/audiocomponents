@@ -46,7 +46,7 @@ from .tremolo import Tremolo
 from .autopan import AutoPan
 from .vibrato import Vibrato
 from .ringmod import RingMod
-from .modulation import Flanger
+from .flanger import Flanger
 from .overdrive import Overdrive
 from .distortion import Distortion
 from .bitcrusher import Bitcrusher
@@ -117,7 +117,7 @@ def _adopt(namespace, names):
     (Overdrive, Distortion, Fuzz, Saturation, Bitcrusher, Exciter,
     CabinetSim) have come home as one file per effect beside this module, so
     they are imported above rather than substituted. The machinery stays for
-    Flanger and for the phases still to come: `rebuilt.load()` answers
+    the phases still to come: `rebuilt.load()` answers
     `None` for a parked name (or a name with no file), and
     `rebuilt.module_class()` is how a tool or a class's own tests reach a
     rebuild that has not come home yet.
