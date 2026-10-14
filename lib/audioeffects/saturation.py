@@ -1006,6 +1006,9 @@ class Saturation(_component.Component):
         self._charged = False
         self._rearm()
         self._refresh_output()
+        # Armed just now: a Mix 0 it lands on routes around a graph that
+        # has not played since it was cleared, as `_build`'s does.
+        self._stranded = False
 
     def _value(self, index):
         return _component.macro_value(self._MACRO_RANGES[index],
