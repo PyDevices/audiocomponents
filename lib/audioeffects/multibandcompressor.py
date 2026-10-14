@@ -221,6 +221,9 @@ class MultibandCompressor(_component.Component):
     Only the constructor can make a *working* instance cheaper.
     """
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'MultibandCompressor'
     DISPLAY_NAME = 'Multiband Compressor'
     CATEGORIES = ('Dynamics',)

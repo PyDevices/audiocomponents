@@ -653,6 +653,9 @@ def shipped_oversample(sample_rate):
 class Saturation(_component.Component):
     """A 12AX7 stage, a tape machine, or transformer iron."""
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'Saturation'
     DISPLAY_NAME = 'Saturation'
     CATEGORIES = ('Distortion',)
@@ -986,8 +989,8 @@ class Saturation(_component.Component):
         if self._attached:
             return
         self._attached = True
-        self._mix.voice[0].play(self._dry)
-        self._mix.voice[1].play(self._makeup_shelf)
+        self._play_voice(self._mix.voice[0], self._dry)
+        self._play_voice(self._mix.voice[1], self._makeup_shelf)
 
     def _reset_mixers(self):
         if self._resetting:

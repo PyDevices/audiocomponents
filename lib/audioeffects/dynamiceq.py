@@ -147,6 +147,9 @@ class DynamicEQ(_component.Component):
     for the gain cell, `audioroute` for the fan-out.
     """
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'DynamicEQ'
     DISPLAY_NAME = 'Dynamic EQ'
     CATEGORIES = ('EQ',)

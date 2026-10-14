@@ -158,6 +158,9 @@ _RMS_MS = 1.0
 class DeEsser(_component.Component):
     """De-essing by comparing the sibilant band with the programme."""
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'DeEsser'
     DISPLAY_NAME = 'De-Esser'
     CATEGORIES = ('Dynamics',)
@@ -433,7 +436,7 @@ class DeEsser(_component.Component):
             self._primed = False
             return
         for mixer, index, sample in self._voices:
-            mixer.voice[index].play(sample)
+            self._play_voice(mixer.voice[index], sample)
         self._primed = True
 
     def _refresh_output(self):
