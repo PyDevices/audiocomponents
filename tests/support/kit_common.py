@@ -106,8 +106,9 @@ DECLARED[("ShimmerHall", "fresh", "reset@8+m0=0/", "circuitpython")] = (
 # (reset@8). Stereo is exact. Declared with that bound until it is found
 # (audiocomponents#142).
 for _rate in RATES:
-    for _key in ["reset@8/"] + ["reset@8+m%d=%d/" % (_i, _v)
-                                for _i in range(7) for _v in (0, 64, 127)]:
+    for _key in (["reset@8/"] + ["reset@8+m%d=%d/" % (_i, _v)
+                                 for _i in range(7) for _v in (0, 64, 127)]
+                 + ["rpr%d@8/" % _k for _k in range(8)]):
         DECLARED[("Overdrive", "fresh", "%s%d/1/" % (_key, _rate))] = (
             "in mono a fresh build's construction-primed first block renders"
             " its first 8 frames about 1.28x a running instance's (at most"
