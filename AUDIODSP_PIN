@@ -361,5 +361,9 @@
 # through either shifter, and a frozen PitchShift window render the bytes they
 # did.
 #
+# Moved to v0.6.6rc3 (a9d36e6) on 2026-10-13: the release of the commit
+# above (audiodsp#245, #247), the same node tree as f7a86c9 outside VERSION
+# and CHANGELOG.md, so CI can install it from GitHub.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-f7a86c9c21f0a8d5a7c7e8e62155859a24a35869 f7a86c9c21f0a8d5a7c7e8e62155859a24a35869
+v0.6.6rc3 a9d36e6993885b6c65730cf4f77908a6986d2ccc
