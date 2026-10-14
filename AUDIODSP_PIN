@@ -371,5 +371,9 @@
 # gains wet_gain (default 1.0, byte-identical there), which
 # ConvolutionReverb uses to trim its four darkest rooms (audiodsp#248).
 #
+# Moved to v0.6.6rc5 (b278d32) on 2026-10-14: audioconvolve.Convolver gains
+# room_peak_gain and room_peak_gain_for, the reading ConvolutionReverb's wet
+# trim is computed from. Every render is byte-identical to rc4's.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.6rc4 8d5c2820d3289a637b40f839acdf728074342282
+v0.6.6rc5 b278d329eb1e242a75a1500528995c09716bd2b3
