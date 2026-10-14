@@ -171,7 +171,9 @@ multiplied two numbers in Python and never rendered (audit 3 (p)1, ruling
 note lives, 0.02 dB down at 100 Hz — and it carries the excess. Rendered,
 +3 / +6 / +9 / +12 dB of Output now deliver within **0.25 dB** of what
 they say, on `tube` and on `console`. It is 0 dB at 63 of the 75 shipped
-positions, whose bytes do not move.
+positions, whose bytes do not move. **Output adds up to +12 dB, so a
+full-scale input can clip at the rails**: with every macro at its top, a
+0 dBFS sine or noise does.
 
 **The tube table does not invert any more.** A triode inverts, and a table
 that carried the inversion put the wet leg 180° out of phase with the dry

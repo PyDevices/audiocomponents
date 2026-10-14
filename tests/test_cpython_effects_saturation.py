@@ -1912,6 +1912,100 @@ class BiasStaysAudible(unittest.TestCase):
             self._check(rows, centre)
 
 
+def hysteresis_jump(index, midi, frames=2048, settle=96000, rate=RATE,
+                    channels=2, character="tube"):
+    """The largest sample the four blocks after a move of macro `index` to
+    `midi` play, where the move lands in silence after material at
+    Hysteresis 1 and Drive at its top. The play operator freezes wherever the
+    material left it, so the shaper answers silence with a constant the
+    plate pole has taken out; a move that changes that constant used to step
+    straight through the pole. Numpy-free."""
+    import audiocore
+    import kit_common as kc
+    samples = array("h")
+    for index_ in range(frames):
+        phase = (index_ * 440.0 / rate) % 1.0
+        value = int(16000 * (4.0 * abs(phase - 0.5) - 1.0))
+        for _ in range(channels):
+            samples.append(value)
+    for _ in range((settle + 4 * 256) * channels):
+        samples.append(0)
+    source = audiocore.RawSample(samples, sample_rate=rate,
+                                 channel_count=channels)
+    effect = rebuilt.Saturation(source, character=character, drive_db=15.0,
+                                hysteresis=1.0)
+    try:
+        kc.render(effect, frames + settle - 2048)
+        quiet = array("h", kc.render(effect, 2048))
+        if max(abs(v) for v in quiet):
+            return None
+        effect.set_macro(index, midi)
+        after = array("h", kc.render(effect, 4 * 256))
+    finally:
+        effect.deinit()
+    return max(abs(v) for v in after)
+
+
+def _lifecycle_cell(event, rate, channels, patch=None):
+    """One lifecycle matrix cell on the class, with its DECLARED rows lifted
+    so the raw verdict shows."""
+    import lifecycle
+    ev = [e for e in lifecycle.events(Saturation, patch)
+          if e.name == event][0]
+    saved = dict(lifecycle.DECLARED)
+    for key in list(lifecycle.DECLARED):
+        if key[0] == "Saturation":
+            del lifecycle.DECLARED[key]
+    controls = {}
+    try:
+        return lifecycle.run_cell(Saturation, ev, rate, channels, patch, {},
+                                  controls)
+    finally:
+        lifecycle.DECLARED.clear()
+        lifecycle.DECLARED.update(saved)
+        for ctl in controls.values():
+            ctl.close()
+
+
+class HysteresisMovesInSilencePlayNothing(unittest.TestCase):
+    """With Hysteresis on, a Drive, Output, Headroom, Bias or Hysteresis
+    move that lands in silence plays nothing. The play operator holds
+    whatever position the material left it at, the shaper answers silence
+    with the curve there, and the plate pole has taken that constant out;
+    the move changed the constant and the pole passed the step, up to 1763
+    LSB at Drive's top.
+
+    **Red, and held red on purpose.** The class cannot settle it alone: the
+    one call that re-centres the operator, the node's `clear()`, empties its
+    half-band memories too, and under signal that is a 2 231 LSB tick at
+    every knob move (a gentle Drive move steps 165 to 1 604 LSB on its
+    own). It wants the node to re-centre the operator by itself.
+    """
+
+    MOVES = ((0, 0), (0, 64), (1, 0), (1, 127), (3, 127), (3, 0),
+             (4, 0), (4, 127), (7, 0), (7, 64))
+
+    @unittest.expectedFailure
+    def test_a_move_in_silence_is_silent(self):
+        for index, midi in self.MOVES:
+            for character in ("tube", "tape"):
+                with self.subTest(index=index, midi=midi,
+                                  character=character):
+                    self.assertEqual(
+                        hysteresis_jump(index, midi, character=character), 0)
+
+    @unittest.expectedFailure
+    def test_every_macro_to_its_top_and_back_plays_nothing(self):
+        # The lifecycle matrix's E10-macros P3: every macro to 127 before
+        # the first pull (Hysteresis among them), the material, silence,
+        # then the macros back.
+        for rate in (48000, 22050):
+            for channels in (2, 1):
+                with self.subTest(rate=rate, channels=channels):
+                    self.assertEqual(_lifecycle_cell(
+                        "E10-macros", rate, channels)["P3"], "ok")
+
+
 class TestResetIsFresh(unittest.TestCase):
     """A reset comes back as a fresh instance at patch 0 (kit `fresh`)."""
 
