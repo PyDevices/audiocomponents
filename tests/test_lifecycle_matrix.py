@@ -81,6 +81,11 @@ KNOWN_P6 = {
         600, "6aea4833", None, None,
         "CircuitPython's own PitchShift: upstream's splice and reset "
         "(audiodsp#245, #240)"),
+    # Counted one event at a time (E9 and E10 a patch at a time on CPython).
+    "ShimmerHall": (
+        144, "83d529d2", None, None,
+        "Bloom's PitchShift is CircuitPython's own there: upstream's splice "
+        "and reset (audiodsp#245, #240)"),
 }
 
 #: LIFECYCLE_FULL=1 runs the full matrix (every event at every patch);
