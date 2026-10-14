@@ -274,6 +274,11 @@ Writing a part against this, and the two traps that cost a run: the
 value may be fractional even though patch declarations use integer MIDI
 values. An invalid macro index raises `IndexError`.
 
+A macro value off the 0-127 range is clamped, never refused: below 0, minus
+infinity and NaN set the macro's bottom stop, and above 127 and plus infinity
+its top stop. `get_macro()` then reads back 0 or 127, and the component plays
+exactly what `set_macro(index, 0)` or `set_macro(index, 127)` plays.
+
 Construction applies patch `0` automatically. A fresh component and a fresh
 component followed by `program_change(0)` have the same observable state.
 `program_change(index)` applies a known patch and safely ignores an unknown

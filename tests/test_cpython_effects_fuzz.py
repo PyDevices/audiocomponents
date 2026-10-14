@@ -2318,5 +2318,49 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
         self.assertGreater(after, 10000)
 
 
+
+class TheResetLeavesOnlyFilterResidue(unittest.TestCase):
+    """Lifecycle E1 P4 compares a reset instance with one that never met
+    the reset. A reset is a fresh instance exactly (PR), but the coupling
+    sections at 10.5 and 12.4 Hz carry a few LSB of the material heard
+    before it in their float state for seconds, where the uninterrupted
+    control carries its own, and the 36 dB stage behind the first of them
+    raises that to a few hundred LSB. P4 is declared at E1, PR holds the
+    reset itself, and the residue is held under 1024 LSB (-30 dBFS)."""
+
+    def test_e1_is_declared_and_the_reset_is_fresh(self):
+        import lifecycle
+        lines = []
+        lifecycle.run_class(Fuzz, rates=(RATE,), channels=(2,),
+                            patches=[None], only=["E1"], emit=lines.append)
+        cells = [line for line in lines if "|E1-" in line]
+        self.assertEqual(len(cells), 2, lines)
+        for line in cells:
+            self.assertNotIn("RED", line)
+            self.assertIn("P4:decl", line)
+        self.assertIn("PR:ok", cells[0])
+
+    def test_the_residue_stays_under_1024_lsb(self):
+        import kit_common as kc
+        import lifecycle
+        frames = 2 * RATE
+        material = lifecycle.click_noise(frames, 2)
+        bound = (Fuzz.TAIL_SAMPLES + Fuzz.LATENCY_SAMPLES
+                 + 13 * kc.BLOCK)
+
+        def render(reset):
+            feed = kc.feed(material, RATE, 2)
+            e = Fuzz(feed.port, sample_rate=RATE)
+            try:
+                return kc.render(e, frames,
+                                 {12: lambda x: x.reset()} if reset else None)
+            finally:
+                e.deinit()
+        a = np.frombuffer(render(True), dtype=np.int16).astype(np.int32)
+        b = np.frombuffer(render(False), dtype=np.int16).astype(np.int32)
+        residue = int(np.max(np.abs(a[2 * bound:] - b[2 * bound:])))
+        self.assertGreater(residue, 0)
+        self.assertLess(residue, 1024)
+
 if __name__ == "__main__":
     unittest.main()

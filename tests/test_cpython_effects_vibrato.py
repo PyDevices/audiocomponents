@@ -747,6 +747,26 @@ class OldTail(rebuilt.Vibrato):
                 - rebuilt.one_pole_ring(body, rate))
 
 
+class TheResetRestartsTheLfo(unittest.TestCase):
+    """Lifecycle E1 P4 compares a reset instance with one that never met
+    the reset. A reset is a fresh instance exactly (PR), LFO phase
+    included, so the sweep that follows is a fresh one's and never meets
+    the uninterrupted control's again: P4 is declared at E1, and PR holds
+    the reset itself."""
+
+    def test_e1_is_declared_and_the_reset_is_fresh(self):
+        import lifecycle
+        lines = []
+        lifecycle.run_class(rebuilt.Vibrato, rates=(RATE,), channels=(2,),
+                            patches=[None], only=["E1"], emit=lines.append)
+        cells = [line for line in lines if "|E1-" in line]
+        self.assertEqual(len(cells), 2, lines)
+        for line in cells:
+            self.assertNotIn("RED", line)
+            self.assertIn("P4:decl", line)
+        self.assertIn("PR:ok", cells[0])
+
+
 class TheFiltersRingIsInTheTail(unittest.TestCase):
     """Body's high-pass and Tone's low-pass ring after the line has emptied,
     longest at Body's 20 Hz stop (audiocomponents#114): the output reaches

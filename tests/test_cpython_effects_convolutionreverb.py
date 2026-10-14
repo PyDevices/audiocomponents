@@ -579,6 +579,17 @@ class SideNudge(SideTilt):
     GAIN_DB = 0.05
 
 
+class AtMinus12(ConvolutionReverb):
+    """The class held to -12 dBFS, where every shipped patch is clean."""
+    INPUT_CEILING_DBFS = -12.0
+
+
+class HotterCeiling(ConvolutionReverb):
+    """The stated input ceiling, 1.5 dB hotter."""
+    INPUT_CEILING_DBFS = getattr(ConvolutionReverb, "INPUT_CEILING_DBFS",
+                                 0.0) + 1.5
+
+
 class ResetOnMove(ConvolutionReverb):
     """The v0.6.3rc1 node's room move, planted from the class side
     (re-audit fix round 1, audiodsp#163): the node cleared after every
@@ -1658,10 +1669,23 @@ class RoomMoveWords(unittest.TestCase):
                 same = render(DARK, {MOVE_AT: ((ROOM_I, 1),)})[0]
                 self.assertEqual(digest(same), digest(old),
                                  label + ("the room already loaded",))
+                # The jumps are the node's mechanism, two syntheses in one
+                # block, so they are read with the rooms' trims at 1.0: Short
+                # Room and Dark Room sit 3.5 and 6.5 dB down
+                # (ROOM_TRIMS_DB), and a jump that small can come out no
+                # larger than the rooms' own step. The trimmed patch change
+                # is on its line (test_a_patch_change_is_one_synthesis_...).
+                flat = type("Untrimmed", (cls or ConvolutionReverb,),
+                            {"_room_trim": lambda self: 1.0})
+
+                def flat_render(start, actions=None):
+                    return dry_render(flat, rate, channels, start + HOLD_MIX,
+                                      pcm, None, actions)
                 for name, start, changes in TWO_CHANGES:
                     changes = changes + HOLD_MIX
-                    jumps(render(start)[0], render(start + changes)[0],
-                          render(start, {MOVE_AT: changes})[0], a,
+                    jumps(flat_render(start)[0],
+                          flat_render(start + changes)[0],
+                          flat_render(start, {MOVE_AT: changes})[0], a,
                           label + (name,))
                 # The under-run: the move twenty pulls on, and the same move
                 # after a reset() that follows the under-run.
@@ -3010,6 +3034,12 @@ CLAIMS = (
      "test_a_single_room_can_take_more_than_15_percent_longer"),
     ("At Damping's 500 Hz stop, low material comes back louder than it went "
      "in.", "test_a_dark_room_lifts_low_material"),
+    ("A synthesized room is clean up to -21 dBFS in, its input ceiling: at "
+     "Damping's 500 Hz stop with the room alone, a low square comes back "
+     "about 21 dB louder, so anything hotter reaches the rail there.",
+     "test_clean_up_to_its_input_ceiling"),
+    ("Every shipped patch is clean to -12 dBFS in: four of their rooms carry "
+     "a level trim to get there.", "test_every_patch_is_clean_to_12_dbfs"),
     ("Each side of a stereo room is normalised on its own, so the room sits "
      "in the middle.", "test_no_cell_of_the_slice_is_past_the_bound"),
     ("Hand it `impulse=`, int16 frames or the path to a 16-bit PCM WAV at "
@@ -3220,6 +3250,44 @@ class TheClaims(unittest.TestCase):
                                            (rate, channels, decay, room))
                     effect.deinit()
         self.assertGreater(least, 1.0)
+
+    def test_clean_up_to_its_input_ceiling(self):
+        # The kit's ceiling cells at the stated level: the defaults on the
+        # 50 Hz sine (a rail of 156 frames at 0 dBFS), and the worst cells
+        # the full grid finds, all at Damping's 500 Hz stop or the darkest
+        # patches: a low square with the room alone, a square at patch 3, a
+        # DC step with the room alone. 1.5 dB hotter, the worst of them
+        # rails, so the number is not slack.
+        import kit_ceiling
+        cells = (("sine", None, None), ("sq82", None, [(MIX_I, 127),
+                                                      (DAMPING_I, 0)]),
+                 ("square", 3, None), ("sq41", 6, None),
+                 ("dc", None, [(MIX_I, 127), (DAMPING_I, 0)]))
+        for rate in (48000, 22050):
+            for which, patch, knobs in cells:
+                with self.subTest(rate=rate, cell=which, patch=patch):
+                    verdict, _ = kit_ceiling.measure(
+                        ConvolutionReverb, rate, 2, which, patch, knobs)
+                    self.assertEqual(verdict, "ok")
+        verdict, _ = kit_ceiling.measure(
+            HotterCeiling, 48000, 2, "sq82", None,
+            [(MIX_I, 127), (DAMPING_I, 0)])
+        self.assertTrue(verdict.startswith("RED(rail"), verdict)
+
+    def test_every_patch_is_clean_to_12_dbfs(self):
+        # Each shipped patch on the kit's ceiling material at -12 dBFS, both
+        # rates, stereo and mono: Short Room, Dark Room, Soft Onset and
+        # Tight Room railed there before their rooms carried a trim.
+        import kit_ceiling
+        for patch in sorted(ConvolutionReverb.PATCHES):
+            for rate in (48000, 22050):
+                for channels in (2, 1):
+                    for which in kit_ceiling.MATERIALS:
+                        verdict, _ = kit_ceiling.measure(
+                            AtMinus12, rate, channels, which, patch, None)
+                        with self.subTest(patch=patch, rate=rate,
+                                          channels=channels, cell=which):
+                            self.assertEqual(verdict, "ok")
 
     def test_what_measured_mode_refuses(self):
         with tempfile.TemporaryDirectory() as folder:

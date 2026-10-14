@@ -466,6 +466,11 @@ DECLARED = {
     ("Reverb", "E2-", "P4"): "a reset_buffer tank never re-converges byte for byte (int16 lines, free modulation phase)",
     ("Reverb", "E4-", "P4"): "a move that reaches the loop leaves the tank a few LSB off a fresh one for good",
     ("Reverb", "E6-", "P4"): "a patch move reaches the loop and leaves the tank a few LSB off a fresh one for good",
+    # Vibrato and Fuzz: a reset is a fresh instance exactly (PR holds it);
+    # it is the control that never was reset that the output does not meet
+    # again (the classes' TheReset... tests).
+    ("Vibrato", "E1-", "P4"): "reset() restarts the LFO as a fresh instance starts it, so the sweep never meets the uninterrupted control's phase again",
+    ("Fuzz", "E1-", "P4"): "the 10.5 and 12.4 Hz coupling sections keep a few LSB of the material before a reset in float state for seconds, and the 36 dB stage raises it to a few hundred LSB (held under 1024)",
     ("Reverb", "E11-", "P4"): "moves that reach the loop leave the tank a few LSB off a fresh one for good",
     # The ruling of 2026-09-28, disclosed in the docstring's "Limits
     # shared by the family" (audiocomponents#117, audiodsp#180).

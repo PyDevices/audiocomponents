@@ -415,6 +415,28 @@ class NanLevel(KitPlain):
             self._shaper.set(post_gain=0.5)
 
 
+class NanRaises(KitPlain):
+    """Args: a NaN macro value is refused with ValueError, moving nothing;
+    the contract clamps it to the bottom stop instead."""
+    NAME = "NanRaises"
+
+    def set_macro(self, index, value, *args, **kw):
+        if value != value:
+            raise ValueError("planted: NaN refused")
+        KitPlain.set_macro(self, index, value, *args, **kw)
+
+
+class NanTop(KitPlain):
+    """Args: a NaN macro value lands on the top stop, read back and played
+    there; the contract puts it on the bottom stop."""
+    NAME = "NanTop"
+
+    def set_macro(self, index, value, *args, **kw):
+        if value != value:
+            value = 127
+        KitPlain.set_macro(self, index, value, *args, **kw)
+
+
 class PatchStale(KitPlain):
     """Args: a patch change applies only the first macro."""
     NAME = "PatchStale"
@@ -587,4 +609,8 @@ for _cls in (KitPlain, Silent, WrapKit, WrapKitQuiet, ClipKit, DeadStop,
              ReadbackOff, StopRaises, NanLevel, PatchStale, CtorNan,
              ClearsFirst, ClearsMacro, FlushKit, FlushOnly, DoubleReset,
              FlushKit3, MidPatchReset, PatchPulls, NativeFlush):
+    PLANTS[_cls.NAME] = _cls
+
+# The refused-values contract's plants (7d), registered on their own.
+for _cls in (NanRaises, NanTop):
     PLANTS[_cls.NAME] = _cls
