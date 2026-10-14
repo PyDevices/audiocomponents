@@ -375,5 +375,11 @@
 # room_peak_gain and room_peak_gain_for, the reading ConvolutionReverb's wet
 # trim is computed from. Every render is byte-identical to rc4's.
 #
+# Moved to v0.6.6rc6 (9399602) on 2026-10-14: audioecho.FeedbackDelay gains
+# wow_depth_ramp_ms, which Vibrato's Engage rides so its Rise ramps on every
+# interpreter, and audioshaper.Waveshaper gains recentre(), which
+# Saturation calls so a gain move in silence with Hysteresis on plays
+# nothing. Every render is byte-identical to rc5's at the defaults of both.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.6rc5 b278d329eb1e242a75a1500528995c09716bd2b3
+v0.6.6rc6 93996026c6a54b895391840fc920fc4659a2c1aa
