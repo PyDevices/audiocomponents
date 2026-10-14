@@ -2568,7 +2568,15 @@ def current_native_interpreters():
     """{"micropython": path, "circuitpython": path} from the workspace's
     `bin/`, each the first whose provenance stamp contains `AUDIODSP_PIN`'s
     commit (None where no binary does), or None where there is no
-    workspace `bin/` with its provenance tool above this checkout."""
+    workspace `bin/` with its provenance tool above this checkout.
+    LIFECYCLE_MICROPYTHON and LIFECYCLE_CIRCUITPYTHON name the two
+    binaries instead, as the lifecycle tests take them, for a build that
+    lives outside `bin/`."""
+    named = {family: os.environ.get("LIFECYCLE_" + family.upper())
+             for family in ("micropython", "circuitpython")}
+    if all(named.values()):
+        return {family: path if os.path.isfile(path) else None
+                for family, path in named.items()}
     from tools import provenance_gate
     here = ROOT
     workspace = None
