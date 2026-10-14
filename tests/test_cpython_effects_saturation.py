@@ -520,7 +520,7 @@ class TU1EvenLead(unittest.TestCase):
         The row used to say "51 checked, 49 gradable, 0 healthy" and ask
         the clean class at `tape` and `console` only. Run its own `_tu1`
         on the clean class at all 51 and the clean class is red at most of
-        them - Bias at either end moves the lead, Mix 0 is the wire,
+        them - Bias off centre moves A1 and the lead, Mix 0 is the wire,
         Drive 0 barely shapes - so the denominator was inflated three
         times over (audit 3 (p)5, ruling (a)). What is graded here is the
         positions where the trait is claimed *and readable*, and the
