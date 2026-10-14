@@ -693,7 +693,7 @@ class Overdrive(_component.Component):
         It costs nothing at Symmetry 0, where there is no offset to
         settle. On a build with no `audiocore.get_buffer` - CircuitPython's
         default board build compiles it out - the pole is pulled the same
-        way from a scratch mixer voice (`_pull`), which can't read the
+        way from a scratch mixer voice (`_pull_node`), which can't read the
         blocks back, so it runs all `DC_SETTLE_BLOCKS` and the pole lands
         where the early stop leaves it, to the byte.
         """
@@ -707,7 +707,7 @@ class Overdrive(_component.Component):
                 # oversampler, which costs a few samples of ramp at the
                 # top of each block and nothing at all to the charge.
                 self._shaper.play(self._quiet)
-                got = self._pull(self._dc)
+                got = self._pull_node(self._dc)
                 if got is False:
                     break
                 if got is None:

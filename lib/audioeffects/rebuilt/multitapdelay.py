@@ -702,7 +702,7 @@ class MultiTapDelay(_component.Component):
         pointing into, so the dry's first 256 samples played as zeros.
 
         Where `audiocore.get_buffer` is left out (CircuitPython's default
-        board builds), every pull here goes through `_pull`: a scratch
+        board builds), every pull here goes through `_pull_node`: a scratch
         mixer voice primes one block through a width-1 MidSide standing on
         the node, which moves the node exactly as `get_buffer` would. So
         the wiring is quiet and `_resync` swaps tap 1's block on every
@@ -756,7 +756,7 @@ class MultiTapDelay(_component.Component):
 
     def _quiet_wiring(self):
         """Whether `_wire` primes the voices from `_hush`: always, since
-        `_pull` hands the primed zeros out on every build."""
+        `_pull_node` hands the primed zeros out on every build."""
         return True
 
     def _wire(self, quiet=False):
@@ -784,7 +784,7 @@ class MultiTapDelay(_component.Component):
         self._plugged = self._lean
         if quiet:
             self._in.play(self._adapter)
-            self._pull(self._mixer)
+            self._pull_node(self._mixer)
 
     def _resync(self):
         """Empty both lines and swap the block tap 1 holds for the tap node
@@ -806,8 +806,8 @@ class MultiTapDelay(_component.Component):
         audiocore.reset_buffer(self._tapnode)
         self._in.play(self._hush)
         try:
-            self._pull(self._tap1)
-            self._pull(self._dry)
+            self._pull_node(self._tap1)
+            self._pull_node(self._dry)
         finally:
             self._in.play(self._adapter)
         self._feed.play(self._target(self._lean))

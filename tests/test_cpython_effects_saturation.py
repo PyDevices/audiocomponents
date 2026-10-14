@@ -1806,12 +1806,6 @@ class SilenceAnswersSilenceOffCentre(unittest.TestCase):
                     out = _silent_render(patch, hide)
                     self.assertEqual(max(abs(v) for v in out), 0)
 
-    @unittest.skipUnless(
-        hasattr(rebuilt._component.Component, "_pull"),
-        "LAZY_BUILD arms on silence only where get_buffer, or `_pull`"
-        " without it, hands the silence up: with neither, the build primes"
-        " the source's first block and a patch set before the first pull"
-        " meets it")
     def test_no_get_buffer_renders_the_same(self):
         import kit_nogb
         scenarios = dict(kit_nogb.SCENARIOS)

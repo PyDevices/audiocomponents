@@ -137,7 +137,7 @@ for _name in ("Flanger", "ExampleStock"):
         " dropping it takes a play(), which resets the host's source")
 
 # Overdrive at patch 6, a patch moved and restored before the first pull:
-# without get_buffer the pole charge runs all 64 blocks (`_pull` cannot read
+# without get_buffer the pole charge runs all 64 blocks (`_pull_node` cannot read
 # a block back), with it the charge stops at the first zero block, and P4
 # reads that residue against the control only with get_buffer. Not audible.
 DECLARED[("Overdrive", "nogb", "E10-patch/48000/2/6")] = (
@@ -150,43 +150,14 @@ DECLARED[("Overdrive", "nogb", "E10-patch/48000/2/6")] = (
 # own. A second reset, or a patch change, before the next pull finds that
 # block already taken through patch 0's graph: the second reset drops it
 # and takes the next, the patch change plays it at patch 0. One reset, and
-# resets a block apart, match a run with get_buffer. Waiting on a ruling.
+# resets a block apart, match a run with get_buffer. Declared by the
+# landing ruling of 2026-10-14.
 for _name in ("Distortion", "MultibandCompressor"):
     for _scenario in ("reset-twice", "reset-first-twice", "reset-patch"):
         DECLARED[(_name, "nogb", "bytes-%s/" % _scenario)] = (
             "without get_buffer a reset primes the voices from the source,"
             " as a build does; a second reset or a patch change before the"
             " next pull meets that block already primed")
-
-# `LAZY_BUILD` without get_buffer (Phase 7f): with get_buffer these classes
-# build on silence, so a Mix 0, a patch or a reset before the first pull
-# lands as a fresh build at those settings, and P1, P4 and the bytes went
-# green there. Without it nothing can hand the silence up, the voices prime
-# the source's first block at construction as before 7f, and that block is
-# what those moves meet: a Mix 0 plays the source 256 frames early, a patch
-# plays the block through patch 0's graph. A board build is where that
-# remains. The step at every move is unchanged.
-_LAZY_NOGB = {
-    "Bitcrusher": ("E1-", "E10-mix0/", "E10-patch/", "E10-reset/"),
-    "Compressor": ("E1-", "E10-mix0/", "E10-reset/", "E5-mix0/"),
-    "DeEsser": ("E10-reset/",),
-    "Distortion": ("E1-", "E10-mix0/", "E10-reset/", "E5-mix0/"),
-    "DynamicEQ": ("E1-", "E10-mix0/", "E10-reset/", "E6-p5/"),
-    "MultibandCompressor": ("E1-", "E10-mix0/", "E10-reset/"),
-    "Saturation": ("E10-mix0/", "E10-reset/", "E6-p8/"),
-    "Exciter": ("E1-", "E10-mix0/", "E10-reset/"),
-}
-# `Component._pull` hands the silence up without get_buffer too, and then
-# there is nothing to declare.
-from audioeffects import _component as _lazy_component   # noqa: E402
-if hasattr(_lazy_component.Component, "_pull"):
-    _LAZY_NOGB = {}
-for _name in _LAZY_NOGB:
-    for _prefix in _LAZY_NOGB[_name] + ("bytes-",):
-        DECLARED.setdefault((_name, "nogb", _prefix), (
-            "without get_buffer the build primes the source's first block,"
-            " as before LAZY_BUILD; a Mix 0, patch or reset before the first"
-            " pull meets it, where with get_buffer it lands as a fresh build"))
 
 # DynamicEQ's and MultibandCompressor's input guard (an
 # `audiofilters.Filter`) takes the source's first block at `play()`, so the

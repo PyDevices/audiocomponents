@@ -1690,12 +1690,6 @@ if __name__ == "__main__":       # pragma: no cover
     unittest.main()
 
 
-@unittest.skipUnless(
-    hasattr(_component.Component, "_pull"),
-    "LAZY_BUILD arms on silence only where get_buffer, or `_pull` without"
-    " it, hands the silence up: with neither, a build without get_buffer"
-    " primes the source's first block and a reset before the first pull,"
-    " or a patch set before it, meets that block")
 class TheResetNeedsNoGetBuffer(unittest.TestCase):
     """`reset()` empties the Splitter rings without `audiocore.get_buffer`,
     which CircuitPython's board builds compile out: with it hidden, a

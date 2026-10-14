@@ -2358,14 +2358,14 @@ def part_blocks(cls, label):
 
 
 class NoPull(M):
-    '''The class before every pull went through `_pull`: where get_buffer is
-    left out nothing is pulled, so a wiring outside reset() primes the
-    source's first block into the dry voice and `_resync` cannot swap tap
-    1's block.'''
+    '''The class before every pull went through `_pull_node`: where
+    get_buffer is left out nothing is pulled, so a wiring outside reset()
+    primes the source's first block into the dry voice and `_resync` cannot
+    swap tap 1's block.'''
 
     NAME = 'MultiTapDelay'
 
-    def _pull(self, node):
+    def _pull_node(self, node):
         from audioeffects import _component
         pull = getattr(_component.audiocore, "get_buffer", None)
         return None if pull is None else pull(node)
@@ -2895,7 +2895,7 @@ class ReauditRoundTwo(unittest.TestCase):
         self.assertEqual(red_cells(results, "GB", "oldwiring"), cells(
             ("Mix 0 first, back at 24", "Mix 0 first, reset at 24",
              "Mix 0 and back first")))
-        # Without it the law is the same: every pull goes through `_pull`.
+        # Without it the law is the same: every pull goes through `_pull_node`.
         # A class that pulls nothing there plays the Mix-0 run a block
         # early, the first block late, and lets tap 1's pending block into
         # the lines after a reset or a Mix-0 run.

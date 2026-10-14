@@ -837,13 +837,10 @@ class Component:
         # source's first block, so a Mix 0 set before the first pull hands
         # out the source from frame 0 rather than from frame 256. The
         # silence is handed up by `get_buffer`, or where it is compiled out
-        # by `_pull` when this module has one; with neither, the voices
-        # prime from their sources as before.
+        # by `_pull_node`.
         pull = getattr(audiocore, "get_buffer", None)
         self._lazy_pending = []
-        self._arming_lazily = bool(
-            cls.LAZY_BUILD and PORT is not None
-            and (pull is not None or hasattr(Component, "_pull")))
+        self._arming_lazily = bool(cls.LAZY_BUILD and PORT is not None)
         try:
             self._build(*options, **keywords)
         finally:
@@ -1339,7 +1336,7 @@ class Component:
             self._lazy_zero = silence
         return silence
 
-    def _pull(self, node):
+    def _pull_node(self, node):
         """Pull one block of `node` through the graph from the control
         side, and return what `audiocore.get_buffer` returns, or None where
         the build has none (CircuitPython's default board builds compile it
@@ -1399,9 +1396,9 @@ class Component:
         silence instead; each mixer is pulled once, which hands those up;
         and then the voices' stand-ins are pointed at their real sources,
         so the next pull fetches as a fresh build's next pull does. Where
-        `audiocore.get_buffer` is compiled out, `_pull` hands the silence
-        up, so a board resets as a desktop does. Saturation keeps its own
-        `reset()`.
+        `audiocore.get_buffer` is compiled out, `_pull_node` hands the
+        silence up, so a board resets as a desktop does. Saturation keeps its
+        own `reset()`.
         """
         self._check_live()
         self._clear_nodes()
@@ -1433,8 +1430,9 @@ class Component:
         self._stranded = True
         self._lazy_pending = []
         # Lazily wherever the primed silence can be handed up before the
-        # next pull: by `get_buffer`, or where it is compiled out by `_pull`
-        # (a snapshot of the nodes, since `_pull` may own its scratch mixer).
+        # next pull: by `get_buffer`, or where it is compiled out by
+        # `_pull_node` (a snapshot of the nodes, since `_pull_node` may own
+        # its scratch mixer).
         pull = getattr(audiocore, "get_buffer", None)
         self._arming_lazily = PORT is not None
         try:
@@ -1457,7 +1455,7 @@ class Component:
                 if pull is not None:
                     _drain(pull, node)
                 else:
-                    self._pull(node)
+                    self._pull_node(node)
             for _voice, port, source in pending:
                 port.play(source)
 
@@ -1466,13 +1464,13 @@ class Component:
         once, so the voices `_play_voice` armed on silence hand that
         silence up, then point their stand-ins at the real sources, so the
         first pull fetches as an eagerly primed build's would. `pull` is
-        `get_buffer`, or None where it is compiled out and `_pull` does
+        `get_buffer`, or None where it is compiled out and `_pull_node` does
         it."""
         pending = self._lazy_pending
         self._lazy_pending = []
         if not pending:
             return
-        # The graph as it stands now (a snapshot: `_pull` may own its
+        # The graph as it stands now (a snapshot: `_pull_node` may own its
         # scratch mixer): a patch that builds part of it again has new
         # mixers, and released the old voices' stand-ins.
         for node in list(self._nodes):
@@ -1481,7 +1479,7 @@ class Component:
             if pull is not None:
                 _drain(pull, node)
             else:
-                self._pull(node)
+                self._pull_node(node)
         for _voice, port, source in pending:
             if _named(port, self._nodes):
                 port.play(source)
