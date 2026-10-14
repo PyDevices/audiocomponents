@@ -105,12 +105,11 @@ hands it:
 - `rt-m<i>`: `set_macro(i, get_macro(i))` mid-stream changes no byte, at
   the defaults and every patch.
 - `stops-m<i>`: 0, 64 and 127 are accepted and read back within 1e-4.
-- `bad-m<i>`: NaN, +-inf, -1 and 128. The contract
-  ([audio-component-api.md](../../docs/audio-component-api.md)) does not
-  say whether an out-of-range macro value raises or clamps, so either
-  passes: a raise is ValueError or TypeError and moves no macro (`r`); a
-  clamp reads back a finite 0..127 (0 below, 127 above) and renders
-  exactly what `set_macro(i, readback)` renders (`c`).
+- `bad-m<i>`: NaN, +-inf, -1 and 128, held to the contract's one answer
+  ([audio-component-api.md](../../docs/audio-component-api.md#macro-and-patch-state)):
+  a value off the range is clamped, never refused. NaN, -inf and -1 read
+  back 0, +inf and 128 read back 127, and each renders exactly what
+  `set_macro(i, readback)` renders (`c`). A raise of any kind is red.
 - `patch-p<k>`: `program_change(k)` sets `patch_index` and reads back the
   patch's values, and `program_change(0)` reads back what a fresh instance
   read (the contract: a fresh component and one given patch 0 are the
@@ -234,7 +233,9 @@ and a level around the source; `KitPlain` is the control): `ShortTail` and
 None tail), `Inert`, `KnobReach` and `SoftOnly` (plants), a fixture test
 module with a missing sentence, a missing test, a failing and a skipped test
 and a loose claim (claims), `ReadbackOff`, `StopRaises`, `NanLevel`,
-`PatchStale` and `CtorNan` (args; `ClearsFirst` and `ClearsMacro` for the
+`NanRaises`, `NanTop`, `PatchStale` and `CtorNan` (args; `NanRaises`
+refuses a NaN and `NanTop` puts it on the top stop, both green before the
+clamp was the contract; `ClearsFirst` and `ClearsMacro` for the
 refused calls: one zeroes the cached level, the other drops the patch or
 moves a macro, before validating), `WrapKit`, `ClipKit` and `DeadStop`
 (ceiling; `MidWrap`, `ComboWrap`, `AllWrap` and `LowWrap` wrap only at

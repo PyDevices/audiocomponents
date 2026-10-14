@@ -139,6 +139,20 @@ stays a live check on the other two. A row written with a patch tuple as
 its fourth element keeps working as it is; one with a bare `E` prefix is
 split into one row per event its reason covers.
 
+E1's P4 and PR ask different things. PR holds the reset to a fresh
+instance; P4 holds it to the control that never was reset. A class whose
+reset is exactly a fresh instance can still never meet that control again:
+`Vibrato` restarts its LFO as a fresh one starts it, and `Fuzz`'s 10.5 and
+12.4 Hz coupling sections keep a few LSB of the earlier material in float
+state for seconds. Such a class declares E1 P4 with the cause, keeps PR
+live, and its own test holds the cause (for `Fuzz`, the residue under 1024
+LSB).
+
+Values a host hands the controls are not lifecycle events. The kit's args
+check holds them, including the refused-values contract (`bad-m<i>` in
+[KIT.md](KIT.md#the-checks): a macro value off 0-127 is clamped, NaN to the
+bottom stop).
+
 PR is excused only by `FREE_PHASE`, class `NAME` -> the free-running
 phase (an LFO, a wow table) that keeps a reset or a rejoin from matching a
 fresh instance, named.
