@@ -69,6 +69,19 @@ DECLARED = {
         " octaves are silent by design (trait T3 b)",
 }
 
+# MultiTapDelay on CircuitPython: its audiodelays.MultiTapDelay is
+# upstream's own, whose reset_buffer keeps the write heads where they were,
+# so a Time 0 move after a reset keeps another stretch of the line than on
+# a fresh node. audiodsp's node puts them at the top (docs/upstream-diff.md
+# there); CPython and MicroPython keep the cells live.
+for _ch in CHANNELS:
+    for _rate in RATES:
+        DECLARED[("MultiTapDelay", "fresh", "reset@8+m0=0/%d/%d/" % (
+            _rate, _ch), "circuitpython")] = (
+            "CircuitPython's own MultiTapDelay keeps its write heads across"
+            " a reset, so a shorter Time after it keeps another stretch of"
+            " the line; audiodsp's node resets them")
+
 # PitchShifter at Feedback's top: the repeats stack on the dry, up to 21
 # times the input's peak on a DC, so the rail is reachable below any useful
 # ceiling. The docstring says so ("Feedback stacks level too, far past the
@@ -314,8 +327,15 @@ def resolve(name):
 # Cells
 
 
-def declared(name, check, key):
-    for (cname, ccheck, prefix), _reason in DECLARED.items():
+def declared(name, check, key, impl=None):
+    """A row of DECLARED covers the cell. A row with a fourth element names
+    the one interpreter (`sys.implementation.name`) it holds on, so the
+    cell stays live on the other two."""
+    impl = impl or sys.implementation.name
+    for row, _reason in DECLARED.items():
+        cname, ccheck, prefix = row[:3]
+        if len(row) > 3 and row[3] != impl:
+            continue
         if cname == name and ccheck == check and key.startswith(prefix):
             return True
     return False
