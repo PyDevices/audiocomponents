@@ -618,6 +618,12 @@ class FrozenSync(Flanger):
         return Flanger._rate_hz(self)
 
 
+class KeptNothing(Flanger):
+    """A restore that leaves the exact constructor values out."""
+    NAME = 'Flanger'
+    _KEPT = ()
+
+
 class InvertOnly(Flanger):
     """T6: `invert` set with the feedback left positive."""
     NAME = 'Flanger'
@@ -1097,18 +1103,21 @@ class TheSurface(TestCase):
         e.deinit()
 
     def test_a_restore_puts_the_exact_values_back(self):
-        e = self._fresh(rate=0.3, depth=0.33, manual_ms=1.7, color=0.41,
-                        mix=0.77)
-        record = e._record()
-        e.program_change(2)
-        e._reset_to = record
-        e.reset()
-        e._reset_to = None
-        node = e._node
-        self.assertEqual((node.rate, node.depth, node.min_delay_ms,
-                          node.feedback, node.mix),
-                         (0.3, 0.33, 1.7, 0.41, 0.77))
-        e.deinit()
+        exact = (0.3, 0.33, 1.7, 0.41, 0.77)
+        for cls, red in ((Flanger, False), (KeptNothing, True)):
+            e = self._fresh(rate=0.3, depth=0.33, manual_ms=1.7, color=0.41,
+                            mix=0.77)
+            e.__class__ = cls
+            record = e._record()
+            e.program_change(2)
+            e._reset_to = record
+            e.reset()
+            e._reset_to = None
+            node = e._node
+            got = (node.rate, node.depth, node.min_delay_ms, node.feedback,
+                   node.mix)
+            self.assertEqual(got != exact, red, (cls, got))
+            e.deinit()
 
     def test_mix_s_first_step_is_a_wire_and_its_second_36_db_down(self):
         rate = 48000

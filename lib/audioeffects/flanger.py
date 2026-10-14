@@ -81,6 +81,11 @@ def _option(value, default, span):
     return min(span[1], max(span[0], value))
 
 
+def _same(a, b):
+    """Equal, with NaN the same as NaN (the base's rule for a tempo)."""
+    return a == b or (a != a and b != b)
+
+
 def tail_frames(color, top_ms, rate):
     """Frames until the ring is exact silence, for Color `color` and a
     sweep whose top is `top_ms`, at `rate` (the card's section 5).
@@ -333,15 +338,19 @@ class Flanger(_component.Component):
         alone, so a 4/4 to 3/4 change at one tempo would keep the old
         rate."""
         self._check_live()
-        if self._macros[SYNC_I] < 0.5:
+        index = type(self)._SYNC_MACRO
+        if index is None or self._macros[index] < 0.5:
             return
         state = self._transport() if callable(self._transport) \
             else self._transport
         followed = (state[2], state[4])
-        if followed == self._followed_bpm:
+        last = self._followed_bpm
+        if last is not _component._UNREAD and _same(followed[0], last[0]) \
+                and _same(followed[1], last[1]):
             return
         self._followed_bpm = followed
-        self._refresh()
+        # The base's own path: the Sync switch applied where it stands.
+        self._apply_macro(index, self._macros[index])
 
     def macro(self, index):
         """What macro `index` currently stands for, in its own units; for
