@@ -176,6 +176,9 @@ class ConvolutionReverb(_component.Component):
     A single Room with Damping in can take more than 15 % longer.
     At Damping's 500 Hz stop, low material comes back louder than it went
     in.
+    A synthesized room is clean up to -21 dBFS in, its input ceiling: at
+    Damping's 500 Hz stop with the room alone, a low square comes back
+    about 21 dB louder, so anything hotter reaches the rail there.
     Each side of a stereo room is normalised on its own, so the room sits in
     the middle.
 
@@ -236,6 +239,13 @@ class ConvolutionReverb(_component.Component):
     #: holds (`latency_samples` below): 0 on an empty impulse.
     LATENCY_SAMPLES = PARTITION
     TAIL_SAMPLES = None
+    #: Where no synthesized setting reaches the rail. The room is normalised
+    #: to unit energy, so a dark one concentrates that energy low: a square
+    #: on 82 Hz at Mix 2 and Damping's 500 Hz stop comes back 11.06 times
+    #: its peak (+20.87 dB), the worst of the kit's ceiling grid at both
+    #: rates; the defaults peak at 3.06 times, on the same square. A loaded
+    #: impulse brings its own level and `ir_gain_db` and is not covered.
+    INPUT_CEILING_DBFS = -21.0
 
     MACRO_LABELS = ("Decay", "Damping", "Predelay", "Diffusion", "Room",
                     "Mix")

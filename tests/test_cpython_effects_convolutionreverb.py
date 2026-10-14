@@ -579,6 +579,12 @@ class SideNudge(SideTilt):
     GAIN_DB = 0.05
 
 
+class HotterCeiling(ConvolutionReverb):
+    """The stated input ceiling, 1.5 dB hotter."""
+    INPUT_CEILING_DBFS = getattr(ConvolutionReverb, "INPUT_CEILING_DBFS",
+                                 0.0) + 1.5
+
+
 class ResetOnMove(ConvolutionReverb):
     """The v0.6.3rc1 node's room move, planted from the class side
     (re-audit fix round 1, audiodsp#163): the node cleared after every
@@ -3010,6 +3016,10 @@ CLAIMS = (
      "test_a_single_room_can_take_more_than_15_percent_longer"),
     ("At Damping's 500 Hz stop, low material comes back louder than it went "
      "in.", "test_a_dark_room_lifts_low_material"),
+    ("A synthesized room is clean up to -21 dBFS in, its input ceiling: at "
+     "Damping's 500 Hz stop with the room alone, a low square comes back "
+     "about 21 dB louder, so anything hotter reaches the rail there.",
+     "test_clean_up_to_its_input_ceiling"),
     ("Each side of a stereo room is normalised on its own, so the room sits "
      "in the middle.", "test_no_cell_of_the_slice_is_past_the_bound"),
     ("Hand it `impulse=`, int16 frames or the path to a 16-bit PCM WAV at "
@@ -3220,6 +3230,29 @@ class TheClaims(unittest.TestCase):
                                            (rate, channels, decay, room))
                     effect.deinit()
         self.assertGreater(least, 1.0)
+
+    def test_clean_up_to_its_input_ceiling(self):
+        # The kit's ceiling cells at the stated level: the defaults on the
+        # 50 Hz sine (a rail of 156 frames at 0 dBFS), and the worst cells
+        # the full grid finds, all at Damping's 500 Hz stop or the darkest
+        # patches: a low square with the room alone, a square at patch 3, a
+        # DC step with the room alone. 1.5 dB hotter, the worst of them
+        # rails, so the number is not slack.
+        import kit_ceiling
+        cells = (("sine", None, None), ("sq82", None, [(MIX_I, 127),
+                                                      (DAMPING_I, 0)]),
+                 ("square", 3, None), ("sq41", 6, None),
+                 ("dc", None, [(MIX_I, 127), (DAMPING_I, 0)]))
+        for rate in (48000, 22050):
+            for which, patch, knobs in cells:
+                with self.subTest(rate=rate, cell=which, patch=patch):
+                    verdict, _ = kit_ceiling.measure(
+                        ConvolutionReverb, rate, 2, which, patch, knobs)
+                    self.assertEqual(verdict, "ok")
+        verdict, _ = kit_ceiling.measure(
+            HotterCeiling, 48000, 2, "sq82", None,
+            [(MIX_I, 127), (DAMPING_I, 0)])
+        self.assertTrue(verdict.startswith("RED(rail"), verdict)
 
     def test_what_measured_mode_refuses(self):
         with tempfile.TemporaryDirectory() as folder:
