@@ -50,12 +50,13 @@ loads a patch or moves Mix, the first 256 frames, 5 ms at 48 kHz, play at the
 old level.
 
 Interval is a fixed shift in semitones, with no key awareness. Both
-shifters splice, so the shifted copy has a slight flutter. In Rise, on some
-held notes the shimmer lands beside the octave rather than on it: a held G3
-at +12 is one. With Damping high and Rise near the top, or at the widest
-intervals, the highest octaves fold back down as tones outside the series;
-keep Damping lower for a clean climb. A mono source gets a mono rack. It
-needs a board with PSRAM.
+shifters splice, so the shifted copy has a slight flutter. In Rise, a held
+note's shimmer lands on the octave, a held G3 at +12 included. With Damping
+high and Rise near the top, or at the widest intervals, the climb fades out
+at the top of the band at 48 kHz; at 22.05 kHz a tone outside the series
+can still fold back, 25 to 40 dB under the first pass. Keep Damping lower
+for a clean climb. A mono source gets a mono rack. It needs a board with
+PSRAM.
 
 When your source ends, the tail rings out as it would on silence. On a
 CircuitPython board, stop the rack from the host if your source can run
@@ -283,7 +284,8 @@ class ShimmerHall(_component.Component):
         1: ("Short Stagger", (0, 76, 85, 38, 96, 77, 38, 102, 25)),
         2: ("Fifth Halo", (0, 102, 85, 103, 64, 108, 89, 84, 38)),
         # Damping step 86 (about 5.2 kHz), where the card had 102 (8 kHz):
-        # at 8 kHz the sixth pass folded back past -30 dB at 22.05 kHz.
+        # at 8 kHz the sixth pass folded back past -30 dB at 22.05 kHz,
+        # before the loop shifter's band limit (audiodsp v0.6.6).
         3: ("Slow Rise", (127, 89, 85, 103, 96, 108, 89, 86, 38)),
         4: ("Rise Damped", (127, 102, 113, 87, 96, 94, 64, 51, 32)),
         5: ("Falling Octaves", (127, 89, 85, 93, 0, 102, 64, 76, 32)),

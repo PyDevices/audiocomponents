@@ -656,19 +656,15 @@ FOLD_EDGES = (
 #: of the splice's harmonics.
 FOLD_CELLS = ((48000, 240.0), (22050, 185.0))
 
-class OldSlowRise(ShimmerHall):
-    """The card's Slow Rise, Damping at 8 kHz (step 102): the sweep of
-    `test_no_upward_patch_folds_back` is red on it."""
-
-    PATCHES = dict(ShimmerHall.PATCHES)
-    PATCHES[3] = ("Slow Rise", (127, 89, 85, 103, 96, 108, 89, 102, 38))
-
 
 #: A fold line is loud when it stands within 30 dB of the loudest line of
 #: the first pass; the climb is clean when every fold line stays more than
 #: 40 dB under it.
 FOLD_LOUD = -30.0
 FOLD_CLEAN = -40.0
+#: The loudest a fold line at the edges stands at 22.05 kHz, the band limit
+#: in place.
+FOLD_EDGE_TOP = -25.0
 
 
 #: Held notes in Rise at +12: G3 is one the splice cancels the shifted line
@@ -1417,11 +1413,14 @@ class T6TheDry(TestCase):
 
 
 class TheEdges(TestCase):
-    def test_the_highest_octaves_fold_back_at_the_edges(self):
-        # The same note and the same patch but for the edge: a fold line
-        # stands within 30 dB of the first pass at Rise 0.9 with Damping at
-        # 16 kHz, and at +24 with Damping at 8 kHz, and stays under -40 dB
-        # at Slow Rise's and Rise Damped's own settings.
+    def test_the_highest_octaves_fade_at_the_edges(self):
+        # Restated 2026-10-14 for the loop shifter's band limit (audiodsp
+        # v0.6.6), which low-passes what an upward pass writes: before it a
+        # fold line stood within 30 dB of the first pass at both edges and
+        # both rates. Measured at v0.6.6rc4 over eight ramp offsets: at
+        # 48 kHz -54.5 dB at worst at Rise 0.9 and nothing at +24; at
+        # 22.05 kHz -36.6 to -32.2 dB at Rise 0.9 and -31.9 to -29.2 at +24.
+        # Slow Rise's and Rise Damped's own settings stay under -40 dB.
         for rate, f0 in FOLD_CELLS:
             for patch in (3, 4):
                 rel, folds = fold_read(ShimmerHall, rate, f0, 41,
@@ -1430,16 +1429,24 @@ class TheEdges(TestCase):
                 self.assertLess(max(rel), FOLD_CLEAN, (rate, f0, patch, rel))
             for name, edge in FOLD_EDGES:
                 options = dict(fold_shipped(3), **edge)
-                rel, folds = fold_read(ShimmerHall, rate, f0, 41, **options)
-                self.assertTrue(folds, (rate, f0, name))
-                self.assertGreater(max(rel), FOLD_LOUD,
-                                   (rate, f0, name, rel, folds))
+                for offset in (41, 389):
+                    rel, folds = fold_read(ShimmerHall, rate, f0, offset,
+                                           **options)
+                    self.assertTrue(folds, (rate, f0, name))
+                    cell = (rate, f0, name, offset, rel, folds)
+                    if rate >= 44100:
+                        self.assertLess(max(rel), FOLD_CLEAN, cell)
+                    else:
+                        self.assertGreater(max(rel), FOLD_CLEAN, cell)
+                        self.assertLess(max(rel), FOLD_EDGE_TOP, cell)
 
     def test_no_upward_patch_folds_back(self):
         # Every shipped patch with an upward loop, at both rates, over the
-        # card's range of notes in 10 Hz steps: no fold line comes within 30
-        # dB of the first pass. The card's Slow Rise (Damping 8 kHz) is red
-        # at 22.05 kHz, on 240 and 320 Hz.
+        # card's range of notes in 10 Hz steps: every fold line stays more
+        # than 40 dB under the first pass (-53.1 dB at worst at v0.6.6rc4).
+        # Restated 2026-10-14: the bar was 30 dB, and the card's Slow Rise
+        # (Damping 8 kHz) its red case; the band limit cleans that too, so
+        # the red case is now the +24, Damping 8 kHz edge at 22.05 kHz.
         for patch in (3, 4):
             options = fold_shipped(patch)
             for rate in RATES:
@@ -1447,12 +1454,11 @@ class TheEdges(TestCase):
                     rel, _folds = fold_read(ShimmerHall, rate, float(f0), 41,
                                             lines=3, **options)
                     for level in rel:
-                        self.assertLess(level, FOLD_LOUD, (patch, rate, f0))
-        old = fold_shipped(3, OldSlowRise)
-        self.assertNotEqual(old, fold_shipped(3))
-        worst = max(max(fold_read(OldSlowRise, 22050, f0, 41, lines=3,
-                                  **old)[0]) for f0 in (240.0, 320.0))
-        self.assertGreater(worst, FOLD_LOUD)
+                        self.assertLess(level, FOLD_CLEAN, (patch, rate, f0))
+        edge = dict(fold_shipped(3), **FOLD_EDGES[1][1])
+        worst = max(fold_read(ShimmerHall, 22050, 185.0, 41, lines=3,
+                              **edge)[0])
+        self.assertGreater(worst, FOLD_CLEAN)
 
     def test_the_fold_chain_is_the_arithmetic(self):
         # +12 from 240 Hz at 48 kHz stays in band to 15360, then 30720
@@ -1465,12 +1471,16 @@ class TheEdges(TestCase):
         self.assertEqual(round(fold_chain(240.0, 24, 48000)[1][0]), 13440)
         self.assertEqual(fold_chain(240.0, -12, 48000)[1], [])
 
-    def test_a_held_note_can_land_beside_the_octave(self):
+    def test_a_held_note_lands_on_the_octave(self):
+        # Restated 2026-10-14 for audiodsp#245's splice fix, which lands
+        # each splice in phase: before it a held G3 at +12 put under 10 %
+        # of the shimmer's energy on the octave, the two taps cancelling it
+        # at every splice. At v0.6.6rc4 G3 puts 99.7 % there at both rates,
+        # and E3 98.8 % or more.
         for rate in RATES:
-            beside = splice_read(ShimmerHall, rate, SPLICE_G3)
-            self.assertLess(beside, 0.10, (rate, "G3", beside))
-            on = splice_read(ShimmerHall, rate, SPLICE_E3)
-            self.assertGreater(on, 0.90, (rate, "E3", on))
+            for name, f0 in (("G3", SPLICE_G3), ("E3", SPLICE_E3)):
+                on = splice_read(ShimmerHall, rate, f0)
+                self.assertGreater(on, 0.90, (rate, name, on))
 
 
 def lean_levels(rate, f0, offset, patch):
@@ -1656,15 +1666,16 @@ CLAIMS = (
      "test_the_bloom_patches_are_the_ones_named_for_the_s3"),
     ("Interval is a fixed shift in semitones, with no key awareness.",
      "test_interval_has_five_zones"),
-    ("In Rise, on some held notes the shimmer lands beside the octave "
-     "rather than on it: a held G3 at +12 is one.",
-     "test_a_held_note_can_land_beside_the_octave"),
+    ("In Rise, a held note's shimmer lands on the octave, a held G3 at +12 "
+     "included.", "test_a_held_note_lands_on_the_octave"),
     ("With Damping high and Rise near the top, or at the widest intervals, "
-     "the highest octaves fold back down as tones outside the series; keep "
-     "Damping lower for a clean climb.",
-     ("test_the_highest_octaves_fold_back_at_the_edges",
-      "test_no_upward_patch_folds_back",
+     "the climb fades out at the top of the band at 48 kHz; at 22.05 kHz a "
+     "tone outside the series can still fold back, 25 to 40 dB under the "
+     "first pass.",
+     ("test_the_highest_octaves_fade_at_the_edges",
       "test_the_fold_chain_is_the_arithmetic")),
+    ("Keep Damping lower for a clean climb.",
+     "test_no_upward_patch_folds_back"),
     ("A value outside a macro's span clamps to the nearer stop, and NaN "
      "takes the default; an `interval` other than the five raises "
      "`ValueError`.", "test_the_constructor"),
