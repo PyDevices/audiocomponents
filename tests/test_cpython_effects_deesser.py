@@ -1659,3 +1659,19 @@ class KitChecks(unittest.TestCase):
 
 if __name__ == "__main__":       # pragma: no cover
     unittest.main()
+
+
+class TheResetNeedsNoGetBuffer(unittest.TestCase):
+    """`reset()` empties the Splitter rings without `audiocore.get_buffer`,
+    which CircuitPython's board builds compile out: with it hidden, a
+    reset at every patch renders the bytes it renders with it."""
+
+    def test_every_patch_resets_the_same(self):
+        import kit_nogb
+        scenarios = dict(kit_nogb.SCENARIOS)
+        for patch in [None] + sorted(deesser.DeEsser.PATCHES):
+            for label in ("reset-once", "reset-twice", "reset-first"):
+                with self.subTest(patch=patch, scenario=label):
+                    self.assertEqual(kit_nogb._bytes_cell(
+                        deesser.DeEsser, {}, 48000, 2, patch,
+                        scenarios[label]), "ok")

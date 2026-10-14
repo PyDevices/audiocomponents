@@ -142,12 +142,6 @@ _BUTTERWORTH_Q = 0.7071067811865476
 #: thing in both paths.
 _DETECTOR_CORNER = 1.0 / 1.5537739740300374
 
-#: What a reset has to push through a Splitter's ring. The ring is 8192
-#: frames (`audiodsp/src/shared/audiodsp_splitter.h:20`) and one take is at
-#: most 256 (`audiodsp_splitter.c:64-70`), so this many pulls a tap empties
-#: any backlog it can be holding.
-_FLUSH_PULLS = 8192 // 256 + 1
-
 #: Detector averaging. The manual gives none ("dbx patented RMS level
 #: detectors" and no time constant), so this is a design choice, and it was
 #: measured rather than picked: the RMS filter sits *before* the attack
@@ -345,8 +339,9 @@ class DeEsser(_component.Component):
         # the reason is worth stating rather than discovering: a
         # `Splitter`'s ring cannot be cleared - the type exposes `tap()` and
         # nothing else on every target, and `SplitterTap.reset_buffer` is
-        # "deliberately nothing" - so the rings have to be pushed empty
-        # against a silent source, and `audiomixer.Mixer._reset_buffer`
+        # "deliberately nothing" - so a reset builds the Splitters again
+        # (`_renew_splitters`) with a silent source on, and
+        # `audiomixer.Mixer._reset_buffer`
         # refetches a chunk into every voice, so both mixers have to be
         # cleared *while* that silent source is still on. One ordered
         # routine can express that and a per-node walk cannot, so the tail
@@ -370,8 +365,8 @@ class DeEsser(_component.Component):
         # too, and they belong on the list for the reason the paragraph
         # above gives: `deinit()` walks it, and a node missing from it is a
         # node nothing releases. Both decline their own reset - a tap's
-        # `reset_buffer` is deliberately nothing and `_reset_chain()` empties
-        # the rings by pulling them, and the filler holds no state to clear.
+        # `reset_buffer` is deliberately nothing and `_reset_chain()` builds
+        # them again, and the filler holds no state to clear.
         # `Splitter.tap(n)` returns the same object each call, so these are
         # the same eight taps `self._voices` plays.
         for tap in self._taps:
@@ -475,17 +470,15 @@ class DeEsser(_component.Component):
         `audiomixer.Mixer._reset_buffer` refetches a chunk into every voice
         and that fetch pulled live audio through.
 
-        So: the silent sample goes on first, every tap is pulled until its
-        backlog is gone, every clearable node is cleared while the silence
+        So: the silent sample goes on first, the Splitters are built again
+        empty (`_renew_splitters`), every clearable node is cleared while the silence
         is still there - the mixers' refetch then fetches silence - and the
         borrowed source goes back on last. The source itself is never reset
         and never rewound; `audioroute.MidSide.play()` sets its source and
         drops its own pending bytes, and does nothing else.
         """
         self._adapter.play(self._silence)
-        for tap in self._taps:
-            for _ in range(_FLUSH_PULLS):
-                audiocore.get_buffer(tap)
+        self._renew_splitters()
         for node in (self._lows[0], self._lows[1], self._highs[0],
                      self._highs[1], self._duck):
             audiocore.reset_buffer(node)
@@ -504,6 +497,39 @@ class DeEsser(_component.Component):
         self._adapter.play(self._source)
         audiocore.reset_buffer(self._adapter)
         audiocore.reset_buffer(self._tail)
+
+    def _renew_splitters(self):
+        """Empty the three Splitter rings: build them again, wired to the
+        same nodes, and release the old ones.
+
+        A ring cannot be cleared, and pushing it empty takes
+        `audiocore.get_buffer`, which CircuitPython's default board builds
+        compile out. A new Splitter holds nothing, on every interpreter.
+        """
+        old = self._splitters + self._taps
+        top = audioroute.Splitter(self._adapter, taps=4)
+        raw = audioroute.Splitter(top.tap(3), taps=2)
+        lows, highs, duck = self._lows, self._highs, self._duck
+        lows[0].play(top.tap(1))
+        highs[0].play(top.tap(2))
+        band = audioroute.Splitter(highs[1], taps=2)
+        duck.key(top.tap(0))
+        pre, out = self._pre, self._out
+        self._voices = ((pre, 0, raw.tap(0)), (pre, 1, band.tap(0)),
+                        (out, 0, raw.tap(1)), (out, 1, lows[1]),
+                        (out, 2, band.tap(1)), (out, 3, duck))
+        self._taps = (top.tap(0), top.tap(1), top.tap(2), top.tap(3),
+                      raw.tap(0), raw.tap(1), band.tap(0), band.tap(1))
+        self._splitters = (top, raw, band)
+        new = self._splitters + self._taps
+        for position, node in enumerate(self._nodes):
+            for was, now in zip(old, new):
+                if node is was:
+                    self._nodes[position] = now
+        for node in reversed(old):
+            release = getattr(node, "deinit", None)
+            if release is not None:
+                release()
 
     # -- macros --------------------------------------------------------
 
