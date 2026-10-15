@@ -6,6 +6,14 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Fixed
+
+- Instruments built on two threads at the same time each keep their own
+  synthesizer. Before, an instrument could take the voice engine another
+  thread's factory had just made.
+
 ## v0.4.1.dev1 (2026-10-15)
 
 ### Fixed

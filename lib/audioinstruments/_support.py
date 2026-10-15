@@ -567,7 +567,24 @@ def apply_patch(handle_event, patches, index, channel=0, note_id=-1,
 # `pressed`, which is everything the instruments ask a synthesizer for, and
 # it carries the real node for the graph. See `node()`.
 
-_PENDING = []
+try:
+    from threading import local as _local
+except ImportError:
+    # MicroPython and CircuitPython build instruments on the one interpreter
+    # thread, so one shared holder is per-thread already.
+    class _local:
+        pass
+
+# The `Keys` made since this thread's last `Instrument`: each thread's own,
+# so factories running on two threads at once can't take each other's.
+_BUILDING = _local()
+
+
+def _pending():
+    keys = getattr(_BUILDING, "keys", None)
+    if keys is None:
+        keys = _BUILDING.keys = []
+    return keys
 
 _OPS = None
 
@@ -960,7 +977,7 @@ def synthesizer(sample_rate, channel_count):
     """
     keys = Keys(synthio.Synthesizer(sample_rate=sample_rate,
                                     channel_count=channel_count))
-    _PENDING.append(keys)
+    _pending().append(keys)
     return keys
 
 
@@ -1019,12 +1036,13 @@ class Instrument:
                  capabilities=(), latency_samples=0, tail_samples=0,
                  schedulable=True):
         self.synth = synth
-        # Every Keys built since the last Instrument belongs to this one. An
-        # instrument factory runs start to finish on one thread and ends by
-        # constructing exactly one Instrument, so the list is that factory's
-        # and nobody else's.
-        self._keys = tuple(_PENDING)
-        del _PENDING[:]
+        # Every Keys built on this thread since its last Instrument belongs
+        # to this one. An instrument factory runs start to finish on one
+        # thread and ends by constructing exactly one Instrument, so the
+        # thread's list is that factory's and nobody else's.
+        pending = _pending()
+        self._keys = tuple(pending)
+        del pending[:]
         # Declared separately from `_keys`, which stay reachable either way:
         # a probe that wants to SHOW an instrument is not schedulable has to
         # be able to arm the keyboards this flag refuses.
