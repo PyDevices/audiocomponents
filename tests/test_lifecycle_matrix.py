@@ -1,5 +1,6 @@
-"""The lifecycle matrix (`tests/support/lifecycle.py`) on every Phase 5
-class this branch carries, on CPython and on the two native interpreters.
+"""The lifecycle matrix (`tests/support/lifecycle.py`) on every effect
+class the package serves (`audioeffects.ALL`, all 45), on CPython and on the
+two native interpreters.
 
 What is red today is written down in KNOWN_RED below, one row per defect,
 each with a one-line reason. The file passes while the red cells are exactly
@@ -35,8 +36,12 @@ from audioeffects import rebuilt                          # noqa: E402
 #: skip test's plant is defined here.
 VENDOR = "PyDevices"
 
-PHASE5 = ("DigitalDelay", "SlapbackDelay", "TapeDelay", "PingPongDelay",
-          "MultiTapDelay", "AnalogDelay", "Reverb", "ConvolutionReverb")
+#: Every class the package serves. Until Phase 7 this was the eight Phase 5
+#: classes alone, and the Phase 2 to 4 classes' red cells stood unlisted for
+#: a month because nothing gated them.
+import audioeffects                                       # noqa: E402
+
+GATED = tuple(audioeffects.ALL)
 
 #: What is red today. (class, event name prefix, property) ->
 #: (red cells in the quick matrix, their digest, red cells in the full
@@ -44,9 +49,12 @@ PHASE5 = ("DigitalDelay", "SlapbackDelay", "TapeDelay", "PingPongDelay",
 #: longest matching prefix. The file goes red when a red cell belongs to no
 #: row, or when a row's cells change in number or in which cells they are
 #: (the message lists them). The full-matrix pair is None where the full
-#: matrix has not been run (MultiTapDelay: it takes about 40 minutes on
-#: CPython).
-KNOWN_RED = {}
+#: matrix has not been counted. The rows live in
+#: `tests/support/lifecycle_known.py`, one reason per cause, each naming the
+#: issue that tracks it.
+import lifecycle_known                                    # noqa: E402
+
+KNOWN_RED = dict(lifecycle_known.KNOWN_RED)
 
 #: P6 differences today: class -> (cells whose line differs between CPython
 #: and a native interpreter in the quick matrix, their digest, the same for
@@ -87,6 +95,7 @@ KNOWN_P6 = {
         "Bloom's PitchShift is CircuitPython's own there: upstream's splice "
         "and reset (audiodsp#245, #240)"),
 }
+KNOWN_P6.update(lifecycle_known.KNOWN_P6)
 
 #: LIFECYCLE_FULL=1 runs the full matrix (every event at every patch);
 #: otherwise the quick one (lifecycle.run_class(quick=True)).
@@ -180,12 +189,16 @@ def effect_class(name):
 
 
 def classes():
-    """The classes to run: LIFECYCLE_CLASSES, or the Phase 5 set. A name
-    LIFECYCLE_CLASSES gives that resolves to no class is an error, not a
-    run with nothing in it."""
+    """The classes to run: LIFECYCLE_CLASSES, or every class the package
+    serves. A name that resolves to no class is an error, not a run with
+    nothing in it, whichever list named it."""
     wanted = os.environ.get("LIFECYCLE_CLASSES")
     if not wanted:
-        return [n for n in PHASE5 if effect_class(n) is not None]
+        missing = [n for n in GATED if effect_class(n) is None]
+        if missing:
+            raise LookupError("audioeffects.ALL names no class: %s"
+                              % ", ".join(missing))
+        return list(GATED)
     names = wanted.split(",")
     missing = [n for n in names if effect_class(n) is None]
     if missing:
