@@ -1346,8 +1346,9 @@ class Component:
 
     def _repoint_voice(self, voice, source):
         """Hand a voice that is playing a new source without priming it:
-        the Port it stands on is pointed at `source`, which is reset as a
-        voice's `play()` resets it, and the next pull fetches from it. A
+        the Port it stands on is pointed at `source`, and the next pull
+        fetches from it. `source` is not reset: a stage the graph has been
+        pulling all along carries on, where a reset jumped its state. A
         voice that is not on a Port is played (`_play_voice`). A route
         change re-primed one voice and left the other where it was: the
         two then ran a block apart for good, and the bypass that followed
@@ -1361,7 +1362,6 @@ class Component:
         if port is None or not _named(port, self._nodes):
             self._play_voice(voice, source)
             return
-        audiocore.reset_buffer(source)
         port.play(source)
 
     def _lazy_silence(self):

@@ -358,8 +358,10 @@ class Compressor(_component.Component):
         """
         _component.open_level_gates(self._mixer, [self._wet, self._dry],
                                     self._silence)
+        # The stage `_route` last chose: a macro moved since leaves the
+        # patch index unset but the lean route (and its makeup) in place.
         self._play_voice(self._wet,
-                         self._fast if self._lean() else self._slow)
+                         self._fast if self._routed_lean else self._slow)
         self._play_voice(self._dry, self._dry_tap)
         self._primed = True
 
