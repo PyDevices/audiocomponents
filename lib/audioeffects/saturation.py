@@ -1330,10 +1330,15 @@ class Saturation(_component.Component):
         shaper = self._lean if lean else self._shaper
         factor = self._lean_oversample if lean else self._oversample
         # The incoming shaper has stood idle since it was last routed and
-        # still holds what it was shaping then: cleared, or the move plays
-        # it out of silence (a thump, 10 000 LSB and more). A re-play does
-        # not clear it; a reset does, and keeps the frames it had taken.
-        audiocore.reset_buffer(shaper)
+        # still holds what it was shaping then, which the move plays out of
+        # silence (a thump, 10 000 LSB and more). It is cleared only when
+        # the outgoing one has seen a whole block of exact silence, which
+        # its `recentre()` reports: under signal a clear is a step of its
+        # own (2 084 LSB on two patch moves while a note plays). The idle
+        # shaper's own `recentre()` cannot tell: it never saw the silence.
+        outgoing = self._shaper if lean else self._lean
+        if outgoing.recentre():
+            audiocore.reset_buffer(shaper)
         self._after.play(shaper)
         self._routed_lean = lean
         # The onset, as `_build` declares it: the group delay here made a
