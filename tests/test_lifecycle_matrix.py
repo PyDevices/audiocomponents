@@ -229,12 +229,19 @@ def changed_classes(files):
 
 
 def changed_files(base):
-    """The paths `git diff base...HEAD` names, or None if git cannot say
-    (a shallow clone without the base)."""
+    """The paths `git diff base...HEAD` names.
+
+    A base git cannot diff from is an error, not a reason to run every
+    class: a checkout of depth 1 has no history and no base, and falling
+    back to all 45 is how a pull request's gate once ran for 80 minutes
+    unnoticed. The workflow fetches the history a pull request needs."""
     done = subprocess.run(["git", "diff", "--name-only", base + "...HEAD"],
                           capture_output=True, text=True, cwd=ROOT)
     if done.returncode != 0:
-        return None
+        raise LookupError(
+            "LIFECYCLE_CHANGED_FROM=%s, but git cannot diff from it (a "
+            "shallow checkout, or a base that was never fetched): %s"
+            % (base, done.stderr.strip()))
     return [line for line in done.stdout.splitlines() if line]
 
 
@@ -252,9 +259,7 @@ def classes():
                               % ", ".join(missing))
         base = os.environ.get("LIFECYCLE_CHANGED_FROM")
         if base:
-            files = changed_files(base)
-            if files is not None:
-                return changed_classes(files)
+            return changed_classes(changed_files(base))
         return list(GATED)
     names = wanted.split(",")
     missing = [n for n in names if effect_class(n) is None]

@@ -50,12 +50,30 @@ jobs:
           - os: macos-latest
             python: "3.13"
     runs-on: ${{ matrix.os }}
+    env:
+      # The lifecycle matrices (quick mode). All 45 classes take about 4.4
+      # CPU hours, over an hour on this runner, and the 13 audiodsp nodes
+      # under them half an hour more on one worker, so a pull request runs
+      # only what its change can move: the class or node whose own code
+      # changed, and when a shared file changed (the base class, the
+      # matrix, the pin) a fixed sample of each, nine classes in about 13
+      # minutes and four nodes in about five (SAMPLE in
+      # tests/test_lifecycle_matrix.py, NODE_SAMPLE in
+      # tests/test_node_matrix.py). A push to main runs every class and
+      # every node, and so does a manual run (workflow_dispatch) or a pull
+      # request labelled `lifecycle: all classes`.
+      LIFECYCLE_CHANGED_FROM: "${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'lifecycle: all classes') && format('origin/{0}', github.base_ref) || '' }}"
     steps:
-      # A pull request fetches its history, so the lifecycle matrix can ask
-      # git which classes the change touches (LIFECYCLE_CHANGED_FROM below).
+      # A pull request fetches its history, so the matrices can ask git what
+      # the change touches against origin/<base> (LIFECYCLE_CHANGED_FROM).
+      # Written `!= ... && 1 || 0` because `== ... && 0 || 1` is always 1:
+      # 0 is false in an expression, so the `||` took over and every pull
+      # request checked out at depth 1. With no base to diff from, the
+      # matrix then fell back to all 45 classes, and a pull request ran
+      # 1 h 43 min. A base git cannot diff from is now an error instead.
       - uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
+          fetch-depth: ${{ github.event_name != 'pull_request' && 1 || 0 }}
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
@@ -116,6 +134,17 @@ jobs:
       # a test. The tests would generate them too; this makes it explicit.
       - run: python tools/effect_probes/make_probes.py --ensure
 
+      # What the two matrices will run, in the log where a reader can check
+      # it, and a scope git cannot work out fails here by name.
+      - name: Show the lifecycle scope
+        shell: bash
+        run: >-
+          python -c "from tests.test_lifecycle_matrix import classes;
+          from tests.test_node_matrix import names;
+          print('base:', '${LIFECYCLE_CHANGED_FROM:-none, all}');
+          print('classes:', ' '.join(classes()) or 'none');
+          print('nodes:', ' '.join(names()) or 'none')"
+
       # The same tests `python -m unittest discover -s tests -p "test_*.py"`
       # finds, spread across every core the runner has: serially the suite
       # takes over an hour. A test that writes a file writes it into its own
@@ -129,15 +158,6 @@ jobs:
         env:
           OMP_NUM_THREADS: "1"
           OPENBLAS_NUM_THREADS: "1"
-          # The lifecycle matrix (quick mode). All 45 classes take about 4.4
-          # CPU hours, over an hour on this runner, so a pull request runs
-          # only what its change can move: the class whose module changed,
-          # and when a shared file changed (the base class, the kit, the
-          # pin) a fixed sample of one class per mechanism family, about 13
-          # minutes (SAMPLE in tests/test_lifecycle_matrix.py). A push to
-          # main runs all 45, and so does a manual run (workflow_dispatch)
-          # or a pull request labelled `lifecycle: all classes`.
-          LIFECYCLE_CHANGED_FROM: "${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'lifecycle: all classes') && format('origin/{0}', github.base_ref) || '' }}"
       - run: python tools/validate_api.py
       - run: python tests/parity/effects_library_smoke.py
 

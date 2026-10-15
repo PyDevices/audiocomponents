@@ -10,9 +10,15 @@ the same line for every cell.
 
     OMP_NUM_THREADS=1 python -m unittest tests.test_node_matrix
     LIFECYCLE_CLASSES=NodePitchShift python -m unittest tests.test_node_matrix
+
+A pull request's CI runs only the nodes its change can move, by the same
+rule as the class matrix (`changed_nodes` below, and "What CI runs" in
+`tests/support/KIT.md`).
 """
 
+import ast
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -27,6 +33,7 @@ import node_matrix                                        # noqa: E402
 from tests.test_lifecycle_matrix import (FULL, check_known,  # noqa: E402
                                    digest, native_binaries, parse,
                                    red_cells, skipped)
+from tests.test_lifecycle_matrix import changed_files  # noqa: E402
 
 VENDOR = "PyDevices"
 
@@ -70,9 +77,107 @@ KNOWN_P6 = {
 }
 
 
+#: Files whose change can move every node's cells: the nodes themselves
+#: (the audiodsp pin), the base class the adapters stand on, the matrix and
+#: the helpers this file shares with the class matrix. The two files that
+#: name nodes one by one, the adapters and this file, are read by the line:
+#: a change inside one node's adapter class or table rows moves that node
+#: alone, and a change anywhere else in them is shared.
+NODE_SHARED = ("AUDIODSP_PIN", "lib/audioeffects/_",
+               "lib/audioeffects/__init__.py", "tests/support/lifecycle.py",
+               "tests/support/kit_options.py", "tests/test_lifecycle_matrix.py")
+NODE_FILES = ("tests/support/node_matrix.py", "tests/test_node_matrix.py")
+
+#: What a pull request that changes a shared file runs instead of all 13,
+#: one node per mechanism the others share: a biquad's recursion
+#: (NodeBiquad), a delay line (NodeEcho), the Mixer a host resets
+#: (NodeSplitMix) and a free-running phase (NodeShimmerLoop, cheaper than
+#: NodeFlanger's LFO by minutes). Measured on CPython at audiodsp
+#: v0.6.6rc9: 86 s, where all 13 take 541 s (about 30 minutes on CI).
+#: A push to main runs every node, and so does a manual run or a pull
+#: request labelled `lifecycle: all classes` (.github/workflows/tests.yml).
+NODE_SAMPLE = ("NodeBiquad", "NodeEcho", "NodeSplitMix", "NodeShimmerLoop")
+
+
+def _owned_lines(source, known):
+    """{node name: [(first, last) line]} in a file's text: each class whose
+    NAME is a node, and each row of a module-level table whose key is a
+    node's name or a tuple that starts with one."""
+    owned = {}
+    for stmt in ast.parse(source).body:
+        if isinstance(stmt, ast.ClassDef):
+            for item in stmt.body:
+                if (isinstance(item, ast.Assign)
+                        and any(getattr(t, "id", None) == "NAME"
+                                for t in item.targets)
+                        and isinstance(item.value, ast.Constant)
+                        and item.value.value in known):
+                    owned.setdefault(item.value.value, []).append(
+                        (stmt.lineno - len(stmt.decorator_list),
+                         stmt.end_lineno))
+        elif (isinstance(stmt, (ast.Assign, ast.AnnAssign))
+              and isinstance(stmt.value, ast.Dict)):
+            for key, value in zip(stmt.value.keys, stmt.value.values):
+                head = key.elts[0] if isinstance(key, ast.Tuple) else key
+                if isinstance(head, ast.Constant) and head.value in known:
+                    owned.setdefault(head.value, []).append(
+                        (key.lineno, value.end_lineno))
+    return owned
+
+
+def _changed_lines(base, path):
+    """The lines of `path` at HEAD that `git diff base...HEAD` touches; a
+    deletion touches the lines either side of it."""
+    done = subprocess.run(["git", "diff", "-U0", base + "...HEAD", "--", path],
+                          capture_output=True, text=True, cwd=ROOT)
+    if done.returncode != 0:
+        raise LookupError("git cannot diff %s from %s: %s"
+                          % (path, base, done.stderr.strip()))
+    lines = set()
+    for match in re.finditer(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@", done.stdout,
+                             re.M):
+        first = int(match.group(1))
+        count = 1 if match.group(2) is None else int(match.group(2))
+        lines.update(range(first, first + count) if count
+                     else (first, first + 1))
+    return lines
+
+
+def changed_nodes(files, lines_of, sources):
+    """The nodes a change runs, sorted: those whose own lines in NODE_FILES
+    changed, and NODE_SAMPLE beside them when a shared file changed or a
+    line of NODE_FILES outside every node's own did. `lines_of(path)` is
+    the changed lines of a NODE_FILES path and `sources(path)` its text."""
+    known = set(node_matrix.NODES)
+    picked = set()
+    for path in files:
+        if any(path == s or (s.endswith(("/", "_")) and path.startswith(s))
+               for s in NODE_SHARED):
+            picked.update(NODE_SAMPLE)
+        elif path in NODE_FILES:
+            owned = _owned_lines(sources(path), known)
+            for line in lines_of(path):
+                hits = [name for name, spans in owned.items()
+                        if any(a <= line <= b for a, b in spans)]
+                picked.update(hits or NODE_SAMPLE)
+    return sorted(picked)
+
+
 def names():
     wanted = os.environ.get("LIFECYCLE_CLASSES")
-    picked = wanted.split(",") if wanted else sorted(node_matrix.NODES)
+    if wanted:
+        picked = wanted.split(",")
+    else:
+        base = os.environ.get("LIFECYCLE_CHANGED_FROM")
+        if base:
+            def source(path):
+                with open(os.path.join(ROOT, path)) as handle:
+                    return handle.read()
+            picked = changed_nodes(changed_files(base),
+                                   lambda path: _changed_lines(base, path),
+                                   source)
+        else:
+            picked = sorted(node_matrix.NODES)
     return [n for n in picked if n in node_matrix.NODES]
 
 
@@ -155,6 +260,57 @@ class TestNodeMatrix(unittest.TestCase):
 
     def test_p6_circuitpython(self):
         self._p6("circuitpython")
+
+
+class TestScope(unittest.TestCase):
+    """A pull request's node scope: the nodes its change can move."""
+
+    @staticmethod
+    def _source(path):
+        with open(os.path.join(ROOT, path)) as handle:
+            return handle.read()
+
+    def _line(self, path, text):
+        lines = self._source(path).splitlines()
+        return [i + 1 for i, line in enumerate(lines) if text in line][0]
+
+    def _pick(self, changes):
+        files = [path for path, _ in changes]
+        lines = {}
+        for path, line in changes:
+            if line is not None:
+                lines.setdefault(path, set()).add(line)
+        return changed_nodes(files, lambda path: lines.get(path, set()),
+                             self._source)
+
+    def test_a_change_picks_the_nodes_it_can_move(self):
+        adapters, here = NODE_FILES
+        sample = sorted(NODE_SAMPLE)
+        cases = (
+            ([("AUDIODSP_PIN", None)], sample),
+            ([("lib/audioeffects/_component.py", None)], sample),
+            ([("tests/support/lifecycle.py", None)], sample),
+            ([("lib/audioeffects/fuzz.py", None)], []),
+            ([("tests/support/kit_tail.py", None)], []),
+            ([(adapters, self._line(adapters, "Reverb's predelay and the Haas"))],
+             ["NodeEcho"]),
+            ([(adapters, self._line(adapters, 'NAME = "NodeEcho"')),
+              (adapters, self._line(adapters, '("NodeFlanger", "E6-"'))],
+             ["NodeEcho", "NodeFlanger"]),
+            ([(adapters, self._line(adapters, "BLOCK = 256"))], sample),
+            ([(here, self._line(here, '"NodeSplitMix": ('))],
+             ["NodeSplitMix"]),
+            ([(here, self._line(here, "def start_native"))], sample),
+        )
+        for changes, want in cases:
+            with self.subTest(changes=changes):
+                self.assertEqual(self._pick(changes), want)
+        self.assertTrue(set(NODE_SAMPLE) <= set(node_matrix.NODES))
+
+    def test_every_node_owns_its_adapter(self):
+        owned = _owned_lines(self._source(NODE_FILES[0]),
+                             set(node_matrix.NODES))
+        self.assertEqual(sorted(owned), sorted(node_matrix.NODES))
 
 
 class TestAdapters(unittest.TestCase):
