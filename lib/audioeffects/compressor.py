@@ -295,6 +295,7 @@ class Compressor(_component.Component):
         # well as the current one.
         split = self._own(audioroute.Splitter(self._source, taps=2),
                           reset=False)
+        self._split = split
         self._wet_tap = self._own(split.tap(0), reset=False)
         self._dry_tap = self._own(split.tap(1), reset=False)
         self._fast = self._own(audiodynamics.Dynamics(
@@ -391,8 +392,12 @@ class Compressor(_component.Component):
         # primed afresh (audiocomponents#113). The two Dynamics hold a gain
         # and no audio, but a voice's `play()` resets what it plays, so the
         # stage it reads restarts its gain either way: the class comes back
-        # as it was built, envelopes and all.
+        # as it was built, envelopes and all. And the Splitter drops the
+        # source frames it took before the bypass, which the host has since
+        # read past (`_component.let_go_of_source`).
         if self._rejoin():
+            _component.let_go_of_source(self._split, self._source,
+                                        ((self._fast, self._wet_tap),))
             self._primed = False
         if not self._primed:
             self._prime()

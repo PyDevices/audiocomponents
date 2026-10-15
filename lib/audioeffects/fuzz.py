@@ -712,6 +712,8 @@ class Fuzz(_component.Component):
                 mode=audiobiquad.HIGH_PASS, frequency=self._hz(HP_A_HZ),
                 Q=HP_A_Q, sample_rate=rate, channel_count=channels))
             hp_a.play(self._source)
+            self._head = hp_a
+            self._head_consumers = ()
             hp_b = self._own(audiobiquad.Biquad(
                 mode=audiobiquad.HIGH_PASS, frequency=self._hz(HP_B_HZ),
                 Q=HP_B_Q, sample_rate=rate, channel_count=channels))
@@ -751,12 +753,14 @@ class Fuzz(_component.Component):
             # reach the sum *past* a tone stack the wet legs go through.
             self._split = self._own(
                 audioroute.Splitter(source=self._source, taps=2), reset=False)
+            self._head = self._split
             self._dry = self._own(self._split.tap(0), reset=False)
             wet_in = self._own(self._split.tap(1), reset=False)
             hp_in = self._own(audiobiquad.Biquad(
                 mode=audiobiquad.HIGH_PASS, frequency=self._hz(14.0),
                 Q=BUTTER_Q, sample_rate=rate, channel_count=channels))
             hp_in.play(wet_in)
+            self._head_consumers = ((hp_in, wet_in),)
             self._hps.append(hp_in)
             shaper1 = self._own(audioshaper.Waveshaper(
                 sample_rate=rate, channel_count=channels,
@@ -999,6 +1003,11 @@ class Fuzz(_component.Component):
             self._latency = 0
         else:
             if self._rejoin(keep=(self._tone_mix,)):
+                # The head (the first coupling cap, or cascade's Splitter)
+                # drops the source frames it took before the bypass, which
+                # the host has since read past.
+                _component.let_go_of_source(self._head, self._source,
+                                            self._head_consumers)
                 self._rearm()
             self._output = self._tilt
             self._latency = self._wet_delay

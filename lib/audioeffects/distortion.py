@@ -723,8 +723,10 @@ class Distortion(_component.Component):
             width=1.0, sample_rate=self._sample_rate,
             channel_count=self._channel_count), reset=False)
         adapter.play(self._source)
+        self._head = adapter
         mix_split = self._own(
             audioroute.Splitter(adapter, taps=2), reset=False)
+        self._head_split = mix_split
         self._dry_tap = self._own(mix_split.tap(0), reset=False)
         wet_in = self._own(mix_split.tap(1), reset=False)
 
@@ -915,6 +917,12 @@ class Distortion(_component.Component):
         # at the levels just pushed, every voice re-played - before the
         # port is pointed at it (audiocomponents#113).
         rejoin = self._rejoin()
+        if rejoin:
+            # The adapter drops the source frames it took before the bypass,
+            # which the host has since read past, and the Splitter behind it
+            # what it held of them.
+            _component.let_go_of_source(self._head, self._source)
+            _component.let_go_of_source(self._head_split, self._head)
         # The dry leg is not delayed and the wet leg is, so the class's own
         # onset is the DRY one at every Mix that lets any dry through: a
         # click at Mix 64 arrives at sample 0, not at sample 2. Reporting

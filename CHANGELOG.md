@@ -392,6 +392,7 @@ there, and are recorded in its changelog.
 
 ### Fixed
 
+- `Bitcrusher`, `Compressor`, `Distortion`, `Exciter`, `Fuzz` and `Saturation`: bringing Mix back up from 0 no longer plays audio from before the bypass. With a source whose buffers aren't 256 frames (a decoder, a file), the first node of the graph kept the rest of a buffer, and on the way back played up to 20 ms of what was sounding when you bypassed, at full level, and then sat that far late. Distortion and germanium Fuzz drop it now; the four Splitter-headed classes and cascade Fuzz need the audiodsp that carries `Splitter.clear()`.
 - `Tremolo`: touching a knob, or a host re-sending the same value, no longer throws the throb back to the top of its cycle. The LFO takes the new shape and rate in place, so a slow sweep of any knob moves the pulse smoothly instead of stuttering.
 - `Fuzz`: with Bias off centre, `tail_samples` is None. The output settles near zero rather than on it there, so the 24 576 it reported was a bound the class never met. The docstring now says what stays: a few LSB of wander, or at Bias -1 a DC constant of up to 177 LSB.
 - `Bitcrusher`: the dither tail is 9 728 samples, where 8 192 fell short at maximum Dither, and `tail_samples` is None where the dither alone is louder than its gate (maximum Dither at 12 bits, and any deeper crush with Dither up), because there the dither never stops.

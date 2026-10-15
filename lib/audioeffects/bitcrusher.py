@@ -1593,6 +1593,9 @@ class Bitcrusher(_component.Component):
             self._output = self._blend
             return
         if self._rejoin():
+            # The Splitter drops the source frames it took before the
+            # bypass, which the host has since read past.
+            _component.let_go_of_source(self._split, self._source)
             # Back off the bypass: every node is cleared - the hold's last
             # value, the band limit's memory, the dither gate - and the
             # voices, which still hold the blocks they had queued, are
