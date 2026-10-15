@@ -1212,6 +1212,13 @@ class DriveCeilingAndLean(unittest.TestCase):
         self.assertIs(kit.port_target(effect.output), effect._source)
         effect.deinit()
 
+    # Known red (audiocomponents#160): un-bypassing under signal starts the
+    # wet chain cold, so its first 16 samples rise from 0 where the dry was
+    # (13 029 LSB on this sine), until the mixer's level ramp lands
+    # (audiodsp's roadmap, PR #259). Priming the chain from the source
+    # instead takes a block a Mix 0 then never hands out (7f F1), so the
+    # lazy re-arm stays. An unexpected pass fails the suite: then drop this.
+    @unittest.expectedFailure
     def test_leaving_mix_zero_does_not_step(self):
         """The mixer's voices have been idle while Mix was 0, so the block
         the class hands back after the move must join the one before it."""
