@@ -1,16 +1,16 @@
 # The effects kit
 
-Seven mechanical checks that run on one effect class with no model in the
+Eight mechanical checks that run on one effect class with no model in the
 loop: every verdict is arithmetic on rendered bytes, or on the source. They
 sit beside the [lifecycle matrix](LIFECYCLE.md) and catch the kinds of
 defect that kept turning up class after class: a tail that outlasts
 `tail_samples`, a planted fault a knob can reach, a docstring promise no
 test holds, a control that does not read back what it was set to, an input
 level that wraps, a citation that no longer resolves, a refused call that
-leaves a trace, and a class that only behaves where `audiocore.get_buffer`
-exists.
+leaves a trace, a class that only behaves where `audiocore.get_buffer`
+exists, and a reset that does not come back as a fresh instance.
 
-To run all seven on one class, from the repo root:
+To run all eight on one class, from the repo root:
 
     python tests/support/kit.py DigitalDelay
     python tests/support/kit.py DigitalDelay --only tail,ceiling --quick
@@ -28,10 +28,11 @@ It prints one line per cell, `name|check|key|V:verdict[|h:digest]`, a
 why), `RED(...)` with what was measured, or `decl`. `h:` is a CRC-32 of the
 cell's render, so two interpreters' lines agree only when their bytes do.
 
-The four render checks (tail, plants, args, ceiling) are numpy-free and
-print the same lines on CPython, MicroPython and CircuitPython. The claims,
-paperwork and nogb checks read source, unittest and git, or patch modules,
-and run on CPython only; a native run prints `SKIP` for them.
+The five render checks (tail, plants, args, ceiling, fresh) are numpy-free
+and print the same lines on CPython, MicroPython and CircuitPython. nogb
+runs on all three too. The claims and paperwork checks read source,
+unittest and git, and run on CPython only; a native run prints `SKIP` for
+them.
 
 A class that does nothing at all must not read as a pass: the tail and
 args checks print `na(silent)` for a render that was zero throughout, and
@@ -105,17 +106,22 @@ hands it:
 - `rt-m<i>`: `set_macro(i, get_macro(i))` mid-stream changes no byte, at
   the defaults and every patch.
 - `stops-m<i>`: 0, 64 and 127 are accepted and read back within 1e-4.
-- `bad-m<i>`: NaN, +-inf, -1 and 128. The contract
-  ([audio-component-api.md](../../docs/audio-component-api.md)) does not
-  say whether an out-of-range macro value raises or clamps, so either
-  passes: a raise is ValueError or TypeError and moves no macro (`r`); a
-  clamp reads back a finite 0..127 (0 below, 127 above) and renders
-  exactly what `set_macro(i, readback)` renders (`c`).
+- `bad-m<i>`: NaN, +-inf, -1, 128 and +-10**400 (an int past float's
+  range), held to the contract's one answer
+  ([audio-component-api.md](../../docs/audio-component-api.md#macro-and-patch-state)):
+  a value off the range is clamped, never refused. NaN, -inf, -1 and
+  -10**400 read back 0, +inf, 128 and 10**400 read back 127, and each
+  renders exactly what
+  `set_macro(i, readback)` renders (`c`). A raise of any kind is red.
 - `patch-p<k>`: `program_change(k)` sets `patch_index` and reads back the
-  patch's values, and `program_change(0)` reads back what a fresh instance
-  read (the contract: a fresh component and one given patch 0 are the
-  same).
-- `ctor-<option>`: each numeric keyword of `_build` at 0 and NaN. A raise is
+  patch's values, and `program_change(0)` reads back patch 0's. Not what a
+  fresh instance read: a declared default may sit off patch 0's grid
+  ([audio-components.md](../../docs/audio-components.md)), so the kit
+  holds a reset to a fresh instance (`fresh`), not a fresh instance to
+  patch 0.
+- `ctor-<option>`: each numeric keyword of `_build` at 0 and NaN (a
+  keyword whose default is `None`, left out to play patch 0's step, counts
+  when the class names its number in `_OPTION_DEFAULTS`). A raise is
   ValueError or TypeError; a build reports readable latency and tail,
   finite macros, renders without raising or sitting on a rail the input
   was not on; and a NaN build renders exactly what the defaults or the
@@ -142,7 +148,9 @@ at, on the worst material, the output does not wrap, sit on a rail, or go
 silent. The class states `INPUT_CEILING_DBFS` (dBFS, 0 or below); with
 none it is held to 0 dBFS. The material, 2 s at the peak: a 100 Hz square,
 a 50 Hz sine, one-sample clicks of alternating sign, noise, a DC step, and
-squares on the low notes 41, 55, 82, 110 and 147 Hz (`sq41` ...). The
+squares on the low notes 41, 55, 82, 110, 147 and 163 Hz (`sq41` ...;
+163 Hz is where ConvolutionReverb's default room peaks highest, between the
+notes the others are on). The
 settings: the defaults, every patch, each macro alone at 0, 64 and 127,
 every macro at 127 together (`all=127`), and every level-like macro (a
 label holding Level, Mix, Octave, Direct, Voice or Gain) at 127 with each
@@ -185,6 +193,11 @@ stand-in that has everything but `get_buffer`, and puts it back; the
 matrix's own pulls keep the real one) and compares two things with the
 run that has it.
 
+- `run/48000/<channels>/<d|pK>`: the lifecycle events below, at the
+  defaults and at each patch, each its own run. Red when the class raises
+  there, with `get_buffer` or without, so a class that calls it
+  unconditionally at one patch says which, and every other patch is still
+  judged.
 - Lifecycle cells (E1, E5, E6, E10 at 48 kHz, stereo and mono, every
   patch): P1 to P4 must be the same kind of verdict (ok, na, RED), so a
   cell is red when the class is fine with `get_buffer` and not without. The
@@ -195,8 +208,80 @@ run that has it.
   apart, at the defaults and every patch. A class whose first block is rightly gated differently without
   `get_buffer` declares the cell in `DECLARED`.
 
-CPython only. A module that imports `get_buffer` inside a function is not
-reached.
+On all three interpreters. On MicroPython and CircuitPython the class's
+own Python loses `get_buffer` while the native nodes under it are the real
+ones, which is what a board build without it runs; a path a class takes
+only off CPython is checked there and nowhere else. Run it on each:
+
+    python tests/support/kit.py Saturation --only nogb
+    MICROPYPATH=lib:tests/support micropython -X heapsize=256M \
+        tests/support/kit.py Saturation --only nogb
+
+A module that imports `get_buffer` inside a function is not reached.
+
+**fresh** (`kit_fresh.py`). A reset comes back as a fresh instance at
+patch 0, from every patch:
+
+- `reset@<k>/<rate>/<ch>/<d|pK>`: built at the defaults or a patch, played
+  `k` pulls (0, before the first pull, and 8), then `reset()`. From that
+  pull on it renders byte for byte what a fresh instance built at patch 0
+  (the constructor's `patch=`) renders, fed the source from the frame the
+  reset left it at (found off a dry run), and reads back what the fresh one
+  reads. No tail is forgiven: a block a voice still held, a line the reset
+  kept, a filter's memory or a delay left from the patch before is red.
+- `reset@8+m<i>=<v>/...`: the same, then the same move on both four pulls
+  later, each macro to each stop, and the readback after it. A state the
+  reset left that only a move wakes (a line length, a write head) is red
+  here.
+- `rpr<K>@8/<rate>/<ch>/d`: built at the defaults, played 8 pulls, then
+  `reset()`, `program_change(K)` and `reset()` again, for every patch K,
+  and held to the same fresh instance. A patch that builds part of the
+  graph again between two resets must not leave the second one reaching
+  for a node the rebuild released.
+- `boot/<rate>/<ch>`, informational: whether a fresh instance at its
+  defaults is patch 0 exactly. Patch values are integers and a declared
+  default may sit off their grid ([audio-components.md](../../docs/audio-components.md)),
+  so a difference prints `na(info: ...)` and is never red.
+
+Each cell compares 2 s from the reset and stops at the first difference.
+Grid: 48 and 22.05 kHz, stereo and mono, the defaults and every patch;
+`--quick` runs 48 kHz and the move cells from the defaults and the last
+patch only. A class whose reset cannot meet a cell by design declares it
+in `DECLARED`.
+
+## What CI runs
+
+The lifecycle matrix gates every class, and its quick mode over all 45
+takes about 4.4 CPU hours on CPython, over an hour on a 4-core runner. So
+CI doesn't run all of it on every pull request:
+
+- A pull request runs the classes whose own module it changes. When it
+  changes a shared file (the base class, the package modules,
+  `tests/support/`, the matrix test or `AUDIODSP_PIN`), it also runs a fixed
+  sample of one class per mechanism family: Bitcrusher, Tremolo,
+  DigitalDelay, Reverb, Octaver, LowPass, Rack, Saturation and Distortion.
+  That takes about 13 minutes (`SAMPLE` in `tests/test_lifecycle_matrix.py`).
+- The node matrix (`tests/test_node_matrix.py`, the 13 audiodsp nodes the
+  classes stand on) follows the same rule. A pull request runs the nodes
+  whose own adapter class or table rows it changes, and a fixed sample
+  (`NODE_SAMPLE`) when it changes a shared file: `AUDIODSP_PIN`, the base
+  class, `lifecycle.py`, the class matrix test, or a line of the adapters
+  outside every node's own.
+- A push to main runs all 45 classes and every node, and so does a manual
+  run of the workflow or a pull request labelled `lifecycle: all classes`.
+
+To tell what changed, CI diffs the pull request against its base branch,
+so the checkout fetches the history. A base git can't diff from fails the
+run by name rather than quietly running everything: a depth-1 checkout once
+did that, and a pull request's run took 1 h 43 min. The workflow prints
+what each matrix will run in its "Show the lifecycle scope" step.
+
+The sample is the cheapest class that covers each way a class can break:
+the lazy re-arm, an LFO, a delay line, a reverb tank, a pitch shifter's
+splice, a biquad, a rack's children, Saturation's recentre and
+Distortion's graph rebuild. A shared change that breaks one class of a
+family usually breaks the family, and main's full run catches the rest
+before a release.
 
 ## Known gaps
 
@@ -223,7 +308,9 @@ A class that cannot meet a cell by design adds a row to `DECLARED` in
     }
 
 The key is (class `NAME`, check, cell key prefix); a matching red cell
-prints `decl` and counts as declared. Nothing else skips a cell.
+prints `decl` and counts as declared. A fourth element names the one
+interpreter the row holds on (`circuitpython`), so the cell stays live on
+the other two. Nothing else skips a cell.
 
 ## The plants
 
@@ -234,7 +321,9 @@ and a level around the source; `KitPlain` is the control): `ShortTail` and
 None tail), `Inert`, `KnobReach` and `SoftOnly` (plants), a fixture test
 module with a missing sentence, a missing test, a failing and a skipped test
 and a loose claim (claims), `ReadbackOff`, `StopRaises`, `NanLevel`,
-`PatchStale` and `CtorNan` (args; `ClearsFirst` and `ClearsMacro` for the
+`NanRaises`, `NanTop`, `PatchStale` and `CtorNan` (args; `NanRaises`
+refuses a NaN and `NanTop` puts it on the top stop, both green before the
+clamp was the contract; `ClearsFirst` and `ClearsMacro` for the
 refused calls: one zeroes the cached level, the other drops the patch or
 moves a macro, before validating), `WrapKit`, `ClipKit` and `DeadStop`
 (ceiling; `MidWrap`, `ComboWrap`, `AllWrap` and `LowWrap` wrap only at
@@ -245,7 +334,15 @@ a fixture card whose surface table differs (paperwork), `FlushOnly` and `DoubleR
 on `get_buffer` to flush a primed voice, the second drops a block on a
 second reset in a row without it; `FlushKit`, which primes a voice of its own
 and plays it again where it cannot flush, is the control; `MidPatchReset`
-does it at a middle patch only, against `FlushKit3`), and `Silent`, which
+does it at a middle patch only, against `FlushKit3`; `PatchPulls` calls
+`get_buffer` unconditionally at a middle patch, which an earlier nogb read
+as one `run` cell for the whole class, and is red on that patch's `run`
+cells alone; `NativeFlush` leans on `get_buffer` only off CPython, so it
+is clean on CPython and red on MicroPython and CircuitPython, where the
+check once did not run), `PatchLeak`
+and `MoveLeak` (fresh: a reset from patch 1 only that keeps the repeat line;
+a first move after a reset that lands 1 % off, against `FreshKit` and
+`OffGrid`, whose Gain default sits a hair off patch 0 and is never red), and `Silent`, which
 does nothing. Its native half
 holds the render checks to the same lines on all three interpreters, and
 shows that agreement can fail with `ImplKit`, whose level differs off

@@ -2357,19 +2357,26 @@ def part_blocks(cls, label):
                              channels, wrong))
 
 
-class QuietAlways(M):
-    '''A wiring that primes zeros on every build, get_buffer or not: where
-    get_buffer is left out nothing hands the primed zeros out, so the
-    output opens with a silent block. It moves the first block, which is
-    what the no-get_buffer words describe.'''
+class NoPull(M):
+    '''The class before every pull went through `_pull_node`: where
+    get_buffer is left out nothing is pulled, so a wiring outside reset()
+    primes the source's first block into the dry voice and `_resync` cannot
+    swap tap 1's block.'''
 
     NAME = 'MultiTapDelay'
 
+    def _pull_node(self, node):
+        from audioeffects import _component
+        pull = getattr(_component.audiocore, "get_buffer", None)
+        return None if pull is None else pull(node)
+
     def _quiet_wiring(self):
-        return True
+        from audioeffects import _component
+        return self._resetting or \
+            getattr(_component.audiocore, "get_buffer", None) is not None
 
 
-PLANTS["quietalways"] = QuietAlways
+PLANTS["nopull"] = NoPull
 
 
 class NoGetBuffer:
@@ -2419,10 +2426,10 @@ def ng_act(e, action):
         e.set_macro(MIX_I, 63.5)
 
 
-def ng_law(route, pulls, n1a, n1b, frames):
-    '''What the docstring says each route plays, every lane: `pulls` False
-    is a build without get_buffer. n1a is the base as built, n1b after the
-    route's events (a reset restores patch 0's Time).'''
+def ng_law(route, n1a, n1b, frames):
+    '''What the docstring says each route plays, every lane, with
+    get_buffer and without it alike. n1a is the base as built, n1b after
+    the route's events (a reset restores patch 0's Time).'''
     want = {}
 
     def put(f, v):
@@ -2434,34 +2441,20 @@ def ng_law(route, pulls, n1a, n1b, frames):
             if o + k * n1 < stop:
                 put(o + k * n1, v)
 
-    late = not pulls
     for s, v in NG_CLICKS:
-        block = s // BLOCK
         if route in ("constructed", "Mix 0 and back first"):
             put(s, v)
             heads(s, v, n1a)
         elif route.startswith("Mix 0 first"):
-            if not late:
-                put(s, v)
-                if s >= NG_AT:
-                    heads(s, v, n1b)
-            elif block == 0:
-                # the first block, held in the dry, plays at the return
-                put(s + NG_AT, v)
-                heads(s + NG_AT, v, n1b)
-            elif block <= 24:
-                # the Mix-0 run: one block early, no heads
-                put(s - BLOCK, v)
-            else:
-                put(s, v)
+            put(s, v)
+            if s >= NG_AT:
                 heads(s, v, n1b)
         elif route == "built at Mix 0, reset first":
-            o = s + BLOCK if late else s
-            put(o, v)
-            heads(o, v, n1b)
+            put(s, v)
+            heads(s, v, n1b)
         elif route == "reset at 24":
             put(s, v)
-            if s >= NG_AT or (late and block == 23):
+            if s >= NG_AT:
                 heads(s, v, n1b)
             else:
                 heads(s, v, n1a, NG_AT)
@@ -2469,8 +2462,6 @@ def ng_law(route, pulls, n1a, n1b, frames):
             put(s, v)
             if s < NG_AT:
                 heads(s, v, n1a, NG_AT)
-                if late and block == 23:
-                    heads(s + NG_AT, v, n1a)
             elif s >= 2 * NG_AT:
                 heads(s, v, n1a)
     return want
@@ -2496,8 +2487,7 @@ def ng_run(cls, route, mix, plan, rate, channels, pulls):
         e.deinit()
     finally:
         use_audiocore(audiocore)
-    return judge(out, channels, frames,
-                 ng_law(route, pulls, n1a, n1b, frames))
+    return judge(out, channels, frames, ng_law(route, n1a, n1b, frames))
 
 
 def part_ng(cls, label, pulls):
@@ -2578,7 +2568,15 @@ def current_native_interpreters():
     """{"micropython": path, "circuitpython": path} from the workspace's
     `bin/`, each the first whose provenance stamp contains `AUDIODSP_PIN`'s
     commit (None where no binary does), or None where there is no
-    workspace `bin/` with its provenance tool above this checkout."""
+    workspace `bin/` with its provenance tool above this checkout.
+    LIFECYCLE_MICROPYTHON and LIFECYCLE_CIRCUITPYTHON name the two
+    binaries instead, as the lifecycle tests take them, for a build that
+    lives outside `bin/`."""
+    named = {family: os.environ.get("LIFECYCLE_" + family.upper())
+             for family in ("micropython", "circuitpython")}
+    if all(named.values()):
+        return {family: path if os.path.isfile(path) else None
+                for family, path in named.items()}
     from tools import provenance_gate
     here = ROOT
     workspace = None
@@ -2882,7 +2880,7 @@ NG_ROUTE_NAMES = ("constructed", "Mix 0 first, back at 24",
                   "built at Mix 0, reset first", "reset at 24",
                   "Mix 0 at 24, back at 48")
 NG_CASES = ((48000, 2), (48000, 1), (22050, 1))
-NG_GROUPS = ("clean=gb,nogb", "oldwiring=gb", "quietalways=nogb")
+NG_GROUPS = ("clean=gb,nogb", "oldwiring=gb", "nopull=nogb")
 
 
 class ReauditRoundTwo(unittest.TestCase):
@@ -2905,14 +2903,13 @@ class ReauditRoundTwo(unittest.TestCase):
         self.assertEqual(red_cells(results, "GB", "oldwiring"), cells(
             ("Mix 0 first, back at 24", "Mix 0 first, reset at 24",
              "Mix 0 and back first")))
-        # Without it the law is the one the words state (the Mix-0 run one
-        # block early, the first block at the return with its heads, the
-        # pending block's heads after a reset or a Mix-0 run): a wiring
-        # that primes zeros on every build moves the first block, and is
-        # red wherever the class was built above Mix 0.
-        self.assertEqual(red_cells(results, "NOGB", "quietalways"), cells(
+        # Without it the law is the same: every pull goes through `_pull_node`.
+        # A class that pulls nothing there plays the Mix-0 run a block
+        # early, the first block late, and lets tap 1's pending block into
+        # the lines after a reset or a Mix-0 run.
+        self.assertEqual(red_cells(results, "NOGB", "nopull"), cells(
             name for name in NG_ROUTE_NAMES
-            if name != "built at Mix 0, reset first"))
+            if name not in ("constructed", "Mix 0 and back first")))
 
     def test_the_no_get_buffer_words_cpython(self):
         self._judge_ng(run_routes(sys.executable, NG_GROUPS))
@@ -2925,18 +2922,6 @@ class ReauditRoundTwo(unittest.TestCase):
             self.assertIsNotNone(binary, "no %s in the workspace bin/ "
                                  "contains AUDIODSP_PIN's audiodsp" % family)
             self._judge_ng(run_routes(binary, NG_GROUPS))
-
-    def test_quiet_always_is_not_on_the_surface(self):
-        # Where get_buffer is left out, no macro position or patch makes
-        # the clean class's wiring outside reset() quiet.
-        module = routes_module()
-        module.use_audiocore(module.NoGetBuffer())
-        try:
-            result = reach(module.QuietAlways, lambda e: e._quiet_wiring())
-        finally:
-            module.use_audiocore(audiocore)
-        self.assertIs(result["target"], True)
-        self.assertEqual(result["checked"], 9 * 17 + 7)
 
     def test_the_tail_reading_is_red_on_a_bound_one_lap_short(self):
         # The stall cell's tail sits far inside its bound, so the stall
@@ -3232,6 +3217,8 @@ class TheClaims(unittest.TestCase):
         self.assertEqual(int(np.abs(pull(effect, 20000)).max()), 0)
 
     def test_reset_and_mix_zero_keep_the_timeline(self):
+        # With get_buffer, and without it as on a CircuitPython board.
+        import kit_nogb
         import lifecycle
         names = ("E1-reset@block", "E1-reset@part", "E5-mix0", "E9-src100",
                  "E9-src512", "E9-src1000", "E9-srcraw", "E10-reset",
@@ -3239,12 +3226,20 @@ class TheClaims(unittest.TestCase):
         for patch in (None, 1):
             events = dict((e.name, e) for e in
                           lifecycle.events(MultiTapDelay, patch))
-            for channels in (2, 1):
-                for name in names:
-                    got = lifecycle.p1(MultiTapDelay, events[name], RATE,
-                                       channels, patch, {})
-                    self.assertIn(got, ("ok", "na"),
-                                  (name, patch, channels))
+            for gb in (True, False):
+                hidden = kit_nogb.hidden(MultiTapDelay)
+                if not gb:
+                    hidden.__enter__()
+                try:
+                    for channels in (2, 1):
+                        for name in names:
+                            got = lifecycle.p1(MultiTapDelay, events[name],
+                                               RATE, channels, patch, {})
+                            self.assertIn(got, ("ok", "na"),
+                                          (name, patch, channels, gb))
+                finally:
+                    if not gb:
+                        hidden.__exit__()
 
     def test_the_tail_rings_on_while_the_source_is_dry(self):
         # The source hands back an empty buffer, done, from the third block
@@ -3288,6 +3283,34 @@ class TheClaims(unittest.TestCase):
         finally:
             for ctl in controls.values():
                 ctl.close()
+
+
+class TestResetIsFresh(unittest.TestCase):
+    """A reset comes back as a fresh instance at patch 0 (kit `fresh`)."""
+
+    def test_a_time_move_after_a_reset_plays_as_on_a_fresh_instance(self):
+        # audiodelays.MultiTapDelay's reset_buffer used to empty the line
+        # and leave the write head where it was, where a fresh node's
+        # starts at the top. A shorter Time then kept another stretch of the
+        # line, so a Time 0 move after a reset played an extra full-level
+        # echo a fresh instance did not (from +1027, 10 146 LSB at most).
+        # The node puts the head at the top now (audiodsp, Phase 7 7d);
+        # CircuitPython's own node still keeps it.
+        import kit_fresh
+        for patch in (None, 0, 3, 6):
+            for ch in (2, 1):
+                self.assertEqual(kit_fresh.reset_cell(
+                    MultiTapDelay, RATE, ch, patch, {}, kit_fresh.RESET_AT,
+                    (mtd.TIME_I, 0)), "ok", (patch, ch))
+
+    def test_a_reset_alone_is_a_fresh_instance(self):
+        import kit_fresh
+        for patch in (None, 0, 3, 6):
+            for ch in (2, 1):
+                for k in (0, kit_fresh.RESET_AT):
+                    self.assertEqual(kit_fresh.reset_cell(
+                        MultiTapDelay, RATE, ch, patch, {}, k), "ok",
+                        (patch, ch, k))
 
 
 if __name__ == "__main__":

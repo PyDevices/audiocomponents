@@ -1497,5 +1497,18 @@ class TheTierOneRowsAtEveryShippedPatch(unittest.TestCase):
                                  "LSB" % (patch, peak))
 
 
+
+class TestCabinetSimClampsLikeEveryClass(unittest.TestCase):
+    """The contract's answer to a value off the grid is a clamp: +inf is
+    the top stop, as 128 is, on every macro (the kit's bad-m cells)."""
+
+    def test_every_macro_takes_every_value_off_the_grid(self):
+        import kit_args
+        for index in range(len(CabinetSim.MACRO_LABELS)):
+            with self.subTest(macro=index):
+                self.assertEqual(kit_args.bad_cell(CabinetSim, index),
+                                 "ok(nan:c inf:c -inf:c -1:c 128:c "
+                                 "10**400:c -10**400:c)")
+
 if __name__ == "__main__":
     unittest.main()

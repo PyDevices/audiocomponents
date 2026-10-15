@@ -17,9 +17,10 @@ To run it on one class (CPython, or a native binary with
 It prints one line per cell, `class|event|rate|channels|patch|P1:..|...|h:..`,
 and a `SUMMARY` line per class: cells run, cells with any red property,
 and cells with any declared property (a cell with two declared properties
-counts once). `tests/test_lifecycle_matrix.py` runs it on every Phase 5
-class on the branch, on CPython and both native interpreters, and holds the
-red cells to its `KNOWN_RED` table.
+counts once). `tests/test_lifecycle_matrix.py` runs it on every class the
+package serves (`audioeffects.ALL`), on CPython and both native
+interpreters, and holds the red cells to its `KNOWN_RED` table, whose rows
+live in `lifecycle_known.py` beside this file.
 
 ## The grid
 
@@ -103,6 +104,10 @@ at patch 0.
   the source from the same frame. Where the source stands is read off a
   dry run to the move. No tail is forgiven: a child left at its own patch 0, a line kept
   across a reset or a block primed twice is red here.
+  PR runs on the reset events at the cell's own configuration. The kit's
+  `fresh` check ([KIT.md](KIT.md)) holds the same property more widely: a
+  reset from every patch, before the first pull and mid-stream, the
+  readback after it, and each macro moved after the reset.
 - **P6** The three interpreters print identical lines for every cell. Each
   line carries `h:`, a CRC-32 of the event instance's whole render, so P6
   compares bytes, not only verdicts.
@@ -111,6 +116,16 @@ at patch 0.
 A verdict is `ok`, `na(...)` (the property does not apply to that cell,
 said why: `tail None`, a whole RawSample, a class that never falls silent),
 `RED(...)` with what was measured, or `decl`.
+
+## Without `get_buffer`
+
+CircuitPython's default board builds compile `audiocore.get_buffer` out.
+The kit's nogb check ([KIT.md](KIT.md#the-checks), `kit_nogb.py`) runs
+E1, E5, E6 and E10 of this matrix at 48 kHz, at the defaults and at every
+patch, each its own run, once as it is and once with `get_buffer` hidden
+from the class's own modules, on CPython, MicroPython and CircuitPython.
+A run that raises is a red `run/<rate>/<channels>/<patch>` cell; a cell
+whose P1 to P4 verdicts change kind without `get_buffer` is red.
 
 ## Declaring an exception
 
@@ -138,6 +153,20 @@ A row whose reason holds on one interpreter only names it, so the cell
 stays a live check on the other two. A row written with a patch tuple as
 its fourth element keeps working as it is; one with a bare `E` prefix is
 split into one row per event its reason covers.
+
+E1's P4 and PR ask different things. PR holds the reset to a fresh
+instance; P4 holds it to the control that never was reset. A class whose
+reset is exactly a fresh instance can still never meet that control again:
+`Vibrato` restarts its LFO as a fresh one starts it, and `Fuzz`'s 10.5 and
+12.4 Hz coupling sections keep a few LSB of the earlier material in float
+state for seconds. Such a class declares E1 P4 with the cause, keeps PR
+live, and its own test holds the cause (for `Fuzz`, the residue under 1024
+LSB).
+
+Values a host hands the controls are not lifecycle events. The kit's args
+check holds them, including the refused-values contract (`bad-m<i>` in
+[KIT.md](KIT.md#the-checks): a macro value off 0-127 is clamped, NaN to the
+bottom stop).
 
 PR is excused only by `FREE_PHASE`, class `NAME` -> the free-running
 phase (an LFO, a wow table) that keeps a reset or a rejoin from matching a

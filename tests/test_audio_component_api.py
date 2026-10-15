@@ -7,7 +7,6 @@ import audiocore
 import audioeffects
 import audioinstruments
 from audioeffects import _component
-from audioeffects import _core
 from audioeffects import rebuilt
 
 
@@ -331,7 +330,8 @@ class AConstructorPatchCostsTheSourceNothing(unittest.TestCase):
     def test_no_class_refuses_a_constructor_patch(self):
         """audiocomponents#84: `create(..., patch=N)` works everywhere.
 
-        Ten classes on the pre-contract `_core.Effect` base never declared
+        Ten classes on the pre-contract `_core.Effect` base (retired since)
+        never declared
         the parameter, so a host writing the obvious thing got a TypeError
         instead of a patch, and the row above had to walk past them. The
         cure is one pattern in `Effect.create`, which pops `patch` and
@@ -562,20 +562,6 @@ class ABipolarMacroHasACentreDetent(unittest.TestCase):
         self.assertGreater(centred, 10,
                            "no class defaults a bipolar macro to its centre, "
                            "so this row proved nothing")
-
-    def test_the_precontract_base_declares_no_bipolar_macro(self):
-        """`_core.Effect` still crosses the grid with the plain linear law.
-        Nothing on it declares BIPOLAR, which is why the detent lives in
-        `_component` alone; a family that needs one is rebuilt first."""
-        for name, cls in patch_classes():
-            if not issubclass(cls, _core.Effect):
-                continue
-            modes = getattr(cls, "MACRO_MODES", None) or {}
-            with self.subTest(name=name):
-                self.assertNotIn(
-                    "BIPOLAR", modes.values(),
-                    "%s declares a BIPOLAR macro on the pre-contract base, "
-                    "which has no centre detent (audiocomponents#87)" % name)
 
     def test_a_modules_patch_authoring_modes_match_the_class(self):
         """`macro_of` needs each macro's mode, so a module that authors its

@@ -357,8 +357,14 @@ class LiveRenderTest(unittest.TestCase):
         return probes.render(effect.output, render_frames, rate=RATE,
                              effect=effect, allow_starved_taps=True)
 
+    #: How far short of the render the exhausted probe falls. A probe the
+    #: render's own length used to be enough, because building the class
+    #: pulled one block from its source and threw it away; the lazy build
+    #: no longer does, so the shortfall is planted rather than inherited.
+    SHORT = 256
+
     def test_the_guard_fires_on_a_render_that_outlived_its_probe(self):
-        rendered = self._wet(24000, 24000)
+        rendered = self._wet(24000 - self.SHORT, 24000)
         self.assertGreater(kit.silent_tail_frames(rendered), 0)
         with self.assertRaises(kit.ExhaustedProbeError) as caught:
             kit.require_live(rendered)
@@ -372,11 +378,11 @@ class LiveRenderTest(unittest.TestCase):
 
     def test_that_is_where_the_seventy_dB_came_from(self):
         # The issue's own reading, both ways. Nothing about the Splitter is
-        # different between these two numbers: one probe is 256 frames
-        # longer than the other.
+        # different between these two numbers: one probe is a block short of
+        # the render and the other a block over it.
         #
         # The window is taken from the END of the settled region, because
-        # the defect is at the end: the exhausted render's last 88 frames
+        # the defect is at the end: the exhausted render's last 98 frames
         # are silence, and a transform that stops short of them reads a
         # clean tone. This used to be accidental - `exact_bin_size` rounded
         # 252 periods to 11976 samples and overshot into the silence by 24
@@ -384,7 +390,7 @@ class LiveRenderTest(unittest.TestCase):
         # early, so the window says where it wants to sit rather than
         # relying on a rounding error to put it there.
         floors = []
-        for margin in (0, 256):
+        for margin in (-self.SHORT, 256):
             rendered = self._wet(24000 + margin, 24000)
             x = rendered.float[12000:, 0]
             size = kit.exact_bin_size(len(x), RATE, 1010.0)
@@ -394,9 +400,9 @@ class LiveRenderTest(unittest.TestCase):
             base = float(mags[centre - 2:centre + 3].max())
             floors.append(20.0 * math.log10(float(mags[1:7].max()) / base))
         exhausted, live = floors
-        self.assertGreater(exhausted, -40.0)      # -31.6 dB; the issue's
+        self.assertGreater(exhausted, -40.0)      # -33.1 dB; the issue's
                                                   # own reading was -33.5
-        self.assertLess(live, -100.0)             # -111.5 dB with headroom
+        self.assertLess(live, -100.0)             # -115.6 dB with headroom
         self.assertGreater(exhausted - live, 60.0)
 
 

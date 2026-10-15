@@ -108,10 +108,8 @@ class StepEngageVibrato(rebuilt.Vibrato):
         rebuilt.Vibrato._refresh(self)
         self._plant_step = True
 
-    def _on_block(self):
-        self._plant_step = True
-        self._envelope = 1.0 if self._engaged() else 0.0
-        self._write_wow()
+    def _rise_ramp_ms(self):
+        return 0.0
 
 
 class OpenBodyVibrato(rebuilt.Vibrato):
@@ -139,7 +137,7 @@ class HalfSampleVibrato(rebuilt.Vibrato):
         delay_ms, wow_depth_ms = rebuilt.delay_law(mean_ms, m)
         extra = 500.0 / float(self._sample_rate)
         self._delay.set(delay_ms=delay_ms + extra,
-                        wow_depth_ms=wow_depth_ms * self._envelope)
+                        wow_depth_ms=wow_depth_ms if self._engaged() else 0.0)
 
 
 class SineWowVibrato(rebuilt.Vibrato):
@@ -418,37 +416,48 @@ class T4SmoothLfo(unittest.TestCase):
         self.assertGreater(faulted, clean + 6.0)
 
 
-class T5Ramp(unittest.TestCase):
-    def _env_times(self, cls, rise=0.15):
-        frames = int(RATE * 1.2)
-        src = sine_src(1000.0, frames, level=8234)
-        effect = cls(src, sample_rate=RATE, engage=False, rise=rise,
-                     depth=30.0)
-        pull_left(effect, int(RATE * 0.2))
-        effect.set_macro(ENGAGE_I, 127)
-        dt = 128.0 / RATE
-        stamps = []
-        elapsed = 0.0
-        while elapsed < rise * 2.5 + 0.1:
-            audiocore.get_buffer(effect.output)
-            stamps.append((elapsed, float(effect._envelope)))
-            elapsed += dt
-            if stamps[-1][1] >= 0.999:
-                break
-        return stamps, effect
+#: What the wet path's two poles add to a landing: they carry the ramp's
+#: difference in their state for a little after the depth has arrived.
+RING_S = 0.03
 
-    def _ten_ninety(self, stamps):
-        peak = max(v for _, v in stamps) + 1e-12
-        t10 = next(t for t, v in stamps if v >= 0.1 * peak)
-        t90 = next(t for t, v in stamps if v >= 0.9 * peak)
-        return t90 - t10
+
+def engage_landing(cls, rise, engage=None):
+    """Seconds from an Engage move to the frame from which the moved
+    instance renders exactly what one built engaged renders: the end of the
+    envelope, plus the few ms the Tone and Body poles take to forget the
+    difference (RING_S). `engage(effect)` makes the move (`set_macro` by
+    default)."""
+    lead = int(RATE * 0.2)
+    frames = lead + int(RATE * (rise / rebuilt.RISE_10_90 + 0.3))
+    # The tone outlasts the render, so neither instance runs out of input.
+    tone = frames + RATE
+    moved = cls(sine_src(1000.0, tone, level=8234), sample_rate=RATE,
+                engage=False, rise=rise, depth=30.0)
+    held = cls(sine_src(1000.0, tone, level=8234), sample_rate=RATE,
+               engage=True, rise=rise, depth=30.0)
+    a = list(pull_left(moved, lead))
+    b = list(pull_left(held, lead))
+    if engage is None:
+        moved.set_macro(ENGAGE_I, 127)
+    else:
+        engage(moved)
+    a.extend(pull_left(moved, frames - lead))
+    b.extend(pull_left(held, frames - lead))
+    differ = [i for i in range(lead, min(len(a), len(b))) if a[i] != b[i]]
+    landing = (differ[-1] + 1 - lead) / float(RATE) if differ else 0.0
+    return landing, np.array(a[lead:], dtype=np.float64)
+
+
+class T5Ramp(unittest.TestCase):
+    """Engage ramps the depth in a straight line whose 10-90 % is Rise, so
+    the whole ramp is Rise / 0.8, and lands exactly on the engaged depth."""
 
     def test_one_fifty_ms_rise_at_defaults(self):
-        stamps, effect = self._env_times(rebuilt.Vibrato, 0.15)
-        seconds = self._ten_ninety(stamps)
-        self.assertGreater(seconds, 0.15 * 0.8)
-        self.assertLess(seconds, 0.15 * 1.2)
-        left = pull_left(effect, int(RATE * 0.3)).astype(np.float64)
+        landing, left = engage_landing(rebuilt.Vibrato, 0.15)
+        whole = 0.15 / rebuilt.RISE_10_90
+        self.assertGreater(landing, whole * 0.9)
+        self.assertLess(landing, whole + RING_S)
+        # No zipper: the level moves smoothly through the ramp and after.
         hop = int(RATE * 0.01)
         dbs = []
         for i in range(0, len(left) - hop, hop):
@@ -456,11 +465,16 @@ class T5Ramp(unittest.TestCase):
         steps = np.abs(np.diff(np.array(dbs)))
         self.assertLess(float(np.max(steps)), 0.5)
 
+    def test_a_long_rise_lands_on_time(self):
+        landing, _left = engage_landing(rebuilt.Vibrato, 1.0)
+        self.assertGreater(landing, 1.25 * 0.9)
+        self.assertLess(landing, 1.25 + RING_S)
+
     def test_step_engage_is_faster_than_the_rise(self):
-        clean, _ = self._env_times(rebuilt.Vibrato, 0.15)
-        faulted, _ = self._env_times(StepEngageVibrato, 0.15)
-        self.assertGreater(self._ten_ninety(clean), 0.10)
-        self.assertLess(self._ten_ninety(faulted), 0.02)
+        clean, _ = engage_landing(rebuilt.Vibrato, 0.15)
+        faulted, _ = engage_landing(StepEngageVibrato, 0.15)
+        self.assertGreater(clean, 0.15)
+        self.assertLess(faulted, 0.1)
 
 
 class T6Band(unittest.TestCase):
@@ -544,6 +558,60 @@ class Tier1Fast(unittest.TestCase):
         effect = build(frames=RATE)
         left = pull_left(effect, RATE)
         self.assertEqual(int(np.max(np.abs(left.astype(np.int32)))), 0)
+
+
+class JumpingVibrato(rebuilt.Vibrato):
+    """The moves as they were: the mean line lands at once and Depth 0
+    writes a silent clock law."""
+
+    NAME = 'Vibrato'
+
+    def _refresh(self):
+        rebuilt.Vibrato._refresh(self)
+        self._plant_jump = True
+        m = rebuilt.m_for_cents(self._mean_delay_ms()[0], self._value(RATE_I),
+                                self._value(DEPTH_I))
+        self._shape = rebuilt.clock_shape(m)
+        self._delay.set(delay_slew=0.0, wow_shape=self._shape)
+
+
+class MovesGlide(unittest.TestCase):
+    """A Rate, Depth or Delay move glides the read head, so the output
+    steps no more than the music does (the lifecycle matrix's P5): a
+    triangle whose own largest step is 100 LSB, moved part-way through."""
+
+    MOVES = ((DEPTH_I, 0), (DEPTH_I, 127), (RATE_I, 0), (RATE_I, 127),
+             (DELAY_I, 0), (DELAY_I, 127))
+
+    def _step(self, cls, macro, value):
+        import lifecycle
+        tri = lifecycle.triangle(8192, 2, RATE)
+        outs = []
+        for moved in (False, True):
+            effect = cls.create(probes.ArraySource(tri, rate=RATE,
+                                                   channels=2), RATE)
+            out = bytearray()
+            for block in range(24):
+                if moved and block == 12:
+                    effect.set_macro(macro, value)
+                out += bytes(audiocore.get_buffer(effect.output)[1])
+            effect.deinit()
+            outs.append(array("h", bytes(out)))
+        lo, hi = 12 * 256, 13 * 256
+        control = lifecycle._max_step(outs[0], 2, lo, hi)
+        return lifecycle._max_step(outs[1], 2, lo, hi), control
+
+    def test_each_move_is_smooth(self):
+        for macro, value in self.MOVES:
+            got, control = self._step(rebuilt.Vibrato, macro, value)
+            self.assertLessEqual(got, 1.5 * max(100, control),
+                                 (macro, value, got, control))
+
+    def test_jumping_moves_step(self):
+        steps = [self._step(JumpingVibrato, macro, value)
+                 for macro, value in self.MOVES]
+        self.assertTrue(any(got > 1.5 * max(100, control)
+                            for got, control in steps), steps)
 
 
 class FaultsAreUnreachable(unittest.TestCase):
@@ -678,35 +746,16 @@ class NullBuildsAtDefault(unittest.TestCase):
         self.assertTrue(bool(result["control"]))
 
     def test_t5_audio_rise_is_red_on_a_wire(self):
-        def measure(cls):
-            frames = int(RATE * 0.8)
-            src = sine_src(1000.0, frames, level=8234)
-            effect = cls(src, sample_rate=RATE, engage=False, rise=0.15,
-                         depth=30.0)
-            pull_left(effect, int(RATE * 0.05))
+        def engage(effect):
             # Do not set_macro: that re-routes a wire_build back onto the
-            # delay. Flip the Engage cell the envelope already reads.
+            # delay. Flip the Engage cell and write the depth it asks for.
             effect._macros[ENGAGE_I] = 1.0
-            dt = 128.0 / RATE
-            stamps = []
-            elapsed = 0.0
-            chunks = []
-            while elapsed < 0.4:
-                data = pull_left(effect, 128)
-                chunks.append(data)
-                stamps.append((elapsed, float(effect._envelope)))
-                elapsed += dt
-                if stamps[-1][1] >= 0.999:
-                    break
-            if not stamps:
-                return _Flag(False, "no stamps")
-            peak = max(v for _, v in stamps) + 1e-12
-            crossed = [t for t, v in stamps if v >= 0.1 * peak]
-            crossed90 = [t for t, v in stamps if v >= 0.9 * peak]
-            if not crossed or not crossed90:
-                return _Flag(False, (peak, len(stamps)))
-            t10, t90 = crossed[0], crossed90[0]
-            return _Flag(0.12 < (t90 - t10) < 0.18, t90 - t10)
+            effect._write_wow()
+
+        def measure(cls):
+            landing, _left = engage_landing(cls, 0.15, engage)
+            whole = 0.15 / rebuilt.RISE_10_90
+            return _Flag(whole * 0.9 < landing < whole + RING_S, landing)
 
         result = kit_faults.null_build_red(rebuilt.Vibrato, measure,
                                            label="T5")
@@ -747,6 +796,26 @@ class OldTail(rebuilt.Vibrato):
                 - rebuilt.one_pole_ring(body, rate))
 
 
+class TheResetRestartsTheLfo(unittest.TestCase):
+    """Lifecycle E1 P4 compares a reset instance with one that never met
+    the reset. A reset is a fresh instance exactly (PR), LFO phase
+    included, so the sweep that follows is a fresh one's and never meets
+    the uninterrupted control's again: P4 is declared at E1, and PR holds
+    the reset itself."""
+
+    def test_e1_is_declared_and_the_reset_is_fresh(self):
+        import lifecycle
+        lines = []
+        lifecycle.run_class(rebuilt.Vibrato, rates=(RATE,), channels=(2,),
+                            patches=[None], only=["E1"], emit=lines.append)
+        cells = [line for line in lines if "|E1-" in line]
+        self.assertEqual(len(cells), 2, lines)
+        for line in cells:
+            self.assertNotIn("RED", line)
+            self.assertIn("P4:decl", line)
+        self.assertIn("PR:ok", cells[0])
+
+
 class TheFiltersRingIsInTheTail(unittest.TestCase):
     """Body's high-pass and Tone's low-pass ring after the line has emptied,
     longest at Body's 20 Hz stop (audiocomponents#114): the output reaches
@@ -771,3 +840,20 @@ class TheFiltersRingIsInTheTail(unittest.TestCase):
             got, bound = tail_ring.ring("Vibrato", rate, 2,
                                         start=((6, 0),), cls=OldTail)
             self.assertGreater(got, bound, rate)
+
+
+class TheGraphPullsWithoutGetBuffer(unittest.TestCase):
+    """Vibrato's own re-blocking sources pull the graph the way the
+    twin's nodes do, not through the script-facing `audiocore.get_buffer`
+    that CircuitPython's board builds compile out: with it hidden, every
+    patch renders the bytes it renders with it, through a reset."""
+
+    def test_every_patch_renders_the_same(self):
+        import kit_nogb
+        scenarios = dict(kit_nogb.SCENARIOS)
+        for patch in [None] + sorted(rebuilt.Vibrato.PATCHES):
+            for label in ("reset-once", "reset-first"):
+                with self.subTest(patch=patch, scenario=label):
+                    self.assertEqual(kit_nogb._bytes_cell(
+                        rebuilt.Vibrato, {}, RATE, 2, patch,
+                        scenarios[label]), "ok")

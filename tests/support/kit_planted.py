@@ -415,6 +415,28 @@ class NanLevel(KitPlain):
             self._shaper.set(post_gain=0.5)
 
 
+class NanRaises(KitPlain):
+    """Args: a NaN macro value is refused with ValueError, moving nothing;
+    the contract clamps it to the bottom stop instead."""
+    NAME = "NanRaises"
+
+    def set_macro(self, index, value, *args, **kw):
+        if value != value:
+            raise ValueError("planted: NaN refused")
+        KitPlain.set_macro(self, index, value, *args, **kw)
+
+
+class NanTop(KitPlain):
+    """Args: a NaN macro value lands on the top stop, read back and played
+    there; the contract puts it on the bottom stop."""
+    NAME = "NanTop"
+
+    def set_macro(self, index, value, *args, **kw):
+        if value != value:
+            value = 127
+        KitPlain.set_macro(self, index, value, *args, **kw)
+
+
 class PatchStale(KitPlain):
     """Args: a patch change applies only the first macro."""
     NAME = "PatchStale"
@@ -547,10 +569,105 @@ class MidPatchReset(FlushKit3):
             lifecycle.Routed._arm(self)
 
 
+class PatchPulls(FlushKit3):
+    """Nogb: at the middle patch only, the build pulls its quiet mixer
+    with `audiocore.get_buffer` unconditionally, so where that is compiled
+    out it raises AttributeError there and nowhere else (Distortion's
+    patches 6 to 9 did this)."""
+    NAME = "PatchPulls"
+
+    def _build(self, mix=1.0, gain=1.0, patch=None):
+        FlushKit3._build(self, mix, gain, patch)
+        if patch == 1:
+            audiocore.get_buffer(self._quiet)
+
+    def program_change(self, index, *args, **kw):
+        FlushKit3.program_change(self, index, *args, **kw)
+        if index == 1:
+            audiocore.get_buffer(self._quiet)
+
+
+class NativeFlush(FlushKit):
+    """Nogb: FlushOnly's fault on MicroPython and CircuitPython only (a
+    path a class takes off CPython, as Vibrato's native graph and
+    Saturation's CircuitPython reset do): a check that runs on CPython
+    alone reads it as clean."""
+    NAME = "NativeFlush"
+
+    def _arm(self):
+        FlushKit._arm(self)
+        if sys.implementation.name == "cpython":
+            return
+        pull = getattr(audiocore, "get_buffer", None)
+        if pull is not None:
+            pull(self._mixer)
+
+
+# -- reset equals fresh -------------------------------------------------------
+
+
+class FreshKit(EchoTail):
+    """The control for the fresh check: EchoTail with a second patch; a
+    reset clears the repeat line and lands on patch 0, which is where the
+    constructor's defaults sit."""
+    NAME = "FreshKit"
+
+
+class OffGrid(FreshKit):
+    """A control for the fresh check: the constructor's Gain default is a
+    hair under patch 0's 127, which a declared default may be. Its reset is
+    clean, so it is never red; `boot` reports the difference."""
+    NAME = "OffGrid"
+
+    def _build(self, mix=1.0, gain=0.999, patch=None):
+        FreshKit._build(self, mix, gain, patch)
+
+
+class PatchLeak(FreshKit):
+    """Fresh: from patch 1 only, reset() keeps the repeat line, so the
+    20 ms it held plays after the reset; from the defaults and patch 0 the
+    reset is clean."""
+    NAME = "PatchLeak"
+
+    def reset(self):
+        if self._patch_index != 1:
+            FreshKit.reset(self)
+            return
+        self._check_live()
+        self._clear_nodes(keep=(self._delay,))
+        self._stranded = False
+        self.program_change(0)
+
+
+class MoveLeak(FreshKit):
+    """Fresh: the reset itself is clean, but the first macro move after it
+    lands a hair off where the same move on a fresh instance lands, as a
+    state the reset left behind and only a move wakes would."""
+    NAME = "MoveLeak"
+    _after_reset = False
+
+    def reset(self):
+        FreshKit.reset(self)
+        self._after_reset = True
+
+    def _apply_macro(self, index, position):
+        level = self._level()
+        if self._after_reset and not self._constructing \
+                and self._patch_index is None:
+            level = level * 0.99
+            self._after_reset = False
+        self._shaper.set(post_gain=level)
+
+
 PLANTS = {}
 for _cls in (KitPlain, Silent, WrapKit, WrapKitQuiet, ClipKit, DeadStop,
              CondKit, MidWrap, ComboWrap, AllWrap, LowWrap, ImplKit, EchoTail, ShortTail, EventTail, NoneSilent, NoneDC,
              ReadbackOff, StopRaises, NanLevel, PatchStale, CtorNan,
              ClearsFirst, ClearsMacro, FlushKit, FlushOnly, DoubleReset,
-             FlushKit3, MidPatchReset):
+             FlushKit3, MidPatchReset, PatchPulls, NativeFlush, FreshKit,
+             OffGrid, PatchLeak, MoveLeak):
+    PLANTS[_cls.NAME] = _cls
+
+# The refused-values contract's plants (7d), registered on their own.
+for _cls in (NanRaises, NanTop):
     PLANTS[_cls.NAME] = _cls

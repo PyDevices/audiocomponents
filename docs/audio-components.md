@@ -206,7 +206,8 @@ the declarations to build a UI, initialize values, or offer program changes;
 the metadata remains mandatory even when that consumer chooses not to use
 those features.
 
-**Shipped status:** rack providers ship in `lib/audioeffects/rack.py` —
+**Shipped status:** rack providers ship in `lib/audioeffects/rebuilt/`
+(`rack.py`, `shimmerhall.py`, `airspace.py`) —
 `Rack` (the generic serial-chain mechanism, built from a portable `chain`
 literal), `ShimmerHall`, and `AirSpace` (fixed topologies with a macro
 surface, ported from micropython-vst3's shared soundtrack racks). All

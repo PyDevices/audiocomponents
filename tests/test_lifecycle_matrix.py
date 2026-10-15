@@ -1,5 +1,6 @@
-"""The lifecycle matrix (`tests/support/lifecycle.py`) on every Phase 5
-class this branch carries, on CPython and on the two native interpreters.
+"""The lifecycle matrix (`tests/support/lifecycle.py`) on every effect
+class the package serves (`audioeffects.ALL`, all 45), on CPython and on the
+two native interpreters.
 
 What is red today is written down in KNOWN_RED below, one row per defect,
 each with a one-line reason. The file passes while the red cells are exactly
@@ -35,8 +36,12 @@ from audioeffects import rebuilt                          # noqa: E402
 #: skip test's plant is defined here.
 VENDOR = "PyDevices"
 
-PHASE5 = ("DigitalDelay", "SlapbackDelay", "TapeDelay", "PingPongDelay",
-          "MultiTapDelay", "AnalogDelay", "Reverb", "ConvolutionReverb")
+#: Every class the package serves. Until Phase 7 this was the eight Phase 5
+#: classes alone, and the Phase 2 to 4 classes' red cells stood unlisted for
+#: a month because nothing gated them.
+import audioeffects                                       # noqa: E402
+
+GATED = tuple(audioeffects.ALL)
 
 #: What is red today. (class, event name prefix, property) ->
 #: (red cells in the quick matrix, their digest, red cells in the full
@@ -44,9 +49,12 @@ PHASE5 = ("DigitalDelay", "SlapbackDelay", "TapeDelay", "PingPongDelay",
 #: longest matching prefix. The file goes red when a red cell belongs to no
 #: row, or when a row's cells change in number or in which cells they are
 #: (the message lists them). The full-matrix pair is None where the full
-#: matrix has not been run (MultiTapDelay: it takes about 40 minutes on
-#: CPython).
-KNOWN_RED = {}
+#: matrix has not been counted. The rows live in
+#: `tests/support/lifecycle_known.py`, one reason per cause, each naming the
+#: issue that tracks it.
+import lifecycle_known                                    # noqa: E402
+
+KNOWN_RED = dict(lifecycle_known.KNOWN_RED)
 
 #: P6 differences today: class -> (cells whose line differs between CPython
 #: and a native interpreter in the quick matrix, their digest, the same for
@@ -68,7 +76,26 @@ KNOWN_P6 = {
         "Time to 0 and back: CircuitPython's own audiodelays plays one "
         "stray sample when the line grows back, which audiodsp#241 fixed "
         "on CPython and MicroPython only"),
+    # audiodsp v0.6.6's splice lands each splice in phase (audiodsp#245),
+    # and its reset starts the splices where a new node does (#240);
+    # CircuitPython's own PitchShift does neither, so nearly every cell
+    # that splices live audio renders other bytes there, with the same
+    # verdicts but PR. Counted at v0.6.6rc4.
+    "Harmonizer": (
+        644, "7c09e916", None, None,
+        "CircuitPython's own PitchShift: upstream's splice and reset "
+        "(audiodsp#245, #240)"),
+    "PitchShifter": (
+        600, "6aea4833", None, None,
+        "CircuitPython's own PitchShift: upstream's splice and reset "
+        "(audiodsp#245, #240)"),
+    # Counted one event at a time (E9 and E10 a patch at a time on CPython).
+    "ShimmerHall": (
+        144, "83d529d2", None, None,
+        "Bloom's PitchShift is CircuitPython's own there: upstream's splice "
+        "and reset (audiodsp#245, #240)"),
 }
+KNOWN_P6.update(lifecycle_known.KNOWN_P6)
 
 #: LIFECYCLE_FULL=1 runs the full matrix (every event at every patch);
 #: otherwise the quick one (lifecycle.run_class(quick=True)).
@@ -151,10 +178,95 @@ def check_known(name, red, table=None, full=None):
     return problems
 
 
+def effect_class(name):
+    """The class `lifecycle.py NAME` runs: the one in `rebuilt/`, or the
+    one the package serves once it has come home."""
+    cls = rebuilt.module_class(name)
+    if cls is None:
+        import audioeffects
+        cls = getattr(audioeffects, name, None)
+    return cls
+
+
+#: Files whose change can move any class's cells: the shared base and
+#: package modules, the matrix and the kit it reads, its tables, and the
+#: audiodsp pin. A class module's change moves that class alone.
+SHARED = ("lib/audioeffects/_", "lib/audioeffects/__init__.py",
+          "lib/audioeffects/rebuilt/__init__.py",
+          "lib/audioeffects/pyproject.toml", "tests/support/",
+          "tests/test_lifecycle_matrix.py", "AUDIODSP_PIN")
+
+
+#: What a pull request that changes a shared file runs instead of all 45:
+#: one class per mechanism family, the cheapest that covers it. A lazily
+#: re-armed class (Bitcrusher), an LFO (Tremolo), a delay (DigitalDelay), a
+#: reverb (Reverb), a pitch shifter (Octaver), a filter on the biquad
+#: (LowPass), Rack, Saturation (the recentre path) and Distortion (the graph
+#: rebuild). Measured on CPython at audiodsp v0.6.6rc8: 3 114 CPU seconds,
+#: about 13 minutes on a 4-core runner, where all 45 take 4.4 CPU hours.
+#: A push to main runs all 45, and so does a manual run or a pull request
+#: labelled `lifecycle: all classes` (.github/workflows/tests.yml).
+SAMPLE = ("Bitcrusher", "Tremolo", "DigitalDelay", "Reverb", "Octaver",
+          "LowPass", "Rack", "Saturation", "Distortion")
+
+
+def changed_classes(files):
+    """The gated classes a change to `files` (repository paths) runs: the
+    classes whose own module changed, and SAMPLE beside them when a shared
+    file changed, in GATED's order."""
+    owners = {}
+    for name in GATED:
+        module = getattr(effect_class(name), "__module__", "")
+        path = "lib/" + module.replace(".", "/") + ".py"
+        owners.setdefault(path, []).append(name)
+    picked = set()
+    for path in files:
+        if any(path == s or (s.endswith(("/", "_")) and path.startswith(s))
+               for s in SHARED):
+            picked.update(SAMPLE)
+        picked.update(owners.get(path, ()))
+    return [name for name in GATED if name in picked]
+
+
+def changed_files(base):
+    """The paths `git diff base...HEAD` names.
+
+    A base git cannot diff from is an error, not a reason to run every
+    class: a checkout of depth 1 has no history and no base, and falling
+    back to all 45 is how a pull request's gate once ran for 80 minutes
+    unnoticed. The workflow fetches the history a pull request needs."""
+    done = subprocess.run(["git", "diff", "--name-only", base + "...HEAD"],
+                          capture_output=True, text=True, cwd=ROOT)
+    if done.returncode != 0:
+        raise LookupError(
+            "LIFECYCLE_CHANGED_FROM=%s, but git cannot diff from it (a "
+            "shallow checkout, or a base that was never fetched): %s"
+            % (base, done.stderr.strip()))
+    return [line for line in done.stdout.splitlines() if line]
+
+
 def classes():
+    """The classes to run: LIFECYCLE_CLASSES; or, with
+    LIFECYCLE_CHANGED_FROM set to a git base (a pull request's CI), the
+    classes `changed_classes` picks for the change since that base; or
+    every class the package serves. A name that resolves to no class is an error, not a
+    run with nothing in it, whichever list named it."""
     wanted = os.environ.get("LIFECYCLE_CLASSES")
-    names = wanted.split(",") if wanted else PHASE5
-    return [n for n in names if rebuilt.module_class(n) is not None]
+    if not wanted:
+        missing = [n for n in GATED if effect_class(n) is None]
+        if missing:
+            raise LookupError("audioeffects.ALL names no class: %s"
+                              % ", ".join(missing))
+        base = os.environ.get("LIFECYCLE_CHANGED_FROM")
+        if base:
+            return changed_classes(changed_files(base))
+        return list(GATED)
+    names = wanted.split(",")
+    missing = [n for n in names if effect_class(n) is None]
+    if missing:
+        raise LookupError("LIFECYCLE_CLASSES names no class: %s"
+                          % ", ".join(missing))
+    return names
 
 
 def native_binaries():
@@ -203,7 +315,9 @@ def start_native(binary, names, scratch):
 
 def run_cpython(name, **only):
     lines = []
-    lifecycle.run_class(rebuilt.module_class(name), emit=lines.append,
+    import kit_options
+    lifecycle.run_class(effect_class(name), emit=lines.append,
+                        options=kit_options.lifecycle_options_for(name),
                         quick=not FULL, **only)
     return lines
 
@@ -229,7 +343,7 @@ def run_cpython_all(names):
     import multiprocessing
     parts = [(name, rate, ch, patch) for name in names
              for rate in lifecycle.RATES for ch in lifecycle.CHANNELS
-             for patch in [None] + sorted(rebuilt.module_class(name).PATCHES)]
+             for patch in [None] + sorted(effect_class(name).PATCHES)]
     out = {name: [] for name in names}
     # spawn on every platform: a fork of a process already running threads
     # (a test runner's, say) can deadlock.
@@ -495,6 +609,28 @@ class TestPlants(unittest.TestCase):
         four = ("X", "E2-a", "P1", 48000, 2, "d")
         got = check_known("X", {one, two, four}, table, False)
         self.assertTrue(any(p.startswith("new red") for p in got))
+
+    def test_a_change_picks_the_classes_it_can_move(self):
+        sample = [n for n in GATED if n in SAMPLE]
+        cases = (
+            (["lib/audioeffects/_component.py"], sample),
+            (["tests/support/kit_common.py"], sample),
+            (["AUDIODSP_PIN"], sample),
+            (["lib/audioeffects/_component.py", "lib/audioeffects/fuzz.py"],
+             [n for n in GATED if n in SAMPLE or n == "Fuzz"]),
+            (["lib/audioeffects/bitcrusher.py",
+              "tests/test_bypass_return.py"], ["Bitcrusher"]),
+            (["lib/audioeffects/rebuilt/tapedelay.py"], ["TapeDelay"]),
+            (["lib/audioeffects/phaser.py", "lib/audioeffects/vibrato.py"],
+             ["Phaser", "Vibrato"]),
+            (["docs/control-smoothing.md", "CHANGELOG.md"], []),
+            (["tests/test_cpython_effects_tapedelay.py"], []),
+        )
+        for files, want in cases:
+            with self.subTest(files=files):
+                self.assertEqual(changed_classes(files), want)
+        self.assertEqual(len(SAMPLE), 9)
+        self.assertTrue(set(SAMPLE) <= set(GATED))
 
     def test_p6_can_fail(self):
         """A plant whose level depends on the interpreter prints a

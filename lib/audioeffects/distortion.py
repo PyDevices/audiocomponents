@@ -465,6 +465,13 @@ def _fo_lp(frequency, rate):
     return f0, q
 
 
+def _rbj_a1(f0, q, rate):
+    """An RBJ section's normalised a1, -2 cos(w0) / (1 + alpha): above 0
+    its poles are on the negative real side, and near 2 they sit at -1."""
+    w0 = 2.0 * math.pi * f0 / rate
+    return -2.0 * math.cos(w0) / (1.0 + math.sin(w0) / (2.0 * q))
+
+
 def _fo_hp(frequency, rate):
     """Parked-pole first-order high-pass: `_fo_lp` read the other way up.
 
@@ -486,6 +493,9 @@ class Distortion(_component.Component):
     Boss DS-1. Mix 0 is the wire. Distortion 0 is clean only in `filter`.
     """
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'Distortion'
     DISPLAY_NAME = 'Distortion'
     CATEGORIES = ('Drive',)
@@ -590,6 +600,8 @@ class Distortion(_component.Component):
         self._wet_latency = CLICK_DELAY_SAMPLES[self._oversample]
         self._latency = self._wet_latency
         self._scoop = False
+        #: Set by `_rebuild` outside the constructor, read by `reset()`.
+        self._rebuilt = False
         self._rat_curve = array("h", _CURVE_RAT_DIODE)
         self._ds1_curve = array("h", _CURVE_DS1_DIODE)
         self._ds1_asym = array("h", _CURVE_DS1_ASYM)
@@ -665,7 +677,7 @@ class Distortion(_component.Component):
             _component.open_level_gates(
                 mixer, list(mixer.voice), self._silence)
         for voice, source in self._wiring:
-            voice.play(source)
+            self._play_voice(voice, source)
 
     def _charge_output_cap(self):
         """Settle `_out_hp` on the bias before the first block is asked for.
@@ -678,8 +690,14 @@ class Distortion(_component.Component):
         at its own silence buffer and the chain downstream of it is pulled
         until the pole has settled, which happens before anything reads the
         Splitter, so no tap is starved and the real source is not touched.
+
+        On a build with no `audiocore.get_buffer` - CircuitPython's default
+        board build compiles it out - nothing can pull the pole, so this
+        does nothing. The scoop tables answer zero with zero, so there is
+        no offset to settle and nothing renders differently.
         """
-        if self._out_hp is None or not self._macros:
+        pull = getattr(audiocore, "get_buffer", None)
+        if pull is None or self._out_hp is None or not self._macros:
             return
         # Ten time constants of the pole, in whole blocks. The silence
         # buffer is one block long, so it is re-played each time round.
@@ -687,7 +705,7 @@ class Distortion(_component.Component):
                      / (2.0 * math.pi * OUT_HP_HZ * 256.0)) + 1
         for _ in range(blocks):
             self._shaper.play(self._silence)
-            if not audiocore.get_buffer(self._out_hp)[1]:
+            if not pull(self._out_hp)[1]:
                 break
         self._shaper.play(self._booster)
 
@@ -705,8 +723,10 @@ class Distortion(_component.Component):
             width=1.0, sample_rate=self._sample_rate,
             channel_count=self._channel_count), reset=False)
         adapter.play(self._source)
+        self._head = adapter
         mix_split = self._own(
             audioroute.Splitter(adapter, taps=2), reset=False)
+        self._head_split = mix_split
         self._dry_tap = self._own(mix_split.tap(0), reset=False)
         wet_in = self._own(mix_split.tap(1), reset=False)
 
@@ -824,6 +844,7 @@ class Distortion(_component.Component):
         # method. Now the new graph is standing and the port is pointed at it
         # before a single old node is told to let go, so nothing is ever
         # pulled after it is released.
+        self._rebuilt = True
         old_nodes = self._nodes
         self._nodes = []
         self._resets = []
@@ -859,6 +880,26 @@ class Distortion(_component.Component):
             if release is not None:
                 release()
 
+    def reset(self):
+        """Clear every node and restore patch 0, then arm the graph as
+        `_build` does, so a reset is a fresh instance (no block primed
+        through the chain before it was cleared plays after it)."""
+        self._rebuilt = False
+        self._reset_rearmed(self._rearm, (), building=True)
+
+    def _rearm(self):
+        """After a reset's walk. A patch 0 that crossed the Character
+        boundary built a new graph while the patch went in, unconnected as
+        `_build` leaves it, so it is connected now, at patch 0's levels, as
+        `_build` connects it. Otherwise the graph is re-armed from its
+        bypass branch."""
+        if self._rebuilt:
+            self._stranded = False
+            if self.macro(MIX) > 0.0:
+                self._connect()
+            return
+        self._push()
+
     def _push(self):
         if not self._macros:
             return
@@ -876,6 +917,12 @@ class Distortion(_component.Component):
         # at the levels just pushed, every voice re-played - before the
         # port is pointed at it (audiocomponents#113).
         rejoin = self._rejoin()
+        if rejoin:
+            # The adapter drops the source frames it took before the bypass,
+            # which the host has since read past, and the Splitter behind it
+            # what it held of them.
+            _component.let_go_of_source(self._head, self._source)
+            _component.let_go_of_source(self._head_split, self._head)
         # The dry leg is not delayed and the wet leg is, so the class's own
         # onset is the DRY one at every Mix that lets any dry through: a
         # click at Mix 64 arrives at sample 0, not at sample 2. Reporting
@@ -997,8 +1044,24 @@ class Distortion(_component.Component):
         p = self.macro(FILT)
         fc = 1.0 / (2.0 * math.pi * (FILTER_R0 + p * FILTER_POT) * FILTER_C)
         f0, q = _fo_lp(self._hz(fc), self._sample_rate)
-        self._filt.frequency = f0
-        self._filt.Q = q
+        filt = self._filt
+        before = _rbj_a1(filt.frequency, filt.Q, self._sample_rate)
+        filt.frequency = f0
+        filt.Q = q
+        # The Filter pot's open end puts this section's poles near -1 at
+        # 44.1 and 48 kHz (Filter 0's corner is above Nyquist, so both
+        # sit at the top of the band), where they ring at Nyquist. Swung
+        # there from a darker corner - Filter 64 to 0, `Clean Edge` from
+        # patch 0 - the state the old section left is in the wrong
+        # coordinates for the new one, and the ring went rail to rail
+        # every sample for a dozen frames: a full-scale crack even at
+        # -40 dBFS in. Starting the section from rest there costs one
+        # step of the size of the material instead. The bound: a landing
+        # with a1 above 1 (Filter 0 to 1 at 48 kHz, 0 to 2 at 44.1 kHz),
+        # from a1 at least 0.5 lower; a sweep there moves it less a step.
+        after = _rbj_a1(f0, q, self._sample_rate)
+        if after > 1.0 and after - before > 0.5:
+            filt.clear()
 
     def _blend_curve(self, asymmetry):
         """Mix the two DS-1 tables at `asymmetry`, in place, in integers.

@@ -1700,6 +1700,22 @@ class TheOutputStage(unittest.TestCase):
             tail = int(over[-1]) + 1 if len(over) else 0
             self.assertLess(tail, Fuzz.TAIL_SAMPLES, (options, tail))
 
+    def test_bias_off_centre_declares_no_bound(self):
+        """Off centre the output settles near zero rather than on it, so
+        `tail_samples` is None there; Mix 0 is the dry alone and keeps
+        the bound."""
+        effect = build(bias=0.0)
+        self.assertEqual(effect.tail_samples, Fuzz.TAIL_SAMPLES)
+        for midi in (0, 32, 96, 127):
+            effect.set_macro(3, midi)
+            self.assertIsNone(effect.tail_samples, midi)
+        effect.set_macro(5, 0)
+        self.assertEqual(effect.tail_samples, Fuzz.TAIL_SAMPLES)
+        effect.deinit()
+        effect = build(bias=-0.85)
+        self.assertIsNone(effect.tail_samples)
+        effect.deinit()
+
     def test_bias_off_centre_never_reaches_digital_zero_and_says_so(self):
         """The disclosure as a claim: it does not settle, and what stays is
         under 16 LSB."""
@@ -2067,11 +2083,18 @@ class TheCascadeOutputPole(unittest.TestCase):
                 over = np.nonzero(np.abs(values) > 16)[0]
                 ring = int(over[-1]) + 1 if len(over) else 0
                 with self.subTest(character=character, midi=midi):
+                    # Off centre the class declares no bound (it settles
+                    # near zero, not on it); what is over 16 LSB still ends
+                    # inside the centred bound.
+                    if midi == 64:
+                        self.assertEqual(declared, Fuzz.TAIL_SAMPLES)
+                    else:
+                        self.assertIsNone(declared)
                     self.assertLessEqual(
-                        ring, declared,
+                        ring, Fuzz.TAIL_SAMPLES,
                         "a 220 Hz burst on %s at Bias %d rings %d frames "
-                        "over 16 LSB against a declared %d"
-                        % (character, midi, ring, declared))
+                        "over 16 LSB against %d"
+                        % (character, midi, ring, Fuzz.TAIL_SAMPLES))
 
     def test_the_live_recharge_leaves_the_input_split_in_step(self):
         """What the third round thought re-charging `cascade` live would
@@ -2317,6 +2340,50 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
             0, patch=2)
         self.assertGreater(after, 10000)
 
+
+
+class TheResetLeavesOnlyFilterResidue(unittest.TestCase):
+    """Lifecycle E1 P4 compares a reset instance with one that never met
+    the reset. A reset is a fresh instance exactly (PR), but the coupling
+    sections at 10.5 and 12.4 Hz carry a few LSB of the material heard
+    before it in their float state for seconds, where the uninterrupted
+    control carries its own, and the 36 dB stage behind the first of them
+    raises that to a few hundred LSB. P4 is declared at E1, PR holds the
+    reset itself, and the residue is held under 1024 LSB (-30 dBFS)."""
+
+    def test_e1_is_declared_and_the_reset_is_fresh(self):
+        import lifecycle
+        lines = []
+        lifecycle.run_class(Fuzz, rates=(RATE,), channels=(2,),
+                            patches=[None], only=["E1"], emit=lines.append)
+        cells = [line for line in lines if "|E1-" in line]
+        self.assertEqual(len(cells), 2, lines)
+        for line in cells:
+            self.assertNotIn("RED", line)
+            self.assertIn("P4:decl", line)
+        self.assertIn("PR:ok", cells[0])
+
+    def test_the_residue_stays_under_1024_lsb(self):
+        import kit_common as kc
+        import lifecycle
+        frames = 2 * RATE
+        material = lifecycle.click_noise(frames, 2)
+        bound = (Fuzz.TAIL_SAMPLES + Fuzz.LATENCY_SAMPLES
+                 + 13 * kc.BLOCK)
+
+        def render(reset):
+            feed = kc.feed(material, RATE, 2)
+            e = Fuzz(feed.port, sample_rate=RATE)
+            try:
+                return kc.render(e, frames,
+                                 {12: lambda x: x.reset()} if reset else None)
+            finally:
+                e.deinit()
+        a = np.frombuffer(render(True), dtype=np.int16).astype(np.int32)
+        b = np.frombuffer(render(False), dtype=np.int16).astype(np.int32)
+        residue = int(np.max(np.abs(a[2 * bound:] - b[2 * bound:])))
+        self.assertGreater(residue, 0)
+        self.assertLess(residue, 1024)
 
 if __name__ == "__main__":
     unittest.main()

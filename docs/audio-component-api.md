@@ -6,7 +6,7 @@ separately in `audio-components.md`.
 
 The contract is structural. A provider does not have to inherit from an
 `audiodsp` helper class, but it must expose the required attributes and methods.
-The helper classes in `audioinstruments._support` and `audioeffects._core` are
+The helper classes in `audioinstruments._support` and `audioeffects._component` are
 implementation conveniences, not a requirement imposed on consumers.
 
 ## Construction
@@ -274,6 +274,11 @@ Writing a part against this, and the two traps that cost a run: the
 value may be fractional even though patch declarations use integer MIDI
 values. An invalid macro index raises `IndexError`.
 
+A macro value off the 0-127 range is clamped, never refused: below 0, minus
+infinity and NaN set the macro's bottom stop, and above 127 and plus infinity
+its top stop. `get_macro()` then reads back 0 or 127, and the component plays
+exactly what `set_macro(index, 0)` or `set_macro(index, 127)` plays.
+
 Construction applies patch `0` automatically. A fresh component and a fresh
 component followed by `program_change(0)` have the same observable state.
 `program_change(index)` applies a known patch and safely ignores an unknown
@@ -335,10 +340,11 @@ control. An effect rack has exactly the effect shape even when its internal
 graph contains serial, parallel, or mixed effects. Racks may contain and be
 used by other racks.
 
-**Shipped status:** rack providers ship in `lib/audioeffects/rack.py`.
+**Shipped status:** rack providers ship in `lib/audioeffects/rebuilt/`
+(`rack.py`, `shimmerhall.py`, `airspace.py`).
 `Rack` is the generic mechanism — a serial chain of the package's own
 effects described by portable literals
-(`create("Rack", source, rate, chain=(("Reverb", {"preset": "hall"}),))`) —
+(`create("Rack", source, rate, chain=(("Reverb", {"character": "hall"}),))`) —
 and `ShimmerHall` and `AirSpace` are fixed-topology racks with a macro
 surface over their children, ported from micropython-vst3's shared
 soundtrack racks. A rack is one more `audioeffects` provider: it is

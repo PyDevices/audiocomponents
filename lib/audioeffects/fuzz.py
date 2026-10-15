@@ -195,11 +195,16 @@ is still not zero at 16 627 frames at the constructor default and **18 750
 at patch 5**, and 100 Hz is over it at patches 1, 5 and 7 (audit 3 (p)1).
 The declaration covers the worst of 40, 100, 220 and 1000 Hz at those four
 settings at all three rates, and it is a −6 dBFS reading - the tail is
-shorter at every quieter input. **With Bias off centre it never
-reaches digital zero** - a wander of at most 16 LSB (−66.2 dBFS) stays,
-because ±1 LSB at the input of a 36 dB gain stage is ±63 LSB at the
-steepest part of the curve. Everything above 16 LSB is gone within **9 441**
-frames (patch 2, 40 Hz). Patch 2 ships Bias −0.85 and has it.
+shorter at every quieter input. **With Bias off centre there is no
+bound, and `tail_samples` is None** (Mix 0 aside, which is the dry alone).
+The shaper answers silence with a constant and the coupling poles behind it
+settle near zero rather than on it: on `germanium` the output was still
+nonzero 6 s after the input at every Bias stop but the three either side of
+centre, and on `cascade` it settled at some stops and not at others. What
+stays is small: a wander of about ±11 LSB at patch 2's Bias −0.85 and ±3 at
+Bias +1, and at Bias −1 a constant that depends on what was played - 177 LSB
+(−45.3 dBFS) after a −6 dBFS DC step, 44 after full-scale noise - which is
+DC and not heard. Patch 2 ships Bias −0.85 and has it.
 
 **The output pole is charged before the first block.** S1's third
 capacitor is the output one and its section is behind the shaper, but it
@@ -226,8 +231,8 @@ of that clipper. In the band it costs **1.268 dB at 40 Hz, 0.053 at 100
 and 0.000 at 482 Hz and above**. Walked over 108 cells (3 rates × 2 characters × 9 Bias
 stops × built-at-the-value and moved-to-it-live), the **settled mean is at
 most 7.1 LSB and the peak at most 13**, both on `germanium`; `cascade`'s
-worst is 6 LSB of each, inside the 16 LSB residual this class already
-states. What it takes with it is C3's Bias clause and C4's Fuzz span,
+worst is 6 LSB of each. That walk played tones; after a DC step at Bias
+−1 the constant left is 177 LSB (the tail paragraph above). What it takes with it is C3's Bias clause and C4's Fuzz span,
 both restated above; **C1 does not move** (h2 −79.059 → −79.379, peak
 growth 0.012 → 0.013 dB).
 
@@ -608,10 +613,9 @@ class Fuzz(_component.Component):
     #: 16 627 frames at the constructor default, **18 750 at patch 5**, and
     #: 100 Hz is over it at patches 1, 5 and 7 (audit 3 (p)1). This covers
     #: the worst of 40, 100, 220 and 1000 Hz at the default and at patches
-    #: 1, 5 and 7, at all three rates, after a -6 dBFS burst. What it does
-    #: **not** cover is said in the docstring: with Bias off centre the
-    #: class never reaches digital zero, and that wander is bounded at
-    #: 16 LSB.
+    #: 1, 5 and 7, at all three rates, after a -6 dBFS burst. It holds with
+    #: Bias centred; off centre the output settles near zero rather than on
+    #: it, and `tail_samples` is None there (see the docstring).
     TAIL_SAMPLES = 24576
 
     MACRO_LABELS = ("Fuzz", "Level", "Tone", "Bias", "Load", "Mix",
@@ -708,6 +712,8 @@ class Fuzz(_component.Component):
                 mode=audiobiquad.HIGH_PASS, frequency=self._hz(HP_A_HZ),
                 Q=HP_A_Q, sample_rate=rate, channel_count=channels))
             hp_a.play(self._source)
+            self._head = hp_a
+            self._head_consumers = ()
             hp_b = self._own(audiobiquad.Biquad(
                 mode=audiobiquad.HIGH_PASS, frequency=self._hz(HP_B_HZ),
                 Q=HP_B_Q, sample_rate=rate, channel_count=channels))
@@ -747,12 +753,14 @@ class Fuzz(_component.Component):
             # reach the sum *past* a tone stack the wet legs go through.
             self._split = self._own(
                 audioroute.Splitter(source=self._source, taps=2), reset=False)
+            self._head = self._split
             self._dry = self._own(self._split.tap(0), reset=False)
             wet_in = self._own(self._split.tap(1), reset=False)
             hp_in = self._own(audiobiquad.Biquad(
                 mode=audiobiquad.HIGH_PASS, frequency=self._hz(14.0),
                 Q=BUTTER_Q, sample_rate=rate, channel_count=channels))
             hp_in.play(wet_in)
+            self._head_consumers = ((hp_in, wet_in),)
             self._hps.append(hp_in)
             shaper1 = self._own(audioshaper.Waveshaper(
                 sample_rate=rate, channel_count=channels,
@@ -843,7 +851,7 @@ class Fuzz(_component.Component):
         self._route()
         self._refresh()
 
-    def _charge_output(self, rewire=False):
+    def _charge_output(self, rewire=False, whole=False):
         """Settle the output pole on the offset before the first block.
 
         Bias is an offset into an asymmetric curve, so the shaper answers a
@@ -875,22 +883,28 @@ class Fuzz(_component.Component):
         place.
 
         On a build with no `audiocore.get_buffer` - CircuitPython's default
-        board build compiles it out - this does nothing and the bang is
-        back.
+        board build compiles it out - the pole is pulled the same way from a
+        scratch mixer voice (`_pull_node`), which can't read the blocks back,
+        so it runs all `CHARGE_BLOCKS` and the pole lands where the early stop
+        leaves it, to the byte.
         """
-        pull = getattr(audiocore, "get_buffer", None)
-        if pull is None or self._charge_tap is None:
+        if self._charge_tap is None:
             return False
         self._charged_bias = self._value(3)
         for index in range(CHARGE_BLOCKS):
             for node, _source in self._charge_wiring:
                 node.play(self._quiet)
-            _state, data = pull(self._charge_tap)
+            got = self._pull_node(self._charge_tap)
+            if got is False:
+                break
+            if got is None:
+                continue
+            _state, data = got
             if not data:
                 break
             # The first block back is what the pole was holding before the
             # shapers were re-pointed, so it says nothing about this offset.
-            if index and not any(array("h", bytes(data))):
+            if index and not whole and not any(array("h", bytes(data))):
                 break
         if rewire:
             for node, source in self._charge_wiring:
@@ -989,6 +1003,11 @@ class Fuzz(_component.Component):
             self._latency = 0
         else:
             if self._rejoin(keep=(self._tone_mix,)):
+                # The head (the first coupling cap, or cascade's Splitter)
+                # drops the source frames it took before the bypass, which
+                # the host has since read past.
+                _component.let_go_of_source(self._head, self._source,
+                                            self._head_consumers)
                 self._rearm()
             self._output = self._tilt
             self._latency = self._wet_delay
@@ -1033,6 +1052,13 @@ class Fuzz(_component.Component):
             return
         self._hps[1].play(self._lean if lean else self._shapers[0])
         self._routed_lean = lean
+        # The pole now reads a shaper that has stood idle: cleared and
+        # charged on the offset, as a live Bias move charges it, or the
+        # move to or from the lean patch thumps out of silence.
+        # All `CHARGE_BLOCKS`, as a build without `get_buffer` charges:
+        # the early stop left 1 LSB that surfaced 120 frames on.
+        if self._ready and not self._constructing:
+            self._charge_output(rewire=True, whole=True)
         self._wet_delay = _group_delay_samples(
             self._lean_oversample if lean else self._oversample)
 
@@ -1040,3 +1066,21 @@ class Fuzz(_component.Component):
     def latency_samples(self):
         self._check_live()
         return int(self._latency)
+
+    @property
+    def tail_samples(self):
+        """`TAIL_SAMPLES` with Bias centred or Mix at 0, and None anywhere
+        else.
+
+        Off centre the shaper answers silence with a constant, the coupling
+        poles behind it settle into a wander of a few LSB rather than onto
+        zero, and nothing bounds when (or whether) it stops: on `germanium`
+        it was still there 6 s after the input at every Bias stop but the
+        three either side of centre, and on `cascade` it settled at some
+        stops and not at others. A bound there would be a guess, and the
+        contract's None is the honest answer. Mix 0 is the dry alone, and
+        the wander is not in it."""
+        self._check_live()
+        if self._value(3) != 0.0 and self._value(5) > 0.0:
+            return None
+        return type(self).TAIL_SAMPLES

@@ -63,11 +63,107 @@ DECLARED = {
         "ConvolutionReverb's own ceiling at its defaults: it rails this 0"
         " dBFS sine alone (its own ceiling cell sine/48000/2/d), a finding"
         " for that class and not a rack defect",
+    ("Saturation", "ceiling", "sine/48000/2/all=127"):
+        "every macro at its top is Output +12 dB on a 0 dBFS input, which"
+        " the docstring says can clip at the rails",
+    ("Saturation", "ceiling", "noise/48000/2/all=127"):
+        "every macro at its top is Output +12 dB on a 0 dBFS input, which"
+        " the docstring says can clip at the rails",
+    ("Saturation", "ceiling", "sine/48000/2/m1=127"):
+        "Output +12 dB on a 0 dBFS input, which the docstring says can"
+        " clip at the rails",
+    ("Saturation", "ceiling", "sine/48000/2/lv=127+m1=127"):
+        "Output +12 dB on a 0 dBFS input, which the docstring says can"
+        " clip at the rails",
     ("Octaver", "ceiling", "clicks/"):
         "with Direct at 0 only the octaves sound, and one-sample clicks"
         " through the clock's low-pass stay under Sensitivity, where the"
         " octaves are silent by design (trait T3 b)",
 }
+
+# MultiTapDelay on CircuitPython: its audiodelays.MultiTapDelay is
+# upstream's own, whose reset_buffer keeps the write heads where they were,
+# so a Time 0 move after a reset keeps another stretch of the line than on
+# a fresh node. audiodsp's node puts them at the top (docs/upstream-diff.md
+# there); CPython and MicroPython keep the cells live.
+for _ch in CHANNELS:
+    for _rate in RATES:
+        DECLARED[("MultiTapDelay", "fresh", "reset@8+m0=0/%d/%d/" % (
+            _rate, _ch), "circuitpython")] = (
+            "CircuitPython's own MultiTapDelay keeps its write heads across"
+            " a reset, so a shorter Time after it keeps another stretch of"
+            " the line; audiodsp's node resets them")
+
+# The pitch shifters on CircuitPython: its audiodelays.PitchShift is
+# upstream's own, whose reset keeps the read and write positions, so a
+# reset does not start the splices where a new node starts them
+# (audiodsp#240 fixed it in audiodsp's node; each class's docstring says
+# so, and the lifecycle matrix declares the same cells there).
+for _name in ("Harmonizer", "PitchShifter"):
+    DECLARED[(_name, "fresh", "reset@", "circuitpython")] = (
+        "CircuitPython's own PitchShift keeps its read and write positions"
+        " across a reset, so the splices do not start where a new node's"
+        " do; audiodsp's node resets them (audiodsp#240)")
+DECLARED[("ShimmerHall", "fresh", "reset@8+m0=0/", "circuitpython")] = (
+    "Octave Bloom, then Rise after a reset: CircuitPython's own PitchShift"
+    " keeps its read and write positions across the reset (audiodsp#240)")
+
+# Flanger and ExampleStock, the stock tier on a node that primes: an
+# upstream effect node's `play()` takes its first block from the source at
+# once, so a reset before the first pull still holds that block and plays
+# it, the source's frames 0 to 255, where a fresh instance built at that
+# moment primes the block after. Only another `play()` drops a held block,
+# and `play()` resets the host's own source (a RawSample starts again from
+# its first frame), so a reset mid-stream would restart the host's audio;
+# the stock tier has no port to prime from instead. From the first pull on
+# the reset is a fresh instance (`reset@8` is green). Waiting on a ruling.
+for _name in ("Flanger", "ExampleStock"):
+    DECLARED[(_name, "fresh", "reset@0/")] = (
+        "a stock node primes its first block at play(): a reset before the"
+        " first pull plays that block where a fresh build primes the next;"
+        " dropping it takes a play(), which resets the host's source")
+
+# Overdrive at patch 6, a patch moved and restored before the first pull:
+# without get_buffer the pole charge runs all 64 blocks (`_pull_node` cannot read
+# a block back), with it the charge stops at the first zero block, and P4
+# reads that residue against the control only with get_buffer. Not audible.
+# Since Overdrive builds lazily (Phase 7, lc-1) the same residue reads on
+# the other E10 cells that land on a clipped bias before the first pull:
+# a reset or a patch change at patch 6, and every macro at 127.
+for _cell in ("E10-patch/48000/2/6", "E10-patch/48000/1/6",
+              "E10-reset/48000/1/6", "E10-reset/48000/2/6",
+              "E10-macros/48000/1/d", "E10-macros/48000/2/d"):
+    DECLARED[("Overdrive", "nogb", _cell)] = (
+        "the board path charges the pole 64 blocks where the get_buffer"
+        " path stops at the first zero block; P4 differs only with"
+        " get_buffer")
+
+# The lazy re-arm (`Component._reset_rearmed`) without get_buffer: nothing
+# can hand a silent primed block up, so a reset arms the voices from their
+# sources, as a build does, and the first block after it is the source's
+# own. A second reset, or a patch change, before the next pull finds that
+# block already taken through patch 0's graph: the second reset drops it
+# and takes the next, the patch change plays it at patch 0. One reset, and
+# resets a block apart, match a run with get_buffer. Declared by the
+# landing ruling of 2026-10-14.
+for _name in ("Distortion", "MultibandCompressor"):
+    for _scenario in ("reset-twice", "reset-first-twice", "reset-patch"):
+        DECLARED[(_name, "nogb", "bytes-%s/" % _scenario)] = (
+            "without get_buffer a reset primes the voices from the source,"
+            " as a build does; a second reset or a patch change before the"
+            " next pull meets that block already primed")
+
+# DynamicEQ's, MultibandCompressor's and Phaser's input guard (an
+# `audiofilters.Filter`) takes the source's first block at `play()`, so the
+# source stands at 256 before anything is pulled. A reset before the first
+# pull plays the material from frame 0, as a fresh build does
+# (tests/test_first_pull.py); the fresh check reads where the source
+# stands and expects 256.
+for _name in ("DynamicEQ", "MultibandCompressor", "Phaser"):
+    DECLARED[(_name, "fresh", "reset@0/")] = (
+        "the input node holds the first block from play(), so the source"
+        " stands at 256 while a reset before the first pull plays frame 0,"
+        " which is a fresh build's frame 0 (test_first_pull)")
 
 # PitchShifter at Feedback's top: the repeats stack on the dry, up to 21
 # times the input's peak on a DC, so the rail is reachable below any useful
@@ -314,8 +410,15 @@ def resolve(name):
 # Cells
 
 
-def declared(name, check, key):
-    for (cname, ccheck, prefix), _reason in DECLARED.items():
+def declared(name, check, key, impl=None):
+    """A row of DECLARED covers the cell. A row with a fourth element names
+    the one interpreter (`sys.implementation.name`) it holds on, so the
+    cell stays live on the other two."""
+    impl = impl or sys.implementation.name
+    for row, _reason in DECLARED.items():
+        cname, ccheck, prefix = row[:3]
+        if len(row) > 3 and row[3] != impl:
+            continue
         if cname == name and ccheck == check and key.startswith(prefix):
             return True
     return False

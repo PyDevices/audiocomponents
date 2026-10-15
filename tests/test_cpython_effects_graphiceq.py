@@ -181,14 +181,15 @@ class NoWakeGraphicEQ(graphiceq.GraphicEQ):
 
 
 def _sweep(cls, steps, hz=220.0, peak=3000, dwell=24000, after=96000,
-           rate=RATE, channels=CHANNELS):
+           rate=RATE, channels=CHANNELS, kept=None):
     """Move macros mid-render and report the transient after the last move.
 
     `steps` is a list of macro-move lists, applied `dwell` frames apart.
     Returns `(peak, settled, ms_above_settled)`, where `settled` is the
     loudest block of the last quarter of the tail - the level the class
     arrives at, so the transient is measured against where it was going
-    rather than where it came from.
+    rather than where it came from. A list passed as `kept` receives the
+    first channel's samples from the last move on.
     """
     total = dwell * len(steps) + after
     effect = cls.create(ArraySource(tone(hz, total, peak=peak, rate=rate,
@@ -208,6 +209,8 @@ def _sweep(cls, steps, hz=220.0, peak=3000, dwell=24000, after=96000,
             samples = memoryview(
                 bytes(audiocore.get_buffer(effect.output)[1])).cast("h")
             peaks.append(max(abs(value) for value in samples))
+            if kept is not None and done == len(steps):
+                kept.extend(samples[::channels])
             frames += len(samples) // channels
             blocks += 1
         per_block = len(samples) // channels
@@ -455,18 +458,37 @@ class TheDetentIsAWire(unittest.TestCase):
     def test_the_fault_bites_on_every_crossing_and_on_one_band_alone(self):
         # Not one lucky arrangement. Both directions across the detent, the
         # whole bank and a single band, and the shelf band as well as a bell.
+        #
+        # What bites is the claim itself: a band back from the detent starts
+        # from nothing, so the faulted render departs from the class's own
+        # fresh start. Up to audiodsp rc8 this read the peak, which the stale
+        # state always raised. Since rc9 a coefficient move walks over about
+        # 21 ms with its state remapped
+        # (audiocomponents#162), and the faulted band walks
+        # in from the curve it held before the detent. Arriving from a cut,
+        # that walk can stay under the fresh start's own overshoot, so the
+        # peak missed it on three of these crossings (all bands and 31 Hz,
+        # cut to boost; 31 Hz, boost to cut). The departure does not: at rc9
+        # it is 0.25 of the settled level at 31 Hz and 33 times it with the
+        # whole bank boost to cut, and the crossing-free control below holds
+        # it at exactly zero.
         for label, steps in (
                 ("all bands, boost to cut", _across_the_detent(127, 0)),
                 ("all bands, cut to boost", _across_the_detent(0, 127)),
                 ("31 Hz alone, boost to cut", _across_the_detent(127, 0, (0,))),
                 ("31 Hz alone, cut to boost", _across_the_detent(0, 127, (0,))),
                 ("1 kHz alone, boost to cut", _across_the_detent(127, 0, (5,))),
+                ("1 kHz alone, cut to boost", _across_the_detent(0, 127, (5,))),
         ):
-            clean = _sweep(graphiceq.GraphicEQ, steps)
-            faulted = _sweep(NoWakeGraphicEQ, steps)
-            self.assertGreater(faulted[0], clean[0],
-                               "%s: fault inert, %r against %r"
-                               % (label, faulted, clean))
+            ours, theirs = [], []
+            clean = _sweep(graphiceq.GraphicEQ, steps, kept=ours)
+            _sweep(NoWakeGraphicEQ, steps, kept=theirs)
+            self.assertEqual(len(ours), len(theirs))
+            departure = max(abs(a - b) for a, b in zip(ours, theirs))
+            self.assertGreater(departure, clean[1] * 0.2,
+                               "%s: fault inert, departs %d from a fresh "
+                               "start settling at %d"
+                               % (label, departure, clean[1]))
 
     def test_the_fault_is_inert_where_the_detent_is_never_crossed(self):
         # The control that keeps the row above from being "clearing filter
@@ -1009,14 +1031,19 @@ if __name__ == "__main__":
 
 class TheTailAfterAMove(unittest.TestCase):
     """A Gain or Volume move from the top to the bottom as the input stops
-    rings out inside the bound read after the move (audiocomponents#114);
-    the old fixed 0.47 s is red there."""
+    rings out inside the bound read after the move (audiocomponents#114).
+    Up to audiodsp v0.6.6rc8 it rang past the old fixed 0.47 s; since rc9
+    the biquad walks a coefficient move over about 21 ms with its state
+    remapped (audiocomponents#162), and even the old figure holds."""
 
-    def test_the_ring_ends_inside_the_bound_and_the_old_one_is_short(self):
+    # Frames rung at 22.05 kHz mono, Gain then Volume: 10 to 20 % past
+    # 10 363 (0.47 s) up to rc8, and 9 566 at rc9.
+    def test_the_ring_ends_inside_the_bound_and_the_old_one_now_holds(self):
         import tail_ring
         for index in (10, 11):
             got, bound = tail_ring.ring(
                 "GraphicEQ", 22050, 1, None, start=((index, 127),),
                 moves=((index, 0),))
             self.assertLessEqual(got, bound, index)
-            self.assertGreater(got, int(22050 * 0.47), index)
+            # Red up to audiodsp rc8, where the move rang past it.
+            self.assertLessEqual(got, int(22050 * 0.47), index)

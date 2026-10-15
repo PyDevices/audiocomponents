@@ -181,6 +181,9 @@ _DEFAULTS = {
 class Compressor(_component.Component):
     """Four compressor characters on two `audiodynamics.Dynamics` nodes."""
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'Compressor'
     DISPLAY_NAME = 'Compressor'
     CATEGORIES = ('Dynamics',)
@@ -292,6 +295,7 @@ class Compressor(_component.Component):
         # well as the current one.
         split = self._own(audioroute.Splitter(self._source, taps=2),
                           reset=False)
+        self._split = split
         self._wet_tap = self._own(split.tap(0), reset=False)
         self._dry_tap = self._own(split.tap(1), reset=False)
         self._fast = self._own(audiodynamics.Dynamics(
@@ -337,6 +341,12 @@ class Compressor(_component.Component):
         self._ready = True
         self._refresh_output()
 
+    def reset(self):
+        """Clear every node and restore patch 0, then arm the graph as
+        `_build` does, so a reset is a fresh instance (no block primed
+        through the chain before it was cleared plays after it)."""
+        self._reset_rearmed(self._refresh_output, ("_primed",))
+
     def _prime(self):
         """Open the mixer's level gates, then hand its voices their sources.
 
@@ -349,8 +359,11 @@ class Compressor(_component.Component):
         """
         _component.open_level_gates(self._mixer, [self._wet, self._dry],
                                     self._silence)
-        self._wet.play(self._fast if self._lean() else self._slow)
-        self._dry.play(self._dry_tap)
+        # The stage `_route` last chose: a macro moved since leaves the
+        # patch index unset but the lean route (and its makeup) in place.
+        self._play_voice(self._wet,
+                         self._fast if self._routed_lean else self._slow)
+        self._play_voice(self._dry, self._dry_tap)
         self._primed = True
 
     def _refresh_output(self):
@@ -381,8 +394,12 @@ class Compressor(_component.Component):
         # primed afresh (audiocomponents#113). The two Dynamics hold a gain
         # and no audio, but a voice's `play()` resets what it plays, so the
         # stage it reads restarts its gain either way: the class comes back
-        # as it was built, envelopes and all.
+        # as it was built, envelopes and all. And the Splitter drops the
+        # source frames it took before the bypass, which the host has since
+        # read past (`_component.let_go_of_source`).
         if self._rejoin():
+            _component.let_go_of_source(self._split, self._source,
+                                        ((self._fast, self._wet_tap),))
             self._primed = False
         if not self._primed:
             self._prime()
@@ -504,12 +521,12 @@ class Compressor(_component.Component):
             return
         if lean:
             if self._primed:
-                self._wet.play(self._fast)
+                self._repoint_voice(self._wet, self._fast)
             self._fast.set(makeup_db=self.macro(12))
             self._slow.set(makeup_db=0.0)
         else:
             if self._primed:
-                self._wet.play(self._slow)
+                self._repoint_voice(self._wet, self._slow)
             self._fast.set(makeup_db=0.0)
             self._slow.set(makeup_db=self.macro(12))
         self._routed_lean = lean

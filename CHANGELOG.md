@@ -10,6 +10,27 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- **`Limiter` patch 6, *Delivery Ceiling - lean*:** Delivery Ceiling for an
+  ESP32-S3, where Catch The Peaks, Delivery Ceiling and Loud (True Peak)
+  cannot keep up. It keeps the lookahead and release, turns True Peak off
+  and sits 3 dB lower (-3.97 dB), so a worst-phase tone driven into it
+  still reads -0.96 dB TP. The docstring now says which patches an S3
+  cannot play.
+- **`MultibandCompressor`'s docstring says to build it with `bands=2` on an
+  ESP32-S3**, where no three-band patch keeps up (107 % of a block; two
+  bands is 71 %). No patch can do this instead: every macro position builds
+  the same graph.
+- **`Flanger` (rebuilt, Phase 7):** a thin class on CircuitPython's own
+  `audiodelays.Flanger`, so it now runs on a stock CircuitPython board.
+  Eight macros (Rate, Range, Manual, Color, Mix, Polarity, Sync, Division)
+  and six patches; `create("Flanger")` serves it from
+  `audioeffects/flanger.py`. Both old flangers are gone:
+  `modulation.Flanger` (and `modulation.py` with it) and the parked Phase 3
+  rebuild under `rebuilt/`. The old `depth_ms=` and `feedback=` keywords
+  give way to the macros; `rate=` and `mix=` keep their names, and Mix 1 is
+  now the default. The long ring and the bucket-brigade sweep of the parked
+  rebuild do not carry: the node stops Color at 0.95 (about 0.4 s to -60 dB
+  at 3 ms) and sweeps a triangle in milliseconds.
 - **`ShimmerHall` (rebuilt, Phase 6; adopted 2026-10-13):** a pitch shifter around a hall, in
   two characters. Bloom sends the shifted copy into the hall once, Bloom
   after you play, on `audiodelays.PitchShift`; Rise puts the shift inside
@@ -296,6 +317,13 @@ there, and are recorded in its changelog.
 
 ### Changed
 
+- **`_core.py` is gone, and with it the old classes the rebuilds replaced.**
+  `delay.py`, `reverb.py`, `pitch.py` and `rack.py` held only the
+  pre-contract classes, which no public name had served since the Phase 5
+  and Phase 6 adoptions; they are deleted. The public classes, `ALL` and
+  `create()` are unchanged. `configure()`, `sample_rate()` and
+  `channel_count()` stay, but only record a format: every effect takes its
+  format from its source, as it already did.
 - **`ShimmerHall` and `AirSpace` keep the classes they were ported
   against.** With the Phase 5 `TapeDelay` and `Reverb` and the Phase 6
   `Octaver` adopted, the two old racks (`rack.ShimmerHall` and
@@ -364,6 +392,19 @@ there, and are recorded in its changelog.
 
 ### Fixed
 
+- `Bitcrusher`, `Compressor`, `Distortion`, `Exciter`, `Fuzz` and `Saturation`: bringing Mix back up from 0 no longer plays audio from before the bypass. With a source whose buffers aren't 256 frames (a decoder, a file), the first node of the graph kept the rest of a buffer, and on the way back played up to 20 ms of what was sounding when you bypassed, at full level, and then sat that far late. Distortion and germanium Fuzz drop it now; the four Splitter-headed classes and cascade Fuzz need the audiodsp that carries `Splitter.clear()`.
+- `Tremolo`: touching a knob, or a host re-sending the same value, no longer throws the throb back to the top of its cycle. The LFO takes the new shape and rate in place, so a slow sweep of any knob moves the pulse smoothly instead of stuttering.
+- `Fuzz`: with Bias off centre, `tail_samples` is None. The output settles near zero rather than on it there, so the 24 576 it reported was a bound the class never met. The docstring now says what stays: a few LSB of wander, or at Bias -1 a DC constant of up to 177 LSB.
+- `Bitcrusher`: the dither tail is 9 728 samples, where 8 192 fell short at maximum Dither, and `tail_samples` is None where the dither alone is louder than its gate (maximum Dither at 12 bits, and any deeper crush with Dither up), because there the dither never stops.
+- `Phaser`: with Sync on, a bar is the host's time signature, numerator x 4 / denominator quarter notes (3/4 is three, 6/8 is three), where it read the denominator alone as the beats in a bar; and `transport_changed()` follows a time-signature change as well as a tempo change. In 4/4 nothing moves.
+- `CabinetSim`: `set_macro()` with plus infinity sets the top stop, as 128 does, where it raised `OverflowError`. Every component now gives the one answer the API names: a macro value off 0-127 is clamped, NaN to the bottom stop.
+- `ConvolutionReverb` states its input ceiling, -15.5 dBFS for a synthesized room anywhere on the knobs with the dry mixed in, and -13.5 dBFS for the room alone. The room is normalised to unit energy, so a dark or short one gathers that energy low, and it now plays through a wet trim read off the room itself: the convolver reports how much the room brings a low square back (`room_peak_gain`, audiodsp), and the trim is none where that is 1 dB or more under 12 dB, then a soft knee, then just enough to hold it to 12 dB, through the convolver's `wet_gain`. One step of Decay or Damping moves the level by 0.5 dB at most, where the trims four patches used to carry jumped 3.5 to 6.5 dB one step off the patch. Full Room and Wet Only play 1.0 dB lower at 48 kHz, Late Room 0.7 dB and Bright Room 0.4 dB; Short Room, Dark Room, Soft Onset and Tight Room play 4.8, 7.5, 4.0 and 3.1 dB lower, where the old patch trims had them 3.5 to 6.5 dB down. The default room used to rail on a -12 dBFS square at 163 Hz, which the kit now plays. Before this the stated ceiling was -21 dBFS. Needs the audiodsp that carries `room_peak_gain`.
+- `Distortion`: `reset()`, then a patch across the Character boundary (6 to 9), then `reset()` again no longer raises "deinitialized" on any interpreter.
+- `set_macro()` with an integer too large for a float (`10**400`) sets the stop on its side, where it raised `OverflowError` on every class.
+- On a CircuitPython board build, which has no `audiocore.get_buffer`, `MultiTapDelay` no longer drops 256 frames of your source at a reset or a patch change, `Fuzz` and `Overdrive` charge their output pole again (no bang or thump after a patch change, a Mix move or a reset), and a class that re-arms lazily after `reset()` (Bitcrusher, Compressor, Distortion, DynamicEQ, Exciter, MultibandCompressor, Overdrive) resets as it does on a desktop, two resets in a row included. Each pull these classes make on their own graph now goes through a scratch mixer voice where `get_buffer` is missing, so a board renders what a desktop does, byte for byte.
+- `Phaser` and `Flanger` with Sync on keep the last good tempo and time signature when the host hands one they cannot use: a tempo of None, NaN, infinity or 0, a missing field, or a numerator or denominator outside 1 to 128. Such a transport used to raise, stand the sweep still, or play a NaN tempo as 1 bpm.
+- `Saturation`: `reset()` no longer plays one block of the audio from before it, and after the lean patch `latency_samples` reads the onset again (1 at tube x4, 0 on the lean patch itself) instead of the group delay.
+- `DigitalDelay` and `SlapbackDelay`: an option you leave out plays patch 0's step, so a fresh instance is patch 0 exactly and a reset sounds and reports its tail as a fresh instance does. At the defaults Time is 352.8 ms on `DigitalDelay` (it was 350) and 134.4 ms on `SlapbackDelay` (it was 135), and the other controls move by under a step; a value you pass plays as passed.
 - A Time brought back after a shorter one no longer plays a stray sample from before the move in MultiTapDelay and the delays built on `audiodelays.Echo` (on CPython and MicroPython; CircuitPython's own `audiodelays` still plays it); PitchShifter, Harmonizer and Octaver start again from scratch on a reset and no longer hang on a source with nothing to give; and a host reset that reaches a Mixer inside an effect keeps the audio its voices hold. All of it is audiodsp's, at the pre-release `AUDIODSP_PIN` now names (v0.6.6rc1).
 
 - The delays, Reverb and ConvolutionReverb now ring out when their source ends, then rest at exact zero, instead of freezing the tail until the source came back; a one-shot source plays once instead of feeding them for ever. A source that comes up short part-way through a block leaves a whole block with the rest silent, and a host `reset_buffer` on ConvolutionReverb keeps the frames it holds. All of it is audiodsp's, at the commit `AUDIODSP_PIN` now names (audiocomponents#127).
@@ -408,6 +449,9 @@ version number. The release carries repository tooling and docs only.
 
 ### Fixed
 
+- `Tremolo`: touching a knob, or a host re-sending the same value, no longer throws the throb back to the top of its cycle. The LFO takes the new shape and rate in place, so a slow sweep of any knob moves the pulse smoothly instead of stuttering.
+- `Fuzz`: with Bias off centre, `tail_samples` is None. The output settles near zero rather than on it there, so the 24 576 it reported was a bound the class never met. The docstring now says what stays: a few LSB of wander, or at Bias -1 a DC constant of up to 177 LSB.
+- `Bitcrusher`: the dither tail is 9 728 samples, where 8 192 fell short at maximum Dither, and `tail_samples` is None where the dither alone is louder than its gate (maximum Dither at 12 bits, and any deeper crush with Dither up), because there the dither never stops.
 - **`pydevices-audioeffects` installs and imports.** The 0.3.0 wheel left out
   `audioeffects.rebuilt`, so the published package failed on import; 0.3.0 of
   `audioinstruments` was unaffected. The wheel now ships the subpackage, and a
@@ -939,6 +983,13 @@ version number. The release carries repository tooling and docs only.
 
 ### Changed
 
+- **`_core.py` is gone, and with it the old classes the rebuilds replaced.**
+  `delay.py`, `reverb.py`, `pitch.py` and `rack.py` held only the
+  pre-contract classes, which no public name had served since the Phase 5
+  and Phase 6 adoptions; they are deleted. The public classes, `ALL` and
+  `create()` are unchanged. `configure()`, `sample_rate()` and
+  `channel_count()` stay, but only record a format: every effect takes its
+  format from its source, as it already did.
 - **The core is `audiodsp` now.** The repository these packages are built on
   was renamed on 2026-09-21, and everything here that named it follows: the
   dependency is `pydevices-audiodsp>=0.5.1` (its first published release
@@ -970,6 +1021,9 @@ version number. The release carries repository tooling and docs only.
 
 ### Fixed
 
+- `Tremolo`: touching a knob, or a host re-sending the same value, no longer throws the throb back to the top of its cycle. The LFO takes the new shape and rate in place, so a slow sweep of any knob moves the pulse smoothly instead of stuttering.
+- `Fuzz`: with Bias off centre, `tail_samples` is None. The output settles near zero rather than on it there, so the 24 576 it reported was a bound the class never met. The docstring now says what stays: a few LSB of wander, or at Bias -1 a DC constant of up to 177 LSB.
+- `Bitcrusher`: the dither tail is 9 728 samples, where 8 192 fell short at maximum Dither, and `tail_samples` is None where the dither alone is louder than its gate (maximum Dither at 12 bits, and any deeper crush with Dither up), because there the dither never stops.
 - **A bipolar macro's centre is MIDI 64 now, and it is exact** (#87). The
   0-127 grid has an even number of steps and so no middle of its own —
   64/127 is 0.50394 — so until now no patch could ask for the centre of a
@@ -1115,6 +1169,13 @@ version number. The release carries repository tooling and docs only.
 
 ### Changed
 
+- **`_core.py` is gone, and with it the old classes the rebuilds replaced.**
+  `delay.py`, `reverb.py`, `pitch.py` and `rack.py` held only the
+  pre-contract classes, which no public name had served since the Phase 5
+  and Phase 6 adoptions; they are deleted. The public classes, `ALL` and
+  `create()` are unchanged. `configure()`, `sample_rate()` and
+  `channel_count()` stay, but only record a format: every effect takes its
+  format from its source, as it already did.
 - **`RingMod` (Phase 3, M4 claim dropped).** M4 is **disconfirmed**,
   not a shipped claim: the same-kind plant is inert at constructor
   Frequency 220 (**0.0022 dB**) and moves **8.6 dB** only at 2 Hz.
@@ -1882,6 +1943,9 @@ version number. The release carries repository tooling and docs only.
 
 ### Fixed
 
+- `Tremolo`: touching a knob, or a host re-sending the same value, no longer throws the throb back to the top of its cycle. The LFO takes the new shape and rate in place, so a slow sweep of any knob moves the pulse smoothly instead of stuttering.
+- `Fuzz`: with Bias off centre, `tail_samples` is None. The output settles near zero rather than on it there, so the 24 576 it reported was a bound the class never met. The docstring now says what stays: a few LSB of wander, or at Bias -1 a DC constant of up to 177 LSB.
+- `Bitcrusher`: the dither tail is 9 728 samples, where 8 192 fell short at maximum Dither, and `tail_samples` is None where the dither alone is louder than its gate (maximum Dither at 12 bits, and any deeper crush with Dither up), because there the dither never stops.
 - `tests/parity/effects_library_smoke.py` walked one instance through all of
   a class's patches on a **4096-frame** probe and pulled eight output blocks
   per patch, so a class whose output block is the contract's own 256 frames
@@ -1912,6 +1976,13 @@ the first release from this repository is 0.2.0.
 
 ### Changed
 
+- **`_core.py` is gone, and with it the old classes the rebuilds replaced.**
+  `delay.py`, `reverb.py`, `pitch.py` and `rack.py` held only the
+  pre-contract classes, which no public name had served since the Phase 5
+  and Phase 6 adoptions; they are deleted. The public classes, `ALL` and
+  `create()` are unchanged. `configure()`, `sample_rate()` and
+  `channel_count()` stay, but only record a format: every effect takes its
+  format from its source, as it already did.
 - Phase 1 of the accuracy program: the ten drum machines — `cr78`, `dmx`,
   `drumtraks`, `linndrum`, `simmons_sdsv`, `sp1200`, `tr606`, `tr707`,
   `tr808`, `tr909` — rebuilt as fixed circuits against named references, each

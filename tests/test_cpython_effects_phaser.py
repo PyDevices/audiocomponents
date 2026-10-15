@@ -263,16 +263,92 @@ class TestPhaserInvariants(unittest.TestCase):
         effect.reset()
         quiet = silence(512)
         effect._source = quiet
-        effect._shaper.play(quiet)
+        effect._guard.play(quiet)
         after = pcm(effect.output, 256)
         self.assertEqual(max(abs(int(v)) for v in memoryview(after).cast("h")),
                          0)
-        self.assertEqual(len(effect._nodes), 2)
+        self.assertEqual(len(effect._nodes), 3)
         leftover = ramp(256)
         effect.deinit()
         still = pcm(leftover, 256)
         self.assertGreater(max(abs(int(v)) for v in memoryview(still).cast("h")),
                            0)
+
+
+class ReplaysTheSource(Phaser):
+    """F4's fault: every Feedback, Mix, Stages or Drive move, and a reset,
+    plays the borrowed source into the head of the graph again, which drops
+    what the head had taken of it."""
+
+    NAME = 'Phaser'
+
+    def _refresh_drive(self):
+        Phaser._refresh_drive(self)
+        self._guard.play(self._source)
+
+
+class TestPhaserKeepsItsPlace(unittest.TestCase):
+    """A move that keeps the route, a move that changes it, and a reset
+    play nothing from the source again: at Mix 0 the output stays the
+    source, byte for byte, on a whole RawSample (which a re-play rewinds to
+    its start) and on a stream of 100-frame buffers (where it drops part of
+    one)."""
+
+    MOVES = ((FEEDBACK_I, None), (MIX_I, 0.0), (DRIVE_I, 0.0),
+             (STAGES_I, None), (DRIVE_I, None), ("reset", None))
+
+    def _wire(self, cls, source, frames):
+        effect = cls.create(source, RATE)
+        effect.set_macro(MIX_I, 0.0)
+        out = bytearray()
+
+        def pull(blocks):
+            for _ in range(blocks):
+                out.extend(bytes(audiocore.get_buffer(effect.output)[1]))
+
+        for index, (macro, value) in enumerate(self.MOVES):
+            pull(1 + index % 2)
+            if macro == "reset":
+                effect.reset()
+                effect.set_macro(MIX_I, 0.0)
+            else:
+                effect.set_macro(macro, effect.get_macro(macro)
+                                 if value is None else value)
+        while len(out) < 4 * frames:
+            chunk = bytes(audiocore.get_buffer(effect.output)[1])
+            if not chunk:
+                break
+            out += chunk
+        effect.deinit()
+        del out[4 * frames:]
+        return bytes(out)
+
+    def _check(self, make):
+        frames = 3072
+        expect = bytes(make(frames)[1])
+        got = self._wire(Phaser, make(frames)[0], frames)
+        self.assertEqual(got, expect[:len(got)])
+        self.assertEqual(len(got), len(expect))
+        planted = self._wire(ReplaysTheSource, make(frames)[0], frames)
+        self.assertNotEqual(planted, expect[:len(planted)])
+
+    def test_a_whole_raw_sample_is_not_rewound(self):
+        def make(frames):
+            values = array.array("h", [((i * 37) % 2001) - 1000
+                                       for i in range(2 * frames)])
+            return (audiocore.RawSample(values, sample_rate=RATE,
+                                        channel_count=2), values)
+        self._check(make)
+
+    def test_a_stream_of_short_buffers_drops_nothing(self):
+        import kit_probes
+
+        def make(frames):
+            values = array.array("h", [((i * 37) % 2001) - 1000
+                                       for i in range(2 * frames)])
+            return (kit_probes.ArraySource(values, rate=RATE, channels=2,
+                                       block=100), values)
+        self._check(make)
 
 
 class TestPhaserCurveFillsTheRange(unittest.TestCase):
@@ -710,3 +786,95 @@ def _notch_floor_h(wet_bytes, dry_bytes):
     mag = num[band] / np.maximum(den[band], 1.0)
     mean = float(np.mean(mag))
     return 20.0 * math.log10(float(np.min(mag)) / max(mean, 1e-12))
+
+
+class Meter:
+    """A host transport whose tempo and time signature a test moves, in
+    the API's order: (playing, seconds, bpm, numerator, denominator)."""
+
+    def __init__(self, bpm=120.0, numerator=4, denominator=4):
+        self.bpm = bpm
+        self.numerator = numerator
+        self.denominator = denominator
+
+    def __call__(self):
+        return (True, 0.0, self.bpm, self.numerator, self.denominator)
+
+
+class MeterDeaf(Phaser):
+    """The base's `transport_changed()`: it follows the tempo alone, so a
+    meter change at one tempo keeps the old rate."""
+
+    def transport_changed(self):
+        _component.Component.transport_changed(self)
+
+
+def synced(cls=Phaser, meter=None):
+    """A Phaser with Sync on under `meter`, having read it once."""
+    meter = meter or Meter()
+    effect = built(cls=cls, transport=meter)
+    effect.set_macro(SYNC_I, 127)
+    effect.transport_changed()
+    return effect, meter
+
+
+def bar_rate(effect, bpm, quarters):
+    """The sweep's rate for Division at `quarters` quarter notes a bar."""
+    bars = phaser_module._choice(phaser_module.DIVISION_BARS,
+                                 effect._macros[DIV_I])
+    return bpm / (60.0 * quarters * bars)
+
+
+class TestPhaserFollowsTheMeter(unittest.TestCase):
+    """With Sync on the sweep lasts Division bars, and a bar is the host's
+    time signature: numerator x 4 / denominator quarter notes at its
+    tempo (the transport's fourth and fifth fields)."""
+
+    def test_the_bar_is_the_time_signature(self):
+        for numerator, denominator, quarters in (
+                (4, 4, 4.0), (3, 4, 3.0), (6, 8, 3.0), (7, 8, 3.5),
+                (2, 2, 4.0), (5, 4, 5.0)):
+            with self.subTest(meter="%d/%d" % (numerator, denominator)):
+                effect, _ = synced(meter=Meter(120.0, numerator,
+                                               denominator))
+                self.assertAlmostEqual(effect._lfo.rate,
+                                       bar_rate(effect, 120.0, quarters),
+                                       places=9)
+
+    def test_a_meter_change_is_followed(self):
+        # 4/4 to 3/4 at one tempo, `transport_changed()` after it: the rate
+        # is the one a fresh instance built in 3/4 has.
+        for cls, follows in ((Phaser, True), (MeterDeaf, False)):
+            with self.subTest(cls=cls.__name__):
+                effect, meter = synced(cls)
+                before = effect._lfo.rate
+                meter.numerator = 3
+                effect.transport_changed()
+                fresh, _ = synced(meter=Meter(120.0, 3, 4))
+                if follows:
+                    self.assertEqual(effect._lfo.rate, fresh._lfo.rate)
+                    self.assertNotEqual(effect._lfo.rate, before)
+                else:
+                    self.assertEqual(effect._lfo.rate, before)
+
+    def test_a_held_meter_reads_once_and_moves_nothing(self):
+        effect, meter = synced()
+        rate = effect._lfo.rate
+        for _ in range(4):
+            effect.transport_changed()
+        self.assertEqual(effect._lfo.rate, rate)
+
+    def test_a_nan_meter_is_unchanged_as_a_nan_tempo_is(self):
+        # The base's rule for a tempo: a NaN read twice is no change.
+        effect, meter = synced(meter=Meter(120.0, float("nan"), 4))
+        calls = []
+        orig = effect._apply_macro
+
+        def counting(index, position):
+            calls.append(index)
+            orig(index, position)
+        effect._apply_macro = counting
+        effect.transport_changed()
+        self.assertEqual(calls, [])
+        self.assertAlmostEqual(effect._lfo.rate, bar_rate(effect, 120.0, 4.0),
+                               places=9)

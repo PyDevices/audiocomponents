@@ -529,6 +529,13 @@ class Octaver(_component.Component):
         # does, and a move before the first pull lands at once.
         if self._allpass is not None:
             audiocore.reset_buffer(self._allpass)
+        # The same for the clock's and the Tone legs' biquads, which also
+        # heard only zeros. Since audiodsp v0.6.6rc9 a biquad that has run a
+        # block walks a corner move over 20 ms (#162); cleared, it takes a
+        # Tone or Tracking set before the first pull as it stands, as a
+        # fresh build does (audiocomponents#164).
+        for node in self._clock + [self._tone1, self._tone1b, self._tone2]:
+            audiocore.reset_buffer(node)
 
     def _pull(self):
         """Pull one block from the mixer and drop it.

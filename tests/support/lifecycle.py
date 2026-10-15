@@ -108,6 +108,12 @@ _SHIMMER_CP = (
     " and the hall's tank stays a few LSB off it; CPython and MicroPython"
     " are ok (ruled a CircuitPython-own difference)")
 
+#: Saturation's AC coupling, under the rows that name it below.
+_SAT_COUPLING = (
+    "its AC coupling is a 5-20 Hz pole on a Q15 kernel, which keeps a 1 to"
+    " 2 LSB rounding residue that never re-converges with the control's"
+    " once what reached it differed")
+
 DECLARED = {
     ("Harmonizer", "E1-", "P4"):
         "reset() empties the three lines and starts every splice where a"
@@ -460,6 +466,14 @@ DECLARED = {
     ("Reverb", "E2-", "P4"): "a reset_buffer tank never re-converges byte for byte (int16 lines, free modulation phase)",
     ("Reverb", "E4-", "P4"): "a move that reaches the loop leaves the tank a few LSB off a fresh one for good",
     ("Reverb", "E6-", "P4"): "a patch move reaches the loop and leaves the tank a few LSB off a fresh one for good",
+    # Vibrato and Fuzz: a reset is a fresh instance exactly (PR holds it);
+    # it is the control that never was reset that the output does not meet
+    # again (the classes' TheReset... tests).
+    ("Vibrato", "E1-", "P4"): "reset() restarts the LFO as a fresh instance starts it, so the sweep never meets the uninterrupted control's phase again",
+    # Tremolo the same way (ruled 2026-10-14): red at every E1 cell, both
+    # placements, every rate, channel count and patch; PR stays live.
+    ("Tremolo", "E1-", "P4"): "reset() restarts the LFO as a fresh instance starts it, so the throb never meets the uninterrupted control's phase again",
+    ("Fuzz", "E1-", "P4"): "the 10.5 and 12.4 Hz coupling sections keep a few LSB of the material before a reset in float state for seconds, and the 36 dB stage raises it to a few hundred LSB (held under 1024)",
     ("Reverb", "E11-", "P4"): "moves that reach the loop leave the tank a few LSB off a fresh one for good",
     # The ruling of 2026-09-28, disclosed in the docstring's "Limits
     # shared by the family" (audiocomponents#117, audiodsp#180).
@@ -572,6 +586,22 @@ DECLARED = {
     # shifter, whose output depends on where its read position sits in the
     # window (the ruling's N2). A reset renders exactly as a fresh instance
     # does (the class's reset test); it is the control that never was reset.
+    # Flanger: the sweep is the node's own free-running triangle, so
+    # anything that restarts it or runs it at another rate leaves it off
+    # the uninterrupted control's phase for good; PR holds (a reset is a
+    # fresh instance). P5 is the family limit the docstring discloses (N1).
+    ("Flanger", "E1-", "P4"): "a reset starts the sweep again from Manual, so the class matches a fresh instance (PR), not the uninterrupted control",
+    ("Flanger", "E2-", "P4"): "as E1: the host's reset of the node starts the sweep again",
+    ("Flanger", "E4-m0=", "P4"): "a Rate move runs the free-running sweep at another rate, so its phase lands elsewhere; putting it back would jump the sweep",
+    ("Flanger", "E4-m6=", "P4"): "Sync on runs the sweep at the tempo's rate, so its phase lands elsewhere (as m0)",
+    ("Flanger", "E4-m7=", "P4"): "a Division move with Sync on runs the sweep at another rate (as m0)",
+    ("Flanger", "E6-", "P4"): "a patch with another Rate or Sync moves the sweep's phase (as E4-m0)",
+    ("Flanger", "E11-", "P4"): "moves before a pull that reach Rate or the patch move the sweep's phase (as E4-m0)",
+    ("Flanger", "E4-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step",
+    ("Flanger", "E5-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
+    ("Flanger", "E6-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (a patch change)",
+    ("Flanger", "E9-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
+    ("Flanger", "E11-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (two or three moves before one pull)",
     ("ShimmerHall", "E1-", "P4"): "reset() empties the hall and restarts its modulation, and restarts the shifter's splice, so it never re-converges with the uninterrupted control (Reverb's E1 P4; the splice phase, N2)",
     ("ShimmerHall", "E4-m0=", "P4"): "Character re-cuts the wet chain, so it empties the hall and restarts the shifter's splice, and leaves the hall's tank off the control's for good (Reverb's E4 P4; the splice phase, N2)",
     ("ShimmerHall", "E4-m1=", "P4"): "Shimmer changes what enters the hall, so it leaves the hall's tank off the control's for good (Reverb's E4 P4)",
@@ -615,6 +645,30 @@ DECLARED = {
     ("AirSpace", "E5-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
     ("AirSpace", "E6-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (a patch change)",
     ("AirSpace", "E9-", "P5"): "family limit, disclosed (N1): a control that jumps makes the output step (Mix)",
+    # Saturation: its AC coupling (the plate pole, the playback head's, the
+    # flux high-pass) is a pole at 5-20 Hz on a Q15 kernel, and once what
+    # reaches it has differed, it carries a rounding residue of 1 to 2 LSB
+    # that never re-converges while signal plays (measured 1.4 s on). Tone
+    # and Speed moves, which reach only the shelves after it, re-converge
+    # and stay live.
+    ("Saturation", "E1-", "P4"): _SAT_COUPLING,
+    ("Saturation", "E4-m0=", "P4"): _SAT_COUPLING,
+    ("Saturation", "E4-m1=", "P4"): _SAT_COUPLING,
+    ("Saturation", "E4-m2=0", "P4"): _SAT_COUPLING,
+    ("Saturation", "E4-m3=", "P4"): _SAT_COUPLING,
+    ("Saturation", "E4-m4=", "P4"): _SAT_COUPLING,
+    ("Saturation", "E4-m7=", "P4"): _SAT_COUPLING,
+    ("Saturation", "E5-", "P4"): _SAT_COUPLING,
+    ("Saturation", "E6-", "P4"): _SAT_COUPLING,
+    ("Saturation", "E9-", "P4"): _SAT_COUPLING,
+    ("Saturation", "E10-", "P4"): _SAT_COUPLING,
+    ("Saturation", "E11-", "P4"): _SAT_COUPLING,
+    ("Saturation", "E12-", "P4"): _SAT_COUPLING,
+    # DeEsser: PR holds a reset to a fresh instance byte for byte.
+    ("DeEsser", "E1-", "P4"): "reset() clears the detector and the"
+    " crossover, which come back to an uninterrupted instance's bytes"
+    " within five blocks of the reset (7 LSB, then 3, 1, 1), on signal,"
+    " whatever Release and Attack are; the audio tail is 256 as declared",
 }
 
 #: A control that jumps steps the output (the family's ruled disclosure,
@@ -653,6 +707,10 @@ SKIP = {
     ("NodeEcho", "E8-", "circuitpython"):
         "upstream's Echo never returns from a pull on a looped source that"
         " ends empty; audiodsp#242 fixed it on CPython and MicroPython",
+    ("NodeMultiTapDelay", "E8-", "circuitpython"):
+        "upstream's MultiTapDelay never returns from a pull on a looped"
+        " source that ends empty (the E8 run spun past 590 s at v0.6.6rc4);"
+        " CPython and MicroPython finish it",
     ("NodePitchShift", "E8-", "circuitpython"):
         "upstream's PitchShift never returns from a pull on a looped source"
         " that ends empty; audiodsp#243 fixed it on CPython and MicroPython",
@@ -660,6 +718,13 @@ SKIP = {
         "upstream's GranularPitchShift never returns from a pull on a looped"
         " source that ends empty; audiodsp#243 fixed it on CPython and"
         " MicroPython",
+    ("NodeFlanger", "E8-", "circuitpython"):
+        "upstream's Flanger never returns from a pull on a looped source"
+        " that ends empty; audiodsp 7b fixed it on CPython and MicroPython",
+    ("Flanger", "E8-", "circuitpython"):
+        "the class is upstream's Flanger, which never returns from a pull on"
+        " a looped source that ends empty; audiodsp 7b fixed it on CPython"
+        " and MicroPython",
     ("ShimmerHall", "E8-", "circuitpython"):
         "Bloom pulls upstream's PitchShift, which never returns from a pull"
         " on a looped source that ends empty (audiodsp#243 fixed it on"
@@ -2165,6 +2230,10 @@ def _cli(argv):
         else:
             from audioeffects import rebuilt
             cls = rebuilt.module_class(name)
+            if cls is None:
+                # A class that has come home: the one the package serves.
+                import audioeffects
+                cls = getattr(audioeffects, name, None)
             if cls is None:
                 print("MISSING|%s" % name)
                 continue

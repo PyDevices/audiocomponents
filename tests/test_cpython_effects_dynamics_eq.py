@@ -172,8 +172,8 @@ class DynamicsAndEQTest(unittest.TestCase):
         def shelf(source_sample):
             node = audiobiquad.Biquad(
                 mode=audiobiquad.LOW_SHELF, frequency=80.0, Q=0.707,
-                gain_db=1.5, sample_rate=audioeffects._core.SAMPLE_RATE,
-                channel_count=audioeffects._core.CHANNEL_COUNT)
+                gain_db=1.5, sample_rate=audioeffects.sample_rate(),
+                channel_count=audioeffects.channel_count())
             node.play(source_sample)
             return node
 

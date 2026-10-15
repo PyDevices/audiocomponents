@@ -56,10 +56,9 @@ branch carries one more int16 node, which is worth **3.4 dB of alias
 floor at the constructor default at 48 kHz** (-81.291 -> -77.939, 1.8 dB
 at 44.1, 0.3 dB at 22.05), and a live macro move that changes the offset
 re-charges the pole, which costs **one block of input** (5.3 ms at
-48 kHz). On a build with no `audiocore.get_buffer` - CircuitPython's
-default board build compiles it out - the charge is skipped and the
-class's first block after a change is a step of up to 4461 LSB that
-decays to zero in 62 ms.
+48 kHz). A CircuitPython board build, which has no
+`audiocore.get_buffer`, charges it too, and renders byte for byte what a
+desktop does.
 
 **Latency: zero samples** at every macro setting. The dry tap is a copy.
 `oversample` puts group delay on the *clip branch only*: 3.3 samples at
@@ -486,6 +485,9 @@ def _one_pole(freq, park):
 class Overdrive(_component.Component):
     """Dry plus a diode-limited high-pass; Tube Screamer structure."""
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'Overdrive'
     DISPLAY_NAME = 'Overdrive'
     CATEGORIES = ('Distortion',)
@@ -693,12 +695,11 @@ class Overdrive(_component.Component):
 
         It costs nothing at Symmetry 0, where there is no offset to
         settle. On a build with no `audiocore.get_buffer` - CircuitPython's
-        default board build compiles it out - this does nothing and the
-        thump is back; the class docstring says so.
+        default board build compiles it out - the pole is pulled the same
+        way from a scratch mixer voice (`_pull_node`), which can't read the
+        blocks back, so it runs all `DC_SETTLE_BLOCKS` and the pole lands
+        where the early stop leaves it, to the byte.
         """
-        pull = getattr(audiocore, "get_buffer", None)
-        if pull is None:
-            return False
         if not (self._clip_bias or self._dc_charged):
             return False
         self._dc_charged = bool(self._clip_bias)
@@ -709,7 +710,12 @@ class Overdrive(_component.Component):
                 # oversampler, which costs a few samples of ramp at the
                 # top of each block and nothing at all to the charge.
                 self._shaper.play(self._quiet)
-                _state, data = pull(self._dc)
+                got = self._pull_node(self._dc)
+                if got is False:
+                    break
+                if got is None:
+                    continue
+                _state, data = got
                 if not data:
                     break
                 # The first block back is the one the pole was holding
@@ -784,6 +790,19 @@ class Overdrive(_component.Component):
             if getattr(self, "_ready", False):
                 self._settle_dc()
 
+    def reset(self):
+        """Clear every node and restore patch 0, then arm the graph as
+        `_build` does, so a reset is a fresh instance (no block primed
+        through the chain before it was cleared plays after it)."""
+        # The nodes' taken frames are old audio only if Mix 0 left the
+        # graph un-pulled before the reset; otherwise they are the next
+        # frames, and `_rearm` keeps them.
+        self._stale = self._stranded
+        try:
+            self._reset_rearmed(self._prime_if_wet, ("_primed",))
+        finally:
+            self._stale = True
+
     def _prime_if_wet(self):
         mix = self._value(3)
         level = self._value(2)
@@ -797,9 +816,9 @@ class Overdrive(_component.Component):
             self._rearm(level)
             return
         if not self._primed:
-            self._circuit.voice[0].play(self._dry)
-            self._circuit.voice[1].play(self._dc)
-            self._out.voice[0].play(self._lp)
+            self._play_voice(self._circuit.voice[0], self._dry)
+            self._play_voice(self._circuit.voice[1], self._dc)
+            self._play_voice(self._out.voice[0], self._lp)
             self._primed = True
         self._output = self._out
         self._circuit.voice[0].level = 1.0
@@ -823,12 +842,16 @@ class Overdrive(_component.Component):
         # taken, which is right mid-stream and wrong here: what the nodes
         # took before Mix went to 0 is old audio now. Playing each one
         # from its own source again drops it.
-        self._adapter.play(self._source)
-        self._hp.play(self._tap1)
-        self._c4.play(self._hp)
-        self._shaper.play(self._c4)
-        self._dc.play(self._shaper)
-        self._lp.play(self._circuit)
+        # A reset of a graph that was playing keeps them: they are the
+        # frames that come next, and dropping them ran the class ahead of
+        # the source for good.
+        if getattr(self, "_stale", True):
+            self._adapter.play(self._source)
+            self._hp.play(self._tap1)
+            self._c4.play(self._hp)
+            self._shaper.play(self._c4)
+            self._dc.play(self._shaper)
+            self._lp.play(self._circuit)
         self._circuit.voice[0].level = 1.0
         self._circuit.voice[1].level = 1.0
         self._out.voice[0].level = level
@@ -839,9 +862,9 @@ class Overdrive(_component.Component):
             self._silence)
         _component.open_level_gates(self._out, [self._out.voice[0]],
                                     self._silence)
-        self._circuit.voice[0].play(self._dry)
-        self._circuit.voice[1].play(self._dc)
-        self._out.voice[0].play(self._lp)
+        self._play_voice(self._circuit.voice[0], self._dry)
+        self._play_voice(self._circuit.voice[1], self._dc)
+        self._play_voice(self._out.voice[0], self._lp)
         self._primed = True
         if self._clip_bias:
             self._shaper.set(post_gain=self._post_gain)

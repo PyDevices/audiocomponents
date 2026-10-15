@@ -213,7 +213,7 @@ class InstantaneousFrequency(unittest.TestCase):
 class Taps(unittest.TestCase):
     """The spec's model planted fault, and the only one in the kit that is
     already measured rather than hypothetical: `audiodelays.Echo` built with
-    `freq_shift=False` on `_core.pcm()`'s 2048-byte buffer delivers 21.33 ms
+    `freq_shift=False` on a 2048-byte buffer delivers 21.33 ms
     for every setting below it.
 
     The flag is the load-bearing detail. With the node's default
@@ -221,7 +221,7 @@ class Taps(unittest.TestCase):
     and a fault planted that way does not fire at all - so the third test
     here is the one that proves this checker CAN fail."""
 
-    BUFFER_BYTES = 2048  # lib/audioeffects/_core.py:pcm()'s default
+    BUFFER_BYTES = 2048  # the old `_core.pcm()` default
     FLOOR_MS = 21.333    # two 512-frame stereo blocks at 48 kHz
 
     def echo_render(self, delay_ms, freq_shift):

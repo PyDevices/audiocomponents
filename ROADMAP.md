@@ -10,8 +10,6 @@ the real thing.
   StereoWidener, Rack, ShimmerHall and AirSpace. The README gains a latency
   table for every class, each rack and a five-effect chain.
 - A release that carries the rebuilt effects, with a changelog.
-- Flanger rebuilt after the Electric Mistress. Until it measures up on every
-  target, the package keeps serving today's `modulation.Flanger`.
 - The two placeholder classes in `audioeffects/rebuilt/` (`ExampleStock`,
   `ExampleAudioif`) go once shipped classes cover both portability tiers.
 

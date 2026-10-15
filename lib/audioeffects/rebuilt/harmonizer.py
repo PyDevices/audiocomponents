@@ -122,7 +122,10 @@ class Harmonizer(_component.Component):
     Detune is a steady offset, not a chorus: a voice holds its pitch.
     Each voice glitches as it splices, more often the further it is
     shifted and the shorter the window: at the default window a fifth up
-    splices every 43 ms, at any sample rate.
+    splices every 43 ms, at any sample rate, where the first channel is
+    silent.
+    Where it is not, each splice moves by up to a fiftieth of a second to
+    land in phase, so the splices come sooner.
     A voice at exact unison never splices: it is a fixed short delay, and
     it combs with the dry.
     A voice you turn back on starts from silence, not with a scrap of what

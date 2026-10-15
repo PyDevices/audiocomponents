@@ -169,6 +169,19 @@ class AutoPan(_component.Component):
         self._init_macros((rate, depth, shape, law_db, centre, phase, sync),
                           patch)
 
+    def reset(self):
+        """Clear every node, restore patch 0 and start the LFO again: the
+        notes on the modulating `synthio.Synthesizer` played on through the
+        walk, a block ahead, so patch 0 now builds a fresh one, as a fresh
+        instance does."""
+        self._check_live()
+        old = self._synth
+        self._synth = None
+        self._note_l = None
+        self._note_r = None
+        _component.Component.reset(self)
+        _component.release(old)
+
     def _apply_macro(self, index, position):
         del position
         if self._node is None:

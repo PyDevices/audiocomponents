@@ -103,7 +103,7 @@ def nothing(effect):
 
 
 SYNCED = ("DigitalDelay", "TapeDelay", "AnalogDelay", "PingPongDelay",
-          "MultiTapDelay", "Phaser", "AutoPan", "Tremolo")
+          "MultiTapDelay", "Phaser", "AutoPan", "Tremolo", "Flanger")
 
 
 class TheSyncedClasses(unittest.TestCase):
@@ -200,6 +200,74 @@ class TheSyncedClasses(unittest.TestCase):
                 effect.transport_changed()
             self.assertEqual(calls, [], name)
             effect.deinit()
+
+
+class Sent:
+    """A transport that hands back whatever tuple the test puts in it."""
+
+    def __init__(self, state):
+        self.state = state
+
+    def __call__(self):
+        return self.state
+
+
+#: The two classes that follow the time signature, and how each reads the
+#: sweep rate it would play now.
+METERED = (("Phaser", "_lfo_rate_hz"), ("Flanger", "_rate_hz"))
+
+#: What a host can get wrong, each beside the good reading's other fields
+#: (90 bpm in 3/4). Each keeps the last good transport.
+BAD_TRANSPORTS = (
+    ("bpm None", (True, 0.0, None, 3, 4)),
+    ("bpm NaN", (True, 0.0, float("nan"), 3, 4)),
+    ("bpm inf", (True, 0.0, float("inf"), 3, 4)),
+    ("bpm 0", (True, 0.0, 0.0, 3, 4)),
+    ("missing denominator", (True, 0.0, 90.0, 3)),
+    ("denominator None", (True, 0.0, 90.0, 3, None)),
+    ("denominator 0", (True, 0.0, 90.0, 3, 0)),
+    ("denominator 1e-300", (True, 0.0, 90.0, 3, 1e-300)),
+    ("numerator 10**400", (True, 0.0, 90.0, 10 ** 400, 4)),
+    ("numerator -3", (True, 0.0, 90.0, -3, 4)),
+    ("numerator 1e9", (True, 0.0, 90.0, 1e9, 4)),
+)
+
+
+class TheMeteredClassesKeepTheLastGoodTransport(unittest.TestCase):
+    """Phaser and Flanger with Sync on read the tempo and the time
+    signature. A transport a host got wrong neither raises nor stands the
+    sweep still: the sweep keeps the rate of the last good one."""
+
+    def test_a_bad_transport_keeps_the_last_good_rate(self):
+        for name, rate_of in METERED:
+            for label, state in BAD_TRANSPORTS:
+                with self.subTest(name=name, transport=label):
+                    host = Sent((True, 0.0, 90.0, 3, 4))
+                    effect = build(name, host)
+                    effect.transport_changed()
+                    good = getattr(effect, rate_of)()
+                    host.state = state
+                    effect.transport_changed()
+                    audiocore.get_buffer(effect.output)
+                    self.assertEqual(getattr(effect, rate_of)(), good)
+                    host.state = (True, 0.0, 90.0, 3, 4)
+                    effect.transport_changed()
+                    self.assertEqual(getattr(effect, rate_of)(), good)
+                    effect.deinit()
+
+    def test_a_nan_tempo_from_the_start_is_not_one_bpm(self):
+        # Never a good reading: the sweep plays at 120 bpm in 4/4, the
+        # transport a class given none reads.
+        for name, rate_of in METERED:
+            with self.subTest(name=name):
+                effect = build(name, Sent((True, 0.0, float("nan"), 4, 4)))
+                effect.transport_changed()
+                nan_rate = getattr(effect, rate_of)()
+                effect.deinit()
+                effect = build(name, Sent((True, 0.0, 120.0, 4, 4)))
+                effect.transport_changed()
+                self.assertEqual(nan_rate, getattr(effect, rate_of)())
+                effect.deinit()
 
 
 class EveryOtherComponent(unittest.TestCase):

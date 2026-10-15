@@ -105,6 +105,7 @@ and reset do nothing (`ResetSilentOnEmpty` red), a host `reset_buffer`
 drops what the node held, and what each knob does.
 """
 
+import math
 import os
 import sys
 import tempfile
@@ -344,15 +345,22 @@ def rho(out, pcm, lags):
 
 
 def m6_cell(effect, pcm):
-    """(wet/dry dB after the room has built, rho) at Mix 2."""
+    """(wet/dry dB after the room has built, rho) at Mix 2, of the room
+    itself: the class's wet trim (`room_trim`) is divided back out."""
     taps = effect.node.taps
     out = at_mix(effect, 127, pcm)
     start = LATENCY + taps
-    wet = np.sqrt(np.mean(out[start:].astype(np.float64) ** 2))
+    wet = np.sqrt(np.mean(out[start:].astype(np.float64) ** 2)) / trim_of(
+        effect)
     dry = np.sqrt(np.mean(pcm[start - LATENCY:len(pcm) - LATENCY].astype(
         np.float64) ** 2))
     level = 20 * np.log10(wet / dry) if wet > 0 else -np.inf
     return level, rho(out, pcm, LATENCY + taps)
+
+
+def trim_of(effect):
+    """The wet trim the class has handed its node (1.0 in measured mode)."""
+    return effect._trim
 
 
 def balance(effect):
@@ -363,6 +371,7 @@ def balance(effect):
     taps = effect.node.taps
     out = at_mix(effect, 127, click(LATENCY + taps + 256, 2))
     ir = out[LATENCY:LATENCY + taps].astype(np.float64) / 32767.0
+    ir /= trim_of(effect)
     energy = np.sum(ir * ir, axis=0)
     return (float(10 * np.log10(energy[0] / energy[1])),
             float(10 * np.log10(np.mean(energy))))
@@ -577,6 +586,37 @@ class SideNudge(SideTilt):
 
     NAME = NAME
     GAIN_DB = 0.05
+
+
+class Untrimmed(ConvolutionReverb):
+    """The room as the node synthesizes it, at unit energy: the class's
+    wet trim held at 1.0."""
+
+    def _room_trim(self, room):
+        return 1.0
+
+
+class OldTrims(ConvolutionReverb):
+    """The trim as it was at 5e946a6: a dB figure for four patches' rooms,
+    applied only while all five synthesis knobs sit on that patch's steps,
+    and 1.0 one step off them."""
+
+    ROOM_TRIMS_DB = {1: -3.5, 3: -6.5, 5: -3.5, 6: -5.5}
+
+    def _room_trim(self, room):
+        for patch, db in self.ROOM_TRIMS_DB.items():
+            steps = self.PATCHES[patch][1]
+            if all(self._macros[index] == steps[index] / 127.0
+                   for index in (DECAY_I, DAMPING_I, PREDELAY_I,
+                                 DIFFUSION_I, ROOM_I)):
+                return 10.0 ** (db / 20.0)
+        return 1.0
+
+
+class HotterCeiling(ConvolutionReverb):
+    """The stated input ceiling, 1.5 dB hotter."""
+    INPUT_CEILING_DBFS = getattr(ConvolutionReverb, "INPUT_CEILING_DBFS",
+                                 0.0) + 1.5
 
 
 class ResetOnMove(ConvolutionReverb):
@@ -1658,10 +1698,22 @@ class RoomMoveWords(unittest.TestCase):
                 same = render(DARK, {MOVE_AT: ((ROOM_I, 1),)})[0]
                 self.assertEqual(digest(same), digest(old),
                                  label + ("the room already loaded",))
+                # The jumps are the node's mechanism, two syntheses in one
+                # block, so they are read with the wet trim at 1.0: every
+                # room sits 7 to 19 dB down (`room_trim`), and a jump that
+                # small can come out no larger than the rooms' own step. The trimmed patch change
+                # is on its line (test_a_patch_change_is_one_synthesis_...).
+                flat = type("Untrimmed", (cls or ConvolutionReverb,),
+                            {"_room_trim": lambda self, room: 1.0})
+
+                def flat_render(start, actions=None):
+                    return dry_render(flat, rate, channels, start + HOLD_MIX,
+                                      pcm, None, actions)
                 for name, start, changes in TWO_CHANGES:
                     changes = changes + HOLD_MIX
-                    jumps(render(start)[0], render(start + changes)[0],
-                          render(start, {MOVE_AT: changes})[0], a,
+                    jumps(flat_render(start)[0],
+                          flat_render(start + changes)[0],
+                          flat_render(start, {MOVE_AT: changes})[0], a,
                           label + (name,))
                 # The under-run: the move twenty pulls on, and the same move
                 # after a reset() that follows the under-run.
@@ -1981,7 +2033,7 @@ class RoomMoveWords(unittest.TestCase):
         # through the starved pulls as it does on the silence the source
         # would have handed. Every frame more than `tail_samples` past the
         # last non-zero input frame is exact zero, while the room's last
-        # non-zero frame lands within one frame of that edge. TailTwoShort
+        # non-zero frame lands within eight frames of that edge. TailTwoShort
         # (`tail_samples` two frames short) is red, and so are the 8a57282
         # words, which said only that the output is zero after the tail.
         #
@@ -2020,7 +2072,9 @@ class RoomMoveWords(unittest.TestCase):
                                 label)
                             last = int(np.nonzero(np.any(handed != 0,
                                                          axis=1))[0][-1])
-                            self.assertGreaterEqual(last, edge - 1, label)
+                            # The wet trim puts the tail under 1 LSB a few
+                            # frames sooner than the untrimmed room did.
+                            self.assertGreaterEqual(last, edge - 8, label)
 
 
 # --------------------------------------------------------------------------
@@ -2622,9 +2676,11 @@ SINGLE_ROOM_CELLS = (
 def single_room_error(cell, cls=None):
     """(% off the Decay law, floor clean) of one Room at `cell`: a click at
     Mix 2, the Schroeder fit on the sum of the channels' energy, the law
-    from the positions this test hands the constructor."""
+    from the positions this test hands the constructor. The room as the
+    node synthesizes it, untrimmed: the fit reads an int16 tail, and a trim
+    moves where that tail meets the floor."""
     rate, channels, value, decay, predelay, diffusion, seed = cell
-    effect = build(cls, rate, channels, decay=decay / 127.0,
+    effect = build(cls or Untrimmed, rate, channels, decay=decay / 127.0,
                    damping_hz=500.0, predelay=predelay / 127.0,
                    diffusion=diffusion / 127.0, room=seed)
     taps = effect.node.taps
@@ -2763,7 +2819,10 @@ BALANCE_WIDEST = (0.0005, 44100, (66, 18, 34, 62), 48)
 
 
 def build_at_cell(rate, cell, cls=None):
-    effect = build(cls, rate=rate)
+    """The room at `cell` as the node synthesizes it (Untrimmed): the
+    balance is read off an int16 impulse, and a trim 7 to 19 dB down would
+    put its quantisation into the reading."""
+    effect = build(cls or Untrimmed, rate=rate)
     for index, midi in zip((DECAY_I, DAMPING_I, PREDELAY_I, DIFFUSION_I,
                             ROOM_I), cell):
         effect.set_macro(index, midi)
@@ -2840,14 +2899,15 @@ class D6Balance(unittest.TestCase):
 def one_sided_level(side, cls=None, rate=RATE, **options):
     """Pooled wet/dry dB at Mix 2 of the kit's white noise (seed 12345,
     -12 dBFS peak, 3 s) on `side` alone, the other side silent, read after
-    the room has built."""
+    the room has built, with the class's wet trim divided back out."""
     effect = build(cls, rate, predelay=0.0, **options)
     pcm = white(3 * rate)
     pcm[:, 1 - side] = 0
     out = at_mix(effect, 127, pcm)
     start = LATENCY + effect.node.taps
+    trim = trim_of(effect)
     effect.deinit()
-    wet = out[start:].astype(np.float64)
+    wet = out[start:].astype(np.float64) / trim
     dry = pcm[start - LATENCY:len(pcm) - LATENCY].astype(np.float64)
     return float(10 * np.log10(np.mean(wet ** 2) / np.mean(dry ** 2)))
 
@@ -3008,8 +3068,18 @@ CLAIMS = (
      "on average.", "test_damping_in_the_64_room_mean_within_2_percent"),
     ("A single Room with Damping in can take more than 15 % longer.",
      "test_a_single_room_can_take_more_than_15_percent_longer"),
-    ("At Damping's 500 Hz stop, low material comes back louder than it went "
-     "in.", "test_a_dark_room_lifts_low_material"),
+    ("A synthesized room plays through a level trim read off the room "
+     "itself: none where the room brings a low square back 1 dB or more "
+     "under 12 dB louder, and otherwise just enough to hold it to 12 dB, so "
+     "the defaults play about 1 dB down at 48 kHz.",
+     "test_the_trim_is_read_off_the_room"),
+    ("One step of Decay or Damping moves the room's level by 0.5 dB at "
+     "most.", "test_one_step_of_decay_or_damping_moves_the_level_little"),
+    ("Anywhere on the knobs, a synthesized room alone is clean up to -13.5 "
+     "dBFS in, and with the dry mixed in up to -15.5 dBFS, its input "
+     "ceiling: the trim holds a low square's steady state at -12 dBFS, its "
+     "onset rises about 1.3 dB past that, and the dry is not trimmed.",
+     "test_clean_up_to_its_input_ceiling"),
     ("Each side of a stereo room is normalised on its own, so the room sits "
      "in the middle.", "test_no_cell_of_the_slice_is_past_the_bound"),
     ("Hand it `impulse=`, int16 frames or the path to a 16-bit PCM WAV at "
@@ -3199,27 +3269,171 @@ class TheClaims(unittest.TestCase):
         self.assertEqual(seeds, set(range(1, 65)))
         self.assertEqual(len(rooms), 64)
 
-    def test_a_dark_room_lifts_low_material(self):
-        # A low chord at Mix 2, the level after the room has built, at
-        # Damping's 500 Hz stop: louder than the dry at three rates, stereo
-        # and mono, at 16 Rooms and three Decays (the least lift over that
-        # walk is about 2 dB). No number is claimed: the lift turns with the
-        # Room.
-        least = None
-        for rate in RATES:
-            for channels in (2, 1):
-                pcm = chord(rate, int(1.5 * rate), channels)
-                for decay in (0.0, 0.5, 1.0):
-                    effect = build(rate=rate, channels=channels, decay=decay,
-                                   damping_hz=500.0)
-                    for room in range(0, 128, 8):
-                        effect.set_macro(ROOM_I, room)
-                        level, _ = m6_cell(effect, pcm)
-                        least = level if least is None else min(least, level)
-                        self.assertGreater(level, 0.0,
-                                           (rate, channels, decay, room))
-                    effect.deinit()
-        self.assertGreater(least, 1.0)
+    def test_the_trim_is_read_off_the_room(self):
+        # Across Decay, Damping, Predelay, Diffusion and Room at 48 and
+        # 22.05 kHz: the trim is `room_trim` of the node's own
+        # `room_peak_gain` (lifted with Damping out), exactly 1.0 where that
+        # reads 1 dB or more under 12 dB, below 1.0 past the knee's foot,
+        # never above 1.0, and never more than holds 12 dB. The defaults
+        # and patches 2, 4 and 7 move by about 1 dB at most. The room
+        # plays at the trim: a click's energy against Untrimmed's.
+        hold = 10.0 ** (rebuilt.TRIM_PEAK_DB / 20.0)
+        unity = trimmed = 0
+        for rate in (48000, 22050):
+            effect = build(rate=rate)
+            for room in (0, 50, 127):
+                effect.set_macro(ROOM_I, room)
+                for predelay, diffusion in ((0, 64), (127, 0)):
+                    effect.set_macro(PREDELAY_I, predelay)
+                    effect.set_macro(DIFFUSION_I, diffusion)
+                    for decay in range(0, 128, 18):
+                        effect.set_macro(DECAY_I, decay)
+                        for damping in list(range(0, 128, 9)) + [127]:
+                            effect.set_macro(DAMPING_I, damping)
+                            peak = effect.node.room_peak_gain
+                            if effect._synthesis()[1] == 0.0:
+                                peak *= 10.0 ** (rebuilt.OUT_LIFT_DB / 20.0)
+                            trim = effect._trim
+                            label = (rate, room, decay, damping)
+                            self.assertEqual(trim, rebuilt.room_trim(peak),
+                                             label)
+                            self.assertLessEqual(trim, 1.0)
+                            if peak <= hold / 10.0 ** (1.0 / 20.0):
+                                self.assertEqual(trim, 1.0, label)
+                                unity += 1
+                            else:
+                                if peak > hold / 10.0 ** (0.9 / 20.0):
+                                    self.assertLess(trim, 1.0, label)
+                                self.assertLessEqual(trim * peak,
+                                                     hold * 1.001, label)
+                                trimmed += 1
+            for patch in (0, 2, 4, 7):
+                effect.program_change(patch)
+                self.assertGreater(20 * math.log10(effect._trim), -1.0,
+                                   (rate, patch))
+            effect.deinit()
+        # Both kinds are on the walk: rooms at unity and rooms trimmed.
+        self.assertGreater(unity, 0)
+        self.assertGreater(trimmed, 0)
+        pulse = click(LATENCY + 4096)
+        for damping in (0, 64, 127):
+            levels = []
+            for cls in (ConvolutionReverb, Untrimmed):
+                effect = build(cls)
+                effect.set_macro(DAMPING_I, damping)
+                ir = at_mix(effect, 127, pulse).astype(np.float64)
+                levels.append(10 * np.log10(np.sum(ir ** 2)))
+                if cls is ConvolutionReverb:
+                    trim = effect._trim
+                effect.deinit()
+            self.assertAlmostEqual(levels[0] - levels[1],
+                                   20 * math.log10(trim), delta=0.05)
+
+    def test_one_step_of_decay_or_damping_moves_the_level_little(self):
+        # Every Decay step and every Damping step's trim at three rates, on
+        # a grid of the other knob and of Room, Predelay and Diffusion,
+        # within 0.5 dB of the next (the top Damping step, out, is the
+        # widest: 0.46 dB). A Room step is a different room, and exempt.
+        # Then on the
+        # material: white noise with the room alone, one step of Decay or
+        # Damping either side of the four rooms that once carried a patch's
+        # trim, the level within 0.5 dB of the patch's own. OldTrims (a
+        # trim at a patch's exact steps alone, as before) jumps 3.5 to
+        # 6.5 dB there.
+        for rate in (48000, 44100, 22050):
+            effect = build(rate=rate)
+            for room, predelay, diffusion in ((0, 0, 64), (100, 127, 0),
+                                              (126, 0, 64)):
+                effect.set_macro(ROOM_I, room)
+                effect.set_macro(PREDELAY_I, predelay)
+                effect.set_macro(DIFFUSION_I, diffusion)
+                for outer, inner in ((DECAY_I, DAMPING_I),
+                                     (DAMPING_I, DECAY_I)):
+                    for fixed in range(0, 128, 21):
+                        effect.set_macro(outer, fixed)
+                        trims = []
+                        for step in range(128):
+                            effect.set_macro(inner, step)
+                            trims.append(20 * math.log10(effect._trim))
+                        for low, high in zip(trims, trims[1:]):
+                            self.assertLessEqual(abs(high - low), 0.5,
+                                                 (rate, room, inner, fixed))
+            effect.deinit()
+        pcm = white(RATE)
+
+        def level(cls, patch, index=None, delta=0):
+            effect = build(cls, patch=patch)
+            if index is not None:
+                effect.set_macro(index, cls.PATCHES[patch][1][index] + delta)
+            out = at_mix(effect, 127, pcm)
+            start = LATENCY + effect.node.taps
+            effect.deinit()
+            return 10 * np.log10(np.mean(out[start:].astype(np.float64)
+                                         ** 2))
+        worst = {}
+        for cls in (ConvolutionReverb, OldTrims):
+            jumps = []
+            for patch in sorted(OldTrims.ROOM_TRIMS_DB):
+                own = level(cls, patch)
+                for index in (DECAY_I, DAMPING_I):
+                    for delta in (-1, 1):
+                        step = cls.PATCHES[patch][1][index] + delta
+                        if 0 <= step <= 127:
+                            jumps.append(abs(level(cls, patch, index, delta)
+                                             - own))
+            worst[cls] = max(jumps)
+        self.assertLessEqual(worst[ConvolutionReverb], 0.5)
+        self.assertGreater(worst[OldTrims], 3.0)
+
+    def test_clean_up_to_its_input_ceiling(self):
+        # The kit's ceiling cells at the stated level: the defaults on the
+        # 50 Hz sine, the darkest corner with the room alone on a low square
+        # and a DC step, the darkest patch, and the worst setting the
+        # measurement found (48 kHz, Decay 83, Damping 40, Predelay 0,
+        # Diffusion 127, Room seed 17, the 163 Hz square: clean to
+        # -13.3 dBFS alone and -15.0 dBFS at Mix 1). 1.5 dB hotter, that
+        # worst setting rails with the dry in, so the number is not slack;
+        # and with the room alone it is clean to -13.5 dBFS.
+        import kit_ceiling
+        worst = [(DECAY_I, 83), (DAMPING_I, 40), (PREDELAY_I, 0),
+                 (DIFFUSION_I, 127), (ROOM_I, room_midi(17))]
+        cells = (("sine", None, None), ("sq82", None, [(MIX_I, 127),
+                                                      (DAMPING_I, 0)]),
+                 ("square", 3, None), ("sq41", 6, None),
+                 ("dc", None, [(MIX_I, 127), (DAMPING_I, 0)]),
+                 ("sq163", None, worst + [(MIX_I, 127)]),
+                 ("sq163", None, worst + [(MIX_I, 64)]))
+        for rate in (48000, 22050):
+            for which, patch, knobs in cells:
+                with self.subTest(rate=rate, cell=which, patch=patch,
+                                  knobs=knobs):
+                    verdict, _ = kit_ceiling.measure(
+                        ConvolutionReverb, rate, 2, which, patch, knobs)
+                    self.assertEqual(verdict, "ok")
+        reds = [kit_ceiling.measure(HotterCeiling, 48000, 2, "sq163", None,
+                                    worst + [(MIX_I, mix)])[0]
+                for mix in (64, 127)]
+        self.assertTrue(any(v.startswith("RED(rail") for v in reds), reds)
+        alone = type("Alone", (ConvolutionReverb,),
+                     {"INPUT_CEILING_DBFS": -13.5})
+        verdict, _ = kit_ceiling.measure(alone, 48000, 2, "sq163", None,
+                                         worst + [(MIX_I, 127)])
+        self.assertEqual(verdict, "ok")
+
+    def test_every_patch_is_clean_to_its_ceiling(self):
+        # Each shipped patch on the kit's ceiling material at the stated
+        # input ceiling, both rates, stereo and mono.
+        import kit_ceiling
+        for patch in sorted(ConvolutionReverb.PATCHES):
+            for rate in (48000, 22050):
+                for channels in (2, 1):
+                    for which in kit_ceiling.MATERIALS:
+                        verdict, _ = kit_ceiling.measure(
+                            ConvolutionReverb, rate, channels, which, patch,
+                            None)
+                        with self.subTest(patch=patch, rate=rate,
+                                          channels=channels, cell=which):
+                            self.assertEqual(verdict, "ok")
 
     def test_what_measured_mode_refuses(self):
         with tempfile.TemporaryDirectory() as folder:

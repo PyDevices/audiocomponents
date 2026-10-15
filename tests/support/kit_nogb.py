@@ -15,15 +15,21 @@ the classes the class derives from. A cell is one lifecycle cell; it is red
 when any of P1 to P4 reads other than it did with `get_buffer` present
 (ok, na or RED: the frames a red verdict names are not compared).
 
+Every patch, and the defaults, runs on its own: `run/48000/<ch>/<patch>`
+is red when the class raises there (with `get_buffer` or without), and the
+other patches are still judged.
+
 `bytes-<scenario>` cells hold the whole render, every channel, to equal
 the one with `get_buffer` present: a reset, two resets in a row, a reset
 before the first pull, a patch change and a reset in one block, at the
 defaults and at every patch, stereo and mono.
 
-CPython only: it patches the `audiocore` name those modules read, with a
-stand-in that has everything but `get_buffer`, and puts it back afterwards.
-The matrix's own pulls (lifecycle, kit_common) keep the real one. A module
-that imports `get_buffer` inside a function is not reached.
+It runs on CPython, MicroPython and CircuitPython: it rebinds the
+`audiocore` name those modules read to a stand-in that has everything but
+`get_buffer`, and puts it back afterwards, so on a native build it is the
+class's own Python that loses `get_buffer`, as on a board. The matrix's own
+pulls (lifecycle, kit_common) keep the real one. A module that imports
+`get_buffer` inside a function is not reached.
 
     python tests/support/kit_nogb.py StereoWidener
 """
@@ -49,7 +55,7 @@ class _NoGetBuffer:
     """`audiocore` without `get_buffer`."""
 
     def __init__(self, real):
-        self.__dict__["_real"] = real
+        self._real = real
 
     def __getattr__(self, name):
         if name == "get_buffer":
@@ -57,13 +63,26 @@ class _NoGetBuffer:
         return getattr(self._real, name)
 
 
+def _bases(cls, out):
+    """`cls` and every class it derives from (MicroPython has no
+    `__mro__`)."""
+    if cls in out:
+        return out
+    out.append(cls)
+    for base in getattr(cls, "__bases__", ()):
+        _bases(base, out)
+    return out
+
+
 def _modules(cls):
     names = set(["audioeffects._component"])
     for name in list(sys.modules):
         if name == "audioeffects" or name.startswith("audioeffects."):
             names.add(name)
-    for base in cls.__mro__:
-        names.add(base.__module__)
+    for base in _bases(cls, []):
+        module = getattr(base, "__module__", None)
+        if module is not None:
+            names.add(module)
     return [sys.modules[n] for n in sorted(names)
             if n in sys.modules and n not in KEEP]
 
@@ -80,7 +99,7 @@ class hidden:
         stand_in = _NoGetBuffer(real)
         pull = real.get_buffer
         for module in _modules(self.cls):
-            for key, value in list(vars(module).items()):
+            for key, value in list(module.__dict__.items()):
                 if value is real:
                     self.saved.append((module, key, value))
                     setattr(module, key, stand_in)
@@ -167,28 +186,51 @@ def _bytes_cell(cls, options, rate, ch, patch, actions):
         % (d // (2 * ch), (d // 2) % ch)
 
 
-def _run(cls, options, quick, name):
+def _run(cls, options, quick, name, ch, patch):
     lines = []
     lifecycle.run_class(cls, options=options, rates=(48000,),
-                        only=EVENTS, quick=quick, emit=lines.append,
-                        name=name)
+                        channels=(ch,), patches=[patch], only=EVENTS,
+                        quick=quick, emit=lines.append, name=name)
     return _parse(lines)
 
 
-def run(cls, emit=print, quick=False, name=None, options=None):
-    """Every nogb cell for `cls`; returns the red count."""
+def _raised(exc):
+    return "%s: %s" % (type(exc).__name__, exc)
+
+
+def run(cls, emit=print, quick=False, name=None, options=None,
+        patches=None):
+    """Every nogb cell for `cls`; returns the red count. `patches` limits
+    the run to some of `[None] + sorted(cls.PATCHES)` (None the defaults),
+    so a slow class can be run a patch at a time."""
     cells = kc.Cells(name or cls.NAME, CHECK, emit)
-    if not kc.CPYTHON:
-        return cells.summary()
-    present = _run(cls, options, quick, cells.name)
-    try:
-        with hidden(cls):
-            absent = _run(cls, options, quick, cells.name)
-    except Exception as exc:                              # noqa: BLE001
-        cells.cell("run", "RED(raised %s: %s)" % (type(exc).__name__, exc))
-        return cells.summary()
-    for patch in [None] + sorted(cls.PATCHES):
+    present = {}
+    absent = {}
+    if patches is None:
+        patches = [None] + sorted(cls.PATCHES)
+    for patch in patches:
         for ch in (2, 1):
+            # One lifecycle run per patch and layout, each in its own
+            # cell, so a class that raises without get_buffer at one patch
+            # says which, and the other patches are still judged.
+            key = "run/48000/%d/%s" % (ch, "d" if patch is None
+                                       else "p%d" % patch)
+            try:
+                want = _run(cls, options, quick, cells.name, ch, patch)
+            except Exception as exc:                      # noqa: BLE001
+                cells.cell(key, "RED(raised with get_buffer: %s)"
+                           % _raised(exc))
+                continue
+            try:
+                with hidden(cls):
+                    got = _run(cls, options, quick, cells.name, ch, patch)
+            except Exception as exc:                      # noqa: BLE001
+                cells.cell(key, "RED(raised without get_buffer: %s)"
+                           % _raised(exc))
+                continue
+            cells.cell(key, "ok")
+            present.update(want)
+            absent.update(got)
             for label, actions in SCENARIOS:
                 key = "bytes-%s/48000/%d/%s" % (
                     label, ch, "d" if patch is None else "p%d" % patch)
@@ -196,8 +238,7 @@ def run(cls, emit=print, quick=False, name=None, options=None):
                     cells.cell(key, _bytes_cell(cls, options or {}, 48000,
                                                 ch, patch, actions))
                 except Exception as exc:                  # noqa: BLE001
-                    cells.cell(key, "RED(raised %s: %s)" % (
-                        type(exc).__name__, exc))
+                    cells.cell(key, "RED(raised %s)" % _raised(exc))
     for key in sorted(present):
         want = present[key]
         got = absent.get(key)

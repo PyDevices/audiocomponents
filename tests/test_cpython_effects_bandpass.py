@@ -971,11 +971,15 @@ class OldRing(bandpass.BandPass):
 class TheTailAfterAMove(unittest.TestCase):
     """A large move down in Frequency as the input stops rings out inside
     the bound read after the move (audiocomponents#114), at the cells where
-    the old bound was short; the old bound is red there."""
+    the old bound was short. Since audiodsp v0.6.6rc9 the biquad walks a
+    corner move over 20 ms (#162) and no longer carries the old section's
+    state into the new one, so the move barely rings and even the old bound
+    holds there now."""
 
     #: (rate, channels, patch, Frequency from, Frequency to). Patch 0's
     #: 16 kHz to 20 Hz rang 8 981 frames against the old 6 882, and the
-    #: steep patch 2's 24 352 against 18 992.
+    #: steep patch 2's 24 352 against 18 992, up to rc8; at rc9 the four
+    #: cells ring 15 to 45 frames.
     CELLS = ((48000, 2, 0, 127, 0), (48000, 2, 2, 127, 0),
              (48000, 1, 2, 127, 0), (22050, 1, 3, 127, 32))
 
@@ -989,12 +993,11 @@ class TheTailAfterAMove(unittest.TestCase):
                 self.assertLessEqual(got, bound,
                                      (rate, channels, patch, kind))
 
-    def test_the_old_bound_is_red(self):
+    def test_the_walk_keeps_the_ring_inside_the_old_bound(self):
+        # Red up to audiodsp rc8, where the move rang past it at all four.
         import tail_ring
-        red = 0
         for rate, channels, patch, high, low in self.CELLS:
             got, bound = tail_ring.ring(
                 "BandPass", rate, channels, patch, start=((0, high),),
                 moves=((0, low),), cls=OldRing)
-            red += got > bound
-        self.assertEqual(red, len(self.CELLS))
+            self.assertLessEqual(got, bound, (rate, channels, patch))

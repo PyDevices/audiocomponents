@@ -511,7 +511,7 @@ def enumerate_nodes(effect):
     `... (unregistered)`. That is a fault, not a naming quirk: the class
     holds a node neither of its own walks will reach.
 
-    Classes that are not Components - the `_core.Effect` family - keep no
+    Classes that are not Components (a third-party provider) keep no
     register and hold their nodes publicly, and take the scan unchanged.
     """
     register = getattr(effect, "_nodes", None)
@@ -1913,7 +1913,7 @@ def taps(render, *, expected_ms=None, tolerance_ms=0.5, threshold_db=-40.0,
 
     **The planted fault here is a measured one, not a hypothetical, and it is
     the model for the whole kit.** Build the line on
-    `audiodelays.Echo(freq_shift=False)` at `_core.pcm()`'s 2048-byte buffer:
+    `audiodelays.Echo(freq_shift=False)` at a 2048-byte buffer:
     the 1, 5 and 14 ms settings all deliver 21.33 ms and must go red, while
     30 and 40 ms stay green. The load-bearing detail is the flag - with the
     node's default `freq_shift=True` there is no floor, every setting lands
@@ -3296,8 +3296,10 @@ def mute_dry(effect, *, voices=None):
         mixer_voices = getattr(node, "voice", None)
         if not isinstance(mixer_voices, (list, tuple)):
             continue
+        # Through a `Port`: a voice armed lazily (`Component._play_voice`)
+        # plays a stand-in pointed at the tap, not the tap itself.
         bare = [index for index, voice in enumerate(mixer_voices)
-                if any(getattr(voice, "_sample", None) is tap
+                if any(port_target(getattr(voice, "_sample", None)) is tap
                        for tap in taps)]
         # A mixer where EVERY voice plays a bare tap is not a blend, it is a
         # selector: a fan-in choosing which copy of the input goes on to be

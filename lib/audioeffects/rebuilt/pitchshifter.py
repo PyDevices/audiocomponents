@@ -137,9 +137,9 @@ class PitchShifter(_component.Component):
     sample, with the shifted voice added on top, so a hot input can reach
     the rail.
     Feedback stacks level too, far past the input: at Feedback 127, Delay 0
-    and Mix 2 a noise burst peaking at -10.3 dBFS reaches the rail at unison
-    or an octave up, and comes within 4 dB of it at an octave down or a
-    fourth or fifth either way.
+    and Mix 2 a noise burst peaking at -10.3 dBFS reaches the rail at
+    unison, and comes within 6 dB of it at an octave or a fourth or fifth
+    either way.
 
     **Mono, latency, tail.** A one-channel source gets a one-channel
     shifter with the same window.

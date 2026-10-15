@@ -473,6 +473,43 @@ class O4Lag(unittest.TestCase):
         self.assertLess(d3 - d10, 1.0)
 
 
+class KnobsKeepTheLfoRunning(unittest.TestCase):
+    """A knob moves the throb from where it is in its cycle: the live LFO
+    notes take the new period in place, as `AutoPan`'s do."""
+
+    FRAMES = 16384
+    MOVE = 4096
+
+    def _moved(self, macro, target):
+        frames = self.FRAMES
+        effect = build(frames=frames, source=sine_src(440.0, frames),
+                       depth=0.5)
+        out = array("h")
+        while len(out) < frames * 2:
+            if len(out) == self.MOVE * 2:
+                effect.set_macro(macro, target)
+            data = memoryview(bytes(audiocore.get_buffer(effect.output)[1]))
+            out.extend(data.cast("h"))
+        return np.array(out[:frames * 2], dtype=np.int16).reshape(-1, 2)
+
+    def test_resending_a_knob_changes_no_byte(self):
+        frames = self.FRAMES
+        still = pull(build(frames=frames, source=sine_src(440.0, frames),
+                           depth=0.5), frames)
+        probe = build(depth=0.5)
+        for macro in range(len(rebuilt.Tremolo.MACRO_LABELS)):
+            got = self._moved(macro, probe.get_macro(macro))
+            self.assertTrue(np.array_equal(got, still), macro)
+
+    def test_a_depth_move_keeps_the_phase(self):
+        frames = self.FRAMES
+        there = build(frames=frames, source=sine_src(440.0, frames),
+                      depth=0.8)
+        ref = pull(there, frames)
+        got = self._moved(rebuilt.DEPTH, there.get_macro(rebuilt.DEPTH))
+        self.assertTrue(np.array_equal(got[self.MOVE:], ref[self.MOVE:]))
+
+
 class Tier1Fast(unittest.TestCase):
     def test_depth_zero_is_a_wire(self):
         frames = 2048

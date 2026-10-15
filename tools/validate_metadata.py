@@ -286,17 +286,15 @@ def validate_instruments(package=None):
 def validate_effects(package=None):
     """Validate every public concrete effect class.
 
-    Two bases, because the effects program rebuilds the library one family
-    at a time: `_core.Effect` for the families it has not reached and
-    `_component.Component` for the ones it has.  The count check at the end
+    Every shipped effect is a `_component.Component`.  The count check at the end
     is what stops a base this function has not been taught about from being
     skipped in silence -- an unvalidated class would otherwise read exactly
     like a valid one.
     """
     if package is None:
         import audioeffects as package
-    from audioeffects import _component, _core
-    bases = (_core.Effect, _component.Component)
+    from audioeffects import _component
+    bases = (_component.Component,)
 
     names = set()
     for exported in package.__all__:

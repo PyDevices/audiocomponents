@@ -36,10 +36,16 @@ class TheNewRows(unittest.TestCase):
                          "a6abc903a9e8e073")
 
     def test_the_damping_row_turns_the_loop_low_pass_on(self):
+        # The +options row runs the loop shifter (loop_semitones 12, a
+        # 25 ms window), so audiodsp v0.6.6's two shifter fixes move it: the
+        # band limit on the upward pass and the splice that matches a chord
+        # as a chord each change its bytes, and both together give these.
+        # Before v0.6.6 it was e7a07359012d7a8e, and 9e06dd6c5d8a2f38 with
+        # damping. The base and fb0.9 rows run no shifter and did not move.
         options = digest("audioecho.FeedbackDelay@options")
-        self.assertEqual(options, "e7a07359012d7a8e")
+        self.assertEqual(options, "7dfa014ed463ea16")
         self.assertEqual(digest("audioecho.FeedbackDelay@options+damping"),
-                         "9e06dd6c5d8a2f38")
+                         "101319c53132701d")
 
 
 class TheBesideRow(unittest.TestCase):

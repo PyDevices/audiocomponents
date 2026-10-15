@@ -7,12 +7,12 @@ Cells, all on an 8192-frame click and noise train then silence:
   changes no byte of the render, at the defaults and at every patch.
 - `stops-m<i>`: 0, 64 and 127 are accepted and `get_macro` reads each
   back within 1e-4.
-- `bad-m<i>`: NaN, +inf, -inf, -1 and 128. The contract does not say
-  whether an out-of-range macro value raises or clamps, so either passes:
-  a raise must be ValueError or TypeError and leave every macro where it
-  was (`r`); a clamp must read back a finite value in 0..127 (0 below the
-  range, 127 above it) and render exactly what `set_macro(i, readback)`
-  renders (`c`).
+- `bad-m<i>`: NaN, +inf, -inf, -1, 128 and +-10**400 (an int past
+  float's range). The contract (audio-component-api.md, "Macro and patch
+  state") clamps: NaN, -inf, -1 and -10**400 read back 0, +inf, 128 and
+  10**400 read back 127, and each renders exactly
+  what `set_macro(i, readback)` renders (`c`). A raise of any kind is
+  red.
 - `patch-p<k>`: from a fresh instance, `program_change(k)` sets
   `patch_index` and reads back the patch's values within 1e-4, and
   `program_change(0)` reads back what the fresh instance read.
@@ -60,7 +60,8 @@ READBACK_TOL = 1e-4
 
 NAN = float("nan")
 INF = float("inf")
-BAD = (("nan", NAN), ("inf", INF), ("-inf", -INF), ("-1", -1), ("128", 128))
+BAD = (("nan", NAN), ("inf", INF), ("-inf", -INF), ("-1", -1), ("128", 128),
+       ("10**400", 10 ** 400), ("-10**400", -10 ** 400))
 REFUSALS = (ValueError, TypeError)
 
 _PROBE = {}
@@ -145,17 +146,16 @@ def bad_cell(cls, index):
             before = gets(a)
             try:
                 a.set_macro(index, v)
-            except REFUSALS:
-                if gets(a) != before:
-                    return "RED(%s raised and moved the macros)" % label
-                codes.append("%s:r" % label)
-                continue
             except Exception as exc:                      # noqa: BLE001
-                return "RED(%s raised %s)" % (label, type(exc).__name__)
+                moved = " and moved the macros" if gets(a) != before else ""
+                return "RED(%s raised %s%s; the contract clamps)" % (
+                    label, type(exc).__name__, moved)
             r = a.get_macro(index)
             if not kc.finite(r) or r < 0 or r > 127:
                 return "RED(%s reads back %s)" % (label, kc.num(r))
-            want = 0 if v < 0 else (127 if v > 127 else None)
+            # The contract: NaN and below 0 are the bottom stop, above 127
+            # the top.
+            want = 127 if v > 127 else 0
             if want is not None and abs(r - want) > READBACK_TOL:
                 return "RED(%s reads back %s, not %d)" % (label, kc.num(r),
                                                           want)
@@ -177,7 +177,6 @@ def bad_cell(cls, index):
 def patch_cell(cls, patch):
     e = fresh(cls)
     try:
-        start = gets(e)
         e.program_change(patch)
         if e.patch_index != patch:
             return "RED(patch_index reads %r)" % (e.patch_index,)
@@ -187,12 +186,17 @@ def patch_cell(cls, patch):
             if abs(got[i] - want[i]) > READBACK_TOL:
                 return "RED(m%d reads %s, the patch says %d)" % (
                     i, kc.num(got[i]), want[i])
+        # Back at patch 0 it reads patch 0's values, not a fresh
+        # instance's: a declared default may sit off patch 0's grid
+        # (docs/audio-components.md; the kit holds reset-equals-fresh, not
+        # fresh-equals-patch-0, ruled 2026-10-14).
         e.program_change(0)
         back = gets(e)
-        for i in range(len(start)):
-            if abs(back[i] - start[i]) > READBACK_TOL:
-                return "RED(back at patch 0, m%d reads %s, fresh read %s)" \
-                    % (i, kc.num(back[i]), kc.num(start[i]))
+        zero = cls.PATCHES[0][1]
+        for i in range(len(zero)):
+            if abs(back[i] - zero[i]) > READBACK_TOL:
+                return "RED(back at patch 0, m%d reads %s, patch 0 says %d)" \
+                    % (i, kc.num(back[i]), zero[i])
     finally:
         _close(e)
     return "ok"
@@ -410,6 +414,10 @@ def options_of(cls):
         if name in ("self", "patch") or name.startswith("*") or not _sep:
             continue
         value = _number(default.strip(), module)
+        if value is None and default.strip() == "None":
+            # An option whose default is "left out" (patch 0's step) names
+            # the number it stands for in the class's `_OPTION_DEFAULTS`.
+            value = getattr(owner, "_OPTION_DEFAULTS", {}).get(name)
         if value is not None:
             out.append((name, value))
     return out

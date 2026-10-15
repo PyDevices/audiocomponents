@@ -9,7 +9,12 @@ section 7 names.
 the delayed signal, pitch-wobbled because a sine-family LFO moves the
 *clock* of the line, not an additive delay. Rate is 2–15 Hz. Depth is peak
 cents, held against Rate by solving the clock index m. Rise (150 ms–5 s)
-ramps that depth when Engage turns on; the audio path is never switched.
+ramps that depth in when Engage turns on, and out when it turns off, in a
+straight line whose 10–90 % is Rise, on every interpreter: the ramp is the
+delay node's own (`wow_depth_ramp_ms`), so nothing in Python runs while it
+travels. Any other knob that moves the depth glides there over 20 ms, which
+also finishes an Engage ramp still under way. The audio path is never
+switched.
 Delay is the mean line, default 4 ms, and that number is
 `latency_samples`. Tone and Body are the wet reconstruction low-pass and
 high-pass (−3 dB at 17 kHz and 40 Hz at the published defaults). Level is
@@ -74,12 +79,8 @@ MAX_DELAY_MS = 80.0
 #: One period of the clock law, power of two, borrowed by the node.
 SHAPE_LEN = 256
 
-#: FeedbackDelay's native block. Rise steps once per pull of this size.
+#: FeedbackDelay's native block, which the Mixer's buffer matches.
 BLOCK_FRAMES = 256
-
-#: CPython Mixer's get_buffer was 128 frames; T5 stamps that size.
-#: The MCU pulls the delay whole and does not use this split.
-SPLIT_FRAMES = 128
 
 #: Depth / m below this is off: wow_depth_ms = 0, delay = mean.
 DEPTH_OFF = 1e-4
@@ -92,6 +93,9 @@ M_MAX = 0.85
 #: 10–90 at Rate 5 Hz cannot resolve a 150 ms rise — one LFO period is
 #: 200 ms — so T5's ifreq clause is Station C's 5 s extreme, not this law.
 RISE_10_90 = 0.8
+
+#: How long a depth move other than Engage glides: the node's default.
+DEPTH_GLIDE_MS = 20.0
 
 _RANGES = (
     (2.0, 15.0, "log"),         # 0  Rate, Hz
@@ -237,87 +241,6 @@ def _patch(rate, depth_cents, rise, engage, delay_ms, tone_hz, body_hz,
     )
 
 
-class _RampTap:
-    """Re-blocking source in front of the delay. Advances the Engage
-    envelope once per 256-frame native block, then forwards at most that
-    many frames so the delay cannot stash a whole RawSample and starve the
-    ramp.
-    """
-
-    def __init__(self, source, owner):
-        self._source = source
-        self._owner = owner
-        self.sample_rate = source.sample_rate
-        self.channel_count = source.channel_count
-        self.bits_per_sample = 16
-        self.samples_signed = True
-        self._pending = b""
-
-    def _reset_buffer(self, single_channel_output=False, audio_channel=0):
-        self._pending = b""
-        self._owner._snap_envelope()
-        source = self._source
-        if source is not None:
-            audiocore.reset_buffer(source, single_channel_output,
-                                   audio_channel)
-
-    def _get_buffer(self, single_channel_output=False, audio_channel=0):
-        self._owner._on_block()
-        need = BLOCK_FRAMES * self.channel_count * 2
-        while len(self._pending) < need:
-            if self._source is None:
-                break
-            result, data = audiocore.get_buffer(self._source,
-                                                single_channel_output,
-                                                audio_channel)
-            chunk = bytes(data)
-            if not chunk:
-                break
-            self._pending += chunk
-            if result == 0:
-                break
-        take = self._pending[:need]
-        self._pending = self._pending[len(take):]
-        more = 1 if take else 0
-        return more, memoryview(take)
-
-
-class _SplitOut:
-    """128-frame view of the delay so CPython T5 stamps match Mixer-era
-    pulls. Not a palette node; boards pull the delay directly.
-    """
-
-    def __init__(self, delay, owner):
-        self._delay = delay
-        self._owner = owner
-        self.sample_rate = delay.sample_rate
-        self.channel_count = delay.channel_count
-        self.bits_per_sample = 16
-        self.samples_signed = True
-        self._pending = b""
-
-    def _reset_buffer(self, single_channel_output=False, audio_channel=0):
-        self._pending = b""
-        audiocore.reset_buffer(self._delay, single_channel_output,
-                               audio_channel)
-
-    def _get_buffer(self, single_channel_output=False, audio_channel=0):
-        need = SPLIT_FRAMES * self.channel_count * 2
-        while len(self._pending) < need:
-            result, data = audiocore.get_buffer(self._delay,
-                                                single_channel_output,
-                                                audio_channel)
-            chunk = bytes(data)
-            if not chunk:
-                break
-            self._pending += chunk
-            if result == 0:
-                break
-        take = self._pending[:need]
-        self._pending = self._pending[len(take):]
-        return (1 if take else 0), memoryview(take)
-
-
 class Vibrato(_component.Component):
     """Boss VB-2–informed vibrato: a sine on the BBD clock, wet alone.
     audiodsp tier; latency is the mean delay (4 ms at the default).
@@ -384,8 +307,14 @@ class Vibrato(_component.Component):
         self._latency = int(round(float(delay_ms) * self._sample_rate
                                   / 1000.0))
         self._tail = self._latency
-        self._envelope = 1.0 if engage else 0.0
         self._wow_full_ms = 0.0
+        #: The mean `delay_ms` last written, so a move can glide from it.
+        self._delay_written = None
+        #: The clock index the shape last handed to the node was built for.
+        self._m_written = 0.0
+        #: Whether the depth last written was the engaged one, so an Engage
+        #: move is told apart from a move of any other knob.
+        self._engaged_written = None
         self._delay = self._own(audioecho.FeedbackDelay(
             sample_rate=self._sample_rate,
             channel_count=self._channel_count,
@@ -398,23 +327,18 @@ class Vibrato(_component.Component):
             wow_hz=0.0,
             wow_depth_ms=0.0,
             wow_shape=self._shape))
-        self._tap = _RampTap(self._source, self)
-        try:
-            self._delay.play(self._tap)
-        except TypeError:
-            # Native MicroPython/CircuitPython FeedbackDelay will not play a
-            # Python source (`protocol_audiosample`). The Engage envelope
-            # then snaps on reset and on the Engage macro; T5 is CPython.
-            self._tap = None
-            self._delay.play(self._source)
+        # The Engage envelope is the node's own depth ramp
+        # (`wow_depth_ramp_ms`), so it runs on every interpreter and needs
+        # nothing from Python while the output is pulled.
+        self._delay.play(self._source)
         orig_reset = getattr(self._delay, "_reset_buffer", None)
         if orig_reset is not None:
             def _reset_delay(single_channel_output=False, audio_channel=0,
                              orig=orig_reset):
                 orig(single_channel_output, audio_channel)
-                src = self._tap if self._tap is not None else self._source
-                if src is not None:
-                    audiocore.reset_buffer(src, single_channel_output,
+                if self._source is not None:
+                    audiocore.reset_buffer(self._source,
+                                           single_channel_output,
                                            audio_channel)
             self._delay._reset_buffer = _reset_delay
         bytes_per_block = BLOCK_FRAMES * self._channel_count * 2
@@ -426,9 +350,7 @@ class Vibrato(_component.Component):
                 buffer_size=bytes_per_block),
             reset=self._reset_mixer)
         # Default Level is 0 dB: pull the delay. Mixer is optioned.
-        # CPython keeps a 128-frame split so T5's 128/fs stamp stays honest.
-        self._split = _SplitOut(self._delay, self) if self._tap is not None else None
-        self._output = self._split if self._split is not None else self._delay
+        self._output = self._delay
         self._mixer_armed = False
         orig_mix_reset = getattr(self._mixer, "_reset_buffer", None)
         orig_mix_get = getattr(self._mixer, "_get_buffer", None)
@@ -458,34 +380,47 @@ class Vibrato(_component.Component):
 
     def _route_output(self):
         if self._level_is_unity():
-            if self._split is not None:
-                self._output = self._split
-            else:
-                self._output = self._delay
+            self._output = self._delay
             return
         if not self._mixer_armed:
             self._arm_mixer_voice()
         self._output = self._mixer
 
     def _arm_mixer_voice(self):
+        """Arm the Level mixer's voice on the delay, the lazy way, as a
+        reset arms a mixer: the voice primes a block of silence, the mixer
+        hands it up, and the voice's stand-in is then pointed at the delay,
+        so the next pull fetches from where the delay was.
+
+        A native voice's `play()` on the delay primed a block of the music
+        there and then, and the output ran 256 frames ahead of it for good:
+        5 ms skipped the first time Level left 0 dB, on a board only.
+        CPython's voice was armed by hand without a pull, and started at
+        level 0 until the music crossed zero, which the silence here opens.
+        Both interpreters now arm the same way and render the same bytes.
+        """
         voice = self._mixer.voice[0]
-        if hasattr(voice, "_remaining"):
-            # CPython Mixer.play() prefetches a delay block and advances the
-            # probe. render_effect then reset_buffer()s the mixer; the
-            # block adapter does not rewind, so an impulse probe goes silent.
-            # Arm the voice without pulling.
-            voice._sample = self._delay
-            voice._loop = False
-            voice._remaining = b""
-            voice._source_more = True
-        else:
-            voice.play(self._delay)
         self._mixer_armed = True
+        if _component.PORT is None:
+            if hasattr(voice, "_remaining"):
+                voice._sample = self._delay
+                voice._loop = False
+                voice._remaining = b""
+                voice._source_more = True
+            else:
+                voice.play(self._delay)
+            return
+        self._lazy_pending = []
+        self._arming_lazily = True
+        try:
+            self._play_voice(voice, self._delay)
+        finally:
+            self._arming_lazily = False
+        self._hand_up_lazy(getattr(audiocore, "get_buffer", None))
 
     def _reset_mixer(self):
         audiocore.reset_buffer(self._mixer)
         self._mixer_armed = False
-        self._snap_envelope()
 
     def _mean_delay_ms(self):
         """Whole-sample mean delay. A 7-bit Delay within two samples of
@@ -509,29 +444,25 @@ class Vibrato(_component.Component):
                                       self._macros[index])
 
     def _engaged(self):
-        if len(self._macros) < 4:
-            return self._envelope >= 0.5
         return self._macros[3] >= 0.5
 
-    def _snap_envelope(self):
-        self._envelope = 1.0 if self._engaged() else 0.0
-        self._write_wow()
-
-    def _on_block(self):
-        target = 1.0 if self._engaged() else 0.0
-        rise = self._value(2)
-        span = rise / RISE_10_90
-        dt = BLOCK_FRAMES / float(self._sample_rate)
-        if span <= dt:
-            self._envelope = target
-        elif self._envelope < target:
-            self._envelope = min(target, self._envelope + dt / span)
-        elif self._envelope > target:
-            self._envelope = max(target, self._envelope - dt / span)
-        self._write_wow()
+    def _rise_ramp_ms(self):
+        """The whole of the Engage envelope in ms: Rise is its 10-90 %, so
+        the straight line takes Rise / 0.8."""
+        return self._value(2) / RISE_10_90 * 1000.0
 
     def _write_wow(self):
-        self._delay.set(wow_depth_ms=self._wow_full_ms * self._envelope)
+        """Write the depth Engage asks for. An Engage move travels there over
+        the envelope; any other move (Depth, Rate, Delay) over the node's
+        20 ms, which also finishes an envelope still under way."""
+        engaged = self._engaged()
+        ramp_ms = DEPTH_GLIDE_MS
+        if (self._engaged_written is not None
+                and engaged != self._engaged_written):
+            ramp_ms = self._rise_ramp_ms()
+        self._engaged_written = engaged
+        self._delay.set(wow_depth_ramp_ms=ramp_ms,
+                        wow_depth_ms=self._wow_full_ms if engaged else 0.0)
 
     def _apply_macro(self, index, position):
         del position
@@ -547,7 +478,25 @@ class Vibrato(_component.Component):
         m = m_for_cents(mean_ms, rate, cents)
         delay_ms, wow_depth_ms = delay_law(mean_ms, m)
         self._wow_full_ms = wow_depth_ms
-        self._shape = clock_shape(m)
+        # A move of Rate, Depth or Delay moves the mean line and the clock
+        # law at once, while the depth glides over 20 ms. Written as they
+        # were, the read head jumped by the whole change on the next frame,
+        # a tick each time one was turned. So the mean line walks there
+        # over the same 20 ms (the node's `delay_slew`, delay-seconds per
+        # second, set from the size of this move), and a new clock law goes
+        # to the node, which ramps the depth to zero over the same 20 ms,
+        # changes the table there and ramps back (audioecho's wow_shape
+        # swap). Only a law that moved is handed over, so a Tone, Body,
+        # Level or Engage move does not dip the swing. Depth 0 keeps the
+        # last law while the depth glides out under it, as Engage off does.
+        if m >= DEPTH_OFF and m != self._m_written:
+            self._shape = clock_shape(m)
+            self._m_written = m
+        last = self._delay_written
+        if last is not None and last != delay_ms:
+            self._delay.set(
+                delay_slew=abs(delay_ms - last) / DEPTH_GLIDE_MS)
+        self._delay_written = delay_ms
         damping = nominal_damping_hz(tone, self._sample_rate)
         self._delay.set(
             delay_ms=delay_ms,
@@ -568,7 +517,14 @@ class Vibrato(_component.Component):
         # adds the frames it takes to fall from full scale to under half an
         # LSB (audiocomponents#114: Body alone rang 2 430 frames past the
         # line at 20 Hz, 48 kHz).
+        # And a move keeps the read head travelling for up to two glides
+        # after it: the mean line's 20 ms, or a new law's dip to zero depth
+        # and back. What the wet filters hold from that travel rings out
+        # behind it, so the count starts where the travel ends.
+        glide = int(math.ceil(2.0 * DEPTH_GLIDE_MS * self._sample_rate
+                              / 1000.0))
         self._tail = (int(math.ceil(d_max * self._sample_rate / 1000.0)) + 64
+                      + glide
                       + one_pole_ring(damping, self._sample_rate)
                       + one_pole_ring(body, self._sample_rate))
 

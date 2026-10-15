@@ -200,13 +200,17 @@ class MultibandCompressor(_component.Component):
     **Latency 0 at every setting**, and no option here can add any. The
     crossover is IIR; the detectors do not look ahead.
 
-    **Cost.** This is the most expensive class in the Dynamics family, and
-    it is over its budget on both boards: measured 2026-09-07 at
-    construction defaults, **44.3 % of a 256-frame stereo block on an
-    ESP32-P4 and 83.6 % on an ESP32-S3**, against a dossier budget of 25 %
-    and 45 %. It runs in real time on both - the S3 figure is 4.910 ms of a
-    5.333 ms block - and it leaves 8 % of that block for everything else on
-    the chip. At three bands it owns **18 nodes**, eight of them biquads,
+    **On an ESP32-S3, build it with `bands=2`.** At three bands no patch
+    keeps up there and the sound breaks up; at two bands it does, with the
+    split at Crossover Low and the Mid macros idle. No patch can stand in
+    for this: every macro position builds the same graph.
+
+    **Cost.** This is the most expensive class in the Dynamics family.
+    Measured in October 2026, its costliest patch (Loudness; all five sit
+    within 0.2 ms of each other) takes **54.0 % of a 256-frame stereo block
+    on an ESP32-P4 and 107.0 % on an ESP32-S3**, so the S3 cannot run it in
+    real time; built with `bands=2` it is **34.2 % and 71.1 %**. At three
+    bands it owns **18 nodes**, eight of them biquads,
     and pulls 72 of them per eight blocks; `bands=2` is the cheaper build
     at **12 nodes and 48 pulls** - four biquads, two detectors, three mixer
     voices - and on the desktop it measured between 75 % and 79 % of the
@@ -221,6 +225,9 @@ class MultibandCompressor(_component.Component):
     Only the constructor can make a *working* instance cheaper.
     """
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'MultibandCompressor'
     DISPLAY_NAME = 'Multiband Compressor'
     CATEGORIES = ('Dynamics',)
@@ -472,11 +479,24 @@ class MultibandCompressor(_component.Component):
         if self._mix <= 0.0:
             self._primed = False
             return
-        self._mixer.play(self._taps[0], voice=0, loop=True)
+        self._play_voice(self._mixer.voice[0], self._taps[0], loop=True)
         for band in range(self._bands):
-            self._mixer.play(self._detectors[band], voice=band + 1,
-                             loop=True)
+            self._play_voice(self._mixer.voice[band + 1],
+                             self._detectors[band], loop=True)
         self._primed = True
+
+    def reset(self):
+        """Clear every node and restore patch 0, then hand the voices their
+        sources at patch 0's levels, as `_build` does. The walk used to
+        re-play them at the outgoing patch's levels, before patch 0 went
+        in, so the levels moved after the gates had opened and landed late,
+        a few LSB (up to 70 here) off a fresh instance for the first
+        blocks."""
+        self._resetting = True
+        try:
+            self._reset_rearmed(self._refresh_output, ("_primed",))
+        finally:
+            self._resetting = False
 
     def _reset_mixer(self):
         """Clear the Mixer, then hand its voices back their sources.
@@ -495,6 +515,12 @@ class MultibandCompressor(_component.Component):
         walked last, that chunk comes through nodes this reset has already
         cleared.
         """
+        if getattr(self, "_resetting", False):
+            # `reset()` stops the voices and plays them once the patch is in
+            # (`_reset_rearmed`). A host reset of CircuitPython's stock
+            # Mixer here reached the voices' sources and cost the reset a
+            # block of the source, as it did Saturation's.
+            return
         audiocore.reset_buffer(self._mixer)
         self._play_voices()
 

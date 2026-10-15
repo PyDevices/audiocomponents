@@ -86,10 +86,13 @@ quantiser goes through `DITHER_GATE_DB`, a gate 6 dB above the dither's own
 level: the input going away is the only thing that closes it. Silence in is
 silence out at **every shipped patch, peak 0**. It costs a tail — the gate
 holds 20 ms and releases over 50 ms, so the dither fades to its last
-nonzero code **7 248 frames** after a burst at 48 kHz — and
-`DITHER_TAIL_SAMPLES` declares 8 192 for it. `tail_samples` is 0 with Band
-Limit and dither off, **640** with the band limit on, and **8 192**
-wherever the dither is.
+nonzero code **7 248 frames** after a burst at 48 kHz, 9 030 at maximum
+Dither — and `DITHER_TAIL_SAMPLES` declares 9 728 for it. `tail_samples` is
+0 with Band Limit and dither off, **640** with the band limit on, and
+**9 728** wherever the dither is, up to a dither of ±32 counts. Past that
+the dither alone holds the gate open, it plays on silence for good, and
+`tail_samples` is None: maximum Dither at 12 bits is the edge, and any
+deeper crush with Dither up is past it.
 
 **What the default surrenders.** Patch 0 is 12 bits at 26.04 kHz, dither
 off, band limit off, Output 0 dB.
@@ -214,6 +217,9 @@ DITHER_PEAK = 16384
 DITHER_GATE_DB = -60.0
 DITHER_GATE_HOLD_MS = 20.0
 DITHER_GATE_RELEASE_MS = 50.0
+#: The dither peak, in 16-bit counts, at which the dither alone reaches the
+#: gate's threshold and holds it open.
+DITHER_GATE_PEAK = 32768.0 * 10.0 ** (DITHER_GATE_DB / 20.0)
 
 #: The band limit is a 4th-order Butterworth -- two sections at the pole Qs
 #: the polynomial actually has, not four sections at 0.7071 apiece. Four
@@ -1331,6 +1337,9 @@ def _rect_table(frames, channels, seed):
 class Bitcrusher(_component.Component):
     """12-bit linear hold: Bits and Rate, informed by the SP-1200."""
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'Bitcrusher'
     DISPLAY_NAME = 'Bitcrusher'
     CATEGORIES = ('Distortion',)
@@ -1565,6 +1574,16 @@ class Bitcrusher(_component.Component):
         self._output_gain = _component.db_to_gain(output_db)
         self._prime_if_wet()
 
+    def reset(self):
+        """Clear every node and restore patch 0, then arm the graph as
+        `_build` does, lazily, so a reset is a fresh instance and takes
+        nothing from the source."""
+        # The hold is played again as `_build` plays it, so its accumulator
+        # starts where a fresh one's does.
+        self._hold_source = None
+        self._reset_rearmed(self._prime_if_wet,
+                            ("_dither_primed", "_blend_primed"))
+
     def _prime_if_wet(self):
         mix = getattr(self, "_mix", 1.0)
         if mix <= 0.0:
@@ -1574,6 +1593,14 @@ class Bitcrusher(_component.Component):
             self._output = self._blend
             return
         if self._rejoin():
+            # The Splitter drops the source frames it took before the
+            # bypass, which the host has since read past, and the node
+            # reading the wet tap what it held of a tap's chunk: the band
+            # limit's first section, or the hold with Band Limit off.
+            head = self._sections[0] if self._hold_source is not \
+                self._wet_in else self._hold
+            _component.let_go_of_source(self._split, self._source,
+                                        ((head, self._wet_in),))
             # Back off the bypass: every node is cleared - the hold's last
             # value, the band limit's memory, the dither gate - and the
             # voices, which still hold the blocks they had queued, are
@@ -1611,9 +1638,11 @@ class Bitcrusher(_component.Component):
                 # and an open gate plays the dither out of silence until it
                 # closes. Closed is what silence would have left it.
                 self._clear_nodes(only=(self._dither_gate,))
-                self._dither_mix.voice[0].play(hold)
-                self._dither_mix.voice[1].play(self._dither_a, loop=True)
-                self._dither_mix.voice[2].play(self._dither_b, loop=True)
+                self._play_voice(self._dither_mix.voice[0], hold)
+                self._play_voice(self._dither_mix.voice[1], self._dither_a,
+                                 loop=True)
+                self._play_voice(self._dither_mix.voice[2], self._dither_b,
+                                 loop=True)
                 self._dither_gate.play(self._dither_mix)
                 self._dither_primed = True
             self._shaper.play(self._dither_gate)
@@ -1621,8 +1650,8 @@ class Bitcrusher(_component.Component):
             self._dither_primed = False
             self._shaper.play(hold)
         if not self._blend_primed:
-            self._blend.voice[0].play(self._dry)
-            self._blend.voice[1].play(self._shaper)
+            self._play_voice(self._blend.voice[0], self._dry)
+            self._play_voice(self._blend.voice[1], self._shaper)
             self._blend_primed = True
         self._output = self._blend
         self._set_levels()
@@ -1718,22 +1747,35 @@ class Bitcrusher(_component.Component):
     #: (p)5). It is a group delay, so it is the same at both.
     BAND_LATENCY_SAMPLES = 2
 
-    #: What the dither gate rings for after the input stops, third fix
-    #: round. The gate holds 20 ms and releases over 50 ms, and the +-16
-    #: count dither fades to its last nonzero 16-bit code **7 248 frames**
-    #: after the burst at 48 kHz (6 485 at 44.1, 3 257 at 22.05), with or
-    #: without the band limit. 8 192 covers the worst with 13 % over it.
-    #: Zero dither is still a zero tail: the gate is only in the chain
-    #: where the dither is.
-    DITHER_TAIL_SAMPLES = 8192
+    #: What the dither gate rings for after the input stops. The gate holds
+    #: 20 ms and releases over 50 ms, and the longer the dither, the later
+    #: its last nonzero 16-bit code: 7 248 frames at +-16 counts, **9 030**
+    #: at +-32 (12 bits, Dither at maximum, mono, 48 kHz, with the Dither
+    #: move inside the burst), counted the way the contract counts. 8 192
+    #: was the +-16 number. 9 728 covers +-32 with 7 % over it, with or
+    #: without the band limit, at every rate. Zero dither is still a zero
+    #: tail: the gate is only in the chain where the dither is.
+    DITHER_TAIL_SAMPLES = 9728
 
     @property
     def tail_samples(self):
+        """0, the band limit's 640, or the dither gate's 9 728, and None
+        where the dither is louder than the gate's threshold.
+
+        The gate's threshold is a level, `DITHER_GATE_DB`, and the dither's
+        peak is Dither's LSB at the depth in force. Past +-32 counts (12
+        bits at maximum Dither, 11 bits at 1 LSB, and every deeper crush
+        above that) the dither alone holds the gate open, so it plays on
+        silence for good and no bound is true."""
         self._check_live()
         tail = 0
         if self._macros[3] >= 0.5:
             tail = type(self).BAND_TAIL_SAMPLES
-        if getattr(self, "_dither_lsb", 0.0) > 0.0:
+        dither_lsb = getattr(self, "_dither_lsb", 0.0)
+        if dither_lsb > 0.0:
+            step = 1 << (16 - max(2, min(MAX_BITS, self._bits)))
+            if dither_lsb * step > DITHER_GATE_PEAK:
+                return None
             dithered = type(self).DITHER_TAIL_SAMPLES
             tail = dithered if dithered > tail else tail
         return tail

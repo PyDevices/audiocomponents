@@ -106,7 +106,7 @@ class TwoNodes(_component.Component):
 
 class OnlyOwnsTheTail(TwoNodes):
     """Planted fault: the class builds two nodes and enumerates one, which
-    is what `_core.reset()` does to every chain today."""
+    is what the retired `_core.reset()` did to every chain."""
 
     NAME = 'OnlyOwnsTheTail'
     OWN_THE_DELAY = False
@@ -293,8 +293,8 @@ class ResetAndDeinitWalkTheNodeList(unittest.TestCase):
 
     def test_planted_fault_a_node_left_off_the_list_survives_reset(self):
         # The same read, on a class that enumerates its tail and not the
-        # delay in front of it -- which is what `_core.reset()` does to
-        # every chain today (roadmap section 3).
+        # delay in front of it -- which is what the retired `_core.reset()` did to
+        # every chain (roadmap section 3).
         self.assertGreater(
             self.after_reset(self.primed(OnlyOwnsTheTail)), 0,
             "the read must go red when a node is left off the list")

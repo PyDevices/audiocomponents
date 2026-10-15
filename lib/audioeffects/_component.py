@@ -1,11 +1,10 @@
 """The construction shape every rebuilt effect class is built on.
 
-`_core.py` is the pre-contract shape: a module-level `configure()` holds the
-sample rate, and `Effect.__new__` sniffs the format off whatever it is handed.
-The effects roadmap (§3, "What the contract freezes") frees that, and this
-module is the replacement. It lands beside `_core.py` rather than over it:
-the families not yet rebuilt keep importing `_core`, untouched, until Phase 6
-retires it with the last of them.
+It replaced `_core.py`, the pre-contract shape, in which a module-level
+`configure()` held the sample rate and `Effect.__new__` sniffed the format
+off whatever it was handed. The effects roadmap (§3, "What the contract
+freezes") freed that; every family was rebuilt on this module, and
+`_core.py` was retired in Phase 7.
 
 What is different here, and why:
 
@@ -18,7 +17,7 @@ What is different here, and why:
   earlier, which is the failure `configure()` invited.
 
 * **A class enumerates the nodes it builds**, with `self._own(node)`, and
-  `reset()` and `deinit()` walk that list. `_core.reset()` touches the output
+  `reset()` and `deinit()` walk that list. `_core.reset()` touched the output
   node only, so what a chain's reset actually clears depends on which node
   happened to be last. Every node clears something different:
   `audiofilters.Filter` and `Phaser` clear their own delay buffers and
@@ -249,8 +248,8 @@ def _set_output(effect, node):
 #: port itself is `deinit`'s job and not this setter's, because the order
 #: matters there and a plain attribute store is no place to say so.
 #:
-#: Both bases carry it -- `_core.Effect` imports this very object -- so the
-#: pre-contract classes get the same fix without being rebuilt first.
+#: The pre-contract `_core.Effect` base carried this same object until it
+#: was retired, so its classes had the fix too.
 output_port = property(_get_output, _set_output)
 
 
@@ -307,6 +306,51 @@ _UNREAD = object()
 def static_transport():
     """The transport a component sees when it was given none."""
     return (False, 0.0, 120.0, 4, 4)
+
+
+#: The tempo and the quarter notes in a bar a synced class follows until a
+#: transport it can read says otherwise: `static_transport`'s 120 bpm, 4/4.
+GOOD_BEAT = (120.0, 4.0)
+
+#: The largest numerator or denominator of a time signature `synced_beat`
+#: follows. A bar of 128/1 is 512 quarter notes; past it a synced sweep
+#: would stand still.
+METER_LIMIT = 128.0
+
+
+def _field(state, index):
+    """`state[index]` as a finite float, or None for a field that is missing
+    or is not a finite number."""
+    try:
+        value = float(state[index])
+    except (TypeError, ValueError, OverflowError, IndexError):
+        return None
+    if value != value or value in (float("inf"), float("-inf")):
+        return None
+    return value
+
+
+def synced_beat(state, last=GOOD_BEAT):
+    """(bpm, quarter notes in one bar) read off a host transport tuple
+    `(playing, position, bpm, numerator, denominator)`: numerator x 4 /
+    denominator quarters, so 4/4 is 4, 3/4 is 3 and 6/8 is 3.
+
+    What a host gets wrong keeps the last good reading, `last`, rather than
+    raising or standing the sweep still: a tempo that is missing, None, NaN,
+    infinite, or 0 or below keeps `last`'s tempo, and a signature with a
+    field missing, or a numerator or denominator that is not a number from
+    1 to `METER_LIMIT`, keeps `last`'s bar. A tempo below 1 bpm is 1."""
+    bpm, quarters = last
+    tempo = _field(state, 2)
+    if tempo is not None and tempo > 0.0:
+        bpm = max(1.0, tempo)
+    numerator = _field(state, 3)
+    denominator = _field(state, 4)
+    if numerator is not None and denominator is not None \
+            and 1.0 <= numerator <= METER_LIMIT \
+            and 1.0 <= denominator <= METER_LIMIT:
+        quarters = numerator * 4.0 / denominator
+    return bpm, quarters
 
 
 def biquad_ring(node):
@@ -394,6 +438,16 @@ def macro_position(span, value):
     return min(1.0, max(0.0, position))
 
 
+def clamped_midi(value):
+    """`value` on the 0-127 MIDI scale as a float, clamped to it: NaN is 0,
+    and an int too large for a float (10**400) is the stop on its side."""
+    try:
+        value = float(value)
+    except OverflowError:
+        return 127.0 if value > 0 else 0.0
+    return min(127.0, max(0.0, value))
+
+
 def position_of_midi(mode, midi):
     """The 0-127 MIDI grid -> a macro's 0..1 position, by the macro's mode.
 
@@ -417,7 +471,7 @@ def position_of_midi(mode, midi):
     continuous at 64 and takes floats, so a host with finer resolution than
     7 bits still lands where its knob says.
     """
-    midi = min(127.0, max(0.0, float(midi)))
+    midi = clamped_midi(midi)
     if mode != "BIPOLAR":
         return midi / 127.0
     if midi >= 64.0:
@@ -445,6 +499,38 @@ def macro_of(span, value, mode="UNIPOLAR"):
     different MIDI law -- pass it or a bipolar patch lands beside its value
     rather than on it."""
     return int(round(midi_of_position(mode, macro_position(span, value))))
+
+
+#: Frames in one block of `_lazy_silence` (an `audioroute.MidSide` with no
+#: source hands out this many per pull).
+_SILENCE_FRAMES = 256
+
+
+def _drain(pull, mixer):
+    """Pull `mixer` until each voice on the lazy silence has handed up the
+    whole silent block it primed and holds nothing: a mixer that pulls
+    fewer frames than the block (128 at two channels on some classes) left
+    the rest to play first, and the output started half a block late."""
+    total = 0
+    for _ in range(64):
+        state, data = pull(mixer)
+        frames = len(data) // (2 * mixer.channel_count) if data else 0
+        if not frames:
+            return
+        total += frames
+        if total % _SILENCE_FRAMES == 0:
+            return
+
+
+def release(node):
+    """Let go of a node no graph points at any more (None is fine): its
+    `release_all()` where it has one, then its `deinit()`."""
+    if node is None:
+        return
+    for name in ("release_all", "deinit"):
+        call = getattr(node, name, None)
+        if call is not None:
+            call()
 
 
 # --------------------------------------------------------------------------
@@ -484,6 +570,42 @@ def open_level_gates(node, voices, silence):
     for voice in voices:
         voice.play(silence, loop=True)
     pull(node)
+    return True
+
+
+def let_go_of_source(head, source, consumers=()):
+    """Drop the source frames `head` has taken and not handed on, without
+    reading or resetting `source`. Returns whether it could.
+
+    For the node at the head of a graph a bypass stopped pulling, called
+    as the graph rejoins. While Mix is 0 the host reads the source itself,
+    so whatever the head still held from before is old audio: played on
+    the way back it is up to 20 ms of what was sounding when the bypass
+    began, and the stream runs late by as much. A host reset does not drop
+    those frames, by design (the source was not reset), so the reset walk
+    `_rejoin` runs leaves them.
+
+    A Splitter holds them in its ring, and `Splitter.clear()` lets them go
+    (audiodsp 0.6.6rc7); before that node there is no way to, and this
+    returns False. A node with `play()` (a Biquad, a MidSide) drops what it
+    held when it is handed its source again, and reads nothing from it.
+
+    `consumers` are `(node, tap)` pairs, each a node reading one of the
+    Splitter's taps, handed its tap again so it drops what it held too. A
+    tap hands out at most 256 frames, and less at the end of a source
+    buffer, so the first node behind it carries part of a chunk across
+    blocks: old audio as well, once the ring is cleared. Nodes further
+    down read whole blocks and hold nothing over.
+    """
+    if hasattr(head, "tap"):
+        clear = getattr(head, "clear", None)
+        if clear is None:
+            return False
+        clear()
+        for node, tap in consumers:
+            node.play(tap)
+        return True
+    head.play(source)
     return True
 
 
@@ -746,10 +868,21 @@ class Component:
         #: (`_KEPT`) keeps it through a knob applied while this is set.
         self._seeding = False
 
+        # A `LAZY_BUILD` class's constructor arms lazily, as a reset does
+        # (`_play_voice`): a voice primes a block of silence, not the
+        # source's first block, so a Mix 0 set before the first pull hands
+        # out the source from frame 0 rather than from frame 256. The
+        # silence is handed up by `get_buffer`, or where it is compiled out
+        # by `_pull_node`.
+        pull = getattr(audiocore, "get_buffer", None)
+        self._lazy_pending = []
+        self._arming_lazily = bool(cls.LAZY_BUILD and PORT is not None)
         try:
             self._build(*options, **keywords)
         finally:
             self._constructing = False
+            self._arming_lazily = False
+        self._hand_up_lazy(pull)
 
         if self._output is None:
             raise TypeError("%s._build() set no output" % cls.NAME)
@@ -899,17 +1032,30 @@ class Component:
             return 1.0
         return frequency
 
-    def _init_macros(self, values, patch=None):
+    def _init_macros(self, values, patch=None, defaults=None):
         """Seed the knobs from `_build`'s own arguments, in the macros' own
         units, and apply a patch over the top if one was asked for. This is
         deliberately the only route into `_apply_macro`, so the constructor
-        and a later `set_macro` cannot drift apart."""
+        and a later `set_macro` cannot drift apart.
+
+        `defaults`, when given, holds one flag per value: True where the
+        caller did not choose it (the argument was left out). That value is
+        seeded on patch 0's step for its macro rather than at the value
+        itself, so a fresh instance is patch 0 exactly, as the contract
+        says, and a reset lands where a fresh instance starts. A value the
+        caller passed is seeded where it is."""
         cls = type(self)
         if len(values) != len(cls.MACRO_LABELS):
             raise TypeError("%s seeded %d macros for %d labels"
                             % (cls.NAME, len(values), len(cls.MACRO_LABELS)))
         self._macros = [macro_position(span, value)
                         for span, value in zip(cls._MACRO_RANGES, values)]
+        if defaults is not None:
+            steps = cls.PATCHES[0][1]
+            for index in range(len(values)):
+                if defaults[index]:
+                    self._macros[index] = position_of_midi(
+                        self._mode(index), steps[index])
         for index in range(len(self._macros)):
             self._apply_macro(index, self._macros[index])
         self._patch_index = 0
@@ -1001,7 +1147,7 @@ class Component:
         self._macro_index(index)
         self._macros[index] = position_of_midi(self._mode(index), value)
         self._patch_index = None
-        self._apply_macro(index, self._macros[index])
+        self._lazily(self._apply_macro, index, self._macros[index])
 
     def get_macro(self, index):
         self._check_live()
@@ -1032,9 +1178,10 @@ class Component:
         patch = type(self).PATCHES.get(index)
         if patch is None:
             return
-        self._apply_positions([position_of_midi(self._mode(macro), value)
-                               for macro, value in enumerate(patch[1])],
-                              index)
+        self._lazily(self._apply_positions,
+                     [position_of_midi(self._mode(macro), value)
+                      for macro, value in enumerate(patch[1])],
+                     index)
 
     def _apply_positions(self, positions, patch_index):
         """Set the macros to `positions` (0..1, one per macro from index 0),
@@ -1083,7 +1230,7 @@ class Component:
             setattr(self, name, value)
         self._seeding = True
         try:
-            self._apply_positions(list(positions), patch_index)
+            self._lazily(self._apply_positions, list(positions), patch_index)
         finally:
             self._seeding = False
 
@@ -1131,6 +1278,16 @@ class Component:
         self._followed_bpm = bpm
         self._apply_macro(index, self._macros[index])
 
+    def _synced_beat(self):
+        """`synced_beat` of the transport as it reads now, against the last
+        good reading this instance took (`GOOD_BEAT` before the first),
+        which it then keeps."""
+        transport = self._transport
+        state = transport() if callable(transport) else transport
+        beat = synced_beat(state, getattr(self, "_good_beat", GOOD_BEAT))
+        self._good_beat = beat
+        return beat
+
     def poly_pressure(self, pitch, value, channel=0, note_id=-1,
                       sample_position=0):
         self._check_live()
@@ -1159,6 +1316,262 @@ class Component:
             # `_build` routes around.
             self._restore(self._reset_to)
             self._stranded = False
+
+    #: Set inside `_reset_rearmed`, and inside the constructor for a class
+    #: with `LAZY_BUILD`: `_play_voice` hands a voice a stand-in.
+    _arming_lazily = False
+    #: Whether the constructor arms the voices the way a reset does: on
+    #: silence, so building takes nothing from the source. A class that
+    #: primes at construction and then routes around its graph at Mix 0
+    #: wants it; without it a Mix 0 set before the first pull hands out a
+    #: source that has already given its first block to a voice.
+    LAZY_BUILD = False
+
+    def _play_voice(self, voice, source, loop=False):
+        """`voice.play(source)`, except while `_reset_rearmed` (or a
+        `LAZY_BUILD` constructor) arms the graph: then the voice is played
+        on a Port standing on silence, so priming it takes nothing from the
+        source, and the Port is pointed
+        at `source` once the voice has given its silent block up. The next
+        pull then fetches from `source` itself, which is what a fresh
+        build's voice does after the block it primed has played."""
+        if not self._arming_lazily or PORT is None:
+            getattr(self, "_lazy_on", {}).pop(id(voice), None)
+            voice.play(source, loop=loop)
+            return
+        ports = getattr(self, "_lazy_ports", None)
+        if ports is None:
+            ports = self._lazy_ports = {}
+        port = ports.get(id(voice))
+        # A graph built again since (Distortion's Character) released the
+        # Port with the voice it stood in for; and a new voice may have the
+        # old one's id.
+        if port is not None and not _named(port, self._nodes):
+            port = None
+        if port is None:
+            port = self._own(PORT(source), reset=False)
+            ports[id(voice)] = port
+        port.play(self._lazy_silence())
+        voice.play(port, loop=loop)
+        self._lazy_pending.append((voice, port, source))
+        on = getattr(self, "_lazy_on", None)
+        if on is None:
+            on = self._lazy_on = {}
+        on[id(voice)] = port
+
+    def _lazily(self, call, *args):
+        """`call(*args)` with the voices it arms armed lazily, for a
+        `LAZY_BUILD` class, and the silence they primed handed up after.
+
+        A control re-arms as a build does: a rejoin off Mix 0, a patch that
+        builds the graph again, a reset a class does itself. Each primes
+        its voices, and a voice primed off the source takes a block the
+        bypass then never hands out when Mix 0 follows before a pull. So
+        here, as in the constructor, they prime silence and are pointed at
+        their sources once it is handed up. Inside a build or a reset that
+        already arms lazily, it is the plain call."""
+        if (self._arming_lazily or self._constructing or PORT is None
+                or not type(self).LAZY_BUILD):
+            return call(*args)
+        self._arming_lazily = True
+        try:
+            call(*args)
+        finally:
+            self._arming_lazily = False
+            self._hand_up_lazy(getattr(audiocore, "get_buffer", None))
+
+    def _repoint_voice(self, voice, source):
+        """Hand a voice that is playing a new source without priming it:
+        the Port it stands on is pointed at `source`, and the next pull
+        fetches from it. `source` is not reset: a stage the graph has been
+        pulling all along carries on, where a reset jumped its state. A
+        voice that is not on a Port is played (`_play_voice`). A route
+        change re-primed one voice and left the other where it was: the
+        two then ran a block apart for good, and the bypass that followed
+        handed out a source a block short."""
+        for at in range(len(self._lazy_pending)):
+            if self._lazy_pending[at][0] is voice:
+                port = self._lazy_pending[at][1]
+                self._lazy_pending[at] = (voice, port, source)
+                return
+        port = getattr(self, "_lazy_on", {}).get(id(voice))
+        if port is None or not _named(port, self._nodes):
+            self._play_voice(voice, source)
+            return
+        port.play(source)
+
+    def _lazy_silence(self):
+        """A source that hands one block of zeros per pull and never ends:
+        a width-1 `audioroute.MidSide` with nothing to play (MultiTapDelay's
+        `_hush`). A two-frame sample would end, and a voice that saw it end
+        would stop."""
+        silence = getattr(self, "_lazy_zero", None)
+        # Only while this graph still owns it: a graph built again since (a
+        # patch across Distortion's Character) released it with the rest,
+        # and a second reset that reached for it raised "deinitialized".
+        if silence is not None and not _named(silence, self._nodes):
+            silence = None
+        if silence is None:
+            import audioroute
+            silence = self._own(audioroute.MidSide(
+                width=1.0, sample_rate=self._sample_rate,
+                channel_count=self._channel_count), reset=False)
+            self._lazy_zero = silence
+        return silence
+
+    def _pull_node(self, node):
+        """Pull one block of `node` through the graph from the control
+        side, and return what `audiocore.get_buffer` returns, or None where
+        the build has none (CircuitPython's default board builds compile it
+        out). There a scratch one-voice Mixer primes from a width-1
+        `audioroute.MidSide` standing on `node`: the voice's `play()` resets
+        the MidSide, which forwards nothing upstream, and takes one block,
+        so `node` is pulled once (for blocks of 256 frames or more) and its
+        state moves exactly as a `get_buffer` would move it. The block
+        itself can't be read back, and the voice is stopped again, so a
+        later pull of the scratch Mixer reaches nothing. Returns False
+        where neither way exists (no `audioroute`)."""
+        pull = getattr(audiocore, "get_buffer", None)
+        if pull is not None:
+            return pull(node)
+        if PORT is None:
+            return False
+        scratch = getattr(self, "_puller", None)
+        if scratch is not None and not _named(scratch[0], self._nodes):
+            scratch = None
+        if scratch is not None and node is scratch[0]:
+            return None
+        if scratch is None:
+            import audiomixer
+            import audioroute
+            mixer = self._own(audiomixer.Mixer(
+                voice_count=1, **self._pcm(512 * self._channel_count)),
+                reset=False)
+            shim = self._own(audioroute.MidSide(
+                width=1.0, sample_rate=self._sample_rate,
+                channel_count=self._channel_count), reset=False)
+            scratch = self._puller = (mixer, shim)
+        mixer, shim = scratch
+        shim.play(node)
+        mixer.voice[0].play(shim)
+        mixer.voice[0].stop()
+        return None
+
+    def _reset_rearmed(self, rearm, primed=(), building=False):
+        """`reset()` for a class whose mixer voices each hold a block they
+        primed ahead, and which arms them once, the way `_build` does.
+
+        The base walk clears the nodes behind a voice but not the block the
+        voice already took through them, so the first block after a reset
+        was the old chain's and the next one a cleared chain's: a step of a
+        few to a few hundred LSB where a fresh instance has none. Here every
+        voice of every mixer this class owns is stopped, the `primed` flags
+        are dropped, patch 0 goes in with the graph unarmed (`_ready` off,
+        so no macro primes a voice part-way through the patch), and then
+        `rearm()` arms the graph as coming back from a bypass does: the
+        class's own refresh, called with the graph marked stranded so its
+        `_rejoin` branch runs. With `building`, the patch goes in with
+        `_constructing` set, for a class that builds part of its graph again
+        on a macro and must not connect it part-way through the patch.
+
+        **The arming is lazy: a reset takes nothing from the source.** Each
+        voice the class plays through `_play_voice` primes a block of
+        silence instead; each mixer is pulled once, which hands those up;
+        and then the voices' stand-ins are pointed at their real sources,
+        so the next pull fetches as a fresh build's next pull does. Where
+        `audiocore.get_buffer` is compiled out, `_pull_node` hands the
+        silence up, so a board resets as a desktop does. Saturation keeps its
+        own `reset()`.
+        """
+        self._check_live()
+        self._clear_nodes()
+        for node in self._nodes:
+            voices = getattr(node, "voice", None)
+            if voices is None:
+                continue
+            for voice in voices:
+                voice.stop()
+        for name in primed:
+            setattr(self, name, False)
+        ready = getattr(self, "_ready", None)
+        self._ready = False
+        self._stranded = False
+        # `building`: the patch goes in as a constructor's `patch=` does,
+        # for a class that builds part of its graph again on a macro.
+        self._constructing = bool(building)
+        try:
+            if self._reset_to is None:
+                self.program_change(0)
+            else:
+                self._restore(self._reset_to)
+        finally:
+            self._ready = ready
+            self._constructing = False
+        # Stranded, so the refresh's `_rejoin` arms the graph (and clears
+        # it again, which changes nothing). A patch 0 at Mix 0 routes
+        # around instead; the Mix move off 0 arms it then.
+        self._stranded = True
+        self._lazy_pending = []
+        # Lazily wherever the primed silence can be handed up before the
+        # next pull: by `get_buffer`, or where it is compiled out by
+        # `_pull_node` (a snapshot of the nodes, since `_pull_node` may own
+        # its scratch mixer).
+        pull = getattr(audiocore, "get_buffer", None)
+        self._arming_lazily = PORT is not None
+        try:
+            rearm()
+        finally:
+            self._arming_lazily = False
+        # Settings that route around the graph leave it as `_build` leaves
+        # a graph it routes around: cleared and not played since, so not
+        # stranded. A later Mix move then arms it as a fresh instance's
+        # does, rather than clearing it again through `_rejoin`.
+        self._stranded = False
+        pending = self._lazy_pending
+        self._lazy_pending = []
+        if pending:
+            # The graph as it stands now: a patch that builds part of it
+            # again has new mixers.
+            for node in list(self._nodes):
+                if getattr(node, "voice", None) is None:
+                    continue
+                if pull is not None:
+                    _drain(pull, node)
+                else:
+                    self._pull_node(node)
+            for _voice, port, source in pending:
+                port.play(source)
+
+    def _hand_up_lazy(self, pull):
+        """The constructor's half of the lazy arming: pull each mixer
+        once, so the voices `_play_voice` armed on silence hand that
+        silence up, then point their stand-ins at the real sources, so the
+        first pull fetches as an eagerly primed build's would. `pull` is
+        `get_buffer`, or None where it is compiled out and `_pull_node` does
+        it."""
+        pending = self._lazy_pending
+        self._lazy_pending = []
+        if not pending:
+            return
+        # The graph as it stands now (a snapshot: `_pull_node` may own its
+        # scratch mixer): a patch that builds part of it again has new
+        # mixers, and released the old voices' stand-ins. Only a mixer with
+        # a voice on the silence: mid-stream, pulling one that plays its
+        # real sources would take a block of them.
+        for node in list(self._nodes):
+            voices = getattr(node, "voice", None)
+            if voices is None:
+                continue
+            if not any(voice is armed for armed, _p, _s in pending
+                       for voice in voices):
+                continue
+            if pull is not None:
+                _drain(pull, node)
+            else:
+                self._pull_node(node)
+        for _voice, port, source in pending:
+            if _named(port, self._nodes):
+                port.play(source)
 
     def deinit(self):
         """Release every node this class built, tail first. Idempotent, and
@@ -1212,7 +1625,7 @@ def _midi_value(value, name):
 
 
 def _bounded_midi(value):
-    return min(127.0, max(0.0, float(value)))
+    return clamped_midi(value)
 
 
 def _pitch_bend(value):

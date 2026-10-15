@@ -2439,10 +2439,13 @@ class Tier1Fast(unittest.TestCase):
         # low-pass a read-head jump is plain only at some phases of the
         # tone (on Wow 32 -> 127 the eight moves read 791 against 809).
         wow_up = ({WOW_I: 32, FLUTTER_I: 0}, {WOW_I: 127}, 2.257, ())
-        wow_out = ({WOW_I: 127, FLUTTER_I: 0}, {WOW_I: 0}, 3.017,
-                   (NoneAtZeroTape,))
+        # NoneAtZeroTape (no table at 0) renders as the class does since
+        # audiodsp v0.6.6rc8, whose node takes a shape change through zero
+        # depth itself, so it is no longer a fault here; the read-head jump
+        # still is, read on the flutter move where it shows.
+        wow_out = ({WOW_I: 127, FLUTTER_I: 0}, {WOW_I: 0}, 3.017, ())
         flutter_out = ({WOW_I: 0, FLUTTER_I: 127}, {FLUTTER_I: 0}, 0.072,
-                       (NoneAtZeroTape, JumpWowTape))
+                       (JumpWowTape,))
         for start, target, change, faults in (wow_up, wow_out, flutter_out):
             steady, worst = self._depth_move(TapeDelay, start, target)
             self.assertLessEqual(worst, steady * (1.0 + change / 20.0),
@@ -2454,17 +2457,19 @@ class Tier1Fast(unittest.TestCase):
                 self.assertGreater(worst, steady * (1.0 + change / 20.0),
                                    (cls.__name__, start, target))
 
-    def test_a_balance_move_steps_as_the_docstring_says(self):
+    def test_a_balance_move_glides(self):
         # A move that changes the balance of Wow and Flutter changes the
-        # table's shape, which the node swaps at once: the docstring's 803
-        # against the tone's 728, and 1 117 through a flutter-only table.
+        # table's shape. Up to audiodsp v0.6.6rc7 the node swapped it at
+        # once: 803 against the tone's 728, and 1 117 through a
+        # flutter-only table. Since rc8 the node takes the depth to zero,
+        # swaps the shape there and brings it back, so the move glides.
         self.assertEqual(self._depth_move(TapeDelay,
                                           {WOW_I: 32, FLUTTER_I: 0},
-                                          {FLUTTER_I: 127}), (728.0, 803.0))
+                                          {FLUTTER_I: 127}), (728.0, 730.0))
         self.assertEqual(self._depth_move(TapeDelay,
                                           {WOW_I: 32, FLUTTER_I: 32},
                                           {WOW_I: 0, FLUTTER_I: 0}),
-                         (728.0, 1117.0))
+                         (728.0, 729.0))
 
 
 def spread_tail_sweep(cls, feedback, rate=RATE):
@@ -2981,11 +2986,11 @@ CLAIMS = (
       "T1bSlidingHead.test_the_glide_binades")),
     ("The wobble is periodic, not random.",
      ("TheSurface.test_the_table_holds_its_three_components",)),
-    ("A Wow or Flutter move that changes only how deep the wobble is glides "
-     "in, and one that changes their balance steps, so set the balance "
-     "before you play.",
+    ("A Wow or Flutter move glides in, whether it changes how deep the "
+     "wobble is or the balance between them: a new balance takes the wobble "
+     "out and brings it back in the new shape.",
      ("Tier1Fast.test_a_depth_move_does_not_step",
-      "Tier1Fast.test_a_balance_move_steps_as_the_docstring_says")),
+      "Tier1Fast.test_a_balance_move_glides")),
     ("The darkening follows the tape's loss law only up to a band top that "
      "rises with the tape's speed.",
      ("T2LossLaw.test_one_pass_at_the_named_cells",)),
@@ -2995,7 +3000,7 @@ CLAIMS = (
      ("TheSurface.test_macros_characters_tier_latency",)),
     ("A control that jumps makes the output step: move it in small steps "
      "from the host if you need it smooth.",
-     ("Tier1Fast.test_a_balance_move_steps_as_the_docstring_says",)),
+     ("T1bSlidingHead.test_the_step_at_glide_0",)),
     ("When your source ends, the tail rings out as it would on silence.",
      ("Tier1Fast.test_the_tail_rings_out_when_the_source_ends",)),
     ("Latency is zero samples: nothing looks ahead.",

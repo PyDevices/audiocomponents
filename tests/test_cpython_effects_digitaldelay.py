@@ -1588,7 +1588,9 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(dd.laps_to_zero(0.99), 685)
         self.assertEqual(dd.laps_to_zero(1.5), 685)
         effect = DigitalDelay(silence_src(512), sample_rate=RATE)
-        self.assertEqual(effect.tail_samples, 11 * 16801)
+        # A fresh instance is patch 0 (it read 11 x 16 801, the 350 ms
+        # beside patch 0's 352.8, and a reset then reported a looser tail).
+        self.assertEqual(effect.tail_samples, 11 * 16936)
         effect.program_change(0)
         self.assertEqual(effect.tail_samples, 11 * 16936)
         effect.set_macro(FEEDBACK_I, 0)
@@ -1733,7 +1735,8 @@ class T1DryIsAWire(unittest.TestCase):
         for channels in (2, 1):
             result = t1_measure(DigitalDelay, channels=channels)
             self.assertTrue(result["passed"], (channels, result))
-            self.assertEqual(result["frames"], 16800)
+            # The defaults are patch 0: Time grid 102, 352.8 ms.
+            self.assertEqual(result["frames"], 16935)
 
     def test_the_hardest_cells(self):
         for rate in (48000, 22050):
@@ -1998,8 +2001,10 @@ class Tier1Fast(unittest.TestCase):
         back = (loud + 2 * rate) // BLOCK * BLOCK
         values = [0] * (back + rate // 4)
         values[:loud] = sine_values(300.0, loud, rate, 30000)
+        # Time 350 ms passed, so the figures the plants are read at stay
+        # where they were measured (a Time left out is patch 0's 352.8).
         effect = cls(array_src(values, channels, rate), sample_rate=rate,
-                     tone_hz=2000.0, feedback=0.0, mix=mix)
+                     time_ms=350.0, tone_hz=2000.0, feedback=0.0, mix=mix)
 
         def move(frame):
             if frame == loud:
@@ -2035,7 +2040,7 @@ class Tier1Fast(unittest.TestCase):
         values = [0] * (back + rate // 4)
         values[:loud] = sine_values(300.0, loud, rate, 30000)
         effect = cls(array_src(values, channels, rate), sample_rate=rate,
-                     cut_hz=400.0, feedback=0.0, mix=2.0)
+                     time_ms=350.0, cut_hz=400.0, feedback=0.0, mix=2.0)
 
         def move(frame):
             if frame == loud:
@@ -2521,6 +2526,7 @@ class ConstructorZeros(unittest.TestCase):
         values = [0] * 50000
         values[1000] = 30000
         values[30000] = 30000
+        options.setdefault("time_ms", 350.0)
         effect = DigitalDelay(array_src(values), sample_rate=RATE,
                               feedback=0.0, mix=2.0, **options)
         frames = effect._frames
@@ -3051,6 +3057,36 @@ class Claims(unittest.TestCase):
         self.assertTrue(claim_problems(dd.__doc__, CLAIMS + (
             ("Latency is zero samples: nothing looks ahead.",
              ("Tier1Fast.test_nothing_here",)),)))
+
+
+class TestAFreshInstanceIsPatch0(unittest.TestCase):
+    """The contract: a fresh instance and one given patch 0 are the same,
+    so a reset lands where a fresh instance starts (kit `fresh`). Time was
+    built off the 0-127 grid: patch 0's Time is the nearest step, and a
+    fresh instance played the exact default beside it."""
+
+    def test_a_fresh_instance_is_patch_0(self):
+        import kit_fresh
+        for rate in (48000, 22050):
+            for ch in (2, 1):
+                self.assertEqual(kit_fresh.boot_cell(dd.DigitalDelay, rate, ch, {}),
+                                 "ok", (rate, ch))
+
+    def test_the_tail_after_a_reset_is_a_fresh_instance_s(self):
+        import kit_common as kc
+        import kit_fresh
+        values = kit_fresh._material(48000, 2)
+        for patch in kc.patches(dd.DigitalDelay):
+            fresh = kc.build(dd.DigitalDelay, kit_fresh._feed(values, 48000, 2).port,
+                             48000)
+            e = kc.build(dd.DigitalDelay, kit_fresh._feed(values, 48000, 2).port,
+                         48000, patch)
+            for _ in range(8):
+                kc.pull(e)
+            e.reset()
+            self.assertEqual(e.tail_samples, fresh.tail_samples, patch)
+            e.deinit()
+            fresh.deinit()
 
 
 if __name__ == "__main__":

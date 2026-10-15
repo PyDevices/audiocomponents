@@ -345,5 +345,57 @@
 # holds its line still at mix 0 (#226); audiovorbis (#238, #239); and an
 # fmod-free angle reduction for the RP2040 (#225).
 #
+# 2026-10-13: v0.6.6rc1 -> f7a86c9, the effects program's Phase 7 node batch
+# (step 7b): the candidate for audiodsp's next pre-release, v0.6.6rc3, and
+# the final pin of the phase. Named by commit until the tag is cut; the tag
+# names the same source. What moves beneath the components, by `git log
+# v0.6.6rc1..f7a86c9 -- src`: audiodelays.Flanger lets go of a looped source
+# that comes back empty and gives a stalled one silence, instead of spinning
+# the pull; audioecho.FeedbackDelay's upward loop_semitones writes its line
+# through a band limit at 0.7 of the frequency the next pass would carry to
+# Nyquist, so a climb fades out at the top instead of folding back; and both
+# shifters (the loop's two taps and audiodelays.PitchShift's splice) move a
+# splice's incoming side into phase with the outgoing one, so a held note
+# plays its shifted pitch, and a chord its notes, instead of cancelling.
+# Unshifted and downward FeedbackDelay renders, silence and a lone click
+# through either shifter, and a frozen PitchShift window render the bytes they
+# did.
+#
+# Moved to v0.6.6rc3 (a9d36e6) on 2026-10-13: the release of the commit
+# above (audiodsp#245, #247), the same node tree as f7a86c9 outside VERSION
+# and CHANGELOG.md, so CI can install it from GitHub.
+#
+#
+# Moved to v0.6.6rc4 (8d5c282) on 2026-10-14: MultiTapDelay's reset puts the
+# write heads back where a fresh node has them, and audioconvolve.Convolver
+# gains wet_gain (default 1.0, byte-identical there), which
+# ConvolutionReverb uses to trim its four darkest rooms (audiodsp#248).
+#
+# Moved to v0.6.6rc5 (b278d32) on 2026-10-14: audioconvolve.Convolver gains
+# room_peak_gain and room_peak_gain_for, the reading ConvolutionReverb's wet
+# trim is computed from. Every render is byte-identical to rc4's.
+#
+# Moved to v0.6.6rc6 (9399602) on 2026-10-14: audioecho.FeedbackDelay gains
+# wow_depth_ramp_ms, which Vibrato's Engage rides so its Rise ramps on every
+# interpreter, and audioshaper.Waveshaper gains recentre(), which
+# Saturation calls so a gain move in silence with Hysteresis on plays
+# nothing. Every render is byte-identical to rc5's at the defaults of both.
+#
+# Moved to v0.6.6rc8 (f83ddc6) on 2026-10-14, by way of rc7: the CPython
+# extension no longer crashes in garbage collection while a RawSample still
+# exports a buffer; audiodynamics.Dynamics writes a mono block at its own
+# stride, so short source buffers leave no stale frames; audioroute.Splitter
+# gains clear(), which six classes call to drop what the ring held from
+# before a bypass when Mix comes back up; and audioecho.FeedbackDelay takes
+# a new wow_shape by dipping the depth to zero and swapping there, which
+# Vibrato hands its clock law to. Every other render is byte-identical to
+# rc6's.
+#
+# Moved to v0.6.6rc9 (96abd34) on 2026-10-15: audiobiquad.Biquad walks a
+# coefficient move over 20 ms instead of keeping its state through the jump,
+# so LowPass, BandPass and Notch no longer thump at full scale when
+# Frequency jumps to the bottom (audiocomponents#162). Static renders are
+# byte-identical to rc8's; only renders across a coefficient move change.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.6rc1 30cbbf619751ab6ff7c40d99336907af0a081fa6
+v0.6.6rc9 96abd345344eb356f1af5de24e320bfcf778cb8d
