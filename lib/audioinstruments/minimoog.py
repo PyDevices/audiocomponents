@@ -47,8 +47,8 @@ import array
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, key_of,
-    logmap, make_table, noise_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, gain,
+    key_of, live, logmap, make_table, noise_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -63,15 +63,16 @@ def create(sample_rate, channel_count=2, transport=None):
     NOISE_HZ = SR / 8192.0
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    cutoff_base = 2000.0
-    resonance = 1.0
-    env_amount = 3000.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    cutoff_base = live(2000.0)
+    resonance = live(1.0)
+    env_amount = live(3000.0)
     glide = 0.05
     osc2_detune = 1.01
     osc3_detune = 0.99
-    noise_mix = 0.0
+    noise_mix = live(0.0)
 
     amp_a = 0.01
     amp_d = 0.3
@@ -81,7 +82,7 @@ def create(sample_rate, channel_count=2, transport=None):
     filt_a = 0.01
     filt_d = 0.3
     filt_s = 0.2
-    overdrive = 1.0
+    overdrive = live(1.0)
 
 
     voices = {}
@@ -97,8 +98,8 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, cutoff_base, resonance, env_amount, glide, osc2_detune, osc3_detune, noise_mix
-        nonlocal amp_a, amp_d, amp_s, amp_r, filt_a, filt_d, filt_s, overdrive
+        nonlocal glide, osc2_detune, osc3_detune
+        nonlocal amp_a, amp_d, amp_s, amp_r, filt_a, filt_d, filt_s
         nonlocal serial, last_pitch
 
         k = key_of(channel, note_id, data0)
@@ -136,33 +137,36 @@ def create(sample_rate, channel_count=2, transport=None):
             cutoff = synthio.Math(synthio.MathOperation.SUM, cutoff_base, f_sweep, 0.0)
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=resonance)
 
-            amp = volume * value0 * overdrive
+            amp = gain(volume, overdrive, value0)
+            saw_amp = gain(amp, 0.4)
 
-            o1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=amp * 0.4, bend=bend)
-            o2 = synthio.Note(hz * osc2_detune, waveform=SAW, envelope=env, filter=lp, amplitude=amp * 0.4, bend=bend)
-            o3 = synthio.Note(hz * osc3_detune, waveform=SQUARE, envelope=env, filter=lp, amplitude=amp * 0.3, bend=bend)
-            n = synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=lp, amplitude=amp * noise_mix * 0.3)
+            o1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=saw_amp, bend=bend)
+            o2 = synthio.Note(hz * osc2_detune, waveform=SAW, envelope=env, filter=lp, amplitude=saw_amp, bend=bend)
+            o3 = synthio.Note(hz * osc3_detune, waveform=SQUARE, envelope=env, filter=lp, amplitude=gain(amp, 0.3), bend=bend)
+            n = synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=lp, amplitude=gain(amp, noise_mix, 0.3))
 
             serial += 1
             voices[k] = ((o1, o2, o3, n), serial)
             synth.press(o1)
             synth.press(o2)
             synth.press(o3)
-            if noise_mix > 0.01:
+            # A layer at zero is not pressed at all, so Noise Mix reaches a
+            # held note only if the noise was up when the note started.
+            if noise_mix.a > 0.01:
                 synth.press(n)
 
         elif event_type in (EVENT_NOTE_OFF, EVENT_NOTE_ON):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: cutoff_base = logmap(value0, 50.0, 10000.0)
-            elif data0 == 2: resonance = logmap(value0, 0.5, 4.0)
-            elif data0 == 3: env_amount = logmap(value0, 100.0, 8000.0)
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: cutoff_base.a = logmap(value0, 50.0, 10000.0)
+            elif data0 == 2: resonance.a = logmap(value0, 0.5, 4.0)
+            elif data0 == 3: env_amount.a = logmap(value0, 100.0, 8000.0)
             elif data0 == 4: glide = logmap(value0, 0.001, 1.0)
             elif data0 == 5: osc2_detune = 1.0 + (value0 - 0.5) * 0.03
             elif data0 == 6: osc3_detune = 1.0 + (value0 - 0.5) * 0.03
-            elif data0 == 7: noise_mix = value0
+            elif data0 == 7: noise_mix.a = value0
             elif data0 == 8: amp_a = logmap(value0, 0.001, 2.0)
             elif data0 == 9: amp_d = logmap(value0, 0.05, 3.0)
             elif data0 == 10: amp_s = value0
@@ -170,7 +174,7 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 12: filt_a = logmap(value0, 0.001, 2.0)
             elif data0 == 13: filt_d = logmap(value0, 0.05, 3.0)
             elif data0 == 14: filt_s = value0
-            elif data0 == 15: overdrive = logmap(value0, 1.0, 3.0)
+            elif data0 == 15: overdrive.a = logmap(value0, 1.0, 3.0)
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
                             transport=transport)
