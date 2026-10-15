@@ -1064,8 +1064,9 @@ class Saturation(_component.Component):
                 self._restore(self._reset_to)
         finally:
             self._ready = True
-        self._rearm()
-        self._refresh_output()
+        # Armed lazily, as `_build` arms: a Mix 0 set before the next pull
+        # hands out the source from where the reset found it.
+        self._lazily(self._rearm_after_reset)
         # Armed just now: a Mix 0 it lands on routes around a graph that
         # has not played since it was cleared, as `_build`'s does.
         self._stranded = False
@@ -1073,6 +1074,10 @@ class Saturation(_component.Component):
     def _value(self, index):
         return _component.macro_value(self._MACRO_RANGES[index],
                                       self._macros[index])
+
+    def _rearm_after_reset(self):
+        self._rearm()
+        self._refresh_output()
 
     def _pre0(self):
         if self._character == "tube":
@@ -1324,6 +1329,16 @@ class Saturation(_component.Component):
             return
         shaper = self._lean if lean else self._shaper
         factor = self._lean_oversample if lean else self._oversample
+        # The incoming shaper has stood idle since it was last routed and
+        # still holds what it was shaping then, which the move plays out of
+        # silence (a thump, 10 000 LSB and more). It is cleared only when
+        # the outgoing one has seen a whole block of exact silence, which
+        # its `recentre()` reports: under signal a clear is a step of its
+        # own (2 084 LSB on two patch moves while a note plays). The idle
+        # shaper's own `recentre()` cannot tell: it never saw the silence.
+        outgoing = self._shaper if lean else self._lean
+        if outgoing.recentre():
+            audiocore.reset_buffer(shaper)
         self._after.play(shaper)
         self._routed_lean = lean
         # The onset, as `_build` declares it: the group delay here made a

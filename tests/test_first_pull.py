@@ -88,6 +88,57 @@ class AResetBeforeTheFirstPullIsAFreshBuild(unittest.TestCase):
                     self.assertEqual(got, want)
 
 
+class AMixZeroAfterAMidStreamArmingIsTheWire(unittest.TestCase):
+    """A re-arm mid-stream takes nothing from the source either: a Mix
+    move off 0 and back, a reset, or a patch change (some build the graph
+    again), with Mix 0 set in the same gap. The output from there on is the
+    source, on time. Each primed a block eagerly, so the bypass after it
+    handed out a source 256 frames short (5 ms of the song skipped)."""
+
+    FRAMES = 4096
+    TAIL = 1024
+
+    def check(self, name, channels, move):
+        cls = getattr(audioeffects, name)
+        values = kc.noise(self.FRAMES, channels, 8000)
+        feed = kc.feed(values, RATE, channels)
+        e = kc.build(cls, feed.port, RATE, None,
+                     kit_options.options_for(name))
+        mix = _bypass_index(cls)
+
+        def act(e):
+            move(e)
+            e.set_macro(mix, 0)
+        try:
+            got = kc.render(e, self.FRAMES, {6: act})
+        finally:
+            e.deinit()
+        size = 2 * channels
+        want = bytes(values)[(self.FRAMES - self.TAIL) * size:]
+        self.assertEqual(got[(self.FRAMES - self.TAIL) * size:], want)
+
+    def moves(self, cls):
+        mix = _bypass_index(cls)
+        out = [("rejoin", lambda e: (e.set_macro(mix, 0),
+                                     e.set_macro(mix, 127))),
+               ("reset", lambda e: e.reset())]
+        for patch in sorted(cls.PATCHES):
+            out.append(("patch %d" % patch,
+                        lambda e, p=patch: e.program_change(p)))
+        return out
+
+    def test_every_class(self):
+        # DeEsser's reset and HF-only patches replay its head node, a
+        # cause of their own, not this one.
+        for name in [n for n in WIRES if n != "DeEsser"] + ["Overdrive"]:
+            cls = getattr(audioeffects, name)
+            for label, move in self.moves(cls):
+                for channels in (2, 1):
+                    with self.subTest(name=name, move=label,
+                                      channels=channels):
+                        self.check(name, channels, move)
+
+
 def _blocks(data, channels):
     """(peak, largest sample-to-sample step) per 256-frame block."""
     s = kc.samples(data)

@@ -1043,6 +1043,11 @@ class Fuzz(_component.Component):
             return
         self._hps[1].play(self._lean if lean else self._shapers[0])
         self._routed_lean = lean
+        # The pole now reads a shaper that has stood idle: cleared and
+        # charged on the offset, as a live Bias move charges it, or the
+        # move to or from the lean patch thumps out of silence.
+        if self._ready and not self._constructing:
+            self._charge_output(rewire=True)
         self._wet_delay = _group_delay_samples(
             self._lean_oversample if lean else self._oversample)
 
