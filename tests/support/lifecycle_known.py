@@ -42,9 +42,10 @@ R_142 = (
     " instance a few frames in; the 48 kHz first-frames half of the finding"
     " closed when Overdrive began building lazily (audiocomponents#142)")
 R_DIST_P7 = (
-    "found at land3: a move to patch 7 before the first pull, at 22.05 kHz"
-    " stereo only, renders its first block 10 frames off a fresh build"
-    " and settles 2 000 frames past the bound; not yet triaged")
+    "a move to patch 7 before the first pull, at 22.05 kHz stereo, stays"
+    " 1 to 2 LSB off a fresh build from frame 10 on, about one frame in"
+    " eight, and never settles: a rounding residue nobody hears"
+    " (audiocomponents#161)")
 
 
 #: (class NAME, event prefix, property) -> (quick cells, digest, full
