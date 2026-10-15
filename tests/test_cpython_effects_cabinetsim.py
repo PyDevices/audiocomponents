@@ -1507,7 +1507,8 @@ class TestCabinetSimClampsLikeEveryClass(unittest.TestCase):
         for index in range(len(CabinetSim.MACRO_LABELS)):
             with self.subTest(macro=index):
                 self.assertEqual(kit_args.bad_cell(CabinetSim, index),
-                                 "ok(nan:c inf:c -inf:c -1:c 128:c)")
+                                 "ok(nan:c inf:c -inf:c -1:c 128:c "
+                                 "10**400:c -10**400:c)")
 
 if __name__ == "__main__":
     unittest.main()
