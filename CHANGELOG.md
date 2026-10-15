@@ -8,6 +8,12 @@ there, and are recorded in its changelog.
 
 ## Unreleased
 
+### Changed
+
+- **The audiodsp pin moves to v0.6.6, and the floor to `>=0.6.6`** in both
+  packages. The release is source-identical to v0.6.6rc9, the pin the gates
+  already ran at.
+
 ### Added
 
 - **`Limiter` patch 6, *Delivery Ceiling - lean*:** Delivery Ceiling for an

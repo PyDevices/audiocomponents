@@ -397,5 +397,11 @@
 # Frequency jumps to the bottom (audiocomponents#162). Static renders are
 # byte-identical to rc8's; only renders across a coefficient move change.
 #
+# Moved to v0.6.6 (5ef58a4) on 2026-10-15: the release itself, for the
+# audioeffects and audioinstruments 0.4.0 release. `git diff v0.6.6rc9
+# v0.6.6` is VERSION and CHANGELOG.md, no source file, so every gate that
+# ran at rc9 ran on this node tree. The pyproject floors rise to >=0.6.6,
+# the release-time change the earlier entries left to Phase 7.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.6rc9 96abd345344eb356f1af5de24e320bfcf778cb8d
+v0.6.6 5ef58a489f538edceed2d9cd3fd0737f0cc954fa
