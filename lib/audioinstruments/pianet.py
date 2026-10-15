@@ -35,7 +35,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live, logmap,
+    make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -49,13 +50,14 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
     pluck_attack = 0.5
-    mellow_tone = 0.5
+    cutoff = live(1000.0 + ((1.0 - 0.5) * 4000.0)) # Mellow Tone
     decay_time = 1.5
-    vib_rate = 5.0
-    vib_depth = 0.0
+    vib_rate = live(5.0)
+    vib_depth = live(0.0)
     amp_a = 0.01
     amp_s = 0.1
     amp_r = 0.4
@@ -77,7 +79,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, pluck_attack, mellow_tone, decay_time, vib_rate, vib_depth
+        nonlocal pluck_attack, decay_time
         nonlocal amp_a, amp_s, amp_r, master_tune
         nonlocal serial
 
@@ -89,18 +91,17 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=decay_time, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
             pluck_env = synthio.Envelope(attack_time=0.001, decay_time=0.1, release_time=0.05, attack_level=1.0, sustain_level=0.0)
 
-            cutoff = 1000.0 + ((1.0 - mellow_tone) * 4000.0)
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=0.7)
 
-            vib_lfo = synthio.LFO(waveform=SINE, rate=vib_rate, scale=vib_depth * 0.025) if vib_depth > 0.01 else None
+            vib_lfo = synthio.LFO(waveform=SINE, rate=vib_rate, scale=gain(vib_depth, 0.025)) if vib_depth.a > 0.01 else None
 
-            o_body = synthio.Note(hz, waveform=WAVE_PIANET, envelope=env, filter=lp, amplitude=amp * 0.7, bend=vib_lfo)
-            o_pluck = synthio.Note(hz, waveform=WAVE_PLUCK, envelope=pluck_env, filter=lp, amplitude=amp * pluck_attack * 0.4, bend=vib_lfo)
+            o_body = synthio.Note(hz, waveform=WAVE_PIANET, envelope=env, filter=lp, amplitude=gain(amp, 0.7), bend=vib_lfo)
+            o_pluck = synthio.Note(hz, waveform=WAVE_PLUCK, envelope=pluck_env, filter=lp, amplitude=gain(amp, pluck_attack, 0.4), bend=vib_lfo)
 
             serial += 1
             voices[k] = (_support.press_voice(synth, voices, retired,
@@ -110,12 +111,12 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
+            if data0 == 0: volume.a = value0
             elif data0 == 1: pluck_attack = value0
-            elif data0 == 2: mellow_tone = value0
+            elif data0 == 2: cutoff.a = 1000.0 + ((1.0 - value0) * 4000.0)
             elif data0 == 3: decay_time = logmap(value0, 0.5, 3.5)
-            elif data0 == 4: vib_rate = 0.1 + value0 * 10.0
-            elif data0 == 5: vib_depth = value0
+            elif data0 == 4: vib_rate.a = 0.1 + value0 * 10.0
+            elif data0 == 5: vib_depth.a = value0
             elif data0 == 6: amp_a = logmap(value0, 0.001, 0.201)
             elif data0 == 7: amp_s = value0
             elif data0 == 8: amp_r = logmap(value0, 0.05, 2.05)

@@ -43,8 +43,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, key_of,
-    logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, gain,
+    key_of, live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -58,12 +58,13 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    cutoff_base = 2000.0
-    resonance = 1.0
-    fm_amt = 0.0
-    reverb_mix = 0.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    cutoff_base = live(2000.0)
+    resonance = live(1.0)
+    fm_amt = live(0.0)
+    reverb_mix = live(0.0)
     osc2_detune = 1.0
     osc3_detune = 0.5
 
@@ -93,7 +94,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, cutoff_base, resonance, fm_amt, reverb_mix, osc2_detune, osc3_detune
+        nonlocal osc2_detune, osc3_detune
         nonlocal e1_a, e1_r, e2_a, e2_d, e2_s, e2_r, vca_a, vca_r, master_tune
         nonlocal serial
 
@@ -104,7 +105,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=vca_a, decay_time=e2_d, release_time=vca_r, attack_level=1.0, sustain_level=1.0)
 
@@ -114,25 +115,28 @@ def create(sample_rate, channel_count=2, transport=None):
 
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=resonance)
 
-            o1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=amp * 0.4)
-            o2 = synthio.Note(hz * osc2_detune, waveform=SQUARE, envelope=env, filter=lp, amplitude=amp * 0.3)
+            o1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=gain(amp, 0.4))
+            o2 = synthio.Note(hz * osc2_detune, waveform=SQUARE, envelope=env, filter=lp, amplitude=gain(amp, 0.3))
             # Env 1 (Attack/Release) patched to osc3's pitch input, scaled by FM Amount: the ARP
             # 2600 is semi-modular, and "envelope -> VCO frequency" is one of its classic patches
             # (laser/zap sounds). synthio can't do audio-rate FM, so approximate it as a one-shot
             # pitch-bend sweep shaped by Env 1.
             fm_tbl = env_shape_table(e1_a, e1_r, 0.0)
-            fm_lfo = synthio.LFO(waveform=fm_tbl, once=True, rate=1.0/max(0.01, e1_a + e1_r), scale=fm_amt * 2.0, interpolate=True) if fm_amt > 0.01 else None
-            o3 = synthio.Note(hz * osc3_detune, waveform=TRIANGLE, envelope=env, filter=lp, amplitude=amp * 0.3, bend=fm_lfo)
+            # FM Amount reaches a held note only if it was up when the note started.
+            fm_lfo = synthio.LFO(waveform=fm_tbl, once=True, rate=1.0/max(0.01, e1_a + e1_r), scale=gain(fm_amt, 2.0), interpolate=True) if fm_amt.a > 0.01 else None
+            o3 = synthio.Note(hz * osc3_detune, waveform=TRIANGLE, envelope=env, filter=lp, amplitude=gain(amp, 0.3), bend=fm_lfo)
 
             filtered_notes = [o1, o2, o3]
             notes = list(filtered_notes)
 
             # Reverb Mix: the 2600 itself is dry; approximate a reverb-style tail with a quietly
             # mixed, softly filtered, longer-release copy of the voice rather than true convolution.
-            if reverb_mix > 0.01:
-                wash_env = synthio.Envelope(attack_time=vca_a, decay_time=e2_d, release_time=vca_r + reverb_mix * 2.0, attack_level=1.0, sustain_level=1.0)
-                wash_filt = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff_base * 0.4, Q=0.7)
-                wash = synthio.Note(hz * 1.003, waveform=TRIANGLE, envelope=wash_env, filter=wash_filt, amplitude=amp * reverb_mix * 0.25, panning=0.6)
+            # Likewise Reverb Mix: its level follows the knob while the wash
+            # sounds, but its tail length is set when the note starts.
+            if reverb_mix.a > 0.01:
+                wash_env = synthio.Envelope(attack_time=vca_a, decay_time=e2_d, release_time=vca_r + reverb_mix.a * 2.0, attack_level=1.0, sustain_level=1.0)
+                wash_filt = synthio.Biquad(synthio.FilterMode.LOW_PASS, gain(cutoff_base, 0.4), Q=0.7)
+                wash = synthio.Note(hz * 1.003, waveform=TRIANGLE, envelope=wash_env, filter=wash_filt, amplitude=gain(amp, reverb_mix, 0.25), panning=0.6)
                 notes.append(wash)
 
             # Env 2 Release: retarget o1/o2/o3's shared filter to a real release
@@ -151,11 +155,11 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: cutoff_base = 50.0 * (100.0 ** value0)
-            elif data0 == 2: resonance = 0.5 + value0 * 3.5
-            elif data0 == 3: fm_amt = value0
-            elif data0 == 4: reverb_mix = value0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: cutoff_base.a = 50.0 * (100.0 ** value0)
+            elif data0 == 2: resonance.a = 0.5 + value0 * 3.5
+            elif data0 == 3: fm_amt.a = value0
+            elif data0 == 4: reverb_mix.a = value0
             elif data0 == 5: osc2_detune = 0.5 + value0
             elif data0 == 6: osc3_detune = 0.25 + value0
             elif data0 == 7: e1_a = logmap(value0, 0.001, 2.001)

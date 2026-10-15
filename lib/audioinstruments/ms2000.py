@@ -38,7 +38,8 @@ import array
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live, logmap,
+    make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -63,14 +64,15 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
     osc_wave = 0.0 # 0=Saw, 1=Square, 2=DWGS
-    cutoff_val = 2000.0
-    res = 1.0
-    mod_seq_rate = 4.0
-    mod_seq_depth = 0.5
-    distortion = 0.0
+    cutoff_val = live(2000.0)
+    res = live(1.0)
+    mod_seq_rate = live(4.0)
+    mod_seq_depth = live(0.5)
+    distortion = live(0.0)
     amp_a = 0.01
     amp_d = 0.5
     amp_s = 0.8
@@ -89,7 +91,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, osc_wave, cutoff_val, res, mod_seq_rate, mod_seq_depth, distortion
+        nonlocal osc_wave
         nonlocal amp_a, amp_d, amp_s, amp_r, master_tune
         nonlocal serial
 
@@ -101,16 +103,18 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
 
             # Mod Sequence: the MS2000's Mod Sequencer is a real 16-step value
             # sequencer, not an LFO shape - approximated here as an 8-step
             # stepped table driving the filter cutoff, one step per beat
-            # division set by Mod Seq Rate, depth set by Mod Seq Depth
-            mod_lfo = synthio.LFO(waveform=LFO_STEP, rate=mod_seq_rate, scale=mod_seq_depth * 3000.0) if mod_seq_depth > 0.01 else 0.0
-            cutoff = synthio.Math(synthio.MathOperation.SUM, cutoff_val, mod_lfo, 0.0) if mod_seq_depth > 0.01 else cutoff_val
+            # division set by Mod Seq Rate, depth set by Mod Seq Depth. A
+            # sequencer off at note-on stays off for that note.
+            mod_on = mod_seq_depth.a > 0.01
+            mod_lfo = synthio.LFO(waveform=LFO_STEP, rate=mod_seq_rate, scale=gain(mod_seq_depth, 3000.0)) if mod_on else 0.0
+            cutoff = synthio.Math(synthio.MathOperation.SUM, cutoff_val, mod_lfo, 0.0) if mod_on else cutoff_val
 
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=res)
 
@@ -118,11 +122,11 @@ def create(sample_rate, channel_count=2, transport=None):
             if osc_wave > 0.6: wave = DWGS
             elif osc_wave > 0.3: wave = SQUARE
 
-            notes = [synthio.Note(hz, waveform=wave, envelope=env, filter=lp, amplitude=amp * 0.7)]
+            notes = [synthio.Note(hz, waveform=wave, envelope=env, filter=lp, amplitude=gain(amp, 0.7))]
             # Distortion: fold in an unfiltered octave-up square for extra edge,
             # the way the MS2000's digital drive stage adds grit above the filter
-            if distortion > 0.01:
-                notes.append(synthio.Note(hz * 2.0, waveform=SQUARE, envelope=env, amplitude=amp * distortion * 0.2))
+            if distortion.a > 0.01:
+                notes.append(synthio.Note(hz * 2.0, waveform=SQUARE, envelope=env, amplitude=gain(amp, distortion, 0.2)))
 
             serial += 1
             voices[k] = (tuple(notes), serial)
@@ -133,13 +137,13 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
+            if data0 == 0: volume.a = value0
             elif data0 == 1: osc_wave = value0
-            elif data0 == 2: cutoff_val = 50.0 * (100.0 ** value0)
-            elif data0 == 3: res = 0.5 + value0 * 3.5
-            elif data0 == 4: mod_seq_rate = 0.1 + value0 * 10.0
-            elif data0 == 5: mod_seq_depth = value0
-            elif data0 == 6: distortion = value0 * 2.0
+            elif data0 == 2: cutoff_val.a = 50.0 * (100.0 ** value0)
+            elif data0 == 3: res.a = 0.5 + value0 * 3.5
+            elif data0 == 4: mod_seq_rate.a = 0.1 + value0 * 10.0
+            elif data0 == 5: mod_seq_depth.a = value0
+            elif data0 == 6: distortion.a = value0 * 2.0
             elif data0 == 7: amp_a = logmap(value0, 0.001, 2.001)
             elif data0 == 8: amp_d = logmap(value0, 0.05, 3.05)
             elif data0 == 9: amp_s = value0

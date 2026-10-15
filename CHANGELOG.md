@@ -6,6 +6,18 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Fixed
+
+- **Turning a macro now changes the notes already sounding** on all 43
+  melodic instruments: cutoff, resonance, volume, layer mixes, envelope
+  amounts, brightness and modulation depths and rates reach a held chord the
+  way a hardware knob does. Envelope times, glide, pitch and anything built
+  into a waveform still take effect on the next note, as do the drum
+  machines' macros. With a macro set before the note, every instrument
+  sounds exactly as it did (#166).
+
 ## v0.4.0 (2026-10-15)
 
 ### Changed

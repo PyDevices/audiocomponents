@@ -44,7 +44,7 @@ import synthio
 
 from audioinstruments._support import (
     EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, EVENT_CHANNEL_PRESSURE,
-    FALL, key_of, logmap, make_table, ring_depth_table,
+    FALL, gain, key_of, live, logmap, make_table, ring_depth_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -57,20 +57,21 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    cutoff_base = 2500.0
-    resonance = 1.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    cutoff_base = live(2500.0)
+    resonance = live(1.0)
     ring_mod = 0.0
-    lfo_rate = 5.0
-    env_sweep = 3000.0
+    lfo_rate = live(5.0)
+    env_sweep = live(3000.0)
     osc2_detune = 1.01
     sync = 0.0
     amp_a = 0.01
     amp_d = 0.3
     amp_s = 0.5
     amp_r = 0.3
-    hpf_cutoff = 40.0
+    hpf_cutoff = live(40.0)
     ppc = 0.0
     master_tune = 1.0
     glide = 0.0
@@ -88,8 +89,8 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, cutoff_base, resonance, ring_mod, lfo_rate, env_sweep, osc2_detune, sync
-        nonlocal amp_a, amp_d, amp_s, amp_r, hpf_cutoff, ppc, master_tune, glide
+        nonlocal ring_mod, osc2_detune, sync
+        nonlocal amp_a, amp_d, amp_s, amp_r, ppc, master_tune, glide
         nonlocal serial, last_pitch
 
         k = key_of(channel, note_id, data0)
@@ -99,7 +100,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             # Glide: the Odyssey's portamento is a bend LFO ramping from the last note's pitch
             # down to 0, same one-shot-LFO trick as the Minimoog's glide.
@@ -140,9 +141,9 @@ def create(sample_rate, channel_count=2, transport=None):
             # ring_frequency/ring_waveform rather than an amplitude trick.
             ring_wave = ring_depth_table(ring_mod) if ring_mod > 0.01 else None
 
-            o1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=amp * 0.5, bend=bend,
+            o1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=gain(amp, 0.5), bend=bend,
                                ring_frequency=hz * sync_detune, ring_waveform=ring_wave)
-            o2 = synthio.Note(hz * sync_detune, waveform=SQUARE, envelope=env, filter=hp, amplitude=amp * 0.5, bend=bend)
+            o2 = synthio.Note(hz * sync_detune, waveform=SQUARE, envelope=env, filter=hp, amplitude=gain(amp, 0.5), bend=bend)
 
             serial += 1
             voices[k] = ((o1, o2), serial)
@@ -161,19 +162,19 @@ def create(sample_rate, channel_count=2, transport=None):
                     note.bend = ppc * value0 * 0.5
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: cutoff_base = 50.0 * (100.0 ** value0)
-            elif data0 == 2: resonance = 0.5 + value0 * 3.5
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: cutoff_base.a = 50.0 * (100.0 ** value0)
+            elif data0 == 2: resonance.a = 0.5 + value0 * 3.5
             elif data0 == 3: ring_mod = value0
-            elif data0 == 4: lfo_rate = 0.1 + value0 * 20.0
-            elif data0 == 5: env_sweep = value0 * 8000.0
+            elif data0 == 4: lfo_rate.a = 0.1 + value0 * 20.0
+            elif data0 == 5: env_sweep.a = value0 * 8000.0
             elif data0 == 6: osc2_detune = 1.0 + (value0 - 0.5) * 0.03
             elif data0 == 7: sync = value0
             elif data0 == 8: amp_a = logmap(value0, 0.001, 2.001)
             elif data0 == 9: amp_d = logmap(value0, 0.05, 3.05)
             elif data0 == 10: amp_s = value0
             elif data0 == 11: amp_r = logmap(value0, 0.01, 4.01)
-            elif data0 == 12: hpf_cutoff = logmap(value0, 20.0, 2020.0)
+            elif data0 == 12: hpf_cutoff.a = logmap(value0, 20.0, 2020.0)
             elif data0 == 13: ppc = value0
             elif data0 == 14: master_tune = 0.95 + value0 * 0.1
             elif data0 == 15: glide = value0

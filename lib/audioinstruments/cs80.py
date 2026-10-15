@@ -44,7 +44,8 @@ import synthio
 
 from audioinstruments._support import (
     EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, EVENT_POLY_PRESSURE,
-    env_shape_table, key_of, logmap, make_table, ring_depth_table,
+    env_shape_table, gain, key_of, live, logmap, make_table,
+    ring_depth_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -57,14 +58,16 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    cutoff_base = 2500.0
-    resonance = 1.0
-    hpf_cutoff = 100.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    cutoff_base = live(2500.0)
+    resonance = live(1.0)
+    hpf_cutoff = live(100.0)
     ring_speed = 5.0
     ring_depth = 0.0
-    layer2_mix = 0.5
+    layer2_mix = live(0.5)
+    layer1_mix = live(0.5)  # 1 - Layer II Mix
     poly_at_depth = 0.5
 
     amp_a = 0.05
@@ -74,7 +77,7 @@ def create(sample_rate, channel_count=2, transport=None):
     filt_a = 0.05
     filt_d = 0.5
     filt_s = 0.5
-    brilliance = 1.0
+    brilliance = live(1.0)
 
     voices = {}
     serial = 0
@@ -88,8 +91,8 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, cutoff_base, resonance, hpf_cutoff, ring_speed, ring_depth, layer2_mix
-        nonlocal poly_at_depth, amp_a, amp_d, amp_s, amp_r, filt_a, filt_d, filt_s, brilliance
+        nonlocal ring_speed, ring_depth
+        nonlocal poly_at_depth, amp_a, amp_d, amp_s, amp_r, filt_a, filt_d, filt_s
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -100,12 +103,12 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1)
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
 
             env_tbl = env_shape_table(filt_a, filt_d, filt_s)
-            f_sweep = synthio.LFO(waveform=env_tbl, once=True, rate=1.0/max(0.01, filt_a + filt_d), scale=2000.0 * brilliance, interpolate=True)
+            f_sweep = synthio.LFO(waveform=env_tbl, once=True, rate=1.0/max(0.01, filt_a + filt_d), scale=gain(2000.0, brilliance), interpolate=True)
             cutoff = synthio.Math(synthio.MathOperation.SUM, cutoff_base, f_sweep, 0.0)
 
             lp1 = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=resonance)
@@ -114,10 +117,10 @@ def create(sample_rate, channel_count=2, transport=None):
             ring_wave = ring_depth_table(ring_depth) if ring_depth > 0.01 else None
 
             # Layer I: low-pass voice
-            amp1 = amp * (1.0 - layer2_mix) * 0.8
+            amp1 = gain(amp, layer1_mix, 0.8)
             o1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp1, amplitude=amp1, ring_frequency=ring_speed * 10.0, ring_waveform=ring_wave)
             # Layer II: slightly detuned, high-pass voice (the CS-80's second layer ran through its own filter)
-            amp2 = amp * layer2_mix * 0.8
+            amp2 = gain(amp, layer2_mix, 0.8)
             o2 = synthio.Note(hz * 1.005, waveform=SAW, envelope=env, filter=hp2, amplitude=amp2, ring_frequency=ring_speed * 10.0, ring_waveform=ring_wave)
 
             serial += 1
@@ -134,16 +137,18 @@ def create(sample_rate, channel_count=2, transport=None):
                 notes, _, base_amps = voice
                 boost = 1.0 + poly_at_depth * value0
                 for note, base_amp in zip(notes, base_amps):
-                    note.amplitude = base_amp * boost
+                    note.amplitude = gain(base_amp, boost)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: cutoff_base = 50.0 * (100.0 ** value0)
-            elif data0 == 2: resonance = 0.5 + value0 * 3.5
-            elif data0 == 3: hpf_cutoff = logmap(value0, 20.0, 2020.0)
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: cutoff_base.a = 50.0 * (100.0 ** value0)
+            elif data0 == 2: resonance.a = 0.5 + value0 * 3.5
+            elif data0 == 3: hpf_cutoff.a = logmap(value0, 20.0, 2020.0)
             elif data0 == 4: ring_speed = 0.1 + value0 * 20.0
             elif data0 == 5: ring_depth = value0
-            elif data0 == 6: layer2_mix = value0
+            elif data0 == 6:
+                layer2_mix.a = value0
+                layer1_mix.a = 1.0 - value0
             elif data0 == 7: poly_at_depth = value0
             elif data0 == 8: amp_a = logmap(value0, 0.001, 2.001)
             elif data0 == 9: amp_d = logmap(value0, 0.05, 3.05)
@@ -152,7 +157,7 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 12: filt_a = logmap(value0, 0.001, 2.001)
             elif data0 == 13: filt_d = logmap(value0, 0.05, 3.05)
             elif data0 == 14: filt_s = value0
-            elif data0 == 15: brilliance = value0 * 2.0
+            elif data0 == 15: brilliance.a = value0 * 2.0
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
                             transport=transport)

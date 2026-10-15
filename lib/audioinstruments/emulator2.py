@@ -36,8 +36,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, key_of,
-    logmap, make_table, noise_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, gain, key_of,
+    live, logmap, make_table, noise_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -53,17 +53,20 @@ def create(sample_rate, channel_count=2, transport=None):
     NOISE_HZ = SR / 8192.0
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    breath = 0.5
-    brilliance = 0.5
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    breath = live(0.5)
+    # Tone Brilliance. Emulator II has 27kHz sample rate, creating a
+    # slightly muffled/aliased top end
+    cutoff = live(2000.0 + 0.5 * 4000.0)
     amp_a = 0.1
     amp_d = 0.5
     amp_s = 0.8
     amp_r = 0.5
-    vib_rate = 5.0
-    vib_depth = 0.0
-    f_env = 0.5
+    vib_rate = live(5.0)
+    vib_depth = live(0.0)
+    f_env = live(0.5)
     master_tune = 1.0
 
     voices = {}
@@ -78,8 +81,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, breath, brilliance, amp_a, amp_d, amp_s, amp_r
-        nonlocal vib_rate, vib_depth, f_env, master_tune
+        nonlocal amp_a, amp_d, amp_s, amp_r, master_tune
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -90,25 +92,24 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
             env_breath = synthio.Envelope(attack_time=amp_a*0.5, decay_time=0.2, release_time=amp_r, attack_level=1.0, sustain_level=0.0)
 
-            # Emulator II has 27kHz sample rate, creating a slightly muffled/aliased top end
-            cutoff = 2000.0 + brilliance * 4000.0
-
-            f_sweep = synthio.LFO(waveform=FALL, once=True, rate=1.0/amp_d, scale=f_env * 4000.0, interpolate=True)
+            f_sweep = synthio.LFO(waveform=FALL, once=True, rate=1.0/amp_d, scale=gain(f_env, 4000.0), interpolate=True)
             actual_c = synthio.Math(synthio.MathOperation.SUM, cutoff, f_sweep, 0.0)
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, actual_c, Q=1.0)
 
-            vib_lfo = synthio.LFO(waveform=SINE, rate=vib_rate, scale=vib_depth * 0.02) if vib_depth > 0.01 else None
+            # Vibrato Depth and Rate reach a held note only if the vibrato
+            # was on when the note started; likewise Breath Noise.
+            vib_lfo = synthio.LFO(waveform=SINE, rate=vib_rate, scale=gain(vib_depth, 0.02)) if vib_depth.a > 0.01 else None
 
             notes = []
-            notes.append(synthio.Note(hz, waveform=WAVE_FLUTE, envelope=env, filter=lp, amplitude=amp * 0.7, bend=vib_lfo))
-            if breath > 0.01:
+            notes.append(synthio.Note(hz, waveform=WAVE_FLUTE, envelope=env, filter=lp, amplitude=gain(amp, 0.7), bend=vib_lfo))
+            if breath.a > 0.01:
                 bp_noise = synthio.Biquad(synthio.FilterMode.BAND_PASS, 3000.0, Q=2.0)
-                notes.append(synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env_breath, filter=bp_noise, amplitude=amp * breath * 0.3))
+                notes.append(synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env_breath, filter=bp_noise, amplitude=gain(amp, breath, 0.3)))
 
             serial += 1
             voices[k] = (tuple(notes), serial)
@@ -119,16 +120,16 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: breath = value0
-            elif data0 == 2: brilliance = value0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: breath.a = value0
+            elif data0 == 2: cutoff.a = 2000.0 + value0 * 4000.0
             elif data0 == 3: amp_a = logmap(value0, 0.001, 2.001)
             elif data0 == 4: amp_d = logmap(value0, 0.05, 3.05)
             elif data0 == 5: amp_s = value0
             elif data0 == 6: amp_r = logmap(value0, 0.01, 4.01)
-            elif data0 == 7: vib_rate = 0.1 + value0 * 10.0
-            elif data0 == 8: vib_depth = value0
-            elif data0 == 9: f_env = value0
+            elif data0 == 7: vib_rate.a = 0.1 + value0 * 10.0
+            elif data0 == 8: vib_depth.a = value0
+            elif data0 == 9: f_env.a = value0
             elif data0 == 10: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

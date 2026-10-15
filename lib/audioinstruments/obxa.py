@@ -36,8 +36,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, key_of,
-    logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, gain,
+    key_of, live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -49,12 +49,13 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
     detune_spread = 0.004
-    cutoff_val = 2000.0
-    res = 1.0
-    env_depth = 4000.0
+    cutoff_val = live(2000.0)
+    res = live(1.0)
+    env_depth = live(4000.0)
     brass_a = 0.05
     brass_d = 0.5
     amp_a = 0.05
@@ -74,7 +75,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, detune_spread, cutoff_val, res, env_depth, brass_a, brass_d
+        nonlocal detune_spread, brass_a, brass_d
         nonlocal amp_a, amp_s, amp_r, master_tune
         nonlocal serial
 
@@ -86,7 +87,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=brass_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
 
@@ -97,8 +98,8 @@ def create(sample_rate, channel_count=2, transport=None):
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=res)
 
             # Dual oscillator per voice with detune for massive sound
-            n1 = synthio.Note(hz * (1.0 - detune_spread), waveform=SAW, envelope=env, filter=lp, amplitude=amp * 0.5, panning=-0.2)
-            n2 = synthio.Note(hz * (1.0 + detune_spread), waveform=SAW, envelope=env, filter=lp, amplitude=amp * 0.5, panning=0.2)
+            n1 = synthio.Note(hz * (1.0 - detune_spread), waveform=SAW, envelope=env, filter=lp, amplitude=gain(amp, 0.5), panning=-0.2)
+            n2 = synthio.Note(hz * (1.0 + detune_spread), waveform=SAW, envelope=env, filter=lp, amplitude=gain(amp, 0.5), panning=0.2)
 
             serial += 1
             voices[k] = ((n1, n2), serial)
@@ -109,11 +110,11 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
+            if data0 == 0: volume.a = value0
             elif data0 == 1: detune_spread = value0 * 0.012
-            elif data0 == 2: cutoff_val = 50.0 * (100.0 ** value0)
-            elif data0 == 3: res = 0.5 + value0 * 3.5
-            elif data0 == 4: env_depth = value0 * 8000.0
+            elif data0 == 2: cutoff_val.a = 50.0 * (100.0 ** value0)
+            elif data0 == 3: res.a = 0.5 + value0 * 3.5
+            elif data0 == 4: env_depth.a = value0 * 8000.0
             elif data0 == 5: brass_a = logmap(value0, 0.001, 2.001)
             elif data0 == 6: brass_d = logmap(value0, 0.05, 3.05)
             elif data0 == 7: amp_a = logmap(value0, 0.001, 2.001)

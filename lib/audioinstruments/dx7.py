@@ -44,8 +44,8 @@ import math
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap,
-    make_table, ring_depth_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live,
+    logmap, make_table, ring_depth_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -62,22 +62,24 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    fm_amount = 0.5
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    fm_amount = live(0.5)
     mod_ratio = 1.0
-    feedback = 0.0
+    feedback = live(0.0)
     e1_d = 1.5
     e2_d = 0.8
     e3_d = 0.2
     rel_t = 0.5
-    alg_mix = 0.5
+    alg_mix = live(0.5)
+    alg_mellow = live(0.5)  # 1 - Alg Mix
     att_t = 0.01
-    brightness = 0.8
+    brightness = live(0.8)
     trem_depth = 0.0
-    vib_depth = 0.0
+    vib_depth = live(0.0)
     trem_rate = 2.0
-    vib_rate = 5.0
+    vib_rate = live(5.0)
     master_tune = 1.0
 
     voices = {}
@@ -92,8 +94,8 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, fm_amount, mod_ratio, feedback, e1_d, e2_d, e3_d, rel_t
-        nonlocal alg_mix, att_t, brightness, trem_depth, vib_depth, trem_rate, vib_rate, master_tune
+        nonlocal mod_ratio, e1_d, e2_d, e3_d, rel_t
+        nonlocal att_t, trem_depth, trem_rate, master_tune
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -104,7 +106,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             # We simulate the FM modulators by having multiple carriers with different waveforms and decay times.
             # This gives the dynamic harmonic shift typical of DX7 EPiano.
@@ -113,18 +115,20 @@ def create(sample_rate, channel_count=2, transport=None):
             env2 = synthio.Envelope(attack_time=att_t, decay_time=e2_d, release_time=rel_t, attack_level=1.0, sustain_level=0.0)
             env3 = synthio.Envelope(attack_time=att_t, decay_time=e3_d, release_time=rel_t, attack_level=1.0, sustain_level=0.0)
 
-            vib_lfo = synthio.LFO(waveform=SINE, rate=vib_rate, scale=vib_depth * 0.02) if vib_depth > 0.01 else None
+            # Vibrato Depth and Rate reach a held note only if the vibrato
+            # was on when the note started.
+            vib_lfo = synthio.LFO(waveform=SINE, rate=vib_rate, scale=gain(vib_depth, 0.02)) if vib_depth.a > 0.01 else None
             trem_wave = ring_depth_table(trem_depth) if trem_depth > 0.01 else None
 
             # Feedback: the DX7's self-modulating operator adds upper-harmonic
             # bite, so scale it into the metallic tine layer.
             # Alg mix: crossfades between the mellow (o1) and bright/metallic
             # (o3) layers, approximating an algorithm change.
-            o1 = synthio.Note(hz, waveform=EP_HARM_1, envelope=env1, amplitude=amp * 0.6 * (1.0 - alg_mix),
+            o1 = synthio.Note(hz, waveform=EP_HARM_1, envelope=env1, amplitude=gain(amp, 0.6, alg_mellow),
                                ring_frequency=trem_rate, ring_waveform=trem_wave, bend=vib_lfo)
-            o2 = synthio.Note(hz * mod_ratio, waveform=EP_HARM_2, envelope=env2, amplitude=amp * 0.3 * fm_amount,
+            o2 = synthio.Note(hz * mod_ratio, waveform=EP_HARM_2, envelope=env2, amplitude=gain(amp, 0.3, fm_amount),
                                ring_frequency=trem_rate, ring_waveform=trem_wave, bend=vib_lfo)
-            o3 = synthio.Note(hz, waveform=EP_HARM_3, envelope=env3, amplitude=amp * 0.4 * brightness * (alg_mix + feedback),
+            o3 = synthio.Note(hz, waveform=EP_HARM_3, envelope=env3, amplitude=gain(gain(amp, 0.4, brightness), synthio.Math(synthio.MathOperation.SUM, alg_mix, feedback, 0.0)),
                                ring_frequency=trem_rate, ring_waveform=trem_wave, bend=vib_lfo)
 
             notes = [o1, o2, o3]
@@ -137,21 +141,23 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: fm_amount = value0 * 2.0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: fm_amount.a = value0 * 2.0
             elif data0 == 2: mod_ratio = 1.0 + math.floor(value0 * 10.0)
-            elif data0 == 3: feedback = value0
+            elif data0 == 3: feedback.a = value0
             elif data0 == 4: e1_d = logmap(value0, 0.1, 4.1)
             elif data0 == 5: e2_d = logmap(value0, 0.05, 2.05)
             elif data0 == 6: e3_d = logmap(value0, 0.01, 1.01)
             elif data0 == 7: rel_t = logmap(value0, 0.05, 2.05)
-            elif data0 == 8: alg_mix = value0
+            elif data0 == 8:
+                alg_mix.a = value0
+                alg_mellow.a = 1.0 - value0
             elif data0 == 9: att_t = logmap(value0, 0.001, 1.001)
-            elif data0 == 10: brightness = value0 * 2.0
+            elif data0 == 10: brightness.a = value0 * 2.0
             elif data0 == 11: trem_depth = value0
-            elif data0 == 12: vib_depth = value0
+            elif data0 == 12: vib_depth.a = value0
             elif data0 == 13: trem_rate = 0.1 + value0 * 10.0
-            elif data0 == 14: vib_rate = 0.1 + value0 * 15.0
+            elif data0 == 14: vib_rate.a = 0.1 + value0 * 15.0
             elif data0 == 15: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

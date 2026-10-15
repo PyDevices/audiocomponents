@@ -37,8 +37,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, key_of,
-    logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, gain,
+    key_of, live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -52,12 +52,13 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    wt_index = 0.5
-    cutoff_base = 2000.0
-    res = 1.5
-    env_amount = 3000.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    wt_index = live(0.5)
+    cutoff_base = live(2000.0)
+    res = live(1.5)
+    env_amount = live(3000.0)
     f_a = 0.01
     f_d = 0.3
     amp_a = 0.01
@@ -78,7 +79,6 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, wt_index, cutoff_base, res, env_amount
         nonlocal f_a, f_d, amp_a, amp_s, amp_r, detune, master_tune
         nonlocal serial
 
@@ -90,7 +90,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=f_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
 
@@ -106,8 +106,9 @@ def create(sample_rate, channel_count=2, transport=None):
             # "wave envelope follows filter envelope" PPG factory-patch behavior.
             scan_tbl = env_shape_table(f_a, f_d, 1.0)
             scan_lfo = synthio.LFO(waveform=scan_tbl, once=True, rate=1.0/max(0.01, f_a + f_d), scale=wt_index, interpolate=True)
-            amp_a_expr = synthio.Math(synthio.MathOperation.SCALE_OFFSET, scan_lfo, -(amp * 0.4), amp * 0.4)
-            amp_b_expr = synthio.Math(synthio.MathOperation.SCALE_OFFSET, scan_lfo, amp * 0.4, 0.0)
+            layer_amp = gain(amp, 0.4)
+            amp_a_expr = synthio.Math(synthio.MathOperation.SCALE_OFFSET, scan_lfo, gain(layer_amp, -1.0), layer_amp)
+            amp_b_expr = synthio.Math(synthio.MathOperation.SCALE_OFFSET, scan_lfo, layer_amp, 0.0)
 
             notes = [
                 synthio.Note(hz, waveform=WAVE_A, envelope=env, filter=lp, amplitude=amp_a_expr, panning=-0.2),
@@ -125,11 +126,11 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: wt_index = value0
-            elif data0 == 2: cutoff_base = 50.0 * (100.0 ** value0)
-            elif data0 == 3: res = 0.5 + value0 * 3.5
-            elif data0 == 4: env_amount = value0 * 8000.0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: wt_index.a = value0
+            elif data0 == 2: cutoff_base.a = 50.0 * (100.0 ** value0)
+            elif data0 == 3: res.a = 0.5 + value0 * 3.5
+            elif data0 == 4: env_amount.a = value0 * 8000.0
             elif data0 == 5: f_a = logmap(value0, 0.001, 2.001)
             elif data0 == 6: f_d = logmap(value0, 0.05, 4.05)
             elif data0 == 7: amp_a = logmap(value0, 0.001, 2.001)

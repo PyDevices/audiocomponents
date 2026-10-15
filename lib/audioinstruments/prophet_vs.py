@@ -43,8 +43,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, key_of,
-    logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, gain,
+    key_of, live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -61,14 +61,15 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    joy_x = 0.5
-    joy_y = 0.5
-    cutoff_base = 2500.0
-    resonance = 1.0
-    env_amount = 3000.0
-    chorus = 0.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    joy_x = live(0.5)
+    joy_y = live(0.5)
+    cutoff_base = live(2500.0)
+    resonance = live(1.0)
+    env_amount = live(3000.0)
+    chorus = live(0.0)
 
     f_a = 0.01
     f_d = 0.5
@@ -96,7 +97,6 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, joy_x, joy_y, cutoff_base, resonance, env_amount, chorus
         nonlocal f_a, f_d, f_s, f_r, a_a, a_d, a_s, a_r, master_tune
         nonlocal serial
 
@@ -108,7 +108,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=a_a, decay_time=a_d, release_time=a_r, attack_level=1.0, sustain_level=a_s)
 
@@ -120,31 +120,39 @@ def create(sample_rate, channel_count=2, transport=None):
 
             # Vector mixing math
             # A: top left (1-x, 1-y), B: top right (x, 1-y), C: bottom left (1-x, y), D: bottom right (x, y)
-            mix_a = (1.0 - joy_x) * (1.0 - joy_y)
-            mix_b = joy_x * (1.0 - joy_y)
-            mix_c = (1.0 - joy_x) * joy_y
-            mix_d = joy_x * joy_y
+            # The mixes are blocks too, so moving the joystick re-balances a
+            # held note. A wave whose mix is near zero when the note starts is
+            # not sounded at all, and stays silent for that note.
+            x, y = joy_x.a, joy_y.a
+            inv_x = synthio.Math(synthio.MathOperation.ADD_SUB, 1.0, 0.0, joy_x)
+            inv_y = synthio.Math(synthio.MathOperation.ADD_SUB, 1.0, 0.0, joy_y)
+            mix_a = gain(inv_x, inv_y)
+            mix_b = gain(joy_x, inv_y)
+            mix_c = gain(inv_x, joy_y)
+            mix_d = gain(joy_x, joy_y)
 
             # Chorus: an animated pitch wobble reads as chorus, not just stereo width, so add a
-            # slow bend LFO on top of the static spread.
-            chorus_lfo = synthio.LFO(waveform=SINE, rate=0.6, scale=chorus * 0.006) if chorus > 0.01 else None
+            # slow bend LFO on top of the static spread. Chorus reaches a held note only if
+            # it was up when the note started.
+            chorus_lfo = synthio.LFO(waveform=SINE, rate=0.6, scale=gain(chorus, 0.006)) if chorus.a > 0.01 else None
+            pan = gain(chorus, -1.0)
 
             notes = []
-            if mix_a > 0.01:
-                notes.append(synthio.Note(hz, waveform=WAVE_A, envelope=env, filter=lp, amplitude=amp * mix_a, panning=-chorus, bend=chorus_lfo))
-            if mix_b > 0.01:
-                notes.append(synthio.Note(hz * 1.002, waveform=WAVE_B, envelope=env, filter=lp, amplitude=amp * mix_b, panning=chorus, bend=chorus_lfo))
-            if mix_c > 0.01:
-                notes.append(synthio.Note(hz * 0.998, waveform=WAVE_C, envelope=env, filter=lp, amplitude=amp * mix_c, panning=-chorus*0.5, bend=chorus_lfo))
-            if mix_d > 0.01:
-                notes.append(synthio.Note(hz * 1.001, waveform=WAVE_D, envelope=env, filter=lp, amplitude=amp * mix_d, panning=chorus*0.5, bend=chorus_lfo))
+            if (1.0 - x) * (1.0 - y) > 0.01:
+                notes.append(synthio.Note(hz, waveform=WAVE_A, envelope=env, filter=lp, amplitude=gain(amp, mix_a), panning=pan, bend=chorus_lfo))
+            if x * (1.0 - y) > 0.01:
+                notes.append(synthio.Note(hz * 1.002, waveform=WAVE_B, envelope=env, filter=lp, amplitude=gain(amp, mix_b), panning=chorus, bend=chorus_lfo))
+            if (1.0 - x) * y > 0.01:
+                notes.append(synthio.Note(hz * 0.998, waveform=WAVE_C, envelope=env, filter=lp, amplitude=gain(amp, mix_c), panning=gain(pan, 0.5), bend=chorus_lfo))
+            if x * y > 0.01:
+                notes.append(synthio.Note(hz * 1.001, waveform=WAVE_D, envelope=env, filter=lp, amplitude=gain(amp, mix_d), panning=gain(chorus, 0.5), bend=chorus_lfo))
 
             # Filter Release: retarget the shared filter to a real release sweep
             # at note-off (Note.filter is mutable post-construction), since the
             # one-shot attack/decay LFO above can't represent an indefinite
             # sustain hold followed by a release triggered by an unknown-in-
             # advance note-off time.
-            filt_release = (cutoff_base, env_amount * f_s, f_r, resonance)
+            filt_release = (cutoff_base, gain(env_amount, f_s), f_r, resonance)
 
             serial += 1
             voices[k] = (tuple(notes), serial, filt_release,
@@ -156,13 +164,13 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: joy_x = value0
-            elif data0 == 2: joy_y = value0
-            elif data0 == 3: cutoff_base = 50.0 * (100.0 ** value0)
-            elif data0 == 4: resonance = 0.5 + value0 * 3.5
-            elif data0 == 5: env_amount = value0 * 8000.0
-            elif data0 == 6: chorus = value0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: joy_x.a = value0
+            elif data0 == 2: joy_y.a = value0
+            elif data0 == 3: cutoff_base.a = 50.0 * (100.0 ** value0)
+            elif data0 == 4: resonance.a = 0.5 + value0 * 3.5
+            elif data0 == 5: env_amount.a = value0 * 8000.0
+            elif data0 == 6: chorus.a = value0
             elif data0 == 7: f_a = logmap(value0, 0.001, 2.001)
             elif data0 == 8: f_d = logmap(value0, 0.05, 3.05)
             elif data0 == 9: f_s = value0

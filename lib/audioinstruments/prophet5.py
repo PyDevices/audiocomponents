@@ -43,8 +43,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, key_of,
-    logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, gain,
+    key_of, live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -57,11 +57,12 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    cutoff_base = 2000.0
-    resonance = 1.0
-    env_amount = 3000.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    cutoff_base = live(2000.0)
+    resonance = live(1.0)
+    env_amount = live(3000.0)
     poly_mod = 0.0
     osc2_detune = 1.01
     sync = 0.0
@@ -74,8 +75,8 @@ def create(sample_rate, channel_count=2, transport=None):
     filt_d = 0.3
     filt_s = 0.2
 
-    lfo_rate = 5.0
-    lfo_depth = 0.0
+    lfo_rate = live(5.0)
+    lfo_scale = live(0.0)  # LFO Depth, in Hz of cutoff
 
     voices = {}
     serial = 0
@@ -89,8 +90,8 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, cutoff_base, resonance, env_amount, poly_mod, osc2_detune, sync, release_time
-        nonlocal amp_a, amp_d, amp_s, filt_a, filt_d, filt_s, lfo_rate, lfo_depth
+        nonlocal poly_mod, osc2_detune, sync, release_time
+        nonlocal amp_a, amp_d, amp_s, filt_a, filt_d, filt_s
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -101,19 +102,19 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1)
-            amp = volume * value0
+            amp = gain(volume, value0, 0.5)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=release_time, attack_level=1.0, sustain_level=amp_s)
 
             env_tbl = env_shape_table(filt_a, filt_d, filt_s)
             f_sweep = synthio.LFO(waveform=env_tbl, once=True, rate=1.0/max(0.01, filt_a + filt_d), scale=env_amount, interpolate=True)
 
-            lfo = synthio.LFO(rate=lfo_rate, scale=lfo_depth * 1000.0)
+            lfo = synthio.LFO(rate=lfo_rate, scale=lfo_scale)
 
             cutoff = synthio.Math(synthio.MathOperation.SUM, cutoff_base, f_sweep, lfo)
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=resonance)
 
-            o1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=amp * 0.5)
+            o1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=amp)
             # Poly Mod: filter env routed to osc B frequency, approximated as a static detune offset.
             # Keep the offset small - at 0.1 a half-open Poly Mod moved osc B by 91 cents, which
             # swamped the Osc2 Detune control entirely and left the oscillator plainly out of tune.
@@ -131,7 +132,7 @@ def create(sample_rate, channel_count=2, transport=None):
             else:
                 sync_detune = actual_detune
                 o2_wave = SQUARE
-            o2 = synthio.Note(hz * sync_detune, waveform=o2_wave, envelope=env, filter=lp, amplitude=amp * 0.5)
+            o2 = synthio.Note(hz * sync_detune, waveform=o2_wave, envelope=env, filter=lp, amplitude=amp)
 
             serial += 1
             voices[k] = ((o1, o2), serial)
@@ -142,10 +143,10 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: cutoff_base = 50.0 * (100.0 ** value0)
-            elif data0 == 2: resonance = 0.5 + value0 * 3.5
-            elif data0 == 3: env_amount = value0 * 8000.0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: cutoff_base.a = 50.0 * (100.0 ** value0)
+            elif data0 == 2: resonance.a = 0.5 + value0 * 3.5
+            elif data0 == 3: env_amount.a = value0 * 8000.0
             elif data0 == 4: poly_mod = value0
             elif data0 == 5: osc2_detune = 1.0 + (value0 - 0.5) * 0.03
             elif data0 == 6: sync = value0
@@ -156,8 +157,8 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 11: filt_a = logmap(value0, 0.001, 2.001)
             elif data0 == 12: filt_d = logmap(value0, 0.05, 3.05)
             elif data0 == 13: filt_s = value0
-            elif data0 == 14: lfo_rate = 0.1 + value0 * 20.0
-            elif data0 == 15: lfo_depth = value0
+            elif data0 == 14: lfo_rate.a = 0.1 + value0 * 20.0
+            elif data0 == 15: lfo_scale.a = value0 * 1000.0
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
                             transport=transport)

@@ -37,8 +37,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap,
-    make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live,
+    logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -54,13 +54,14 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    trans_mix = 0.8
-    synth_mix = 0.8
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    trans_mix = live(0.8)
+    synth_mix = live(0.8)
     trans_tune = 1.0
-    cutoff_val = 3000.0
-    res = 1.0
+    cutoff_val = live(3000.0)
+    res = live(1.0)
     chorus = 0.5
     amp_a = 0.01
     amp_d = 1.0
@@ -80,7 +81,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, trans_mix, synth_mix, trans_tune, cutoff_val, res, chorus
+        nonlocal trans_tune, chorus
         nonlocal amp_a, amp_d, amp_s, amp_r, master_tune
         nonlocal serial
 
@@ -92,7 +93,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             # Synth body envelope
             env_synth = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
@@ -101,17 +102,19 @@ def create(sample_rate, channel_count=2, transport=None):
 
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff_val, Q=res)
 
+            # A layer at zero adds no note, so its mix reaches a held note
+            # only if it was up when the note started.
             notes = []
-            if trans_mix > 0.01:
-                notes.append(synthio.Note(hz * trans_tune, waveform=WAVE_TRANS, envelope=env_trans, filter=lp, amplitude=amp * trans_mix * 0.7))
+            if trans_mix.a > 0.01:
+                notes.append(synthio.Note(hz * trans_tune, waveform=WAVE_TRANS, envelope=env_trans, filter=lp, amplitude=gain(amp, trans_mix, 0.7)))
 
-            if synth_mix > 0.01:
+            if synth_mix.a > 0.01:
                 if chorus > 0.01:
                     # Built in chorus typical of LA synthesis
-                    notes.append(synthio.Note(hz, waveform=WAVE_SYNTH, envelope=env_synth, filter=lp, amplitude=amp * synth_mix * 0.4, panning=-0.4))
-                    notes.append(synthio.Note(hz * 1.003, waveform=WAVE_SYNTH, envelope=env_synth, filter=lp, amplitude=amp * synth_mix * 0.4, panning=0.4))
+                    notes.append(synthio.Note(hz, waveform=WAVE_SYNTH, envelope=env_synth, filter=lp, amplitude=gain(amp, synth_mix, 0.4), panning=-0.4))
+                    notes.append(synthio.Note(hz * 1.003, waveform=WAVE_SYNTH, envelope=env_synth, filter=lp, amplitude=gain(amp, synth_mix, 0.4), panning=0.4))
                 else:
-                    notes.append(synthio.Note(hz, waveform=WAVE_SYNTH, envelope=env_synth, filter=lp, amplitude=amp * synth_mix * 0.7))
+                    notes.append(synthio.Note(hz, waveform=WAVE_SYNTH, envelope=env_synth, filter=lp, amplitude=gain(amp, synth_mix, 0.7)))
 
             serial += 1
             voices[k] = (tuple(notes), serial)
@@ -122,12 +125,12 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: trans_mix = value0
-            elif data0 == 2: synth_mix = value0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: trans_mix.a = value0
+            elif data0 == 2: synth_mix.a = value0
             elif data0 == 3: trans_tune = 0.5 + value0 * 4.0
-            elif data0 == 4: cutoff_val = 50.0 * (100.0 ** value0)
-            elif data0 == 5: res = 0.5 + value0 * 3.5
+            elif data0 == 4: cutoff_val.a = 50.0 * (100.0 ** value0)
+            elif data0 == 5: res.a = 0.5 + value0 * 3.5
             elif data0 == 6: chorus = value0
             elif data0 == 7: amp_a = logmap(value0, 0.001, 2.001)
             elif data0 == 8: amp_d = logmap(value0, 0.05, 4.05)

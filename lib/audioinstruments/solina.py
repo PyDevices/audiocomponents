@@ -33,7 +33,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live,
+    logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -46,12 +47,13 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    violin = 1.0
-    viola = 0.5
-    cello = 0.5
-    chorus_depth = 1.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    violin = live(1.0)
+    viola = live(0.5)
+    cello = live(0.5)
+    chorus_depth = live(1.0)
     att = 0.1
     rel = 0.5
     crescendo = 0.0
@@ -69,7 +71,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, violin, viola, cello, chorus_depth, att, rel, crescendo, master_tune
+        nonlocal att, rel, crescendo, master_tune
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -80,7 +82,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             # Crescendo makes attack slower based on velocity or macro
             actual_att = att + (crescendo * 2.0)
@@ -95,11 +97,15 @@ def create(sample_rate, channel_count=2, transport=None):
             rates = [0.6, 6.0, 4.0]
             pans = [-0.5, 0.0, 0.5]
 
+            # A register whose mix is near zero when the note starts is not
+            # sounded at all, so its mix reaches a held note only if it was up.
+            chorus_scale = gain(chorus_depth, 0.008)
             for reg_mult, reg_vol in [(1.0, violin), (0.5, viola), (0.25, cello)]:
-                if reg_vol > 0.01:
+                if reg_vol.a > 0.01:
+                    reg_amp = gain(amp, reg_vol, 0.15)
                     for i in range(3):
-                        mod_lfo = synthio.LFO(waveform=SINE, rate=rates[i], scale=chorus_depth * 0.008)
-                        n = synthio.Note(hz * reg_mult, waveform=SAW, envelope=env, filter=lp, amplitude=amp * reg_vol * 0.15, bend=mod_lfo, panning=pans[i])
+                        mod_lfo = synthio.LFO(waveform=SINE, rate=rates[i], scale=chorus_scale)
+                        n = synthio.Note(hz * reg_mult, waveform=SAW, envelope=env, filter=lp, amplitude=reg_amp, bend=mod_lfo, panning=pans[i])
                         notes.append(n)
 
             serial += 1
@@ -111,11 +117,11 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: violin = value0
-            elif data0 == 2: viola = value0
-            elif data0 == 3: cello = value0
-            elif data0 == 4: chorus_depth = value0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: violin.a = value0
+            elif data0 == 2: viola.a = value0
+            elif data0 == 3: cello.a = value0
+            elif data0 == 4: chorus_depth.a = value0
             # Time is heard as a ratio, so these travel logarithmically:
             # the steps crowd into the fast end, where a few milliseconds
             # change the articulation, instead of stepping over it.
