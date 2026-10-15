@@ -29,9 +29,10 @@ move, or a rising slide at the fastest Glides, can read more than 10 cents
 off the ideal bend, because the node walks its read head in single
 precision.
 
-**The tape.** The wobble is periodic, not random. A Wow or Flutter move that
-changes only how deep the wobble is glides in, and one that changes their
-balance steps, so set the balance before you play. The darkening follows
+**The tape.** The wobble is periodic, not random. A Wow or Flutter move
+glides in, whether it changes how deep the wobble is or the balance between
+them: a new balance takes the wobble out and brings it back in the new
+shape. The darkening follows
 the tape's loss law only up to a band top that rises with the tape's speed.
 Record Level has no memory: tape hysteresis is not modelled. The RE-201's
 Bass and Treble are not here.
