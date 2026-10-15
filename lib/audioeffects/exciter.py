@@ -699,6 +699,10 @@ class Exciter(_component.Component):
             self._output = self._blend
             return
         if self._rejoin():
+            # The Splitter drops the source frames it took before the
+            # bypass, which the host has since read past.
+            _component.let_go_of_source(self._splitter, self._source,
+                                        ((self._hp, self._wet_in),))
             # Back off the bypass: the nodes are cleared, and the voices
             # still hold the blocks they had queued when the bypass began.
             # Re-armed as `_build` arms them - levels, gates, voices - and

@@ -573,6 +573,42 @@ def open_level_gates(node, voices, silence):
     return True
 
 
+def let_go_of_source(head, source, consumers=()):
+    """Drop the source frames `head` has taken and not handed on, without
+    reading or resetting `source`. Returns whether it could.
+
+    For the node at the head of a graph a bypass stopped pulling, called
+    as the graph rejoins. While Mix is 0 the host reads the source itself,
+    so whatever the head still held from before is old audio: played on
+    the way back it is up to 20 ms of what was sounding when the bypass
+    began, and the stream runs late by as much. A host reset does not drop
+    those frames, by design (the source was not reset), so the reset walk
+    `_rejoin` runs leaves them.
+
+    A Splitter holds them in its ring, and `Splitter.clear()` lets them go
+    (audiodsp 0.6.6rc7); before that node there is no way to, and this
+    returns False. A node with `play()` (a Biquad, a MidSide) drops what it
+    held when it is handed its source again, and reads nothing from it.
+
+    `consumers` are `(node, tap)` pairs, each a node reading one of the
+    Splitter's taps, handed its tap again so it drops what it held too. A
+    tap hands out at most 256 frames, and less at the end of a source
+    buffer, so the first node behind it carries part of a chunk across
+    blocks: old audio as well, once the ring is cleared. Nodes further
+    down read whole blocks and hold nothing over.
+    """
+    if hasattr(head, "tap"):
+        clear = getattr(head, "clear", None)
+        if clear is None:
+            return False
+        clear()
+        for node, tap in consumers:
+            node.play(tap)
+        return True
+    head.play(source)
+    return True
+
+
 # --------------------------------------------------------------------------
 # Metadata
 
