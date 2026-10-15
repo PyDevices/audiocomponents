@@ -1111,7 +1111,7 @@ class Component:
         self._macro_index(index)
         self._macros[index] = position_of_midi(self._mode(index), value)
         self._patch_index = None
-        self._apply_macro(index, self._macros[index])
+        self._lazily(self._apply_macro, index, self._macros[index])
 
     def get_macro(self, index):
         self._check_live()
@@ -1142,9 +1142,10 @@ class Component:
         patch = type(self).PATCHES.get(index)
         if patch is None:
             return
-        self._apply_positions([position_of_midi(self._mode(macro), value)
-                               for macro, value in enumerate(patch[1])],
-                              index)
+        self._lazily(self._apply_positions,
+                     [position_of_midi(self._mode(macro), value)
+                      for macro, value in enumerate(patch[1])],
+                     index)
 
     def _apply_positions(self, positions, patch_index):
         """Set the macros to `positions` (0..1, one per macro from index 0),
@@ -1193,7 +1194,7 @@ class Component:
             setattr(self, name, value)
         self._seeding = True
         try:
-            self._apply_positions(list(positions), patch_index)
+            self._lazily(self._apply_positions, list(positions), patch_index)
         finally:
             self._seeding = False
 
@@ -1299,6 +1300,7 @@ class Component:
         pull then fetches from `source` itself, which is what a fresh
         build's voice does after the block it primed has played."""
         if not self._arming_lazily or PORT is None:
+            getattr(self, "_lazy_on", {}).pop(id(voice), None)
             voice.play(source, loop=loop)
             return
         ports = getattr(self, "_lazy_ports", None)
@@ -1316,6 +1318,51 @@ class Component:
         port.play(self._lazy_silence())
         voice.play(port, loop=loop)
         self._lazy_pending.append((voice, port, source))
+        on = getattr(self, "_lazy_on", None)
+        if on is None:
+            on = self._lazy_on = {}
+        on[id(voice)] = port
+
+    def _lazily(self, call, *args):
+        """`call(*args)` with the voices it arms armed lazily, for a
+        `LAZY_BUILD` class, and the silence they primed handed up after.
+
+        A control re-arms as a build does: a rejoin off Mix 0, a patch that
+        builds the graph again, a reset a class does itself. Each primes
+        its voices, and a voice primed off the source takes a block the
+        bypass then never hands out when Mix 0 follows before a pull. So
+        here, as in the constructor, they prime silence and are pointed at
+        their sources once it is handed up. Inside a build or a reset that
+        already arms lazily, it is the plain call."""
+        if (self._arming_lazily or self._constructing or PORT is None
+                or not type(self).LAZY_BUILD):
+            return call(*args)
+        self._arming_lazily = True
+        try:
+            call(*args)
+        finally:
+            self._arming_lazily = False
+            self._hand_up_lazy(getattr(audiocore, "get_buffer", None))
+
+    def _repoint_voice(self, voice, source):
+        """Hand a voice that is playing a new source without priming it:
+        the Port it stands on is pointed at `source`, which is reset as a
+        voice's `play()` resets it, and the next pull fetches from it. A
+        voice that is not on a Port is played (`_play_voice`). A route
+        change re-primed one voice and left the other where it was: the
+        two then ran a block apart for good, and the bypass that followed
+        handed out a source a block short."""
+        for at in range(len(self._lazy_pending)):
+            if self._lazy_pending[at][0] is voice:
+                port = self._lazy_pending[at][1]
+                self._lazy_pending[at] = (voice, port, source)
+                return
+        port = getattr(self, "_lazy_on", {}).get(id(voice))
+        if port is None or not _named(port, self._nodes):
+            self._play_voice(voice, source)
+            return
+        audiocore.reset_buffer(source)
+        port.play(source)
 
     def _lazy_silence(self):
         """A source that hands one block of zeros per pull and never ends:
@@ -1472,9 +1519,15 @@ class Component:
             return
         # The graph as it stands now (a snapshot: `_pull_node` may own its
         # scratch mixer): a patch that builds part of it again has new
-        # mixers, and released the old voices' stand-ins.
+        # mixers, and released the old voices' stand-ins. Only a mixer with
+        # a voice on the silence: mid-stream, pulling one that plays its
+        # real sources would take a block of them.
         for node in list(self._nodes):
-            if getattr(node, "voice", None) is None:
+            voices = getattr(node, "voice", None)
+            if voices is None:
+                continue
+            if not any(voice is armed for armed, _p, _s in pending
+                       for voice in voices):
                 continue
             if pull is not None:
                 _drain(pull, node)

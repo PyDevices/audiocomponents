@@ -485,6 +485,9 @@ def _one_pole(freq, park):
 class Overdrive(_component.Component):
     """Dry plus a diode-limited high-pass; Tube Screamer structure."""
 
+    #: Construction arms the voices on silence (`Component._play_voice`),
+    #: so a Mix 0 set before the first pull hands out the source whole.
+    LAZY_BUILD = True
     NAME = 'Overdrive'
     DISPLAY_NAME = 'Overdrive'
     CATEGORIES = ('Distortion',)
@@ -791,7 +794,14 @@ class Overdrive(_component.Component):
         """Clear every node and restore patch 0, then arm the graph as
         `_build` does, so a reset is a fresh instance (no block primed
         through the chain before it was cleared plays after it)."""
-        self._reset_rearmed(self._prime_if_wet, ("_primed",))
+        # The nodes' taken frames are old audio only if Mix 0 left the
+        # graph un-pulled before the reset; otherwise they are the next
+        # frames, and `_rearm` keeps them.
+        self._stale = self._stranded
+        try:
+            self._reset_rearmed(self._prime_if_wet, ("_primed",))
+        finally:
+            self._stale = True
 
     def _prime_if_wet(self):
         mix = self._value(3)
@@ -832,12 +842,16 @@ class Overdrive(_component.Component):
         # taken, which is right mid-stream and wrong here: what the nodes
         # took before Mix went to 0 is old audio now. Playing each one
         # from its own source again drops it.
-        self._adapter.play(self._source)
-        self._hp.play(self._tap1)
-        self._c4.play(self._hp)
-        self._shaper.play(self._c4)
-        self._dc.play(self._shaper)
-        self._lp.play(self._circuit)
+        # A reset of a graph that was playing keeps them: they are the
+        # frames that come next, and dropping them ran the class ahead of
+        # the source for good.
+        if getattr(self, "_stale", True):
+            self._adapter.play(self._source)
+            self._hp.play(self._tap1)
+            self._c4.play(self._hp)
+            self._shaper.play(self._c4)
+            self._dc.play(self._shaper)
+            self._lp.play(self._circuit)
         self._circuit.voice[0].level = 1.0
         self._circuit.voice[1].level = 1.0
         self._out.voice[0].level = level

@@ -514,12 +514,12 @@ class Compressor(_component.Component):
             return
         if lean:
             if self._primed:
-                self._wet.play(self._fast)
+                self._repoint_voice(self._wet, self._fast)
             self._fast.set(makeup_db=self.macro(12))
             self._slow.set(makeup_db=0.0)
         else:
             if self._primed:
-                self._wet.play(self._slow)
+                self._repoint_voice(self._wet, self._slow)
             self._fast.set(makeup_db=0.0)
             self._slow.set(makeup_db=self.macro(12))
         self._routed_lean = lean
