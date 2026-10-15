@@ -542,6 +542,18 @@ class PutBackRack(Rack):
         self._patch_index = 0
 
 
+class PrimingRack(Rack):
+    """T4 at Mix 0: a reset that takes a block from each pedal before the
+    host pulls, which is what an eager re-arm does (the pedals' own re-arm
+    is lazy since Phase 7; `PutBackRack` was red here only through the
+    eager one, and is green at Mix 0 now)."""
+
+    def reset(self):
+        Rack.reset(self)
+        for child in self._effects:
+            pull(child.output, BLOCK, self._channel_count)
+
+
 class PositionsOnlyRack(Rack):
     """T4: the restore puts back positions and patch index alone, not the
     exact constructor values a child keeps beside them."""
@@ -1414,7 +1426,7 @@ class TestReset(TestCase):
         self.assertEqual(t4_airspace(Rack, 22050, 1), [])
 
     def test_reset_as_built_faults_are_red(self):
-        self.assertNotEqual(t4_mix0(PutBackRack, 48000, 2), [])
+        self.assertNotEqual(t4_mix0(PrimingRack, 48000, 2), [])
         for plant in (PutBackRack, PositionsOnlyRack):
             self.assertNotEqual(t4_exact(plant, 48000, 2), [],
                                 plant.__name__)
@@ -1545,7 +1557,7 @@ def _native_lines(part):
                 + ["T5|%s|red" % plant.__name__ for plant in NATIVE_PLANTS]
                 + ["T5|patch|Rack|ok", "T5|patch|LeakyPatchRack|red",
                    "DONE"])
-    return ["T4|mix0|Rack|ok", "T4|mix0|PutBackRack|red",
+    return ["T4|mix0|Rack|ok", "T4|mix0|PrimingRack|red",
             "T4|exact|Rack|ok", "T4|exact|PutBackRack|red",
             "T4|exact|PositionsOnlyRack|red", "DONE"]
 
@@ -1638,7 +1650,7 @@ def _native_main(part="T5"):
     the clean class, then each plant, which must be red."""
     if part == "T4":
         for label, check, plants in (
-                ("mix0", t4_mix0, (PutBackRack,)),
+                ("mix0", t4_mix0, (PrimingRack,)),
                 ("exact", t4_exact, (PutBackRack, PositionsOnlyRack))):
             wrong = check(Rack, 48000, 2)
             print("T4|%s|Rack|%s" % (label, "ok" if not wrong
