@@ -23,7 +23,7 @@ classifiers = [
 # 0.5.1 is the first release the core PUBLISHED under this name: it was renamed
 # on 2026-09-21, and v0.5.0 was tagged that day and published nothing. So there
 # is no older pydevices-audiodsp to be compatible with.
-dependencies = ["pydevices-audiodsp>=0.5.1"]
+dependencies = ["pydevices-audiodsp>=0.6.6"]
 
 [project.urls]
 Repository = "https://github.com/PyDevices/audiocomponents"
