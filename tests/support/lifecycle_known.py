@@ -12,6 +12,13 @@ R_JUMP = (
     "a control that jumps hands its node the new value at once, so the"
     " output steps; disclosed in docs/control-smoothing.md, lifted when"
     " the node ramps land (audiocomponents#153)")
+R_THUMP = (
+    "a Frequency jump to the bottom in one call rings the filter's kept"
+    " state at full scale for about 30 ms, and the jump back buzzes between"
+    " the rails (audiocomponents#162; the corner ramp of #153 fixes it)")
+R_JUMP_THUMP = (
+    R_JUMP[:-1] + "; a patch change that drops the corner far also"
+    " thumps as #162 says)")
 R_PHASE = (
     "a free-running phase (an LFO, a carrier, a sample-and-hold count)"
     " restarted by a reset or moved by a rate or patch change never meets"
@@ -59,13 +66,14 @@ KNOWN_RED = {
     ('AutoPan', 'E4-', 'P5'): (14, '571e6892', None, None, R_JUMP),
     ('AutoPan', 'E6-', 'P4'): (18, 'ab6136b8', None, None, R_PHASE),
     ('AutoPan', 'E6-', 'P5'): (40, '4a1ecd5f', None, None, R_JUMP),
-    ('BandPass', 'E11-', 'P5'): (12, '87dc8d6e', None, None, R_JUMP),
+    ('BandPass', 'E11-', 'P5'): (12, '87dc8d6e', None, None, R_JUMP_THUMP),
     ('BandPass', 'E2-reset_buffer', 'P4'): (4, '26674fe7', None, None, R_STATE),
-    ('BandPass', 'E4-', 'P5'): (24, 'f317c09a', None, None, R_JUMP),
+    ('BandPass', 'E4-', 'P5'): (16, 'fbf1bc33', None, None, R_JUMP),
+    ('BandPass', 'E4-m0=', 'P5'): (8, '766f04c3', None, None, R_THUMP),
     ('BandPass', 'E5-mix0', 'P4'): (4, '3db4de60', None, None, R_STATE),
     ('BandPass', 'E5-mix0', 'P5'): (28, 'cde90b31', None, None, R_JUMP),
     ('BandPass', 'E6-', 'P4'): (16, '1ac93213', None, None, R_STATE),
-    ('BandPass', 'E6-', 'P5'): (60, '0e15635a', None, None, R_JUMP),
+    ('BandPass', 'E6-', 'P5'): (60, '0e15635a', None, None, R_JUMP_THUMP),
     ('BandPass', 'E9-', 'P4'): (20, '7c7d321c', None, None, R_STATE),
     ('BandPass', 'E9-', 'P5'): (140, '331bff40', None, None, R_JUMP),
     ('Bitcrusher', 'E1-reset@block', 'P4'): (16, '0c568ee1', None, None, R_PHASE),
@@ -226,13 +234,14 @@ KNOWN_RED = {
     ('Limiter', 'E4-', 'P5'): (12, 'c136df4f', None, None, R_JUMP),
     ('Limiter', 'E6-', 'P4'): (12, 'aa0deac1', None, None, R_STATE),
     ('Limiter', 'E6-', 'P5'): (64, '851616ce', None, None, R_JUMP),
-    ('LowPass', 'E11-', 'P5'): (8, '63b62611', None, None, R_JUMP),
+    ('LowPass', 'E11-', 'P5'): (8, '63b62611', None, None, R_JUMP_THUMP),
     ('LowPass', 'E2-reset_buffer', 'P4'): (8, '960b8f7c', None, None, R_STATE),
-    ('LowPass', 'E4-', 'P5'): (24, '7610a08e', None, None, R_JUMP),
+    ('LowPass', 'E4-', 'P5'): (20, 'd60ee44c', None, None, R_JUMP),
+    ('LowPass', 'E4-m0=', 'P5'): (4, 'ce455454', None, None, R_THUMP),
     ('LowPass', 'E5-mix0', 'P4'): (11, '17e9bc9b', None, None, R_STATE),
     ('LowPass', 'E5-mix0', 'P5'): (18, 'fe3523d4', None, None, R_JUMP),
     ('LowPass', 'E6-', 'P4'): (20, '48ecf86c', None, None, R_STATE),
-    ('LowPass', 'E6-', 'P5'): (60, 'fef0af21', None, None, R_JUMP),
+    ('LowPass', 'E6-', 'P5'): (60, 'fef0af21', None, None, R_JUMP_THUMP),
     ('LowPass', 'E9-', 'P4'): (55, '1389130d', None, None, R_STATE),
     ('LowPass', 'E9-', 'P5'): (90, '308dbe2d', None, None, R_JUMP),
     ('MultibandCompressor', 'E1-reset@block', 'P4'): (18, '2ff6f235', None, None, R_STATE),
@@ -251,10 +260,11 @@ KNOWN_RED = {
     ('NoiseGate', 'E1-reset@part', 'P4'): (14, 'b8240548', None, None, R_STATE),
     ('NoiseGate', 'E2-reset_buffer', 'P4'): (10, '5e5004a0', None, None, R_STATE),
     ('NoiseGate', 'E4-', 'P5'): (4, '00a5daae', None, None, R_JUMP),
-    ('Notch', 'E11-', 'P5'): (8, 'f16f9e6c', None, None, R_JUMP),
-    ('Notch', 'E4-', 'P5'): (30, 'c04f43fd', None, None, R_JUMP),
+    ('Notch', 'E11-', 'P5'): (8, 'f16f9e6c', None, None, R_JUMP_THUMP),
+    ('Notch', 'E4-', 'P5'): (22, '66e5ec00', None, None, R_JUMP),
+    ('Notch', 'E4-m0=', 'P5'): (8, 'a722c1dc', None, None, R_THUMP),
     ('Notch', 'E6-', 'P4'): (19, 'b648e1a5', None, None, R_STATE),
-    ('Notch', 'E6-', 'P5'): (58, '48f66084', None, None, R_JUMP),
+    ('Notch', 'E6-', 'P5'): (58, '48f66084', None, None, R_JUMP_THUMP),
     ('Overdrive', 'E1-reset@block', 'P4'): (34, 'aaf11cd2', None, None, R_STATE),
     ('Overdrive', 'E1-reset@part', 'P4'): (34, '75164359', None, None, R_STATE),
     ('Overdrive', 'E10-macros', 'P4'): (4, 'ca627259', None, None, R_STATE),
