@@ -18,9 +18,6 @@ there, and are recorded in its changelog.
   machines' macros. With a macro set before the note, every instrument
   sounds exactly as it did (#166).
 
-- Turning a macro changes the notes already sounding (#172)
-- Changelog: drop the raw commit list the release bot added to 0.4.0 (#171)
-
 ## v0.4.0 (2026-10-15)
 
 ### Changed
