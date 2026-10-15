@@ -37,7 +37,8 @@ RATE = 48000
 #: Distortion's MidSide and Fuzz's germanium Biquad, then the four
 #: Splitters and cascade Fuzz's, which need `Splitter.clear()`.
 PLAY_HEADS = (("Distortion", {}), ("Fuzz", {}))
-SPLIT_HEADS = (("Bitcrusher", {}), ("Compressor", {}), ("Exciter", {}),
+SPLIT_HEADS = (("Bitcrusher", {}), ("Bitcrusher", {"patch": 3}),
+               ("Compressor", {}), ("Exciter", {}),
                ("Saturation", {}), ("Fuzz", {"character": "cascade"}))
 
 #: What the native Splitter needs to let go of its ring: audiodsp

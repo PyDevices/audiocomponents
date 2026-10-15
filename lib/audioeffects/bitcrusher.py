@@ -1594,8 +1594,13 @@ class Bitcrusher(_component.Component):
             return
         if self._rejoin():
             # The Splitter drops the source frames it took before the
-            # bypass, which the host has since read past.
-            _component.let_go_of_source(self._split, self._source)
+            # bypass, which the host has since read past, and the node
+            # reading the wet tap what it held of a tap's chunk: the band
+            # limit's first section, or the hold with Band Limit off.
+            head = self._sections[0] if self._hold_source is not \
+                self._wet_in else self._hold
+            _component.let_go_of_source(self._split, self._source,
+                                        ((head, self._wet_in),))
             # Back off the bypass: every node is cleared - the hold's last
             # value, the band limit's memory, the dither gate - and the
             # voices, which still hold the blocks they had queued, are
