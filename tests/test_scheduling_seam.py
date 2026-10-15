@@ -372,13 +372,13 @@ class ARefusedNoteIsCounted(unittest.TestCase):
     def instrument(self, *counts):
         """An `Instrument` over one keyboard per entry in ``counts``.
 
-        `Instrument` adopts every `Keys` built since the last one, through
-        `_support._PENDING`. Reaching into it is what building a two-keyboard
+        `Instrument` adopts every `Keys` built on this thread since the last
+        one, through `_support._pending()`. Reaching into it is what building a two-keyboard
         instrument by hand costs, and this file is that module's test.
         """
-        del _support._PENDING[:]
+        del _support._pending()[:]
         keyboards = [_support.Keys(_Counting(count)) for count in counts]
-        _support._PENDING.extend(keyboards)
+        _support._pending().extend(keyboards)
         inst = _support.Instrument(keyboards[0], lambda *a: None, {}, ())
         self.addCleanup(inst.deinit)
         return inst
@@ -495,7 +495,7 @@ class PlayingLiveThroughTheKeyboardIsAWire(unittest.TestCase):
         finally:
             if bare:
                 _support.synthesizer = real
-                del _support._PENDING[:]
+                del _support._pending()[:]
         try:
             out = bytearray()
             for index in range(self.BLOCKS):
