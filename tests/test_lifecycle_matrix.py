@@ -197,10 +197,23 @@ SHARED = ("lib/audioeffects/_", "lib/audioeffects/__init__.py",
           "tests/test_lifecycle_matrix.py", "AUDIODSP_PIN")
 
 
+#: What a pull request that changes a shared file runs instead of all 45:
+#: one class per mechanism family, the cheapest that covers it. A lazily
+#: re-armed class (Bitcrusher), an LFO (Tremolo), a delay (DigitalDelay), a
+#: reverb (Reverb), a pitch shifter (Octaver), a filter on the biquad
+#: (LowPass), Rack, Saturation (the recentre path) and Distortion (the graph
+#: rebuild). Measured on CPython at audiodsp v0.6.6rc8: 3 114 CPU seconds,
+#: about 13 minutes on a 4-core runner, where all 45 take 4.4 CPU hours.
+#: A push to main runs all 45, and so does a manual run or a pull request
+#: labelled `lifecycle: all classes` (.github/workflows/tests.yml).
+SAMPLE = ("Bitcrusher", "Tremolo", "DigitalDelay", "Reverb", "Octaver",
+          "LowPass", "Rack", "Saturation", "Distortion")
+
+
 def changed_classes(files):
-    """The gated classes a change to `files` (repository paths) can move:
-    all of them when a shared file changed, else the class whose module
-    changed, in GATED's order."""
+    """The gated classes a change to `files` (repository paths) runs: the
+    classes whose own module changed, and SAMPLE beside them when a shared
+    file changed, in GATED's order."""
     owners = {}
     for name in GATED:
         module = getattr(effect_class(name), "__module__", "")
@@ -210,7 +223,7 @@ def changed_classes(files):
     for path in files:
         if any(path == s or (s.endswith(("/", "_")) and path.startswith(s))
                for s in SHARED):
-            return list(GATED)
+            picked.update(SAMPLE)
         picked.update(owners.get(path, ()))
     return [name for name in GATED if name in picked]
 
@@ -228,8 +241,8 @@ def changed_files(base):
 def classes():
     """The classes to run: LIFECYCLE_CLASSES; or, with
     LIFECYCLE_CHANGED_FROM set to a git base (a pull request's CI), the
-    classes the change since that base can move; or every class the
-    package serves. A name that resolves to no class is an error, not a
+    classes `changed_classes` picks for the change since that base; or
+    every class the package serves. A name that resolves to no class is an error, not a
     run with nothing in it, whichever list named it."""
     wanted = os.environ.get("LIFECYCLE_CLASSES")
     if not wanted:
@@ -593,11 +606,13 @@ class TestPlants(unittest.TestCase):
         self.assertTrue(any(p.startswith("new red") for p in got))
 
     def test_a_change_picks_the_classes_it_can_move(self):
-        everything = list(GATED)
+        sample = [n for n in GATED if n in SAMPLE]
         cases = (
-            (["lib/audioeffects/_component.py"], everything),
-            (["tests/support/kit_common.py"], everything),
-            (["AUDIODSP_PIN"], everything),
+            (["lib/audioeffects/_component.py"], sample),
+            (["tests/support/kit_common.py"], sample),
+            (["AUDIODSP_PIN"], sample),
+            (["lib/audioeffects/_component.py", "lib/audioeffects/fuzz.py"],
+             [n for n in GATED if n in SAMPLE or n == "Fuzz"]),
             (["lib/audioeffects/bitcrusher.py",
               "tests/test_bypass_return.py"], ["Bitcrusher"]),
             (["lib/audioeffects/rebuilt/tapedelay.py"], ["TapeDelay"]),
@@ -609,6 +624,8 @@ class TestPlants(unittest.TestCase):
         for files, want in cases:
             with self.subTest(files=files):
                 self.assertEqual(changed_classes(files), want)
+        self.assertEqual(len(SAMPLE), 9)
+        self.assertTrue(set(SAMPLE) <= set(GATED))
 
     def test_p6_can_fail(self):
         """A plant whose level depends on the interpreter prints a

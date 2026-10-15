@@ -249,6 +249,28 @@ Grid: 48 and 22.05 kHz, stereo and mono, the defaults and every patch;
 patch only. A class whose reset cannot meet a cell by design declares it
 in `DECLARED`.
 
+## What CI runs
+
+The lifecycle matrix gates every class, and its quick mode over all 45
+takes about 4.4 CPU hours on CPython, over an hour on a 4-core runner. So
+CI doesn't run all of it on every pull request:
+
+- A pull request runs the classes whose own module it changes. When it
+  changes a shared file (the base class, the package modules,
+  `tests/support/`, the matrix test or `AUDIODSP_PIN`), it also runs a fixed
+  sample of one class per mechanism family: Bitcrusher, Tremolo,
+  DigitalDelay, Reverb, Octaver, LowPass, Rack, Saturation and Distortion.
+  That takes about 13 minutes (`SAMPLE` in `tests/test_lifecycle_matrix.py`).
+- A push to main runs all 45, and so does a manual run of the workflow or
+  a pull request labelled `lifecycle: all classes`.
+
+The sample is the cheapest class that covers each way a class can break:
+the lazy re-arm, an LFO, a delay line, a reverb tank, a pitch shifter's
+splice, a biquad, a rack's children, Saturation's recentre and
+Distortion's graph rebuild. A shared change that breaks one class of a
+family usually breaks the family, and main's full run catches the rest
+before a release.
+
 ## Known gaps
 
 - **Several levels.** Every render check plays its material at one level

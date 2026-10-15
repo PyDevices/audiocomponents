@@ -14,6 +14,9 @@ on:
     branches: [main]
     paths-ignore: ['docs/**', 'README.md', 'ROADMAP.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE']
   pull_request:
+    # `labeled` too: adding the `lifecycle: all classes` label re-runs the
+    # pull request with the whole lifecycle matrix (see the test step).
+    types: [opened, synchronize, reopened, labeled]
     paths-ignore: ['docs/**', 'README.md', 'ROADMAP.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE']
   # The full matrix on demand, for a branch that should see every Python
   # before it merges rather than after.
@@ -126,11 +129,15 @@ jobs:
         env:
           OMP_NUM_THREADS: "1"
           OPENBLAS_NUM_THREADS: "1"
-          # The lifecycle matrix (quick) on a pull request covers only the
-          # classes the change can move: a class module's own, or all 45 when
-          # a shared module (the base class, the kit, the pin) changed. A
-          # push to main runs all 45.
-          LIFECYCLE_CHANGED_FROM: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
+          # The lifecycle matrix (quick mode). All 45 classes take about 4.4
+          # CPU hours, over an hour on this runner, so a pull request runs
+          # only what its change can move: the class whose module changed,
+          # and when a shared file changed (the base class, the kit, the
+          # pin) a fixed sample of one class per mechanism family, about 13
+          # minutes (SAMPLE in tests/test_lifecycle_matrix.py). A push to
+          # main runs all 45, and so does a manual run (workflow_dispatch)
+          # or a pull request labelled `lifecycle: all classes`.
+          LIFECYCLE_CHANGED_FROM: "${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'lifecycle: all classes') && format('origin/{0}', github.base_ref) || '' }}"
       - run: python tools/validate_api.py
       - run: python tests/parity/effects_library_smoke.py
 
