@@ -48,7 +48,11 @@ jobs:
             python: "3.13"
     runs-on: ${{ matrix.os }}
     steps:
+      # A pull request fetches its history, so the lifecycle matrix can ask
+      # git which classes the change touches (LIFECYCLE_CHANGED_FROM below).
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
@@ -122,6 +126,11 @@ jobs:
         env:
           OMP_NUM_THREADS: "1"
           OPENBLAS_NUM_THREADS: "1"
+          # The lifecycle matrix (quick) on a pull request covers only the
+          # classes the change can move: a class module's own, or all 45 when
+          # a shared module (the base class, the kit, the pin) changed. A
+          # push to main runs all 45.
+          LIFECYCLE_CHANGED_FROM: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
       - run: python tools/validate_api.py
       - run: python tests/parity/effects_library_smoke.py
 

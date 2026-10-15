@@ -188,16 +188,60 @@ def effect_class(name):
     return cls
 
 
+#: Files whose change can move any class's cells: the shared base and
+#: package modules, the matrix and the kit it reads, its tables, and the
+#: audiodsp pin. A class module's change moves that class alone.
+SHARED = ("lib/audioeffects/_", "lib/audioeffects/__init__.py",
+          "lib/audioeffects/rebuilt/__init__.py",
+          "lib/audioeffects/pyproject.toml", "tests/support/",
+          "tests/test_lifecycle_matrix.py", "AUDIODSP_PIN")
+
+
+def changed_classes(files):
+    """The gated classes a change to `files` (repository paths) can move:
+    all of them when a shared file changed, else the class whose module
+    changed, in GATED's order."""
+    owners = {}
+    for name in GATED:
+        module = getattr(effect_class(name), "__module__", "")
+        path = "lib/" + module.replace(".", "/") + ".py"
+        owners.setdefault(path, []).append(name)
+    picked = set()
+    for path in files:
+        if any(path == s or (s.endswith(("/", "_")) and path.startswith(s))
+               for s in SHARED):
+            return list(GATED)
+        picked.update(owners.get(path, ()))
+    return [name for name in GATED if name in picked]
+
+
+def changed_files(base):
+    """The paths `git diff base...HEAD` names, or None if git cannot say
+    (a shallow clone without the base)."""
+    done = subprocess.run(["git", "diff", "--name-only", base + "...HEAD"],
+                          capture_output=True, text=True, cwd=ROOT)
+    if done.returncode != 0:
+        return None
+    return [line for line in done.stdout.splitlines() if line]
+
+
 def classes():
-    """The classes to run: LIFECYCLE_CLASSES, or every class the package
-    serves. A name that resolves to no class is an error, not a run with
-    nothing in it, whichever list named it."""
+    """The classes to run: LIFECYCLE_CLASSES; or, with
+    LIFECYCLE_CHANGED_FROM set to a git base (a pull request's CI), the
+    classes the change since that base can move; or every class the
+    package serves. A name that resolves to no class is an error, not a
+    run with nothing in it, whichever list named it."""
     wanted = os.environ.get("LIFECYCLE_CLASSES")
     if not wanted:
         missing = [n for n in GATED if effect_class(n) is None]
         if missing:
             raise LookupError("audioeffects.ALL names no class: %s"
                               % ", ".join(missing))
+        base = os.environ.get("LIFECYCLE_CHANGED_FROM")
+        if base:
+            files = changed_files(base)
+            if files is not None:
+                return changed_classes(files)
         return list(GATED)
     names = wanted.split(",")
     missing = [n for n in names if effect_class(n) is None]
@@ -547,6 +591,24 @@ class TestPlants(unittest.TestCase):
         four = ("X", "E2-a", "P1", 48000, 2, "d")
         got = check_known("X", {one, two, four}, table, False)
         self.assertTrue(any(p.startswith("new red") for p in got))
+
+    def test_a_change_picks_the_classes_it_can_move(self):
+        everything = list(GATED)
+        cases = (
+            (["lib/audioeffects/_component.py"], everything),
+            (["tests/support/kit_common.py"], everything),
+            (["AUDIODSP_PIN"], everything),
+            (["lib/audioeffects/bitcrusher.py",
+              "tests/test_bypass_return.py"], ["Bitcrusher"]),
+            (["lib/audioeffects/rebuilt/tapedelay.py"], ["TapeDelay"]),
+            (["lib/audioeffects/phaser.py", "lib/audioeffects/vibrato.py"],
+             ["Phaser", "Vibrato"]),
+            (["docs/control-smoothing.md", "CHANGELOG.md"], []),
+            (["tests/test_cpython_effects_tapedelay.py"], []),
+        )
+        for files, want in cases:
+            with self.subTest(files=files):
+                self.assertEqual(changed_classes(files), want)
 
     def test_p6_can_fail(self):
         """A plant whose level depends on the interpreter prints a
