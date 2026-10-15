@@ -6,7 +6,7 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
-## Unreleased
+## v0.4.1.dev1 (2026-10-15)
 
 ### Fixed
 
@@ -17,6 +17,9 @@ there, and are recorded in its changelog.
   into a waveform still take effect on the next note, as do the drum
   machines' macros. With a macro set before the note, every instrument
   sounds exactly as it did (#166).
+
+- Turning a macro changes the notes already sounding (#172)
+- Changelog: drop the raw commit list the release bot added to 0.4.0 (#171)
 
 ## v0.4.0 (2026-10-15)
 
