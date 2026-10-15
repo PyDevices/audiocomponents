@@ -43,8 +43,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, key_of,
-    logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, gain,
+    key_of, live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -56,13 +56,14 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    cutoff_base = 2500.0
-    resonance = 1.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    cutoff_base = live(2500.0)
+    resonance = live(1.0)
     supersaw_detune = 0.2
-    supersaw_mix = 0.8
-    env_depth = 4000.0
+    supersaw_mix = live(0.8)
+    env_depth = live(4000.0)
     chorus = 0.0
 
     a_a = 0.01
@@ -72,7 +73,7 @@ def create(sample_rate, channel_count=2, transport=None):
     f_a = 0.01
     f_d = 0.3
     f_s = 0.5
-    hpf = 20.0
+    hpf = live(20.0)
     master_tune = 1.0
 
     voices = {}
@@ -87,8 +88,8 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, cutoff_base, resonance, supersaw_detune, supersaw_mix, env_depth, chorus
-        nonlocal a_a, a_d, a_s, a_r, f_a, f_d, f_s, hpf, master_tune
+        nonlocal supersaw_detune, chorus
+        nonlocal a_a, a_d, a_s, a_r, f_a, f_d, f_s, master_tune
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -99,7 +100,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=a_a, decay_time=a_d, release_time=a_r, attack_level=1.0, sustain_level=a_s)
 
@@ -128,7 +129,7 @@ def create(sample_rate, channel_count=2, transport=None):
             ]
             pans = [0.0, 0.3, -0.3, 0.6, -0.6, 0.9, -0.9]
 
-            base_a = amp * (1.0 / 7.0) * supersaw_mix * 2.0
+            base_a = gain(gain(amp, 1.0 / 7.0, supersaw_mix), 2.0)
 
             for i in range(7):
                 d = detunes[i]
@@ -146,12 +147,12 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: cutoff_base = 50.0 * (100.0 ** value0)
-            elif data0 == 2: resonance = 0.5 + value0 * 3.5
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: cutoff_base.a = 50.0 * (100.0 ** value0)
+            elif data0 == 2: resonance.a = 0.5 + value0 * 3.5
             elif data0 == 3: supersaw_detune = value0 * 0.6
-            elif data0 == 4: supersaw_mix = value0
-            elif data0 == 5: env_depth = value0 * 8000.0
+            elif data0 == 4: supersaw_mix.a = value0
+            elif data0 == 5: env_depth.a = value0 * 8000.0
             elif data0 == 6: chorus = value0
             elif data0 == 7: a_a = logmap(value0, 0.001, 2.001)
             elif data0 == 8: a_d = logmap(value0, 0.05, 3.05)
@@ -160,7 +161,7 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 11: f_a = logmap(value0, 0.001, 2.001)
             elif data0 == 12: f_d = logmap(value0, 0.05, 3.05)
             elif data0 == 13: f_s = value0
-            elif data0 == 14: hpf = logmap(value0, 20.0, 1020.0)
+            elif data0 == 14: hpf.a = logmap(value0, 20.0, 1020.0)
             elif data0 == 15: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

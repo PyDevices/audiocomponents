@@ -37,7 +37,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live,
+    logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -51,18 +52,19 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    male_mix = 0.8
-    female_mix = 0.5
-    chorus_depth = 1.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    male_mix = live(0.8)
+    female_mix = live(0.5)
+    chorus_depth = live(1.0)
     amp_a = 0.1
     amp_r = 0.5
-    formant_shift = 0.0
-    vib_rate = 5.0
-    vib_depth = 0.0
-    brilliance = 0.5
-    bass = 0.5
+    formant_shift = live(0.0)
+    vib_rate = live(5.0)
+    vib_depth = live(0.0)
+    brilliance = live(0.5)
+    bass = live(0.5)
     master_tune = 1.0
 
     voices = {}
@@ -77,8 +79,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, male_mix, female_mix, chorus_depth, amp_a, amp_r
-        nonlocal formant_shift, vib_rate, vib_depth, brilliance, bass, master_tune
+        nonlocal amp_a, amp_r, master_tune
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -89,48 +90,51 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=0.1, release_time=amp_r, attack_level=1.0, sustain_level=1.0)
 
-            vib_lfo = synthio.LFO(waveform=SINE, rate=vib_rate, scale=vib_depth * 0.02) if vib_depth > 0.01 else None
-            ens_lfo = synthio.LFO(waveform=SINE, rate=0.8, scale=chorus_depth * 0.01) if chorus_depth > 0.01 else None
+            # A section, vibrato or chorus that is off when the note starts is
+            # not sounded at all, so it reaches a held note only if it was up.
+            vib_lfo = synthio.LFO(waveform=SINE, rate=vib_rate, scale=gain(vib_depth, 0.02)) if vib_depth.a > 0.01 else None
+            ens_lfo = synthio.LFO(waveform=SINE, rate=0.8, scale=gain(chorus_depth, 0.01)) if chorus_depth.a > 0.01 else None
+            shift = synthio.Math(synthio.MathOperation.SUM, 1.0, formant_shift, 0.0)
 
             notes = []
 
             # Male formants (approx "Ah" / "Oh")
-            if male_mix > 0.01:
-                f1 = 600.0 * (1.0 + formant_shift)
-                f2 = 1200.0 * (1.0 + formant_shift)
+            if male_mix.a > 0.01:
+                f1 = gain(600.0, shift)
+                f2 = gain(1200.0, shift)
                 bp1 = synthio.Biquad(synthio.FilterMode.BAND_PASS, f1, Q=4.0)
                 bp2 = synthio.Biquad(synthio.FilterMode.BAND_PASS, f2, Q=4.0)
 
-                n1 = synthio.Note(hz, waveform=PULSE, envelope=env, filter=bp1, amplitude=amp * male_mix * 0.4, bend=vib_lfo, panning=-0.3)
-                n2 = synthio.Note(hz * 1.002, waveform=PULSE, envelope=env, filter=bp2, amplitude=amp * male_mix * 0.4, bend=ens_lfo, panning=0.3)
+                n1 = synthio.Note(hz, waveform=PULSE, envelope=env, filter=bp1, amplitude=gain(amp, male_mix, 0.4), bend=vib_lfo, panning=-0.3)
+                n2 = synthio.Note(hz * 1.002, waveform=PULSE, envelope=env, filter=bp2, amplitude=gain(amp, male_mix, 0.4), bend=ens_lfo, panning=0.3)
                 notes.extend([n1, n2])
 
             # Female formants (approx "Ee" / high "Ah")
-            if female_mix > 0.01:
-                f1 = 900.0 * (1.0 + formant_shift)
-                f2 = 2500.0 * (1.0 + formant_shift)
+            if female_mix.a > 0.01:
+                f1 = gain(900.0, shift)
+                f2 = gain(2500.0, shift)
                 bp1 = synthio.Biquad(synthio.FilterMode.BAND_PASS, f1, Q=5.0)
                 bp2 = synthio.Biquad(synthio.FilterMode.BAND_PASS, f2, Q=3.0)
 
-                n1 = synthio.Note(hz * 2.0, waveform=PULSE, envelope=env, filter=bp1, amplitude=amp * female_mix * 0.3, bend=vib_lfo, panning=-0.5)
-                n2 = synthio.Note(hz * 1.998, waveform=PULSE, envelope=env, filter=bp2, amplitude=amp * female_mix * 0.3, bend=ens_lfo, panning=0.5)
+                n1 = synthio.Note(hz * 2.0, waveform=PULSE, envelope=env, filter=bp1, amplitude=gain(amp, female_mix, 0.3), bend=vib_lfo, panning=-0.5)
+                n2 = synthio.Note(hz * 1.998, waveform=PULSE, envelope=env, filter=bp2, amplitude=gain(amp, female_mix, 0.3), bend=ens_lfo, panning=0.5)
                 notes.extend([n1, n2])
 
             # VP-330's real string/bass section is a separate divide-down organ
             # register under the choir, an octave down with no formant filtering
-            if bass > 0.01:
+            if bass.a > 0.01:
                 bp_bass = synthio.Biquad(synthio.FilterMode.LOW_PASS, 900.0, Q=0.9)
-                notes.append(synthio.Note(hz * 0.5, waveform=PULSE, envelope=env, filter=bp_bass, amplitude=amp * bass * 0.5))
+                notes.append(synthio.Note(hz * 0.5, waveform=PULSE, envelope=env, filter=bp_bass, amplitude=gain(amp, bass, 0.5)))
 
             # Brilliance is the VP-330's top-end tone control: a bright unfiltered
             # doubling that only becomes audible as it's turned up
-            if brilliance > 0.01:
+            if brilliance.a > 0.01:
                 hp_bright = synthio.Biquad(synthio.FilterMode.HIGH_PASS, 3000.0, Q=0.7)
-                notes.append(synthio.Note(hz * 2.0, waveform=PULSE, envelope=env, filter=hp_bright, amplitude=amp * brilliance * 0.25))
+                notes.append(synthio.Note(hz * 2.0, waveform=PULSE, envelope=env, filter=hp_bright, amplitude=gain(amp, brilliance, 0.25)))
 
             serial += 1
             voices[k] = (tuple(notes), serial)
@@ -141,20 +145,20 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: male_mix = value0
-            elif data0 == 2: female_mix = value0
-            elif data0 == 3: chorus_depth = value0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: male_mix.a = value0
+            elif data0 == 2: female_mix.a = value0
+            elif data0 == 3: chorus_depth.a = value0
             # Time is heard as a ratio, so these travel logarithmically:
             # the steps crowd into the fast end, where a few milliseconds
             # change the articulation, instead of stepping over it.
             elif data0 == 4: amp_a = logmap(value0, 0.001, 2.001)
             elif data0 == 5: amp_r = logmap(value0, 0.01, 4.01)
-            elif data0 == 6: formant_shift = -0.5 + value0
-            elif data0 == 7: vib_rate = 0.1 + value0 * 10.0
-            elif data0 == 8: vib_depth = value0
-            elif data0 == 9: brilliance = value0
-            elif data0 == 10: bass = value0
+            elif data0 == 6: formant_shift.a = -0.5 + value0
+            elif data0 == 7: vib_rate.a = 0.1 + value0 * 10.0
+            elif data0 == 8: vib_depth.a = value0
+            elif data0 == 9: brilliance.a = value0
+            elif data0 == 10: bass.a = value0
             elif data0 == 11: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

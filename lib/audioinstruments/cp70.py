@@ -33,8 +33,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap,
-    make_table, ring_depth_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live,
+    logmap, make_table, ring_depth_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -48,15 +48,16 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    hammer_lvl = 0.8
-    string_lvl = 1.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    hammer_lvl = live(0.8)
+    string_lvl = live(1.0)
     trem_rate = 5.0
     trem_depth = 0.0
     chorus = 0.5
     decay = 2.0
-    brilliance = 0.8
+    cutoff = live(500.0 + (0.8 * 8000.0))  # from Brilliance
     master_tune = 1.0
 
     voices = {}
@@ -75,7 +76,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, hammer_lvl, string_lvl, trem_rate, trem_depth, chorus, decay, brilliance, master_tune
+        nonlocal trem_rate, trem_depth, chorus, decay, master_tune
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -86,12 +87,11 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=0.005, decay_time=decay, release_time=0.4, attack_level=1.0, sustain_level=0.0)
             hammer_env = synthio.Envelope(attack_time=0.001, decay_time=0.1, release_time=0.05, attack_level=1.0, sustain_level=0.0)
 
-            cutoff = 500.0 + (brilliance * 8000.0)
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=0.7)
 
             trem_wave = ring_depth_table(trem_depth) if trem_depth > 0.01 else None
@@ -99,13 +99,13 @@ def create(sample_rate, channel_count=2, transport=None):
             notes = []
             # Chorus simulation
             if chorus > 0.01:
-                n1 = synthio.Note(hz, waveform=WAVE_STRING, envelope=env, filter=lp, amplitude=amp * string_lvl * 0.4, ring_frequency=trem_rate, ring_waveform=trem_wave, panning=-0.3)
-                n2 = synthio.Note(hz * (1.0 + chorus * 0.005), waveform=WAVE_STRING, envelope=env, filter=lp, amplitude=amp * string_lvl * 0.4, ring_frequency=trem_rate, ring_waveform=trem_wave, panning=0.3)
+                n1 = synthio.Note(hz, waveform=WAVE_STRING, envelope=env, filter=lp, amplitude=gain(amp, string_lvl, 0.4), ring_frequency=trem_rate, ring_waveform=trem_wave, panning=-0.3)
+                n2 = synthio.Note(hz * (1.0 + chorus * 0.005), waveform=WAVE_STRING, envelope=env, filter=lp, amplitude=gain(amp, string_lvl, 0.4), ring_frequency=trem_rate, ring_waveform=trem_wave, panning=0.3)
                 notes.extend([n1, n2])
             else:
-                notes.append(synthio.Note(hz, waveform=WAVE_STRING, envelope=env, filter=lp, amplitude=amp * string_lvl * 0.8, ring_frequency=trem_rate, ring_waveform=trem_wave))
+                notes.append(synthio.Note(hz, waveform=WAVE_STRING, envelope=env, filter=lp, amplitude=gain(amp, string_lvl, 0.8), ring_frequency=trem_rate, ring_waveform=trem_wave))
 
-            notes.append(synthio.Note(hz, waveform=WAVE_HAMMER, envelope=hammer_env, filter=lp, amplitude=amp * hammer_lvl * 0.6, ring_frequency=trem_rate, ring_waveform=trem_wave))
+            notes.append(synthio.Note(hz, waveform=WAVE_HAMMER, envelope=hammer_env, filter=lp, amplitude=gain(amp, hammer_lvl, 0.6), ring_frequency=trem_rate, ring_waveform=trem_wave))
 
             serial += 1
             voices[k] = (_support.press_voice(synth, voices, retired,
@@ -115,14 +115,14 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: hammer_lvl = value0 * 2.0
-            elif data0 == 2: string_lvl = value0 * 2.0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: hammer_lvl.a = value0 * 2.0
+            elif data0 == 2: string_lvl.a = value0 * 2.0
             elif data0 == 3: trem_rate = 0.1 + value0 * 10.0
             elif data0 == 4: trem_depth = value0
             elif data0 == 5: chorus = value0
             elif data0 == 6: decay = logmap(value0, 0.5, 4.5)
-            elif data0 == 7: brilliance = value0
+            elif data0 == 7: cutoff.a = 500.0 + (value0 * 8000.0)
             elif data0 == 8: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

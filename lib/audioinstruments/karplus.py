@@ -33,8 +33,8 @@ import math
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap,
-    noise_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live,
+    logmap, noise_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -129,11 +129,14 @@ def create(sample_rate, channel_count=2, transport=None):
         return out, loop_start, loop_start + delay_len
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
+    # Macros. Volume and Body Resonance are blocks every sounding note reads,
+    # so turning them reaches a ringing string; the rest are read when a note
+    # starts.
+    volume = live(0.8)
     pluck_pos = 0.5 # where along the string it's plucked (comb-filters the burst)
     damping = 0.5 # how fast the delay loop's feedback dies out
-    body_res = 0.5
+    body_freq = live(400.0 + 0.5 * 3000.0) # Body Resonance moves both
+    body_q = live(1.0 + 0.5 * 2.0)
     pick_hard = 0.5
     decay_time = 2.0
     master_tune = 1.0
@@ -150,7 +153,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, pluck_pos, damping, body_res, pick_hard, decay_time, master_tune
+        nonlocal pluck_pos, damping, pick_hard, decay_time, master_tune
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -161,14 +164,14 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             # 1. The string itself: a genuine Karplus-Strong delay/feedback
             # loop rendered into a table, so the ring is real comb-filtered
             # decay, not a static harmonic wavetable
             ks_wave, ks_loop_start, ks_loop_end = karplus_strong_table(hz, damping, pluck_pos)
             env_body = synthio.Envelope(attack_time=0.001, decay_time=decay_time, release_time=0.3, attack_level=1.0, sustain_level=0.0)
-            lp_body = synthio.Biquad(synthio.FilterMode.LOW_PASS, 400.0 + body_res * 3000.0, Q=1.0 + body_res * 2.0)
+            lp_body = synthio.Biquad(synthio.FilterMode.LOW_PASS, body_freq, Q=body_q)
 
             # 2. The pick/strike transient (short noise burst, harder pick = brighter)
             env_pick = synthio.Envelope(attack_time=0.001, decay_time=0.02 + pluck_pos * 0.05, release_time=0.01, attack_level=1.0, sustain_level=0.0)
@@ -187,11 +190,11 @@ def create(sample_rate, channel_count=2, transport=None):
             # mark one settled lap - by construction one true period of the
             # string - as the loop; everything before it plays once, as the
             # decaying attack transient, at the correct real-time rate.
-            notes.append(synthio.Note(hz, waveform=ks_wave, envelope=env_body, filter=lp_body, amplitude=amp * 0.8,
+            notes.append(synthio.Note(hz, waveform=ks_wave, envelope=env_body, filter=lp_body, amplitude=gain(amp, 0.8),
                                       waveform_loop_start=ks_loop_start,
                                       waveform_loop_end=ks_loop_end))
             if pick_hard > 0.01:
-                notes.append(synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env_pick, filter=hp_pick, amplitude=amp * pick_hard * 0.3))
+                notes.append(synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env_pick, filter=hp_pick, amplitude=gain(amp, pick_hard, 0.3)))
 
             serial += 1
             voices[k] = (tuple(notes), serial)
@@ -202,10 +205,12 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
+            if data0 == 0: volume.a = value0
             elif data0 == 1: pluck_pos = value0
             elif data0 == 2: damping = value0
-            elif data0 == 3: body_res = value0
+            elif data0 == 3:
+                body_freq.a = 400.0 + value0 * 3000.0
+                body_q.a = 1.0 + value0 * 2.0
             elif data0 == 4: pick_hard = value0
             elif data0 == 5: decay_time = logmap(value0, 0.5, 4.5)
             elif data0 == 6: master_tune = 0.95 + value0 * 0.1

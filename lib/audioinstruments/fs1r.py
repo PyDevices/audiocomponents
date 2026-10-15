@@ -35,8 +35,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, key_of, logmap,
-    make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, gain, key_of,
+    live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -50,13 +50,16 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
     vowel_a = 0.0 # 0=A, 1=E, 2=I, 3=O, 4=U (simplified mapping)
     vowel_b = 1.0
     morph_speed = 0.5
     fm_idx = 0.5
     brightness = 0.8
+    # The modulation depth FM Index and Brightness set together
+    fm_scale = live(0.5 * (0.04 + 0.8 * 0.18))
     amp_a = 0.05
     amp_d = 1.0
     amp_s = 0.8
@@ -92,7 +95,7 @@ def create(sample_rate, channel_count=2, transport=None):
         else: return 600.0
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, vowel_a, vowel_b, morph_speed, fm_idx, brightness
+        nonlocal vowel_a, vowel_b, morph_speed, fm_idx, brightness
         nonlocal amp_a, amp_d, amp_s, amp_r, master_tune
         nonlocal serial
 
@@ -104,7 +107,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
 
@@ -132,10 +135,11 @@ def create(sample_rate, channel_count=2, transport=None):
             # like real FM) run through formant filters (the real FS1R's actual
             # party trick). Brightness raises the modulation index rather than
             # just the volume, since a brighter FM tone is a harder-modulated one.
-            fm_mod = synthio.LFO(waveform=SINE, rate=hz * 2.0, scale=fm_idx * (0.04 + brightness * 0.18)) if fm_idx > 0.01 else None
+            # Both reach a held note only if FM Index was up when it started.
+            fm_mod = synthio.LFO(waveform=SINE, rate=hz * 2.0, scale=fm_scale) if fm_idx > 0.01 else None
 
-            n1 = synthio.Note(hz, waveform=WAVE_FM, envelope=env, filter=bp1, amplitude=amp * 0.6, bend=fm_mod, panning=-0.3)
-            n2 = synthio.Note(hz, waveform=WAVE_FM, envelope=env, filter=bp2, amplitude=amp * 0.6, bend=fm_mod, panning=0.3)
+            n1 = synthio.Note(hz, waveform=WAVE_FM, envelope=env, filter=bp1, amplitude=gain(amp, 0.6), bend=fm_mod, panning=-0.3)
+            n2 = synthio.Note(hz, waveform=WAVE_FM, envelope=env, filter=bp2, amplitude=gain(amp, 0.6), bend=fm_mod, panning=0.3)
 
             serial += 1
             voices[k] = ((n1, n2), serial)
@@ -146,12 +150,16 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
+            if data0 == 0: volume.a = value0
             elif data0 == 1: vowel_a = value0
             elif data0 == 2: vowel_b = value0
             elif data0 == 3: morph_speed = value0
-            elif data0 == 4: fm_idx = value0
-            elif data0 == 5: brightness = value0 * 2.0
+            elif data0 == 4:
+                fm_idx = value0
+                fm_scale.a = fm_idx * (0.04 + brightness * 0.18)
+            elif data0 == 5:
+                brightness = value0 * 2.0
+                fm_scale.a = fm_idx * (0.04 + brightness * 0.18)
             elif data0 == 6: amp_a = logmap(value0, 0.001, 2.001)
             elif data0 == 7: amp_d = logmap(value0, 0.05, 4.05)
             elif data0 == 8: amp_s = value0

@@ -195,6 +195,53 @@ def env_shape_table(attack, decay, sustain, length=96):
     return out
 
 
+_SUM = synthio.MathOperation.SUM
+_PRODUCT = synthio.MathOperation.PRODUCT
+
+
+def live(value):
+    """A continuous macro that notes already sounding follow.
+
+    An instrument that reads a macro as a float when a note starts can only
+    change the *next* note. A block can be shared instead: every note wires
+    the same block into its filter frequency, Q, amplitude or LFO, and the
+    macro handler writes ``block.a = new_value``. Each sounding note picks the
+    new value up on its next audio block, the way a hardware knob reaches
+    every voice at once.
+
+    A block holding a constant renders exactly what the plain float renders,
+    on every interpreter this package runs on, so a macro set before a note
+    sounds the same as it always did.
+    """
+    return synthio.Math(_SUM, value, 0.0, 0.0)
+
+
+def gain(a, b=1.0, c=1.0):
+    """``a * b * c`` as one amplitude input, where any of the three may be a
+    live block. A note's level often depends on more than one macro (volume
+    times a layer mix); this keeps each of them live."""
+    return synthio.Math(_PRODUCT, a, b, c)
+
+
+def block_value(x):
+    """The value ``x`` holds right now when it is a number, or a SUM/PRODUCT
+    of numbers and such blocks; ``None`` when it moves on its own (an LFO, an
+    envelope) and so cannot be known from Python."""
+    if isinstance(x, (int, float)):
+        return x
+    if isinstance(x, synthio.Math):
+        op = x.operation
+        if op != _SUM and op != _PRODUCT:
+            return None
+        a = block_value(x.a)
+        b = block_value(x.b)
+        c = block_value(x.c)
+        if a is None or b is None or c is None:
+            return None
+        return a + b + c if op == _SUM else a * b * c
+    return None
+
+
 def logmap(v, lo, hi):
     """Map a normalized 0.0-1.0 value onto ``lo``..``hi`` logarithmically."""
     return lo * ((hi / lo) ** v)
@@ -264,16 +311,17 @@ def copy_note(source, target):
 
 
 def note_is_silent(note):
-    """True only when a note is *provably* inaudible - a numeric amplitude of
-    zero or less.
+    """True only when a note is *provably* inaudible - an amplitude of zero or
+    less, read straight off a number or off a live macro's block (see
+    :func:`block_value`) as it stands now.
 
-    An amplitude driven by an LFO or a block input is assumed audible, because
+    An amplitude driven by an LFO or an envelope is assumed audible, because
     it may be anywhere in its cycle. Being wrong in that direction costs a
     thinner steal; being wrong the other way silences a key the player is
     holding.
     """
-    amplitude = getattr(note, "amplitude", None)
-    if isinstance(amplitude, (int, float)):
+    amplitude = block_value(getattr(note, "amplitude", None))
+    if amplitude is not None:
         return amplitude <= 0.0
     return False
 

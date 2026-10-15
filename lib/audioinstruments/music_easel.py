@@ -34,8 +34,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, key_of, logmap,
-    make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, gain, key_of, live,
+    logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -49,11 +49,13 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    timbre = 0.5
-    fm_idx = 0.5
-    mod_freq = 0.5
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    sine_mix = live(1.0 - 0.5) # Timbre sets both halves of the blend
+    complex_mix = live(0.5)
+    fm_idx = live(0.5)
+    mod_rate = live(1.0 + 0.5 * 1000.0) # Mod Osc Freq
     lpg_strike = 0.8
     lpg_decay = 0.5
     amp_a = 0.01
@@ -73,7 +75,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, timbre, fm_idx, mod_freq, lpg_strike, lpg_decay
+        nonlocal lpg_strike, lpg_decay
         nonlocal amp_a, amp_s, amp_r, master_tune
         nonlocal serial
 
@@ -84,7 +86,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             # A vactrol-driven LPG ties amplitude and filter cutoff to one envelope; more
             # Strike means a harder snap (shorter decay, more percussive, brighter jolt),
@@ -101,11 +103,11 @@ def create(sample_rate, channel_count=2, transport=None):
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=0.5) # LPG has very low Q
 
             # FM emulation via vibrato on pitch
-            fm_lfo = synthio.LFO(waveform=SINE, rate=1.0 + mod_freq * 1000.0, scale=fm_idx * 0.1) if fm_idx > 0.01 else None
+            fm_lfo = synthio.LFO(waveform=SINE, rate=mod_rate, scale=gain(fm_idx, 0.1)) if fm_idx.a > 0.01 else None
 
             # We blend a sine with the complex wave depending on timbre
-            n1 = synthio.Note(hz, waveform=SINE, envelope=env, filter=lp, amplitude=amp * (1.0 - timbre), bend=fm_lfo)
-            n2 = synthio.Note(hz, waveform=WAVE_COMPLEX, envelope=env, filter=lp, amplitude=amp * timbre, bend=fm_lfo)
+            n1 = synthio.Note(hz, waveform=SINE, envelope=env, filter=lp, amplitude=gain(amp, sine_mix), bend=fm_lfo)
+            n2 = synthio.Note(hz, waveform=WAVE_COMPLEX, envelope=env, filter=lp, amplitude=gain(amp, complex_mix), bend=fm_lfo)
 
             serial += 1
             voices[k] = ((n1, n2), serial)
@@ -116,10 +118,12 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: timbre = value0
-            elif data0 == 2: fm_idx = value0
-            elif data0 == 3: mod_freq = value0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1:
+                sine_mix.a = 1.0 - value0
+                complex_mix.a = value0
+            elif data0 == 2: fm_idx.a = value0
+            elif data0 == 3: mod_rate.a = 1.0 + value0 * 1000.0
             elif data0 == 4: lpg_strike = value0
             elif data0 == 5: lpg_decay = logmap(value0, 0.05, 2.05)
             elif data0 == 6: amp_a = logmap(value0, 0.001, 2.001)

@@ -33,8 +33,8 @@ import math
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, key_of,
-    logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, gain, key_of,
+    live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -54,13 +54,14 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
     pw = 0.5
-    sub_osc = 0.8
-    cutoff_val = 1500.0
-    res = 1.0
-    env_depth = 3000.0
+    sub_osc = live(0.8)
+    cutoff_val = live(1500.0)
+    res = live(1.0)
+    env_depth = live(3000.0)
     fast_decay = 0.2
     master_tune = 1.0
 
@@ -76,7 +77,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, pw, sub_osc, cutoff_val, res, env_depth, fast_decay, master_tune
+        nonlocal pw, fast_decay, master_tune
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -86,7 +87,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=0.01, decay_time=fast_decay, release_time=0.1, attack_level=1.0, sustain_level=0.1)
 
@@ -99,8 +100,8 @@ def create(sample_rate, channel_count=2, transport=None):
             # duty-cycle table per note-on from the current Pulse Width macro.
             duty = 0.05 + pw * 0.9
             pulse_wave = make_pulse_table(duty)
-            n1 = synthio.Note(hz, waveform=pulse_wave, envelope=env, filter=lp, amplitude=amp * 0.5)
-            n_sub = synthio.Note(hz * 0.5, waveform=SQUARE, envelope=env, filter=lp, amplitude=amp * sub_osc * 0.5)
+            n1 = synthio.Note(hz, waveform=pulse_wave, envelope=env, filter=lp, amplitude=gain(amp, 0.5))
+            n_sub = synthio.Note(hz * 0.5, waveform=SQUARE, envelope=env, filter=lp, amplitude=gain(amp, sub_osc, 0.5))
 
             serial += 1
             voices[k] = ((n1, n_sub), serial)
@@ -111,12 +112,12 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
+            if data0 == 0: volume.a = value0
             elif data0 == 1: pw = value0
-            elif data0 == 2: sub_osc = value0
-            elif data0 == 3: cutoff_val = 50.0 * (100.0 ** value0)
-            elif data0 == 4: res = 0.5 + value0 * 3.5
-            elif data0 == 5: env_depth = value0 * 6000.0
+            elif data0 == 2: sub_osc.a = value0
+            elif data0 == 3: cutoff_val.a = 50.0 * (100.0 ** value0)
+            elif data0 == 4: res.a = 0.5 + value0 * 3.5
+            elif data0 == 5: env_depth.a = value0 * 6000.0
             # Time is heard as a ratio, so these travel logarithmically:
             # the steps crowd into the fast end, where a few milliseconds
             # change the articulation, instead of stepping over it.

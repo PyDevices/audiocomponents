@@ -35,7 +35,7 @@ import synthio
 
 from audioinstruments._support import (
     EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, EVENT_POLY_PRESSURE,
-    EVENT_CHANNEL_PRESSURE, key_of, logmap, make_table,
+    EVENT_CHANNEL_PRESSURE, gain, key_of, live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -49,16 +49,17 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    breath = 0.8
-    embouchure = 0.5
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    breath = live(0.8)
+    embouchure = live(0.5)
     # Normalised 0..1, not Hz: the macro sets this straight from value0 and the
     # LFO reads rate = 1.0 + growl_rate * 20.0. Written as 5.0 it meant 5 Hz,
     # which is both unreachable from the macro and a 101 Hz "growl". 0.2 gives
     # the 5 Hz that was plainly intended.
-    growl_rate = 0.2
-    growl_depth = 0.0
+    growl_rate = live(0.2)
+    growl_depth = live(0.0)
     amp_a = 0.1
     amp_d = 0.5
     amp_s = 0.8
@@ -77,7 +78,6 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, breath, embouchure, growl_rate, growl_depth
         nonlocal amp_a, amp_d, amp_s, amp_r, master_tune
         nonlocal serial
 
@@ -90,22 +90,28 @@ def create(sample_rate, channel_count=2, transport=None):
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
 
             # Breath pressure affects volume and filter cutoff simultaneously
-            actual_amp = volume * value0 * breath
+            actual_amp = gain(volume, value0, breath)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
 
-            cutoff = 500.0 + breath * 4000.0
-            lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=1.0 + embouchure * 2.0)
+            # Channel pressure retunes the breath-to-cutoff span (input b).
+            cutoff = synthio.Math(synthio.MathOperation.SCALE_OFFSET, breath, 4000.0, 500.0)
+            q = synthio.Math(synthio.MathOperation.SCALE_OFFSET, embouchure, 2.0, 1.0)
+            lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=q)
 
-            # Growl is simulated via fast vibrato/FM
-            growl_lfo = synthio.LFO(waveform=SINE, rate=1.0 + growl_rate * 20.0, scale=growl_depth * 0.1) if growl_depth > 0.01 else None
+            # Growl is simulated via fast vibrato/FM. It reaches a held note
+            # only if Growl Depth was up when the note started.
+            growl_lfo = None
+            if growl_depth.a > 0.01:
+                growl_hz = synthio.Math(synthio.MathOperation.SCALE_OFFSET, growl_rate, 20.0, 1.0)
+                growl_lfo = synthio.LFO(waveform=SINE, rate=growl_hz, scale=gain(growl_depth, 0.1))
 
             # Embouchure affects pitch slightly and harmonic content (via another layered note)
-            n1 = synthio.Note(hz, waveform=WAVE_WIND, envelope=env, filter=lp, amplitude=actual_amp * 0.7, bend=growl_lfo)
-            n2 = synthio.Note(hz * 2.0, waveform=SINE, envelope=env, filter=lp, amplitude=actual_amp * embouchure * 0.3, bend=growl_lfo)
+            n1 = synthio.Note(hz, waveform=WAVE_WIND, envelope=env, filter=lp, amplitude=gain(actual_amp, 0.7), bend=growl_lfo)
+            n2 = synthio.Note(hz * 2.0, waveform=SINE, envelope=env, filter=lp, amplitude=gain(actual_amp, embouchure, 0.3), bend=growl_lfo)
 
             serial += 1
-            voices[k] = ((n1, n2), serial)
+            voices[k] = ((n1, n2), serial, cutoff)
             synth.press(n1)
             synth.press(n2)
 
@@ -118,16 +124,14 @@ def create(sample_rate, channel_count=2, transport=None):
             # the tone of a note already sounding, not just its initial hit
             pressure = value0
             for voice in voices.values():
-                for n in voice[0]:
-                    if n.filter is not None:
-                        n.filter.frequency = 500.0 + breath * (2000.0 + pressure * 3000.0)
+                voice[2].b = 2000.0 + pressure * 3000.0
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: breath = value0
-            elif data0 == 2: embouchure = value0
-            elif data0 == 3: growl_rate = value0
-            elif data0 == 4: growl_depth = value0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: breath.a = value0
+            elif data0 == 2: embouchure.a = value0
+            elif data0 == 3: growl_rate.a = value0
+            elif data0 == 4: growl_depth.a = value0
             # Time is heard as a ratio, so these travel logarithmically:
             # the steps crowd into the fast end, where a few milliseconds
             # change the articulation, instead of stepping over it.

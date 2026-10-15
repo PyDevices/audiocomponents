@@ -36,8 +36,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap,
-    make_table, noise_table, ring_depth_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live,
+    logmap, make_table, noise_table, ring_depth_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -51,17 +51,18 @@ def create(sample_rate, channel_count=2, transport=None):
     NOISE_HZ = SR / 8192.0
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    db16 = 1.0
-    db8 = 1.0
-    db4 = 0.5
-    db2 = 0.2
-    perc_lvl = 0.5
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    db16 = live(1.0)
+    db8 = live(1.0)
+    db4 = live(0.5)
+    db2 = live(0.2)
+    perc_lvl = live(0.5)
     perc_dec = 0.3
-    key_click = 0.3
+    key_click = live(0.3)
     leslie_fast = 0.0
-    overdrive = 1.0
+    overdrive = live(1.0)
     master_tune = 1.0
 
     voices = {}
@@ -76,7 +77,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, db16, db8, db4, db2, perc_lvl, perc_dec, key_click, leslie_fast, overdrive, master_tune
+        nonlocal perc_dec, leslie_fast, master_tune
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -87,7 +88,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0 * overdrive
+            amp = gain(volume, value0, overdrive)
 
             env = synthio.Envelope(attack_time=0.01, decay_time=0.1, release_time=0.05, attack_level=1.0, sustain_level=1.0)
             perc_env = synthio.Envelope(attack_time=0.001, decay_time=perc_dec, release_time=0.05, attack_level=1.0, sustain_level=0.0)
@@ -104,19 +105,21 @@ def create(sample_rate, channel_count=2, transport=None):
 
             notes = []
             # Drawbars: 16' (sub), 8' (fund) go through the bass drum rotor;
-            # 4' (2nd harm), 2' (4th harm) go through the treble horn rotor
-            if db16 > 0.01: notes.append(synthio.Note(hz * 0.5, waveform=SINE, envelope=env, amplitude=amp * db16 * 0.25, ring_frequency=drum_rate, ring_waveform=drum_wave, bend=drum_vib, panning=-0.2))
-            if db8 > 0.01: notes.append(synthio.Note(hz, waveform=SINE, envelope=env, amplitude=amp * db8 * 0.25, ring_frequency=drum_rate, ring_waveform=drum_wave, bend=drum_vib, panning=0.2))
-            if db4 > 0.01: notes.append(synthio.Note(hz * 2.0, waveform=SINE, envelope=env, amplitude=amp * db4 * 0.2, ring_frequency=horn_rate, ring_waveform=horn_wave, bend=horn_vib, panning=-0.1))
-            if db2 > 0.01: notes.append(synthio.Note(hz * 4.0, waveform=SINE, envelope=env, amplitude=amp * db2 * 0.15, ring_frequency=horn_rate, ring_waveform=horn_wave, bend=horn_vib, panning=0.1))
+            # 4' (2nd harm), 2' (4th harm) go through the treble horn rotor.
+            # A drawbar, Perc Level or Key Click at zero adds no note, so it
+            # reaches a held note only if it was up when the note started.
+            if db16.a > 0.01: notes.append(synthio.Note(hz * 0.5, waveform=SINE, envelope=env, amplitude=gain(amp, db16, 0.25), ring_frequency=drum_rate, ring_waveform=drum_wave, bend=drum_vib, panning=-0.2))
+            if db8.a > 0.01: notes.append(synthio.Note(hz, waveform=SINE, envelope=env, amplitude=gain(amp, db8, 0.25), ring_frequency=drum_rate, ring_waveform=drum_wave, bend=drum_vib, panning=0.2))
+            if db4.a > 0.01: notes.append(synthio.Note(hz * 2.0, waveform=SINE, envelope=env, amplitude=gain(amp, db4, 0.2), ring_frequency=horn_rate, ring_waveform=horn_wave, bend=horn_vib, panning=-0.1))
+            if db2.a > 0.01: notes.append(synthio.Note(hz * 4.0, waveform=SINE, envelope=env, amplitude=gain(amp, db2, 0.15), ring_frequency=horn_rate, ring_waveform=horn_wave, bend=horn_vib, panning=0.1))
 
             # 3rd harmonic percussion rides the horn rotor
-            if perc_lvl > 0.01: notes.append(synthio.Note(hz * 3.0, waveform=SINE, envelope=perc_env, amplitude=amp * perc_lvl * 0.4, ring_frequency=horn_rate, ring_waveform=horn_wave, bend=horn_vib))
+            if perc_lvl.a > 0.01: notes.append(synthio.Note(hz * 3.0, waveform=SINE, envelope=perc_env, amplitude=gain(amp, perc_lvl, 0.4), ring_frequency=horn_rate, ring_waveform=horn_wave, bend=horn_vib))
 
             # Key click
-            if key_click > 0.01:
+            if key_click.a > 0.01:
                 hp = synthio.Biquad(synthio.FilterMode.HIGH_PASS, 5000.0, Q=1.0)
-                notes.append(synthio.Note(NOISE_HZ, waveform=NOISE, envelope=click_env, filter=hp, amplitude=amp * key_click * 0.3))
+                notes.append(synthio.Note(NOISE_HZ, waveform=NOISE, envelope=click_env, filter=hp, amplitude=gain(amp, key_click, 0.3)))
 
             serial += 1
             voices[k] = (tuple(notes), serial)
@@ -127,16 +130,16 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: db16 = value0
-            elif data0 == 2: db8 = value0
-            elif data0 == 3: db4 = value0
-            elif data0 == 4: db2 = value0
-            elif data0 == 5: perc_lvl = value0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: db16.a = value0
+            elif data0 == 2: db8.a = value0
+            elif data0 == 3: db4.a = value0
+            elif data0 == 4: db2.a = value0
+            elif data0 == 5: perc_lvl.a = value0
             elif data0 == 6: perc_dec = logmap(value0, 0.05, 1.05)
-            elif data0 == 7: key_click = value0
+            elif data0 == 7: key_click.a = value0
             elif data0 == 8: leslie_fast = value0
-            elif data0 == 9: overdrive = 1.0 + value0 * 2.0
+            elif data0 == 9: overdrive.a = 1.0 + value0 * 2.0
             elif data0 == 10: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

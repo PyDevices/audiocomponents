@@ -37,7 +37,8 @@ import math
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live, logmap,
+    make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -57,13 +58,14 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    sub_osc = 0.5
-    cutoff_val = 2000.0
-    res = 1.0
-    ens_depth = 1.0
-    pwm_rate = 2.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    sub_osc = live(0.5)
+    cutoff_val = live(2000.0)
+    res = live(1.0)
+    ens_depth = live(1.0)
+    pwm_rate = live(2.0)
     amp_a = 0.01
     amp_d = 0.5
     amp_s = 0.8
@@ -82,7 +84,6 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, sub_osc, cutoff_val, res, ens_depth, pwm_rate
         nonlocal amp_a, amp_d, amp_s, amp_r, master_tune
         nonlocal serial
 
@@ -94,34 +95,36 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
 
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff_val, Q=res)
 
             # Emulate bucket-brigade ensemble with pitch mod
-            ens_lfo1 = synthio.LFO(waveform=SINE, rate=0.6, scale=ens_depth * 0.01) if ens_depth > 0.01 else None
-            ens_lfo2 = synthio.LFO(waveform=SINE, rate=6.0, scale=ens_depth * 0.005) if ens_depth > 0.01 else None
+            # (an ensemble off at note-on stays off for that note)
+            ens_on = ens_depth.a > 0.01
+            ens_lfo1 = synthio.LFO(waveform=SINE, rate=0.6, scale=gain(ens_depth, 0.01)) if ens_on else None
+            ens_lfo2 = synthio.LFO(waveform=SINE, rate=6.0, scale=gain(ens_depth, 0.005)) if ens_on else None
 
             # Real PWM: crossfade the DCO between a narrow and wide pulse table at the
             # PWM Rate, which sweeps the harmonic balance the way a duty-cycle sweep
             # would (synthio can't reshape one wavetable's duty cycle in real time).
             pwm_lfo = synthio.LFO(waveform=SINE, rate=pwm_rate, scale=0.5, offset=0.5)
-            amp_narrow = synthio.Math(synthio.MathOperation.SCALE_OFFSET, pwm_lfo, -(amp * 0.5), amp * 0.5)
-            amp_wide = synthio.Math(synthio.MathOperation.SCALE_OFFSET, pwm_lfo, amp * 0.5, 0.0)
+            amp_narrow = synthio.Math(synthio.MathOperation.SCALE_OFFSET, pwm_lfo, gain(amp, -0.5), gain(amp, 0.5))
+            amp_wide = synthio.Math(synthio.MathOperation.SCALE_OFFSET, pwm_lfo, gain(amp, 0.5), 0.0)
 
             notes = []
             # Main DCO, width-modulated
             notes.append(synthio.Note(hz, waveform=PULSE_NARROW, envelope=env, filter=lp, amplitude=amp_narrow, bend=ens_lfo1, panning=-0.3))
             notes.append(synthio.Note(hz, waveform=PULSE_WIDE, envelope=env, filter=lp, amplitude=amp_wide, bend=ens_lfo1, panning=-0.3))
             # Simulated ensemble spread
-            if ens_depth > 0.01:
-                notes.append(synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=amp * 0.5, bend=ens_lfo2, panning=0.3))
+            if ens_on:
+                notes.append(synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=gain(amp, 0.5), bend=ens_lfo2, panning=0.3))
 
             # Sub osc
-            if sub_osc > 0.01:
-                notes.append(synthio.Note(hz * 0.5, waveform=SQUARE, envelope=env, filter=lp, amplitude=amp * sub_osc * 0.5))
+            if sub_osc.a > 0.01:
+                notes.append(synthio.Note(hz * 0.5, waveform=SQUARE, envelope=env, filter=lp, amplitude=gain(amp, sub_osc, 0.5)))
 
             serial += 1
             voices[k] = (tuple(notes), serial)
@@ -132,12 +135,12 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: sub_osc = value0
-            elif data0 == 2: cutoff_val = 50.0 * (100.0 ** value0)
-            elif data0 == 3: res = 0.5 + value0 * 3.5
-            elif data0 == 4: ens_depth = value0 * 2.0
-            elif data0 == 5: pwm_rate = 0.1 + value0 * 10.0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: sub_osc.a = value0
+            elif data0 == 2: cutoff_val.a = 50.0 * (100.0 ** value0)
+            elif data0 == 3: res.a = 0.5 + value0 * 3.5
+            elif data0 == 4: ens_depth.a = value0 * 2.0
+            elif data0 == 5: pwm_rate.a = 0.1 + value0 * 10.0
             elif data0 == 6: amp_a = logmap(value0, 0.001, 2.001)
             elif data0 == 7: amp_d = logmap(value0, 0.05, 3.05)
             elif data0 == 8: amp_s = value0

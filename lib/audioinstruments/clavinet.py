@@ -36,8 +36,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap,
-    make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live,
+    logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -52,13 +52,15 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    pickup_mix = 0.5 # 0 = DA, 1 = CB
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    pickup_mix = live(0.5) # 0 = DA, 1 = CB
+    pickup_da = live(0.5)  # 1 - Pickup Mix
     mute_lvl = 0.0
-    wah_depth = 0.0
-    wah_rate = 2.0
-    brilliance = 0.5
+    wah_depth = live(0.0)
+    wah_rate = live(2.0)
+    cutoff_base = live(1000.0 + 0.5 * 6000.0)  # from Brilliance
     amp_a = 0.01
     amp_d = 1.0
     amp_s = 0.1
@@ -81,7 +83,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, pickup_mix, mute_lvl, wah_depth, wah_rate, brilliance
+        nonlocal mute_lvl
         nonlocal amp_a, amp_d, amp_s, amp_r, master_tune
         nonlocal serial
 
@@ -93,7 +95,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             # Mute slider makes decay very short
             actual_d = amp_d * (1.0 - mute_lvl * 0.9)
@@ -101,16 +103,19 @@ def create(sample_rate, channel_count=2, transport=None):
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=actual_d, release_time=amp_r, attack_level=1.0, sustain_level=actual_s)
 
-            cutoff = 1000.0 + (brilliance * 6000.0)
+            cutoff = cutoff_base
 
-            if wah_depth > 0.01:
-                wah_lfo = synthio.LFO(waveform=SINE, rate=wah_rate, scale=wah_depth * 4000.0)
+            # The wah switches the filter mode when the note starts, so Wah
+            # Depth and Wah Rate reach a held note only if the wah was on.
+            wah_on = wah_depth.a > 0.01
+            if wah_on:
+                wah_lfo = synthio.LFO(waveform=SINE, rate=wah_rate, scale=gain(wah_depth, 4000.0))
                 cutoff = synthio.Math(synthio.MathOperation.SUM, cutoff, wah_lfo, 0.0)
 
-            lp = synthio.Biquad(synthio.FilterMode.BAND_PASS if wah_depth > 0.01 else synthio.FilterMode.LOW_PASS, cutoff, Q=2.0 if wah_depth > 0.01 else 0.8)
+            lp = synthio.Biquad(synthio.FilterMode.BAND_PASS if wah_on else synthio.FilterMode.LOW_PASS, cutoff, Q=2.0 if wah_on else 0.8)
 
-            o_cb = synthio.Note(hz, waveform=WAVE_CB, envelope=env, filter=lp, amplitude=amp * pickup_mix * 0.7)
-            o_da = synthio.Note(hz, waveform=WAVE_DA, envelope=env, filter=lp, amplitude=amp * (1.0 - pickup_mix) * 0.7)
+            o_cb = synthio.Note(hz, waveform=WAVE_CB, envelope=env, filter=lp, amplitude=gain(amp, pickup_mix, 0.7))
+            o_da = synthio.Note(hz, waveform=WAVE_DA, envelope=env, filter=lp, amplitude=gain(amp, pickup_da, 0.7))
 
             serial += 1
             voices[k] = (_support.press_voice(synth, voices, retired,
@@ -120,12 +125,14 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: pickup_mix = value0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1:
+                pickup_mix.a = value0
+                pickup_da.a = 1.0 - value0
             elif data0 == 2: mute_lvl = value0
-            elif data0 == 3: wah_depth = value0
-            elif data0 == 4: wah_rate = 0.5 + value0 * 10.0
-            elif data0 == 5: brilliance = value0
+            elif data0 == 3: wah_depth.a = value0
+            elif data0 == 4: wah_rate.a = 0.5 + value0 * 10.0
+            elif data0 == 5: cutoff_base.a = 1000.0 + (value0 * 6000.0)
             elif data0 == 6: amp_a = logmap(value0, 0.001, 0.201)
             elif data0 == 7: amp_d = logmap(value0, 0.1, 3.1)
             elif data0 == 8: amp_s = value0

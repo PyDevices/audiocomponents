@@ -37,8 +37,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, key_of,
-    logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, gain, key_of,
+    live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -51,14 +51,15 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
     hs_detune = 0.2
-    sub_osc = 0.5
-    cutoff_val = 2000.0
-    res = 1.0
-    distortion = 1.0
-    env_depth = 4000.0
+    sub_osc = live(0.5)
+    cutoff_val = live(2000.0)
+    res = live(1.0)
+    distortion = live(1.0)
+    env_depth = live(4000.0)
     amp_a = 0.01
     amp_d = 0.5
     amp_s = 0.8
@@ -77,7 +78,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, hs_detune, sub_osc, cutoff_val, res, distortion, env_depth
+        nonlocal hs_detune
         nonlocal amp_a, amp_d, amp_s, amp_r, master_tune
         nonlocal serial
 
@@ -89,14 +90,15 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
 
             f_sweep = synthio.LFO(waveform=FALL, once=True, rate=1.0/amp_d, scale=env_depth, interpolate=True)
             # Distortion pushes the filter brighter too, mimicking the extra
             # harmonic energy an analog-modeled overdrive stage would expose
-            cutoff = synthio.Math(synthio.MathOperation.SUM, cutoff_val * (1.0 + distortion * 0.6), f_sweep, 0.0)
+            drive_bright = synthio.Math(synthio.MathOperation.SCALE_OFFSET, distortion, 0.6, 1.0)
+            cutoff = synthio.Math(synthio.MathOperation.SUM, gain(cutoff_val, drive_bright), f_sweep, 0.0)
 
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=res)
 
@@ -106,18 +108,20 @@ def create(sample_rate, channel_count=2, transport=None):
             detunes = [0.0, hs_detune * 0.03, -hs_detune * 0.03, hs_detune * 0.06, -hs_detune * 0.06]
             pans = [0.0, 0.4, -0.4, 0.8, -0.8]
 
-            base_a = amp * 0.2
+            base_a = gain(amp, 0.2)
             for i in range(5):
                 notes.append(synthio.Note(hz * (1.0 + detunes[i]), waveform=SAW, envelope=env, filter=lp, amplitude=base_a, panning=pans[i]))
 
-            if sub_osc > 0.01:
-                notes.append(synthio.Note(hz * 0.5, waveform=SQUARE, envelope=env, filter=lp, amplitude=amp * sub_osc * 0.4))
+            # A layer at zero is not sounded at all, so Sub Osc and Distortion
+            # reach a held note's layer only if it was up when the note started.
+            if sub_osc.a > 0.01:
+                notes.append(synthio.Note(hz * 0.5, waveform=SQUARE, envelope=env, filter=lp, amplitude=gain(amp, sub_osc, 0.4)))
 
             # Distortion: an added octave-up harmonic layer through a hotter,
             # un-lowpassed square wave approximates the extra odd/even overtones
             # a real overdrive/waveshaper stage would add on top of the saws
-            if distortion > 0.01:
-                notes.append(synthio.Note(hz * 2.0, waveform=SQUARE, envelope=env, amplitude=amp * distortion * 0.25))
+            if distortion.a > 0.01:
+                notes.append(synthio.Note(hz * 2.0, waveform=SQUARE, envelope=env, amplitude=gain(amp, distortion, 0.25)))
 
             serial += 1
             voices[k] = (tuple(notes), serial)
@@ -128,13 +132,13 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
+            if data0 == 0: volume.a = value0
             elif data0 == 1: hs_detune = value0 * 0.6
-            elif data0 == 2: sub_osc = value0
-            elif data0 == 3: cutoff_val = 50.0 * (100.0 ** value0)
-            elif data0 == 4: res = 0.5 + value0 * 3.5
-            elif data0 == 5: distortion = value0 * 2.0
-            elif data0 == 6: env_depth = value0 * 8000.0
+            elif data0 == 2: sub_osc.a = value0
+            elif data0 == 3: cutoff_val.a = 50.0 * (100.0 ** value0)
+            elif data0 == 4: res.a = 0.5 + value0 * 3.5
+            elif data0 == 5: distortion.a = value0 * 2.0
+            elif data0 == 6: env_depth.a = value0 * 8000.0
             # Time is heard as a ratio, so these travel logarithmically:
             # the steps crowd into the fast end, where a few milliseconds
             # change the articulation, instead of stepping over it.

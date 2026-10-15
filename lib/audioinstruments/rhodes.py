@@ -38,8 +38,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap,
-    make_table, noise_table, ring_depth_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live,
+    logmap, make_table, noise_table, ring_depth_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -58,14 +58,15 @@ def create(sample_rate, channel_count=2, transport=None):
     NOISE_HZ = SR / 8192.0
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    tine_lvl = 0.8
-    body_lvl = 1.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    tine_lvl = live(0.8)
+    body_lvl = live(1.0)
     trem_rate = 3.0
     trem_depth = 0.0
-    overdrive = 1.0
-    tone = 3000.0
+    overdrive = live(1.0)
+    tone = live(3000.0)
     amp_a = 0.01
     amp_d = 2.0
     amp_s = 0.2
@@ -87,7 +88,7 @@ def create(sample_rate, channel_count=2, transport=None):
         if voice is not None and key_off > 0.01:
             env = synthio.Envelope(attack_time=0.001, decay_time=0.1, release_time=0.1, attack_level=1.0, sustain_level=0.0)
             bp = synthio.Biquad(synthio.FilterMode.BAND_PASS, 500.0, Q=1.0)
-            n = synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=bp, amplitude=volume * key_off * 0.2)
+            n = synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=bp, amplitude=gain(volume, key_off, 0.2))
             synth.press(n)
             # Only a noise burst the engine actually took holds a channel,
             # and only that one is worth offering back to a later key.
@@ -99,7 +100,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, tine_lvl, body_lvl, trem_rate, trem_depth, overdrive, tone
+        nonlocal trem_rate, trem_depth
         nonlocal amp_a, amp_d, amp_s, amp_r, key_off, master_tune
         nonlocal serial
 
@@ -111,7 +112,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0 * overdrive
+            amp = gain(volume, value0, overdrive)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
             tine_env = synthio.Envelope(attack_time=0.001, decay_time=0.3, release_time=0.1, attack_level=1.0, sustain_level=0.0)
@@ -126,8 +127,8 @@ def create(sample_rate, channel_count=2, transport=None):
             pan_l = -0.3
             pan_r = 0.3
 
-            o_body = synthio.Note(hz, waveform=WAVE_BODY, envelope=env, filter=lp, amplitude=amp * body_lvl * 0.5, ring_frequency=trem_rate, ring_waveform=trem_wave, panning=pan_l)
-            o_tine = synthio.Note(hz, waveform=WAVE_TINE, envelope=tine_env, filter=lp, amplitude=amp * tine_lvl * 0.4, ring_frequency=trem_rate, ring_waveform=trem_wave, panning=pan_r)
+            o_body = synthio.Note(hz, waveform=WAVE_BODY, envelope=env, filter=lp, amplitude=gain(amp, body_lvl, 0.5), ring_frequency=trem_rate, ring_waveform=trem_wave, panning=pan_l)
+            o_tine = synthio.Note(hz, waveform=WAVE_TINE, envelope=tine_env, filter=lp, amplitude=gain(amp, tine_lvl, 0.4), ring_frequency=trem_rate, ring_waveform=trem_wave, panning=pan_r)
 
             serial += 1
             voices[k] = (_support.press_voice(synth, voices, retired,
@@ -137,13 +138,13 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: tine_lvl = value0 * 2.0
-            elif data0 == 2: body_lvl = value0 * 2.0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: tine_lvl.a = value0 * 2.0
+            elif data0 == 2: body_lvl.a = value0 * 2.0
             elif data0 == 3: trem_rate = 0.1 + value0 * 10.0
             elif data0 == 4: trem_depth = value0
-            elif data0 == 5: overdrive = 1.0 + value0 * 2.0
-            elif data0 == 6: tone = logmap(value0, 500.0, 5500.0)
+            elif data0 == 5: overdrive.a = 1.0 + value0 * 2.0
+            elif data0 == 6: tone.a = logmap(value0, 500.0, 5500.0)
             elif data0 == 7: amp_a = logmap(value0, 0.001, 0.501)
             elif data0 == 8: amp_d = logmap(value0, 0.5, 4.5)
             elif data0 == 9: amp_s = value0

@@ -34,7 +34,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live,
+    make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -57,16 +58,17 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    bass = 1.0
-    strings = 1.0
-    flute = 1.0
-    oboe = 0.5
-    trumpet = 0.5
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    bass = live(1.0)
+    strings = live(1.0)
+    flute = live(1.0)
+    oboe = live(0.5)
+    trumpet = live(0.5)
     multi_tone = 0.0
-    vib_rate = 6.0
-    vib_depth = 0.0
+    vib_rate = live(6.0)
+    vib_depth = live(0.0)
     master_tune = 1.0
 
     voices = {}
@@ -81,7 +83,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, bass, strings, flute, oboe, trumpet, multi_tone, vib_rate, vib_depth, master_tune
+        nonlocal multi_tone, master_tune
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -92,7 +94,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=0.01, decay_time=0.1, release_time=0.1, attack_level=1.0, sustain_level=1.0)
 
@@ -103,19 +105,23 @@ def create(sample_rate, channel_count=2, transport=None):
             filter_mode = synthio.FilterMode.HIGH_PASS if boosted else synthio.FilterMode.LOW_PASS
             lp = synthio.Biquad(filter_mode, cutoff, Q=1.0)
 
-            vib_lfo = synthio.LFO(waveform=SINE, rate=vib_rate, scale=vib_depth * 0.02) if vib_depth > 0.01 else None
+            # Vibrato Depth and Rate reach a held note only if the vibrato
+            # was on when the note started.
+            vib_lfo = synthio.LFO(waveform=SINE, rate=vib_rate, scale=gain(vib_depth, 0.02)) if vib_depth.a > 0.01 else None
 
             w_str = WAVE_STR_BOOST if boosted else WAVE_STR
             w_flute = WAVE_FLUTE_BOOST if boosted else WAVE_FLUTE
             w_oboe = WAVE_OBOE_BOOST if boosted else WAVE_OBOE
             w_trumpet = WAVE_TRUMPET_BOOST if boosted else WAVE_TRUMPET
 
+            # A tab at zero adds no note, so it reaches a held note only if
+            # it was up when the note started.
             notes = []
-            if bass > 0.01: notes.append(synthio.Note(hz * 0.5, waveform=w_str, envelope=env, filter=lp, amplitude=amp * bass * 0.2, bend=vib_lfo))
-            if strings > 0.01: notes.append(synthio.Note(hz, waveform=w_str, envelope=env, filter=lp, amplitude=amp * strings * 0.2, bend=vib_lfo))
-            if flute > 0.01: notes.append(synthio.Note(hz, waveform=w_flute, envelope=env, filter=lp, amplitude=amp * flute * 0.2, bend=vib_lfo))
-            if oboe > 0.01: notes.append(synthio.Note(hz, waveform=w_oboe, envelope=env, filter=lp, amplitude=amp * oboe * 0.2, bend=vib_lfo))
-            if trumpet > 0.01: notes.append(synthio.Note(hz, waveform=w_trumpet, envelope=env, filter=lp, amplitude=amp * trumpet * 0.2, bend=vib_lfo))
+            if bass.a > 0.01: notes.append(synthio.Note(hz * 0.5, waveform=w_str, envelope=env, filter=lp, amplitude=gain(amp, bass, 0.2), bend=vib_lfo))
+            if strings.a > 0.01: notes.append(synthio.Note(hz, waveform=w_str, envelope=env, filter=lp, amplitude=gain(amp, strings, 0.2), bend=vib_lfo))
+            if flute.a > 0.01: notes.append(synthio.Note(hz, waveform=w_flute, envelope=env, filter=lp, amplitude=gain(amp, flute, 0.2), bend=vib_lfo))
+            if oboe.a > 0.01: notes.append(synthio.Note(hz, waveform=w_oboe, envelope=env, filter=lp, amplitude=gain(amp, oboe, 0.2), bend=vib_lfo))
+            if trumpet.a > 0.01: notes.append(synthio.Note(hz, waveform=w_trumpet, envelope=env, filter=lp, amplitude=gain(amp, trumpet, 0.2), bend=vib_lfo))
 
             serial += 1
             voices[k] = (tuple(notes), serial)
@@ -126,15 +132,15 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: bass = value0
-            elif data0 == 2: strings = value0
-            elif data0 == 3: flute = value0
-            elif data0 == 4: oboe = value0
-            elif data0 == 5: trumpet = value0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: bass.a = value0
+            elif data0 == 2: strings.a = value0
+            elif data0 == 3: flute.a = value0
+            elif data0 == 4: oboe.a = value0
+            elif data0 == 5: trumpet.a = value0
             elif data0 == 6: multi_tone = value0
-            elif data0 == 7: vib_rate = 0.1 + value0 * 10.0
-            elif data0 == 8: vib_depth = value0
+            elif data0 == 7: vib_rate.a = 0.1 + value0 * 10.0
+            elif data0 == 8: vib_depth.a = value0
             elif data0 == 9: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

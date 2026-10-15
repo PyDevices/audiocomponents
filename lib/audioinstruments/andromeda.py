@@ -43,8 +43,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, key_of,
-    logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, gain,
+    key_of, live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -57,15 +57,17 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    f1_cutoff = 2000.0
-    f2_cutoff = 3000.0
-    f_mix = 0.5
-    res1 = 1.0
-    res2 = 1.0
-    env_to_f1 = 2000.0
-    env_to_f2 = 1000.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    f1_cutoff = live(2000.0)
+    f2_cutoff = live(3000.0)
+    f_mix = live(0.5)
+    f_mix_inv = live(0.5)  # 1 - Filter Mix, the Filter 1 side's share
+    res1 = live(1.0)
+    res2 = live(1.0)
+    env_to_f1 = live(2000.0)
+    env_to_f2 = live(1000.0)
     unison_detune = 0.0
     a_a = 0.01
     a_d = 0.3
@@ -87,7 +89,6 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, f1_cutoff, f2_cutoff, f_mix, res1, res2, env_to_f1, env_to_f2
         nonlocal unison_detune, a_a, a_d, a_s, a_r, f_a, f_d, master_tune
         nonlocal serial
 
@@ -99,7 +100,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=a_a, decay_time=a_d, release_time=a_r, attack_level=1.0, sustain_level=a_s)
 
@@ -118,12 +119,12 @@ def create(sample_rate, channel_count=2, transport=None):
             if unison_detune > 0.01:
                 for i, detune in enumerate([-unison_detune, 0.0, unison_detune]):
                     pan = [-0.5, 0.0, 0.5][i]
-                    n1 = synthio.Note(hz * (1.0 + detune * 0.012), waveform=SAW, envelope=env, filter=lp1, amplitude=amp * (1.0 - f_mix) * 0.3, panning=pan)
-                    n2 = synthio.Note(hz * (1.0 + detune * 0.012), waveform=SQUARE, envelope=env, filter=hp2, amplitude=amp * f_mix * 0.3, panning=pan)
+                    n1 = synthio.Note(hz * (1.0 + detune * 0.012), waveform=SAW, envelope=env, filter=lp1, amplitude=gain(amp, f_mix_inv, 0.3), panning=pan)
+                    n2 = synthio.Note(hz * (1.0 + detune * 0.012), waveform=SQUARE, envelope=env, filter=hp2, amplitude=gain(amp, f_mix, 0.3), panning=pan)
                     notes.extend([n1, n2])
             else:
-                n1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp1, amplitude=amp * (1.0 - f_mix))
-                n2 = synthio.Note(hz * 1.002, waveform=SQUARE, envelope=env, filter=hp2, amplitude=amp * f_mix)
+                n1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp1, amplitude=gain(amp, f_mix_inv))
+                n2 = synthio.Note(hz * 1.002, waveform=SQUARE, envelope=env, filter=hp2, amplitude=gain(amp, f_mix))
                 notes.extend([n1, n2])
 
             serial += 1
@@ -135,14 +136,16 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: f1_cutoff = 50.0 * (100.0 ** value0)
-            elif data0 == 2: f2_cutoff = 50.0 * (100.0 ** value0)
-            elif data0 == 3: f_mix = value0
-            elif data0 == 4: res1 = 0.5 + value0 * 3.5
-            elif data0 == 5: res2 = 0.5 + value0 * 3.5
-            elif data0 == 6: env_to_f1 = value0 * 8000.0
-            elif data0 == 7: env_to_f2 = value0 * 8000.0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: f1_cutoff.a = 50.0 * (100.0 ** value0)
+            elif data0 == 2: f2_cutoff.a = 50.0 * (100.0 ** value0)
+            elif data0 == 3:
+                f_mix.a = value0
+                f_mix_inv.a = 1.0 - value0
+            elif data0 == 4: res1.a = 0.5 + value0 * 3.5
+            elif data0 == 5: res2.a = 0.5 + value0 * 3.5
+            elif data0 == 6: env_to_f1.a = value0 * 8000.0
+            elif data0 == 7: env_to_f2.a = value0 * 8000.0
             elif data0 == 8: unison_detune = value0
             elif data0 == 9: a_a = logmap(value0, 0.001, 2.001)
             elif data0 == 10: a_d = logmap(value0, 0.05, 3.05)

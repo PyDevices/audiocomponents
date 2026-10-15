@@ -33,8 +33,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, key_of,
-    logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, gain, key_of,
+    live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -46,15 +46,16 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
     tuning = 1.0
-    cutoff_val = 500.0
-    res = 2.0
-    env_mod = 4000.0
+    cutoff_val = live(500.0)
+    res = live(2.0)
+    env_mod = live(4000.0)
     decay_time = 0.5
-    accent = 0.0
-    overdrive = 1.0
+    accent = live(0.0)
+    overdrive = live(1.0)
     master_tune = 1.0
 
     voices = {}
@@ -69,7 +70,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, tuning, cutoff_val, res, env_mod, decay_time, accent, overdrive, master_tune
+        nonlocal tuning, decay_time, master_tune
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -83,10 +84,13 @@ def create(sample_rate, channel_count=2, transport=None):
             # The 303's accent circuit feeds extra voltage into both the VCF envelope
             # generator and the VCA at once, snapping the filter open harder and louder
             # together - scale continuously with the accent knob, not a hard switch.
-            actual_decay = decay_time * (1.0 - 0.7 * accent)
-            actual_env_mod = env_mod * (1.0 + 1.2 * accent)
+            # A held note follows Accent's level and envelope depth; its decay
+            # time is set when the note starts.
+            actual_decay = decay_time * (1.0 - 0.7 * accent.a)
+            actual_env_mod = gain(env_mod, synthio.Math(synthio.MathOperation.SUM, 1.0, gain(accent, 1.2), 0.0))
 
-            amp = volume * value0 * overdrive * (1.0 + 0.5 * accent)
+            accent_amp = synthio.Math(synthio.MathOperation.SUM, 1.0, gain(accent, 0.5), 0.0)
+            amp = gain(gain(volume, value0, overdrive), accent_amp, 0.5)
 
             env = synthio.Envelope(attack_time=0.01, decay_time=actual_decay, release_time=0.1, attack_level=1.0, sustain_level=0.1)
 
@@ -95,7 +99,7 @@ def create(sample_rate, channel_count=2, transport=None):
 
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=res)
 
-            n = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=amp * 0.5)
+            n = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=amp)
 
             serial += 1
             voices[k] = ((n,), serial)
@@ -105,17 +109,17 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
+            if data0 == 0: volume.a = value0
             elif data0 == 1: tuning = 0.5 + value0
-            elif data0 == 2: cutoff_val = 50.0 * (100.0 ** value0)
-            elif data0 == 3: res = 0.5 + value0 * 4.5
-            elif data0 == 4: env_mod = value0 * 8000.0
+            elif data0 == 2: cutoff_val.a = 50.0 * (100.0 ** value0)
+            elif data0 == 3: res.a = 0.5 + value0 * 4.5
+            elif data0 == 4: env_mod.a = value0 * 8000.0
             # Time is heard as a ratio, so these travel logarithmically:
             # the steps crowd into the fast end, where a few milliseconds
             # change the articulation, instead of stepping over it.
             elif data0 == 5: decay_time = logmap(value0, 0.05, 2.05)
-            elif data0 == 6: accent = value0
-            elif data0 == 7: overdrive = 1.0 + value0 * 3.0
+            elif data0 == 6: accent.a = value0
+            elif data0 == 7: overdrive.a = 1.0 + value0 * 3.0
             elif data0 == 8: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

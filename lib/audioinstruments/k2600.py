@@ -43,7 +43,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live, logmap,
+    make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -61,22 +62,23 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    l1_mix = 0.8
-    l2_mix = 0.6
-    l3_mix = 0.4
-    l4_mix = 0.8
-    shimmer = 0.0
-    master_cutoff = 4000.0
-    master_res = 1.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    l1_mix = live(0.8)
+    l2_mix = live(0.6)
+    l3_mix = live(0.4)
+    l4_mix = live(0.8)
+    shimmer = live(0.0)
+    master_cutoff = live(4000.0)
+    master_res = live(1.0)
     a_a = 0.5
     a_d = 1.0
     a_s = 0.8
     a_r = 1.5
-    mod_wheel = 0.0
-    mod_rate = 2.0
-    mod_depth = 0.1
+    mod_wheel = live(0.0)
+    mod_rate = live(2.0)
+    mod_depth = live(0.1)
     master_tune = 1.0
 
     voices = {}
@@ -91,8 +93,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, l1_mix, l2_mix, l3_mix, l4_mix, shimmer, master_cutoff, master_res
-        nonlocal a_a, a_d, a_s, a_r, mod_wheel, mod_rate, mod_depth, master_tune
+        nonlocal a_a, a_d, a_s, a_r, master_tune
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -103,29 +104,31 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=a_a, decay_time=a_d, release_time=a_r, attack_level=1.0, sustain_level=a_s)
 
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, master_cutoff, Q=master_res)
 
             # Mod wheel adds vibrato
-            vib = synthio.LFO(waveform=SINE, rate=mod_rate, scale=mod_depth * mod_wheel * 0.05) if mod_wheel > 0.01 else None
+            vib = synthio.LFO(waveform=SINE, rate=mod_rate, scale=gain(mod_depth, mod_wheel, 0.05)) if mod_wheel.a > 0.01 else None
 
+            # A layer at zero is not pressed at all, so its mix reaches a held
+            # note only if the layer was up when the note started.
             notes = []
-            if l1_mix > 0.01:
-                notes.append(synthio.Note(hz, waveform=WAVE_STR, envelope=env, filter=lp, amplitude=amp * l1_mix * 0.3, bend=vib, panning=-0.3))
-            if l2_mix > 0.01:
-                notes.append(synthio.Note(hz * 1.002, waveform=WAVE_CHOIR, envelope=env, filter=lp, amplitude=amp * l2_mix * 0.3, bend=vib, panning=0.3))
-            if l3_mix > 0.01:
-                notes.append(synthio.Note(hz * 2.0, waveform=WAVE_BELL, envelope=env, filter=lp, amplitude=amp * l3_mix * 0.2, bend=vib, panning=0.0))
-            if l4_mix > 0.01:
-                notes.append(synthio.Note(hz * 0.5, waveform=WAVE_BASS, envelope=env, filter=lp, amplitude=amp * l4_mix * 0.4, bend=vib, panning=0.0))
+            if l1_mix.a > 0.01:
+                notes.append(synthio.Note(hz, waveform=WAVE_STR, envelope=env, filter=lp, amplitude=gain(amp, l1_mix, 0.3), bend=vib, panning=-0.3))
+            if l2_mix.a > 0.01:
+                notes.append(synthio.Note(hz * 1.002, waveform=WAVE_CHOIR, envelope=env, filter=lp, amplitude=gain(amp, l2_mix, 0.3), bend=vib, panning=0.3))
+            if l3_mix.a > 0.01:
+                notes.append(synthio.Note(hz * 2.0, waveform=WAVE_BELL, envelope=env, filter=lp, amplitude=gain(amp, l3_mix, 0.2), bend=vib, panning=0.0))
+            if l4_mix.a > 0.01:
+                notes.append(synthio.Note(hz * 0.5, waveform=WAVE_BASS, envelope=env, filter=lp, amplitude=gain(amp, l4_mix, 0.4), bend=vib, panning=0.0))
 
             # Shimmer simulation (high pitched detuned bells)
-            if shimmer > 0.01:
-                notes.append(synthio.Note(hz * 4.01, waveform=WAVE_BELL, envelope=env, filter=lp, amplitude=amp * shimmer * 0.1, panning=-0.5))
-                notes.append(synthio.Note(hz * 3.99, waveform=WAVE_BELL, envelope=env, filter=lp, amplitude=amp * shimmer * 0.1, panning=0.5))
+            if shimmer.a > 0.01:
+                notes.append(synthio.Note(hz * 4.01, waveform=WAVE_BELL, envelope=env, filter=lp, amplitude=gain(amp, shimmer, 0.1), panning=-0.5))
+                notes.append(synthio.Note(hz * 3.99, waveform=WAVE_BELL, envelope=env, filter=lp, amplitude=gain(amp, shimmer, 0.1), panning=0.5))
 
             serial += 1
             voices[k] = (tuple(notes), serial)
@@ -136,21 +139,21 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: l1_mix = value0
-            elif data0 == 2: l2_mix = value0
-            elif data0 == 3: l3_mix = value0
-            elif data0 == 4: l4_mix = value0
-            elif data0 == 5: shimmer = value0
-            elif data0 == 6: master_cutoff = 50.0 * (100.0 ** value0)
-            elif data0 == 7: master_res = 0.5 + value0 * 3.5
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: l1_mix.a = value0
+            elif data0 == 2: l2_mix.a = value0
+            elif data0 == 3: l3_mix.a = value0
+            elif data0 == 4: l4_mix.a = value0
+            elif data0 == 5: shimmer.a = value0
+            elif data0 == 6: master_cutoff.a = 50.0 * (100.0 ** value0)
+            elif data0 == 7: master_res.a = 0.5 + value0 * 3.5
             elif data0 == 8: a_a = logmap(value0, 0.001, 4.001)
             elif data0 == 9: a_d = logmap(value0, 0.05, 5.05)
             elif data0 == 10: a_s = value0
             elif data0 == 11: a_r = logmap(value0, 0.01, 8.01)
-            elif data0 == 12: mod_wheel = value0
-            elif data0 == 13: mod_rate = 0.1 + value0 * 10.0
-            elif data0 == 14: mod_depth = value0
+            elif data0 == 12: mod_wheel.a = value0
+            elif data0 == 13: mod_rate.a = 0.1 + value0 * 10.0
+            elif data0 == 14: mod_depth.a = value0
             elif data0 == 15: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

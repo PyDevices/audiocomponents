@@ -38,8 +38,8 @@ import array
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, key_of,
-    logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, gain, key_of,
+    live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -52,13 +52,14 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
     osc_b_detune = 0.01
     glide = 0.0
-    cutoff_val = 1000.0
-    res = 1.0
-    env_mod = 2000.0
+    cutoff_val = live(1000.0)
+    res = live(1.0)
+    env_mod = live(2000.0)
     beat_freq = 0.5
     amp_a = 0.01
     amp_d = 1.0
@@ -79,7 +80,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, osc_b_detune, glide, cutoff_val, res, env_mod, beat_freq
+        nonlocal osc_b_detune, glide, beat_freq
         nonlocal amp_a, amp_d, amp_s, amp_r, master_tune
         nonlocal serial, last_pitch
 
@@ -90,7 +91,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             bend = None
             if last_pitch is not None and glide > 0.001:
@@ -114,11 +115,12 @@ def create(sample_rate, channel_count=2, transport=None):
             beat_hz = 0.15 + beat_freq * 1.5
             actual_detune = osc_b_detune + (beat_hz / hz)
 
-            n1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=amp * 0.45, bend=bend)
-            n2 = synthio.Note(hz * (1.0 + actual_detune), waveform=SAW, envelope=env, filter=lp, amplitude=amp * 0.45, bend=bend)
+            saw_amp = gain(amp, 0.45)
+            n1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=saw_amp, bend=bend)
+            n2 = synthio.Note(hz * (1.0 + actual_detune), waveform=SAW, envelope=env, filter=lp, amplitude=saw_amp, bend=bend)
             # Taurus pedals are defined by huge sub content; add a fixed sub-octave sine
             # under the two detuned saws for the low-end weight the real pedal has.
-            n3 = synthio.Note(hz * 0.5, waveform=SINE, envelope=env, filter=lp, amplitude=amp * 0.5, bend=bend)
+            n3 = synthio.Note(hz * 0.5, waveform=SINE, envelope=env, filter=lp, amplitude=gain(amp, 0.5), bend=bend)
 
             serial += 1
             voices[k] = ((n1, n2, n3), serial)
@@ -130,12 +132,12 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
+            if data0 == 0: volume.a = value0
             elif data0 == 1: osc_b_detune = value0 * 0.02
             elif data0 == 2: glide = value0
-            elif data0 == 3: cutoff_val = 50.0 * (100.0 ** value0)
-            elif data0 == 4: res = 0.5 + value0 * 5.5
-            elif data0 == 5: env_mod = value0 * 5000.0
+            elif data0 == 3: cutoff_val.a = 50.0 * (100.0 ** value0)
+            elif data0 == 4: res.a = 0.5 + value0 * 5.5
+            elif data0 == 5: env_mod.a = value0 * 5000.0
             elif data0 == 6: beat_freq = value0
             # Time is heard as a ratio, so these travel logarithmically:
             # the steps crowd into the fast end, where a few milliseconds

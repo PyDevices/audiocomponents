@@ -43,8 +43,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, key_of,
-    logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, gain,
+    key_of, live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -57,8 +57,11 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
+    # Macros. Volume is a block every sounding note reads, so turning it
+    # reaches a held note; so are the cutoff, resonance and sweep depth that
+    # Cutoff, Resonance and Morph 1-3 combine into. The rest are read when a
+    # note starts.
+    volume = live(0.8)
     cutoff_base = 3000.0
     resonance = 1.0
     fm_amount = 0.0
@@ -75,6 +78,10 @@ def create(sample_rate, channel_count=2, transport=None):
     filt_d = 0.3
     filt_s = 0.5
 
+    actual_cutoff = live(cutoff_base * (1.0 + morph1 * 2.0))
+    actual_res = live(resonance * (1.0 + morph2))
+    sweep_depth = live(4000.0 * (1.0 + morph3))
+
     voices = {}
     serial = 0
     MAX_VOICES = 12
@@ -87,7 +94,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, cutoff_base, resonance, fm_amount, osc_sync, morph1, morph2, morph3, morph4
+        nonlocal cutoff_base, resonance, fm_amount, osc_sync, morph1, morph2, morph3, morph4
         nonlocal amp_a, amp_d, amp_s, amp_r, filt_a, filt_d, filt_s
         nonlocal serial
 
@@ -99,21 +106,17 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1)
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
 
-            # Morph parameters dynamically alter the tone
-            actual_cutoff = cutoff_base * (1.0 + morph1 * 2.0)
-            actual_res = resonance * (1.0 + morph2)
-
             env_tbl = env_shape_table(filt_a, filt_d, filt_s)
-            f_sweep = synthio.LFO(waveform=env_tbl, once=True, rate=1.0/max(0.01, filt_a + filt_d), scale=4000.0 * (1.0 + morph3), interpolate=True)
+            f_sweep = synthio.LFO(waveform=env_tbl, once=True, rate=1.0/max(0.01, filt_a + filt_d), scale=sweep_depth, interpolate=True)
             cutoff = synthio.Math(synthio.MathOperation.SUM, actual_cutoff, f_sweep, 0.0)
 
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff, Q=actual_res)
 
-            o1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=amp * 0.5)
+            o1 = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=gain(amp, 0.5))
             # FM emulation via detune/amplitude, plus Osc Sync: true audio-rate hard sync isn't
             # achievable in synthio (no per-sample phase reset), so approximate its buzzy,
             # harmonically-locked character by snapping osc2 toward an integer multiple of osc1's
@@ -128,7 +131,7 @@ def create(sample_rate, channel_count=2, transport=None):
             else:
                 sync_ratio = base_ratio
                 o2_wave = SQUARE
-            o2 = synthio.Note(hz * sync_ratio, waveform=o2_wave, envelope=env, filter=lp, amplitude=amp * 0.5 * (0.5 + fm_amount))
+            o2 = synthio.Note(hz * sync_ratio, waveform=o2_wave, envelope=env, filter=lp, amplitude=gain(amp, 0.5, 0.5 + fm_amount))
 
             serial += 1
             voices[k] = ((o1, o2), serial)
@@ -139,7 +142,7 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
+            if data0 == 0: volume.a = value0
             elif data0 == 1: cutoff_base = 50.0 * (100.0 ** value0)
             elif data0 == 2: resonance = 0.5 + value0 * 3.5
             elif data0 == 3: fm_amount = value0
@@ -155,6 +158,11 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 13: filt_a = logmap(value0, 0.001, 2.001)
             elif data0 == 14: filt_d = logmap(value0, 0.05, 3.05)
             elif data0 == 15: filt_s = value0
+            # Morph parameters dynamically alter the tone
+            if data0 in (1, 2, 5, 6, 7):
+                actual_cutoff.a = cutoff_base * (1.0 + morph1 * 2.0)
+                actual_res.a = resonance * (1.0 + morph2)
+                sweep_depth.a = 4000.0 * (1.0 + morph3)
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
                             transport=transport)

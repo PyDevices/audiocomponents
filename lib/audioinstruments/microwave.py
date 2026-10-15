@@ -38,8 +38,8 @@ import array
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, key_of,
-    logmap, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, gain,
+    key_of, live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -53,13 +53,14 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    wt_pos = 0.0
-    cutoff_val = 2000.0
-    res = 1.0
-    env_wt = 1.0
-    env_flt = 4000.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    wt_pos = live(0.0)
+    cutoff_val = live(2000.0)
+    res = live(1.0)
+    env_wt = live(1.0)
+    env_flt = live(4000.0)
     f_a = 0.01
     amp_a = 0.01
     amp_d = 0.5
@@ -79,7 +80,6 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, wt_pos, cutoff_val, res, env_wt, env_flt
         nonlocal f_a, amp_a, amp_d, amp_s, amp_r, master_tune
         nonlocal serial
 
@@ -91,7 +91,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
 
@@ -104,14 +104,15 @@ def create(sample_rate, channel_count=2, transport=None):
             # Env to Wavetable: the mix position sweeps from wt_pos to mix_end
             # over the amp decay time, driven by a live Math crossfade (Note
             # amplitude accepts a BlockInput, so this actually animates).
-            mix_end = min(1.0, max(0.0, wt_pos + env_wt))
+            mix_end = synthio.Math(synthio.MathOperation.MID, 0.0, 1.0,
+                                   synthio.Math(synthio.MathOperation.SUM, wt_pos, env_wt, 0.0))
 
             ramp = synthio.LFO(waveform=array.array("h", (0, 32767)), once=True,
                                 rate=1.0 / max(0.01, amp_d), interpolate=True)
             mix_pos = synthio.Math(synthio.MathOperation.LERP, wt_pos, mix_end, ramp)
             inv_pos = synthio.Math(synthio.MathOperation.ADD_SUB, 1.0, 0.0, mix_pos)
-            amp1 = synthio.Math(synthio.MathOperation.PRODUCT, inv_pos, amp * 0.7, 1.0)
-            amp2 = synthio.Math(synthio.MathOperation.PRODUCT, mix_pos, amp * 0.7, 1.0)
+            amp1 = synthio.Math(synthio.MathOperation.PRODUCT, inv_pos, gain(amp, 0.7), 1.0)
+            amp2 = synthio.Math(synthio.MathOperation.PRODUCT, mix_pos, gain(amp, 0.7), 1.0)
 
             notes = [
                 synthio.Note(hz, waveform=WAVE_1, envelope=env, filter=lp, amplitude=amp1),
@@ -127,12 +128,12 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: wt_pos = value0
-            elif data0 == 2: cutoff_val = 50.0 * (100.0 ** value0)
-            elif data0 == 3: res = 0.5 + value0 * 3.5
-            elif data0 == 4: env_wt = -1.0 + value0 * 2.0
-            elif data0 == 5: env_flt = value0 * 8000.0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: wt_pos.a = value0
+            elif data0 == 2: cutoff_val.a = 50.0 * (100.0 ** value0)
+            elif data0 == 3: res.a = 0.5 + value0 * 3.5
+            elif data0 == 4: env_wt.a = -1.0 + value0 * 2.0
+            elif data0 == 5: env_flt.a = value0 * 8000.0
             elif data0 == 6: f_a = logmap(value0, 0.001, 2.001)
             elif data0 == 7: amp_a = logmap(value0, 0.001, 2.001)
             elif data0 == 8: amp_d = logmap(value0, 0.05, 3.05)

@@ -34,8 +34,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap, make_table,
-    noise_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, gain, key_of, live,
+    logmap, make_table, noise_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -51,12 +51,13 @@ def create(sample_rate, channel_count=2, transport=None):
     NOISE_HZ = SR / 8192.0
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
     filter_mode = 0.0 # 0=LP, 1=HP
-    cutoff_val = 2000.0
-    res = 1.5
-    noise_lvl = 0.0
+    cutoff_val = live(2000.0)
+    res = live(1.5)
+    noise_lvl = live(0.0)
     amp_a = 0.01
     amp_d = 0.3
     amp_s = 0.5
@@ -75,7 +76,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, filter_mode, cutoff_val, res, noise_lvl
+        nonlocal filter_mode
         nonlocal amp_a, amp_d, amp_s, amp_r, master_tune
         nonlocal serial
 
@@ -86,7 +87,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
 
@@ -101,11 +102,14 @@ def create(sample_rate, channel_count=2, transport=None):
 
             notes = []
             # Two digital square VCOs, detuned, for the raw doubled-oscillator Wasp tone.
-            notes.append(synthio.Note(hz, waveform=WAVE_DIGI, envelope=env, filter=flt, amplitude=amp * 0.45))
-            notes.append(synthio.Note(hz * 1.007, waveform=WAVE_DIGI, envelope=env, filter=flt, amplitude=amp * 0.45))
+            vco_amp = gain(amp, 0.45)
+            notes.append(synthio.Note(hz, waveform=WAVE_DIGI, envelope=env, filter=flt, amplitude=vco_amp))
+            notes.append(synthio.Note(hz * 1.007, waveform=WAVE_DIGI, envelope=env, filter=flt, amplitude=vco_amp))
 
-            if noise_lvl > 0.01:
-                notes.append(synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=flt, amplitude=amp * noise_lvl * 0.2))
+            # The noise is not sounded at all when it is off at note start, so
+            # Noise Level reaches a held note only if it was up.
+            if noise_lvl.a > 0.01:
+                notes.append(synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=flt, amplitude=gain(amp, noise_lvl, 0.2)))
 
             serial += 1
             voices[k] = (tuple(notes), serial)
@@ -116,11 +120,11 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
+            if data0 == 0: volume.a = value0
             elif data0 == 1: filter_mode = value0
-            elif data0 == 2: cutoff_val = 50.0 * (100.0 ** value0)
-            elif data0 == 3: res = 0.5 + value0 * 7.5 # pushes into self-oscillation like the real unstable filter
-            elif data0 == 4: noise_lvl = value0
+            elif data0 == 2: cutoff_val.a = 50.0 * (100.0 ** value0)
+            elif data0 == 3: res.a = 0.5 + value0 * 7.5 # pushes into self-oscillation like the real unstable filter
+            elif data0 == 4: noise_lvl.a = value0
             # Time is heard as a ratio, so these travel logarithmically:
             # the steps crowd into the fast end, where a few milliseconds
             # change the articulation, instead of stepping over it.

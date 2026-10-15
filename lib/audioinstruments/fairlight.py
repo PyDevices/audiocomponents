@@ -36,8 +36,8 @@ import math
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, key_of, logmap,
-    make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, gain, key_of,
+    live, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -65,16 +65,21 @@ def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
     patch = 0.0 # < 0.5 = Arr1, > 0.5 = Orch5
-    bitcrush = 0.0
+    # Bitcrush Approx: the crushed layer's level, the clean layer's level
+    # and the anti-aliasing cutoff, all set from the one knob.
+    bitcrush = live(0.0)
+    clean_lvl = live(1.0 - 0.0 * 0.6)
+    c_base = live(8000.0 - 0.0 * 5500.0)
     amp_a = 0.1
     amp_d = 0.5
     amp_s = 0.8
     amp_r = 0.5
     pitch_env = 0.0
-    f_env = 0.0
+    f_env = live(0.0)
     master_tune = 1.0
 
     voices = {}
@@ -89,7 +94,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, patch, bitcrush, amp_a, amp_d, amp_s, amp_r, pitch_env, f_env, master_tune
+        nonlocal patch, amp_a, amp_d, amp_s, amp_r, pitch_env, master_tune
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -100,7 +105,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1) * master_tune
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             is_orch = patch > 0.5
 
@@ -118,20 +123,20 @@ def create(sample_rate, channel_count=2, transport=None):
             # Pitch envelope (for Orch5 "whack")
             bend = synthio.LFO(waveform=FALL, once=True, rate=1.0/0.1, scale=pitch_env) if pitch_env > 0.01 else None
 
-            # Fairlight anti-aliasing filter was weak/stepped, so it let the
-            # 8-bit quantization noise through - continuous with Bitcrush Approx
-            c_base = 8000.0 - bitcrush * 5500.0
-
-            # Filter envelope
-            f_sweep = synthio.LFO(waveform=FALL, once=True, rate=1.0/actual_d, scale=f_env * 5000.0, interpolate=True)
+            # Filter envelope. The base cutoff is c_base: the Fairlight's
+            # anti-aliasing filter was weak/stepped, so it let the 8-bit
+            # quantization noise through - continuous with Bitcrush Approx
+            f_sweep = synthio.LFO(waveform=FALL, once=True, rate=1.0/actual_d, scale=gain(f_env, 5000.0), interpolate=True)
             lp = synthio.Biquad(synthio.FilterMode.LOW_PASS, synthio.Math(synthio.MathOperation.SUM, c_base, f_sweep, 0.0), Q=1.0)
 
             notes = []
             # Bitcrush Approx blends in the genuinely 8-bit-quantized table -
-            # real stair-step distortion, not just a darker filter
-            notes.append(synthio.Note(hz, waveform=wave, envelope=env, filter=lp, amplitude=amp * 0.7 * (1.0 - bitcrush * 0.6), bend=bend))
-            if bitcrush > 0.01:
-                notes.append(synthio.Note(hz, waveform=wave_crushed, envelope=env, filter=lp, amplitude=amp * 0.7 * bitcrush, bend=bend))
+            # real stair-step distortion, not just a darker filter. At zero
+            # the crushed layer adds no note, so the knob reaches a held note
+            # only if it was up when the note started.
+            notes.append(synthio.Note(hz, waveform=wave, envelope=env, filter=lp, amplitude=gain(amp, 0.7, clean_lvl), bend=bend))
+            if bitcrush.a > 0.01:
+                notes.append(synthio.Note(hz, waveform=wave_crushed, envelope=env, filter=lp, amplitude=gain(amp, 0.7, bitcrush), bend=bend))
 
             serial += 1
             voices[k] = (tuple(notes), serial)
@@ -142,15 +147,18 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
+            if data0 == 0: volume.a = value0
             elif data0 == 1: patch = value0
-            elif data0 == 2: bitcrush = value0
+            elif data0 == 2:
+                bitcrush.a = value0
+                clean_lvl.a = 1.0 - value0 * 0.6
+                c_base.a = 8000.0 - value0 * 5500.0
             elif data0 == 3: amp_a = logmap(value0, 0.001, 2.001)
             elif data0 == 4: amp_d = logmap(value0, 0.05, 3.05)
             elif data0 == 5: amp_s = value0
             elif data0 == 6: amp_r = logmap(value0, 0.01, 4.01)
             elif data0 == 7: pitch_env = value0
-            elif data0 == 8: f_env = value0
+            elif data0 == 8: f_env.a = value0
             elif data0 == 9: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

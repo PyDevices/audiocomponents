@@ -43,8 +43,8 @@ PATCHES = {
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, key_of, logmap,
-    make_table, noise_table, pulse_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, gain, key_of, live,
+    logmap, make_table, noise_table, pulse_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -60,18 +60,19 @@ def create(sample_rate, channel_count=2, transport=None):
     NOISE_HZ = SR / 8192.0
     synth = _support.synthesizer(SR, channel_count)
 
-    # Macros
-    volume = 0.8
-    cutoff_base = 2000.0
-    resonance = 1.2
-    sub_level = 0.5
-    noise_level = 0.0
+    # Macros. The live ones are blocks every sounding note reads, so turning
+    # the knob reaches a held note; the rest are read when a note starts.
+    volume = live(0.8)
+    cutoff_base = live(2000.0)
+    resonance = live(1.2)
+    sub_level = live(0.5)
+    noise_level = live(0.0)
     chorus_depth = 0.5
-    chorus_rate = 1.0
-    hpf_cutoff = 40.0
+    chorus_rate = live(1.0)
+    hpf_cutoff = live(40.0)
     pwm_amount = 0.5
-    lfo_rate = 5.0
-    env_depth = 3000.0
+    lfo_rate = live(5.0)
+    env_depth = live(3000.0)
 
     amp_a = 0.01
     amp_d = 0.3
@@ -91,8 +92,7 @@ def create(sample_rate, channel_count=2, transport=None):
         _support.steal_oldest(voices, release_voice)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
-        nonlocal volume, cutoff_base, resonance, sub_level, noise_level, chorus_depth, chorus_rate
-        nonlocal hpf_cutoff, pwm_amount, lfo_rate, env_depth, amp_a, amp_d, amp_s, amp_r, filt_d
+        nonlocal chorus_depth, pwm_amount, amp_a, amp_d, amp_s, amp_r, filt_d
         nonlocal serial
 
         k = key_of(channel, note_id, data0)
@@ -103,7 +103,7 @@ def create(sample_rate, channel_count=2, transport=None):
                 steal_oldest()
 
             hz = synthio.midi_to_hz(data0 + value1)
-            amp = volume * value0
+            amp = gain(volume, value0)
 
             env = synthio.Envelope(attack_time=amp_a, decay_time=amp_d, release_time=amp_r, attack_level=1.0, sustain_level=amp_s)
 
@@ -126,13 +126,15 @@ def create(sample_rate, channel_count=2, transport=None):
             detune = chorus_depth * 0.01
             pwm_wave = pulse_table(0.5 - pwm_amount * 0.4)
 
-            o_saw = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=amp * 0.4, panning=-chorus_depth, bend=chorus_lfo)
-            o_sq = synthio.Note(hz * (1.0 + detune), waveform=pwm_wave, envelope=env, filter=lp, amplitude=amp * 0.4, panning=chorus_depth, bend=chorus_lfo)
-            o_sub = synthio.Note(hz * 0.5, waveform=SQUARE, envelope=env, filter=hp, amplitude=amp * sub_level * 0.4, panning=0.0)
-            n = synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=hp, amplitude=amp * noise_level * 0.2)
+            o_saw = synthio.Note(hz, waveform=SAW, envelope=env, filter=lp, amplitude=gain(amp, 0.4), panning=-chorus_depth, bend=chorus_lfo)
+            o_sq = synthio.Note(hz * (1.0 + detune), waveform=pwm_wave, envelope=env, filter=lp, amplitude=gain(amp, 0.4), panning=chorus_depth, bend=chorus_lfo)
+            o_sub = synthio.Note(hz * 0.5, waveform=SQUARE, envelope=env, filter=hp, amplitude=gain(amp, sub_level, 0.4), panning=0.0)
+            n = synthio.Note(NOISE_HZ, waveform=NOISE, envelope=env, filter=hp, amplitude=gain(amp, noise_level, 0.2))
 
             notes = [o_saw, o_sq, o_sub]
-            if noise_level > 0.01:
+            # A layer at zero is not pressed at all, so Noise Level reaches a
+            # held note only if the noise was up when the note started.
+            if noise_level.a > 0.01:
                 notes.append(n)
 
             serial += 1
@@ -144,17 +146,17 @@ def create(sample_rate, channel_count=2, transport=None):
             release_voice(k)
 
         elif event_type == EVENT_PARAMETER:
-            if data0 == 0: volume = value0
-            elif data0 == 1: cutoff_base = 50.0 * (100.0 ** value0)
-            elif data0 == 2: resonance = 0.5 + value0 * 3.5
-            elif data0 == 3: sub_level = value0
-            elif data0 == 4: noise_level = value0
+            if data0 == 0: volume.a = value0
+            elif data0 == 1: cutoff_base.a = 50.0 * (100.0 ** value0)
+            elif data0 == 2: resonance.a = 0.5 + value0 * 3.5
+            elif data0 == 3: sub_level.a = value0
+            elif data0 == 4: noise_level.a = value0
             elif data0 == 5: chorus_depth = value0
-            elif data0 == 6: chorus_rate = 0.1 + value0 * 5.0
-            elif data0 == 7: hpf_cutoff = logmap(value0, 20.0, 1020.0)
+            elif data0 == 6: chorus_rate.a = 0.1 + value0 * 5.0
+            elif data0 == 7: hpf_cutoff.a = logmap(value0, 20.0, 1020.0)
             elif data0 == 8: pwm_amount = value0
-            elif data0 == 9: lfo_rate = 0.1 + value0 * 20.0
-            elif data0 == 10: env_depth = value0 * 8000.0
+            elif data0 == 9: lfo_rate.a = 0.1 + value0 * 20.0
+            elif data0 == 10: env_depth.a = value0 * 8000.0
             elif data0 == 11: amp_a = logmap(value0, 0.001, 2.001)
             elif data0 == 12: amp_d = logmap(value0, 0.05, 3.05)
             elif data0 == 13: amp_s = value0
