@@ -310,6 +310,8 @@ class Vibrato(_component.Component):
         self._wow_full_ms = 0.0
         #: The mean `delay_ms` last written, so a move can glide from it.
         self._delay_written = None
+        #: The clock index the shape last handed to the node was built for.
+        self._m_written = 0.0
         #: Whether the depth last written was the engaged one, so an Engage
         #: move is told apart from a move of any other knob.
         self._engaged_written = None
@@ -481,14 +483,15 @@ class Vibrato(_component.Component):
         # were, the read head jumped by the whole change on the next frame,
         # a tick each time one was turned. So the mean line walks there
         # over the same 20 ms (the node's `delay_slew`, delay-seconds per
-        # second, set from the size of this move), and Depth at 0 keeps the
-        # last clock law while the depth glides out under it, as Engage off
-        # does: a silent table in its place would drop the swing in one
-        # frame. The law itself still changes in one frame: on a small move
-        # that is inside the music's own step, but a patch change to or
-        # from `Deep slow` still steps the output by up to 1.5 times it.
-        if m >= DEPTH_OFF:
+        # second, set from the size of this move), and a new clock law goes
+        # to the node, which ramps the depth to zero over the same 20 ms,
+        # changes the table there and ramps back (audioecho's wow_shape
+        # swap). Only a law that moved is handed over, so a Tone, Body,
+        # Level or Engage move does not dip the swing. Depth 0 keeps the
+        # last law while the depth glides out under it, as Engage off does.
+        if m >= DEPTH_OFF and m != self._m_written:
             self._shape = clock_shape(m)
+            self._m_written = m
         last = self._delay_written
         if last is not None and last != delay_ms:
             self._delay.set(
@@ -514,7 +517,14 @@ class Vibrato(_component.Component):
         # adds the frames it takes to fall from full scale to under half an
         # LSB (audiocomponents#114: Body alone rang 2 430 frames past the
         # line at 20 Hz, 48 kHz).
+        # And a move keeps the read head travelling for up to two glides
+        # after it: the mean line's 20 ms, or a new law's dip to zero depth
+        # and back. What the wet filters hold from that travel rings out
+        # behind it, so the count starts where the travel ends.
+        glide = int(math.ceil(2.0 * DEPTH_GLIDE_MS * self._sample_rate
+                              / 1000.0))
         self._tail = (int(math.ceil(d_max * self._sample_rate / 1000.0)) + 64
+                      + glide
                       + one_pole_ring(damping, self._sample_rate)
                       + one_pole_ring(body, self._sample_rate))
 

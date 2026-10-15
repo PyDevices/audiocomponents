@@ -115,11 +115,6 @@ _SAT_COUPLING = (
     " once what reached it differed")
 
 DECLARED = {
-    ("Vibrato", "E6-p0", "P4", (5,)):
-        "Delay 2 ms to 4 ms and back glides the line over 20 ms, so Body's"
-        " 40 Hz high-pass keeps a float residue of the glide; one sample"
-        " rounds 1 LSB the other way past the ring tail_samples counts"
-        " (+3827 against +2684). Inaudible rounding",
     ("Harmonizer", "E1-", "P4"):
         "reset() empties the three lines and starts every splice where a"
         " new instance's starts, so a shifted voice then renders as a fresh"
