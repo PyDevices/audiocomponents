@@ -146,9 +146,16 @@ for _name in ("Flanger", "ExampleStock"):
 # without get_buffer the pole charge runs all 64 blocks (`_pull_node` cannot read
 # a block back), with it the charge stops at the first zero block, and P4
 # reads that residue against the control only with get_buffer. Not audible.
-DECLARED[("Overdrive", "nogb", "E10-patch/48000/2/6")] = (
-    "the board path charges the pole 64 blocks where the get_buffer path"
-    " stops at the first zero block; P4 differs only with get_buffer")
+# Since Overdrive builds lazily (Phase 7, lc-1) the same residue reads on
+# the other E10 cells that land on a clipped bias before the first pull:
+# a reset or a patch change at patch 6, and every macro at 127.
+for _cell in ("E10-patch/48000/2/6", "E10-patch/48000/1/6",
+              "E10-reset/48000/1/6", "E10-reset/48000/2/6",
+              "E10-macros/48000/1/d", "E10-macros/48000/2/d"):
+    DECLARED[("Overdrive", "nogb", _cell)] = (
+        "the board path charges the pole 64 blocks where the get_buffer"
+        " path stops at the first zero block; P4 differs only with"
+        " get_buffer")
 
 # The lazy re-arm (`Component._reset_rearmed`) without get_buffer: nothing
 # can hand a silent primed block up, so a reset arms the voices from their
