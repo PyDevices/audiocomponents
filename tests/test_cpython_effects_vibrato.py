@@ -560,6 +560,60 @@ class Tier1Fast(unittest.TestCase):
         self.assertEqual(int(np.max(np.abs(left.astype(np.int32)))), 0)
 
 
+class JumpingVibrato(rebuilt.Vibrato):
+    """The moves as they were: the mean line lands at once and Depth 0
+    writes a silent clock law."""
+
+    NAME = 'Vibrato'
+
+    def _refresh(self):
+        rebuilt.Vibrato._refresh(self)
+        self._plant_jump = True
+        m = rebuilt.m_for_cents(self._mean_delay_ms()[0], self._value(RATE_I),
+                                self._value(DEPTH_I))
+        self._shape = rebuilt.clock_shape(m)
+        self._delay.set(delay_slew=0.0, wow_shape=self._shape)
+
+
+class MovesGlide(unittest.TestCase):
+    """A Rate, Depth or Delay move glides the read head, so the output
+    steps no more than the music does (the lifecycle matrix's P5): a
+    triangle whose own largest step is 100 LSB, moved part-way through."""
+
+    MOVES = ((DEPTH_I, 0), (DEPTH_I, 127), (RATE_I, 0), (RATE_I, 127),
+             (DELAY_I, 0), (DELAY_I, 127))
+
+    def _step(self, cls, macro, value):
+        import lifecycle
+        tri = lifecycle.triangle(8192, 2, RATE)
+        outs = []
+        for moved in (False, True):
+            effect = cls.create(probes.ArraySource(tri, rate=RATE,
+                                                   channels=2), RATE)
+            out = bytearray()
+            for block in range(24):
+                if moved and block == 12:
+                    effect.set_macro(macro, value)
+                out += bytes(audiocore.get_buffer(effect.output)[1])
+            effect.deinit()
+            outs.append(array("h", bytes(out)))
+        lo, hi = 12 * 256, 13 * 256
+        control = lifecycle._max_step(outs[0], 2, lo, hi)
+        return lifecycle._max_step(outs[1], 2, lo, hi), control
+
+    def test_each_move_is_smooth(self):
+        for macro, value in self.MOVES:
+            got, control = self._step(rebuilt.Vibrato, macro, value)
+            self.assertLessEqual(got, 1.5 * max(100, control),
+                                 (macro, value, got, control))
+
+    def test_jumping_moves_step(self):
+        steps = [self._step(JumpingVibrato, macro, value)
+                 for macro, value in self.MOVES]
+        self.assertTrue(any(got > 1.5 * max(100, control)
+                            for got, control in steps), steps)
+
+
 class FaultsAreUnreachable(unittest.TestCase):
     def _reach(self, faulted, reading):
         return kit_faults.fault_reachability(
