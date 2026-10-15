@@ -29,9 +29,10 @@ VENDOR = "PyDevices"
 RATE = 48000
 
 #: The classes whose Mix 0 lost the first block (`LAZY_BUILD`), and
-#: Exciter, which shared the cause. DeEsser's bypass is Range 0.
+#: Exciter, which shared the cause. DeEsser's bypass is Range 0. Phaser's
+#: input guard primes at `play()` as DynamicEQ's does.
 WIRES = ("Bitcrusher", "Compressor", "DeEsser", "Distortion", "DynamicEQ",
-         "MultibandCompressor", "Saturation", "Exciter")
+         "MultibandCompressor", "Saturation", "Exciter", "Phaser")
 
 
 def _bypass_index(cls):
