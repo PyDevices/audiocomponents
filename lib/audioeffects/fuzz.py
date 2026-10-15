@@ -851,7 +851,7 @@ class Fuzz(_component.Component):
         self._route()
         self._refresh()
 
-    def _charge_output(self, rewire=False):
+    def _charge_output(self, rewire=False, whole=False):
         """Settle the output pole on the offset before the first block.
 
         Bias is an offset into an asymmetric curve, so the shaper answers a
@@ -904,7 +904,7 @@ class Fuzz(_component.Component):
                 break
             # The first block back is what the pole was holding before the
             # shapers were re-pointed, so it says nothing about this offset.
-            if index and not any(array("h", bytes(data))):
+            if index and not whole and not any(array("h", bytes(data))):
                 break
         if rewire:
             for node, source in self._charge_wiring:
@@ -1055,8 +1055,10 @@ class Fuzz(_component.Component):
         # The pole now reads a shaper that has stood idle: cleared and
         # charged on the offset, as a live Bias move charges it, or the
         # move to or from the lean patch thumps out of silence.
+        # All `CHARGE_BLOCKS`, as a build without `get_buffer` charges:
+        # the early stop left 1 LSB that surfaced 120 frames on.
         if self._ready and not self._constructing:
-            self._charge_output(rewire=True)
+            self._charge_output(rewire=True, whole=True)
         self._wet_delay = _group_delay_samples(
             self._lean_oversample if lean else self._oversample)
 
