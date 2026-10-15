@@ -88,7 +88,7 @@ CONTROL_EVENTS = ("E4-", "E5-", "E6-", "E9-", "E11-")
 #: A scope narrows a row; give each kind at most once, in either order:
 #:
 #: - a tuple of patches, the configurations the row covers (None for the
-#:   constructor defaults): ("Octaver", "E5-", "P1", (1, 2, 5));
+#:   constructor defaults): ("Octaver", "E5-", "P1", (1, 2, 5, 6));
 #: - a string naming the interpreters it holds on, `sys.implementation.name`,
 #:   comma-separated: ("PitchShifter", "E10-reset", "P4", "circuitpython").
 #:
@@ -383,6 +383,9 @@ DECLARED = {
     ("Octaver", "E6-p5", "P1"):
         "the event changes to patch 5, where Octave 1 at 0 is a level move,"
         " not the wire, so the output is not the source by design",
+    ("Octaver", "E6-p6", "P1"):
+        "the event changes to patch 6, where Octave 1 at 0 is a level move,"
+        " not the wire, so the output is not the source by design",
     ("Octaver", "E12-p1", "P1"):
         "the move before the first pull is to patch 1, where Octave 1 at 0"
         " is a level move, not the wire, so the output is not the source by"
@@ -395,11 +398,15 @@ DECLARED = {
         "the move before the first pull is to patch 5, where Octave 1 at 0"
         " is a level move, not the wire, so the output is not the source by"
         " design",
+    ("Octaver", "E12-p6", "P1"):
+        "the move before the first pull is to patch 6, where Octave 1 at 0"
+        " is a level move, not the wire, so the output is not the source by"
+        " design",
     ("Octaver", "E11-mix+patch", "P1"):
-        "the event ends on patch 5, where Octave 1 at 0 is a level move,"
+        "the event ends on patch 6, where Octave 1 at 0 is a level move,"
         " not the wire, so the output is not the source by design",
     ("Octaver", "E11-3moves", "P1"):
-        "the event ends on patch 5, where Octave 1 at 0 is a level move,"
+        "the event ends on patch 6, where Octave 1 at 0 is a level move,"
         " not the wire, so the output is not the source by design",
     ("Octaver", "E5-", "P5"):
         "family limit, disclosed (audiocomponents#117): a control that jumps"
@@ -688,12 +695,12 @@ for _name, _why in (
     for _event in CONTROL_EVENTS:
         DECLARED[(_name, _event, "P5")] = _why
 
-#: At patches 1, 2 and 5 Octave 1 at 0 is a level move, not the wire, so P1
-#: (Mix 0 is the source) does not apply there, on any event.
+#: At patches 1, 2, 5 and 6 Octave 1 at 0 is a level move, not the wire, so
+#: P1 (Mix 0 is the source) does not apply there, on any event.
 for _event in ("E1-", "E2-", "E4-", "E5-", "E6-", "E8-", "E9-", "E10-",
                "E11-", "E12-"):
-    DECLARED[("Octaver", _event, "P1", (1, 2, 5))] = (
-        "at patches 1, 2 and 5 Octave 2 is up or Direct is under 1, so"
+    DECLARED[("Octaver", _event, "P1", (1, 2, 5, 6))] = (
+        "at patches 1, 2, 5 and 6 Octave 2 is up or Direct is under 1, so"
         " Octave 1 at 0 is a level move, not the wire, and the output is"
         " not the source by design")
 

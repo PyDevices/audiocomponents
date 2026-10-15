@@ -16,6 +16,11 @@ there, and are recorded in its changelog.
   and sits 3 dB lower (-3.97 dB), so a worst-phase tone driven into it
   still reads -0.96 dB TP. The docstring now says which patches an S3
   cannot play.
+- **`Octaver` patch 6, *Both octaves - lean*:** Both octaves for an
+  ESP32-S3, where patch 1 cannot keep up. It has the same balance of the
+  note and the two octaves, 2 dB louder (Direct at 1, both octaves at
+  0.87); turn the level after it down 2 dB and you hear Both octaves. The
+  docstring says so.
 - **`MultibandCompressor`'s docstring says to build it with `bands=2` on an
   ESP32-S3**, where no three-band patch keeps up (107 % of a block; two
   bands is 71 %). No patch can do this instead: every macro position builds

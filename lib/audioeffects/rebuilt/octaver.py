@@ -169,6 +169,11 @@ class Octaver(_component.Component):
     A control that jumps makes the output step: move it in small steps
     from the host if you need it smooth.
 
+    **On an ESP32-S3, Both octaves can't keep up and the sound breaks up;
+    play Both octaves - lean instead.** It has the same balance of your
+    note and the two octaves, 2 dB louder: turn the level after it down
+    2 dB and you hear Both octaves.
+
     **Wire, latency, tail.** With both octaves at 0 and Direct at 1 the
     output is the input, byte for byte, however the host's buffers are
     cut.
@@ -215,6 +220,10 @@ class Octaver(_component.Component):
     #: `_component.macro_of` of the card's settings: 0.7 is 89, 0.8 is 102,
     #: 0.6 is 76; Tracking 90/50/200 Hz is 45/12/89; Tone 1 324/250/700 Hz
     #: is 50/39/82; Tone 2 70.3 Hz is 24; Sensitivity -80 dBFS is 25.
+    #: Patch 6 is patch 1 with Direct at 1 and both octaves at 111 (0.874),
+    #: the same balance 1.9 dB up. A mixer voice at exactly 1 passes its
+    #: samples through with no multiply, which is the 0.07 ms an ESP32-S3
+    #: lacks for patch 1, where all three levels are under 1.
     PATCHES = {
         0: ("Octave down under the dry", (127, 89, 0, 45, 50, 24, 25)),
         1: ("Both octaves", (102, 89, 89, 45, 50, 24, 25)),
@@ -222,6 +231,7 @@ class Octaver(_component.Component):
         3: ("Bass guitar", (127, 102, 0, 12, 39, 24, 25)),
         4: ("High on the neck", (127, 89, 0, 89, 82, 24, 25)),
         5: ("Two octaves down alone", (0, 0, 127, 45, 50, 24, 25)),
+        6: ("Both octaves - lean", (127, 111, 111, 45, 50, 24, 25)),
     }
 
     def _build(self, direct=1.0, octave1=0.7, octave2=0.0, tracking_hz=90.0,

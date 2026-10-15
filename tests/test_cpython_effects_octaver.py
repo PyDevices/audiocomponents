@@ -1218,6 +1218,37 @@ class TheSurface(TestCase):
                         render(Octaver, values, rate, 1,
                                options=self._values_of(patch)))
 
+    def test_the_lean_patch_is_both_octaves_2_db_louder(self):
+        # Patch 6 is patch 1 with Direct at 1, so the mixer passes the dry
+        # through with no multiply, and the octaves raised to keep patch
+        # 1's balance. Turned down by patch 1's Direct level it renders
+        # patch 1, to the octave levels' rounding on the 128-step grid.
+        name, grid = Octaver.PATCHES[6]
+        self.assertEqual(name, "Both octaves - lean")
+        self.assertEqual(Octaver.PATCHES[1][0], "Both octaves")
+        one = Octaver.PATCHES[1][1]
+        self.assertEqual(grid[DIRECT], 127)
+        self.assertEqual(grid[OCT1], grid[OCT2])
+        self.assertEqual(grid[TRACKING:], one[TRACKING:])
+        down = one[DIRECT] / 127.0
+        self.assertAlmostEqual(20.0 * math.log10(down), -1.90, places=2)
+        self.assertLess(abs(grid[OCT1] * down - one[OCT1]), 0.2)
+        for rate in RATES:
+            for channels in (1, 2):
+                with self.subTest(rate=rate, channels=channels):
+                    values = self._material(rate, channels)
+                    both = render(Octaver, values, rate, channels,
+                                  options={"patch": 1})
+                    lean = render(Octaver, values, rate, channels,
+                                  options={"patch": 6})
+                    peak = max(abs(v) for v in both)
+                    self.assertGreater(peak, 1000)
+                    self.assertLess(max(lean), 32767)
+                    self.assertGreater(min(lean), -32768)
+                    worst = max(abs(lean[i] * down - both[i])
+                                for i in range(len(both)))
+                    self.assertLessEqual(worst, 0.003 * peak + 3.0)
+
     def test_a_patch_before_the_first_pull_renders_as_fresh(self):
         # Arming plays only silence, so the all-pass has heard nothing yet:
         # a Tracking move before the first pull lands at once, not walked
@@ -1410,6 +1441,12 @@ CLAIMS = (
     ("A control that jumps makes the output step: move it in small steps "
      "from the host if you need it smooth.",
      "DECLARED:Octaver,E4-,P5"),
+    ("On an ESP32-S3, Both octaves can't keep up and the sound breaks up; "
+     "play Both octaves - lean instead.",
+     "TheSurface.test_the_lean_patch_is_both_octaves_2_db_louder"),
+    ("It has the same balance of your note and the two octaves, 2 dB "
+     "louder: turn the level after it down 2 dB and you hear Both octaves.",
+     "TheSurface.test_the_lean_patch_is_both_octaves_2_db_louder"),
     ("With both octaves at 0 and Direct at 1 the output is the input, byte "
      "for byte, however the host's buffers are cut.",
      ("TheSurface.test_the_wire_is_the_input",
