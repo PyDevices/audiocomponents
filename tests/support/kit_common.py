@@ -108,25 +108,6 @@ DECLARED[("ShimmerHall", "fresh", "reset@8+m0=0/", "circuitpython")] = (
     "Octave Bloom, then Rise after a reset: CircuitPython's own PitchShift"
     " keeps its read and write positions across the reset (audiodsp#240)")
 
-# Overdrive in mono: a fresh instance's first block, the one its voices
-# prime at construction, renders the first 8 frames of material that is
-# already sounding at frame 0 about 1.28 times as loud as a running
-# instance does (-37 against -29 LSB at the first frame, 789 LSB apart at
-# most); one fed a block of silence first renders what the reset instance
-# renders. So the reset is right and the fresh build's first block is the
-# odd one; it shows only where the reset lands in the noise burst
-# (reset@8). Stereo is exact. Declared with that bound until it is found
-# (audiocomponents#142).
-for _rate in RATES:
-    for _key in (["reset@8/"] + ["reset@8+m%d=%d/" % (_i, _v)
-                                 for _i in range(7) for _v in (0, 64, 127)]
-                 + ["rpr%d@8/" % _k for _k in range(8)]):
-        DECLARED[("Overdrive", "fresh", "%s%d/1/" % (_key, _rate))] = (
-            "in mono a fresh build's construction-primed first block renders"
-            " its first 8 frames about 1.28x a running instance's (at most"
-            " 789 LSB apart); the reset matches the running instance"
-            " (audiocomponents#142)")
-
 # Flanger and ExampleStock, the stock tier on a node that primes: an
 # upstream effect node's `play()` takes its first block from the source at
 # once, so a reset before the first pull still holds that block and plays

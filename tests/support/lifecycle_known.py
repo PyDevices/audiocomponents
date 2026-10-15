@@ -38,8 +38,9 @@ R_EXCITER_PART = (
     "a reset on 100-frame buffers runs 28 frames ahead of the control"
     " afterwards; with #155's float residue (audiocomponents#157)")
 R_142 = (
-    "a rejoin differs from a fresh instance in its first two frames, at"
-    " most 71 LSB (audiocomponents#142)")
+    "at patch 6 and 22.05 kHz a rejoin off Mix 0 differs from a fresh"
+    " instance a few frames in; the 48 kHz first-frames half of the finding"
+    " closed when Overdrive began building lazily (audiocomponents#142)")
 R_DIST_P7 = (
     "found at land3: a move to patch 7 before the first pull, at 22.05 kHz"
     " stereo only, renders its first block 10 frames off a fresh build"

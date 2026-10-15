@@ -50,13 +50,11 @@ class AResetIsAFreshInstance(unittest.TestCase):
         got = reds("Overdrive")
         self.assertEqual(got, [], "\n".join(got[:8]))
 
-    @unittest.expectedFailure
     def test_overdrive_mono(self):
-        # Open, and declared in kit_common.DECLARED with its bound: in mono
-        # a fresh build's construction-primed first block renders its first
-        # 8 frames about 1.28x what a running instance renders (789 LSB at
-        # most); the reset matches the running instance. Read past the
-        # declaration, cell by cell.
+        # audiocomponents#142's mono half: a fresh build's construction-
+        # primed first block rendered its first 8 frames about 1.28x a
+        # running instance's. Since Overdrive builds lazily (Phase 7) the
+        # fresh build primes silence and a reset matches it, cell by cell.
         for patch in kc.patches(kc.resolve("Overdrive")):
             self.assertEqual(kit_fresh.reset_cell(
                 kc.resolve("Overdrive"), 48000, 1, patch, {},
