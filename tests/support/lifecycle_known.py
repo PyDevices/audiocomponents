@@ -17,10 +17,6 @@ R_STATE_RAMP = (
     " and since audiodsp v0.6.6rc9 a filter corner move walks over 20 ms"
     " (#162's fix), so a move and back meets the uninterrupted control up"
     " to 20 ms past the bound, where it used to step")
-R_OCT_PREPULL = (
-    "a patch picked before the first pull glides the tone filter for about"
-    " 30 ms: Octaver's graph has run a block at construction, so rc9's"
-    " biquad counts the change as a move (audiocomponents#164)")
 R_PHASE = (
     "a free-running phase (an LFO, a carrier, a sample-and-hold count)"
     " restarted by a reset or moved by a rate or patch change never meets"
@@ -268,8 +264,6 @@ KNOWN_RED = {
     ('Notch', 'E4-', 'P5'): (20, '49447bfe', None, None, R_JUMP),
     ('Notch', 'E6-', 'P4'): (57, '19ae7e40', None, None, R_STATE_RAMP),
     ('Notch', 'E6-', 'P5'): (56, '9bcc846b', None, None, R_JUMP),
-    ('Octaver', 'E12-p3', 'PF'): (4, 'd0899bc8', None, None, R_OCT_PREPULL),
-    ('Octaver', 'E12-p4', 'PF'): (4, 'fe60e0b4', None, None, R_OCT_PREPULL),
     ('Overdrive', 'E1-reset@block', 'P4'): (34, 'aaf11cd2', None, None, R_STATE),
     ('Overdrive', 'E1-reset@part', 'P4'): (34, '75164359', None, None, R_STATE),
     ('Overdrive', 'E10-macros', 'P4'): (4, 'ca627259', None, None, R_STATE),
