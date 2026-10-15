@@ -690,10 +690,14 @@ class OldConstantTail(lowpass.LowPass):
 class TheTailAfterAMove(unittest.TestCase):
     """A large move down in Frequency as the input stops rings out inside
     the bound read after the move (audiocomponents#114), at the cells where
-    the old constant was short; the old constant is red there."""
+    the old constant was short. Since audiodsp v0.6.6rc9 the biquad walks a
+    corner move over 20 ms (#162) and no longer carries the old section's
+    state into the new one, so the move rings far less and even the old
+    constant holds there now."""
 
     #: (rate, channels, patch, Frequency from, Frequency to). Patch 4's
-    #: move to 20 Hz rang 279 149 frames against the old 204 800.
+    #: move to 20 Hz rang 279 149 frames against the old 204 800 up to rc8,
+    #: and 60 999 and 132 063 at rc9.
     CELLS = ((48000, 1, 4, 127, 0), (48000, 2, 4, 96, 0))
 
     def test_the_ring_ends_inside_the_bound(self):
@@ -705,10 +709,11 @@ class TheTailAfterAMove(unittest.TestCase):
                 moves=((0, low),))
             self.assertLessEqual(got, bound, (rate, channels, patch))
 
-    def test_the_old_constant_is_red(self):
+    def test_the_walk_keeps_the_ring_inside_the_old_constant(self):
+        # Red up to audiodsp rc8, where the move rang past it.
         import tail_ring
         for rate, channels, patch, high, low in self.CELLS:
             got, bound = tail_ring.ring(
                 "LowPass", rate, channels, patch, start=((0, high),),
                 moves=((0, low),), cls=OldConstantTail)
-            self.assertGreater(got, bound, (rate, channels, patch))
+            self.assertLessEqual(got, bound, (rate, channels, patch))
