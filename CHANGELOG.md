@@ -6,7 +6,7 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
-## Unreleased
+## v0.4.0 (2026-10-15)
 
 ### Changed
 
@@ -445,6 +445,304 @@ there, and are recorded in its changelog.
   silence at every rate, channel count and patch on CPython, MicroPython and
   CircuitPython (at most 1 LSB at Saturation's off-centre patches, what its
   constructor's charge leaves); nothing else moved with no control moved.
+
+- Pin audiodsp at v0.6.6 and raise both floors to >=0.6.6 (#169)
+- Octaver: Both octaves - lean for the ESP32-S3 (#168)
+- CI: a pull request checks out its history, so the lifecycle scope works; the node matrix takes the same rule
+- Kit graph: the exhausted probe is a block short of the render
+- GraphicEQ at rc9: the detent fault bites as a departure from a fresh start, and the old tail figure holds
+- Octaver: a patch picked before playback starts its filters there at rc9 (#164)
+- DynamicEQ: a Frequency move's ring stays inside the old bound at rc9
+- Lifecycle gate at audiodsp rc9: #162's rows come out
+- LowPass, BandPass, Notch: a Frequency move's ring stays inside even the old bound at rc9
+- Pin audiodsp v0.6.6rc9 (96abd34): a biquad coefficient move walks over 20 ms (#162)
+- CI: a shared change's pull request runs a nine-class lifecycle sample, about 13 minutes
+- CI: a pull request's lifecycle gate runs only the classes its change can move
+- Lifecycle: LowPass, BandPass and Notch's Frequency-to-bottom rows are #162
+- Lifecycle: Distortion's patch-7 pre-pull residue is #161
+- Overdrive: #142's mono fresh-build half is closed by the lazy build
+- Kit: Overdrive's nogb pole-charge row covers the five E10 cells lazy building added
+- TapeDelay: a balance move glides at audiodsp rc8
+- LIFECYCLE.md: the matrix test gates every class
+- Lifecycle gate: every class the package serves, its reds written down
+- Bitcrusher: the band limit's first section lets go of a tap's chunk on the way back from Mix 0
+- Saturation: the cold-start step on un-bypass is a known red (#160)
+- Fuzz: the lean route charges the pole for every block, as a build without get_buffer does
+- Restate two plants the lazy re-arm made inert (lc-1)
+- CabinetSim: the clamp test reads the kit's huge-value cells too
+- Pin audiodsp v0.6.6rc8 (f83ddc6); the Splitter bypass-return cases run unconditionally
+- Saturation: clear the incoming shaper only when the outgoing one reports silence (recentre)
+- Vibrato: a new clock law goes to the node, which swaps it at zero depth (7f F5)
+- Lifecycle: declare Vibrato's 1 LSB rounding flip on E6-p0 at patch 5
+- test_first_pull: DeEsser's head-node replay is not this cause
+- Saturation: clear the incoming shaper with a reset on the lean route (a re-play left it)
+- Vibrato: Rate, Depth and Delay moves glide; Level arms the same on every interpreter (7f F5, F6)
+- Phaser: a Drive, Mix, Feedback or Stages move no longer replays the source (7f F4)
+- Mix back up from 0 plays nothing from before, in six classes (7f F3)
+- WIP: re-point without reset; Compressor primes the routed stage
+- WIP lifecycle F1, F2, F7: lazy re-arm on controls, Overdrive LAZY_BUILD, lean-route charge
+- Kit: declare Saturation's Output +12 cells on a 0 dBFS sine
+- Limiter: Delivery Ceiling - lean for the ESP32-S3; MultibandCompressor: bands=2 on an S3
+- MultiTapDelay tests: LIFECYCLE_MICROPYTHON and LIFECYCLE_CIRCUITPYTHON name the natives
+- Lifecycle: declare Tremolo's E1 P4, as Vibrato's is
+- audioeffects README: Tremolo's default and L1 words, and only the test modules that exist
+- Lifecycle matrix test: LIFECYCLE_CLASSES reaches every class, with the kit's options
+- Without get_buffer the build always has _pull_node: drop the dead guards
+- Pin audiodsp at v0.6.6rc6
+- LAZY_BUILD hands up through _pull where it exists; tests follow the lazy build
+- Mix 0 before the first pull is the wire; Clean Edge no longer cracks
+- Saturation: a gain move in silence with Hysteresis on plays nothing
+- Kit: declare Overdrive's E10-patch p6 nogb cell; drop the back-to-back nogb declarations now clean
+- Without get_buffer, pull through a scratch mixer voice: MultiTapDelay keeps its source, Fuzz and Overdrive charge their pole, the lazy re-arm works on boards
+- Saturation: say Output can clip at full input, declare the all-at-top rail, hold the Hysteresis click red
+- Vibrato: Engage follows Rise on every interpreter, on the node's own depth ramp
+- Convolve node tests: name the class tests that cover the node now
+- Changelog: Tremolo's knobs, and Fuzz's and Bitcrusher's tail bounds
+- Retire _core.py and the pre-contract classes the rebuilds replaced
+- Saturation tests: say why the clean class misses TU1 at Bias's stops
+- Fuzz: tail_samples is None with Bias off centre
+- Bitcrusher: the dither tail bound covers maximum Dither, and is None past the gate
+- Saturation: Bias sounds over its whole travel (tube reach +-1.25 V of grid)
+- Tremolo: a knob moves the LFO in place instead of restarting it
+- audioeffects README: all 45 classes by group, with a latency table at 48 kHz
+- Kit's own test: the control clamps the huge values the bad-macro cell now sends too
+- Kit fresh: Overdrive's mono first block (audiocomponents#142) covers the new reset-patch-reset cells
+- Pin audiodsp at v0.6.6rc5
+- Lifecycle matrix: ShimmerHall's 144 CircuitPython-own cells, counted one event at a time
+- A reset onto settings that route around the graph leaves it unstranded, as a build does
+- ConvolutionReverb: the wet trim is read off the room, through a soft knee
+- ConvolutionReverb: the wet trim is a soft knee on a Decay x Damping fit, unity on rooms that are clean
+- ConvolutionReverb: a wet trim that follows Damping, and an input ceiling of -12 dBFS everywhere
+- Clamp a huge macro value, and keep the last good transport on Phaser and Flanger
+- Reset after a rebuild: the lazy silence and Ports are dropped once a graph built again has released them
+- Kit fresh: declare the pitch shifters' reset on CircuitPython's own PitchShift
+- Kit args: back at patch 0 reads patch 0's values, not a fresh instance's
+- DeEsser: its option defaults by name, the shape the kit's ctor cells read
+- A reset arms from the source where get_buffer is compiled out, and the node matrix counts MultiTapDelay on CircuitPython
+- Kit fresh: declare the stock tier's reset before the first pull (Flanger, ExampleStock)
+- Harmonizer: the ramp probe reads a quiet first channel, where the node splices as it always did
+- ShimmerHall: a held G3 lands on the octave, and the climb fades at the top of the band
+- PitchShifter: Feedback's stack restated at v0.6.6rc4: the rail at unison, within 6 dB elsewhere
+- Cost tool: the +options rows run the loop shifter, so they take v0.6.6's two shifter fixes
+- ConvolutionReverb: every patch takes at least -12 dBFS; -21 dBFS stays the worst case anywhere on the knobs
+- A reset re-arms lazily, so it takes nothing from the source; Bitcrusher joins
+- DynamicEQ, MultibandCompressor: the reset's walk leaves the stock Mixer alone
+- Phaser: a reset starts the sweep again
+- Phaser: a bar is the host's time signature, and transport_changed() follows it
+- ParametricEQ, DynamicEQ, MultibandCompressor: a reset leaves no stale state
+- Tremolo, AutoPan, RingMod: a reset starts the LFO again
+- Exciter, Compressor, Distortion, Overdrive: a reset arms the output mixer as a build does
+- Pin audiodsp at v0.6.6rc4
+- ConvolutionReverb: four patch rooms carry a level trim, so every patch is clean to -12 dBFS
+- Lifecycle: declare Saturation's coupling residue and DeEsser's post-reset settle under P4
+- DeEsser: a reset part-way through a source buffer keeps the frames it took
+- Flanger: a bar is the host's time signature, numerator x 4 / denominator
+- AirSpace: a reset from a longer patch reports a fresh instance's tail
+- Vibrato and Fuzz: E1 P4 declared with its cause, PR kept live; the kit docs
+- One answer to a macro value off the grid: clamp, NaN to the bottom stop
+- ConvolutionReverb: state the input ceiling, -21 dBFS for a synthesized room
+- Phaser: a bar is the host's time signature, and transport_changed() follows it
+- MultiTapDelay: the Time move after a reset is a normal test, for audiodsp's node fix
+- Kit fresh: boot is informational, never red
+- DeEsser: a reset is a fresh instance at patch 0
+- Saturation: Bias is folded into the table, so silence answers silence and nothing is charged
+- DigitalDelay and SlapbackDelay: a fresh instance is patch 0, so a reset lands where it starts
+- Saturation: a reset onto Mix 0 inside a rack leaves the graph un-stranded, as built
+- MultiTapDelay: the Time move after a reset, held as an expected failure on the node
+- Saturation: a reset plays no stale block, and latency after the lean patch is the onset again
+- Kit: the fresh check, a reset that comes back as a fresh instance from every patch
+- Flanger: the meter follow keeps the base's NaN rule and its path
+- Flanger: follow the host's meter as well as its tempo; the attacker's tests
+- Distortion: say why the skipped charge changes nothing, and hold every patch to it
+- Distortion: the scoop patches build without get_buffer
+- DeEsser: reset builds its Splitters again instead of pulling them empty
+- Vibrato: its CPython re-blocking sources pull the graph in-graph, not through get_buffer
+- Kit: nogb takes patches=, so a slow class runs a patch at a time
+- Flanger: a thin class on audiodelays.Flanger; both old flangers deleted
+- Pin audiodsp at v0.6.6rc3, the release of the Phase 7 node batch
+- Kit: nogb runs every patch on its own and on all three interpreters
+- AUDIODSP_PIN: rewrap the 7b note
+- Pin audiodsp at f7a86c9, the 7b candidate for v0.6.6rc3
+- Pin audiodsp at 9e72eac, the 7b candidate for v0.6.6rc3: the loop shifter's splice matches a chord as a chord
+- Pin audiodsp at the Phase 7 node batch (bd7f409), and qualify audiodelays.Flanger in the node matrix
+- CI: run the tests in parallel and keep pull-request runs short (#139)
+- Lifecycle: ShimmerHall's rows for the Rise defaults
+- Roadmap: AutoWah, Wah, SpringReverb, Ensemble and FrequencyShifter as later effects (#138)
+- StereoWidener, Rack, Octaver, PitchShifter, Harmonizer, AirSpace and ShimmerHall are adopted: Phase 6's seven
+- ShimmerHall: the defaults become Octave Rise, Octave Bloom in Rise at Rise 0, which an ESP32-S3 keeps up with; Octave Bloom moves to patch 6
+- ShimmerHall: say the Bloom patches cannot keep up on an ESP32-S3 and to play a Rise patch there, pinned to the patches in Bloom
+- ShimmerHall: Slow Rise's Damping from step 102 to 86 so the climb stays clean at 22.05 kHz; a sweep of every upward patch, red on the card's Slow Rise
+- AirSpace: the docstring names what the -17 dBFS ceiling covers, and the -26 dBFS for Feedback, Decay and Time open together
+- test_kit: write the fixture card and claims module as UTF-8, as the checks read them (Windows wrote cp1252)
+- AirSpace: the input ceiling is -17 dBFS, measured at Mix 1 over 12 s
+- ShimmerHall tests: the fold-back figures sweep the note and name a silent pass
+- ShimmerHall: the fold-back and the splice's cancelled line told in a player's words, each with a test; a seventh patch, Octave Bloom - lean (Rise at Rise 0), for an S3; the lower-rate band claim struck
+- CHANGELOG: tidy the merge
+- Curve tables: the Octaver's comparator is a step by design; the exemption names it and is held to a table the scan finds
+- ShimmerHall tests: the get_buffer-hidden cases cover a reset from Mix 2, a return from Mix 0 to 127 and a Mix move before the first pull
+- ShimmerHall: patches and a rack's put-back share one refresh (_apply_positions); the P4 reasons name the shifter's splice restart; the CircuitPython-only splice-phase rows; a rack holding it resets to a fresh rack's render
+- Kit: declare PitchShifter's BIPOLAR Mix against its card (a recorded departure)
+- PitchShifter: the lifecycle and kit tables on the landing branch's format: the CircuitPython-only rows scoped, the E12 and PR cells of its own splice, the Feedback-top ceiling cells
+- AirSpace: a whole-step check that takes inf and NaN
+- Kit paperwork: a card's range row (1-3, Voice 1 ... Voice 3) names one macro per index
+- ShimmerHall: a reset, a return from Mix 0 and a Mix move before the first pull play the dry at the new level from frame 0; T1 reads the exact Bloom the constructor keeps
+- Octaver: a patch and a return from the wire start where a fresh instance does
+- PitchShifter: patches and a rack's put-back share one refresh (_apply_positions), a put-back at Mix 0 waits to be armed; a rack holding one resets to a fresh rack's render
+- PitchShifter: a reset or a return from Mix 0 no longer hands the first-block window back, so a Mix sweep after a reset keeps the repeats; the early-read sentence covers a patch right after a reset
+- Harmonizer: name CircuitPython's own pitch shifter in the reset line, tied to the E10 declared rows
+- PitchShifter: a reset or a return from Mix 0 is new again, only a move that changes a voice's level re-arms, the early-output-read limit and the Feedback intervals are in the docstring
+- StereoWidener: a rack's reset keeps the constructor's Delay
+- ShimmerHall: skip E8 on CircuitPython (upstream PitchShift), disclose it, and state the longest tail bound
+- Harmonizer: a voice turned off plays silence from the move on, not the dry at its old level
+- Lifecycle PR: a return from Mix 0 is judged against a fresh instance only when Mix 0 routed around the graph
+- ShimmerHall: declare only the macros whose E4 cells are red
+- Octaver: dividers clock on ticks under Sensitivity, so a fading note never plays itself; ceiling -15 dBFS; Sensitivity and ranges stated at their level
+- ShimmerHall tests: read the left channel without a slice step, for MicroPython
+- ShimmerHall tests: read the 48 kHz traits off a stereo render's left channel, as the card does
+- PitchShifter: levels set before the first pull hold from frame 0, the CircuitPython splice and the Feedback stacking are in the docstring
+- AirSpace: pull the mixer through a one-voice mixer where get_buffer is compiled out, a -12 dBFS ceiling, the flutter and gentle-filter limits, a constructor value kept off a default's step
+- Kit round 3: scoped DECLARED rows, pre-pull moves against a fresh instance (E12, PF), reset renders as fresh (PR), ceiling combinations and low notes, nogb at every patch, the card's surface table
+- ShimmerHall tests: the ceiling test puts the stated ceiling back
+- ShimmerHall: declare the hall's lifecycle P4 cells and the N1 step, and hold a refused call to the constructor's values
+- Harmonizer: the input ceiling covers every setting (-12.1 dBFS), with a test that renders the loudest two
+- PitchShifter lifecycle: E10-reset and E10-mix0 P4 declared as CircuitPython-only (its PitchShift keeps its positions through a clear)
+- PitchShifter: the stranded mark clears at the first wiring, a cleared graph is re-armed as the constructor arms it, the unity claim says when the voice sits still
+- Octaver: Octave 2 on its own flip-flop; voices armed quietly
+- Node matrix: CircuitPython's upstream Echo, pitch shifters and Mixer keep the behaviour audiodsp v0.6.6rc1 fixed elsewhere (KNOWN_P6)
+- ShimmerHall (rebuilt, Phase 6): a pitch shifter around the rebuilt Reverb's hall, Bloom and Rise, with its six traits and planted faults
+- Harmonizer T1: hold each solo channel to the input's at the voice's gain and pan
+- Lifecycle matrix: skip a cell that cannot finish on one interpreter; CircuitPython's upstream Echo and pitch nodes at E8
+- Harmonizer: declare the CircuitPython-only E10 cells (its PitchShift keeps positions across a reset)
+- Octaver: review fixes (Octave 2 on tails, ceiling, range, decay, wire)
+- PitchShifter (rebuilt, Phase 6): a splice shifter with Pitch, Fine, Mix, Delay and Feedback, each repeat shifted again
+- Lifecycle matrix: CircuitPython's MultiTapDelay keeps upstream's stray sample on a Time move that audiodsp#241 fixed elsewhere
+- Node matrix: declare the control-jump step on every node (the family's ruled disclosure)
+- Kit: nogb runs the lifecycle events, so it takes the lifecycle's options
+- Harmonizer: three pitch shifters at fixed intervals under the dry, its six traits and planted faults
+- Rack reset returns every pedal to exactly how the rack built it
+- DeEsser: restate the STATE plant that audiodsp#229 made inert; record the pin move in the changelog
+- AirSpace: re-play the voices on a return from Mix 0 where get_buffer is compiled out
+- AirSpace: declare the 22.05 kHz lifecycle cells and tie the family sentence
+- Octaver: the Phase 6 rebuild, its trait tests, plants and claims
+- Effects kit: refused-call cells in args and a nogb check (get_buffer hidden), each red on a plant
+- StereoWidener: wire the voices the same way without get_buffer
+- Rack lifecycle runs on a chain without Vibrato and Fuzz, so the E1 P4 row no longer hides Rack's own reset faults
+- StereoWidener: reset() re-plays the Haas voices without get_buffer; a refused program_change keeps the exact Delay
+- MultiTapDelay: restate the Mixer-tail plant (audiodsp#229 made it inert) and the CPython dry check (audiodsp#228)
+- AUDIODSP_PIN: move to audiodsp v0.6.6rc1 (30cbbf6)
+- AirSpace: a tape echo sent into a chamber, rebuilt from its Phase 6 card
+- StereoWidener: patches play their Delay on every instance, no stale block without get_buffer
+- Rack (rebuilt): the serial chain on the contract's base
+- One path for a patch and a restore: Component._apply_positions
+- Node matrix: the pitch nodes' by-design cells
+- StereoWidener (rebuilt, Phase 6): Haas and Mid/Side on Width, Delay and Character
+- Node matrix: the shimmer loop's and Echo's by-design cells
+- Node matrix: the comparator and all-pass the Octaver stands on
+- Kit: read sources as UTF-8 on every platform
+- The kit's own proof and its page
+- The effects kit: tail, plant validity, claims, readback and arguments, input ceiling and paperwork checks
+- test_node_matrix: drop an unused import
+- The lifecycle matrix on single audiodsp nodes
+- Lifecycle matrix: MultiTapDelay no longer differs between CPython and the native interpreters (#132)
+- transport_changed(): a synced effect follows a host tempo change without a control moving (#118) (#130)
+- A policy for smoothing control moves: what ramps, for how long, and why in the nodes (#117) (#129)
+- tail_samples is a true bound after a move, with Key Listen, and for Vibrato's filters (#131)
+- Move AUDIODSP_PIN to audiodsp main (eb2d20d) and restate the tests that pinned the old nodes (#128)
+- CI runs once per change: pushes to main and pull requests; documentation-only changes skip it (#126)
+- Generate the effect probes on demand; no WAVs in the repository (#124)
+- AGENTS.md: instruments are tuned by ear; a kept change names itself in REBUILT in the same commit (#125)
+- Comments: reword internal notes for users (#123)
+- Add ROADMAP.md for planned work, and make public text stand on its own (#122)
+- Release PRs from publishing-v13: the description says what the PR changes and what merging does
+- A root manifest.py, so a firmware build can freeze audioeffects and audioinstruments (#121)
+- TapeDelay, AnalogDelay, PingPongDelay, MultiTapDelay, Reverb and ConvolutionReverb are adopted: Phase 5's last six
+- MultiTapDelay: the docstring says patch 4 needs a P4-class board and patch 3 may, from the boards' figures at audiodsp v0.6.3
+- Pin audiodsp v0.6.3 (5afe010), the release: no source moved from v0.6.3rc3; 2280 tests OK at the pin
+- PingPongDelay tests: the planted stall's level is set on the planted class only, never on PingPongDelay itself
+- The lifecycle matrix's known-red table is empty: every Phase 5 class reads no red cell, with its exceptions declared
+- ConvolutionReverb trial of the second process at audiodsp v0.6.3rc3: the player's docstring with CLAIMS, the matrix's red cells declared
+- PingPongDelay under the trial of the second process at audiodsp v0.6.3rc3: the docstring cut to its claims with a CLAIMS table, tail_samples' clock stated and tested with settings moved mid-tail, the cross-feed stall cells (audiodsp#170) measured on this class, Mix's jump declared as the family limit
+- DigitalDelay, trial second fixer: Sync's two limits stated and tested (Time stops at 800 ms; the tempo is read only when a control moves or a patch loads), tail_samples' false high-pass mechanism struck
+- SlapbackDelay second fixer: strike the false free-running-wobble sentence and its CLAIMS row; the E1/E2 P4 DECLARED reasons now say a reset restarts the wobble where a fresh instance's starts and the unreset control is further along; test_a_reset_restarts_the_wobble backs it
+- MultiTapDelay: the dry passes at unity except on CircuitPython's stereo right lane near the rails; the docstring says so and a test holds it on the three interpreters
+- SlapbackDelay at audiodsp v0.6.3rc3, trial of the second process: the docstring rewritten with a CLAIMS table (tail_samples names its clock, tested with settings moved mid-tail), the matrix's red cells declared (the free-running Wow across a reset, the family's two limits)
+- MultiTapDelay, trial of the second process at audiodsp v0.6.3rc3: the docstring as the player's text with a CLAIMS table, the class's lifecycle rows declared
+- DigitalDelay under the trial of the second process at audiodsp v0.6.3rc3: the docstring cut to its claims with a CLAIMS table, tail_samples None with Repeat Cut in stated, the lifecycle matrix's red cells declared as the family limits
+- Reverb trial, second fixer: two false sentences struck (the darker short plate, the click silent within 2 s) with their CLAIMS rows
+- Reverb trial fix at audiodsp v0.6.3rc3: re-cut in place, exact Tone 0, claims on eight seed sets
+- TapeDelay: strike two false docstring sentences and their CLAIMS rows (a longer Time darkens only between 180 and 600 ms; the lean patch's loop still saturates on sustained loud material)
+- AnalogDelay, second fixer in the trial: three false claims struck, Sync's sentence clamped to Time's span and tested, the P4 and P5 declared reasons made true
+- TapeDelay under the trial of the second process at audiodsp v0.6.3rc3: Spread handed as set, the docstring cut to its claims with a CLAIMS table, the lifecycle matrix's red cells declared
+- AnalogDelay at audiodsp v0.6.3rc3, trial of the second process: Spread handed as set, the docstring rewritten with a CLAIMS table, the matrix's red cells declared
+- KNOWN_RED from the CPython printouts, and KNOWN_P6: MultiTapDelay renders other bytes on CPython than on both native interpreters after a Time move or a patch change
+- LIFECYCLE.md: how KNOWN_RED holds a finding, and the quick, full and per-class runs
+- The lifecycle matrix's KNOWN_RED: 31 findings over the eight Phase 5 classes, each a count and digest of its red cells in the quick and the full matrix, so the file passes today and goes red when a cell changes either way
+- ConvolutionReverb re-audit fix round 2 after the re-audit round 2 at audiodsp v0.6.3rc2: coming up short, the reset, the starved pull and the tail, restated and tested
+- The lifecycle matrix: one mechanical test of reset, reset_buffer, deinit, macro stops, Mix 0 and back, patch changes, a source that runs dry or ends, odd source buffers, moves before the first pull and several moves before one pull, judged by P1-P6 on three interpreters, with a planted fault for every property
+- The audiodsp floor moves to v0.6.3rc3
+- ConvolutionReverb re-audit fix round 1 after the re-audit round 2 at audiodsp v0.6.3rc2: the room-move paragraph stated as a rule, with no mechanism in it
+- ConvolutionReverb re-audit fix round 2 at audiodsp v0.6.3rc2: the room-move paragraph pinned to the room
+- TapeDelay re-audit fix round 2: Spread handed on a 1/4096 grid, so the stereo tail ends
+- MultiTapDelay re-audit fix round 2: the words for a build without get_buffer, and a plant for the tail reading
+- ConvolutionReverb at audiodsp v0.6.3rc2: the class on the fixed convolution node
+- TapeDelay re-audit fix round 1: patch 8 'Tape Delay - lean' on Brad's cost ruling
+- MultiTapDelay re-audit fix round 1: the class at audiodsp v0.6.3rc1, the first block, the source's own buffers and Mix 0
+- AnalogDelay re-audit fix round 2: Spread handed on a 1/4096 grid, so the stereo tail ends
+- ConvolutionReverb re-audit fix round 2: the re-audit round-1 audit's list, class side
+- Reverb fix round 2: the floor knee as the band four seed sets give (FLOOR_BANDS; the floor tests assert the band's top to 2 s inside and the stop under its bottom outside, green on seeds 7-14, 15-22, 23-30 and 31-38; the plate's run on seeds 23-30 as a test; LongDiffusers red through the new assertion at the plate, room and chamber); the capped room at Size 0.5 held to 15 % (5.1 to 12.9 % over four sets); docstring: the knee paragraph and Damped Plate's knee as bands, T10 named at its three carriers with the tones between them and Concert Hall at 0.1 ms quoted
+- AnalogDelay re-audit fix round 1: a Modulation move read phase by phase, T3's right channel held to its left
+- MultiTapDelay fix round 2: a second reset or Mix-0 return between two pulls keeps the heads on time, and rates below 12 825 Hz are refused
+- PingPongDelay re-audit fix round 1: the out stops tested with the filter playing, the tail after Cut measured
+- ConvolutionReverb re-audit fix round 1: the round-3 audit's list, class side
+- Reverb fix round 1: the audit's list, class side
+- AnalogDelay at audiodsp v0.6.3rc1: the stepping out, the Modulation step gone
+- PingPongDelay at audiodsp v0.6.3rc1: the out-stop cures and the stepping out
+- ConvolutionReverb fix round 2: the round-2 audit's list, class side
+- MultiTapDelay fix round 1: the tap node runs one block behind the dry, re-plugs through a port, and the output ends in a width-1 MidSide
+- ConvolutionReverb fix round 1: the audit's list, class side
+- TapeDelay at audiodsp v0.6.3rc1: the stepping out, the wow table kept at depth 0
+- Reverb Station B fix round: Tone's detent hands 2^-24 dB so the tilt keeps tracking (a Tone move out of silence stays silent); the dry a Character or Size rebuild skips is disclosed and pinned
+- Ten effects stop replaying old audio when a bypassed branch comes back
+- Reverb Station B: the rebuild and its tests
+- ConvolutionReverb Station B fix round: a start_ms that trims away every frame raises instead of building a dead-Mix wire; the docstring says a room-knob move drops the 256 frames in flight, dry included, at every Mix, and a test pins it at three rates, stereo and mono
+- ConvolutionReverb Station B: the rebuild and its tests
+- The audiodsp floor moves to v0.6.3rc1; the node workarounds come out
+- MultiTapDelay fix round: reset() from the lean graph (or never wired at Mix 0) no longer primes a block of the borrowed source; the primes read a silent block through the input adapter instead, and the tests call the kit's STATE and count the source's pulls, with the base reset planted
+- MultiTapDelay Station B: the rebuild and its tests
+- AnalogDelay fix round 2: T3's inside bar on the node's carry across the coefficient change, from the move's own first difference; the landing gap read; EarlyStepWalk and LandingBlip planted; T7 off-grid Mix
+- TapeDelay fix round 2: a Wow under grid 1 is red on T4's slow-band floor (the test that shows the new Not claimed line is needed)
+- TapeDelay fix round 1: step_cell reports the struck round-0 ratio, ungraded
+- PingPongDelay fix round 2: the audit's five sentences restated and tested, class side
+- TapeDelay fix round 1: the audit's list, class side
+- AnalogDelay fix round 1: T3's no-step bar carries the one-pole's memory; the walk is read where the head lands; T7 across Mix; CHANGELOG line
+- PingPongDelay fix round 1: the audit's list, class side
+- CombFilter: Tone's off stop no longer freezes the loop low-pass
+- PingPongDelay fix round 1: the whole-frame landing restated with the positions the node misses at 44.1 and 22.05 kHz
+- AnalogDelay Station B fix round: small Time moves land; knob-turn settle disclosed
+- TapeDelay Station B fix round 1: reachability reads the handed state; T1b's no-step clause and its two faults
+- AnalogDelay Station B: the rebuild and its tests
+- PingPongDelay Station B: the rebuild and its tests
+- DigitalDelay and SlapbackDelay are adopted: Phase 5's first two
+- Flanger: keep the docstring phrase its surrender test pins
+- TapeDelay Station B: the rebuild and its tests
+- Cost tool: two FeedbackDelay rows, and a class measured beside its row
+- CombFilter declares a finite tail_samples
+- Flanger: F8 restated to the ring the fixed node plays
+- DigitalDelay: Repeat Tone's out stop no longer freezes the loop low-pass
+- SlapbackDelay re-audit fix round 1: T3's band struck for a measured table, the landing count restated
+- SlapbackDelay fix round 2: the audit's two sentences restated, class side
+- SlapbackDelay fix round 1: the audit's list, class side
+- SlapbackDelay fix round: Tone out keeps the loop low-pass on the tap after Tone has been in; the Wow step disclosed
+- SlapbackDelay Station B: the rebuild and its tests
+- DigitalDelay re-audit fix round 2: Repeat Tone steps clear of the node's stall, T2 read per binade
+- DigitalDelay re-audit fix round 1: the tail at audiodsp v0.6.2, T2's edge at grid 3
+- The audiodsp floor moves to v0.6.2, on Brad's instruction
+- DigitalDelay fix round 2: T2's level span is -8.7 to -0.2 dBFS on both directions
+- DigitalDelay fix round 2: the audit's list, class side
+- DigitalDelay fix round 1: the audit's list, class side
+- DigitalDelay fix round: an honest tail, and patches load their own Time
+- DigitalDelay rebuilt against its frozen dossier (Phase 5 Station B, parked)
+- The audiodsp floor moves to v0.6.1, on Brad's instruction
 
 ## v0.3.2 (2026-09-25)
 
