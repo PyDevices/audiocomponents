@@ -41,8 +41,7 @@ SPLIT_HEADS = (("Bitcrusher", {}), ("Compressor", {}), ("Exciter", {}),
                ("Saturation", {}), ("Fuzz", {"character": "cascade"}))
 
 #: What the native Splitter needs to let go of its ring: audiodsp
-#: 0.6.6rc7. On an older node the cases that need it are skipped.
-HAS_CLEAR = hasattr(audioroute.Splitter, "clear")
+#: 0.6.6rc7, which the pin carries, so the cases run everywhere.
 
 
 def render_return(name, options, channels, kind):
@@ -84,9 +83,9 @@ class MixBackFromZeroPlaysNothingFromBefore(unittest.TestCase):
     def test_a_head_that_re_plays(self):
         self.check(PLAY_HEADS)
 
-    @unittest.skipUnless(HAS_CLEAR, "needs audiodsp 0.6.6rc7's "
-                                    "Splitter.clear()")
     def test_a_splitter_head(self):
+        self.assertTrue(hasattr(audioroute.Splitter, "clear"),
+                        "audiodsp below the pin: no Splitter.clear()")
         self.check(SPLIT_HEADS)
 
 

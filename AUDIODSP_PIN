@@ -381,5 +381,15 @@
 # Saturation calls so a gain move in silence with Hysteresis on plays
 # nothing. Every render is byte-identical to rc5's at the defaults of both.
 #
+# Moved to v0.6.6rc8 (f83ddc6) on 2026-10-14, by way of rc7: the CPython
+# extension no longer crashes in garbage collection while a RawSample still
+# exports a buffer; audiodynamics.Dynamics writes a mono block at its own
+# stride, so short source buffers leave no stale frames; audioroute.Splitter
+# gains clear(), which six classes call to drop what the ring held from
+# before a bypass when Mix comes back up; and audioecho.FeedbackDelay takes
+# a new wow_shape by dipping the depth to zero and swapping there, which
+# Vibrato hands its clock law to. Every other render is byte-identical to
+# rc6's.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.6rc6 93996026c6a54b895391840fc920fc4659a2c1aa
+v0.6.6rc8 f83ddc64ab7f569f917814375a190d2e0dc49ebb
