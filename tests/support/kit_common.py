@@ -165,13 +165,13 @@ for _name in ("Distortion", "MultibandCompressor"):
             " as a build does; a second reset or a patch change before the"
             " next pull meets that block already primed")
 
-# DynamicEQ's and MultibandCompressor's input guard (an
+# DynamicEQ's, MultibandCompressor's and Phaser's input guard (an
 # `audiofilters.Filter`) takes the source's first block at `play()`, so the
 # source stands at 256 before anything is pulled. A reset before the first
 # pull plays the material from frame 0, as a fresh build does
 # (tests/test_first_pull.py); the fresh check reads where the source
 # stands and expects 256.
-for _name in ("DynamicEQ", "MultibandCompressor"):
+for _name in ("DynamicEQ", "MultibandCompressor", "Phaser"):
     DECLARED[(_name, "fresh", "reset@0/")] = (
         "the input node holds the first block from play(), so the source"
         " stands at 256 while a reset before the first pull plays frame 0,"

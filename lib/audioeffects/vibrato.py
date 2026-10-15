@@ -308,6 +308,10 @@ class Vibrato(_component.Component):
                                   / 1000.0))
         self._tail = self._latency
         self._wow_full_ms = 0.0
+        #: The mean `delay_ms` last written, so a move can glide from it.
+        self._delay_written = None
+        #: The clock index the shape last handed to the node was built for.
+        self._m_written = 0.0
         #: Whether the depth last written was the engaged one, so an Engage
         #: move is told apart from a move of any other knob.
         self._engaged_written = None
@@ -383,19 +387,36 @@ class Vibrato(_component.Component):
         self._output = self._mixer
 
     def _arm_mixer_voice(self):
+        """Arm the Level mixer's voice on the delay, the lazy way, as a
+        reset arms a mixer: the voice primes a block of silence, the mixer
+        hands it up, and the voice's stand-in is then pointed at the delay,
+        so the next pull fetches from where the delay was.
+
+        A native voice's `play()` on the delay primed a block of the music
+        there and then, and the output ran 256 frames ahead of it for good:
+        5 ms skipped the first time Level left 0 dB, on a board only.
+        CPython's voice was armed by hand without a pull, and started at
+        level 0 until the music crossed zero, which the silence here opens.
+        Both interpreters now arm the same way and render the same bytes.
+        """
         voice = self._mixer.voice[0]
-        if hasattr(voice, "_remaining"):
-            # CPython Mixer.play() prefetches a delay block and advances the
-            # probe. render_effect then reset_buffer()s the mixer; the
-            # block adapter does not rewind, so an impulse probe goes silent.
-            # Arm the voice without pulling.
-            voice._sample = self._delay
-            voice._loop = False
-            voice._remaining = b""
-            voice._source_more = True
-        else:
-            voice.play(self._delay)
         self._mixer_armed = True
+        if _component.PORT is None:
+            if hasattr(voice, "_remaining"):
+                voice._sample = self._delay
+                voice._loop = False
+                voice._remaining = b""
+                voice._source_more = True
+            else:
+                voice.play(self._delay)
+            return
+        self._lazy_pending = []
+        self._arming_lazily = True
+        try:
+            self._play_voice(voice, self._delay)
+        finally:
+            self._arming_lazily = False
+        self._hand_up_lazy(getattr(audiocore, "get_buffer", None))
 
     def _reset_mixer(self):
         audiocore.reset_buffer(self._mixer)
@@ -457,7 +478,25 @@ class Vibrato(_component.Component):
         m = m_for_cents(mean_ms, rate, cents)
         delay_ms, wow_depth_ms = delay_law(mean_ms, m)
         self._wow_full_ms = wow_depth_ms
-        self._shape = clock_shape(m)
+        # A move of Rate, Depth or Delay moves the mean line and the clock
+        # law at once, while the depth glides over 20 ms. Written as they
+        # were, the read head jumped by the whole change on the next frame,
+        # a tick each time one was turned. So the mean line walks there
+        # over the same 20 ms (the node's `delay_slew`, delay-seconds per
+        # second, set from the size of this move), and a new clock law goes
+        # to the node, which ramps the depth to zero over the same 20 ms,
+        # changes the table there and ramps back (audioecho's wow_shape
+        # swap). Only a law that moved is handed over, so a Tone, Body,
+        # Level or Engage move does not dip the swing. Depth 0 keeps the
+        # last law while the depth glides out under it, as Engage off does.
+        if m >= DEPTH_OFF and m != self._m_written:
+            self._shape = clock_shape(m)
+            self._m_written = m
+        last = self._delay_written
+        if last is not None and last != delay_ms:
+            self._delay.set(
+                delay_slew=abs(delay_ms - last) / DEPTH_GLIDE_MS)
+        self._delay_written = delay_ms
         damping = nominal_damping_hz(tone, self._sample_rate)
         self._delay.set(
             delay_ms=delay_ms,
@@ -478,7 +517,14 @@ class Vibrato(_component.Component):
         # adds the frames it takes to fall from full scale to under half an
         # LSB (audiocomponents#114: Body alone rang 2 430 frames past the
         # line at 20 Hz, 48 kHz).
+        # And a move keeps the read head travelling for up to two glides
+        # after it: the mean line's 20 ms, or a new law's dip to zero depth
+        # and back. What the wet filters hold from that travel rings out
+        # behind it, so the count starts where the travel ends.
+        glide = int(math.ceil(2.0 * DEPTH_GLIDE_MS * self._sample_rate
+                              / 1000.0))
         self._tail = (int(math.ceil(d_max * self._sample_rate / 1000.0)) + 64
+                      + glide
                       + one_pole_ring(damping, self._sample_rate)
                       + one_pole_ring(body, self._sample_rate))
 

@@ -263,16 +263,92 @@ class TestPhaserInvariants(unittest.TestCase):
         effect.reset()
         quiet = silence(512)
         effect._source = quiet
-        effect._shaper.play(quiet)
+        effect._guard.play(quiet)
         after = pcm(effect.output, 256)
         self.assertEqual(max(abs(int(v)) for v in memoryview(after).cast("h")),
                          0)
-        self.assertEqual(len(effect._nodes), 2)
+        self.assertEqual(len(effect._nodes), 3)
         leftover = ramp(256)
         effect.deinit()
         still = pcm(leftover, 256)
         self.assertGreater(max(abs(int(v)) for v in memoryview(still).cast("h")),
                            0)
+
+
+class ReplaysTheSource(Phaser):
+    """F4's fault: every Feedback, Mix, Stages or Drive move, and a reset,
+    plays the borrowed source into the head of the graph again, which drops
+    what the head had taken of it."""
+
+    NAME = 'Phaser'
+
+    def _refresh_drive(self):
+        Phaser._refresh_drive(self)
+        self._guard.play(self._source)
+
+
+class TestPhaserKeepsItsPlace(unittest.TestCase):
+    """A move that keeps the route, a move that changes it, and a reset
+    play nothing from the source again: at Mix 0 the output stays the
+    source, byte for byte, on a whole RawSample (which a re-play rewinds to
+    its start) and on a stream of 100-frame buffers (where it drops part of
+    one)."""
+
+    MOVES = ((FEEDBACK_I, None), (MIX_I, 0.0), (DRIVE_I, 0.0),
+             (STAGES_I, None), (DRIVE_I, None), ("reset", None))
+
+    def _wire(self, cls, source, frames):
+        effect = cls.create(source, RATE)
+        effect.set_macro(MIX_I, 0.0)
+        out = bytearray()
+
+        def pull(blocks):
+            for _ in range(blocks):
+                out.extend(bytes(audiocore.get_buffer(effect.output)[1]))
+
+        for index, (macro, value) in enumerate(self.MOVES):
+            pull(1 + index % 2)
+            if macro == "reset":
+                effect.reset()
+                effect.set_macro(MIX_I, 0.0)
+            else:
+                effect.set_macro(macro, effect.get_macro(macro)
+                                 if value is None else value)
+        while len(out) < 4 * frames:
+            chunk = bytes(audiocore.get_buffer(effect.output)[1])
+            if not chunk:
+                break
+            out += chunk
+        effect.deinit()
+        del out[4 * frames:]
+        return bytes(out)
+
+    def _check(self, make):
+        frames = 3072
+        expect = bytes(make(frames)[1])
+        got = self._wire(Phaser, make(frames)[0], frames)
+        self.assertEqual(got, expect[:len(got)])
+        self.assertEqual(len(got), len(expect))
+        planted = self._wire(ReplaysTheSource, make(frames)[0], frames)
+        self.assertNotEqual(planted, expect[:len(planted)])
+
+    def test_a_whole_raw_sample_is_not_rewound(self):
+        def make(frames):
+            values = array.array("h", [((i * 37) % 2001) - 1000
+                                       for i in range(2 * frames)])
+            return (audiocore.RawSample(values, sample_rate=RATE,
+                                        channel_count=2), values)
+        self._check(make)
+
+    def test_a_stream_of_short_buffers_drops_nothing(self):
+        import kit_probes
+
+        def make(frames):
+            values = array.array("h", [((i * 37) % 2001) - 1000
+                                       for i in range(2 * frames)])
+            return (kit_probes.ArraySource(values, rate=RATE, channels=2,
+                                       block=100), values)
+        self._check(make)
 
 
 class TestPhaserCurveFillsTheRange(unittest.TestCase):

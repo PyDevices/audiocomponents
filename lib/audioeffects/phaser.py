@@ -39,7 +39,10 @@ this module imports and construction raises `ImportError`.
 extra synthio 256-point **0.317 / 0.408** + glue **0.0** →
 **0.788 / 1.241 ms → P4 ≤ 15 %, S3 ≤ 24 %**. The old **9 % / 16 %** bar
 omitted the LFO: the palette could not price a `synthio` source. Lean
-patch 8 is AllPass alone → **5 / 8 %**.
+patch 8 is AllPass alone → **5 / 8 %**. Both figures predate the input
+guard (an `audiofilters.Filter` with no filter, a block copy), which keeps
+a Drive or Mix move from replaying the source: on the desktop it adds about
+1 µs to a 19 µs block. The boards are not re-taken with it yet.
 
 **Latency: zero samples at every setting.** Drive is `oversample=1` (group
 delay 0). No lookahead, partition or window is offered, so there is no
@@ -70,6 +73,7 @@ try:
 except ImportError:                     # pragma: no cover - a stock board
     audioshaper = None
 
+import audiofilters
 import synthio
 
 
@@ -329,11 +333,31 @@ class Phaser(_component.Component):
         # it fills int16, and this puts the 2/3 back. The wet leg's level is
         # exactly where it was - measured, the peak over the dry moves by
         # 0.000000 dB and the wet RMS by 0.00002 (audiocomponents#77).
+        # The guard plays the borrowed source once, here, and nothing plays
+        # the source again. A Drive or Mix move that takes the shaper in or
+        # out of the pull re-points the cascade between the guard and the
+        # shaper, and a `play()` drops the frames its node had taken and
+        # not yet used: on the source itself that rewound a whole
+        # RawSample to its start, and on a stream of 100-frame buffers
+        # dropped part of one. The guard hands out whole 256-frame blocks,
+        # which the shaper and the cascade each use up in a pull, so a
+        # re-point between them drops nothing. `reset=False`: its reset
+        # would drop the source frames it holds, and it holds nothing else.
+        # `audiofilters.Filter` with no filter is a copy, the cheapest node
+        # that hands out its own block size (DynamicEQ's guard).
+        self._guard = self._own(audiofilters.Filter(
+            filter=None, mix=1, buffer_size=256 * channels * 2,
+            sample_rate=rate_hz, channel_count=channels,
+            bits_per_sample=16, samples_signed=True), reset=False)
+        self._guard.play(self._source, loop=False)
         self._shaper = self._own(audioshaper.Waveshaper(
             sample_rate=rate_hz, channel_count=channels,
             curve=CUBIC_CURVE, oversample=1,
             mix=0.0, pre_gain=1.0, post_gain=CURVE_SCALE))
-        self._shaper.play(self._source)
+        self._shaper.play(self._guard)
+        #: What the cascade plays: the shaper, or the guard while Drive or
+        #: Mix is at 0.
+        self._head = self._shaper
 
         # Built-in triangle: a custom waveform table is not a palette
         # audio node, but serving one still costs. Shape 0.5 (default)
@@ -375,7 +399,7 @@ class Phaser(_component.Component):
             stages=int(stages), frequency=self._held_hz, feedback=0.0,
             mix=0.5, sample_rate=self._sample_rate,
             channel_count=self._channel_count)
-        node.play(self._shaper)
+        node.play(self._head)
         if self._cascade is None:
             self._own(node)
             self._cascade = node
@@ -432,15 +456,19 @@ class Phaser(_component.Component):
 
     def _refresh_drive(self):
         # Mix 0 is a wire. Drive 0 drops the shaper from the pull so the
-        # lean patch is AllPass alone (palette 0.248 / 0.423 ms).
+        # lean patch is AllPass (and the guard) alone. The cascade is
+        # re-pointed only when that route changes: a move that keeps it
+        # (or a reset) plays nothing again.
         if self._value(4) <= 0.0 or self._value(7) <= 0.0:
             self._shaper.set(mix=0.0, pre_gain=1.0)
-            self._cascade.play(self._source)
-            return
-        drive = self._value(7)
-        self._shaper.set(mix=drive, pre_gain=1.0 + 8.0 * drive)
-        self._shaper.play(self._source)
-        self._cascade.play(self._shaper)
+            head = self._guard
+        else:
+            drive = self._value(7)
+            self._shaper.set(mix=drive, pre_gain=1.0 + 8.0 * drive)
+            head = self._shaper
+        if head is not self._head:
+            self._head = head
+            self._cascade.play(head)
 
     def _refresh_mix_feedback(self):
         self._cascade.feedback = self._value(3)
