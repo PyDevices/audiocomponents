@@ -44,6 +44,9 @@ the real thing.
 
 ## Tools
 
+- A catalog shipped with each release: every instrument's and effect's patches,
+  macro names and drum notes as JSON, MIDNAM and Cakewalk `.ins` files, so a DAW
+  or MIDI host can show the names without loading the audio stack.
 - One renderer core behind `tools/render_component.py` and MPVST's harness.
   Events become data, so a MIDI file or a DAW export can drive a render, and
   it keeps running on MicroPython.
