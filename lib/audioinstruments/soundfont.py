@@ -306,10 +306,13 @@ class _Player(object):
         serial = self.serial
         voices = self.sampler.voice
         detune_ratio = 2.0 ** (detune / 12.0) if detune else 1.0
-        indices = []
+        # Choke before any of this note's regions start, so a stereo pair
+        # in one class does not stop its own other half.
         for region in regions:
             if region.exclusive_class:
                 self._choke(region.exclusive_class)
+        indices = []
+        for region in regions:
             pcm, loop_start, loop_end, mode = self.bank.buffer(region)
             vel = velocity
             if 0 <= region.velocity <= 127:
