@@ -12,6 +12,11 @@ share it. A key the kit has no zone for is silent. The closed hi-hat (42)
 and pedal hi-hat (44) stop an open hi-hat (46) that is still ringing when
 the bank puts them in one exclusive class, as General MIDI kits do.
 
+The macros are `soundfont`'s: Volume, Attack, Release, Tune and Pan. Pan
+(64 centre, 0 left, 127 right) is an offset on each zone's own pan, so a
+kit's spread moves as one; it re-pans sounding voices, and Control Change
+10 drives it.
+
 `NOTE_MAP` is the whole GM percussion map rather than what any one kit
 answers: a bank's kits differ in what they fill, and the map is what a
 sequencer writes for.
@@ -23,18 +28,19 @@ CATEGORIES = ('Drum', 'Sampler')
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
 
-MACRO_LABELS = ("Volume", "Attack", "Release", "Tune")
+MACRO_LABELS = ("Volume", "Attack", "Release", "Tune", "Pan")
 MACRO_MODES = {
     0: "UNIPOLAR",
     1: "UNIPOLAR",
     2: "UNIPOLAR",
     3: "BIPOLAR",
+    4: "BIPOLAR",
 }
 
 #: Patch 0 as a literal for the scanners; a live kit's `patches` are the
 #: bank's, built in `create()`.
 PATCHES = {
-    0: ('Standard', (100, 64, 64, 64)),
+    0: ('Standard', (100, 64, 64, 64, 64)),
 }
 
 #: General MIDI percussion, keys 35-81, under GM's names.

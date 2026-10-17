@@ -26,6 +26,11 @@ there, and are recorded in its changelog.
   `~/soundfonts/`; samples are read as notes need them. Exclusive classes
   choke, 32 voices with oldest-releasing stealing, four macros. Neither is
   in `ALL`, since both need a bank on disk.
+- A Pan macro (index 4, bipolar: 64 centre, 0 hard left, 127 hard right) on
+  `soundfont` and `soundfont_drums`. It offsets each region's own pan, so a
+  stereo pair keeps its spread around the new centre, clamped at the edges;
+  moving it re-pans the voices already sounding, without a click. Control
+  Change 10 on either instrument drives it.
 
 ### Fixed
 
