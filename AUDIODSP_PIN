@@ -403,5 +403,16 @@
 # ran at rc9 ran on this node tree. The pyproject floors rise to >=0.6.6,
 # the release-time change the earlier entries left to Phase 7.
 #
+# Moved to 6db15e3 on 2026-10-17, for audiosampler (audiodsp#272), which
+# the new `soundfont` and `soundfont_drums` instruments are built on. CI
+# installs audiodsp from this pin and nothing else, so without it they
+# cannot be built. Named by commit; no release carries the module yet.
+# What else moved beneath the components, by `git log v0.6.6..6db15e3 --
+# src`, is v0.6.7's: the CPython extension declares it doesn't need the GIL
+# (#268) and locks each node per call (#267); synthio keeps one block clock
+# per thread on CPython (#266); and Biquad spells out its float-to-double
+# promotions in the SVF handover (#264). audiosampler is a new module and
+# touches no node that existed.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.6 5ef58a489f538edceed2d9cd3fd0737f0cc954fa
+6db15e311a17ca83784f0276d326f98b77950b5f 6db15e311a17ca83784f0276d326f98b77950b5f
