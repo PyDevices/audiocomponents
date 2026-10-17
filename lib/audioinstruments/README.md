@@ -228,6 +228,31 @@ drift from them.
 - **`wasp`** - EDP Wasp. 10 macros.
 - **`wurlitzer`** - Wurlitzer 200A electric piano. 10 macros.
 
+## SoundFont banks
+
+Two instruments play a `.sf2` instead of a model: **`soundfont`** is the
+bank's melodic presets under one program change, **`soundfont_drums`** is
+its kits (bank 128) with the General MIDI percussion keys 35-81 as the pads.
+Both need [audiosampler](https://github.com/PyDevices/audiodsp) and a bank,
+so they are not in `ALL`; create them by name.
+
+```python
+inst = audioinstruments.create("soundfont", 48000, bank="/sd/FluidR3_GM.sf2")
+inst.program_change(48)          # Strings
+inst.note_on(60, 100)
+kit = audioinstruments.create("soundfont_drums", 48000)   # same bank, found again
+kit.note_on(36)
+```
+
+The bank is the `bank` option (a path, or an open `_sf2.SoundFont`), else
+the `SOUNDFONT` environment variable, else the first `.sf2` in
+`~/soundfonts/` (`%USERPROFILE%\soundfonts` on Windows); with none of them
+the error names all three. Patch n is Program Change n in bank 0, named
+from the bank, and Bank Select (CC 0 and 32) reaches the other melodic
+banks on the next program change. Four macros: Volume, Attack, Release
+(each scaling the bank's own envelope) and Tune (a semitone either way).
+The module docstring says how attenuation is scaled and why.
+
 ## Where these came from
 
 They were written for micropython-vst3, where each was a script bound to that
