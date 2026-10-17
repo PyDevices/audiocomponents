@@ -19,7 +19,6 @@ import unittest
 
 import audiocore
 import audioinstruments
-import audioinstruments.soundfont as soundfont
 
 SUPPORT = pathlib.Path(__file__).resolve().parent / "support"
 if str(SUPPORT) not in sys.path:
