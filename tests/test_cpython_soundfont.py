@@ -3,8 +3,11 @@
 The plumbing, without a real bank: how the bank is found, the patch list
 and pad map a bank becomes, one voice per region and a stereo layer as two,
 the velocity split, release, the exclusive-class choke, Bank Select, voice
-stealing, and the macros reaching held voices. The General MIDI gate on a
-real bank is `test_cpython_soundfont_gm.py`.
+stealing, the macros reaching held voices, and Pan: where the energy lands
+per channel, a sounding note moving, a stereo pair keeping its spread (on a
+sibling bank whose pair is not already at the edges), and Control Change
+10 driving it. The General MIDI gate on a real bank is
+`test_cpython_soundfont_gm.py`.
 """
 
 import os
@@ -107,9 +110,9 @@ class SoundFontInstrumentTest(unittest.TestCase):
         self.assertEqual(self.kit.note_map, soundfont_drums.NOTE_MAP)
         self.assertIsNone(self.inst.note_map)
         for module in (soundfont, soundfont_drums):
-            self.assertEqual(len(module.MACRO_LABELS), 4)
-            self.assertEqual(set(module.MACRO_MODES), set(range(4)))
-            self.assertEqual(len(module.PATCHES[0][1]), 4)
+            self.assertEqual(len(module.MACRO_LABELS), 5)
+            self.assertEqual(set(module.MACRO_MODES), set(range(5)))
+            self.assertEqual(len(module.PATCHES[0][1]), 5)
 
     def test_both_are_live_instruments(self):
         for inst in (self.inst, self.kit):
@@ -224,6 +227,140 @@ class SoundFontInstrumentTest(unittest.TestCase):
         self.assertAlmostEqual(player.attack_scale, 4.0, places=1)
         self.inst.set_macro(2, 0)
         self.assertAlmostEqual(player.release_scale, 0.25, places=2)
+
+    # -- pan ------------------------------------------------------------------
+
+    PAN = soundfont.PAN_MACRO
+
+    def _channels(self, inst, seconds=0.1):
+        """(left RMS, right RMS) of the next `seconds`."""
+        both = sf2_play.render(inst, seconds)
+        return sf2_play.rms(both[0::2]), sf2_play.rms(both[1::2])
+
+    def test_pan_is_the_fifth_macro_on_both(self):
+        for inst in (self.inst, self.kit):
+            self.assertEqual(inst.macro_labels[self.PAN], "Pan")
+            self.assertEqual(inst.get_macro(self.PAN), 64)
+        self.assertEqual(soundfont.MACRO_MODES[self.PAN], "BIPOLAR")
+        self.assertEqual(soundfont_drums.MACRO_MODES[self.PAN], "BIPOLAR")
+        self.assertEqual(soundfont.DEFAULT_MACROS[self.PAN], 64)
+
+    def test_pan_puts_the_energy_where_it_says(self):
+        # The kit's snare has no pan of its own, so centre is equal.
+        kit = self.kit
+        kit.note_on(36)
+        left, right = self._channels(kit)
+        self.assertGreater(left, 0.0005)
+        self.assertAlmostEqual(left, right, delta=left * 0.02)
+        kit.note_off(36)
+        sf2_play.render(kit, 1.0)
+        kit.set_macro(self.PAN, 0)
+        kit.note_on(36)
+        left, right = self._channels(kit)
+        self.assertGreater(left, 0.0005)
+        self.assertLess(right, left * 0.01)
+        kit.note_off(36)
+        sf2_play.render(kit, 1.0)
+        kit.set_macro(self.PAN, 127)
+        kit.note_on(36)
+        left, right = self._channels(kit)
+        self.assertGreater(right, 0.0005)
+        self.assertLess(left, right * 0.01)
+        # The macro is an offset on the region's own pan: the piano's zone
+        # sits at -0.2, so centre leans left and hard right lands at 0.8.
+        player = self.inst._player
+        self.inst.note_on(60, 100)
+        voice = self.inst.output.voice[player.held[(0, 60)][0]]
+        self.assertAlmostEqual(voice.pan, -0.2, places=5)
+        self.inst.set_macro(self.PAN, 127)
+        self.assertAlmostEqual(voice.pan, 0.8, places=5)
+        self.inst.set_macro(self.PAN, 0)
+        self.assertEqual(voice.pan, -1.0)      # clamped, not -1.2
+        self.inst.set_macro(self.PAN, 64)
+        self.assertAlmostEqual(voice.pan, -0.2, places=5)
+
+    def test_a_sounding_note_moves_with_pan(self):
+        kit = self.kit
+        kit.note_on(46)                        # the open hat rings on
+        left, right = self._channels(kit)
+        self.assertAlmostEqual(left, right, delta=left * 0.02)
+        kit.set_macro(self.PAN, 0)
+        sf2_play.render(kit, 0.05)             # past the engine's ramp
+        left, right = self._channels(kit)
+        self.assertGreater(left, 0.0005)
+        self.assertLess(right, left * 0.01)
+        kit.set_macro(self.PAN, 127)
+        sf2_play.render(kit, 0.05)
+        left, right = self._channels(kit)
+        self.assertGreater(right, 0.0005)
+        self.assertLess(left, right * 0.01)
+
+    def test_a_stereo_pair_keeps_its_spread(self):
+        # The tiny bank's pair is already at the edges, so the builder makes
+        # a sibling with the pair at -0.5 and +0.5.
+        G = sf2_builder.sf2
+        b = sf2_builder.Bank("Pair")
+        left = b.sample("L", sf2_builder._frames(2, 120), 10, 110, pitch=60,
+                        link=1, kind=G.SAMPLE_LEFT)
+        right = b.sample("R", sf2_builder._frames(3, 120), 10, 110, pitch=60,
+                         link=0, kind=G.SAMPLE_RIGHT)
+        pad = b.instrument("Pad", [
+            [(G.GEN_PAN, -250), (G.GEN_SAMPLE_MODES, 1),
+             (G.GEN_SAMPLE_ID, left)],
+            [(G.GEN_PAN, 250), (G.GEN_SAMPLE_MODES, 1),
+             (G.GEN_SAMPLE_ID, right)],
+        ])
+        b.preset("Pad", 0, 0, [[(G.GEN_INSTRUMENT, pad)]])
+        path = os.path.join(self.tmp, "pair.sf2")
+        b.write(path)
+        inst = audioinstruments.create("soundfont", SR, bank=path)
+        try:
+            player = inst._player
+            inst.note_on(60, 100)
+            voices = [inst.output.voice[i] for i in player.held[(0, 60)]]
+            pans = sorted(v.pan for v in voices)
+            self.assertEqual([round(p, 5) for p in pans], [-0.5, 0.5])
+            inst.set_macro(self.PAN, 80)       # (80 - 64) / 63 to the right
+            pans = sorted(v.pan for v in voices)
+            self.assertAlmostEqual(pans[1] - pans[0], 1.0, places=5)
+            self.assertAlmostEqual(pans[0], -0.5 + 16 / 63.0, places=5)
+            inst.set_macro(self.PAN, 48)       # (48 - 64) / 64 to the left
+            pans = sorted(v.pan for v in voices)
+            self.assertAlmostEqual(pans[1] - pans[0], 1.0, places=5)
+            self.assertAlmostEqual(pans[0], -0.75, places=5)
+            inst.set_macro(self.PAN, 0)        # the left voice clamps at -1
+            pans = sorted(v.pan for v in voices)
+            self.assertEqual(pans, [-1.0, -0.5])
+            inst.note_off(60)
+            inst.set_macro(self.PAN, 127)      # new notes start there
+            inst.note_on(62, 100)
+            voices = [inst.output.voice[i] for i in player.held[(0, 62)]]
+            self.assertEqual(sorted(v.pan for v in voices), [0.5, 1.0])
+        finally:
+            inst.deinit()
+
+    def test_cc10_drives_pan(self):
+        for inst in (self.inst, self.kit):
+            key = 60 if inst is self.inst else 36
+            player = inst._player
+            inst.note_on(key, 100)
+            voice = inst.output.voice[player.held[(0, key)][0]]
+            before = voice.pan
+            inst.control_change(10, 127)
+            self.assertEqual(inst.get_macro(self.PAN), 127)
+            self.assertEqual(voice.pan, min(1.0, before + 1.0))
+            inst.control_change(10, 0)
+            self.assertEqual(inst.get_macro(self.PAN), 0)
+            self.assertEqual(voice.pan, -1.0)
+            # A program change puts the patch's centre back, as for Volume.
+            inst.program_change(0)
+            self.assertEqual(inst.get_macro(self.PAN), 64)
+            self.assertAlmostEqual(voice.pan, before, places=5)
+            # Bank Select still reaches the player past the override.
+            if inst is self.inst:
+                inst.control_change(0, 1)
+                self.assertEqual(player.bank_msb, 1)
+                inst.control_change(0, 0)
 
 
 if __name__ == "__main__":

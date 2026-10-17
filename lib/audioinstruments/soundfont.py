@@ -25,6 +25,16 @@ that scale it so, and played per the specification's centibels they come out
 far quieter and more uneven between presets than their authors heard. The
 one constant is the whole convention. Velocity is a square law on top.
 
+Five macros: Volume, Attack and Release (scaling the bank's own envelope,
+64 is as written), Tune (bipolar, two semitones each way) and Pan. Pan is
+bipolar too: 64 is centre, 0 hard left, 127 hard right. It is an offset
+added to each region's own pan, so a stereo pair keeps its spread around
+the new centre, clamped at the edges. Moving it re-pans the voices already
+sounding, with the engine's ramp, and Control Change 10 on the instrument
+drives it, as it does Bank Select; the other GM controllers are the
+host's. A program change puts every macro back to the patch's defaults,
+Pan at centre.
+
 Thirty-two engine voices, one per region a note resolves to (a stereo pair
 is two). A new note with every voice busy steals the oldest releasing voice,
 then the oldest. A note in an exclusive class stops the sounding notes of
@@ -42,23 +52,28 @@ CATEGORIES = ('Sampler',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
 
-MACRO_LABELS = ("Volume", "Attack", "Release", "Tune")
+MACRO_LABELS = ("Volume", "Attack", "Release", "Tune", "Pan")
 MACRO_MODES = {
     0: "UNIPOLAR",
     1: "UNIPOLAR",
     2: "UNIPOLAR",
     3: "BIPOLAR",
+    4: "BIPOLAR",
 }
 
 #: The macro values every patch carries: the bank's own envelope (Attack and
-#: Release at 64 scale it by 1.0), no detune, volume a little under full.
-DEFAULT_MACROS = (100, 64, 64, 64)
+#: Release at 64 scale it by 1.0), no detune, centre pan, volume a little
+#: under full.
+DEFAULT_MACROS = (100, 64, 64, 64, 64)
 
 #: Patch 0 as a literal for the scanners; a live instrument's `patches` are
 #: the bank's presets, built in `create()`.
 PATCHES = {
-    0: ('Program 0', (100, 64, 64, 64)),
+    0: ('Program 0', (100, 64, 64, 64, 64)),
 }
+
+#: The Pan macro's index, for hosts that drive it by number.
+PAN_MACRO = 4
 
 #: The power `initialAttenuation`'s linear gain is raised to. See the module
 #: docstring.
@@ -85,6 +100,26 @@ BEND_RANGE = 2.0
 
 _CC_BANK_MSB = 0
 _CC_BANK_LSB = 32
+_CC_PAN = 10
+
+
+def _bipolar(value0):
+    """A bipolar macro's -1..1 from the 0..1 the event carries: the centre
+    detent law of `audioeffects._component.position_of_midi`, so MIDI 64 is
+    exactly 0 and 0 and 127 are the ends."""
+    midi = value0 * 127.0
+    if midi >= 64.0:
+        return (midi - 64.0) / 63.0
+    return (midi - 64.0) / 64.0
+
+
+def _panned(region_pan, offset):
+    pan = region_pan + offset
+    if pan < -1.0:
+        return -1.0
+    if pan > 1.0:
+        return 1.0
+    return pan
 
 
 # --- finding and sharing a bank --------------------------------------------
@@ -202,8 +237,9 @@ class _Player(object):
     """The voices of one instrument on its sampler.
 
     `slots[i]` is engine voice i: `None` when free, else
-    `[key, serial, releasing, exclusive_class, level, pitch]` where `level`
-    and `pitch` are the region's own, before the live macros.
+    `[key, serial, releasing, exclusive_class, level, pitch, pan]` where
+    `level`, `pitch` and `pan` are the region's own, before the live
+    macros.
     """
 
     def __init__(self, bank, sampler, default_bank=0):
@@ -222,6 +258,7 @@ class _Player(object):
         self.release_scale = 1.0
         self.tune = 1.0
         self.bend = 1.0
+        self.pan = 0.0
 
     # -- preset selection ---------------------------------------------------
 
@@ -324,14 +361,15 @@ class _Player(object):
                 pcm, rate=region.sample_rate,
                 pitch=ratio * self.tune * self.bend,
                 loop_start=loop_start, loop_end=loop_end, loop_mode=mode,
-                level=level * self.volume, pan=region.pan,
+                level=level * self.volume,
+                pan=_panned(region.pan, self.pan),
                 delay=region.delay,
                 attack=region.attack * self.attack_scale,
                 hold=region.hold, decay=region.decay,
                 sustain=region.sustain,
                 release=region.release * self.release_scale)
             self.slots[i] = [key, serial, False, region.exclusive_class,
-                             level, ratio]
+                             level, ratio, region.pan]
             indices.append(i)
         self.held[key] = indices
 
@@ -374,6 +412,13 @@ class _Player(object):
             if slot is not None:
                 voices[i].pitch = slot[5] * factor
 
+    def repan(self):
+        voices = self.sampler.voice
+        offset = self.pan
+        for i, slot in enumerate(self.slots):
+            if slot is not None:
+                voices[i].pan = _panned(slot[6], offset)
+
     # -- events -------------------------------------------------------------
 
     def handle_event(self, event_type, channel, note_id, data0, value0,
@@ -394,6 +439,9 @@ class _Player(object):
             elif data0 == 3:
                 self.tune = 2.0 ** ((value0 - 64 / 127.0) * 2.0 / 12.0)
                 self.repitch()
+            elif data0 == PAN_MACRO:
+                self.pan = _bipolar(value0)
+                self.repan()
         elif event_type == EVENT_PITCH_BEND:
             self.bend = 2.0 ** (value1 * BEND_RANGE / 12.0)
             self.repitch()
@@ -434,6 +482,15 @@ class SoundFontInstrument(Instrument):
     @property
     def preset_name(self):
         return self._player.bank.presets.get(self.preset)
+
+    def control_change(self, controller, value, channel=0, sample_position=0):
+        """Control Change 10 (Pan) moves the Pan macro, so the macro value
+        and the sound agree; the rest reach the player as they are."""
+        if controller == _CC_PAN:
+            self.set_macro(PAN_MACRO, value, channel=channel,
+                           sample_position=sample_position)
+            return
+        super().control_change(controller, value, channel, sample_position)
 
     def program_change(self, index, channel=0, note_id=-1, sample_position=0):
         target = self._programs.get(index) if isinstance(index, int) else None
