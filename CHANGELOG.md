@@ -18,6 +18,14 @@ there, and are recorded in its changelog.
   are read on demand, so a board can open a bank it could not hold in RAM.
   Modulators are recorded, not applied; the 24-bit extension is ignored.
   The instrument that plays it comes with the sampler engine.
+- `audioinstruments.soundfont` and `audioinstruments.soundfont_drums`: a
+  `.sf2` bank as instruments, on audiodsp's `audiosampler`. Patch n is
+  Program Change n in bank 0 and Bank Select reaches the other banks; the
+  kit is bank 128 with the General MIDI percussion keys as its pads.
+  The bank is the `bank=` option, `$SOUNDFONT` or the first `.sf2` in
+  `~/soundfonts/`; samples are read as notes need them. Exclusive classes
+  choke, 32 voices with oldest-releasing stealing, four macros. Neither is
+  in `ALL`, since both need a bank on disk.
 
 ### Fixed
 
