@@ -32,6 +32,16 @@ there, and are recorded in its changelog.
   moving it re-pans the voices already sounding, without a click. Control
   Change 10 on either instrument drives it.
 
+### Changed
+
+- A SoundFont bank keeps a bounded amount of samples: `soundfont.CACHE_BYTES`,
+  8 MB on a board and 64 MB on a desktop, or `open_bank(path,
+  cache_bytes=...)`. Past it, the samples played least recently are let go
+  and read again if a note wants them, so a long, dense piece plays in
+  bounded memory instead of keeping every sample it touches. A voice still
+  playing one keeps it until it ends. The bank's `cached`, `reads` and
+  `evicted` say what it holds and what the bound has cost.
+
 ### Fixed
 
 - Instruments built on two threads at the same time each keep their own
