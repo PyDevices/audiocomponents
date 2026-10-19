@@ -31,6 +31,10 @@ there, and are recorded in its changelog.
   stereo pair keeps its spread around the new centre, clamped at the edges;
   moving it re-pans the voices already sounding, without a click. Control
   Change 10 on either instrument drives it.
+- The runtime API page says what to expect after a reset, a rejoin or a
+  control move: LFO and hold phases restart, detector and coupling state can
+  outlast `tail_samples`, and Fuzz's lean patch, DynamicEQ's Listen and
+  Exciter's Output are not bypasses.
 
 ### Changed
 

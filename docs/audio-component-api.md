@@ -288,6 +288,45 @@ manually sets `patch_index` to `None`, meaning custom state.
 `reset()` releases all instrument notes, clears component DSP history, and
 restores patch `0`. It leaves the component constructed and ready for use.
 
+### After a reset, a rejoin or a control move
+
+A few effects do not come back to exactly where an untouched copy of the
+same effect is, and none of it is a fault. If you compare one against a
+twin that never saw the event, expect these differences.
+
+**Free-running phase.** `Chorus`, `Phaser`, `Tremolo` and `Vibrato` run an
+LFO that `reset()` or `reset_buffer()` restarts, and that a Rate, Sync or
+patch change moves. `Bitcrusher` does the same with its sample-and-hold
+count and dither tables, restarted by a reset or a move of Rate, Dither,
+Band Limit or Mix. The sound is the same, but a fresh pass starts at a
+different point in its cycle, so a copy that took the event never lines up
+sample for sample with one that did not.
+
+**Detector and coupling state.** `tail_samples` bounds the output once the
+input is silent; it does not bound the effect's internal state. After a
+reset, a rejoin or a control move, the level detectors and coupling filters
+of `Compressor`, `DynamicEQ`, `MultibandCompressor`, `DeEsser`,
+`CombFilter`, `Exciter`, `Fuzz`, `Overdrive` and `Distortion` can take
+longer to settle than the tail says. The worst measured differences from a
+freshly built instance are `Compressor` up to 1,575 LSB for 20 to 50
+blocks, `DynamicEQ` about 1,000 LSB for 5 to 20 blocks, and
+`MultibandCompressor` and `DeEsser` under 16 LSB within three blocks.
+`CombFilter` rings at 1 LSB about 500 frames past its tail, `Exciter`,
+`Overdrive` and `Fuzz` carry a few LSB of float residue, and `Distortion`
+keeps about 700 LSB of slow coupling-pole residue that persists. What you
+hear is a re-attack, the same as switching a pedal on.
+
+**Behaviours that are not a bypass.** Three are stated, not accidental:
+
+- `Fuzz` takes its lean shaper from the selected patch, not from the
+  macros. After `program_change(8)`, moving the macros back stays lean;
+  only another `program_change()` leaves it. At patch 2 with Bias at -0.85
+  it also puts 6 to 9 LSB out of silence, inside its stated 16 LSB wander.
+- `DynamicEQ` with Listen on outputs the detector's own band, so Listen is
+  not a bypass, and `Mix` 0 only bypasses with Listen off.
+- `Exciter` multiplies Output into the result at every Mix, so Mix 0 is an
+  exact bypass only at 0 dB Output.
+
 `deinit()` releases resources owned by the component but not a borrowed effect
 source. It is idempotent. After the first deinitialization, further use raises
 a clear `RuntimeError` (or the equivalent runtime-specific error), except that
