@@ -53,13 +53,13 @@ TESTS = os.path.join(ROOT, "tests")
 LIB_EFFECTS = os.path.join(ROOT, "lib", "audioeffects")
 
 #: Run these whenever anything under `lib/` moves: they are the shared promises
-#: — the component API, the foundation, the portability tiers, the registry —
+#: — the component API, the foundation, the portability tiers, the catalogue —
 #: and a change to one effect can break them through `_component` or `__init__`.
 CONTRACT = (
     "test_audio_component_api",
     "test_component_foundation",
     "test_portability_tier",
-    "test_rebuilt_registry",
+    "test_catalogue",
 )
 
 #: The measurement kit's own tests. A change to the kit invalidates every

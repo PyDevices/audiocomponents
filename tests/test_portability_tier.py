@@ -57,8 +57,7 @@ def subjects():
 
     The shipped catalogue first, so a class is covered the moment it is
     among the 46; then everything under `rebuilt/`, read with
-    `module_class()` rather than `load()`, which picks up the two fixtures
-    and any later-phase class the gate audit has parked (`rebuilt.ADOPTED`).
+    `module_class()` rather than `load()`, which picks up any later-phase class the gate audit has parked (`rebuilt.ADOPTED`).
     A parked class is not what the library serves, and its portability tier
     is still a claim this battery has to be able to break.
     """

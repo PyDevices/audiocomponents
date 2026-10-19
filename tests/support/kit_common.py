@@ -108,7 +108,7 @@ DECLARED[("ShimmerHall", "fresh", "reset@8+m0=0/", "circuitpython")] = (
     "Octave Bloom, then Rise after a reset: CircuitPython's own PitchShift"
     " keeps its read and write positions across the reset (audiodsp#240)")
 
-# Flanger and ExampleStock, the stock tier on a node that primes: an
+# Flanger, the stock tier on a node that primes: an
 # upstream effect node's `play()` takes its first block from the source at
 # once, so a reset before the first pull still holds that block and plays
 # it, the source's frames 0 to 255, where a fresh instance built at that
@@ -117,7 +117,7 @@ DECLARED[("ShimmerHall", "fresh", "reset@8+m0=0/", "circuitpython")] = (
 # its first frame), so a reset mid-stream would restart the host's audio;
 # the stock tier has no port to prime from instead. From the first pull on
 # the reset is a fresh instance (`reset@8` is green). Waiting on a ruling.
-for _name in ("Flanger", "ExampleStock"):
+for _name in ("Flanger",):
     DECLARED[(_name, "fresh", "reset@0/")] = (
         "a stock node primes its first block at play(): a reset before the"
         " first pull plays that block where a fresh build primes the next;"

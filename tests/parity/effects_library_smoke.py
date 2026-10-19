@@ -13,8 +13,7 @@ It walks `audioeffects.ALL` -- the package's own catalogue of provider names
 -- through `audioeffects.create()`, which is the contract's construction
 boundary, **and then every class `rebuilt.parked()` reports**: a rebuilt
 class the gate audit has not adopted is not in the catalogue, so walking the
-catalogue alone would miss it. Today that parked set is the two Example
-fixtures. A parked class is built through its own
+catalogue alone would miss it. Today that parked set is empty. A parked class is built through its own
 `create()`, which is the same construction boundary one step in. Either way: the source carries the format, `create` is handed the source's own
 sample rate, and every patch is selected the way a host selects one, with
 `program_change()`. Nothing here calls the module-level `configure()` or

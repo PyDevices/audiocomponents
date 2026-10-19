@@ -59,6 +59,12 @@ there, and are recorded in its changelog.
   and is not yet re-measured
   ([#152](https://github.com/PyDevices/audiocomponents/issues/152)).
 
+### Removed
+
+- The two placeholder effect classes, `ExampleStock` and `ExampleAudiodsp`,
+  which stood in for the two portability tiers before shipped classes
+  covered both. They were never in `ALL` and `create()` never served them.
+
 ## v0.4.1.dev1 (2026-10-15)
 
 ### Fixed
