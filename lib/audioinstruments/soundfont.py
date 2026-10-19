@@ -19,6 +19,13 @@ hydra is read at `create()`; samples are read from the file the first time a
 note needs them and kept, so a 148 MB bank costs only the presets you play.
 Instruments made from the same path share the open bank and its samples.
 
+The samples kept are bounded: `CACHE_BYTES` of them (8 MB on a board, 64 MB
+on a desktop), or what `open_bank(path, cache_bytes=...)` asks for. When a
+new one would go over, the samples played least recently are let go first,
+and read again from the file if a note wants them later. A voice still
+playing a sample keeps it until the voice ends, so a long, dense piece
+plays in bounded memory rather than growing it to every sample it touches.
+
 Attenuation. A region's `initialAttenuation` is applied scaled by
 `ATTENUATION_SCALE` (0.4): the banks in circulation were voiced on players
 that scale it so, and played per the specification's centibels they come out
@@ -102,6 +109,11 @@ HELD, RELEASING, FADED = 0, 1, 2
 SHARED_VOICES = 64
 
 import os
+import sys
+
+#: Bytes of samples a bank keeps read from its file: 8 MB on a board, where
+#: RAM is counted in tens of megabytes, 64 MB on a desktop.
+CACHE_BYTES = (64 if sys.implementation.name == "cpython" else 8) * 1048576
 
 import audioinstruments._sf2 as _sf2
 from audioinstruments._support import (
@@ -170,14 +182,68 @@ def find_bank(path=None):
 
 
 class _Bank(object):
-    """An open bank and the samples read from it so far."""
+    """An open bank and the samples read from it, at most `cache_bytes` of
+    them, the least recently played let go first.
 
-    def __init__(self, font):
+    `cached` is the bytes kept now; `reads` counts the samples read from
+    the file and `evicted` the ones let go, so `reads` above the number of
+    distinct samples played is the re-reading a small cache costs.
+    """
+
+    def __init__(self, font, cache_bytes=None):
         self.font = font
         self.samples = {}      # shdr index -> array('h') of the whole sample
         self.presets = {}      # (bank, program) -> name
         for bank, program, name in font.presets():
             self.presets[(bank, program)] = name
+        self._cache_bytes = CACHE_BYTES if cache_bytes is None else int(cache_bytes)
+        self._used = {}        # shdr index -> when it was last played
+        self._clock = 0
+        self.cached = 0
+        self.reads = 0
+        self.evicted = 0
+
+    @property
+    def cache_bytes(self):
+        """The most sample bytes kept. Setting it lets go of samples at once
+        when the bank holds more."""
+        return self._cache_bytes
+
+    @cache_bytes.setter
+    def cache_bytes(self, value):
+        self._cache_bytes = int(value)
+        self._make_room(0)
+
+    def _make_room(self, size):
+        """Let go of the least recently played samples until `size` more
+        bytes fit, or nothing is left to let go."""
+        samples = self.samples
+        used = self._used
+        while samples and self.cached + size > self._cache_bytes:
+            oldest = None
+            when = 0
+            for index in samples:
+                if oldest is None or used[index] < when:
+                    oldest = index
+                    when = used[index]
+            self.cached -= len(samples.pop(oldest)) * 2
+            del used[oldest]
+            self.evicted += 1
+
+    def _sample(self, sample):
+        """The whole sample as array('h'), from the cache or the file."""
+        self._clock += 1
+        index = sample.index
+        pcm = self.samples.get(index)
+        if pcm is None:
+            size = (sample.end - sample.start) * 2
+            self._make_room(size)
+            pcm = self.font.read_sample(sample)
+            self.samples[index] = pcm
+            self.cached += len(pcm) * 2
+            self.reads += 1
+        self._used[index] = self._clock
+        return pcm
 
     def has(self, bank, program):
         return (bank, program) in self.presets
@@ -199,10 +265,7 @@ class _Bank(object):
     def buffer(self, region):
         """The frames a region plays and its loop points within them."""
         sample = region.sample
-        pcm = self.samples.get(sample.index)
-        if pcm is None:
-            pcm = self.font.read_sample(sample)
-            self.samples[sample.index] = pcm
+        pcm = self._sample(sample)
         length = len(pcm)
         start = region.start - sample.start
         end = region.end - sample.start
@@ -230,19 +293,24 @@ class _Bank(object):
 _OPEN = {}
 
 
-def open_bank(bank=None):
+def open_bank(bank=None, cache_bytes=None):
     """The shared `_Bank` for `bank` (a path, a `SoundFont`, or None to
     search). Banks opened by path are kept, so two instruments on one file
-    read each sample once."""
+    read each sample once. `cache_bytes` bounds the samples it keeps
+    (`CACHE_BYTES` when None); given for a bank already open, it changes
+    that bank's bound."""
     if isinstance(bank, _Bank):
-        return bank
-    if hasattr(bank, "regions"):
-        return _Bank(bank)
-    path = find_bank(bank)
-    loaded = _OPEN.get(path)
-    if loaded is None:
-        loaded = _Bank(_sf2.SoundFont(path))
-        _OPEN[path] = loaded
+        loaded = bank
+    elif hasattr(bank, "regions"):
+        loaded = _Bank(bank)
+    else:
+        path = find_bank(bank)
+        loaded = _OPEN.get(path)
+        if loaded is None:
+            loaded = _Bank(_sf2.SoundFont(path))
+            _OPEN[path] = loaded
+    if cache_bytes is not None:
+        loaded.cache_bytes = cache_bytes
     return loaded
 
 
