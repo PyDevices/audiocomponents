@@ -108,6 +108,9 @@ class Pin:
     def match(self, path):
         if self.files is None:
             return []
+        if path.startswith("audiodsp/"):
+            # A citation may name the repository too: audiodsp/src/x.c.
+            path = path[len("audiodsp/"):]
         if "/" in path:
             return [f for f in self.files
                     if f == path or f.endswith("/" + path)]

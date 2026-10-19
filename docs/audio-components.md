@@ -119,6 +119,12 @@ MIDI track then plays on any kit — every kick lands where the kit has a kick,
 and a hit the kit has no voice for makes no sound at all. Nothing substitutes
 a near neighbour.
 
+A note that isn't in `NOTE_MAP` is ignored: `note_on` returns without a
+sound, an error or a warning, so a melodic part sent to a drum track, or a
+key outside the kit's pads, plays nothing. The map is the list of notes an
+instrument answers. Some patches of a kit with several machines, such as
+`drumkits`, leave a few of the map's pads silent too.
+
 Six of these drum machines predate MIDI and speak trigger pulses, so they had
 no numbers of their own to keep. The four that shipped with MIDI turn out to
 have put their voices on GM's slots anyway, bar one — the DrumTraks cabasa,

@@ -401,6 +401,11 @@ class TestCeiling(unittest.TestCase):
         self.assertEqual(self.sine_cells(kp.CondKit)["sine/48000/2/m1=64"],
                          "ok")
 
+    def test_a_volume_knob_is_level_like(self):
+        class Labelled:
+            MACRO_LABELS = ("Tone", "Volume", "Output Volume", "Drive")
+        self.assertEqual(kit_ceiling.level_like(Labelled), [1, 2])
+
     def test_the_combined_settings_are_driven(self):
         self.assertEqual(kit_ceiling.level_like(kp.CondKit), [0, 1])
         combo = self.sine_cells(kp.ComboWrap)
@@ -563,6 +568,20 @@ class TestPaperwork(unittest.TestCase):
         self.assertEqual(got["cite:audiodsp_feedback_delay.c:157"], "ok")
         self.assertTrue(red(got["cite:audiodsp_feedback_delay.c:99999"]))
         self.assertTrue(red(got["cite:nosuchfile.c:3"]))
+
+    def test_a_citation_may_name_the_audiodsp_directory(self):
+        pin = kit_paperwork.Pin(None, None)
+        pin.files = ["src/shared/audiodsp_filter_f32.c"]
+        pin._lines = {"src/shared/audiodsp_filter_f32.c": 300}
+        got = self.cells("(`audiodsp/src/shared/audiodsp_filter_f32.c:216-241`"
+                         ", `audiodsp/src/shared/audiodsp_filter_f32.c:999`,"
+                         " `audiodsp/src/shared/nosuch.c:3`)", pin)
+        self.assertEqual(
+            got["cite:audiodsp/src/shared/audiodsp_filter_f32.c:216-241"],
+            "ok")
+        self.assertTrue(red(
+            got["cite:audiodsp/src/shared/audiodsp_filter_f32.c:999"]))
+        self.assertTrue(red(got["cite:audiodsp/src/shared/nosuch.c:3"]))
 
     def test_citations_to_this_repository(self):
         pin = kit_paperwork.Pin(None, None)

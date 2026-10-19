@@ -57,7 +57,8 @@ LOW_NOTES = (41, 55, 82, 110, 147, 163)
 MATERIALS = ("square", "sine", "clicks", "noise", "dc") + tuple(
     "sq%d" % hz for hz in LOW_NOTES)
 #: A macro label holding one of these is level-like.
-LEVEL_WORDS = ("Level", "Mix", "Octave", "Direct", "Voice", "Gain")
+LEVEL_WORDS = ("Level", "Mix", "Octave", "Direct", "Voice", "Gain",
+               "Volume")
 WRAP_JUMP = 32768
 
 _MAT = {}
