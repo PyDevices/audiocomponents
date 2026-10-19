@@ -363,5 +363,165 @@ class SoundFontInstrumentTest(unittest.TestCase):
                 inst.control_change(0, 0)
 
 
+class SharedVoicesTest(unittest.TestCase):
+    """Several instruments on one `Voices`, as a GM module's parts are: one
+    sampler, one pool, the oldest releasing voice anywhere stolen first, and
+    each instrument's controls and teardown reaching only its own voices."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="sf2pool")
+        cls.path = os.path.join(cls.tmp, "tiny.sf2")
+        sf2_builder.tiny_bank().write(cls.path)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def setUp(self):
+        self.voices = soundfont.Voices(SR, 2, voice_count=8)
+        self.a = audioinstruments.create("soundfont", SR, bank=self.path,
+                                         voices=self.voices)
+        self.b = audioinstruments.create("soundfont", SR, bank=self.path,
+                                         voices=self.voices)
+        self.kit = audioinstruments.create("soundfont_drums", SR,
+                                           bank=self.path, voices=self.voices)
+
+    def tearDown(self):
+        for inst in (self.a, self.b, self.kit):
+            inst.deinit()
+        self.voices.deinit()
+
+    def test_one_sampler_for_all(self):
+        self.assertIs(self.a.output, self.voices.output)
+        self.assertIs(self.b.output, self.voices.output)
+        self.assertIs(self.kit.output, self.voices.output)
+        self.assertIs(self.a.voices, self.voices)
+        self.assertEqual(self.voices.voice_count, 8)
+
+    def test_a_busy_part_takes_the_idle_ones_voices(self):
+        for key in range(60, 68):          # eight one-voice notes on A
+            self.a.note_on(key, 100)
+        self.assertEqual(len(self.a._player.held), 8)
+        self.assertEqual(self.voices.stolen, 0)
+        self.assertEqual(self.voices.sounding(), 8)
+        self.assertEqual((self.a.sounding(), self.b.sounding()), (8, 0))
+
+    def test_the_oldest_releasing_voice_anywhere_goes_first(self):
+        for key in range(60, 64):
+            self.a.note_on(key, 100)
+        for key in range(70, 74):
+            self.b.note_on(key, 100)
+        sf2_play.render(self.a, 0.01)      # a voice never rendered ends at release
+        self.a.note_off(61)                # releasing, on A
+        self.b.note_on(80, 100)            # B's ninth voice
+        self.assertNotIn((0, 61), self.a._player.held)
+        self.assertEqual(sorted(k for _, k in self.a._player.held),
+                         [60, 62, 63])
+        self.assertIn((0, 80), self.b._player.held)
+        self.assertEqual((self.voices.stolen, self.voices.cut), (1, 0))
+        # None releasing: the oldest held voice, A's 60, and it counts as cut.
+        self.b.note_on(81, 100)
+        self.assertEqual(sorted(k for _, k in self.a._player.held), [62, 63])
+        self.assertEqual((self.voices.stolen, self.voices.cut), (2, 1))
+        # A's release of a stolen note leaves B's new one sounding.
+        self.a.note_off(60)
+        self.assertIn((0, 81), self.b._player.held)
+        slot = self.b._player.held[(0, 81)][0]
+        self.assertTrue(self.voices.output.voice[slot].playing)
+        self.assertFalse(self.voices.slots[slot][2])
+
+    def test_controls_reach_only_their_own_voices(self):
+        self.a.note_on(60, 100)
+        self.b.note_on(72, 100)
+        sa = self.a._player.held[(0, 60)][0]
+        sb = self.b._player.held[(0, 72)][0]
+        voice = self.voices.output.voice
+        b_level, b_pitch, b_pan = voice[sb].level, voice[sb].pitch, voice[sb].pan
+        self.a.set_macro(0, 0)
+        self.a.pitch_bend(16383)
+        self.a.set_macro(soundfont.PAN_MACRO, 0)
+        self.assertEqual(voice[sa].level, 0.0)
+        self.assertEqual(voice[sb].level, b_level)
+        self.assertEqual(voice[sb].pitch, b_pitch)
+        self.assertEqual(voice[sb].pan, b_pan)
+
+    def test_the_choke_stays_in_its_own_kit(self):
+        kit2 = audioinstruments.create("soundfont_drums", SR, bank=self.path,
+                                       voices=self.voices)
+        try:
+            kit2.note_on(46, 100)          # open hat on the second kit
+            self.kit.note_on(42, 100)      # closed hat on the first
+            self.assertIn((0, 46), kit2._player.held)
+        finally:
+            kit2.deinit()
+
+    def test_deinit_one_leaves_the_others_sounding(self):
+        self.a.note_on(60, 100)
+        self.b.note_on(72, 100)
+        sb = self.b._player.held[(0, 72)][0]
+        self.a.reset()
+        self.assertTrue(self.voices.output.voice[sb].playing)
+        self.a.note_on(60, 100)
+        self.a.deinit()
+        self.assertTrue(self.voices.output.voice[sb].playing)
+        self.assertEqual(self.voices.sounding(), 1)
+        self.assertGreater(sf2_play.peak(sf2_play.render(self.b, 0.02)),
+                           0.0005)
+
+    def test_the_reserve_fades_a_tail_rather_than_cutting_it(self):
+        pool = soundfont.Voices(SR, 2, voice_count=8, reserve=2)
+        inst = audioinstruments.create("soundfont", SR, bank=self.path,
+                                       voices=pool)
+        try:
+            for key in range(60, 66):      # six held, two free
+                inst.note_on(key, 100)
+            sf2_play.render(inst, 0.01)
+            inst.note_off(60)
+            inst.note_off(61)
+            self.assertEqual(pool.faded, 0)
+            inst.note_on(66, 100)          # one free left: 60 fades
+            inst.note_on(67, 100)          # none free: 61 fades
+            self.assertEqual(pool.faded, 2)
+            states = sorted(slot[2] for slot in pool.slots)
+            self.assertEqual(states.count(soundfont.FADED), 2)
+            faded = [i for i, slot in enumerate(pool.slots)
+                     if slot[2] == soundfont.FADED]
+            self.assertEqual([pool.output.voice[i].level for i in faded],
+                             [0.0, 0.0])
+            inst.set_macro(0, 127)         # a volume move leaves them faded
+            self.assertEqual([pool.output.voice[i].level for i in faded],
+                             [0.0, 0.0])
+            sf2_play.render(inst, 0.01)
+            inst.note_on(68, 100)          # takes a faded voice, no steal
+            inst.note_on(69, 100)
+            self.assertEqual((pool.stolen, pool.cut), (0, 0))
+            self.assertEqual(sorted(k for _, k in inst._player.held),
+                             list(range(62, 70)))
+            inst.note_on(70, 100)          # nothing faded or releasing: a cut
+            self.assertEqual((pool.stolen, pool.cut), (1, 1))
+        finally:
+            inst.deinit()
+            pool.deinit()
+
+    def test_a_pool_of_another_format_is_refused(self):
+        other = soundfont.Voices(44100, 2, voice_count=4)
+        try:
+            with self.assertRaises(ValueError):
+                audioinstruments.create("soundfont", SR, bank=self.path,
+                                        voices=other)
+        finally:
+            other.deinit()
+
+    def test_its_own_pool_is_the_old_instrument(self):
+        inst = audioinstruments.create("soundfont", SR, bank=self.path)
+        try:
+            self.assertFalse(inst.voices.shared)
+            self.assertEqual(inst.voices.voice_count, soundfont.MAX_VOICES)
+            self.assertIsNot(inst.output, self.voices.output)
+        finally:
+            inst.deinit()
+
+
 if __name__ == "__main__":
     unittest.main()

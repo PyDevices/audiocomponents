@@ -42,6 +42,13 @@ that class first, which is how the closed hi-hat chokes the open one. Note
 off releases a voice through its own release stage; loop mode 3 lets the
 sample run on to its end.
 
+Several instruments can share one pool of voices instead, as a General MIDI
+module's sixteen parts do: make a `Voices`, pass it as `voices=` to every
+`create()`, and play its `output` once. A busy part then takes the voices
+an idle one isn't using, a new note anywhere steals the oldest releasing
+voice in the whole pool, and there is one sampler to render rather than one
+per instrument and a mixer to sum them.
+
 Pure Python over the reader and the engine, so it imports on MicroPython;
 `audiosampler` is imported when an instrument is created.
 """
@@ -85,6 +92,14 @@ MAX_VOICES = 32
 
 #: The percussion bank, by the specification.
 PERCUSSION_BANK = 128
+
+#: A voice's state in its slot: the key is down, the key is up and the
+#: release is sounding, or faded to silence for the reserve.
+HELD, RELEASING, FADED = 0, 1, 2
+
+#: Voices a shared pool has unless told otherwise: what a General MIDI
+#: module of the SC-88's generation has, and the engine's ceiling.
+SHARED_VOICES = 64
 
 import os
 
@@ -231,23 +246,130 @@ def open_bank(bank=None):
     return loaded
 
 
+# --- the voices ------------------------------------------------------------
+
+class Voices(object):
+    """Engine voices on one sampler, for one instrument or shared by several.
+
+        voices = soundfont.Voices(48000, 2)
+        melodic = audioinstruments.create("soundfont", 48000, bank=path,
+                                          voices=voices)
+        kit = audioinstruments.create("soundfont_drums", 48000, bank=path,
+                                      voices=voices)
+        audio_out.play(voices.output)
+
+    Every instrument made on it has this sampler as its `output`, so play
+    it once. Deinitialising one of them stops its own voices and leaves the
+    sampler sounding for the rest; `deinit()` the pool after the last.
+
+    A stolen voice stops at once, and one still sounding clicks. `reserve`
+    keeps that many voices ready instead: when fewer are free, the oldest
+    releasing voices are faded to silence (the engine ramps a level across
+    one block), and a new note takes a faded voice before a sounding one.
+    The tails end a little sooner, without the click.
+
+    `gain` scales every voice the pool plays. Sixteen parts summed are far
+    louder than one instrument, and the sum is quantised once, so a pool for
+    a whole GM module wants headroom: General MIDI players run these banks
+    at about 0.2.
+
+    `stolen` counts the voices stopped while still sounding to start a new
+    note, `cut` the ones among them that were still held (a note ending
+    early), and `faded` the releasing voices faded out for the reserve.
+    """
+
+    def __init__(self, sample_rate, channel_count=2,
+                 voice_count=SHARED_VOICES, shared=True, reserve=0, gain=1.0):
+        self.sampler = _sampler(sample_rate, channel_count, voice_count)
+        self.sample_rate = sample_rate
+        self.channel_count = channel_count
+        self.shared = shared
+        #: `slots[i]` is engine voice i: None when free, else `[key, serial,
+        #: state, exclusive_class, level, pitch, pan, player]`, where `state`
+        #: is `HELD`, `RELEASING` or `FADED`, `level`, `pitch` and `pan` are
+        #: the region's own, before the live macros, and `player` is the
+        #: instrument's that holds it.
+        self.slots = [None] * self.sampler.voice_count
+        self.serial = 0
+        self.reserve = int(reserve)
+        self.gain = float(gain)
+        self.stolen = 0
+        self.cut = 0
+        self.faded = 0
+
+    @property
+    def output(self):
+        return self.sampler
+
+    @property
+    def voice_count(self):
+        return len(self.slots)
+
+    def sounding(self):
+        """How many voices are sounding now, releases included."""
+        voices = self.sampler.voice
+        n = 0
+        for i in range(len(self.slots)):
+            if voices[i].playing:
+                n += 1
+        return n
+
+    def keep_free(self):
+        """Fade the oldest releasing voices until `reserve` are free or
+        faded."""
+        slots = self.slots
+        ready = 0
+        for slot in slots:
+            if slot is None or slot[2] == FADED:
+                ready += 1
+        voices = self.sampler.voice
+        while ready < self.reserve:
+            victim = None
+            for i, slot in enumerate(slots):
+                if (slot is not None and slot[2] == RELEASING
+                        and (victim is None or slot[1] < slots[victim][1])):
+                    victim = i
+            if victim is None:
+                return
+            voices[victim].level = 0.0
+            slots[victim][2] = FADED
+            self.faded += 1
+            ready += 1
+
+    def deinit(self):
+        self.sampler.deinit()
+
+
+def _free(slots, i):
+    """Free slot `i` and take it out of its player's held notes."""
+    slot = slots[i]
+    slots[i] = None
+    if slot is None:
+        return
+    held = slot[7].held
+    indices = held.get(slot[0])
+    if indices is not None:
+        if i in indices:
+            indices.remove(i)
+        if not indices:
+            del held[slot[0]]
+
+
 # --- the player ------------------------------------------------------------
 
 class _Player(object):
-    """The voices of one instrument on its sampler.
+    """The voices of one instrument, on its own `Voices` or a shared one.
 
-    `slots[i]` is engine voice i: `None` when free, else
-    `[key, serial, releasing, exclusive_class, level, pitch, pan]` where
-    `level`, `pitch` and `pan` are the region's own, before the live
-    macros.
+    `slots` is the pool's: the player's own voices are the slots whose last
+    item is the player.
     """
 
-    def __init__(self, bank, sampler, default_bank=0):
+    def __init__(self, bank, voices, default_bank=0):
         self.bank = bank
-        self.sampler = sampler
-        self.slots = [None] * sampler.voice_count
+        self.pool = voices
+        self.sampler = voices.sampler
+        self.slots = voices.slots
         self.held = {}         # key -> [slot index, ...]
-        self.serial = 0
         self.default_bank = default_bank
         self.bank_number = default_bank
         self.program = 0
@@ -287,45 +409,44 @@ class _Player(object):
     # -- voices -------------------------------------------------------------
 
     def _collect(self):
-        """Free the slots whose voices have finished."""
+        """Free the slots whose voices have finished, whoever held them."""
         voices = self.sampler.voice
-        for i, slot in enumerate(self.slots):
-            if slot is not None and not voices[i].playing:
-                self._free(i)
+        slots = self.slots
+        for i in range(len(slots)):
+            if slots[i] is not None and not voices[i].playing:
+                _free(slots, i)
 
     def _free(self, i):
-        slot = self.slots[i]
-        self.slots[i] = None
-        if slot is None:
-            return
-        indices = self.held.get(slot[0])
-        if indices is not None:
-            if i in indices:
-                indices.remove(i)
-            if not indices:
-                del self.held[slot[0]]
+        _free(self.slots, i)
 
     def _allocate(self):
         slots = self.slots
         for i, slot in enumerate(slots):
             if slot is None:
                 return i
-        # Every voice busy: the oldest releasing one, then the oldest.
+        # Every voice busy: the oldest faded one, which is silent, then the
+        # oldest releasing one, then the oldest.
         victim = None
-        for releasing in (True, False):
+        for state in (FADED, RELEASING, HELD):
             for i, slot in enumerate(slots):
-                if slot[2] == releasing and (
+                if slot[2] == state and (
                         victim is None or slot[1] < slots[victim][1]):
                     victim = i
             if victim is not None:
                 break
+        pool = self.pool
+        if state != FADED:
+            pool.stolen += 1
+        if state == HELD:
+            pool.cut += 1
         self.sampler.voice[victim].stop()
-        self._free(victim)
+        _free(slots, victim)
         return victim
 
     def _choke(self, exclusive_class):
         for i, slot in enumerate(self.slots):
-            if slot is not None and slot[3] == exclusive_class:
+            if (slot is not None and slot[7] is self
+                    and slot[3] == exclusive_class):
                 self.sampler.voice[i].stop()
                 self._free(i)
 
@@ -339,8 +460,9 @@ class _Player(object):
             return
         if not regions:
             return
-        self.serial += 1
-        serial = self.serial
+        pool = self.pool
+        pool.serial += 1
+        serial = pool.serial
         voices = self.sampler.voice
         detune_ratio = 2.0 ** (detune / 12.0) if detune else 1.0
         # Choke before any of this note's regions start, so a stereo pair
@@ -361,17 +483,19 @@ class _Player(object):
                 pcm, rate=region.sample_rate,
                 pitch=ratio * self.tune * self.bend,
                 loop_start=loop_start, loop_end=loop_end, loop_mode=mode,
-                level=level * self.volume,
+                level=level * self.volume * pool.gain,
                 pan=_panned(region.pan, self.pan),
                 delay=region.delay,
                 attack=region.attack * self.attack_scale,
                 hold=region.hold, decay=region.decay,
                 sustain=region.sustain,
                 release=region.release * self.release_scale)
-            self.slots[i] = [key, serial, False, region.exclusive_class,
-                             level, ratio, region.pan]
+            self.slots[i] = [key, serial, HELD, region.exclusive_class,
+                             level, ratio, region.pan, self]
             indices.append(i)
         self.held[key] = indices
+        if pool.reserve:
+            pool.keep_free()
 
     def release(self, key):
         indices = self.held.pop(key, None)
@@ -380,11 +504,11 @@ class _Player(object):
         voices = self.sampler.voice
         for i in indices:
             slot = self.slots[i]
-            if slot is None:
+            if slot is None or slot[7] is not self:
                 continue
             if voices[i].playing:
                 voices[i].release()
-                slot[2] = True
+                slot[2] = RELEASING
             else:
                 self.slots[i] = None
 
@@ -392,9 +516,17 @@ class _Player(object):
         for key in list(self.held):
             self.release(key)
 
+    def sounding(self):
+        voices = self.sampler.voice
+        n = 0
+        for i, slot in enumerate(self.slots):
+            if slot is not None and slot[7] is self and voices[i].playing:
+                n += 1
+        return n
+
     def stop_all(self):
         for i, slot in enumerate(self.slots):
-            if slot is not None:
+            if slot is not None and slot[7] is self:
                 self.sampler.voice[i].stop()
                 self.slots[i] = None
         self.held.clear()
@@ -402,21 +534,21 @@ class _Player(object):
     def relevel(self):
         voices = self.sampler.voice
         for i, slot in enumerate(self.slots):
-            if slot is not None:
-                voices[i].level = slot[4] * self.volume
+            if slot is not None and slot[7] is self and slot[2] != FADED:
+                voices[i].level = slot[4] * self.volume * self.pool.gain
 
     def repitch(self):
         voices = self.sampler.voice
         factor = self.tune * self.bend
         for i, slot in enumerate(self.slots):
-            if slot is not None:
+            if slot is not None and slot[7] is self:
                 voices[i].pitch = slot[5] * factor
 
     def repan(self):
         voices = self.sampler.voice
         offset = self.pan
         for i, slot in enumerate(self.slots):
-            if slot is not None:
+            if slot is not None and slot[7] is self:
                 voices[i].pan = _panned(slot[6], offset)
 
     # -- events -------------------------------------------------------------
@@ -506,17 +638,54 @@ class SoundFontInstrument(Instrument):
         self._player.bank_msb = self._player.bank_lsb = 0
         super().reset()
 
+    @property
+    def voices(self):
+        """The `Voices` this instrument plays on."""
+        return self._player.pool
 
-def _sampler(sample_rate, channel_count):
+    def sounding(self):
+        """How many of this instrument's own voices are sounding now,
+        releases included: on shared `Voices`, the others' are not counted."""
+        return self._player.sounding()
+
+    def deinit(self):
+        """On a shared `Voices`, stop this instrument's own voices and leave
+        the sampler to the others; on its own, release the sampler too."""
+        if self._deinited:
+            return
+        if not self._player.pool.shared:
+            super().deinit()
+            return
+        self.all_notes_off()
+        self._player.stop_all()
+        self._output = None
+        self._deinited = True
+
+
+def _sampler(sample_rate, channel_count, voice_count=MAX_VOICES):
     import audiosampler
-    return audiosampler.Sampler(voice_count=MAX_VOICES,
+    return audiosampler.Sampler(voice_count=voice_count,
                                 channel_count=channel_count,
                                 sample_rate=sample_rate)
 
 
-def create(sample_rate, channel_count=2, transport=None, bank=None):
+def voices_for(sample_rate, channel_count, voices=None):
+    """`voices` checked against the instrument's format, or a pool of its
+    own when None."""
+    if voices is None:
+        return Voices(sample_rate, channel_count, MAX_VOICES, shared=False)
+    if (voices.sample_rate != sample_rate
+            or voices.channel_count != channel_count):
+        raise ValueError("the shared voices are %d Hz, %d channels"
+                         % (voices.sample_rate, voices.channel_count))
+    return voices
+
+
+def create(sample_rate, channel_count=2, transport=None, bank=None,
+           voices=None):
     """The bank's melodic presets as one instrument; `bank` is a path, an
-    open `SoundFont`, or None to look in the usual places."""
+    open `SoundFont`, or None to look in the usual places. `voices` is a
+    `Voices` to share with other instruments, or None for its own."""
     loaded = open_bank(bank)
     melodic = loaded.melodic_bank()
     programs = loaded.programs(melodic)
@@ -530,6 +699,7 @@ def create(sample_rate, channel_count=2, transport=None, bank=None):
             name = "Program %d (empty)" % program
         patches[program] = (name, DEFAULT_MACROS)
         targets[program] = (melodic, program)
-    player = _Player(loaded, _sampler(sample_rate, channel_count), melodic)
+    player = _Player(loaded, voices_for(sample_rate, channel_count, voices),
+                     melodic)
     return SoundFontInstrument(player, patches, targets, MACRO_LABELS,
                                transport=transport)
