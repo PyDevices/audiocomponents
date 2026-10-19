@@ -51,6 +51,13 @@ there, and are recorded in its changelog.
 - Instruments built on two threads at the same time each keep their own
   synthesizer. Before, an instrument could take the voice engine another
   thread's factory had just made.
+- Distortion, Overdrive and Saturation render the same bytes on a desktop
+  MicroPython as on CPython when `audiodsp_util` is not installed. Their
+  single-precision rounding fell back to doing nothing there, so above
+  Distortion's headroom knee (Ceiling 64 was where it showed) a sample
+  could land 1 LSB away. A desktop CircuitPython takes the same fallback
+  and is not yet re-measured
+  ([#152](https://github.com/PyDevices/audiocomponents/issues/152)).
 
 ## v0.4.1.dev1 (2026-10-15)
 

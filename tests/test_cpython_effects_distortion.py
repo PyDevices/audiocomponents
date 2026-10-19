@@ -1644,3 +1644,46 @@ class TheScoopBuildsWithoutGetBuffer(unittest.TestCase):
                     effect.reset()
             finally:
                 effect.deinit()
+
+
+class TheFloat32FallbackRounds(unittest.TestCase):
+    """audiocomponents#152: Distortion rendered 1 LSB away from CPython on a
+    desktop MicroPython and CircuitPython above the headroom knee (Ceiling
+    64 was where the kit saw it). Those interpreters run in double, and
+    without `audiodsp_util` on their path the class fell back to an
+    identity for `_f32`, so `_headroom`'s split was made from numbers
+    CPython never sees. The fallback rounds through `struct` now, which
+    both have. This loads each class module with `audiodsp_util` hidden and
+    asks the fallback for the single CPython's own helper gives."""
+
+    MODULES = ("distortion", "overdrive", "saturation")
+
+    @staticmethod
+    def _load_without_util(name):
+        import importlib.util
+        import struct
+
+        path = os.path.join(os.path.dirname(_component.__file__),
+                            name + ".py")
+        spec = importlib.util.spec_from_file_location(
+            "audioeffects._f32_probe_" + name, path)
+        module = importlib.util.module_from_spec(spec)
+        saved = sys.modules.get("audiodsp_util", False)
+        sys.modules["audiodsp_util"] = None       # import raises ImportError
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            if saved is False:
+                del sys.modules["audiodsp_util"]
+            else:
+                sys.modules["audiodsp_util"] = saved
+        return module, struct
+
+    def test_fallback_is_a_single_precision_rounding(self):
+        for name in self.MODULES:
+            module, struct = self._load_without_util(name)
+            for value in (0.1, 0.74 / 0.82860, 1.2559055118110236 * 0.659737631):
+                single = struct.unpack("<f", struct.pack("<f", value))[0]
+                with self.subTest(module=name, value=value):
+                    self.assertNotEqual(single, value)
+                    self.assertEqual(module._f32(value), single)
