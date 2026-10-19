@@ -1732,7 +1732,7 @@ version number. The release carries repository tooling and docs only.
   (`audiodynamics`); `latency_samples` 0 with no look-ahead option at all.
   The dossier's Hold macro is deliberately absent: `hold_ms` does nothing in
   `DYN_EXPAND` and the reason is measured, not assumed.
-- `NoiseGate` is rebuilt from scratch on the construction module, after the
+- **`NoiseGate` is rebuilt from scratch** on the construction module, after the
   Drawmer DS201 (effects program, Phase 2). It gains the eight controls the
   DS201 has and the shipped class had none of: Threshold, Attack, **Hold**,
   Release, **Range**, a two-ended **key band** and **Key Listen**, with six
@@ -1889,7 +1889,7 @@ version number. The release carries repository tooling and docs only.
   board leg is not taken and one trait, T4's `|H(f0/100)|` clause, is
   disconfirmed above about 2.5 kHz for a reason that is RBJ's closed form and
   not this class.
-- `Notch` is rebuilt from scratch on `_component.Component` for the effects
+- **`Notch` is rebuilt from scratch** on `_component.Component` for the effects
   program's Phase 2 (`lib/audioeffects/rebuilt/notch.py`).
   Where the old class had no macros at all, no width knob, a hidden `mix`,
   no declared tail and a `set_frequency` that raised above Nyquist, this one
