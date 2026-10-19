@@ -50,7 +50,7 @@ except (ImportError, AttributeError, NameError):   # no os.path natively
 
 import kit_common as kc                                     # noqa: E402
 from audioeffects import _component                         # noqa: E402
-from audioeffects import rebuilt                            # noqa: E402
+import audioeffects                                         # noqa: E402
 
 VENDOR = "PyDevices"
 
@@ -61,7 +61,7 @@ SEEDS = tuple(range(8))
  DAMPING_I, MIX_I) = range(9)
 INTERVALS = (-12, -5, 7, 12, 24)
 
-ShimmerHall = rebuilt.module_class("ShimmerHall")
+ShimmerHall = audioeffects.ShimmerHall
 _module = sys.modules[ShimmerHall.__module__]
 
 
@@ -792,13 +792,10 @@ def _port(rate=48000, channels=2):
 
 class TheAdoption(TestCase):
     def test_adopted_is_what_the_package_serves(self):
-        """Adopted on 2026-10-13, so `create()` serves this one. Revert
-        `rebuilt.ADOPTED` and this goes red."""
+        """Adopted on 2026-10-13, so `create()` serves this one. Serve another class under the name and this goes red."""
         import audiocore
         import audioeffects
         from array import array
-        self.assertIn("ShimmerHall", rebuilt.ADOPTED)
-        self.assertNotIn("ShimmerHall", rebuilt.parked())
         self.assertIs(audioeffects.ShimmerHall, ShimmerHall)
         served = audioeffects.create(
             "ShimmerHall",
@@ -958,8 +955,10 @@ class TheSurface(TestCase):
             h.deinit()
 
     def test_only_one_provider(self):
-        self.assertEqual(list(rebuilt.known()).count("ShimmerHall"), 1)
-        self.assertNotIn("_Hall", rebuilt.known())
+        from audioeffects import shimmerhall
+        providers = [value for value in vars(shimmerhall).values()
+                     if audioeffects._is_provider(value)]
+        self.assertEqual([cls.NAME for cls in providers], ["ShimmerHall"])
 
     def test_mix_0_is_the_input(self):
         values = t6_material(48000, 2, 1)
@@ -1192,7 +1191,7 @@ class TheSurface(TestCase):
         # own patch path: the exact constructor values come back, the dry
         # plays from frame 0, and nothing of the knobs moved before the
         # reset is left.
-        rack_class = rebuilt.module_class("Rack")
+        rack_class = audioeffects.Rack
         frames = 6144
         off_grid = dict(character="rise", shimmer=0.37, rise=0.71,
                         bloom_ms=33.3, interval=7, decay=7.7, size=1.2,

@@ -24,11 +24,8 @@ done" line, and in every evidence pack that cites it: blocking a module in
 can show a stock-tier class actually rendering on one.
 
 The battery runs over the classes that declare a tier today and grows on its
-own as classes are rebuilt: it walks `audioeffects.ALL` for the shipped
-catalogue and `rebuilt.known()` for everything still under `rebuilt/`,
-adopted or parked. A parked class ships nowhere yet, and its tier still has
-to be true - so it is held to the same battery as the adopted one.
-`test_the_battery_holds_a_subject_in_each_tier` is what keeps it from
+own as classes are added: it walks `audioeffects.ALL`, the shipped
+catalogue. `test_the_battery_holds_a_subject_in_each_tier` is what keeps it from
 passing by having nothing to hold.
 """
 
@@ -39,7 +36,6 @@ import unittest
 import audiocore
 import audioeffects
 from audioeffects import _component
-from audioeffects import rebuilt
 
 #: `_component` reads VENDOR off the defining module, and the planted-fault
 #: class below is defined here.
@@ -55,11 +51,8 @@ def source(channels=2, rate=48000):
 def subjects():
     """Every class that declares a portability tier today.
 
-    The shipped catalogue first, so a class is covered the moment it is
-    among the 46; then everything under `rebuilt/`, read with
-    `module_class()` rather than `load()`, which picks up any later-phase class the gate audit has parked (`rebuilt.ADOPTED`).
-    A parked class is not what the library serves, and its portability tier
-    is still a claim this battery has to be able to break.
+    The shipped catalogue, so a class is covered the moment it is among
+    the 45.
     """
     found = {}
     for name in audioeffects.ALL:
@@ -69,8 +62,6 @@ def subjects():
                     and issubclass(candidate, _component.Component)
                     and getattr(candidate, "NAME", None) == name):
                 found[name] = candidate
-    for name in rebuilt.known():
-        found.setdefault(name, rebuilt.module_class(name))
     return found
 
 

@@ -74,7 +74,7 @@ VENDOR = "PyDevices"
 
 import math
 
-from .. import _component
+from . import _component
 
 try:
     import audioverb

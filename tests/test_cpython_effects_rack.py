@@ -40,11 +40,10 @@ elif sys.implementation.name == "cpython":
 import audiocore
 import audioeffects
 from audioeffects import _component
-from audioeffects import rebuilt
 
 VENDOR = "PyDevices"
 
-Rack = rebuilt.module_class("Rack")
+Rack = audioeffects.Rack
 
 CPYTHON = sys.implementation.name == "cpython"
 RATES = (48000, 22050)
@@ -1084,7 +1083,7 @@ def t4_widener(cls, rate, channels):
     wrong = []
     frames = 12000
     values = clicks(frames, channels, range(512, frames, 2400))
-    widener = rebuilt.module_class("StereoWidener")
+    widener = audioeffects.StereoWidener
     chain = ((widener, {"delay_ms": 20.0}),)
 
     def before(rack):
@@ -1124,7 +1123,7 @@ def t4_pitchshifter(cls, rate, channels):
     values = clicks(frames, channels, range(512, frames, 2400))
     for i in range(len(values)):
         values[i] += 6000
-    shifter = rebuilt.module_class("PitchShifter")
+    shifter = audioeffects.PitchShifter
     cases = (
         ("defaults", {}, ((0, 40), (1, 100), (2, 90), (3, 50), (4, 90)),
          ()),
@@ -1165,7 +1164,7 @@ def t4_airspace(cls, rate, channels):
     wrong = []
     frames = 12000
     values = clicks(frames, channels, range(512, frames, 2400))
-    airspace = rebuilt.module_class("AirSpace")
+    airspace = audioeffects.AirSpace
     chain = ((airspace, {"time_ms": 112.0813}),)
 
     def before(rack):
@@ -1254,13 +1253,10 @@ def _native_binaries():
 
 class TheAdoption(TestCase):
     def test_adopted_is_what_the_package_serves(self):
-        """Adopted on 2026-10-13, so `create()` serves this one. Revert
-        `rebuilt.ADOPTED` and this goes red."""
+        """Adopted on 2026-10-13, so `create()` serves this one. Serve another class under the name and this goes red."""
         import audiocore
         import audioeffects
         from array import array
-        self.assertIn("Rack", rebuilt.ADOPTED)
-        self.assertNotIn("Rack", rebuilt.parked())
         self.assertIs(audioeffects.Rack, Rack)
         served = audioeffects.create(
             "Rack",

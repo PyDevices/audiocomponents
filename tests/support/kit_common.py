@@ -393,16 +393,13 @@ def knob_positions(cls):
 
 
 def resolve(name):
-    """A class by provider name: a kit plant, a rebuilt class, or a class
-    `audioeffects` exports."""
+    """A class by provider name: a kit plant or a class `audioeffects`
+    exports."""
     import kit_planted
     if name in kit_planted.PLANTS:
         return kit_planted.PLANTS[name]
-    from audioeffects import rebuilt
-    cls = rebuilt.module_class(name)
-    if cls is None:
-        import audioeffects
-        cls = getattr(audioeffects, name, None)
+    import audioeffects
+    cls = getattr(audioeffects, name, None)
     return cls
 
 

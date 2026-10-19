@@ -11,7 +11,7 @@ from array import array
 
 import audiocore
 
-from .. import _component
+from . import _component
 
 try:
     import audiobiquad

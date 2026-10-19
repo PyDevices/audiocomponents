@@ -20,7 +20,7 @@ then it makes one clean venv, installs audiodsp (default: the AUDIODSP_PIN
 commit from git, as tests.yml does) and both wheels with --no-deps, and --
 from outside the repo, with `python -I` so lib/ cannot leak in -- imports
 both packages, renders one instrument and one effect by catalogue name, and
-loads every rebuilt effect class.
+loads every effect class.
 
 Needs `build` in the interpreter that runs it. Exit status is non-zero on any
 failure, and every failure is printed.
@@ -44,7 +44,6 @@ from array import array
 import audiocore
 import audioinstruments
 import audioeffects
-from audioeffects import rebuilt
 
 for module in (audioinstruments, audioeffects):
     if "site-packages" not in module.__file__:
@@ -82,10 +81,11 @@ print("audioeffects Flanger peak", peak)
 if not peak:
     sys.exit("Flanger rendered silence")
 
-names = sorted(rebuilt.known())
-if not names or any(rebuilt.module_class(name) is None for name in names):
-    sys.exit("rebuilt effect classes did not load: %r" % (names,))
-print("rebuilt classes load:", ", ".join(names))
+names = sorted(audioeffects.ALL)
+missing = [name for name in names if getattr(audioeffects, name, None) is None]
+if len(names) != 45 or missing:
+    sys.exit("effect classes did not load: %r" % (missing or names,))
+print("effect classes load:", len(names))
 print("wheel smoke: ok")
 '''
 

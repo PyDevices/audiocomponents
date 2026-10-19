@@ -379,7 +379,7 @@ control. An effect rack has exactly the effect shape even when its internal
 graph contains serial, parallel, or mixed effects. Racks may contain and be
 used by other racks.
 
-**Shipped status:** rack providers ship in `lib/audioeffects/rebuilt/`
+**Shipped status:** rack providers ship in `lib/audioeffects/`
 (`rack.py`, `shimmerhall.py`, `airspace.py`).
 `Rack` is the generic mechanism — a serial chain of the package's own
 effects described by portable literals

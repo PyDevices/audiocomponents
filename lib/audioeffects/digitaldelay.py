@@ -51,8 +51,8 @@ VENDOR = "PyDevices"
 
 import math
 
-from .. import _component
-from ..chorus import nominal_damping_hz
+from . import _component
+from .chorus import nominal_damping_hz
 
 try:
     import audioecho

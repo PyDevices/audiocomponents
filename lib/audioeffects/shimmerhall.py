@@ -74,22 +74,12 @@ from array import array
 
 import audiocore
 
-from .. import _component
+from . import _component
 
-try:
-    from .digitaldelay import laps_to_zero, whole_frames
-except ImportError:                     # pragma: no cover - after it lands
-    from ..digitaldelay import laps_to_zero, whole_frames
-try:
-    from .tapedelay import tone_excess
-except ImportError:                     # pragma: no cover - after it lands
-    from ..tapedelay import tone_excess
-# The module, not the class: a Component class at this module's top level
-# would be listed as a second provider here (`rebuilt.known()`).
-try:
-    from . import reverb as _reverb
-except ImportError:                     # pragma: no cover - after it lands
-    from .. import reverb as _reverb
+from .digitaldelay import laps_to_zero, whole_frames
+from .tapedelay import tone_excess
+# The module, not the class, so this module holds one Component class.
+from . import reverb as _reverb
 
 try:
     import audioecho

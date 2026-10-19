@@ -11,12 +11,9 @@ from array import array
 
 import audiocore
 
-from .. import _component
+from . import _component
 
-try:
-    from .digitaldelay import laps_to_zero, whole_frames
-except ImportError:                     # pragma: no cover - after it lands
-    from ..digitaldelay import laps_to_zero, whole_frames
+from .digitaldelay import laps_to_zero, whole_frames
 
 try:
     import audiodelays

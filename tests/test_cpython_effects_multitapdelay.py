@@ -12,8 +12,7 @@ Every law a measurement checks against is written out here from the
 dossier, never taken from the class: the whole-frame landing, the lap
 clamp, S1's head sets, Tilt's line and the lap node's float32 hand-off.
 
-The class is reached by `rebuilt.module_class("MultiTapDelay")`, which is also what
-`audioeffects.MultiTapDelay` serves since its adoption on 2026-09-29.
+The class is `audioeffects.MultiTapDelay`, served since its adoption on 2026-09-29.
 
 Three plants are built for real here that Station A emulated: T4's
 per-head 6 kHz low-pass (a second tap node for head 2 behind an
@@ -65,10 +64,9 @@ import kit_faults                                           # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 import audioeffects                                         # noqa: E402
 from audioeffects import _component                         # noqa: E402
-from audioeffects import rebuilt                            # noqa: E402
 from audioeffects.chorus import nominal_damping_hz          # noqa: E402
-from audioeffects.rebuilt import multitapdelay as mtd       # noqa: E402
-from audioeffects.rebuilt.digitaldelay import (             # noqa: E402
+from audioeffects import multitapdelay as mtd               # noqa: E402
+from audioeffects.digitaldelay import (                     # noqa: E402
     clear_of_stalls, laps_to_zero)
 from tools import effect_measurements as kit                # noqa: E402
 
@@ -80,7 +78,7 @@ BLOCK = 256
 (TIME_I, PATTERN_I, HEADS_I, FEEDBACK_I, MIX_I, TILT_I, TONE_I, SYNC_I,
  DIVISION_I) = range(9)
 
-MultiTapDelay = rebuilt.module_class("MultiTapDelay")
+MultiTapDelay = audioeffects.MultiTapDelay
 
 
 # --------------------------------------------------------------------------
@@ -1294,10 +1292,7 @@ class TheSurface(unittest.TestCase):
 
     def test_adopted_is_what_the_package_serves(self):
         """Adopted on 2026-09-29, so `create()` serves this one. It was the
-        reverse assertion while the class was parked; revert
-        `rebuilt.ADOPTED` and this goes red."""
-        self.assertIn("MultiTapDelay", rebuilt.ADOPTED)
-        self.assertNotIn("MultiTapDelay", rebuilt.parked())
+        reverse assertion while the class was parked; serve another class under the name and this goes red."""
         self.assertIs(audioeffects.MultiTapDelay, MultiTapDelay)
         served = audioeffects.create(
             "MultiTapDelay", Endless(silence(), RATE, 2), RATE)
@@ -2132,11 +2127,11 @@ class BareAdapter(MultiTapDelay):
 ROUTES_MODULE = """from array import array
 
 import audiocore                                    # noqa: E402
-from audioeffects import rebuilt                    # noqa: E402
+import audioeffects                                 # noqa: E402
 
 VENDOR = "PyDevices"
 
-M = rebuilt.module_class("MultiTapDelay")
+M = audioeffects.MultiTapDelay
 BLOCK = 256
 FB_I = 3
 MIX_I = 4
@@ -2393,9 +2388,9 @@ class NoGetBuffer:
 
 def use_audiocore(module):
     from audioeffects import _component
-    top = __import__("audioeffects.rebuilt.multitapdelay")
+    top = __import__("audioeffects.multitapdelay")
     _component.audiocore = module
-    top.rebuilt.multitapdelay.audiocore = module
+    top.multitapdelay.audiocore = module
 
 
 #: Clicks for the no-get_buffer routes: two in the first block, one in
@@ -3030,7 +3025,7 @@ CLAIMS = (
 HOT_SCRIPT = """
 import audiocore
 from array import array
-from audioeffects.rebuilt.multitapdelay import MultiTapDelay
+from audioeffects.multitapdelay import MultiTapDelay
 values = list(range(-32768, -32704)) + list(range(32704, 32768)) + [
     -20000, -1, 0, 1, 20000]
 for channels in (2, 1):

@@ -18,7 +18,6 @@ way an instrument does. See README.md, "A note on patches".
 """
 
 from . import _component
-from . import rebuilt as _rebuilt
 
 
 #: What `configure()` last set. No class reads it: every effect takes its
@@ -60,16 +59,14 @@ from .notch import Notch
 from .ladderfilter import LadderFilter
 from .combfilter import CombFilter
 from .dynamiceq import DynamicEQ
-# Phase 5's and Phase 6's classes are served from `rebuilt/` until they
-# come home as one file each.
-from .rebuilt.reverb import Reverb
-from .rebuilt.convolutionreverb import ConvolutionReverb
-from .rebuilt.digitaldelay import DigitalDelay
-from .rebuilt.slapbackdelay import SlapbackDelay
-from .rebuilt.tapedelay import TapeDelay
-from .rebuilt.analogdelay import AnalogDelay
-from .rebuilt.pingpongdelay import PingPongDelay
-from .rebuilt.multitapdelay import MultiTapDelay
+from .reverb import Reverb
+from .convolutionreverb import ConvolutionReverb
+from .digitaldelay import DigitalDelay
+from .slapbackdelay import SlapbackDelay
+from .tapedelay import TapeDelay
+from .analogdelay import AnalogDelay
+from .pingpongdelay import PingPongDelay
+from .multitapdelay import MultiTapDelay
 from .chorus import Chorus
 from .phaser import Phaser
 from .tremolo import Tremolo
@@ -84,13 +81,13 @@ from .cabinetsim import CabinetSim
 from .fuzz import Fuzz
 from .saturation import Saturation
 from .exciter import Exciter
-from .rebuilt.pitchshifter import PitchShifter
-from .rebuilt.harmonizer import Harmonizer
-from .rebuilt.octaver import Octaver
-from .rebuilt.stereowidener import StereoWidener
-from .rebuilt.rack import Rack
-from .rebuilt.shimmerhall import ShimmerHall
-from .rebuilt.airspace import AirSpace
+from .pitchshifter import PitchShifter
+from .harmonizer import Harmonizer
+from .octaver import Octaver
+from .stereowidener import StereoWidener
+from .rack import Rack
+from .shimmerhall import ShimmerHall
+from .airspace import AirSpace
 
 
 #: The package's whole surface, grouped as the modules above are. Every
@@ -131,42 +128,6 @@ def _is_provider(candidate):
             and candidate is not _component.Component
             and issubclass(candidate, _component.Component)
             and getattr(candidate, "NAME", None) is not None)
-
-
-def _adopt(namespace, names):
-    """Let an **adopted** rebuilt class stand in for the class it replaces,
-    by NAME.
-
-    This is the registry rule of the effects roadmap (§3): a rebuilt class
-    lands as its own file under `rebuilt/`, named after its `NAME`, and
-    replaces the old class here without either module being edited. When no
-    such file exists the old class stands. `ALL` and `create()` therefore
-    keep their meaning at every phase boundary, whichever half of the
-    library a given name is served by.
-
-    Phase 2's sixteen, Phase 3's THROUGH classes plus RingMod (AutoPan,
-    Chorus, Phaser, Tremolo, Vibrato, RingMod) and all seven of Phase 4's
-    (Overdrive, Distortion, Fuzz, Saturation, Bitcrusher, Exciter,
-    CabinetSim) have come home as one file per effect beside this module, so
-    they are imported above rather than substituted, and Phase 5's and
-    Phase 6's are imported above straight from `rebuilt/`, where they live
-    until they come home. Every name is therefore already the class this
-    would substitute; the walk stays so a rebuild can still land as one new
-    file: `rebuilt.load()` answers `None` for a parked name (or a name with
-    no file), and `rebuilt.module_class()` is how a tool or a class's own
-    tests reach a rebuild that has not come home yet.
-    """
-    for exported in names:
-        current = namespace.get(exported)
-        if not _is_provider(current):
-            continue
-        replacement = _rebuilt.load(current.NAME)
-        if replacement is not None:
-            namespace[exported] = replacement
-    return namespace
-
-
-_adopt(globals(), __all__)
 
 
 def create(name, source, sample_rate, transport=None, **options):

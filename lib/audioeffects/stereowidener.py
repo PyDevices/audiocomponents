@@ -10,12 +10,9 @@ from array import array
 
 import audiocore
 
-from .. import _component
+from . import _component
 
-try:
-    from .digitaldelay import whole_frames
-except ImportError:                     # pragma: no cover - after it lands
-    from ..digitaldelay import whole_frames
+from .digitaldelay import whole_frames
 
 try:
     import audioecho

@@ -20,8 +20,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 
-from audioeffects import _component                            # noqa: E402
-from audioeffects import distortion as rebuilt                 # noqa: E402
+from audioeffects import _component                         # noqa: E402
+from audioeffects import distortion as rebuilt              # noqa: E402
 from tools import effect_measurements as kit                   # noqa: E402
 import kit_faults as faults                                    # noqa: E402
 import kit_probes                                              # noqa: E402
@@ -768,13 +768,11 @@ class TestDistortionInvariants(unittest.TestCase):
         again, from anywhere, and this goes red.
         """
         import audioeffects
-        from audioeffects import rebuilt
         self.assertIs(audioeffects.Distortion, Distortion)
         self.assertEqual(Distortion.__module__, "audioeffects.distortion")
-        # Left staging when it came home, and left `rebuilt/` with it:
-        # there is no second copy for the registry to arbitrate over.
-        self.assertNotIn("Distortion", rebuilt.ADOPTED)
-        self.assertIsNone(rebuilt.module_class("Distortion"))
+        # Left `rebuilt/` when it came home: there is no second copy.
+        with self.assertRaises(ImportError):
+            __import__("audioeffects.rebuilt.distortion")
         served = audioeffects.create("Distortion", silence(), RATE)
         self.assertIsInstance(served, Distortion)
         served.deinit()

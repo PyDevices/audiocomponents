@@ -8,8 +8,7 @@ every row's measurement is shown red on the class built as a wire. The full
 spans, the three interpreters and the rates live in the evidence pack, not
 in this file.
 
-The class is reached by `rebuilt.module_class("DigitalDelay")`, which is also what
-`audioeffects.DigitalDelay` serves since its adoption on 2026-09-28.
+The class is `audioeffects.DigitalDelay`, served since its adoption on 2026-09-28.
 
 Fix round 1 (2026-09-27, after gate audit round 1): T2's pitch is read by a
 local least-squares fit against the dossier's own law (787.5 / glide_ms,
@@ -92,9 +91,9 @@ import kit_faults                                           # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 import lifecycle                                            # noqa: E402
 from audioeffects import _component                         # noqa: E402
-from audioeffects import rebuilt                            # noqa: E402
+import audioeffects                                         # noqa: E402
 from audioeffects.chorus import nominal_damping_hz          # noqa: E402
-from audioeffects.rebuilt import digitaldelay as dd         # noqa: E402
+from audioeffects import digitaldelay as dd                 # noqa: E402
 from tools import effect_measurements as kit                # noqa: E402
 
 VENDOR = "PyDevices"
@@ -104,7 +103,7 @@ BLOCK = 256
 TIME_I, FEEDBACK_I, MIX_I, GLIDE_I, SYNC_I, DIVISION_I, TONE_I, CUT_I = \
     range(8)
 
-DigitalDelay = rebuilt.module_class("DigitalDelay")
+DigitalDelay = audioeffects.DigitalDelay
 
 
 def midi_of_ms(time_ms):
@@ -1561,11 +1560,8 @@ class TheSurface(unittest.TestCase):
 
     def test_adopted_is_what_the_package_serves(self):
         """Adopted on 2026-09-28, so `create()` serves this one. It was the
-        reverse assertion while the class was parked; revert
-        `rebuilt.ADOPTED` and this goes red."""
+        reverse assertion while the class was parked; serve another class under the name and this goes red."""
         import audioeffects
-        self.assertIn("DigitalDelay", rebuilt.ADOPTED)
-        self.assertNotIn("DigitalDelay", rebuilt.parked())
         self.assertIs(audioeffects.DigitalDelay, DigitalDelay)
         served = audioeffects.create("DigitalDelay", silence_src(64), RATE)
         self.assertIsInstance(served, DigitalDelay)

@@ -12,16 +12,12 @@ from array import array
 import math
 import struct
 
-from .. import _component
-from ..chorus import nominal_damping_hz
+from . import _component
+from .chorus import nominal_damping_hz
 
 # DigitalDelay's tail arithmetic, reused rather than copied: the lap node
-# is the same node and rounds the same way. Its module moves up one level
-# when it comes home, so both homes are tried.
-try:
-    from .digitaldelay import laps_to_zero, whole_frames
-except ImportError:                     # pragma: no cover - after it lands
-    from ..digitaldelay import laps_to_zero, whole_frames
+# is the same node and rounds the same way.
+from .digitaldelay import laps_to_zero, whole_frames
 
 import audiocore
 

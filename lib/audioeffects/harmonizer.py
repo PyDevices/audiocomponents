@@ -11,7 +11,7 @@ import math
 
 import audiocore
 
-from .. import _component
+from . import _component
 
 try:
     import audiodelays

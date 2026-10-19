@@ -20,8 +20,7 @@ build that gained a hold or a fixed pair would show up here first. The
 full spans, the stereo renders the rows name, the three interpreters and
 the M5 table live in the evidence pack, not in this file.
 
-The class is reached by `rebuilt.module_class("AnalogDelay")`, which is also what
-`audioeffects.AnalogDelay` serves since its adoption on 2026-09-29.
+The class is `audioeffects.AnalogDelay`, served since its adoption on 2026-09-29.
 
 The dossier's laws are written out here independently of the class: the
 corner is 0.2211 N / T, the Time map 20 * 30^position ms, the whole frame
@@ -44,10 +43,10 @@ import audiocore                                            # noqa: E402
 import kit_faults                                           # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 from audioeffects import _component                         # noqa: E402
-from audioeffects import rebuilt                            # noqa: E402
+import audioeffects                                         # noqa: E402
 from audioeffects.chorus import nominal_damping_hz          # noqa: E402
-from audioeffects.rebuilt import analogdelay as ad          # noqa: E402
-from audioeffects.rebuilt.digitaldelay import (             # noqa: E402
+from audioeffects import analogdelay as ad                  # noqa: E402
+from audioeffects.digitaldelay import (                     # noqa: E402
     clear_of_stalls)
 from tools import effect_measurements as kit                # noqa: E402
 
@@ -61,7 +60,7 @@ TIME_I, FEEDBACK_I, MIX_I, MODULATION_I, RATE_I, SPREAD_I, SYNC_I, \
 SINGLE, DOUBLE = "single-line", "double-line"
 STAGES = {SINGLE: 4096, DOUBLE: 8192}
 
-AnalogDelay = rebuilt.module_class("AnalogDelay")
+AnalogDelay = audioeffects.AnalogDelay
 
 
 # --------------------------------------------------------------------------
@@ -1343,11 +1342,8 @@ class TheSurface(unittest.TestCase):
 
     def test_adopted_is_what_the_package_serves(self):
         """Adopted on 2026-09-29, so `create()` serves this one. It was the
-        reverse assertion while the class was parked; revert
-        `rebuilt.ADOPTED` and this goes red."""
+        reverse assertion while the class was parked; serve another class under the name and this goes red."""
         import audioeffects
-        self.assertIn("AnalogDelay", rebuilt.ADOPTED)
-        self.assertNotIn("AnalogDelay", rebuilt.parked())
         self.assertIs(audioeffects.AnalogDelay, AnalogDelay)
         served = audioeffects.create("AnalogDelay", silence_src(64), RATE)
         self.assertIsInstance(served, AnalogDelay)

@@ -6,7 +6,7 @@ a claim are tied to tests by the `CLAIMS` table in the class's test file.
 
 VENDOR = "PyDevices"
 
-from .. import _component
+from . import _component
 
 
 class Rack(_component.Component):

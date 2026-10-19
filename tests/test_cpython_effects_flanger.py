@@ -1023,8 +1023,6 @@ class TheAdoption(TestCase):
         served.deinit()
 
     def test_both_old_flangers_are_gone(self):
-        from audioeffects import rebuilt
-        self.assertIsNone(rebuilt.module_class("Flanger"))
         for name in ("audioeffects.modulation",
                      "audioeffects.rebuilt.flanger"):
             with self.assertRaises(ImportError):

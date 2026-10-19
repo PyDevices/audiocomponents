@@ -7,22 +7,14 @@ file.
 
 VENDOR = "PyDevices"
 
-from .. import _component
-from ..chorus import nominal_damping_hz
+from . import _component
+from .chorus import nominal_damping_hz
 
 # DigitalDelay's arithmetic, reused rather than copied: the same node rounds
-# the same way in both classes. Its module moves up one level when it comes
-# home, so both homes are tried; the same for SlapbackDelay's `tone_excess`.
-try:
-    from .digitaldelay import (DIVISION_BEATS, laps_to_zero, nominal_cut_hz,
-                               whole_frames)
-except ImportError:                     # pragma: no cover - after it lands
-    from ..digitaldelay import (DIVISION_BEATS, laps_to_zero,
-                                nominal_cut_hz, whole_frames)
-try:
-    from .slapbackdelay import tone_excess
-except ImportError:                     # pragma: no cover - after it lands
-    from ..slapbackdelay import tone_excess
+# the same way in both classes; the same for SlapbackDelay's `tone_excess`.
+from .digitaldelay import (DIVISION_BEATS, laps_to_zero, nominal_cut_hz,
+                           whole_frames)
+from .slapbackdelay import tone_excess
 
 try:
     import audioecho
