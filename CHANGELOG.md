@@ -45,6 +45,19 @@ there, and are recorded in its changelog.
   bounded memory instead of keeping every sample it touches. A voice still
   playing one keeps it until it ends. The bank's `cached`, `reads` and
   `evicted` say what it holds and what the bound has cost.
+- The delay, reverb, pitch and rack classes (AirSpace, AnalogDelay,
+  ConvolutionReverb, DigitalDelay, Harmonizer, MultiTapDelay, Octaver,
+  PingPongDelay, PitchShifter, Rack, Reverb, ShimmerHall, SlapbackDelay,
+  StereoWidener, TapeDelay) each live in a module of their own directly
+  under `audioeffects`, like every other effect: `audioeffects.reverb`,
+  `audioeffects.digitaldelay` and so on. Every class and patch renders the
+  bytes it did. The registry that arbitrated between those modules and the
+  older classes they replaced (`audioeffects.rebuilt.ADOPTED`, `load()`,
+  `module_class()`, `known()`, `parked()`) is gone, so importing
+  `audioeffects` no longer lists a directory or tries a failing import on a
+  board. `audioeffects.rebuilt.<module>` still imports the same class from
+  its new home, so code that used the old path keeps working
+  ([#182](https://github.com/PyDevices/audiocomponents/issues/182)).
 
 ### Fixed
 

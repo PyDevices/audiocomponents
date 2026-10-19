@@ -20,7 +20,7 @@ then it makes one clean venv, installs audiodsp (default: the AUDIODSP_PIN
 commit from git, as tests.yml does) and both wheels with --no-deps, and --
 from outside the repo, with `python -I` so lib/ cannot leak in -- imports
 both packages, renders one instrument and one effect by catalogue name, and
-loads every effect class.
+loads every effect class and the old `audioeffects.rebuilt` import path.
 
 Needs `build` in the interpreter that runs it. Exit status is non-zero on any
 failure, and every failure is printed.
@@ -86,6 +86,12 @@ missing = [name for name in names if getattr(audioeffects, name, None) is None]
 if len(names) != 45 or missing:
     sys.exit("effect classes did not load: %r" % (missing or names,))
 print("effect classes load:", len(names))
+
+# The old import path still reaches the same class.
+from audioeffects.rebuilt.reverb import Reverb
+if Reverb is not audioeffects.Reverb:
+    sys.exit("audioeffects.rebuilt.reverb does not re-export Reverb")
+print("audioeffects.rebuilt still imports")
 print("wheel smoke: ok")
 '''
 
