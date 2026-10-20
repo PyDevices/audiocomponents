@@ -45,6 +45,23 @@ there, and are recorded in its changelog.
   bounded memory instead of keeping every sample it touches. A voice still
   playing one keeps it until it ends. The bank's `cached`, `reads` and
   `evicted` say what it holds and what the bound has cost.
+- The samples a SoundFont bank keeps live in one arena of 1 MB buffers,
+  taken when the bound is set (else at the first note) and kept, instead of
+  an array per sample. Each sample is read from the file straight into it,
+  with no copy on the way, and voices play views of it. On a board, hundreds
+  of samples allocated and freed one by one had broken the heap into pieces
+  too small for the next sample, so a long piece slowed to a crawl in
+  `gc.collect()` and then stopped with a MemoryError however much was free.
+  When the arena is full the samples read longest ago go first; one a voice
+  is playing, or a stopped note is still fading out of (`soundfont.TAIL_MS`),
+  stays. A note with no room beside the sounding samples reads its sample
+  into a buffer of its own, and a note with no memory for that either plays
+  without it rather than stopping the music. `arena_bytes`, `outside` and
+  `dropped` on the bank count those. Setting `cache_bytes` takes a new arena.
+- `_sf2.SoundFont.read_sample_into(sample, buffer)` reads a sample into a
+  buffer you give it, and `regions()` keeps the regions it builds for the
+  next note on the same key (`_sf2.REGION_CACHE` keys): building them was
+  most of what a note cost.
 - The delay, reverb, pitch and rack classes (AirSpace, AnalogDelay,
   ConvolutionReverb, DigitalDelay, Harmonizer, MultiTapDelay, Octaver,
   PingPongDelay, PitchShifter, Rack, Reverb, ShimmerHall, SlapbackDelay,

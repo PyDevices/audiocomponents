@@ -20,11 +20,17 @@ note needs them and kept, so a 148 MB bank costs only the presets you play.
 Instruments made from the same path share the open bank and its samples.
 
 The samples kept are bounded: `CACHE_BYTES` of them (8 MB on a board, 64 MB
-on a desktop), or what `open_bank(path, cache_bytes=...)` asks for. When a
-new one would go over, the samples played least recently are let go first,
-and read again from the file if a note wants them later. A voice still
-playing a sample keeps it until the voice ends, so a long, dense piece
-plays in bounded memory rather than growing it to every sample it touches.
+on a desktop), or what `open_bank(path, cache_bytes=...)` asks for. They
+live in an arena of a few large buffers, taken once (when the bound is set,
+else at the first note) and never given back, so a long, dense piece plays
+in fixed memory and leaves the rest of the heap whole: on a board, hundreds
+of samples allocated and freed one by one break the heap into pieces too
+small for the next one, however much is free. Each sample is read from the
+file straight into the arena, and voices play views of it. When the arena
+is full the oldest samples read are let go, and read again if a note wants
+them later. A voice still playing a sample keeps it, and so does a stopped
+note's fade for `TAIL_MS`. A note whose sample can't fit beside the ones
+sounding reads it outside the arena, just for that note.
 
 Attenuation. A region's `initialAttenuation` is applied scaled by
 `ATTENUATION_SCALE` (0.4): the banks in circulation were voiced on players
@@ -111,9 +117,30 @@ SHARED_VOICES = 64
 import os
 import sys
 
+try:
+    from time import ticks_diff, ticks_ms
+except ImportError:  # CPython
+    import time as _time
+
+    def ticks_ms():
+        return int(_time.monotonic() * 1000)
+
+    def ticks_diff(a, b):
+        return a - b
+
 #: Bytes of samples a bank keeps read from its file: 8 MB on a board, where
 #: RAM is counted in tens of megabytes, 64 MB on a desktop.
 CACHE_BYTES = (64 if sys.implementation.name == "cpython" else 8) * 1048576
+
+#: The size of each of the arena's buffers, or the bank's largest sample
+#: when that is bigger: a sample never straddles two. Small enough to find
+#: room for in a heap that has been running a while.
+SLAB_BYTES = 1048576
+
+#: Milliseconds a sample stays in the arena after the voice playing it stops
+#: or moves to another note: a stopped note fades out over 5 ms, still
+#: reading it, and the audio is rendered a block or two ahead.
+TAIL_MS = 100
 
 import audioinstruments._sf2 as _sf2
 from audioinstruments._support import (
@@ -183,67 +210,230 @@ def find_bank(path=None):
 
 class _Bank(object):
     """An open bank and the samples read from it, at most `cache_bytes` of
-    them, the least recently played let go first.
+    them, in an arena of buffers taken once.
 
     `cached` is the bytes kept now; `reads` counts the samples read from
     the file and `evicted` the ones let go, so `reads` above the number of
     distinct samples played is the re-reading a small cache costs.
+    `outside` counts the reads that found no room beside the samples
+    sounding, and played from a buffer of their own, and `dropped` those
+    the heap had no room for either, whose notes went without that sample
+    rather than stop the music. `arena_bytes` is the
+    arena's size once it is taken: less than `cache_bytes` for a bank whose
+    samples are smaller, or a heap that couldn't give it all.
     """
 
     def __init__(self, font, cache_bytes=None):
         self.font = font
-        self.samples = {}      # shdr index -> array('h') of the whole sample
+        self.samples = {}      # shdr index -> [offset, frames, index] in the arena
         self.presets = {}      # (bank, program) -> name
         for bank, program, name in font.presets():
             self.presets[(bank, program)] = name
         self._cache_bytes = CACHE_BYTES if cache_bytes is None else int(cache_bytes)
-        self._used = {}        # shdr index -> when it was last played
-        self._clock = 0
+        self._slabs = None     # the arena's buffers, once taken
+        self._frames = []      # a view of each in frames, for the voices
+        self._bytes = []       # and in bytes, to read into
+        self._unit = 1         # items of a frames view per frame: 2 where views can't cast
+        self._slab = 0         # frames in each buffer
+        self._order = []       # the samples kept, by offset
+        self._head = 0         # where the next read goes, in frames across the arena
+        self._held = {}        # voice -> shdr index it was handed last
+        self._tails = {}       # shdr index -> ticks_ms when a voice let go of it
+        self.arena_bytes = 0
         self.cached = 0
         self.reads = 0
         self.evicted = 0
+        self.outside = 0
+        self.dropped = 0
 
     @property
     def cache_bytes(self):
-        """The most sample bytes kept. Setting it lets go of samples at once
-        when the bank holds more."""
+        """The most sample bytes kept. Setting it takes a new arena of that
+        size at once and lets go of every sample; voices playing go on
+        reading the old one until they end."""
         return self._cache_bytes
 
     @cache_bytes.setter
     def cache_bytes(self, value):
-        self._cache_bytes = int(value)
-        self._make_room(0)
+        value = int(value)
+        if value == self._cache_bytes and self._slabs is not None:
+            return
+        self._cache_bytes = value
+        self._open()
 
-    def _make_room(self, size):
-        """Let go of the least recently played samples until `size` more
-        bytes fit, or nothing is left to let go."""
-        samples = self.samples
-        used = self._used
-        while samples and self.cached + size > self._cache_bytes:
-            oldest = None
-            when = 0
-            for index in samples:
-                if oldest is None or used[index] < when:
-                    oldest = index
-                    when = used[index]
-            self.cached -= len(samples.pop(oldest)) * 2
-            del used[oldest]
-            self.evicted += 1
+    def _open(self):
+        """Take the arena: buffers of `SLAB_BYTES`, or of the largest
+        sample, up to `cache_bytes` and no more than the file holds."""
+        self.evicted += len(self._order)
+        self._slabs = []
+        self._frames = []
+        self._bytes = []
+        self.samples = {}
+        self._order = []
+        self._head = 0
+        self._held = {}
+        self._tails = {}
+        self.cached = 0
+        self.arena_bytes = 0
+        font = self.font
+        size = self._cache_bytes
+        total = getattr(font, "_smpl_frames", None)
+        if total is not None and total * 2 < size:
+            size = total * 2
+        largest = 0
+        for sample in getattr(font, "samples", ()):
+            n = sample.end - sample.start
+            if n > largest:
+                largest = n
+        slab = max(SLAB_BYTES // 2, largest)
+        if size // 2 < slab:
+            slab = size // 2
+        self._slab = slab
+        if slab <= 0:
+            return
+        import gc
+        gc.collect()  # what an earlier arena or bank left is free again first
+        for _ in range(size // 2 // slab):
+            try:
+                buf = bytearray(slab * 2)
+            except MemoryError:
+                break  # the heap gave less than asked: the arena is what it gave
+            raw = memoryview(buf)
+            if hasattr(raw, "cast"):
+                frames = raw.cast("h")
+            else:  # MicroPython: views are bytes, two to a frame
+                frames = raw
+                self._unit = 2
+            self._slabs.append(buf)
+            self._frames.append(frames)
+            self._bytes.append(raw)
+        self.arena_bytes = len(self._slabs) * slab * 2
+
+    def hold(self, voice, index):
+        """`voice` now plays sample `index`: it stays in the arena until the
+        voice ends, and for `TAIL_MS` after."""
+        old = self._held.get(voice)
+        if old is not None and old != index:
+            self._tails[old] = ticks_ms()
+        self._held[voice] = index
+
+    def _pinned(self):
+        """The samples a voice or a fade may still be reading."""
+        now = ticks_ms()
+        pinned = set()
+        held = self._held
+        tails = self._tails
+        for voice in list(held):
+            index = held[voice]
+            try:
+                playing = voice.playing
+            except Exception:  # its sampler deinitialised: stopped, no fade
+                del held[voice]
+                continue
+            if playing:
+                pinned.add(index)
+            else:
+                del held[voice]
+                tails[index] = now
+        for index in list(tails):
+            if ticks_diff(now, tails[index]) < TAIL_MS:
+                pinned.add(index)
+            else:
+                del tails[index]
+        return pinned
+
+    def _evict(self, entry):
+        self._order.remove(entry)
+        del self.samples[entry[2]]
+        self.cached -= entry[1] * 2
+        self.evicted += 1
+
+    def _place(self, frames):
+        """An offset where `frames` fit, made by letting go of the samples
+        read longest ago that sit there, stepping past any still sounding;
+        None when no run fits beside them."""
+        slab = self._slab
+        end = slab * len(self._slabs)
+        if frames > slab or end == 0:
+            return None
+        pinned = None
+        order = self._order
+        pos = self._head
+        wrapped = 0
+        while True:
+            if pos % slab + frames > slab:
+                pos = (pos // slab + 1) * slab  # a sample never straddles two buffers
+            if pos >= end:
+                if wrapped:
+                    return None
+                wrapped = 1
+                pos = 0
+                continue
+            stop = pos + frames
+            blocked = None
+            for entry in order:
+                if entry[0] >= stop:
+                    break
+                if entry[0] + entry[1] > pos:
+                    if pinned is None:
+                        pinned = self._pinned()
+                    if entry[2] in pinned:
+                        blocked = entry
+            if blocked is None:
+                break
+            pos = blocked[0] + blocked[1]
+            if wrapped and pos >= self._head:
+                return None  # all the way round
+        for entry in [e for e in order if e[0] < stop and e[0] + e[1] > pos]:
+            self._evict(entry)
+        self._head = stop
+        return pos
 
     def _sample(self, sample):
-        """The whole sample as array('h'), from the cache or the file."""
-        self._clock += 1
+        """The whole sample, from the arena or the file, and the items of
+        it per frame."""
         index = sample.index
-        pcm = self.samples.get(index)
-        if pcm is None:
-            size = (sample.end - sample.start) * 2
-            self._make_room(size)
-            pcm = self.font.read_sample(sample)
-            self.samples[index] = pcm
-            self.cached += len(pcm) * 2
+        entry = self.samples.get(index)
+        if entry is None:
+            frames = sample.end - sample.start
+            if self._slabs is None:
+                self._open()
+            reader = getattr(self.font, "read_sample_into", None)
+            pos = self._place(frames) if frames > 0 and reader is not None else None
             self.reads += 1
-        self._used[index] = self._clock
-        return pcm
+            if pos is None:
+                return self._outside(sample, frames, reader)
+            slab, at = divmod(pos, self._slab)
+            reader(sample, self._bytes[slab][at * 2:(at + frames) * 2])
+            entry = [pos, frames, index]
+            order = self._order
+            i = 0
+            while i < len(order) and order[i][0] < pos:
+                i += 1
+            order.insert(i, entry)
+            self.samples[index] = entry
+            self.cached += frames * 2
+        pos, frames = entry[0], entry[1]
+        slab, at = divmod(pos, self._slab)
+        unit = self._unit
+        return self._frames[slab][at * unit:(at + frames) * unit], unit
+
+    def _outside(self, sample, frames, reader):
+        """The sample in a buffer of its own, for one note; None when the
+        heap has no room for it either, and the note goes without it."""
+        self.outside += 1
+        try:
+            if reader is None:
+                return self.font.read_sample(sample), 1
+            buf = bytearray(frames * 2)
+        except MemoryError:
+            self.dropped += 1
+            return None, 1
+        reader(sample, buf)
+        raw = memoryview(buf)
+        if hasattr(raw, "cast"):
+            return raw.cast("h"), 1
+        return raw, 2
 
     def has(self, bank, program):
         return (bank, program) in self.presets
@@ -263,10 +453,13 @@ class _Bank(object):
         return 0 if 0 in banks else banks[0]
 
     def buffer(self, region):
-        """The frames a region plays and its loop points within them."""
+        """The frames a region plays and its loop points within them; None
+        when there was no memory to read them into."""
         sample = region.sample
-        pcm = self._sample(sample)
-        length = len(pcm)
+        pcm, unit = self._sample(sample)
+        if pcm is None:
+            return None
+        length = len(pcm) // unit
         start = region.start - sample.start
         end = region.end - sample.start
         if start < 0:
@@ -276,7 +469,7 @@ class _Bank(object):
         if end <= start:
             start, end = 0, length
         if start != 0 or end != length:
-            pcm = memoryview(pcm)[start:end]
+            pcm = memoryview(pcm)[start * unit:end * unit]
             length = end - start
         loop_start = region.loop_start - region.start
         loop_end = region.loop_end - region.start
@@ -540,7 +733,10 @@ class _Player(object):
                 self._choke(region.exclusive_class)
         indices = []
         for region in regions:
-            pcm, loop_start, loop_end, mode = self.bank.buffer(region)
+            frames = self.bank.buffer(region)
+            if frames is None:
+                continue
+            pcm, loop_start, loop_end, mode = frames
             vel = velocity
             if 0 <= region.velocity <= 127:
                 vel = region.velocity / 127.0
@@ -558,6 +754,7 @@ class _Player(object):
                 hold=region.hold, decay=region.decay,
                 sustain=region.sustain,
                 release=region.release * self.release_scale)
+            self.bank.hold(voices[i], region.sample.index)
             self.slots[i] = [key, serial, HELD, region.exclusive_class,
                              level, ratio, region.pan, self]
             indices.append(i)

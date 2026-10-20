@@ -68,6 +68,12 @@ def check(bank):
         pass
     else:
         raise AssertionError("missing preset did not raise")
+    # Read straight into a buffer, as the soundfont instrument's arena does.
+    whole = bank.read_sample(r.sample)
+    buf = bytearray(len(whole) * 2 + 4)
+    bank.read_sample_into(r.sample, memoryview(buf)[2:2 + len(whole) * 2])
+    assert bytes(buf[2:-2]) == bytes(whole), "read_sample_into differs from read_sample"
+    assert buf[:2] == b"\x00\x00" and buf[-2:] == b"\x00\x00", "read_sample_into wrote outside its slice"
     return True
 
 
