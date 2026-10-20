@@ -362,6 +362,130 @@ class SoundFontInstrumentTest(unittest.TestCase):
                 self.assertEqual(player.bank_msb, 1)
                 inst.control_change(0, 0)
 
+    # -- Sustain pedal (CC 64) -------------------------------------------
+
+    def _states(self, inst, key, channel=0):
+        player = inst._player
+        return [player.slots[i][2] for i in player.held.get((channel, key), [])]
+
+    def test_cc64_holds_a_released_note_until_the_pedal_lifts(self):
+        inst, player = self.inst, self.inst._player
+        inst.note_on(60, 100)
+        slots = list(player.held[(0, 60)])
+        inst.control_change(64, 127)
+        inst.note_off(60)
+        # Let go with the pedal down: still held, not releasing.
+        self.assertIn((0, 60), player.held)
+        self.assertEqual(self._states(inst, 60), [soundfont.HELD] * len(slots))
+        sf2_play.render(inst, 0.05)
+        self.assertGreater(inst.sounding(), 0)
+        inst.control_change(64, 0)
+        self.assertNotIn((0, 60), player.held)
+        self.assertTrue(all(player.slots[i] is None
+                            or player.slots[i][2] != soundfont.HELD
+                            for i in slots))
+        self.assertTrue(all(player.slots[i][2] == soundfont.RELEASING
+                            for i in slots if player.slots[i] is not None))
+
+    def test_cc64_without_the_pedal_releases_at_once(self):
+        inst, player = self.inst, self.inst._player
+        inst.note_on(60, 100)
+        slots = list(player.held[(0, 60)])
+        inst.note_off(60)
+        self.assertNotIn((0, 60), player.held)
+        self.assertTrue(all(player.slots[i] is None
+                            or player.slots[i][2] == soundfont.RELEASING
+                            for i in slots))
+
+    def test_cc64_threshold_is_64(self):
+        inst, player = self.inst, self.inst._player
+        inst.control_change(64, 63)
+        inst.note_on(60, 100)
+        inst.note_off(60)
+        self.assertNotIn((0, 60), player.held)
+        inst.control_change(64, 64)
+        inst.note_on(62, 100)
+        inst.note_off(62)
+        self.assertIn((0, 62), player.held)
+        inst.control_change(64, 63)
+        self.assertNotIn((0, 62), player.held)
+
+    def test_cc64_lifting_leaves_a_key_still_pressed(self):
+        inst, player = self.inst, self.inst._player
+        inst.control_change(64, 127)
+        inst.note_on(60, 100)
+        inst.note_on(64, 100)
+        inst.note_off(60)
+        inst.control_change(64, 0)
+        self.assertNotIn((0, 60), player.held)
+        self.assertEqual(self._states(inst, 64), [soundfont.HELD])
+
+    def test_cc64_a_struck_again_note_retriggers(self):
+        inst, player = self.inst, self.inst._player
+        inst.control_change(64, 127)
+        inst.note_on(60, 100)
+        first = list(player.held[(0, 60)])
+        first_serial = player.slots[first[0]][1]
+        inst.note_off(60)
+        inst.note_on(60, 100)
+        again = player.held[(0, 60)]
+        self.assertEqual(self._states(inst, 60), [soundfont.HELD] * len(again))
+        self.assertGreater(player.slots[again[0]][1], first_serial)
+        # The first strike is releasing now; the new one is not the
+        # sustained one until its own key goes up, and then lifts as usual.
+        self.assertNotIn((0, 60), player.sustained)
+        inst.note_off(60)
+        self.assertIn((0, 60), player.sustained)
+        inst.control_change(64, 0)
+        self.assertNotIn((0, 60), player.held)
+        self.assertEqual(player.sustained, set())
+
+    def test_cc64_belongs_to_its_channel(self):
+        inst, player = self.inst, self.inst._player
+        inst.control_change(64, 127, channel=1)
+        inst.note_on(60, 100, channel=0)
+        inst.note_on(62, 100, channel=1)
+        inst.note_off(60, channel=0)
+        inst.note_off(62, channel=1)
+        self.assertNotIn((0, 60), player.held)
+        self.assertIn((1, 62), player.held)
+        inst.control_change(64, 0, channel=0)      # the other pedal
+        self.assertIn((1, 62), player.held)
+        inst.control_change(64, 0, channel=1)
+        self.assertNotIn((1, 62), player.held)
+
+    def test_cc64_sustained_note_keeps_sounding_in_the_render(self):
+        # A pedalled note is still audible long after its key went up;
+        # the same note without the pedal has faded by then.
+        peaks = []
+        for pedal in (True, False):
+            inst = audioinstruments.create("soundfont", SR, bank=self.path)
+            try:
+                if pedal:
+                    inst.control_change(64, 127)
+                inst.note_on(60, 100)
+                sf2_play.render(inst, 0.05)
+                inst.note_off(60)
+                sf2_play.render(inst, 1.0)
+                peaks.append(sf2_play.peak(sf2_play.render(inst, 0.05)))
+            finally:
+                inst.deinit()
+        self.assertGreater(peaks[0], 0.0)
+        self.assertGreater(peaks[0], peaks[1] * 4 + 1e-9)
+
+    def test_cc64_reset_and_all_notes_off(self):
+        inst, player = self.inst, self.inst._player
+        inst.control_change(64, 127)
+        inst.note_on(60, 100)
+        inst.note_off(60)
+        inst.reset()
+        self.assertEqual(player.held, {})
+        self.assertEqual(player.sustained, set())
+        # The reset lifted the pedal: a new note releases at once.
+        inst.note_on(62, 100)
+        inst.note_off(62)
+        self.assertNotIn((0, 62), player.held)
+
 
 class SharedVoicesTest(unittest.TestCase):
     """Several instruments on one `Voices`, as a GM module's parts are: one
