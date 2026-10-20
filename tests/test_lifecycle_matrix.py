@@ -30,7 +30,6 @@ sys.path.insert(0, os.path.join(ROOT, "lib"))
 sys.path.insert(0, os.path.join(ROOT, "tests", "support"))
 
 import lifecycle                                          # noqa: E402
-from audioeffects import rebuilt                          # noqa: E402
 
 #: `_component` reads VENDOR off the module a class is defined in, and the
 #: skip test's plant is defined here.
@@ -39,7 +38,7 @@ VENDOR = "PyDevices"
 #: Every class the package serves. Until Phase 7 this was the eight Phase 5
 #: classes alone, and the Phase 2 to 4 classes' red cells stood unlisted for
 #: a month because nothing gated them.
-import audioeffects                                       # noqa: E402
+import audioeffects                                         # noqa: E402
 
 GATED = tuple(audioeffects.ALL)
 
@@ -179,12 +178,8 @@ def check_known(name, red, table=None, full=None):
 
 
 def effect_class(name):
-    """The class `lifecycle.py NAME` runs: the one in `rebuilt/`, or the
-    one the package serves once it has come home."""
-    cls = rebuilt.module_class(name)
-    if cls is None:
-        import audioeffects
-        cls = getattr(audioeffects, name, None)
+    """The class `lifecycle.py NAME` runs: the one the package serves."""
+    cls = getattr(audioeffects, name, None)
     return cls
 
 
@@ -192,7 +187,6 @@ def effect_class(name):
 #: package modules, the matrix and the kit it reads, its tables, and the
 #: audiodsp pin. A class module's change moves that class alone.
 SHARED = ("lib/audioeffects/_", "lib/audioeffects/__init__.py",
-          "lib/audioeffects/rebuilt/__init__.py",
           "lib/audioeffects/pyproject.toml", "tests/support/",
           "tests/test_lifecycle_matrix.py", "AUDIODSP_PIN")
 
@@ -620,7 +614,7 @@ class TestPlants(unittest.TestCase):
              [n for n in GATED if n in SAMPLE or n == "Fuzz"]),
             (["lib/audioeffects/bitcrusher.py",
               "tests/test_bypass_return.py"], ["Bitcrusher"]),
-            (["lib/audioeffects/rebuilt/tapedelay.py"], ["TapeDelay"]),
+            (["lib/audioeffects/tapedelay.py"], ["TapeDelay"]),
             (["lib/audioeffects/phaser.py", "lib/audioeffects/vibrato.py"],
              ["Phaser", "Vibrato"]),
             (["docs/control-smoothing.md", "CHANGELOG.md"], []),

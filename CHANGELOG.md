@@ -31,6 +31,10 @@ there, and are recorded in its changelog.
   stereo pair keeps its spread around the new centre, clamped at the edges;
   moving it re-pans the voices already sounding, without a click. Control
   Change 10 on either instrument drives it.
+- The runtime API page says what to expect after a reset, a rejoin or a
+  control move: LFO and hold phases restart, detector and coupling state can
+  outlast `tail_samples`, and Fuzz's lean patch, DynamicEQ's Listen and
+  Exciter's Output are not bypasses.
 
 ### Changed
 
@@ -41,12 +45,38 @@ there, and are recorded in its changelog.
   bounded memory instead of keeping every sample it touches. A voice still
   playing one keeps it until it ends. The bank's `cached`, `reads` and
   `evicted` say what it holds and what the bound has cost.
+- The delay, reverb, pitch and rack classes (AirSpace, AnalogDelay,
+  ConvolutionReverb, DigitalDelay, Harmonizer, MultiTapDelay, Octaver,
+  PingPongDelay, PitchShifter, Rack, Reverb, ShimmerHall, SlapbackDelay,
+  StereoWidener, TapeDelay) each live in a module of their own directly
+  under `audioeffects`, like every other effect: `audioeffects.reverb`,
+  `audioeffects.digitaldelay` and so on. Every class and patch renders the
+  bytes it did. The registry that arbitrated between those modules and the
+  older classes they replaced (`audioeffects.rebuilt.ADOPTED`, `load()`,
+  `module_class()`, `known()`, `parked()`) is gone, so importing
+  `audioeffects` no longer lists a directory or tries a failing import on a
+  board. `audioeffects.rebuilt.<module>` still imports the same class from
+  its new home, so code that used the old path keeps working
+  ([#182](https://github.com/PyDevices/audiocomponents/issues/182)).
 
 ### Fixed
 
 - Instruments built on two threads at the same time each keep their own
   synthesizer. Before, an instrument could take the voice engine another
   thread's factory had just made.
+- Distortion, Overdrive and Saturation render the same bytes on a desktop
+  MicroPython as on CPython when `audiodsp_util` is not installed. Their
+  single-precision rounding fell back to doing nothing there, so above
+  Distortion's headroom knee (Ceiling 64 was where it showed) a sample
+  could land 1 LSB away. A desktop CircuitPython takes the same fallback
+  and is not yet re-measured
+  ([#152](https://github.com/PyDevices/audiocomponents/issues/152)).
+
+### Removed
+
+- The two placeholder effect classes, `ExampleStock` and `ExampleAudiodsp`,
+  which stood in for the two portability tiers before shipped classes
+  covered both. They were never in `ALL` and `create()` never served them.
 
 ## v0.4.1.dev1 (2026-10-15)
 

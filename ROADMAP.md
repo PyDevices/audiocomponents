@@ -6,13 +6,6 @@ the real thing.
 
 ## Next: effects
 
-- Pitch and stereo effects rebuilt: PitchShifter, Harmonizer, Octaver,
-  StereoWidener, Rack, ShimmerHall and AirSpace. The README gains a latency
-  table for every class, each rack and a five-effect chain.
-- A release that carries the rebuilt effects, with a changelog.
-- The two placeholder classes in `audioeffects/rebuilt/` (`ExampleStock`,
-  `ExampleAudioif`) go once shipped classes cover both portability tiers.
-
 - Control moves that ramp instead of stepping: Mix, levels and depths over
   20 ms in audiodsp's nodes, then filter corners, then crossfaded patch
   changes. The policy is in [docs/control-smoothing.md](docs/control-smoothing.md).
@@ -37,6 +30,10 @@ the real thing.
 
 ## Later: instruments
 
+- A MIDI-to-instrument dispatcher: one component that routes incoming MIDI
+  notes and controllers to instruments, so a MIDI file or a controller can
+  play them without your own dispatch loop. This is the
+  [known seam gap](docs/audio-component-api.md#midi-and-control-methods).
 - acoustickit: a shallow pitch drop on hard tom hits, a reworked hi-hat, and
   a sourced model for the snare wires.
 - acoustickit cymbals: a bloom shaped into the strike, and mode sets that

@@ -11,11 +11,7 @@ is what catches a class that reaches for something only CPython has.
 
 It walks `audioeffects.ALL` -- the package's own catalogue of provider names
 -- through `audioeffects.create()`, which is the contract's construction
-boundary, **and then every class `rebuilt.parked()` reports**: a rebuilt
-class the gate audit has not adopted is not in the catalogue, so walking the
-catalogue alone would miss it. Today that parked set is the two Example
-fixtures. A parked class is built through its own
-`create()`, which is the same construction boundary one step in. Either way: the source carries the format, `create` is handed the source's own
+boundary. The source carries the format, `create` is handed the source's own
 sample rate, and every patch is selected the way a host selects one, with
 `program_change()`. Nothing here calls the module-level `configure()` or
 passes a `patch=` constructor keyword, so this file keeps working through the
@@ -33,7 +29,6 @@ from array import array
 import audiocore
 import audioeffects
 import audiofilters
-from audioeffects import rebuilt
 
 SAMPLE_RATE = 48000
 CHANNEL_COUNT = 2
@@ -105,13 +100,10 @@ def peak(sample, blocks=8, frames=FRAMES_PER_PATCH):
     return loudest
 
 
-#: What is walked: the catalogue, then the parked rebuilds. `served` is
-#: `None` for a catalogue name, which means "through `audioeffects.create()`";
-#: for a parked name it is the class itself, which the package does not
-#: export under that name (`rebuilt.ADOPTED`).
+#: What is walked: the catalogue. `served` is `None` for a catalogue name,
+#: which means "through `audioeffects.create()`"; a class handed here instead
+#: is built through its own `create()`.
 subjects = [(name, name, None) for name in audioeffects.ALL]
-for name in sorted(rebuilt.parked()):
-    subjects.append((name + " (parked)", name, rebuilt.module_class(name)))
 
 failures = []
 classes = 0
@@ -174,20 +166,18 @@ for label_name, name, served in subjects:
 
 print("\n%d classes, %d patches, %d failures"
       % (classes, patches, len(failures)))
-# Count what the package actually serves from its own module, not what is
-# sitting in rebuilt.ADOPTED. ADOPTED is a STAGING list: a class enters it when
-# the auditor adopts the rebuild and leaves it again when the class is promoted
-# to its own file. So an empty ADOPTED means "nothing is mid-adoption", which is
-# the healthy end state - and this line used to print that as "nothing yet",
-# the opposite reading, with twenty-two classes adopted and serving.
+# Every class lives in a module of its own name directly under the package;
+# one served from anywhere else is a failure.
 _served = sorted(
     name for name in audioeffects.ALL
     if getattr(audioeffects, name, None) is not None
     and getattr(audioeffects, name).__module__ == "audioeffects." + name.lower()
 )
-_staged = ", ".join(rebuilt.ADOPTED) if rebuilt.ADOPTED else "none"
-print("%d parked, %d patches; %d served from their own module; staged for adoption: %s"
-      % (parked_classes, parked_patches, len(_served), _staged))
+for name in audioeffects.ALL:
+    if name not in _served:
+        failures.append("%s: not served from audioeffects.%s"
+                        % (name, name.lower()))
+print("%d served from their own module" % len(_served))
 for line in failures:
     print("  %s" % line)
 sys.exit(1 if failures else 0)

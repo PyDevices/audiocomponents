@@ -56,7 +56,7 @@ except (ImportError, AttributeError, NameError):   # no os.path natively
     FULL = False
 
 import kit_common as kc                                     # noqa: E402
-from audioeffects import rebuilt                            # noqa: E402
+import audioeffects                                         # noqa: E402
 
 try:
     import synthio
@@ -75,7 +75,7 @@ DETUNE = 7
 SPREAD = 8
 MIX = 9
 
-Harmonizer = rebuilt.module_class("Harmonizer")
+Harmonizer = audioeffects.Harmonizer
 
 SEEDS = tuple(range(1, 9)) if FULL else (1, 2)
 OFFSETS = ((0, 37, 101, 173, 263, 389, 512, 777) if FULL else (0, 263))
@@ -1222,13 +1222,10 @@ class T7TurnOff(TestCase):
 
 class TheAdoption(TestCase):
     def test_adopted_is_what_the_package_serves(self):
-        """Adopted on 2026-10-13, so `create()` serves this one. Revert
-        `rebuilt.ADOPTED` and this goes red."""
+        """Adopted on 2026-10-13, so `create()` serves this one. Serve another class under the name and this goes red."""
         import audiocore
         import audioeffects
         from array import array
-        self.assertIn("Harmonizer", rebuilt.ADOPTED)
-        self.assertNotIn("Harmonizer", rebuilt.parked())
         self.assertIs(audioeffects.Harmonizer, Harmonizer)
         served = audioeffects.create(
             "Harmonizer",
@@ -1419,7 +1416,7 @@ class TheSurface(TestCase):
         and a patch loaded, renders after `reset()` what a freshly built
         rack does, fed the same material from that point, and reads the
         built knobs back."""
-        Rack = rebuilt.module_class("Rack")
+        Rack = audioeffects.Rack
         chain = ((Harmonizer, {"voice1": 3.0, "mix": 0.5,
                                "window_ms": 80.0}),)
         for rate in RATES:

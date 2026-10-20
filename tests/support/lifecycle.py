@@ -2235,12 +2235,8 @@ def _cli(argv):
                 print("MISSING|%s" % name)
                 continue
         else:
-            from audioeffects import rebuilt
-            cls = rebuilt.module_class(name)
-            if cls is None:
-                # A class that has come home: the one the package serves.
-                import audioeffects
-                cls = getattr(audioeffects, name, None)
+            import audioeffects
+            cls = getattr(audioeffects, name, None)
             if cls is None:
                 print("MISSING|%s" % name)
                 continue

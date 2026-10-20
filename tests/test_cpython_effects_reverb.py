@@ -27,8 +27,8 @@ import audiocore                                            # noqa: E402
 import kit_faults                                           # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 from audioeffects import _component                         # noqa: E402
-from audioeffects import rebuilt                            # noqa: E402
-from audioeffects.rebuilt import reverb as rv               # noqa: E402
+import audioeffects                                         # noqa: E402
+from audioeffects import reverb as rv                       # noqa: E402
 
 VENDOR = "PyDevices"
 
@@ -698,12 +698,8 @@ def handed_cut(effect):
 class TheSurface(unittest.TestCase):
     def test_adopted_is_what_the_package_serves(self):
         """Adopted on 2026-09-29, so `create()` serves this one. It was the
-        reverse assertion while the class was parked; revert
-        `rebuilt.ADOPTED` and this goes red."""
+        reverse assertion while the class was parked; serve another class under the name and this goes red."""
         import audioeffects
-        self.assertIs(rebuilt.module_class("Reverb"), Reverb)
-        self.assertIn("Reverb", rebuilt.ADOPTED)
-        self.assertNotIn("Reverb", rebuilt.parked())
         self.assertIs(audioeffects.Reverb, Reverb)
         served = audioeffects.create(
             "Reverb", probes.ArraySource(interleave((), 2, 64), rate=RATE,
@@ -712,7 +708,7 @@ class TheSurface(unittest.TestCase):
         served.deinit()
 
     def test_macros_patches_tier_latency(self):
-        self.assertIs(rebuilt.module_class("Reverb"), Reverb)
+        self.assertIs(audioeffects.Reverb, Reverb)
         self.assertEqual(Reverb.MACRO_LABELS, (
             "Character", "Decay", "Size", "Predelay", "Diffusion",
             "Damping", "Bandwidth", "Low Cut", "Mod Depth", "Mod Rate",

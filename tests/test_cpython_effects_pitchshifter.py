@@ -43,7 +43,7 @@ except (ImportError, AttributeError, NameError):   # no os.path natively
 
 import kit_common as kc                                     # noqa: E402
 from audioeffects import _component                         # noqa: E402
-from audioeffects import rebuilt                            # noqa: E402
+import audioeffects                                         # noqa: E402
 
 VENDOR = "PyDevices"
 
@@ -54,7 +54,7 @@ BLOCK = 256
 SEEDS = tuple(range(1, 9))
 PITCH_I, FINE_I, MIX_I, DELAY_I, FEEDBACK_I = range(5)
 
-PitchShifter = rebuilt.module_class("PitchShifter")
+PitchShifter = audioeffects.PitchShifter
 
 
 # --------------------------------------------------------------------------
@@ -567,7 +567,7 @@ def without_get_buffer(build, moves, frames=4096, seed=3, rate=48000,
     CircuitPython board build, while it builds and while it moves; with
     `hide` false, the same render with it in place."""
     import types
-    from audioeffects.rebuilt import pitchshifter as module
+    from audioeffects import pitchshifter as module
     real = module.audiocore
     fake = types.ModuleType("audiocore")
     for name in dir(real):
@@ -624,13 +624,10 @@ GET_BUFFER_CASES = (
 
 class TheAdoption(TestCase):
     def test_adopted_is_what_the_package_serves(self):
-        """Adopted on 2026-10-13, so `create()` serves this one. Revert
-        `rebuilt.ADOPTED` and this goes red."""
+        """Adopted on 2026-10-13, so `create()` serves this one. Serve another class under the name and this goes red."""
         import audiocore
         import audioeffects
         from array import array
-        self.assertIn("PitchShifter", rebuilt.ADOPTED)
-        self.assertNotIn("PitchShifter", rebuilt.parked())
         self.assertIs(audioeffects.PitchShifter, PitchShifter)
         served = audioeffects.create(
             "PitchShifter",

@@ -41,7 +41,7 @@ import audiocore                                            # noqa: E402
 import audioecho                                            # noqa: E402
 import audiomixer                                           # noqa: E402
 from audioeffects import _component                         # noqa: E402
-from audioeffects import rebuilt                            # noqa: E402
+import audioeffects                                         # noqa: E402
 
 VENDOR = "PyDevices"
 
@@ -49,7 +49,7 @@ RATES = (48000, 22050)
 BLOCK = 256
 WIDTH_I, DELAY_I, CHARACTER_I = range(3)
 
-StereoWidener = rebuilt.module_class("StereoWidener")
+StereoWidener = audioeffects.StereoWidener
 
 
 # --------------------------------------------------------------------------
@@ -515,13 +515,10 @@ def _same_after(a, b):
 
 class TheAdoption(TestCase):
     def test_adopted_is_what_the_package_serves(self):
-        """Adopted on 2026-10-13, so `create()` serves this one. Revert
-        `rebuilt.ADOPTED` and this goes red."""
+        """Adopted on 2026-10-13, so `create()` serves this one. Serve another class under the name and this goes red."""
         import audiocore
         import audioeffects
         from array import array
-        self.assertIn("StereoWidener", rebuilt.ADOPTED)
-        self.assertNotIn("StereoWidener", rebuilt.parked())
         self.assertIs(audioeffects.StereoWidener, StereoWidener)
         served = audioeffects.create(
             "StereoWidener",
@@ -779,7 +776,7 @@ def without_get_buffer(build, moves, frames=4096, seed=3, rate=48000,
     CircuitPython board build, while it builds and while it moves; with
     `hide` false, the same render with it in place."""
     import types
-    from audioeffects.rebuilt import stereowidener as module
+    from audioeffects import stereowidener as module
     real = module.audiocore
     fake = types.ModuleType("audiocore")
     for name in dir(real):

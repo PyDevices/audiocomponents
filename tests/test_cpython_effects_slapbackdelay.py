@@ -14,8 +14,7 @@ Every law a measurement checks against is written out here from the
 dossier, never taken from the class: the whole-frame landing, the Wow map,
 the Time span.
 
-The class is reached by `rebuilt.module_class("SlapbackDelay")`, which is also what
-`audioeffects.SlapbackDelay` serves since its adoption on 2026-09-28.
+The class is `audioeffects.SlapbackDelay`, served since its adoption on 2026-09-28.
 
 The pin's move to audiodsp v0.6.3rc1 (2026-09-28) took out the tracking
 Tone stop and the stall-window stepping: Tone out hands exactly 0 and is
@@ -43,10 +42,10 @@ import audioroute                                           # noqa: E402
 import kit_faults                                          # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 from audioeffects import _component                         # noqa: E402
-from audioeffects import rebuilt                            # noqa: E402
+import audioeffects                                         # noqa: E402
 from audioeffects.chorus import nominal_damping_hz          # noqa: E402
-from audioeffects.rebuilt import slapbackdelay as sd        # noqa: E402
-from audioeffects.rebuilt.digitaldelay import (             # noqa: E402
+from audioeffects import slapbackdelay as sd                # noqa: E402
+from audioeffects.digitaldelay import (                     # noqa: E402
     clear_of_stalls as dd_clear_of_stalls)
 from tools.effect_measurements import instantaneous_hz      # noqa: E402
 
@@ -57,7 +56,7 @@ BLOCK = 256
 RATES = (48000, 44100, 22050)
 TIME_I, LEVEL_I, SATURATION_I, TONE_I, WOW_I, REPEATS_I = range(6)
 
-SlapbackDelay = rebuilt.module_class("SlapbackDelay")
+SlapbackDelay = audioeffects.SlapbackDelay
 
 
 # --------------------------------------------------------------------------
@@ -1092,11 +1091,8 @@ class TheSurface(unittest.TestCase):
 
     def test_adopted_is_what_the_package_serves(self):
         """Adopted on 2026-09-28, so `create()` serves this one. It was the
-        reverse assertion while the class was parked; revert
-        `rebuilt.ADOPTED` and this goes red."""
+        reverse assertion while the class was parked; serve another class under the name and this goes red."""
         import audioeffects
-        self.assertIn("SlapbackDelay", rebuilt.ADOPTED)
-        self.assertNotIn("SlapbackDelay", rebuilt.parked())
         self.assertIs(audioeffects.SlapbackDelay, SlapbackDelay)
         served = audioeffects.create("SlapbackDelay", silence_src(64), RATE)
         self.assertIsInstance(served, SlapbackDelay)

@@ -78,8 +78,8 @@ What's planned next is in [ROADMAP.md](ROADMAP.md).
 - `lib/audioinstruments/` — one module per instrument, plus `_support.py`
   (the shared voice/patch/wavetable machinery) and `midi_cc.py`
 - `lib/audioeffects/` — one module per effect, plus `_component.py` (the
-  base every effect is built on) and `rebuilt/` (the delay, reverb, pitch
-  and rack classes, which live there for now)
+  base every effect is built on) and `rebuilt/`, which only keeps the old
+  `audioeffects.rebuilt.<module>` import paths working
 - `docs/audio-component-api.md` — the runtime contract every component
   satisfies; `docs/audio-components.md` — the static metadata manifest;
   `docs/sequencing.md` — writing a part that keeps time in frames

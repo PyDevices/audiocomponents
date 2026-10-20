@@ -753,16 +753,15 @@ def main(argv):
         options["cls"].split(":")[-1], {}))
     for name, value in options["options"]:
         arguments[name] = value
-    # `rebuilt:<Name>` reaches a class that is built but **not adopted**
-    # (`audioeffects.rebuilt.ADOPTED`): for a parked name `create()` serves
-    # the old class in the family module, so a digest taken for a parked
-    # rebuild has to say which class it is a digest of. Phase 2 parked
-    # fifteen of sixteen, so every one of their §3 tables needs this.
+    # `rebuilt:<Name>` (and `--rebuilt`) builds the class through its own
+    # `create()` rather than `audioeffects.create()`. It once reached a
+    # rebuild that was not yet served; every class has one home now, so
+    # both forms build the same class and old digest tables still run.
     if options["cls"].startswith("rebuilt:") or options["rebuilt"]:
-        from audioeffects import rebuilt as _rebuilt
+        import audioeffects as _effects
         name = (options["cls"][8:] if options["cls"].startswith("rebuilt:")
                 else options["cls"])
-        cls = _rebuilt.module_class(name)
+        cls = getattr(_effects, name, None)
         if cls is None:
             raise SystemExit("no rebuilt module for %s" % name)
         effect = cls.create(
