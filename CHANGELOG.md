@@ -6,6 +6,16 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## Unreleased
+
+### Added
+
+- The SoundFont instruments answer the sustain pedal, Control Change 64. At
+  64 or more, a note let go keeps sounding; when the pedal drops below 64
+  every held note on that channel releases with its own release envelope.
+  Keys still pressed are untouched, and a key struck again while its old
+  note is held starts a new note.
+
 ## v0.4.1.dev2 (2026-10-20)
 
 ### Added
