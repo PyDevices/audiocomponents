@@ -414,5 +414,23 @@
 # promotions in the SVF handover (#264). audiosampler is a new module and
 # touches no node that existed.
 #
+# Moved to f98eb17 on 2026-10-20, for audiosampler's 128-voice ceiling
+# (audiodsp#289), so an instrument can ask the sampler for more than 64
+# voices. Named by commit; no release carries it yet. What else moved
+# beneath the components, by `git log 6db15e3..f98eb17 -- src`: audiosampler
+# keeps its samples in a SampleBuffer outside the collected heap and fades
+# a stopped or stolen voice over 5 ms; audiomixer passes a unity-level
+# voice through unscaled, and on CPython scales any other in C (#273);
+# synthio returns silence for a block where nothing sounds (#278);
+# audioladder takes buffer_size; audiooscillator is new, and audiopump and
+# audiometer change only their USB paths. audioecho.FeedbackDelay's loop
+# shifter now searches a whole window for a splice that nothing near fits
+# (audiodsp#284), but not on a fading repeat (audiodsp#290): #284 alone
+# dropped PitchShifter's third repeat 19 dB at 22.05 kHz, -5 semitones and
+# Feedback 0.3 (T3), and with #290 it reads 2.5 dB over its bar's
+# reference, as it did before #284. The two `@options` rows in
+# test_measure_effect_cost run the loop shifter on held material and move
+# with #284; their digests are re-read there.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-6db15e311a17ca83784f0276d326f98b77950b5f 6db15e311a17ca83784f0276d326f98b77950b5f
+f98eb17695c1c1e64284a4ef1f2abee7f3cdeefa f98eb17695c1c1e64284a4ef1f2abee7f3cdeefa

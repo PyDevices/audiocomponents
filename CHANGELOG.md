@@ -48,6 +48,12 @@ there, and are recorded in its changelog.
 
 ### Changed
 
+- The gates run against audiodsp f98eb17, where the sampler's voice ceiling
+  is 128, so a SoundFont pool built with `max_voice_count` above 64 gets the
+  voices it asks for. The loop shifter that `PitchShifter`'s feedback runs
+  through now searches further for a splice that fits a held chord
+  (audiodsp#246), but not on a fading repeat, so the repeats keep their
+  level (audiodsp#290).
 - A SoundFont `Voices` pool makes its sampler with the voices it was asked
   for, not the build's ceiling. Since audiodsp raised that ceiling to 128, a
   48-voice pool held about 32 KB more heap on MicroPython (68 KB, from 36 KB)

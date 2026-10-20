@@ -42,10 +42,13 @@ class TheNewRows(unittest.TestCase):
         # as a chord each change its bytes, and both together give these.
         # Before v0.6.6 it was e7a07359012d7a8e, and 9e06dd6c5d8a2f38 with
         # damping. The base and fb0.9 rows run no shifter and did not move.
+        # audiodsp#284, a splice that nothing near fits searching on out to
+        # a whole window, moved both again; they were 7dfa014ed463ea16 and
+        # 101319c53132701d before it.
         options = digest("audioecho.FeedbackDelay@options")
-        self.assertEqual(options, "7dfa014ed463ea16")
+        self.assertEqual(options, "845477cccfdef016")
         self.assertEqual(digest("audioecho.FeedbackDelay@options+damping"),
-                         "101319c53132701d")
+                         "181eec0ad19eae28")
 
 
 class TheBesideRow(unittest.TestCase):
