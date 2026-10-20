@@ -10,6 +10,21 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- Every instrument says how many notes it can sound at once: `voices` is 1
+  for a monophonic instrument, its voice limit otherwise, and `None` for a
+  drum machine, whose voices are per pad. `tools/validate_api.py` checks it
+  (#167).
+- A SoundFont pool's `voice_count` can change while it plays, up to
+  `max_voice_count` (the engine's ceiling), so a board that can't render
+  64 voices sets fewer; `create("soundfont", ..., voices=n)` gives an
+  instrument's own pool n voices.
+- `with pool.deferred():` sends a SoundFont pool's voice writes together at
+  the end, the audio pump parked once for all of them. Each write alone
+  waits for the block the pump is pulling, which on an ESP32-P4 playing a
+  dense orchestral file was most of a block, three times a note.
+- A SoundFont bank's arena comes from `audiosampler.SampleBuffer` where
+  audiodsp has it, outside the collected heap, so a `gc.collect()` doesn't
+  read the samples.
 - A SoundFont 2 reader, `audioinstruments._sf2`, written from the 2.04
   specification. It lists a bank's presets and resolves a key and velocity
   to flat regions: the sample's frames with every address offset applied,
@@ -38,6 +53,13 @@ there, and are recorded in its changelog.
 
 ### Changed
 
+- **Renamed:** a SoundFont instrument's shared pool is `voice_pool`, both
+  the keyword to `create()` (was `voices=`) and the property on the
+  instrument (was `.voices`), so that `voices` can be the count (#167).
+  Pass `voice_pool=pool` where you passed `voices=pool`.
+- A SoundFont pool's reserve now stops its oldest releasing voices (a 5 ms
+  fade on the engine's tail) instead of holding them at level 0, so they no
+  longer cost render time; a stolen voice isn't stopped before its new note.
 - A SoundFont bank keeps a bounded amount of samples: `soundfont.CACHE_BYTES`,
   8 MB on a board and 64 MB on a desktop, or `open_bank(path,
   cache_bytes=...)`. Past it, the samples played least recently are let go

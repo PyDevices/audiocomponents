@@ -347,5 +347,6 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 15: hat_tone = logmap(value0, 4000.0, 10000.0)
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
-                            transport=transport, note_map=NOTE_MAP)
+                            transport=transport, note_map=NOTE_MAP,
+                            voices=MAX_VOICES - 1)  # four sound: see above
     return instrument

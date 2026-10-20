@@ -253,26 +253,32 @@ banks on the next program change. Four macros: Volume, Attack, Release
 (each scaling the bank's own envelope) and Tune (a semitone either way).
 The module docstring says how attenuation is scaled and why.
 
-Each instrument has 32 voices of its own. For a General MIDI module, where
-sixteen of them play at once, give them one pool instead: a busy part then
-takes the voices an idle one isn't using, and there is one sampler to
-render rather than sixteen and a mixer.
+Each instrument has 32 voices of its own (`voices=` to `create()` asks for
+another number, and `inst.voices` says how many it has). For a General MIDI
+module, where sixteen of them play at once, give them one pool instead: a
+busy part then takes the voices an idle one isn't using, and there is one
+sampler to render rather than sixteen and a mixer.
 
 ```python
 from audioinstruments import soundfont
 
-voices = soundfont.Voices(48000, 2, voice_count=64, reserve=8, gain=0.2)
-strings = audioinstruments.create("soundfont", 48000, voices=voices)
-kit = audioinstruments.create("soundfont_drums", 48000, voices=voices)
-audio_out.play(voices.output)    # every instrument's output is this sampler
+pool = soundfont.Voices(48000, 2, voice_count=64, reserve=8, gain=0.2)
+strings = audioinstruments.create("soundfont", 48000, voice_pool=pool)
+kit = audioinstruments.create("soundfont_drums", 48000, voice_pool=pool)
+audio_out.play(pool.output)    # every instrument's output is this sampler
+pool.voice_count = 40          # a board that can't render 64: set it live
 ```
 
-`reserve` fades the oldest releasing voices early, so a new note takes a
-silent voice rather than cutting a sounding one off with a click. `gain` is
-headroom: sixteen parts at full level clip in a dense piece, and 0.2 is
-about what General MIDI players run these banks at. `voices.stolen` and
-`voices.cut` count the voices stopped while still sounding, and the held
-notes among them.
+`voice_count` can change while the pool plays, up to `pool.max_voice_count`
+(the engine's ceiling); fewer stops the voices above the new count with a
+5 ms fade. `reserve` stops the oldest releasing voices early, each fading
+out over 5 ms, so a new note takes a free voice rather than cutting a
+sounding one off with a click. `gain` is headroom: sixteen parts at full
+level clip in a dense piece, and 0.2 is about what General MIDI players run
+these banks at. `pool.stolen` and `pool.cut` count the voices stopped while
+still sounding, and the held notes among them. Inside `with
+pool.deferred():` the voices' writes are sent together at the end, which on
+a board whose audio pump is busy is one wait instead of one per write.
 
 ## Where these came from
 

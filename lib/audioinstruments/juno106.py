@@ -164,5 +164,6 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 15: filt_d = logmap(value0, 0.05, 3.05)
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
-                            transport=transport)
+                            transport=transport,
+                            voices=MAX_VOICES)
     return instrument

@@ -1034,8 +1034,11 @@ class Instrument:
     def __init__(self, synth, handle_event, patches, macro_labels,
                  output=None, transport=None, note_map=None,
                  capabilities=(), latency_samples=0, tail_samples=0,
-                 schedulable=True):
+                 schedulable=True, voices=None):
         self.synth = synth
+        if voices is not None and (int(voices) != voices or voices < 1):
+            raise ValueError("voices must be a positive int or None")
+        self._voices = None if voices is None else int(voices)
         # Every Keys built on this thread since its last Instrument belongs
         # to this one. An instrument factory runs start to finish on one
         # thread and ends by constructing exactly one Instrument, so the
@@ -1111,6 +1114,15 @@ class Instrument:
     def capabilities(self):
         self._check_live()
         return self._capabilities
+
+    @property
+    def voices(self):
+        """How many notes it can sound at once: 1 for a monophonic
+        instrument, its voice limit otherwise, and None for a drum machine,
+        whose voices are per pad. Past it, a new note takes a sounding
+        note's voice."""
+        self._check_live()
+        return self._voices
 
     @property
     def patch_index(self):

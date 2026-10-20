@@ -98,9 +98,9 @@ import audioinstruments.soundfont as _soundfont
 
 
 def create(sample_rate, channel_count=2, transport=None, bank=None,
-           voices=None):
-    """The bank's kits as one instrument; `bank` and `voices` as for
-    `soundfont`."""
+           voice_pool=None, voices=None):
+    """The bank's kits as one instrument; `bank`, `voice_pool` and `voices`
+    as for `soundfont`."""
     loaded = _soundfont.open_bank(bank)
     kits = loaded.programs(_soundfont.PERCUSSION_BANK)
     if not kits:
@@ -111,7 +111,8 @@ def create(sample_rate, channel_count=2, transport=None, bank=None,
         patches[index] = (name, _soundfont.DEFAULT_MACROS)
         targets[index] = (_soundfont.PERCUSSION_BANK, program)
     player = _soundfont._Player(
-        loaded, _soundfont.voices_for(sample_rate, channel_count, voices),
+        loaded, _soundfont.voices_for(sample_rate, channel_count, voice_pool,
+                                      voices),
         _soundfont.PERCUSSION_BANK)
     return _soundfont.SoundFontInstrument(
         player, patches, targets, MACRO_LABELS, note_map=NOTE_MAP,

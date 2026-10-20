@@ -517,5 +517,6 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 15: oh_decay = logmap(value0, 0.1, 0.8)
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
-                            transport=transport, note_map=NOTE_MAP)
+                            transport=transport, note_map=NOTE_MAP,
+                            voices=None)
     return instrument
