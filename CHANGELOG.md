@@ -10,6 +10,19 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- The effect test kit judges the six classes whose wire is a depth or a
+  range, and plays real material at three levels. AutoPan, Tremolo and Notch
+  (Depth), DeEsser and NoiseGate (Range) and Expander (Depth) are held to
+  their own model in the lifecycle matrix, not a Mix crossfade's: at 0 the
+  output is the input byte for byte, and a jump of the control may step the
+  output by as far as the class stands from the dry there and no more. A
+  ninth check, `levels`, plays a plucked phrase at -24, -12 and -3 dBFS
+  through every class and holds the wire, the ring-out and the rails at each
+  level. `effect_measurements.line_level` reads a partial's level in a narrow band
+  against the source's, which the energy-weighted mean cannot do when a
+  splice cancels the line; ShimmerHall's Rise climb to the third octave and
+  Octaver's tracking near Sensitivity are held to them. The kit's `KIT.md`
+  says what each cell measures.
 - `audioinstruments.midi_dispatch` plays instruments from MIDI. A
   `MidiDispatcher` takes raw bytes with running status, `adafruit_midi`
   message objects (what `midiports` and `receive()` give you), or one

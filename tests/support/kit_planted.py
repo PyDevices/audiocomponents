@@ -56,6 +56,12 @@ def _nothing(x):
     return 0
 
 
+def _leak_band(x):
+    """Two LSB more between 3000 and 12000: a level only a mid-level note
+    reaches."""
+    return x + 2 if 3000 < abs(x) <= 12000 else x
+
+
 class KitPlain(_component.Component):
     """The control: the source through a straight table at a level of
     1 - Mix + Mix x Gain, Gain from 0.25 to 1, so no knob position is
@@ -115,6 +121,14 @@ class WrapKitQuiet(WrapKit):
     twice the input stays inside int16."""
     NAME = "WrapKitQuiet"
     INPUT_CEILING_DBFS = -7
+
+
+class LeakBand(KitPlain):
+    """Levels: the wire at Mix 0 is the source except in a band of levels
+    (3000 to 12000, which a phrase at -24 dBFS never reaches and one at -12
+    does), so the wire holds at one level and not at the next."""
+    NAME = "LeakBand"
+    CURVE = staticmethod(_leak_band)
 
 
 class LongTail(KitPlain):
@@ -698,7 +712,7 @@ class MoveLeak(FreshKit):
 
 
 PLANTS = {}
-for _cls in (KitPlain, Silent, WrapKit, WrapKitQuiet, ClipKit, DeadStop,
+for _cls in (KitPlain, Silent, LeakBand, WrapKit, WrapKitQuiet, ClipKit, DeadStop,
              CondKit, MidWrap, ComboWrap, AllWrap, LowWrap, ImplKit, EchoTail, ShortTail, EventTail, NoneSilent, NoneDC,
              ReadbackOff, StopRaises, NanLevel, PatchStale, CtorNan,
              ClearsFirst, ClearsMacro, FlushKit, FlushOnly, DoubleReset,

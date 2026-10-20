@@ -259,6 +259,87 @@ def clicks(frames, channels, amp, spacing=97):
     return values
 
 
+#: The levels the kit's multi-level pass plays real material at, in dBFS.
+LEVELS_DBFS = (-24, -12, -3)
+#: The phrase's notes, in Hz: A2, E2, D3, G3, B3, E4.
+PHRASE_NOTES = (110, 82, 147, 196, 247, 330)
+PHRASE_NOTE_MS = 300
+
+
+def peak_for(dbfs):
+    """The int16 peak a level in dBFS stands for."""
+    return int(32767 * 10.0 ** (dbfs / 20.0) + 0.5)
+
+
+def pluck(frames, period, seed, amp=16384, bright=False):
+    """One Karplus-Strong string in integers. The loop starts as a string
+    plucked a fifth of the way along it (a triangle, so the fundamental
+    leads the partials above it as it does on a guitar) with an eighth of
+    noise on top for the pick; `bright` starts it as noise alone, which has
+    every partial as loud as the fundamental. Every pass the loop averages
+    each sample with its neighbour, so the note rings down, high partials
+    first. The same bytes on every interpreter."""
+    line = [0] * period
+    state = seed
+    span = 2 * amp + 1
+    knee = period // 5
+    for i in range(period):
+        state = lifecycle._lcg(state)
+        hiss = ((state >> 8) % span) - amp
+        if bright:
+            line[i] = hiss
+        else:
+            ramp = amp * i // knee if i < knee else \
+                amp * (period - i) // (period - knee)
+            line[i] = ramp - amp // 2 + hiss // 8
+    out = [0] * frames
+    i = 0
+    for n in range(frames):
+        j = i + 1 if i + 1 < period else 0
+        out[n] = line[i]
+        line[i] = (line[i] + line[j]) >> 1
+        i = j
+    return out
+
+
+def phrase(rate, channels, dbfs=-12, seed=2024, bright=False):
+    """Real material for the level passes: six plucked strings, one at a
+    time, 300 ms each (the last 500 ms), noisy at the attack and decaying
+    through every level below their peak, each string stopped by a 10 ms
+    fade, 2.0 s in all, each channel its own strings' noise. Scaled so the
+    peak is `dbfs`. Integer arithmetic only."""
+    note = PHRASE_NOTE_MS * rate // 1000
+    fade = 10 * rate // 1000
+    count = len(PHRASE_NOTES)
+    total = (count - 1) * note + 5 * note // 3
+    mix = [[0] * total for _ in range(channels)]
+    for ch in range(channels):
+        line = mix[ch]
+        for k in range(count):
+            length = note if k < count - 1 else total - k * note
+            ring = pluck(length, rate // PHRASE_NOTES[k],
+                         seed + 17 * k + 1000 * ch, bright=bright)
+            for n in range(length):
+                v = ring[n]
+                if n >= length - fade:
+                    v = v * (length - n) // fade
+                line[k * note + n] = v
+    top = 1
+    for ch in range(channels):
+        for v in mix[ch]:
+            if v > top:
+                top = v
+            elif -v > top:
+                top = -v
+    peak = peak_for(dbfs)
+    values = _blank(total, channels)
+    for ch in range(channels):
+        line = mix[ch]
+        for n in range(total):
+            values[n * channels + ch] = line[n] * peak // top
+    return values
+
+
 def last_nonzero_frame(values, channels):
     """One past the last frame with a non-zero sample, or 0."""
     for i in range(len(values) - 1, -1, -1):

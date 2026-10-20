@@ -66,31 +66,58 @@ NO_TAIL_WAIT = 10 * 48000
 
 #: The class's wet/dry control, by macro index. A class not named here uses
 #: the macro labelled "Mix". A class whose wire is a level at 0 and has no
-#: "Mix" label needs a row here, or its E5 and E9 cells never run; a class
-#: that has one and is not given a row is listed in `UNRUN_WIRE_CONTROL`
-#: until it can be, and a class with none in `NO_WIRE_CONTROL`.
+#: "Mix" label needs a row here, or in `DEPTH_INDEX`, or its E5 and E9 cells
+#: never run; a class that has one and is not given a row is listed in
+#: `UNRUN_WIRE_CONTROL` until it can be, and a class with none in
+#: `NO_WIRE_CONTROL`.
 MIX_INDEX = {
     "SlapbackDelay": 1,        # "Level": the slap's level; 0 is the dry
     "Octaver": 1,              # "Octave 1": 0 is the wire at patch 0
 }
 
-#: Classes with a macro that is a wire at 0 and no "Mix" label, whose E5 and
-#: E9 cells do not run yet: name -> (macro index, why). A row in `MIX_INDEX`
-#: today turns hundreds of cells red, because the matrix takes Mix to 0 and
-#: back as a crossfade and holds every other event to a control built with
-#: Mix at 0, and a depth or a range is not one: moving it restarts an
-#: oscillator, a detector or an envelope. Red cells in the quick matrix with
-#: the macro as `MIX_INDEX` (AutoPan 224, Tremolo 325, Notch 323, DeEsser
-#: 438, NoiseGate 46, Expander 68). Each wants its own scoped declared rows, or a model of its own,
-#: before it moves to `MIX_INDEX` (audiocomponents#183).
-UNRUN_WIRE_CONTROL = {
-    "AutoPan": (1, "Depth: 0 is a wire"),
-    "Tremolo": (2, "Depth: 0 is a wire"),
-    "Notch": (3, "Depth: 0 is a wire"),
-    "DeEsser": (1, "Range: 0 is a wire, broadband and not listening"),
-    "NoiseGate": (4, "Range: 0 dB, the knob's bottom, is a wire"),
-    "Expander": (2, "Depth: 0 dB, the knob's bottom, is a wire"),
+#: A wire that is a depth or a range: 0 is a bypass, but nothing in between
+#: is a crossfade of dry and wet. Moving it jumps (an LFO's depth, a gate's
+#: floor), so the matrix judges the move with the depth model below and
+#: not with a crossfade's: at 0 the output is the source, byte for byte
+#: (P1); everything the class does at its other settings is judged as it
+#: is for any control (P2 to P4); and P5 allows the step the jump itself
+#: makes, which is how far the class's output is from the dry at that
+#: moment, and nothing more. A row names the macro index.
+DEPTH_INDEX = {
+    "AutoPan": 1,              # "Depth": 0 pans nothing
+    "Tremolo": 2,              # "Depth": 0 is a wire
+    "Notch": 3,                # "Depth": 0 is a wire
+    "DeEsser": 1,              # "Range": 0 is a wire, broadband, not listening
+    "NoiseGate": 4,            # "Range": 0 dB, the knob's bottom
+    "Expander": 2,             # "Depth": 0 dB, the knob's bottom
 }
+
+#: The planted depth's own row, kept apart so the tables above name only
+#: real classes.
+PLANT_DEPTH_INDEX = {"LifecycleDepth": 0}
+
+#: Settings at which a depth at 0 is not a byte compare, by design: class ->
+#: ((macro index, MIDI value from which it holds, why), ...). A cell that
+#: visits one of them (the patch it is built at, a patch it moves to, a
+#: macro it moves) prints P1 `na`, as it does for a stated non-bypass.
+DEPTH_NOT_A_WIRE = {
+    "DeEsser": (
+        (3, 64, "HF-only at Range 0 is the two band halves summed: flat, and"
+                " not a byte compare (the class says so)"),
+        (6, 64, "Listen puts the detector's band on the output"),
+    ),
+    "NoiseGate": (
+        (7, 64, "Key Listen puts the detector's band on the output"),
+    ),
+    "Expander": (
+        (7, 64, "Key Listen puts the detector's band on the output"),
+    ),
+}
+
+#: Classes with a macro that is a wire at 0 and no "Mix" label, whose E5 and
+#: E9 cells do not run yet: name -> (macro index, why). Empty since the
+#: depth model (`DEPTH_INDEX`) took the six depths and ranges in.
+UNRUN_WIRE_CONTROL = {}
 
 #: The classes with no wet/dry control, and why, so that a new class has to
 #: be sorted into one table or the other (`test_every_class_has_its_wire`).
@@ -1054,6 +1081,18 @@ def _max_step(values, channels, lo, hi):
     return top
 
 
+def _max_gap(a, b, channels, lo, hi):
+    """The largest distance between two renders over frames lo..hi."""
+    top = 0
+    for i in range(lo * channels, min(hi * channels, len(a), len(b))):
+        d = a[i] - b[i]
+        if d < 0:
+            d = -d
+        if d > top:
+            top = d
+    return top
+
+
 # --------------------------------------------------------------------------
 # The class under test
 
@@ -1069,10 +1108,41 @@ def mix_index(cls):
     name = cls.NAME
     if name in MIX_INDEX:
         return MIX_INDEX[name]
+    if name in DEPTH_INDEX:
+        return DEPTH_INDEX[name]
+    if name in PLANT_DEPTH_INDEX:
+        return PLANT_DEPTH_INDEX[name]
     labels = cls.MACRO_LABELS
     for i in range(len(labels)):
         if labels[i] == "Mix":
             return i
+    return None
+
+
+def is_depth(cls):
+    """True when the class's wire is a depth, judged by the depth model."""
+    return cls.NAME in DEPTH_INDEX or cls.NAME in PLANT_DEPTH_INDEX
+
+
+def _not_a_wire(cls, ev, patch, options):
+    """Why a depth at 0 is not a byte compare in this cell, or None: the
+    cell builds the class at `patch`, takes the event's moves, and every
+    setting it stands at is held to `DEPTH_NOT_A_WIRE`."""
+    rows = DEPTH_NOT_A_WIRE.get(cls.NAME)
+    if not rows:
+        return None
+    feed = Feed(material_for("once", 48000, 1), 48000, 1, "256", loop=False)
+    e = _build(cls, feed, 48000, patch, options, False)
+    try:
+        ctx = Ctx(e, patch)
+        for step in (None, ev.away, ev.back):
+            if step:
+                act(e, feed, ctx, step)
+            for index, low, why in rows:
+                if e.get_macro(index) >= low:
+                    return why
+    finally:
+        e.deinit()
     return None
 
 
@@ -1255,6 +1325,12 @@ def fresh_position(cls, index, midi):
 MIX_KEYWORD = {
     "SlapbackDelay": "level",
     "Octaver": "octave1",
+    "AutoPan": "depth",
+    "Tremolo": "depth",
+    "Notch": "depth",
+    "DeEsser": "range_db",
+    "NoiseGate": "range_db",
+    "Expander": "depth_db",
 }
 
 
@@ -1419,6 +1495,9 @@ def p1(cls, ev, rate, channels, patch, options):
         return "na"
     if _starts(ev.name, ("E10-mix", "E12-mix")):
         return "na"
+    why = _not_a_wire(cls, ev, patch, options) if is_depth(cls) else None
+    if why is not None:
+        return "na(not a wire: %s)" % why.replace("|", "/")[:60]
     values = material_for("once", rate, channels)
     feed = Feed(values, rate, channels, ev.kind, loop=False)
     e = _build(cls, feed, rate, patch, options, False)
@@ -1780,12 +1859,18 @@ def p5(cls, ev, rate, channels, patch, options, controls):
     own = _max_step(values, channels, 0, total)
     base = max(own, _max_step(ref, channels, 0, total))
     limit = base * STEP_NUM // STEP_DEN
+    depth = is_depth(cls) and any(
+        a[0] == "macro" and a[1] == mix_index(cls) for a in ev.away)
     worst = 0
     where = 0
     for a in at:
         lo = max(0, a - 1)
         hi = min(total, a + BLOCK + 64)
         s = _max_step(got, channels, lo, hi)
+        if depth:
+            # A depth jumps, and the jump steps the output by as far as the
+            # class's output stands from the dry there: no more.
+            s -= _max_gap(ref, values, channels, lo, hi)
         if s > worst:
             worst = s
             where = a
@@ -2255,11 +2340,86 @@ class ResetLeak(Routed):
         self.program_change(0)
 
 
+class _Scaled:
+    """A Python-level output (CPython only) that scales every block the
+    mixer hands on by the owner's factor, at once: a control that jumps,
+    which no mixer level does (the mixer ramps it)."""
+
+    def __init__(self, inner, owner):
+        self.inner = inner
+        self.owner = owner
+        self.sample_rate = inner.sample_rate
+        self.channel_count = inner.channel_count
+        self.bits_per_sample = 16
+        self.samples_signed = True
+
+    def _reset_buffer(self, single_channel_output=False, audio_channel=0):
+        audiocore.reset_buffer(self.inner)
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        result, data = audiocore.get_buffer(self.inner)
+        values = array("h")
+        values.frombytes(bytes(data))
+        factor, offset = self.owner._shape()
+        for i in range(len(values)):
+            v = int(values[i] * factor) + offset
+            values[i] = max(-32768, min(32767, v))
+        return result, values.tobytes()
+
+
+class DepthJump(Plain):
+    """The depth model's control: Depth 0 is the source and any other
+    Depth is the source at half level, handed over at once, as an LFO's
+    depth or a gate's floor is. Not a crossfade, and P5 would read its jump
+    as a click if it judged it as one (CPython only: its output is a
+    Python-level node)."""
+    NAME = "LifecycleDepth"
+    MACRO_LABELS = ("Depth", "Gain")
+
+    def _build(self, mix=1.0, gain=1.0, patch=None):
+        self._pop = False
+        Plain._build(self, mix, gain, patch)
+        self._output = _Scaled(self._mixer, self)
+
+    def _level(self):
+        return 1.0
+
+    def _factor(self):
+        return 1.0 if self._macros[0] == 0.0 else 0.5
+
+    def _shape(self):
+        return self._factor(), 0
+
+    def _apply_macro(self, index, position):
+        Plain._apply_macro(self, index, position)
+
+
+class DepthLeak(DepthJump):
+    """P1: Depth 0 is not the wire, it leaves the source 3 % down."""
+
+    def _factor(self):
+        return 0.97 if self._macros[0] == 0.0 else 0.5
+
+
+class DepthPop(DepthJump):
+    """P5: the first block after a Depth move carries a DC offset, a click
+    on top of the jump the model allows."""
+
+    def _apply_macro(self, index, position):
+        self._pop = not self._constructing
+        Plain._apply_macro(self, index, position)
+
+    def _shape(self):
+        pop, self._pop = self._pop, False
+        return self._factor(), 20000 if pop else 0
+
+
 PLANTS = {"plain": Plain, "routed": Routed, "droponreset": DropOnReset,
           "holddc": HoldDC, "latepatch": LatePatch, "resetleak": ResetLeak,
           "stalemix": StaleMix, "latemove": LateMove,
           "hardswitch": HardSwitch, "busydeinit": BusyDeinit,
-          "implplant": ImplPlant}
+          "implplant": ImplPlant, "depthjump": DepthJump,
+          "depthleak": DepthLeak, "depthpop": DepthPop}
 
 
 def _cli(argv):

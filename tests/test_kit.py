@@ -26,6 +26,7 @@ import kit_args                                           # noqa: E402
 import kit_ceiling                                        # noqa: E402
 import kit_claims                                         # noqa: E402
 import kit_fresh                                          # noqa: E402
+import kit_levels                                         # noqa: E402
 import kit_common as kc                                   # noqa: E402
 import kit_nogb                                           # noqa: E402
 import kit_paperwork                                      # noqa: E402
@@ -310,6 +311,60 @@ class TestNoGetBuffer(unittest.TestCase):
 
 def fresh_cells(cls):
     return cells_of(kit_fresh.run, cls, quick=True)
+
+
+class TestLevels(unittest.TestCase):
+    """The level pass plays real material at -24, -12 and -3 dBFS."""
+
+    def v(self, cls, level, patch=None, wire=False):
+        return kit_levels.measure(cls, 48000, 2, level, patch, wire)[0]
+
+    def test_a_class_that_does_nothing_is_red_at_every_level(self):
+        for level in kc.LEVELS_DBFS:
+            with self.subTest(level=level):
+                self.assertTrue(red(self.v(kp.Silent, level)))
+                self.assertEqual(self.v(kp.KitPlain, level), "ok")
+
+    def test_a_wrap_that_only_the_loud_level_reaches_is_red_there(self):
+        # Twice the input wraps above 16383: the phrase at -3 dBFS peaks at
+        # 23197, at -12 dBFS at 8231.
+        self.assertTrue(self.v(kp.WrapKit, -3).startswith("RED(wrap"))
+        self.assertEqual(self.v(kp.WrapKit, -12), "ok")
+        self.assertEqual(self.v(kp.WrapKit, -24), "ok")
+
+    def test_a_level_over_the_stated_ceiling_is_not_played(self):
+        cells = cells_of(kit_levels.run, kp.WrapKitQuiet, quick=True)
+        got = {k[2].split("/")[0]: v["V"] for k, v in cells.items()
+               if k[2].endswith("/d")}
+        self.assertEqual(got, {"-24": "ok", "-12": "ok",
+                               "-3": "na(above ceiling)"})
+
+    def test_a_leak_in_a_band_of_levels_is_red_where_the_phrase_reaches_it(
+            self):
+        self.assertEqual(self.v(kp.LeakBand, -24, wire=True), "ok")
+        for level in (-12, -3):
+            with self.subTest(level=level):
+                self.assertTrue(self.v(kp.LeakBand, level, wire=True)
+                                .startswith("RED(wire"))
+                self.assertEqual(self.v(kp.KitPlain, level, wire=True),
+                                 "ok")
+
+    def test_a_tail_past_the_bound_is_red_at_every_level(self):
+        for level in kc.LEVELS_DBFS:
+            with self.subTest(level=level):
+                self.assertIn("rings to", self.v(kp.ShortTail, level))
+        # The control, where its dry and its repeat do not sum past the rail.
+        for level in (-24, -12):
+            self.assertEqual(self.v(kp.EchoTail, level), "ok")
+
+    def test_a_class_with_no_wire_has_no_wire_cells(self):
+        keys = [k for k, _p, _w in kit_levels.configs(kp.ClipKit, True)]
+        self.assertEqual(keys, ["d", "wire@d", "p1", "wire@p1"])
+        class NoWire(kp.KitPlain):
+            NAME = "NoWire"
+            MACRO_LABELS = ("Level", "Gain")
+        keys = [k for k, _p, _w in kit_levels.configs(NoWire, True)]
+        self.assertEqual(keys, ["d", "p1"])
 
 
 class TestFresh(unittest.TestCase):
@@ -750,7 +805,7 @@ def run_kit(binary, args):
 
 
 RENDER = ["--quick", "--plants-module=kit_planted",
-          "--only=args,plants,ceiling,tail,fresh"]
+          "--only=args,plants,ceiling,tail,fresh,levels"]
 
 
 class TestNative(unittest.TestCase):

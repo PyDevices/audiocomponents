@@ -1878,6 +1878,111 @@ def ifreq(render, rate_hz, *, carrier_hz=None, channel=0,
 
 
 # --------------------------------------------------------------------------
+# LINE - a partial's level in a narrow band, against the source's
+# --------------------------------------------------------------------------
+
+def _band_power(x, rate, hz, half_width_hz):
+    """Power of `x` in the bins within `half_width_hz` of `hz`, Hann
+    windowed over the whole of it."""
+    x = np.asarray(x, dtype=np.float64)
+    seg = x * np.hanning(len(x))
+    spec = np.abs(np.fft.rfft(seg)) ** 2
+    freqs = np.fft.rfftfreq(len(x), 1.0 / rate)
+    keep = np.abs(freqs - hz) <= half_width_hz
+    if not keep.any():
+        keep[int(np.argmin(np.abs(freqs - hz)))] = True
+    return float(spec[keep].sum())
+
+
+def line_level(render, source_render, *, source_hz, target_hz, band_cents=35.0,
+         channel=0, expected_db=None, tolerance_db=3.0, floor_db=-30.0,
+         share_floor_db=None):
+    """LINE - the level of the target partial against the source's, read in
+    a narrow band around the frequency it is expected at.
+
+    The energy-weighted mean of a pitch trait cannot see a splice that
+    cancels the target line: grains that alternate in sign take the energy
+    off the line and put it on two sidebands, one above it and one below,
+    and their mean is still the target. LINE reads the line itself: the
+    power in `band_cents` either side of `target_hz` (never less than three
+    bins, a Hann window's main lobe) in `render`, over the power in the same
+    width around `source_hz` in `source_render`, in dB. Both renders are the
+    same length and use the same window, so the ratio is the lines' own.
+
+    `expected_db` names the level the line should stand at and
+    `tolerance_db` how far it may be from it; with none the line has to be
+    no more than `-floor_db` dB under the source's, which a cancelled line
+    never is. `share_db` is the line's share of everything within half an
+    octave of the target, in dB (0 for a pure tone, -38 for a cancelled
+    line): it does not depend on how loud the copy is, so a class whose copy
+    level moves with a hall's size can still be held to `share_floor_db`,
+    which red-lines energy that sits beside the line.
+    """
+    require_signal(render, "line render")
+    require_signal(source_render, "line source")
+    a = render.float[:, channel]
+    b = source_render.float[:, channel]
+    count = min(len(a), len(b))
+    a = a[:count]
+    b = b[:count]
+    bin_hz = render.rate / float(count)
+
+    def half(hz):
+        return max(hz * (2.0 ** (band_cents / 1200.0) - 1.0), 3.0 * bin_hz)
+
+    target = _band_power(a, render.rate, target_hz, half(target_hz))
+    source = _band_power(b, render.rate, source_hz, half(source_hz))
+    level = 10.0 * math.log10(max(target, 1e-30) / max(source, 1e-30))
+    # Where the energy went, for a reader of a red: the loudest bin within
+    # half an octave of the target, and its distance from it.
+    spec = np.abs(np.fft.rfft(a * np.hanning(count))) ** 2
+    freqs = np.fft.rfftfreq(count, 1.0 / render.rate)
+    near = np.abs(np.log2(np.maximum(freqs, 1e-9) / target_hz)) <= 0.5
+    peak_hz = float(freqs[near][int(np.argmax(spec[near]))])
+    share = 10.0 * math.log10(max(target, 1e-30)
+                              / max(float(spec[near].sum()), 1e-30))
+    values = {
+        "level_db": round(level, 2),
+        "share_db": round(share, 2),
+        "peak_hz": round(peak_hz, 2),
+        "peak_offset_cents": round(
+            1200.0 * math.log2(peak_hz / target_hz), 1) if peak_hz > 0
+        else None,
+        "band_half_width_hz": round(half(target_hz), 2),
+        "source_hz": source_hz,
+        "target_hz": target_hz,
+    }
+    criteria = {"expected_db": expected_db, "tolerance_db": tolerance_db,
+                "floor_db": floor_db, "band_cents": band_cents,
+                "share_floor_db": share_floor_db}
+    red, failed = [], []
+    if share_floor_db is not None and share < share_floor_db:
+        failed.append("share_db")
+        red.append("share_db: the line at %.1f Hz holds %.2f dB of what is "
+                   "within half an octave of it, under the %.1f dB floor "
+                   "(the loudest bin near it is at %.1f Hz): the energy "
+                   "sits beside the line" % (target_hz, share,
+                                             share_floor_db, peak_hz))
+    if expected_db is not None:
+        if abs(level - expected_db) > tolerance_db:
+            failed.append("level_db")
+            red.append("level_db: the line at %.1f Hz stands %.2f dB against "
+                       "the source's, expected %.2f within %.2f (the loudest "
+                       "bin near it is at %.1f Hz)"
+                       % (target_hz, level, expected_db, tolerance_db,
+                          peak_hz))
+    elif level < floor_db:
+        failed.append("level_db")
+        red.append("level_db: the line at %.1f Hz is %.2f dB against the "
+                   "source's, under the %.1f dB floor (the loudest bin near "
+                   "it is at %.1f Hz): a splice that cancels the line, or "
+                   "a shift that missed it" % (target_hz, level, floor_db,
+                                               peak_hz))
+    values["failed_readouts"] = failed
+    return _result("LINE", "dB", values, render.axes(), criteria, red)
+
+
+# --------------------------------------------------------------------------
 # 13 TAPS
 # --------------------------------------------------------------------------
 

@@ -53,6 +53,15 @@ R_DIST_P7 = (
     " nobody hears. The quiet source the check used to play showed only"
     " patch 7 in stereo (audiocomponents#161)")
 
+R_DEESS_WIRE = (
+    "DeEsser's Range 0 hands the output back to the borrowed source with"
+    " the graph's primed block and its detector left behind: a reset that"
+    " meets Range 0 straight after loses a block of source, a move to or"
+    " from Range 0 steps the output and leaves a lasting difference from"
+    " the uninterrupted control at source buffers other than 256 frames and"
+    " at a whole RawSample, and 1000-frame buffers play a stale block out"
+    " of silence (audiocomponents#191)")
+
 
 #: (class NAME, event prefix, property) -> (quick cells, digest, full
 #: cells, digest, reason). The full matrix was not counted here (None).
@@ -62,7 +71,7 @@ KNOWN_RED = {
     ('AutoPan', 'E11-', 'P4'): (2, '56854f54', None, None, R_PHASE),
     ('AutoPan', 'E11-', 'P5'): (2, '087aa9fa', None, None, R_JUMP),
     ('AutoPan', 'E4-', 'P4'): (2, '68d7673d', None, None, R_PHASE),
-    ('AutoPan', 'E4-', 'P5'): (14, '571e6892', None, None, R_JUMP),
+    ('AutoPan', 'E4-', 'P5'): (12, 'c576f01c', None, None, R_JUMP),
     ('AutoPan', 'E6-', 'P4'): (18, 'ab6136b8', None, None, R_PHASE),
     ('AutoPan', 'E6-', 'P5'): (40, '4a1ecd5f', None, None, R_JUMP),
     ('BandPass', 'E11-', 'P4'): (16, '417a9fcb', None, None, R_STATE_RAMP),
@@ -134,11 +143,19 @@ KNOWN_RED = {
     ('Compressor', 'E6-', 'P5'): (158, 'f381ffce', None, None, R_JUMP),
     ('Compressor', 'E9-', 'P4'): (314, '9d0fc034', None, None, R_STATE),
     ('Compressor', 'E9-', 'P5'): (292, 'eef8a082', None, None, R_JUMP),
-    ('DeEsser', 'E11-', 'P4'): (2, '6486a19d', None, None, R_STATE),
+    ('DeEsser', 'E1-reset@block', 'P1'): (20, 'caf5f0f0', None, None, R_DEESS_WIRE),
+    ('DeEsser', 'E1-reset@part', 'P1'): (20, 'bff84953', None, None, R_DEESS_WIRE),
+    ('DeEsser', 'E10-reset', 'P1'): (20, 'c76f2616', None, None, R_DEESS_WIRE),
+    ('DeEsser', 'E11-', 'P4'): (4, '5578b3ca', None, None, R_STATE),
     ('DeEsser', 'E4-', 'P4'): (8, 'e51a0a4b', None, None, R_STATE),
     ('DeEsser', 'E4-', 'P5'): (11, '1042cde7', None, None, R_JUMP),
+    ('DeEsser', 'E5-mix0', 'P4'): (19, '7d1cd715', None, None, R_STATE),
     ('DeEsser', 'E6-', 'P4'): (20, '85041b2c', None, None, R_STATE_RAMP),
     ('DeEsser', 'E6-', 'P5'): (2, '2c626f74', None, None, R_JUMP),
+    ('DeEsser', 'E9-', 'P3'): (20, '94738233', None, None, R_DEESS_WIRE),
+    ('DeEsser', 'E9-', 'P4'): (79, 'e40bbac5', None, None, R_DEESS_WIRE),
+    ('DeEsser', 'E9-', 'P5'): (60, 'c8fd8078', None, None, R_DEESS_WIRE),
+    ('DeEsser', 'E9-src256', 'P4'): (19, '9f6acd29', None, None, R_STATE),
     ('Distortion', 'E1-reset@block', 'P4'): (48, 'd84a1067', None, None, R_STATE),
     ('Distortion', 'E1-reset@part', 'P4'): (48, 'ce661657', None, None, R_STATE),
     ('Distortion', 'E10-mix0', 'P4'): (1, 'dc494f03', None, None, R_STATE),
@@ -261,12 +278,14 @@ KNOWN_RED = {
     ('NoiseGate', 'E1-reset@part', 'P4'): (14, 'b8240548', None, None, R_STATE),
     ('NoiseGate', 'E2-reset_buffer', 'P4'): (10, '5e5004a0', None, None, R_STATE),
     ('NoiseGate', 'E4-', 'P5'): (4, '00a5daae', None, None, R_JUMP),
-    ('Notch', 'E11-', 'P4'): (12, '4a6637c5', None, None, R_STATE_RAMP),
+    ('Notch', 'E11-', 'P4'): (16, 'c8eab446', None, None, R_STATE_RAMP),
     ('Notch', 'E11-', 'P5'): (4, '795303da', None, None, R_JUMP),
     ('Notch', 'E4-', 'P4'): (16, 'a0fc490b', None, None, R_STATE_RAMP),
-    ('Notch', 'E4-', 'P5'): (20, '49447bfe', None, None, R_JUMP),
+    ('Notch', 'E4-', 'P5'): (16, '3084052b', None, None, R_JUMP),
+    ('Notch', 'E5-mix0', 'P4'): (7, 'd1169fb2', None, None, R_STATE),
     ('Notch', 'E6-', 'P4'): (57, '19ae7e40', None, None, R_STATE_RAMP),
     ('Notch', 'E6-', 'P5'): (56, '9bcc846b', None, None, R_JUMP),
+    ('Notch', 'E9-', 'P4'): (35, '8596d61b', None, None, R_STATE),
     ('Overdrive', 'E1-reset@block', 'P4'): (34, 'aaf11cd2', None, None, R_STATE),
     ('Overdrive', 'E1-reset@part', 'P4'): (34, '75164359', None, None, R_STATE),
     ('Overdrive', 'E10-macros', 'P4'): (4, 'ca627259', None, None, R_STATE),
@@ -319,10 +338,10 @@ KNOWN_RED = {
     ('TransientShaper', 'E4-', 'P5'): (22, 'f1638686', None, None, R_JUMP),
     ('TransientShaper', 'E6-', 'P4'): (22, 'a20cab27', None, None, R_STATE),
     ('TransientShaper', 'E6-', 'P5'): (68, '858e96a7', None, None, R_JUMP),
-    ('Tremolo', 'E11-', 'P4'): (8, '6a7b6d8e', None, None, R_PHASE),
+    ('Tremolo', 'E11-', 'P4'): (12, 'eedd0ced', None, None, R_PHASE),
     ('Tremolo', 'E11-', 'P5'): (4, 'dc306763', None, None, R_JUMP),
     ('Tremolo', 'E4-', 'P4'): (12, '058ac2bd', None, None, R_PHASE),
-    ('Tremolo', 'E4-', 'P5'): (8, '40b3336d', None, None, R_JUMP),
+    ('Tremolo', 'E4-', 'P5'): (4, '034d4667', None, None, R_JUMP),
     ('Tremolo', 'E6-', 'P4'): (92, 'a3a22dcf', None, None, R_PHASE),
     ('Tremolo', 'E6-', 'P5'): (33, 'dc1bc985', None, None, R_JUMP),
     ('Vibrato', 'E11-', 'P4'): (12, '4204b137', None, None, R_PHASE),
@@ -341,6 +360,11 @@ _CP_RESET_BUFFER = (
     " from audiodsp's port: other bytes, the same verdicts"
     " (audiocomponents#158)")
 KNOWN_P6 = {
+    "DeEsser": (12, "d32bc7ee", None, None,
+                "E9 with 100-frame source buffers: the step the Range 0 wire"
+                " makes (R_DEESS_WIRE) lands on another frame, and so reads"
+                " another size, on the native interpreters; the same"
+                " verdicts (audiocomponents#191)"),
     "Compressor": (4, "70d574f2", None, None, _CP_RESET_BUFFER),
     "Distortion": (48, "950b4395", None, None, _CP_RESET_BUFFER),
     "Exciter": (32, "4f3d4cfb", None, None, _CP_RESET_BUFFER),

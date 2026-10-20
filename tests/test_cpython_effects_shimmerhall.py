@@ -273,6 +273,15 @@ class LateDry(ShimmerHall):
         return line
 
 
+class MissedLine(ShimmerHall):
+    """T7: the shifters handed three quarters of a semitone more than the
+    Interval: inside every energy-weighted bar of T2, and 75 cents off the
+    line the shimmer should stand on."""
+
+    def _semitones(self):
+        return ShimmerHall._semitones(self) + 0.75
+
+
 #: The kit's plant table. A Rise plant is judged at a Rise patch, a Bloom
 #: plant at the Bloom patch its fault shows plainest at: the defaults are
 #: Rise, so a Bloom plant always names its patch.
@@ -284,6 +293,7 @@ KIT_PLANTS = {
     "T4b": (RiseInBloom, 6),
     "T5": (UndampedLoop, 4),
     "T6": (LateDry, 6),
+    "T7": MissedLine,
 }
 
 
@@ -708,6 +718,69 @@ def splice_read(cls, rate, f0, character="rise"):
         if abs(q) <= 4:
             near += power
     return near / total
+
+
+# --------------------------------------------------------------------------
+# T7: the line itself, not the mean
+# --------------------------------------------------------------------------
+
+#: The share of what is within half an octave of the target that sits in
+#: 35 cents of it, in dB (0 is all of it). Every shipped cell reads -3.1 or
+#: better; a shift 75 cents off reads -8 or worse.
+T7_SHARE_FLOOR = -6.0
+#: In Rise at +12 a later octave's line stands within this many dB of the
+#: first octave's.
+T7_CLIMB_DB = 12.0
+
+
+def _render_float(values, rate):
+    """A stereo `Render` of the kit's, from a list of ints."""
+    import numpy as np
+    from tools.effect_measurements import Render
+    x = np.clip(np.array(list(values), dtype=np.float64), -32768, 32767)
+    x = x.astype("<i2")
+    return Render(np.column_stack([x, x]).tobytes(), rate, 2)
+
+
+def t7_first_pass(cls, rate, character, interval, seed):
+    """The first shifted copy's line: (level in dB against the source's
+    line, share in dB) at the note an Interval above f0, read in 35 cents
+    over the 500 ms from Bloom, on d = (Shimmer 1) - (Shimmer 0)."""
+    from tools.effect_measurements import line_level
+    f0, offset = seed_set(seed)
+    bloom = 20.0 * 40.0 ** (90.0 / 127.0)
+    start = law_frames(bloom, rate) + offset
+    frames = start + law_frames(500.0, rate)
+    options = dict(character=character, interval=interval, rise=0.0)
+    channels = card_channels(rate)
+    s1 = wet(cls, rate, channels, f0, offset, frames, shimmer=1.0, **options)
+    s0 = wet(cls, rate, channels, f0, offset, frames, shimmer=0.0, **options)
+    d = [s1[n] - s0[n] for n in range(frames)]
+    source = left(burst(rate, channels, f0, offset, frames), channels)
+    got = line_level(_render_float(d, rate), _render_float(source, rate),
+               source_hz=f0, target_hz=f0 * 2.0 ** (interval / 12.0))
+    return got["values"]["level_db"], got["values"]["share_db"]
+
+
+def t7_climb(cls, rate, seed, generations=3):
+    """In Rise at +12, Bloom 200 ms: [(level, share) of the line at each
+    octave of the climb], the third among them."""
+    from tools.effect_measurements import line_level
+    f0, offset = seed_set(seed)
+    frames = law_frames(100.0 + 200.0 * 6 + 400.0, rate) + offset
+    channels = card_channels(rate)
+    options = dict(character="rise", bloom_ms=200.0, rise=0.9, interval=12,
+                   damping_hz=16000.0)
+    s1 = wet(cls, rate, channels, f0, offset, frames, shimmer=1.0, **options)
+    s0 = wet(cls, rate, channels, f0, offset, frames, shimmer=0.0, **options)
+    d = _render_float([s1[n] - s0[n] for n in range(frames)], rate)
+    source = _render_float(left(burst(rate, channels, f0, offset, frames),
+                                channels), rate)
+    out = []
+    for k in range(1, generations + 1):
+        got = line_level(d, source, source_hz=f0, target_hz=f0 * 2.0 ** k)
+        out.append((got["values"]["level_db"], got["values"]["share_db"]))
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -1394,6 +1467,51 @@ class T5TheDamping(TestCase):
         for f0 in (165.0, 330.0):
             drop = t5_read(UndampedLoop, 48000, f0, 13)
             self.assertLess(drop, 12.0, (f0, drop))
+
+
+class T7TheLine(TestCase):
+    """The energy-weighted mean of T2 cannot see a splice that cancels the
+    target line, or a shift a few tenths of a semitone off it: the line is
+    read in 35 cents around the note it should stand on."""
+
+    def test_the_first_copy_stands_on_its_line(self):
+        for character in ("bloom", "rise"):
+            for interval in INTERVALS:
+                for rate in RATES:
+                    for seed in SEEDS[:2]:
+                        level, share = t7_first_pass(
+                            ShimmerHall, rate, character, interval, seed)
+                        self.assertGreaterEqual(
+                            share, T7_SHARE_FLOOR,
+                            (character, interval, rate, seed, level))
+
+    def test_the_climb_stands_on_every_octave_to_the_third(self):
+        for rate in RATES:
+            for seed in SEEDS[:2]:
+                lines = t7_climb(ShimmerHall, rate, seed)
+                for k, (level, share) in enumerate(lines, 1):
+                    self.assertGreaterEqual(share, T7_SHARE_FLOOR,
+                                            (rate, seed, k, lines))
+                    self.assertGreaterEqual(level, lines[0][0] - T7_CLIMB_DB,
+                                            (rate, seed, k, lines))
+
+    def test_a_shift_off_the_line_is_red_where_the_mean_is_green(self):
+        for character, interval in (("bloom", 12), ("rise", 12),
+                                    ("bloom", 7), ("rise", -5)):
+            mean = t2_read(MissedLine, 48000, character, interval, 1)
+            self.assertLessEqual(abs(mean - interval),
+                                 T2_BARS[character][interval],
+                                 (character, interval, mean))
+            worst = min(t7_first_pass(MissedLine, 48000, character,
+                                      interval, seed)[1]
+                        for seed in SEEDS[:2])
+            self.assertLess(worst, T7_SHARE_FLOOR,
+                            (character, interval, worst))
+
+    def test_a_climb_that_misses_the_third_octave_is_red(self):
+        for seed in SEEDS[:2]:
+            lines = t7_climb(MissedLine, 48000, seed)
+            self.assertLess(lines[2][1], T7_SHARE_FLOOR, (seed, lines))
 
 
 class T6TheDry(TestCase):

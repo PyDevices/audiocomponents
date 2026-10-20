@@ -1,6 +1,6 @@
 # The effects kit
 
-Eight mechanical checks that run on one effect class with no model in the
+Nine mechanical checks that run on one effect class with no model in the
 loop: every verdict is arithmetic on rendered bytes, or on the source. They
 sit beside the [lifecycle matrix](LIFECYCLE.md) and catch the kinds of
 defect that kept turning up class after class: a tail that outlasts
@@ -8,9 +8,10 @@ defect that kept turning up class after class: a tail that outlasts
 test holds, a control that does not read back what it was set to, an input
 level that wraps, a citation that no longer resolves, a refused call that
 leaves a trace, a class that only behaves where `audiocore.get_buffer`
-exists, and a reset that does not come back as a fresh instance.
+exists, a reset that does not come back as a fresh instance, and a trait
+that holds on a sine at one level and not on a plucked phrase at another.
 
-To run all eight on one class, from the repo root:
+To run all nine on one class, from the repo root:
 
     python tests/support/kit.py DigitalDelay
     python tests/support/kit.py DigitalDelay --only tail,ceiling --quick
@@ -28,7 +29,7 @@ It prints one line per cell, `name|check|key|V:verdict[|h:digest]`, a
 why), `RED(...)` with what was measured, or `decl`. `h:` is a CRC-32 of the
 cell's render, so two interpreters' lines agree only when their bytes do.
 
-The five render checks (tail, plants, args, ceiling, fresh) are numpy-free
+The six render checks (tail, plants, args, ceiling, fresh, levels) are numpy-free
 and print the same lines on CPython, MicroPython and CircuitPython. nogb
 runs on all three too. The claims and paperwork checks read source,
 unittest and git, and run on CPython only; a native run prints `SKIP` for
@@ -253,6 +254,35 @@ Grid: 48 and 22.05 kHz, stereo and mono, the defaults and every patch;
 patch only. A class whose reset cannot meet a cell by design declares it
 in `DECLARED`.
 
+**levels** (`kit_levels.py`). Real material at three levels. The checks
+above play their material at one level each, and a class whose behaviour
+turns on the input level (a comparator, a dead band, a detector) can be right
+there and wrong a few dB away. The material is `kit_common.phrase`: six
+plucked strings one at a time (110, 82, 147, 196, 247 and 330 Hz, 300 ms
+each), a triangle of displacement and a little pick noise round a
+Karplus-Strong loop, so each note rings down through every level under its
+peak; 2 s in integer arithmetic, after 1024 frames of silence, at -24, -12
+and -3 dBFS. A level above the class's `INPUT_CEILING_DBFS` prints
+`na(above ceiling)`. Each cell renders the phrase and then silence to the
+class's tail (up to 6 s):
+
+- `wrap` and `rail`: the ceiling check's bars, on this material.
+- `live`: the output is not zero throughout while the phrase plays. Not
+  judged with the wire at 0.
+- `ring`: the output's last non-zero frame is inside `tail_samples` +
+  `latency_samples` + one block of the phrase's end. A longer tail than 6 s,
+  or none, is not judged.
+- `wire`: with the class's wet/dry control at 0 (`lifecycle.mix_index`: a
+  Mix, a row of `MIX_INDEX` or a depth of `DEPTH_INDEX`), the output is the
+  input, byte for byte, `latency_samples` later. A patch where the lifecycle
+  matrix declares Mix 0 no wire, and the settings a depth names in
+  `DEPTH_NOT_A_WIRE`, print `na`.
+
+Cells: `<level>/<rate>/<channels>/<config>`, the config `d` (the defaults),
+`p<k>` (a patch), and `wire@d`, `wire@p<k>` for a class that has a wire. 48
+and 22.05 kHz, stereo and mono, the defaults and every patch (`--quick`:
+48 kHz stereo, the defaults and the last patch).
+
 ## What CI runs
 
 The lifecycle matrix gates every class, and its quick mode over all 45
@@ -289,11 +319,12 @@ before a release.
 
 ## Known gaps
 
-- **Several levels.** Every render check plays its material at one level
-  (the ceiling at the stated peak, the others where they are set). A class
-  whose behaviour turns on input level, such as a comparator or a dead
-  band, can be wrong a few dB below the level any cell plays. No check
-  sweeps the input level yet.
+- **Several levels, one phrase.** The levels check reads the wire, the
+  ring-out and the rails at three levels on one plucked phrase. It has no
+  model of what a class should do with a quieter note: a trait that turns on
+  the input level (Octaver's tracking near Sensitivity) is held to the same
+  phrase in the class's own tests (`T7` in
+  `tests/test_cpython_effects_octaver.py`).
 
 ## Options
 
@@ -346,7 +377,11 @@ is clean on CPython and red on MicroPython and CircuitPython, where the
 check once did not run), `PatchLeak`
 and `MoveLeak` (fresh: a reset from patch 1 only that keeps the repeat line;
 a first move after a reset that lands 1 % off, against `FreshKit` and
-`OffGrid`, whose Gain default sits a hair off patch 0 and is never red), and `Silent`, which
+`OffGrid`, whose Gain default sits a hair off patch 0 and is never red), `LeakBand` (levels: the wire at Mix 0 leaks 2 LSB
+between 3000 and 12000, which the phrase at -24 dBFS never reaches and at
+-12 dBFS does; `WrapKit` is red at -3 dBFS alone, `WrapKitQuiet` states a
+ceiling and is not played above it, and `ShortTail` rings past its tail at
+every level), and `Silent`, which
 does nothing. Its native half
 holds the render checks to the same lines on all three interpreters, and
 shows that agreement can fail with `ImplKit`, whose level differs off
