@@ -93,13 +93,30 @@ DECLARED = {
         " a finding for that class, not a rack defect",
 }
 
-# Five classes rail on the phrase at -3 dBFS and state no input ceiling, so
-# they are held to 0 dBFS (audiocomponents#192).
-for _name in ("Chorus", "CombFilter", "LadderFilter", "Reverb",
-              "TransientShaper"):
-    DECLARED[(_name, "levels", "-3/")] = (
-        "rails on the plucked phrase at -3 dBFS with no input ceiling"
-        " stated, so held to 0 dBFS (audiocomponents#192)")
+# Four classes rail on the plucked phrase at -3 dBFS on the patches that
+# gain by design (a ringing comb, a resonant or driven ladder, an attack
+# boost, a long hall), and say so in their docstrings with the level the
+# phrase is clean to on every patch (audiocomponents#192). Chorus states
+# `INPUT_CEILING_DBFS` instead and is held to it.
+for _name, _patches, _why in (
+        ("CombFilter", (1, 3, 4, 5),
+         "the comb adds its line to the dry and gains 1/(1-Feedback) at its"
+         " peaks"),
+        ("LadderFilter", (4,),
+         "the resonance peak and the drive gain by design"),
+        ("TransientShaper", (1, 5),
+         "Attack adds gain on the hit by design"),
+        ("Reverb", (9,),
+         "the tank's lines clamp at the rail and Slow Bloom builds the"
+         " longest")):
+    for _rate in RATES:
+        for _ch in CHANNELS:
+            for _patch in _patches:
+                DECLARED[(_name, "levels", "-3/%d/%d/p%d" % (
+                    _rate, _ch, _patch))] = (
+                    "rails on the plucked phrase at -3 dBFS by design: %s;"
+                    " the docstring gives the level it is clean to"
+                    " (audiocomponents#192)" % _why)
 
 # MultiTapDelay on CircuitPython: its audiodelays.MultiTapDelay is
 # upstream's own, whose reset_buffer keeps the write heads where they were,

@@ -302,6 +302,30 @@ class TheSurface(unittest.TestCase):
         effect.program_change(3)
         self.assertEqual(effect.patch_index, 3)
 
+    def test_clean_at_the_stated_input_ceiling(self):
+        """audiocomponents#192: the dry is at unity and the wet adds to it,
+        so the class states -6.03 dBFS (twice the input is 16 366 x 2). The
+        kit's ceiling check holds every patch and knob stop clean there, the
+        level pass holds the plucked phrase clean at the levels under it, and
+        the same phrase at -3 dBFS rails with the ceiling taken away."""
+        import kit_ceiling
+        import kit_levels
+        cls = rebuilt.Chorus
+        self.assertEqual(cls.INPUT_CEILING_DBFS, -6.03)
+        lines = []
+        self.assertEqual(kit_ceiling.run(cls, emit=lines.append, quick=True), 0,
+                         [l for l in lines if "RED" in l][:3])
+        lines = []
+        self.assertEqual(kit_levels.run(cls, emit=lines.append), 0,
+                         [l for l in lines if "RED" in l][:3])
+
+        class Unstated(cls):
+            INPUT_CEILING_DBFS = 0.0
+
+        lines = []
+        self.assertGreater(kit_levels.run(Unstated, emit=lines.append,
+                                          levels=(-3,), quick=True), 0)
+
     def test_adopted_chorus_is_the_rebuild(self):
         import audioeffects
         self.assertIs(audioeffects.Chorus, rebuilt.Chorus)

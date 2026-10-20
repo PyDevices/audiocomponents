@@ -46,6 +46,13 @@ with the trim **in front**, -18 dB leaves 15 392 and the comb never reaches
 the rail at all. So Trim runs to -18 dB rather than the -12 a make-up would
 need, and turning it down is how you make room for the resonance.
 
+**Input ceiling.** The comb adds its line to the dry, up to twice the input
+at Feedback 0 and Mix 1, and gains `1/(1-Feedback)` at its peaks, so a loud
+input rails by design, and no one level is clean on every setting. A plucked
+phrase stays off the rails on every patch to -9 dBFS; at -3 dBFS Ringing
+Pitch, Dark Resonator, Single Slap and Filter Only rail. Turn Trim down
+before you turn the input down.
+
 **One transient this class cannot argue away.** A program change into a comb
 whose line is already ringing sums the new dry signal against the old line,
 and at Mix 1 that can reach the rail. Measured on the library smoke's own

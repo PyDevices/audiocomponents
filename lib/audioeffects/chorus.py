@@ -30,6 +30,12 @@ a 5.333 ms stereo block (dossier §3). Measured at patch 0: **8.1 % P4 /
 1.98, not (d_max/d_min)² = 3.60 (T2). Tone 12 kHz is 2.4 dB down at
 10 kHz, not ≥10 dB (T3). The constructor Tone 3 kHz still meets T3.
 
+**Input ceiling: -6 dBFS.** The dry stays at unity and the wet voice
+adds to it (Mix 0.815 at the defaults, 1 at the top), so the output peaks at
+up to twice the input: a phrase peaking at -3 dBFS comes out 3 dB over
+full scale at the defaults. Keep the input under -6.03 dBFS and no setting
+reaches a rail; Mix 0 is still a wire at any level.
+
 **Latency: zero samples, at every setting and every rate.** Nothing looks
 ahead. The 8–13 ms mean delay is the wet path, not latency. No option adds
 latency, so there is none to default off and none to name in milliseconds.
@@ -158,6 +164,12 @@ class Chorus(_component.Component):
     CAPABILITIES = ()
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = 0
+
+    #: The wet voice is a delayed, low-passed copy of the input, so it never
+    #: passes the input's peak, and the dry is at unity: the sum is at most
+    #: twice the input at Mix 1. -6.03 dBFS is 16 366 against the 32 767
+    #: rail.
+    INPUT_CEILING_DBFS = -6.03
 
     MACRO_LABELS = ("Rate", "Depth", "Mix", "Delay", "Tone")
     MACRO_MODES = {

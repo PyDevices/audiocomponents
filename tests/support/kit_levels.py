@@ -68,6 +68,22 @@ def material(rate, channels, level):
     return _MAT[key]
 
 
+def red_patches(cls, level, **kw):
+    """The patches `cls` rails on at `level`: the numbers `k` of the red or
+    declared `<level>/<rate>/<channels>/p<k>` cells, sorted, for a test that
+    holds a class's stated clean level and the patches that go over it."""
+    lines = []
+    run(cls, emit=lines.append, levels=(level,), **kw)
+    found = set()
+    for line in lines:
+        parts = line.split("|")
+        if len(parts) > 3 and parts[3][:5] in ("V:RED", "V:dec"):
+            config = parts[2].split("/")[-1]
+            found.add(int(config[1:]) if config[0] == "p"
+                      and config[1:].isdigit() else config)
+    return sorted(found, key=str)
+
+
 def above_ceiling(cls, level):
     return level > getattr(cls, "INPUT_CEILING_DBFS", 0)
 

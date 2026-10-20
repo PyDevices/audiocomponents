@@ -558,7 +558,24 @@ T7_SILENT_DB = -40.0
 T7_SENSITIVITIES = (-70.0, -60.0, -50.0)
 
 
-def t7_read(cls, rate, level, sens, bright=False):
+def without_offset(values, rate):
+    """The phrase with each note's mean taken out: `kit_common.pluck`
+    rings round a small offset (1 to 2 % of the note's peak in the last half
+    of its slot), which the string's loop never loses."""
+    note = kc.PHRASE_NOTE_MS * rate // 1000
+    out = array("h", values)
+    for k in range(len(kc.PHRASE_NOTES)):
+        lo = k * note
+        hi = min(len(out), lo + note)
+        if hi <= lo:
+            continue
+        mean = sum(out[lo:hi]) / (hi - lo)
+        for i in range(lo, hi):
+            out[i] = int(round(out[i] - mean))
+    return out
+
+
+def t7_read(cls, rate, level, sens, bright=False, offset=True):
     """The plucked phrase (`kit_common.phrase`) at `level` dBFS through
     Octave 1 alone with Sensitivity `sens`: for each note, read over the last
     half of its slot, [(note Hz, the clock's margin over Sensitivity in dB,
@@ -570,6 +587,8 @@ def t7_read(cls, rate, level, sens, bright=False):
     fc = probe.macro(TRACKING)
     probe.deinit()
     values = kc.phrase(rate, 1, level, bright=bright)
+    if not offset:
+        values = without_offset(values, rate)
     y = render(cls, values, rate, 1,
                macros=ONLY1 + ((SENS, midi_of_lin(sens, -90.0, -40.0)),))
     note = kc.PHRASE_NOTE_MS * rate // 1000
@@ -1062,17 +1081,52 @@ class T7RealMaterial(TestCase):
         cells = t7_read(OneBinCurve, 48000, -24, -50.0)
         self.assertIsNotNone(t7_verdict(cells, T7_HELD))
 
-    @expected_failure
-    def test_the_top_of_the_window_divides_on_real_material(self):
-        """Known fault (audiocomponents#190): on the phrase's B3 and E4
-        Octave 1 plays the dry note where it should play the octave, at
-        every level and wherever Sensitivity lets it play at all, and with
-        the clock 15 dB under Sensitivity at E4 the note itself still comes
-        through. The card claims every note from E2 to A4 at patch 0."""
-        for level in kc.LEVELS_DBFS:
-            for sens in T7_SENSITIVITIES:
-                cells = t7_read(Octaver, 48000, level, sens)
-                self.assertIsNone(t7_verdict(cells, T7_TOP), (level, sens))
+    def test_the_top_of_the_window_divides_without_an_offset(self):
+        """audiocomponents#190: the phrase with each note's mean taken out
+        (`without_offset`) has B3 and E4 divide at every level and every
+        Sensitivity that puts the clock 12 dB over it, as the card claims
+        from E2 to A4."""
+        for rate in RATES:
+            for level in kc.LEVELS_DBFS:
+                for sens in T7_SENSITIVITIES:
+                    cells = t7_read(Octaver, rate, level, sens, offset=False)
+                    self.assertIsNone(t7_verdict(cells, T7_TOP),
+                                      (rate, level, sens))
+
+    def test_the_phrase_s_own_offset_stops_its_top_notes(self):
+        """The same phrase as `kit_common.pluck` makes it, with the offset
+        its loop keeps (1 to 2 % of a note's peak in the last half of its slot):
+        B3 and E4 play the note itself, and the octave is gone, at -3 dBFS
+        with the clock well over Sensitivity. This is the limit the card
+        states, held so that a fix to it is noticed."""
+        cells = t7_read(Octaver, 48000, -3, -70.0)
+        for k in T7_TOP:
+            f, margin, octave, level = cells[k]
+            self.assertGreaterEqual(margin, T7_TRACK_MARGIN_DB, f)
+            self.assertLess(octave, -T7_TRACK_DB, f)
+            self.assertGreater(level, -10.0, f)
+
+    def test_an_offset_ends_the_range_from_the_top(self):
+        """A sine at the card's -8.7 dBFS with a direct offset: B3 divides
+        with 1 % of its peak and stops at 3 %, E4 divides at 0.3 % and
+        stops at 1 %, A4 divides at 0.1 % and stops at 0.3 %."""
+        rate = 48000
+        n = rate // 2
+        for name, holds, stops in (("B3", 0.01, 0.03), ("E4", 0.003, 0.01),
+                                   ("A4", 0.001, 0.003)):
+            f = NOTES[name]
+            read = {}
+            for fraction in (holds, stops):
+                x = [12000.0 * math.sin(2.0 * math.pi * f * i / rate)
+                     + 12000.0 * fraction for i in range(n)]
+                values = pcm(x)
+                y = tail_part(render(Octaver, values, rate, 1,
+                                     macros=ONLY1))
+                heard = [float(v) for v in values[len(values) // 4:]]
+                read[fraction] = (level_db(y, f / 2.0, rate)
+                                  - level_db(heard, f, rate))
+            self.assertGreater(read[holds], -T7_TRACK_DB, (name, read))
+            self.assertLess(read[stops], -40.0, (name, read))
 
 
 class TheAdoption(TestCase):
@@ -1544,6 +1598,15 @@ CLAIMS = (
     ("It plays one note at a time: on a power chord (A2 and E3) about two "
      "fifths of the octave is intermodulation.",
      "TheSurface.test_one_note_at_a_time"),
+    ("An offset in the input, a direct current, goes through Tracking's "
+     "low-pass whole where a high note's fundamental does not, so it ends "
+     "the range: at patch 0 an offset of 3 % of a note's peak stops B3, "
+     "1 % stops E4 and 0.3 % stops A4, and what plays is the note itself.",
+     ("T7RealMaterial.test_an_offset_ends_the_range_from_the_top",
+      "T7RealMaterial.test_the_phrase_s_own_offset_stops_its_top_notes")),
+    ("The ranges above are for an input with none.",
+     ("T7RealMaterial.test_the_top_of_the_window_divides_without_an_offset",
+      "T5Range.test_the_windows_mono")),
     ("A stereo source is clocked on its mid: with the right channel 45 "
      "degrees ahead of the left, the fifth sits 3.2 dB under the octave "
      "instead of 4.4, on both channels.",

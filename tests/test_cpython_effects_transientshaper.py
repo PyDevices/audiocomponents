@@ -17,7 +17,8 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-for path in (os.path.join(ROOT, "lib"), os.path.join(ROOT, "tools"), HERE):
+for path in (os.path.join(ROOT, "lib"), os.path.join(ROOT, "tools"), HERE,
+             os.path.join(HERE, "support")):
     if path not in sys.path:
         sys.path.insert(0, path)
 
@@ -213,6 +214,23 @@ class TraitTests(unittest.TestCase):
             steady[tag] = float(values[int(0.150 * 1000)])
         self.assertLess(steady["rms"], 0.5)
         self.assertGreater(steady["peak"], 1.5)
+
+
+class TheInputCeiling(unittest.TestCase):
+    """audiocomponents#192: the kit's plucked phrase is clean on every
+    patch at -10 dBFS, and rails at -3 dBFS on Snap and Kick Punch."""
+
+    def test_a_plucked_phrase_is_clean_to_minus_10_dbfs(self):
+        import kit_levels
+        self.assertEqual(kit_levels.red_patches(
+            transientshaper.TransientShaper, -10), [])
+
+    def test_at_minus_3_dbfs_snap_and_kick_punch_rail(self):
+        import kit_levels
+        cls = transientshaper.TransientShaper
+        self.assertEqual(kit_levels.red_patches(cls, -3), [1, 5])
+        self.assertEqual([cls.PATCHES[k][0] for k in (1, 5)],
+                         ["Snap", "Kick Punch"])
 
 
 if __name__ == "__main__":

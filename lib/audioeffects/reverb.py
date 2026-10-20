@@ -47,6 +47,8 @@ rail on every write whatever Mix is: a steady 362 Hz tone at 8 000 LSB RMS
 comes back more than 1 dB quieter in the tail than at 4 000. On 2 s of
 uniform noise at 4 000 LSB RMS at Mix 1, no shipped patch reaches the rail
 at 48, 44.1 or 22.05 kHz; Bright Chamber at 44.1 kHz is not claimed.
+A plucked phrase stays off the rails on every patch to -4 dBFS; at -3 dBFS
+Slow Bloom rails.
 
 **The patches:** Steel Plate (the defaults), Short Plate, Damped Plate,
 Bass-Free Plate, Small Room, Live Room, Concert Hall, Dark Chamber, Bright
