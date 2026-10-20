@@ -470,6 +470,22 @@ class TestWireControl(unittest.TestCase):
                             name)
 
 
+class TestPreFirstPullSource(unittest.TestCase):
+    """E12 moves a control before the first pull and compares the first
+    block with a fresh instance's, so its source must sound from the first
+    frame, in every 128 frames of it: a level that lands late in the Mixer
+    is invisible on a source that is quiet there."""
+
+    def test_the_source_is_loud_in_every_short_stretch(self):
+        for rate in lifecycle.RATES:
+            for channels in lifecycle.CHANNELS:
+                values = lifecycle.material_for("loud", rate, channels)
+                step = 128 * channels
+                for start in range(0, len(values) - step, step):
+                    peak = max(abs(v) for v in values[start:start + step])
+                    self.assertGreater(peak, 2000, (rate, channels, start))
+
+
 class TestPlants(unittest.TestCase):
     """Every property can fail: each plant is red on its cell, and its
     control is green on the same cell."""
