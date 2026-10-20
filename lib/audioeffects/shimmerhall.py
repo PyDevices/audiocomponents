@@ -61,7 +61,8 @@ PSRAM.
 When your source ends, the tail rings out as it would on silence. On a
 CircuitPython board, stop the rack from the host if your source can run
 dry in Bloom: CircuitPython's own pitch shifter waits on a source that
-comes back empty.
+comes back empty. Firmware built with micropython-pydevices' build_mp.py
+carries the fix and returns.
 
 A value outside a macro's span clamps to the nearer stop, and NaN takes the
 default; an `interval` other than the five raises `ValueError`.

@@ -1329,7 +1329,8 @@ CLAIMS = (
       "TheSurface.test_reset_returns_to_patch_0")),
     ("On a CircuitPython board, stop the flanger from the host if your "
      "source can run dry: CircuitPython's own flanger waits on a source "
-     "that comes back empty.",
+     "that comes back empty. Firmware built with micropython-pydevices' "
+     "build_mp.py carries the fix and returns.",
      "TheSurface.test_the_circuitpython_hang_is_a_stated_skip"),
 )
 
