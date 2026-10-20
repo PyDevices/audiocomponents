@@ -35,6 +35,12 @@ is a plain follower again, which is the pre-Phase-1 behaviour - and because
 that setting is a knob, the dossier's T4 has no fault the panel cannot dial
 and its peak-hold clause is **unmeasured**, not demonstrated.
 
+**Input ceiling.** Attack and Sustain only add gain where they are turned
+up, so a hit that is already loud rails by design, and no one input level is
+clean on every setting. A plucked phrase stays off the rails on every patch
+to -10 dBFS; at -3 dBFS Snap and Kick Punch rail. Turn Output down, or the
+input.
+
 **Latency: 0 samples, 0.00 ms, at every setting and every sample rate.** A
 differential envelope cannot look ahead - the difference is between two
 envelopes of the same *past* - so this class ships no look-ahead option and

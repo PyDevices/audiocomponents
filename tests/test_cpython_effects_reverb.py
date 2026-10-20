@@ -1823,6 +1823,14 @@ RAIL_UNCLAIMED = (("Bright Chamber", 44100),)
 
 
 class InputCeiling(unittest.TestCase):
+    def test_a_plucked_phrase_is_clean_to_minus_4_dbfs(self):
+        """audiocomponents#192: the kit's phrase is clean on every patch
+        at -4 dBFS, and rails at -3 dBFS on Slow Bloom alone."""
+        import kit_levels
+        self.assertEqual(kit_levels.red_patches(Reverb, -4), [])
+        self.assertEqual(kit_levels.red_patches(Reverb, -3), [9])
+        self.assertEqual(Reverb.PATCHES[9][0], "Slow Bloom")
+
     def test_no_patch_reaches_the_rail_at_4000_lsb_rms(self):
         # on eight noise seeds, at three rates, each patch's peak stays
         # under the rail by more than the spread of its peaks
@@ -1932,6 +1940,9 @@ CLAIMS = (
      "reaches the rail at 48, 44.1 or 22.05 kHz; Bright Chamber at 44.1 kHz "
      "is not claimed.",
      ("InputCeiling.test_no_patch_reaches_the_rail_at_4000_lsb_rms",)),
+    ("A plucked phrase stays off the rails on every patch to -4 dBFS; at "
+     "-3 dBFS Slow Bloom rails.",
+     ("InputCeiling.test_a_plucked_phrase_is_clean_to_minus_4_dbfs",)),
     ("**The patches:** Steel Plate (the defaults), Short Plate, Damped "
      "Plate, Bass-Free Plate, Small Room, Live Room, Concert Hall, Dark "
      "Chamber, Bright Chamber, Slow Bloom.",

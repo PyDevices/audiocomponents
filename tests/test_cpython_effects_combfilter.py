@@ -1189,5 +1189,24 @@ class MonoIsTheSameComb(unittest.TestCase):
         self.assertLess(abs(cents(centroid(y, ideal), ideal)), 5.0)
 
 
+class TheInputCeiling(unittest.TestCase):
+    """audiocomponents#192: the kit's plucked phrase is clean on every
+    patch at -9 dBFS, and rails at -3 dBFS on the four patches the
+    docstring names."""
+
+    def test_a_plucked_phrase_is_clean_to_minus_9_dbfs(self):
+        import kit_levels
+        self.assertEqual(kit_levels.red_patches(combfilter.CombFilter, -9),
+                         [])
+
+    def test_at_minus_3_dbfs_four_patches_rail(self):
+        import kit_levels
+        self.assertEqual(kit_levels.red_patches(combfilter.CombFilter, -3),
+                         [1, 3, 4, 5])
+        names = [combfilter.CombFilter.PATCHES[k][0] for k in (1, 3, 4, 5)]
+        self.assertEqual(names, ["Ringing Pitch", "Dark Resonator",
+                                 "Single Slap", "Filter Only"])
+
+
 if __name__ == "__main__":                              # pragma: no cover
     unittest.main()

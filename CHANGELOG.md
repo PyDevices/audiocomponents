@@ -44,6 +44,39 @@ there, and are recorded in its changelog.
 - SoundFont sustain pedal (CC 64) and more effect kit checks (#188)
 - Every drum kit answers pad keys 36 to 51 (#187)
 
+## Unreleased
+
+### Changed
+
+- `Chorus` states an input ceiling of -6.03 dBFS. The dry stays at unity and
+  the wet voice adds to it, so the output peaks at up to twice the input; a
+  phrase peaking at -3 dBFS came out 3 dB over full scale at the defaults.
+  Nothing about the sound changes, and Mix 0 is still a wire. `CombFilter`,
+  `LadderFilter`, `TransientShaper` and `Reverb` rail on a loud plucked phrase
+  by design (a ringing comb, a resonant or driven ladder, an attack boost, a
+  long hall), so their docstrings now give the level a plucked phrase is
+  clean to on every patch: -9, -10, -10 and -4 dBFS
+  ([#192](https://github.com/PyDevices/audiocomponents/issues/192)).
+- `Octaver`'s docstring says what ends its range from the top: a direct
+  offset in the input goes through the Tracking low-pass whole, where a high
+  note's fundamental does not. At patch 0 an offset of 3 % of a note's peak
+  stops B3, 1 % stops E4 and 0.3 % stops A4, and what plays is the note
+  itself; the E2 to A4 range is for an input with none. A plucked note rings
+  round an offset of 1 to 2 % of its peak, which is what the kit's phrase
+  found ([#190](https://github.com/PyDevices/audiocomponents/issues/190)).
+
+### Fixed
+
+- `DeEsser`'s Range 0 is a wire after a reset and at every source buffer
+  size. A reset armed the new graph from the source, so a Range 0 straight
+  after it lost 256 frames; it now arms on silence, as the constructor does.
+  Range 0 handed the output back to the host's source and left behind what
+  the input adapter had already taken, so a move off 0 and back stepped the
+  output by up to 14 698 with 100-, 512- and 1000-frame buffers or a whole
+  RawSample, and 1000-frame buffers played a stale block out of silence; it
+  now hands out the adapter the graph reads
+  ([#191](https://github.com/PyDevices/audiocomponents/issues/191)).
+
 ## v0.4.1.dev2 (2026-10-20)
 
 ### Added

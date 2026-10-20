@@ -53,16 +53,6 @@ R_DIST_P7 = (
     " nobody hears. The quiet source the check used to play showed only"
     " patch 7 in stereo (audiocomponents#161)")
 
-R_DEESS_WIRE = (
-    "DeEsser's Range 0 hands the output back to the borrowed source with"
-    " the graph's primed block and its detector left behind: a reset that"
-    " meets Range 0 straight after loses a block of source, a move to or"
-    " from Range 0 steps the output and leaves a lasting difference from"
-    " the uninterrupted control at source buffers other than 256 frames and"
-    " at a whole RawSample, and 1000-frame buffers play a stale block out"
-    " of silence (audiocomponents#191)")
-
-
 #: (class NAME, event prefix, property) -> (quick cells, digest, full
 #: cells, digest, reason). The full matrix was not counted here (None).
 KNOWN_RED = {
@@ -143,18 +133,13 @@ KNOWN_RED = {
     ('Compressor', 'E6-', 'P5'): (158, 'f381ffce', None, None, R_JUMP),
     ('Compressor', 'E9-', 'P4'): (314, '9d0fc034', None, None, R_STATE),
     ('Compressor', 'E9-', 'P5'): (292, 'eef8a082', None, None, R_JUMP),
-    ('DeEsser', 'E1-reset@block', 'P1'): (20, 'caf5f0f0', None, None, R_DEESS_WIRE),
-    ('DeEsser', 'E1-reset@part', 'P1'): (20, 'bff84953', None, None, R_DEESS_WIRE),
-    ('DeEsser', 'E10-reset', 'P1'): (20, 'c76f2616', None, None, R_DEESS_WIRE),
     ('DeEsser', 'E11-', 'P4'): (4, '5578b3ca', None, None, R_STATE),
     ('DeEsser', 'E4-', 'P4'): (8, 'e51a0a4b', None, None, R_STATE),
     ('DeEsser', 'E4-', 'P5'): (11, '1042cde7', None, None, R_JUMP),
     ('DeEsser', 'E5-mix0', 'P4'): (19, '7d1cd715', None, None, R_STATE),
     ('DeEsser', 'E6-', 'P4'): (20, '85041b2c', None, None, R_STATE_RAMP),
     ('DeEsser', 'E6-', 'P5'): (2, '2c626f74', None, None, R_JUMP),
-    ('DeEsser', 'E9-', 'P3'): (20, '94738233', None, None, R_DEESS_WIRE),
-    ('DeEsser', 'E9-', 'P4'): (79, 'e40bbac5', None, None, R_DEESS_WIRE),
-    ('DeEsser', 'E9-', 'P5'): (60, 'c8fd8078', None, None, R_DEESS_WIRE),
+    ('DeEsser', 'E9-', 'P4'): (76, 'cb126a47', None, None, R_STATE),
     ('DeEsser', 'E9-src256', 'P4'): (19, '9f6acd29', None, None, R_STATE),
     ('Distortion', 'E1-reset@block', 'P4'): (48, 'd84a1067', None, None, R_STATE),
     ('Distortion', 'E1-reset@part', 'P4'): (48, 'ce661657', None, None, R_STATE),
@@ -361,11 +346,6 @@ _CP_RESET_BUFFER = (
     " (audiocomponents#158)")
 KNOWN_P6 = {
     "Compressor": (4, "70d574f2", None, None, _CP_RESET_BUFFER),
-    "DeEsser": (40, "f9bb6cec", None, None,
-                "E9 with 100- and 1000-frame source buffers: the step and the"
-                " stale block the Range 0 wire makes (R_DEESS_WIRE) land on"
-                " another frame, and so read another size, on the native"
-                " interpreters; the same verdicts (audiocomponents#191)"),
     "Distortion": (48, "950b4395", None, None, _CP_RESET_BUFFER),
     "Exciter": (32, "4f3d4cfb", None, None, _CP_RESET_BUFFER),
     "MultibandCompressor": (5, "83a48f4f", None, None, _CP_RESET_BUFFER),

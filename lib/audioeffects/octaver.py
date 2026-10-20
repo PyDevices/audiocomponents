@@ -160,6 +160,11 @@ class Octaver(_component.Component):
 
     **Limits.** It plays one note at a time: on a power chord (A2 and E3)
     about two fifths of the octave is intermodulation.
+    An offset in the input, a direct current, goes through Tracking's
+    low-pass whole where a high note's fundamental does not, so it ends the
+    range: at patch 0 an offset of 3 % of a note's peak stops B3, 1 % stops
+    E4 and 0.3 % stops A4, and what plays is the note itself.
+    The ranges above are for an input with none.
     A stereo source is clocked on its mid: with the right channel 45
     degrees ahead of the left, the fifth sits 3.2 dB under the octave
     instead of 4.4, on both channels.

@@ -54,6 +54,12 @@ in the evidence pack as disconfirmed, with cause.
 cutoff and -24.10 dB/octave at 48 kHz; the passband 0.00 -> -13.90 dB
 across k = 0...4; self-oscillation at 999.82 Hz holding to +0.01 dB over
 two seconds, 0.068 % THD, every even harmonic below -131 dB re the first.
+
+**Input ceiling.** The resonance peak and the drive both gain, and the
+top of the Resonance travel sings at any level, so no one input level is
+clean on every setting. A plucked phrase stays off the rails on every patch
+to -10 dBFS; at -3 dBFS Growl With Drive rails. Turn Drive or Resonance
+down, or the input.
 """
 
 VENDOR = "PyDevices"

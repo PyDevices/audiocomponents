@@ -440,7 +440,7 @@ class DeEsser(_component.Component):
         self._primed = True
 
     def _refresh_output(self):
-        """Range 0 is the borrowed source itself, with no mixer in the path.
+        """Range 0 is the input adapter itself, with no mixer in the path.
 
         A mixer voice at level 1.0 is not unity: upstream's Q15 level is
         `1.0 * 32768` and the kernel divides by 32767, so the dry voice at
@@ -448,20 +448,29 @@ class DeEsser(_component.Component):
         16384 on a full-scale ramp, all in the right channel, and both on a
         mono mixer (audiodsp#95). The `MidSide` tail used to round the pair
         back together and stopped doing so when the pin moved. Nothing
-        rounds on the way out of the source, so handing it back is exact by
+        rounds on the way out of the adapter, so handing it back is exact by
         construction rather than by luck.
+
+        It is the adapter and not the borrowed source because the adapter
+        is what the graph reads: it holds the rest of a source buffer it
+        has taken, whatever size the host cuts its buffers, and the
+        Splitters read it in whole 256-frame blocks that every tap has
+        emptied between two pulls. Handing out the source itself skipped
+        what the adapter held, and a move off Range 0 and back stepped the
+        output at every buffer size but 256 frames (audiocomponents#191).
 
         Nothing here touches the source until `_prime` does:
         `audioroute.MidSide.play()` sets its source without fetching, the
         `Splitter`s take theirs in the constructor, and only
-        `MixerVoice.play` pulls. So a class built at Range 0 hands back a
-        source still at frame 0, and a Range move off 0 picks it up where
-        the bypass left it.
+        `MixerVoice.play` pulls. A reset arms the voices on silence
+        (`reset`), so a class reset at Range 0, or moved to it before the
+        first pull, hands back a source still at the frame the reset left
+        it at, and a Range move off 0 picks it up where the bypass left it.
         """
         if not self._ready:
             return
         if self._is_wire():
-            self._output = self._source
+            self._output = self._adapter
             return
         if not self._primed:
             self._prime()
@@ -500,6 +509,12 @@ class DeEsser(_component.Component):
         self._resets = []
         self._deinits = []
         self._constructing = True
+        # Arm lazily, as the constructor does: the new graph's voices prime
+        # a block of silence, not a block of the source, so a Range 0 that
+        # follows the reset finds the source where the reset left it.
+        pull = getattr(audiocore, "get_buffer", None)
+        self._lazy_pending = []
+        self._arming_lazily = bool(_component.PORT is not None)
         try:
             if self._reset_to is None:
                 self._build(patch=0)
@@ -508,7 +523,9 @@ class DeEsser(_component.Component):
                 self._restore(self._reset_to)
         finally:
             self._constructing = False
+            self._arming_lazily = False
             self._kept_adapter = None
+        self._hand_up_lazy(pull)
         self._stranded = False
         for node, release in reversed(old):
             if release is False:
