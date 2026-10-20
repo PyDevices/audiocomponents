@@ -616,6 +616,11 @@ class Fuzz(_component.Component):
     #: 1, 5 and 7, at all three rates, after a -6 dBFS burst. It holds with
     #: Bias centred; off centre the output settles near zero rather than on
     #: it, and `tail_samples` is None there (see the docstring).
+    #:
+    #: After a reset, a rejoin or a control move a few LSB of float
+    #: residue can remain in the output beside an untouched copy, past
+    #: `tail_samples`. See "Detector and coupling state" in docs/audio-
+    #: component-api.md.
     TAIL_SAMPLES = 24576
 
     MACRO_LABELS = ("Fuzz", "Level", "Tone", "Bias", "Load", "Mix",

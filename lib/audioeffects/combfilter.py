@@ -243,6 +243,9 @@ class CombFilter(_component.Component):
     #: The class-level declaration stays `None`; the instance's
     #: `tail_samples` is finite at every setting (2026-09-28), because the
     #: bound depends on the setting.
+    #:
+    #: The comb can ring at 1 LSB for about 500 frames past
+    #: `tail_samples`, the last of its decay.
     TAIL_SAMPLES = None
 
     MACRO_LABELS = ("Frequency", "Feedback", "Mix", "Tone", "Trim", "Glide")

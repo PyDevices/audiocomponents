@@ -276,6 +276,64 @@ class TheFaultRunnerRejectsTheOldFault(unittest.TestCase):
             self.assertGreater(got["checked"], 100)
 
 
+class ZeroTailKeyListenExpander(Expander):
+    """The fault behind audiocomponents#146: the class declares no tail
+    with Key Listen on, as it did when `tail_samples` was a constant 0."""
+
+    @property
+    def tail_samples(self):
+        return 0
+
+
+class TheKeyListenTailIsFinite(unittest.TestCase):
+    """With Key Listen on the output is the key filters' signal, which
+    rings after the input stops. `tail_samples` bounds that ring at every
+    Key Low and Key High, and is 0 with Key Listen off."""
+
+    KEYS = ((25.0, 250.0), (25.0, 35000.0), (100.0, 3000.0),
+            (1000.0, 35000.0), (4000.0, 250.0))
+
+    def ring(self, cls, key_low, key_high, listen=1.0):
+        """(frames of non-zero output after a loud 1 kHz burst, the class's
+        tail_samples at those settings)."""
+        burst = tone(1000.0, -3.0, 0.2)
+        silent = array.array("h", [0] * (RATE * CHANNELS))
+        data = array.array("h", burst)
+        data.extend(silent)
+        settings = {KEY_LISTEN: listen, KEY_LOW: key_low,
+                    KEY_HIGH: key_high, THRESHOLD: -80.0}
+        adapter = source_of(data)
+        effect = cls.create(adapter, RATE)
+        try:
+            for index, value in settings.items():
+                effect.set_macro(index, position(index, value))
+            tail = effect.tail_samples
+        finally:
+            effect.deinit()
+        out = render(cls, data, settings)
+        last = 0
+        for index in range(len(out) - 1, -1, -1):
+            if out[index]:
+                last = index // CHANNELS + 1
+                break
+        return max(0, last - len(burst) // CHANNELS), tail
+
+    def test_the_tail_bounds_the_ring_at_every_key_setting(self):
+        for key_low, key_high in self.KEYS:
+            ring, tail = self.ring(Expander, key_low, key_high)
+            self.assertGreater(ring, 0, (key_low, key_high))
+            self.assertLessEqual(ring, tail, (key_low, key_high))
+            self.assertLess(tail, 6000, (key_low, key_high))
+
+    def test_the_tail_is_zero_with_key_listen_off(self):
+        ring, tail = self.ring(Expander, 25.0, 250.0, listen=0.0)
+        self.assertEqual((ring, tail), (0, 0))
+
+    def test_a_tail_of_zero_with_key_listen_on_is_red(self):
+        ring, tail = self.ring(ZeroTailKeyListenExpander, 25.0, 35000.0)
+        self.assertGreater(ring, tail)
+
+
 class TheReadingsGoRedOnAWire(unittest.TestCase):
     """`kit_faults.null_build_red()` on what this pack cites, and on the
     reading it replaces."""

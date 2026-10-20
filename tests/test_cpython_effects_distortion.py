@@ -1607,6 +1607,63 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
             1000)
 
 
+class DriveLeftUpAfterReset(Distortion):
+    """A reset that leaves the Distortion knob at full: the instance carries
+    on a different sound from the one that never met the reset."""
+
+    def reset(self):
+        Distortion.reset(self)
+        self.set_macro(DIST, 127)
+
+
+class TheResetResidue(unittest.TestCase):
+    """audiocomponents#155: after a reset the output keeps a residue from
+    the untouched copy that outlasts `tail_samples`, the coupling pole's
+    slow state. It is measured at 787 LSB mono and 630 stereo (looped click
+    and noise material, patch 0, the lifecycle matrix's E1 on a block
+    boundary) over the 20 000 frames after the tail, and the class
+    documents it as up to about 800; this holds it under 800."""
+
+    BOUND = 800
+
+    def residue(self, cls, channels, extra=20000):
+        import lifecycle
+        values = lifecycle.material_for("loop", RATE, channels)
+
+        def run(reset):
+            feed = lifecycle.Feed(values, RATE, channels, "256", loop=True)
+            effect = cls(feed.port, sample_rate=RATE)
+            try:
+                tail = effect.tail_samples
+                bound = 12 * 256 + tail + effect.latency_samples + 256
+                want = (bound + extra) * 2 * channels
+                out = bytearray()
+                pulls = 0
+                while len(out) < want:
+                    if reset and pulls == 12:
+                        effect.reset()
+                    lifecycle._pull(effect, out)
+                    pulls += 1
+                return array.array("h", bytes(out)), bound
+            finally:
+                effect.deinit()
+
+        control, bound = run(False)
+        moved, _ = run(True)
+        return max(abs(a - b) for a, b in zip(control[bound * channels:],
+                                              moved[bound * channels:]))
+
+    def test_the_residue_after_a_reset_stays_under_its_bound(self):
+        for channels in (1, 2):
+            self.assertLessEqual(self.residue(Distortion, channels),
+                                 self.BOUND, channels)
+
+    def test_a_reset_that_leaves_the_drive_up_is_red(self):
+        for channels in (1, 2):
+            self.assertGreater(self.residue(DriveLeftUpAfterReset, channels),
+                               self.BOUND, channels)
+
+
 if __name__ == "__main__":
     unittest.main()
 

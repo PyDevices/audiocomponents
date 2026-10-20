@@ -503,6 +503,10 @@ class Overdrive(_component.Component):
 
     CAPABILITIES = ()
     LATENCY_SAMPLES = 0
+    #: After a reset, a rejoin or a control move a few LSB of float
+    #: residue can remain in the output beside an untouched copy, past
+    #: `tail_samples`. See "Detector and coupling state" in docs/audio-
+    #: component-api.md.
     TAIL_SAMPLES = 4096
 
     #: T7's bars, so a test or a probe reads them from one place.
