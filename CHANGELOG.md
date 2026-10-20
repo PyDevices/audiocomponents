@@ -56,8 +56,6 @@ there, and are recorded in its changelog.
   now the voices the sampler was made with: a pool that wants room to grow
   says so with `Voices(..., voice_count=48, max_voice_count=128)`. Renders are
   unchanged, byte for byte, at every pool size.
-- `AUDIODSP_PIN` moves to audiodsp c03a357, so the instruments can ask for up
-  to 128 voices (`audiosampler.MAX_VOICES`). The pins before it stopped at 64.
 - `Chorus` states an input ceiling of -6.03 dBFS. The dry stays at unity and
   the wet voice adds to it, so the output peaks at up to twice the input; a
   phrase peaking at -3 dBFS came out 3 dB over full scale at the defaults.
