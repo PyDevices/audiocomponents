@@ -749,6 +749,14 @@ class ClockWire(Octaver):
         return self._mid_node
 
 
+class NoMean(Octaver):
+    """T7: the comparator's zero left where it was, on the clock's own
+    waveform, with no slow mean taken out of the clock."""
+
+    def _centre(self, clock):
+        return clock
+
+
 class DoubleTone(Octaver):
     """T6: Tone 1 at twice the hertz its knob shows."""
 
@@ -1093,38 +1101,64 @@ class T7RealMaterial(TestCase):
                     self.assertIsNone(t7_verdict(cells, T7_TOP),
                                       (rate, level, sens))
 
-    def test_the_phrase_s_own_offset_stops_its_top_notes(self):
+    def test_the_phrase_s_own_offset_leaves_its_top_notes_dividing(self):
         """The same phrase as `kit_common.pluck` makes it, with the offset
-        its loop keeps (1 to 2 % of a note's peak in the last half of its slot):
-        B3 and E4 play the note itself, and the octave is gone, at -3 dBFS
-        with the clock well over Sensitivity. This is the limit the card
-        states, held so that a fix to it is noticed."""
-        cells = t7_read(Octaver, 48000, -3, -70.0)
+        its loop keeps (1 to 2 % of a note's peak in the last half of its
+        slot): B3 and E4 divide at every level and every Sensitivity that
+        puts the clock 12 dB over it, as they do without it. Until the
+        comparator's zero followed the clock's mean they played the note
+        itself here (audiocomponents#190)."""
+        for rate in RATES:
+            for level in kc.LEVELS_DBFS:
+                for sens in T7_SENSITIVITIES:
+                    cells = t7_read(Octaver, rate, level, sens)
+                    self.assertIsNone(t7_verdict(cells, T7_TOP),
+                                      (rate, level, sens))
+
+    def test_without_the_mean_the_phrase_s_offset_stops_its_top_notes(self):
+        """The planted fault: the clock handed to the comparator as it
+        comes. B3 and E4 play the note itself, and the octave is gone, at
+        -3 dBFS with the clock well over Sensitivity."""
+        cells = t7_read(NoMean, 48000, -3, -70.0)
         for k in T7_TOP:
             f, margin, octave, level = cells[k]
             self.assertGreaterEqual(margin, T7_TRACK_MARGIN_DB, f)
             self.assertLess(octave, -T7_TRACK_DB, f)
             self.assertGreater(level, -10.0, f)
+        self.assertIsNotNone(t7_verdict(cells, T7_TOP))
 
-    def test_an_offset_ends_the_range_from_the_top(self):
-        """A sine at the card's -8.7 dBFS with a direct offset: B3 divides
-        with 1 % of its peak and stops at 3 %, E4 divides at 0.3 % and
-        stops at 1 %, A4 divides at 0.1 % and stops at 0.3 %."""
-        rate = 48000
+    def _offset_read(self, cls, name, fraction, rate=48000):
+        """Octave 1's f/2 against the note's f, in dB, for a sine at the
+        card's -8.7 dBFS with a direct offset of `fraction` of its peak."""
         n = rate // 2
+        f = NOTES[name]
+        x = [12000.0 * math.sin(2.0 * math.pi * f * i / rate)
+             + 12000.0 * fraction for i in range(n)]
+        values = pcm(x)
+        y = tail_part(render(cls, values, rate, 1, macros=ONLY1))
+        heard = [float(v) for v in values[len(values) // 4:]]
+        return level_db(y, f / 2.0, rate) - level_db(heard, f, rate)
+
+    def test_an_offset_does_not_end_the_range_from_the_top(self):
+        """A sine at the card's -8.7 dBFS with a direct offset of 3 %, 10 %
+        and 30 % of its peak: B3, E4 and A4 divide at each, at both rates.
+        Before the comparator's zero followed the clock's mean, 3 % stopped
+        B3, 1 % stopped E4 and 0.3 % stopped A4."""
+        for rate in RATES:
+            for name in ("B3", "E4", "A4"):
+                for fraction in (0.03, 0.1, 0.3):
+                    read = self._offset_read(Octaver, name, fraction, rate)
+                    self.assertGreater(read, -T7_TRACK_DB,
+                                       (rate, name, fraction))
+
+    def test_without_the_mean_an_offset_ends_the_range_from_the_top(self):
+        """The planted fault again, on sines: B3 divides with 1 % of its
+        peak and stops at 3 %, E4 divides at 0.3 % and stops at 1 %, A4
+        divides at 0.1 % and stops at 0.3 %."""
         for name, holds, stops in (("B3", 0.01, 0.03), ("E4", 0.003, 0.01),
                                    ("A4", 0.001, 0.003)):
-            f = NOTES[name]
-            read = {}
-            for fraction in (holds, stops):
-                x = [12000.0 * math.sin(2.0 * math.pi * f * i / rate)
-                     + 12000.0 * fraction for i in range(n)]
-                values = pcm(x)
-                y = tail_part(render(Octaver, values, rate, 1,
-                                     macros=ONLY1))
-                heard = [float(v) for v in values[len(values) // 4:]]
-                read[fraction] = (level_db(y, f / 2.0, rate)
-                                  - level_db(heard, f, rate))
+            read = {fraction: self._offset_read(NoMean, name, fraction)
+                    for fraction in (holds, stops)}
             self.assertGreater(read[holds], -T7_TRACK_DB, (name, read))
             self.assertLess(read[stops], -40.0, (name, read))
 
@@ -1598,15 +1632,16 @@ CLAIMS = (
     ("It plays one note at a time: on a power chord (A2 and E3) about two "
      "fifths of the octave is intermodulation.",
      "TheSurface.test_one_note_at_a_time"),
-    ("An offset in the input, a direct current, goes through Tracking's "
-     "low-pass whole where a high note's fundamental does not, so it ends "
-     "the range: at patch 0 an offset of 3 % of a note's peak stops B3, "
-     "1 % stops E4 and 0.3 % stops A4, and what plays is the note itself.",
-     ("T7RealMaterial.test_an_offset_ends_the_range_from_the_top",
-      "T7RealMaterial.test_the_phrase_s_own_offset_stops_its_top_notes")),
-    ("The ranges above are for an input with none.",
-     ("T7RealMaterial.test_the_top_of_the_window_divides_without_an_offset",
-      "T5Range.test_the_windows_mono")),
+    ("A direct offset in the input, as a plucked string rings round, does "
+     "not take the top of the range from you: the divider turns over on the "
+     "clock's own centre, not on zero.",
+     ("T7RealMaterial.test_the_phrase_s_own_offset_leaves_its_top_notes_"
+      "dividing",
+      "T7RealMaterial.test_an_offset_does_not_end_the_range_from_the_top",
+      "T7RealMaterial.test_without_the_mean_the_phrase_s_offset_stops_its_"
+      "top_notes",
+      "T7RealMaterial.test_without_the_mean_an_offset_ends_the_range_from_"
+      "the_top")),
     ("A stereo source is clocked on its mid: with the right channel 45 "
      "degrees ahead of the left, the fifth sits 3.2 dB under the octave "
      "instead of 4.4, on both channels.",
