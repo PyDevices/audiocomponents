@@ -246,6 +246,11 @@ class MultibandCompressor(_component.Component):
 
     #: Overridden as a property below - the ring-down is the lower
     #: crossover's, so it depends on the rate and on where that macro is.
+    #:
+    #: After a reset, a rejoin or a control move the detectors can leave
+    #: the output under 16 LSB from an untouched copy for up to three
+    #: blocks, which `tail_samples` does not bound. See "Detector and
+    #: coupling state" in docs/audio-component-api.md.
     TAIL_SAMPLES = 0
 
     MACRO_LABELS = (

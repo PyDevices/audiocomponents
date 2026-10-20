@@ -327,7 +327,7 @@ blocks, `DynamicEQ` about 1,000 LSB for 5 to 20 blocks, and
 `MultibandCompressor` and `DeEsser` under 16 LSB within three blocks.
 `CombFilter` rings at 1 LSB about 500 frames past its tail, `Exciter`,
 `Overdrive` and `Fuzz` carry a few LSB of float residue, and `Distortion`
-keeps about 700 LSB of slow coupling-pole residue that persists. What you
+keeps up to about 800 LSB of slow coupling-pole residue that persists. What you
 hear is a re-attack, the same as switching a pedal on.
 
 **Behaviours that are not a bypass.** Three are stated, not accidental:

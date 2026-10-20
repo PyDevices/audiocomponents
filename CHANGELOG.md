@@ -64,8 +64,20 @@ there, and are recorded in its changelog.
   itself; the E2 to A4 range is for an input with none. A plucked note rings
   round an offset of 1 to 2 % of its peak, which is what the kit's phrase
   found ([#190](https://github.com/PyDevices/audiocomponents/issues/190)).
+- Each class whose detector or coupling state outlasts `tail_samples` says by
+  how much beside its tail: `Compressor`, `DynamicEQ`, `MultibandCompressor`,
+  `DeEsser`, `CombFilter`, `Exciter`, `Fuzz`, `Overdrive` and `Distortion`.
+  `Distortion`'s slow coupling-pole residue after a reset, up to about
+  800 LSB (787 mono and 630 stereo measured), is now held by a test
+  ([#155](https://github.com/PyDevices/audiocomponents/issues/155)).
 
 ### Fixed
+
+- `Expander`'s `tail_samples` is finite with Key Listen on. It said 0 while
+  the key filters rang for 2 304 frames or more; it now bounds that ring from
+  Key Low, Key High and the rate (at most about 5 100 frames at 48 kHz), and
+  is still 0 with Key Listen off
+  ([#146](https://github.com/PyDevices/audiocomponents/issues/146)).
 
 - `DeEsser`'s Range 0 is a wire after a reset and at every source buffer
   size. A reset armed the new graph from the source, so a Range 0 straight

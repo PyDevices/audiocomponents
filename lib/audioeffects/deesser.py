@@ -183,6 +183,11 @@ class DeEsser(_component.Component):
     #: 170 samples at a 800 Hz corner at 48 kHz, 51 at 2.5 kHz, 14 at 8 kHz,
     #: every one of them reaching exact zero, which is what `audiobiquad`
     #: exists for. The numbers are in the evidence pack.
+    #:
+    #: After a reset, a rejoin or a control move the detector can leave
+    #: the output under 16 LSB from an untouched copy for up to three
+    #: blocks, which `tail_samples` does not bound. See "Detector and
+    #: coupling state" in docs/audio-component-api.md.
     TAIL_SAMPLES = 256
 
     MACRO_LABELS = ("Frequency", "Range", "Sensitivity", "Mode", "Release",

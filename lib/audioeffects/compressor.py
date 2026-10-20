@@ -197,6 +197,11 @@ class Compressor(_component.Component):
     LATENCY_SAMPLES = 0
     #: The gain multiplies the audio; silence in is silence out on the same
     #: sample, so there is no tail to declare.
+    #:
+    #: After a reset, a rejoin or a control move the detector can leave
+    #: the output up to 1,575 LSB from an untouched copy for 20 to 50
+    #: blocks: a re-attack, which `tail_samples` does not bound. See
+    #: "Detector and coupling state" in docs/audio-component-api.md.
     TAIL_SAMPLES = 0
 
     MACRO_LABELS = ("Character", "Threshold", "Ratio", "Attack", "Release",

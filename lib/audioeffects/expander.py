@@ -25,15 +25,17 @@ key band slows the detector's response to a transient, which the DS201's
 own manual warns about. That is a detector effect and is never reported in
 `latency_samples`.
 
-**The tail is zero, with one named exception.** The gain is a per-sample
+**The tail is zero, except with Key Listen on.** The gain is a per-sample
 multiply on the audio, so silence in is exactly zero out in the same frame
 however the envelope stands - measured on the kit's `burst_silence` probe,
 there is no non-zero sample after the burst at all, at any of the three
 rates. Key Listen is the exception: it puts the *side chain's* signal on the
-output instead of the audio, and the key high-pass has memory, measured on
+output instead of the audio, and the key filters have memory, measured on
 that probe at 2373 / 2180 / 1089 frames at 48 / 44.1 / 22.05 kHz with Key Low
-at its minimum. That is a diagnostic state, off in every patch, and it is
-recorded rather than folded into `tail_samples`.
+at its minimum. With Key Listen on, `tail_samples` is a bound on that ring
+that follows Key Low, Key High and the rate (at most about 5 100 frames at
+48 kHz, with Key Low at its minimum); with it off it is 0. Key Listen is
+off in every patch.
 
 **Two wire states, both byte-identical to the source:** Ratio at 1.0, where
 the gain computer's `over x (ratio - 1)` is zero, and Depth at 0 dB, where the
@@ -110,6 +112,13 @@ VENDOR = "PyDevices"
 
 from . import _component
 
+import math
+
+#: How long a two-pole key filter takes to ring from near full scale to
+#: under half an LSB, in units of 1 / fc seconds: ln(65536 * 2) time
+#: constants of 0.225 / fc each.
+KEY_RING_CYCLES = 2.65
+
 try:
     import audiodynamics
 except ImportError:      # a stock CircuitPython board, or an old audiodsp
@@ -139,8 +148,8 @@ class Expander(_component.Component):
 
     #: The VCA is a per-sample multiply on the audio, so silence in is
     #: exactly zero out in the same frame however the envelope stands. The
-    #: Key Listen diagnostic is the one path with memory of its own, and it
-    #: is off in every patch.
+    #: Key Listen diagnostic is the one path with memory of its own, it is
+    #: off in every patch, and `tail_samples` bounds its ring while it is on.
     TAIL_SAMPLES = 0
 
     MACRO_LABELS = ("Threshold", "Ratio", "Depth", "Attack", "Release",
@@ -240,6 +249,26 @@ class Expander(_component.Component):
             self._node.set(key_listen=1.0 if position >= 0.5 else 0.0)
         else:
             self._node.set(detector="rms" if position >= 0.5 else "peak")
+
+    @property
+    def tail_samples(self):
+        """0, or with Key Listen on a bound on the key filters' ring.
+
+        Each key filter is a two-pole section. From a state near full scale
+        it is under half an LSB after about `KEY_RING_CYCLES` / fc seconds,
+        and the two add, so the bound is the sum at Key Low and Key High as
+        they stand.
+        """
+        self._check_live()
+        if self._macros[7] < 0.5:
+            return 0
+        rate = float(self._sample_rate)
+        total = 0
+        for index in (5, 6):
+            hz = self._hz(_component.macro_value(self._MACRO_RANGES[index],
+                                                 self._macros[index]))
+            total += int(math.ceil(KEY_RING_CYCLES * rate / hz))
+        return total
 
     def gain_reduction_db(self):
         """What the gain computer applied on the last frame rendered, in dB.

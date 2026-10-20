@@ -494,6 +494,10 @@ class Exciter(_component.Component):
 
     CAPABILITIES = ()
     LATENCY_SAMPLES = 0
+    #: After a reset, a rejoin or a control move a few LSB of float
+    #: residue can remain in the output beside an untouched copy, past
+    #: `tail_samples`. See "Detector and coupling state" in docs/audio-
+    #: component-api.md.
     TAIL_SAMPLES = 4096
     INPUT_CEILING_DBFS = INPUT_CEILING_DBFS
     ALIAS_OVERSAMPLE_COST_DB = ALIAS_OVERSAMPLE_COST_DB
