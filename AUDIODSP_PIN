@@ -414,5 +414,19 @@
 # promotions in the SVF handover (#264). audiosampler is a new module and
 # touches no node that existed.
 #
+# Moved to c03a357 on 2026-10-20, for the 128-voice ceiling on
+# audiosampler.Sampler (audiodsp#289): the SoundFont instruments can ask for
+# up to 128 voices (`audiosampler.MAX_VOICES`; the pin before it stopped at
+# 64). Named by commit; the release carrying it is v0.6.8's. What else moved
+# beneath the components, by `git log 6db15e3..c03a357 -- src`, is the
+# sampler's: a stopped or stolen voice fades out over 5 ms (#279) and
+# SampleBuffer keeps sample memory off the collected heap (#282); and the
+# rest of the 0.6.8 development line: a native CPython audiomixer voice
+# scale (#273), a unity-level mixer voice passed through unscaled (#276),
+# a silent synthio block returned without mixing (#278), the
+# band-limited audiooscillator (#286), audioladder's buffer_size, and a
+# FeedbackDelay splice that searches on (#284), plus audiopump and
+# audiometer additions for a USB host that no component here calls.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-6db15e311a17ca83784f0276d326f98b77950b5f 6db15e311a17ca83784f0276d326f98b77950b5f
+c03a3574a8a080bab9ccad9aa6429399e49a5ce8 c03a3574a8a080bab9ccad9aa6429399e49a5ce8
