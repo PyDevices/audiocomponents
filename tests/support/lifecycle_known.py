@@ -360,12 +360,12 @@ _CP_RESET_BUFFER = (
     " from audiodsp's port: other bytes, the same verdicts"
     " (audiocomponents#158)")
 KNOWN_P6 = {
-    "DeEsser": (12, "d32bc7ee", None, None,
-                "E9 with 100-frame source buffers: the step the Range 0 wire"
-                " makes (R_DEESS_WIRE) lands on another frame, and so reads"
-                " another size, on the native interpreters; the same"
-                " verdicts (audiocomponents#191)"),
     "Compressor": (4, "70d574f2", None, None, _CP_RESET_BUFFER),
+    "DeEsser": (40, "f9bb6cec", None, None,
+                "E9 with 100- and 1000-frame source buffers: the step and the"
+                " stale block the Range 0 wire makes (R_DEESS_WIRE) land on"
+                " another frame, and so read another size, on the native"
+                " interpreters; the same verdicts (audiocomponents#191)"),
     "Distortion": (48, "950b4395", None, None, _CP_RESET_BUFFER),
     "Exciter": (32, "4f3d4cfb", None, None, _CP_RESET_BUFFER),
     "MultibandCompressor": (5, "83a48f4f", None, None, _CP_RESET_BUFFER),
