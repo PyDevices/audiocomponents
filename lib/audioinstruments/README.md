@@ -84,6 +84,7 @@ across the whole MIDI 1.0 controller table.
 | `MACRO_MODES` | index to `UNIPOLAR`, `BIPOLAR`, or `TOGGLE` |
 | `PATCHES` | `{index: (name, (values, 0-127))}`; patch 0 is what a fresh instrument plays |
 | `NOTE_MAP` | percussion only: `((midi_note, label), ...)` for the voices it maps |
+| `PAD_MAP` | percussion only: `((key, voice), ...)`, the voice keys 36-51 sound; see [pad controllers](#pad-controllers) |
 | `create(sample_rate, channel_count=2, transport=None)` | |
 
 `transport` is an optional callable returning the host's playback position
@@ -114,9 +115,10 @@ instrument is tempo-synced (see the shipped-status note in
 ### Which kit answers which hit
 
 Every kit here speaks General MIDI, so **one MIDI track plays on any of
-them**: the kick hit lands wherever the kit has a kick. A hit a kit has no
-voice for makes no sound — nothing is answered by a near neighbour, and there
-is no fallback noise. Six of these machines predate MIDI and never had numbers
+them**: the kick hit lands wherever the kit has a kick. Keys 36 to 51, a pad
+controller's first bank, always sound (see [pad controllers](#pad-controllers)
+below); any other hit a kit has no voice for makes no sound, and there is no
+fallback noise. Six of these machines predate MIDI and never had numbers
 of their own; the four that shipped with it had put their voices on GM's slots
 anyway, bar the DrumTraks cabasa, which its chart gives 58 (GM's vibraslap)
 and which sits on 69 here.
@@ -156,6 +158,21 @@ across all eleven.
 | 73 | Short Guiro |   | • |   |   |   |   |   |   |   |   |   |
 | 75 | Claves |   | • |   |   |   |   |   |   |   | • |   |
 
+### Pad controllers
+
+The first bank of a pad controller sends keys 36 to 43 or 36 to 51, so every
+drum machine here answers all sixteen of those keys. Where a kit has no voice
+for one it plays the nearest it has: the electric snare plays the snare, the
+pedal hat the closed hat, a tom the nearest tom, the ride the cymbal. The
+table above lists the voices each kit has of its own; a module's `PAD_MAP`
+says which voice each of 36 to 51 plays. A key outside 36 to 51 that a kit has
+no voice for is silent, as before.
+
+```python
+audioinstruments.create("tr606", 48000, strict_pads=True)    # only its own voices
+audioinstruments.create("tr606", 48000, pad_map=((40, 36),)) # your own table
+```
+
 ### One instrument, ten kits
 
 **`drumkits`** is all ten *machines* under one program change - `acoustickit`
@@ -165,8 +182,8 @@ machine's and a program change cannot rename them: program 1 is the TR-808,
 from the sequencer. Each program *is* that machine — the same samples of PCM
 it makes on its own — and the kit you leave keeps ringing out until the next
 change, so a crash carries across. Its note map is the union below, so a hit
-a kit has no voice for is simply silent until you switch back to one that
-has it.
+outside keys 36-51 that a kit has no voice for is silent until you switch to
+one that has it.
 
 Its sixteen macros are one fixed cross-kit set (Level, Accent, Kick Tune,
 Kick Decay, Kick Level, Snare Tune, Snare Snap, Snare Level, Tom Tune, Tom

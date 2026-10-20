@@ -10,6 +10,11 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- Every drum kit answers keys 36 to 51, the first bank of a common pad
+  controller. A key the kit has a voice for plays it; the rest play the
+  nearest voice the kit has, set out in the module's `PAD_MAP`. Pass
+  `strict_pads=True` to `create()` for the old rule (only a kit's own voices),
+  or `pad_map=` to use your own table (#163).
 - Every instrument says how many notes it can sound at once: `voices` is 1
   for a monophonic instrument, its voice limit otherwise, and `None` for a
   drum machine, whose voices are per pad. `tools/validate_api.py` checks it

@@ -115,15 +115,42 @@ NOTE_MAP = (
 It is a tuple of unique MIDI note numbers and unique, non-empty voice labels.
 
 Which numbers: General MIDI's percussion key numbers, on every machine. One
-MIDI track then plays on any kit — every kick lands where the kit has a kick,
-and a hit the kit has no voice for makes no sound at all. Nothing substitutes
-a near neighbour.
+MIDI track then plays on any kit — every kick lands where the kit has a kick.
 
-A note that isn't in `NOTE_MAP` is ignored: `note_on` returns without a
-sound, an error or a warning, so a melodic part sent to a drum track, or a
-key outside the kit's pads, plays nothing. The map is the list of notes an
-instrument answers. Some patches of a kit with several machines, such as
-`drumkits`, leave a few of the map's pads silent too.
+The first bank of a pad controller sends keys 36 to 43 (eight pads) or 36 to
+51 (sixteen), so every kit also answers all of those, whatever its own voices.
+A key the kit has a voice for plays that voice. The rest play the nearest
+voice the kit does have: an electric snare plays the snare, a pedal hat the
+closed hat, a tom the nearest tom, a ride the cymbal. The choice is written
+out in the module as `PAD_MAP`, one `(key, voice)` pair for each key from 36
+through 51, as literals a tool can read without importing the module:
+
+```python
+PAD_MAP = (
+    (36, 36),
+    (37, 37),
+    (38, 38),
+    (39, 38),  # Clap -> Snare
+    ...
+)
+```
+
+Every voice is a note in `NOTE_MAP`, and a key the kit has a voice for always
+plays that voice. `drumkits` has no table of its own; it hands each key to the
+kit that is playing, and that kit's `PAD_MAP` answers it.
+
+Both ways to change this are options to `create()`. `strict_pads=True` turns
+the substitution off, so the kit plays only the notes in its `NOTE_MAP` and the
+instrument's `strict_pads` property reports it. `pad_map=` takes a tuple of
+`(key, voice)` pairs, or a dict, to use in place of `PAD_MAP`; the two together
+are an error.
+
+Any other note that isn't in `NOTE_MAP` is ignored: `note_on` returns without
+a sound, an error or a warning, so a melodic part sent to a drum track, or a
+key outside the kit's pads, plays nothing. `NOTE_MAP` lists the notes a kit has
+a voice for, and `PAD_MAP` the keys 36 to 51 it answers with one. Some patches
+of a kit with several machines, such as `drumkits`, leave a few of the map's
+pads silent too.
 
 Six of these drum machines predate MIDI and speak trigger pulses, so they had
 no numbers of their own to keep. The four that shipped with MIDI turn out to

@@ -52,6 +52,18 @@ class MetadataContractTest(unittest.TestCase):
         percussion = component(NOTE_MAP=((36, "Bass Drum"),))
         self.assertTrue(validate_component(percussion, kind="instrument"))
 
+    def test_a_pad_map_must_cover_36_to_51_with_voices_the_kit_has(self):
+        notes = ((36, "Bass Drum"), (38, "Snare"))
+        whole = tuple((key, 38 if key != 36 else 36) for key in range(36, 52))
+        self.assertTrue(validate_component(
+            component(NOTE_MAP=notes, PAD_MAP=whole), kind="instrument"))
+        for bad in (whole[:-1],                         # a key missing
+                    whole[:-1] + ((51, 40),),           # a voice it lacks
+                    ((36, 38),) + whole[1:]):           # its own voice unused
+            with self.assertRaises(MetadataError):
+                validate_component(component(NOTE_MAP=notes, PAD_MAP=bad),
+                                   kind="instrument")
+
     def test_note_map_is_not_valid_on_an_effect(self):
         with self.assertRaises(MetadataError):
             validate_component(
