@@ -8,13 +8,13 @@ module imports them from here and lists them in its own `KIT_PLANTS`.
 
 import audiobiquad
 
-from audioeffects import rebuilt
-from audioeffects.rebuilt import airspace as space
+import audioeffects
+from audioeffects import airspace as space
 
 #: Read by `_component`'s metadata check off the module a class lives in.
 VENDOR = "PyDevices"
 
-AirSpace = rebuilt.module_class("AirSpace")
+AirSpace = audioeffects.AirSpace
 
 
 class SendFirst(AirSpace):

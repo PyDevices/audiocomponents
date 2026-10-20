@@ -1028,8 +1028,7 @@ def _effect(name):
         import audioeffects
         audioeffects.configure(SAMPLE_RATE, CHANNELS)
         if rebuilt:
-            from audioeffects import rebuilt as _rebuilt_mod
-            cls = _rebuilt_mod.module_class(name)
+            cls = getattr(audioeffects, name, None)
             if cls is None:
                 raise ValueError("no rebuilt module for %s" % name)
             effect = cls.create(probe.output, SAMPLE_RATE)
@@ -1042,13 +1041,11 @@ def _effect(name):
 
 
 def _rebuilt(name):
-    """The **rebuilt** class of that name, whether or not it is adopted.
+    """The class of that name, built through its own `create()`.
 
-    `audioeffects.create()` reads the registry, and a Phase 2 class that is
-    parked rather than adopted (`rebuilt.ADOPTED`) resolves there to the old
-    family class - so `effect:Compressor` measures the class the rebuild
-    replaces. `rebuilt:Compressor` names the rebuilt one, and
-    `rebuilt:Compressor@3` puts it on patch 3.
+    This once reached a rebuild the package did not serve yet; every class
+    has one home now, so `rebuilt:Compressor` and `effect:Compressor` build
+    the same class. `rebuilt:Compressor@3` puts it on patch 3.
 
     `rebuilt:Fuzz@os2` is the third form, and it is a construction option
     rather than a patch: the two Phase 4 classes that have a lean position at
@@ -1086,8 +1083,8 @@ def _rebuilt(name):
     name, patch = _split_patch(name)
 
     def build(probe):
-        from audioeffects import rebuilt
-        cls = rebuilt.module_class(name)
+        import audioeffects
+        cls = getattr(audioeffects, name, None)
         if cls is None:
             raise ValueError("no rebuilt module for %s" % name)
         effect = cls.create(probe.output, SAMPLE_RATE, **options)

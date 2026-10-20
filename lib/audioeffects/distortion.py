@@ -170,8 +170,13 @@ import audiomixer
 try:
     from audiodsp_util import float32 as _f32
 except ImportError:                                  # pragma: no cover
+    # Without audiodsp_util the rounding still has to happen: a desktop
+    # MicroPython or CircuitPython float is a double, and the identity there
+    # handed the nodes numbers CPython never sees (audiocomponents#152).
+    import struct
+
     def _f32(value):
-        return value
+        return struct.unpack("<f", struct.pack("<f", value))[0]
 
 
 # BEGIN CURVE RAT_DIODE

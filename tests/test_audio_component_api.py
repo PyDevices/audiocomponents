@@ -7,7 +7,6 @@ import audiocore
 import audioeffects
 import audioinstruments
 from audioeffects import _component
-from audioeffects import rebuilt
 
 
 #: `_check_metadata` reads this off the defining module.
@@ -179,23 +178,12 @@ class CountingSource:
 
 
 def patch_classes():
-    """Every effect class a host can construct, rebuilt or shipped.
-
-    `audioeffects.ALL` is what the library serves; `rebuilt.module_class`
-    is what this program has rebuilt but not yet adopted, and a phase's
-    classes live there for the whole of the phase. Both are walked so a
-    class is covered from the day it is written rather than the day it is
-    adopted.
-    """
+    """Every effect class a host can construct: `audioeffects.ALL`."""
     found = []
     for name in audioeffects.ALL:
         cls = getattr(audioeffects, name, None)
         if cls is not None:
             found.append((name, cls))
-    for name in rebuilt.known():
-        cls = rebuilt.module_class(name)
-        if cls is not None and not any(cls is known for _, known in found):
-            found.append(("rebuilt " + name, cls))
     return found
 
 
@@ -358,18 +346,6 @@ class AConstructorPatchCostsTheSourceNothing(unittest.TestCase):
                     effect.deinit()
         self.assertEqual(refused, [], "classes still refusing a patch=")
         self.assertGreater(walked, 200, "the walk found almost nothing")
-
-    def test_every_rebuilt_class_takes_a_constructor_patch(self):
-        for name in rebuilt.known():
-            cls = rebuilt.module_class(name)
-            if cls is None or not getattr(cls, "PATCHES", None):
-                continue
-            with self.subTest(name=name):
-                effect = cls.create(CountingSource(), 48000, patch=0)
-                try:
-                    self.assertEqual(effect.patch_index, 0)
-                finally:
-                    effect.deinit()
 
     def test_planted_fault_a_second_priming_pull_is_red(self):
         # The same fixture without the fault is green, so what turns the

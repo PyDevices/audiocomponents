@@ -29,9 +29,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 import kit_faults as faults                          # noqa: E402
 from effects_measure import SAMPLE_RATE                # noqa: E402
 
-from audioeffects import _component                    # noqa: E402
-from audioeffects import combfilter            # noqa: E402
-from audioeffects.rebuilt.digitaldelay import clear_of_stalls  # noqa: E402
+from audioeffects import _component                         # noqa: E402
+from audioeffects import combfilter                         # noqa: E402
+from audioeffects.digitaldelay import clear_of_stalls       # noqa: E402
 #: The subject is named directly. `CombFilter` has come home to
 #: `audioeffects/combfilter.py`. These tests still import the home module so
 #: a planted-fault subclass is measured against this file, not only

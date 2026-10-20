@@ -14,8 +14,7 @@ Every law a measurement checks against is written out here from the
 dossier, never taken from the class: the whole-frame landing, the Time
 span, the Spread law, the reference mono delay.
 
-The class is reached by `rebuilt.module_class("PingPongDelay")`, which is also what
-`audioeffects.PingPongDelay` serves since its adoption on 2026-09-29.
+The class is `audioeffects.PingPongDelay`, served since its adoption on 2026-09-29.
 """
 
 import math
@@ -34,10 +33,10 @@ import audiocore                                            # noqa: E402
 import kit_faults                                          # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 from audioeffects import _component                         # noqa: E402
-from audioeffects import rebuilt                            # noqa: E402
+import audioeffects                                         # noqa: E402
 from audioeffects.chorus import nominal_damping_hz          # noqa: E402
-from audioeffects.rebuilt import pingpongdelay as pp        # noqa: E402
-from audioeffects.rebuilt.digitaldelay import (             # noqa: E402
+from audioeffects import pingpongdelay as pp                # noqa: E402
+from audioeffects.digitaldelay import (                     # noqa: E402
     clear_of_stalls)
 from tools.effect_measurements import instantaneous_hz      # noqa: E402
 
@@ -49,7 +48,7 @@ RATES = (48000, 44100, 22050)
 (TIME_I, FEEDBACK_I, MIX_I, SPREAD_I, SIDE_I, SYNC_I, DIVISION_I, TONE_I,
  CUT_I) = range(9)
 
-PingPongDelay = rebuilt.module_class("PingPongDelay")
+PingPongDelay = audioeffects.PingPongDelay
 
 
 # --------------------------------------------------------------------------
@@ -900,11 +899,8 @@ class TheSurface(unittest.TestCase):
 
     def test_adopted_is_what_the_package_serves(self):
         """Adopted on 2026-09-29, so `create()` serves this one. It was the
-        reverse assertion while the class was parked; revert
-        `rebuilt.ADOPTED` and this goes red."""
+        reverse assertion while the class was parked; serve another class under the name and this goes red."""
         import audioeffects
-        self.assertIn("PingPongDelay", rebuilt.ADOPTED)
-        self.assertNotIn("PingPongDelay", rebuilt.parked())
         self.assertIs(audioeffects.PingPongDelay, PingPongDelay)
         served = audioeffects.create("PingPongDelay", silence_src(64), RATE)
         self.assertIsInstance(served, PingPongDelay)

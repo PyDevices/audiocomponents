@@ -38,7 +38,7 @@ except (ImportError, AttributeError, NameError):   # no os.path natively
 import audiomath                                            # noqa: E402
 import audioroute                                           # noqa: E402
 import kit_common as kc                                     # noqa: E402
-from audioeffects import rebuilt                            # noqa: E402
+import audioeffects                                         # noqa: E402
 
 VENDOR = "PyDevices"
 
@@ -46,7 +46,7 @@ RATES = (48000, 22050)
 BLOCK = 256
 DIRECT, OCT1, OCT2, TRACKING, TONE1, TONE2, SENS = range(7)
 
-Octaver = rebuilt.module_class("Octaver")
+Octaver = audioeffects.Octaver
 
 NOTES = {"E1": 41.2, "A1": 55.0, "E2": 82.41, "A2": 110.0, "D3": 146.8,
          "G3": 196.0, "B3": 246.9, "E3": 164.8, "A3": 220.0, "E4": 329.6,
@@ -959,13 +959,10 @@ class T6Tone(TestCase):
 
 class TheAdoption(TestCase):
     def test_adopted_is_what_the_package_serves(self):
-        """Adopted on 2026-10-13, so `create()` serves this one. Revert
-        `rebuilt.ADOPTED` and this goes red."""
+        """Adopted on 2026-10-13, so `create()` serves this one. Serve another class under the name and this goes red."""
         import audiocore
         import audioeffects
         from array import array
-        self.assertIn("Octaver", rebuilt.ADOPTED)
-        self.assertNotIn("Octaver", rebuilt.parked())
         self.assertIs(audioeffects.Octaver, Octaver)
         served = audioeffects.create(
             "Octaver",

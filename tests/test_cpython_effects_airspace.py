@@ -11,7 +11,7 @@ never taken from the class. No numpy: plain sums, a radix-2 FFT and
 Goertzel. The planted faults live in `airspace_plants.py`, which the kit
 also runs natively.
 
-The class is reached by `rebuilt.module_class("AirSpace")`.
+The class is reached by `audioeffects.AirSpace`.
 """
 
 import cmath
@@ -27,11 +27,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
 import audiocore                                            # noqa: E402
 import airspace_plants as plants                            # noqa: E402
-from audioeffects import rebuilt                            # noqa: E402
+import audioeffects                                         # noqa: E402
 
 VENDOR = "PyDevices"
 
-AirSpace = rebuilt.module_class("AirSpace")
+AirSpace = audioeffects.AirSpace
 
 BLOCK = 256
 TIME_I, FEEDBACK_I, GLIDE_I, DRIVE_I, LOOP_TOP_I, LOOP_BASS_I, TOP_CUT_I, \
@@ -689,13 +689,10 @@ def fresh(rate=48000, channels=2, patch=None, **options):
 
 class TheAdoption(unittest.TestCase):
     def test_adopted_is_what_the_package_serves(self):
-        """Adopted on 2026-10-13, so `create()` serves this one. Revert
-        `rebuilt.ADOPTED` and this goes red."""
+        """Adopted on 2026-10-13, so `create()` serves this one. Serve another class under the name and this goes red."""
         import audiocore
         import audioeffects
         from array import array
-        self.assertIn("AirSpace", rebuilt.ADOPTED)
-        self.assertNotIn("AirSpace", rebuilt.parked())
         self.assertIs(audioeffects.AirSpace, AirSpace)
         served = audioeffects.create(
             "AirSpace",

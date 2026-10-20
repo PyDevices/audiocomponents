@@ -151,12 +151,8 @@ except ImportError:                     # pragma: no cover - a stock board
 from . import _component
 
 # `DigitalDelay`'s loop-tail arithmetic, reused rather than copied: the same
-# node rounds the same way here. Its module moves up one level when it comes
-# home, so both homes are tried.
-try:
-    from .rebuilt.digitaldelay import laps_to_zero
-except ImportError:                     # pragma: no cover - after it lands
-    from .digitaldelay import laps_to_zero
+# node rounds the same way here.
+from .digitaldelay import laps_to_zero
 
 
 #: The line, in milliseconds. 20 Hz wants 50 ms and the node keeps one frame
