@@ -48,6 +48,14 @@ there, and are recorded in its changelog.
 
 ### Changed
 
+- A SoundFont `Voices` pool makes its sampler with the voices it was asked
+  for, not the build's ceiling. Since audiodsp raised that ceiling to 128, a
+  48-voice pool held about 32 KB more heap on MicroPython (68 KB, from 36 KB)
+  for voices it could never use, which a board feels. The pool's `voice_count`
+  can still be raised while it plays, up to its `max_voice_count`, but that is
+  now the voices the sampler was made with: a pool that wants room to grow
+  says so with `Voices(..., voice_count=48, max_voice_count=128)`. Renders are
+  unchanged, byte for byte, at every pool size.
 - `Chorus` states an input ceiling of -6.03 dBFS. The dry stays at unity and
   the wet voice adds to it, so the output peaks at up to twice the input; a
   phrase peaking at -3 dBFS came out 3 dB over full scale at the defaults.

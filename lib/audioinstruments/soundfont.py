@@ -573,9 +573,13 @@ class Voices(object):
     `voice_count` is how many notes' worth of engine voices the pool plays
     at once, and it can change while it plays: fewer stops the voices above
     the new count (each fades out over 5 ms), more takes effect at the next
-    note. The sampler is made with `audiosampler.MAX_VOICES`, the build's
-    ceiling, so a count up to that needs nothing new; an idle voice costs
-    the render nothing. A board that can't render the ceiling sets less.
+    note. The sampler is made with `voice_count` voices, or with
+    `max_voice_count` when that is more: that is the most the count can be
+    raised to later, because a sampler's voices are fixed once it is made
+    (and it is the thing `audio_out` plays, so it can't be swapped for a
+    bigger one). A voice costs memory whether or not it sounds, so a board
+    asks for what it plays; a desktop that wants room to grow asks for the
+    build's ceiling, `audiosampler.MAX_VOICES`.
 
     Every instrument made on it has this sampler as its `output`, so play
     it once. Deinitialising one of them stops its own voices and leaves the
@@ -606,9 +610,14 @@ class Voices(object):
     """
 
     def __init__(self, sample_rate, channel_count=2,
-                 voice_count=SHARED_VOICES, shared=True, reserve=0, gain=1.0):
+                 voice_count=SHARED_VOICES, shared=True, reserve=0, gain=1.0,
+                 max_voice_count=None):
+        if int(voice_count) < 1:
+            raise ValueError("voice_count must be at least 1")
         self.sampler = _sampler(sample_rate, channel_count,
-                                max(int(voice_count), _ceiling()))
+                                int(voice_count) if max_voice_count is None
+                                else max(int(voice_count),
+                                         int(max_voice_count)))
         self.sample_rate = sample_rate
         self.channel_count = channel_count
         self.shared = shared
@@ -617,8 +626,6 @@ class Voices(object):
         #: is `HELD`, `RELEASING` or `FADED`, `level`, `pitch` and `pan` are
         #: the region's own, before the live macros, and `player` is the
         #: instrument's that holds it.
-        if int(voice_count) < 1:
-            raise ValueError("voice_count must be at least 1")
         self.slots = [None] * int(voice_count)
         self._queue = None     # the writes waiting, while deferred
         self._pending = {}     # voice index -> playing, as the queue leaves it
@@ -646,7 +653,8 @@ class Voices(object):
     def voice_count(self, count):
         count = int(count)
         if not 1 <= count <= self.max_voice_count:
-            raise ValueError("voice_count must be 1 to %d"
+            raise ValueError("voice_count must be 1 to %d, the voices the "
+                             "pool's sampler was made with"
                              % self.max_voice_count)
         slots = self.slots
         if count < len(slots):
@@ -661,7 +669,8 @@ class Voices(object):
 
     @property
     def max_voice_count(self):
-        """The most `voice_count` can be: the sampler's voices."""
+        """The most `voice_count` can be: the sampler's voices, which the
+        pool was made with and can't add to."""
         return self.sampler.voice_count
 
     def sounding(self):
@@ -1173,15 +1182,6 @@ class SoundFontInstrument(Instrument):
         self._player.stop_all()
         self._output = None
         self._deinited = True
-
-
-def _ceiling():
-    """The engine's most voices on one sampler, as this build has it."""
-    try:
-        import audiosampler
-        return int(audiosampler.MAX_VOICES)
-    except (ImportError, AttributeError):
-        return SHARED_VOICES
 
 
 def _sampler(sample_rate, channel_count, voice_count=MAX_VOICES):
