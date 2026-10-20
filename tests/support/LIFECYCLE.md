@@ -117,6 +117,32 @@ A verdict is `ok`, `na(...)` (the property does not apply to that cell,
 said why: `tail None`, a whole RawSample, a class that never falls silent),
 `RED(...)` with what was measured, or `decl`.
 
+## A wire that is a depth
+
+E5 and E9 move "Mix", the class's wet/dry control: the macro labelled Mix,
+or the one a row of `MIX_INDEX` names (Octaver's Octave 1, SlapbackDelay's
+Level). A class whose wire is a depth or a range has no crossfade: AutoPan,
+Tremolo, Notch and Expander have a Depth, DeEsser and NoiseGate a Range.
+At 0 each is the input, but nothing between 0 and full is a dry/wet blend,
+and moving it jumps (an LFO's depth, a gate's floor). A row of `DEPTH_INDEX`
+gives such a class the same events, judged by the depth model:
+
+- **P1** at 0 is the same byte compare. `DEPTH_NOT_A_WIRE` names the
+  settings where 0 is not one by design (DeEsser in HF-only mode or
+  Listening, a gate's or expander's Key Listen); a cell that visits one
+  prints `na(not a wire: ...)`, and only that cell.
+- **P2 to P4** are judged as for any control.
+- **P5** on a move of the depth allows the step the jump itself makes: the
+  limit is the usual one plus how far the class's output stands from the dry
+  at that moment, and no more. Read as a crossfade's, the same jump is a
+  click on every cell that moves the wire.
+- The constructor keyword `E12` builds a fresh instance with is named in
+  `MIX_KEYWORD` (`depth`, `range_db`, `depth_db`).
+
+`DepthJump` is the planted control (a depth handed over at once), `DepthLeak`
+(0 leaves the source 3 % down) and `DepthPop` (a click on top of the jump)
+the plants that show P1 and P5 can fail under the model.
+
 ## Without `get_buffer`
 
 CircuitPython's default board builds compile `audiocore.get_buffer` out.

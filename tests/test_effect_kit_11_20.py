@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tools.effect_measurements import (  # noqa: E402
     MeasurementRefused, Render, SilentRenderError, click, cost, decay,
-    digest, envelope_record_seconds, envelope_shape, ifreq, null, residual,
+    digest, envelope_record_seconds, envelope_shape, ifreq, line_level, null, residual,
     require_identical_channels, roundtrip, stereo, taps, truepeak,
 )
 from tools import provenance_gate  # noqa: E402
@@ -204,6 +204,75 @@ class InstantaneousFrequency(unittest.TestCase):
               % (corrected["values"]["deviation_cents"],
                  corrected["values"]["residual_rms_cents"]))
         self.assertTrue(corrected["passed"], corrected["red"])
+
+
+# --------------------------------------------------------------------------
+# LINE -- a pitch trait finer than the energy-weighted mean
+# --------------------------------------------------------------------------
+
+class Line(unittest.TestCase):
+    """Planted fault: a splice that cancels the target line. Grains of the
+    shifted copy alternate in sign, so the line at the target has no energy
+    and two sidebands carry it; their energy-weighted mean is still the
+    target, so the trait every pitch class read today passes it. The control
+    that must pass beside it is the same copy with its grains in phase."""
+
+    SOURCE = 330.0
+    TARGET = 660.0
+    GRAIN = 960  # 20 ms grains: sidebands 25 Hz either side
+
+    def setUp(self):
+        t = np.arange(2 * RATE) / float(RATE)
+        self.source = make_render(np.sin(2 * math.pi * self.SOURCE * t))
+        tone = np.sin(2 * math.pi * self.TARGET * t)
+        grain = np.arange(len(t)) // self.GRAIN
+        self.in_phase = make_render(tone)
+        self.cancelled = make_render(tone * np.where(grain % 2 == 0, 1.0,
+                                                     -1.0))
+
+    def read(self, shifted, **kwargs):
+        return line_level(shifted, self.source, source_hz=self.SOURCE,
+                    target_hz=self.TARGET, **kwargs)
+
+    @staticmethod
+    def mean_semitones(render, target_hz):
+        """The energy-weighted mean of the spectrum within an octave of the
+        target, in semitones from it: the trait the pitch classes read."""
+        x = render.float[:, 0]
+        spec = np.abs(np.fft.rfft(x * np.hanning(len(x)))) ** 2
+        freqs = np.fft.rfftfreq(len(x), 1.0 / render.rate)
+        keep = (freqs > target_hz / 2.0) & (freqs < target_hz * 2.0)
+        mean = float((spec[keep] * np.log2(freqs[keep] / target_hz)).sum()
+                     / spec[keep].sum())
+        return 12.0 * mean
+
+    def test_control_grains_in_phase_stays_green(self):
+        got = self.read(self.in_phase)
+        print("\nLINE control (grains in phase)  line %.2f dB"
+              % got["values"]["level_db"])
+        self.assertTrue(got["passed"], got["red"])
+        self.assertAlmostEqual(got["values"]["level_db"], 0.0, delta=0.5)
+
+    def test_planted_fault_a_splice_cancelling_the_line_is_red(self):
+        got = self.read(self.cancelled)
+        print("LINE FAULT (grains alternate in sign)  line %.2f dB, loudest "
+              "bin %.1f Hz" % (got["values"]["level_db"],
+                               got["values"]["peak_hz"]))
+        for text in got["red"]:
+            print("   RED", text)
+        self.assertFalse(got["passed"])
+        self.assertIn("level_db", got["values"]["failed_readouts"])
+
+    def test_the_energy_weighted_mean_reads_the_fault_green(self):
+        """The wrong readout: the mean is within a tenth of a semitone on
+        both, which is why the fault stood through the pitch traits."""
+        for render in (self.in_phase, self.cancelled):
+            self.assertLess(abs(self.mean_semitones(render, self.TARGET)),
+                            0.1)
+
+    def test_an_expected_level_holds_the_line_to_it(self):
+        self.assertTrue(self.read(self.in_phase, expected_db=0.0)["passed"])
+        self.assertFalse(self.read(self.in_phase, expected_db=-12.0)["passed"])
 
 
 # --------------------------------------------------------------------------

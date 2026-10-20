@@ -434,7 +434,8 @@ def plant_cell(plant, event, prop, patch=None, rate=48000, channels=2):
 class TestWireControl(unittest.TestCase):
     """E5 and E9 move the wet/dry control, and need to know which macro it
     is. Every class either has one (a macro labelled "Mix", or a row in
-    `lifecycle.MIX_INDEX`), or is listed in `lifecycle.NO_WIRE_CONTROL` with
+    `lifecycle.MIX_INDEX`, or a depth in `lifecycle.DEPTH_INDEX`), or is
+    listed in `lifecycle.NO_WIRE_CONTROL` with
     the reason it has none, or in `lifecycle.UNRUN_WIRE_CONTROL` with the
     reason its wire is not judged yet: a class whose wire is a level at 0
     under another name cannot go unnoticed."""
@@ -456,13 +457,23 @@ class TestWireControl(unittest.TestCase):
         self.assertEqual(loose, [], "\n".join(loose))
 
     def test_the_tables_name_real_classes(self):
-        for table in (lifecycle.MIX_INDEX, lifecycle.NO_WIRE_CONTROL,
+        for table in (lifecycle.MIX_INDEX, lifecycle.DEPTH_INDEX,
+                      lifecycle.DEPTH_NOT_A_WIRE, lifecycle.NO_WIRE_CONTROL,
                       lifecycle.UNRUN_WIRE_CONTROL, lifecycle.MIX_KEYWORD):
             for name in table:
                 self.assertIn(name, GATED, name)
 
+    def test_a_depth_names_its_settings_that_are_no_wire(self):
+        for name, rows in lifecycle.DEPTH_NOT_A_WIRE.items():
+            self.assertIn(name, lifecycle.DEPTH_INDEX, name)
+            for index, low, why in rows:
+                self.assertLess(index, len(effect_class(name).MACRO_LABELS),
+                                name)
+                self.assertTrue(0 < low <= 127 and why, (name, index))
+
     def test_a_row_names_a_macro_the_class_has(self):
         rows = dict(lifecycle.MIX_INDEX)
+        rows.update(lifecycle.DEPTH_INDEX)
         rows.update((n, row[0])
                     for n, row in lifecycle.UNRUN_WIRE_CONTROL.items())
         for name, index in rows.items():
@@ -500,6 +511,8 @@ class TestPlants(unittest.TestCase):
         ("latepatch", "plain", "E12-p1", "PF"),
         ("resetleak", "routed", "E1-reset@block", "PR"),
         ("stalemix", "routed", "E5-mix0", "PR"),
+        ("depthleak", "depthjump", "E5-mix0", "P1"),
+        ("depthpop", "depthjump", "E5-mix0", "P5"),
     )
 
     def test_each_plant_is_red_and_its_control_green(self):
@@ -509,6 +522,43 @@ class TestPlants(unittest.TestCase):
                                 .startswith("RED"), plant)
                 self.assertEqual(plant_cell(control, event, prop), "ok",
                                  control)
+
+    def test_a_depth_is_judged_as_a_depth_and_not_as_a_crossfade(self):
+        """A depth jumps: its P5 allows the step the jump itself makes. The
+        same class read as a crossfade is a click, on every cell that moves
+        the wire."""
+        for event in ("E5-mix0", "E9-src100", "E4-m0=0"):
+            with self.subTest(event=event):
+                self.assertEqual(plant_cell("depthjump", event, "P5"), "ok")
+        depth = lifecycle.PLANT_DEPTH_INDEX.pop("LifecycleDepth")
+        lifecycle.MIX_INDEX["LifecycleDepth"] = depth
+        try:
+            for event in ("E5-mix0", "E9-src100"):
+                with self.subTest(crossfade=event):
+                    self.assertTrue(plant_cell("depthjump", event, "P5")
+                                    .startswith("RED"))
+        finally:
+            del lifecycle.MIX_INDEX["LifecycleDepth"]
+            lifecycle.PLANT_DEPTH_INDEX["LifecycleDepth"] = depth
+
+    def test_the_depth_wire_is_held_at_zero_to_the_byte(self):
+        self.assertEqual(plant_cell("depthjump", "E5-mix0", "P1"), "ok")
+        self.assertTrue(plant_cell("depthleak", "E9-src256", "P1")
+                        .startswith("RED"))
+
+    def test_a_setting_that_is_not_a_wire_by_design_prints_na(self):
+        """A depth class names the settings where 0 is not a byte compare;
+        a cell that visits one prints `na` with the reason, and only that
+        cell."""
+        row = (1, 100, "the Gain macro is a planted detour")
+        lifecycle.DEPTH_NOT_A_WIRE["LifecycleDepth"] = (row,)
+        try:
+            e4 = plant_cell("depthleak", "E4-m1=127", "P1")
+            e5 = plant_cell("depthleak", "E5-mix0", "P1")
+        finally:
+            del lifecycle.DEPTH_NOT_A_WIRE["LifecycleDepth"]
+        self.assertTrue(e4.startswith("na(not a wire: the Gain macro"), e4)
+        self.assertTrue(e5.startswith("na(not a wire"), e5)
 
     def test_a_declared_exception_prints_decl(self):
         lifecycle.DECLARED[("LifecyclePlain", "E1-reset@block", "P1")] = \

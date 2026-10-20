@@ -23,9 +23,13 @@ from array import array
 try:
     import unittest
     TestCase = unittest.TestCase
+    expected_failure = unittest.expectedFailure
 except ImportError:                     # a native interpreter
     unittest = None
     TestCase = object
+
+    def expected_failure(test):
+        return test
 
 try:
     import os
@@ -535,6 +539,76 @@ def t6_change(cls, rate, f, tone_hz, index=TONE1, low=100.0, high=2000.0,
 
 
 # --------------------------------------------------------------------------
+# T7: real material, at three levels
+
+
+#: A note is judged where its clock stands this far over (tracking) or under
+#: (silence) the Sensitivity set, by the same estimate T3 uses: the note's
+#: own line, through the two clock filters. Within 10 dB of Sensitivity the
+#: octave is still rising to its level (G3 at 22.05 kHz reads -4.9 dB at
+#: +10.7), so tracking is judged from 12.
+T7_TRACK_MARGIN_DB = 12.0
+T7_SILENT_MARGIN_DB = 6.0
+#: Octave 1's f/2 against the note's f, within this many dB, where it plays
+#: (the measured spread is 0 to -1.3 dB, and -4.9 at G3 at 22.05 kHz).
+T7_TRACK_DB = 6.0
+#: Octave 1's level against the note's, at least this far under it, where
+#: the clock is under Sensitivity.
+T7_SILENT_DB = -40.0
+T7_SENSITIVITIES = (-70.0, -60.0, -50.0)
+
+
+def t7_read(cls, rate, level, sens, bright=False):
+    """The plucked phrase (`kit_common.phrase`) at `level` dBFS through
+    Octave 1 alone with Sensitivity `sens`: for each note, read over the last
+    half of its slot, [(note Hz, the clock's margin over Sensitivity in dB,
+    Octave 1's f/2 against the note's f in dB, Octave 1's level against the
+    input's in dB)]. The margin is the note's own line through the clock
+    filters, as in T3."""
+    probe = cls(kc.feed(array("h", bytes(4)), rate, 1).port,
+                sample_rate=rate)
+    fc = probe.macro(TRACKING)
+    probe.deinit()
+    values = kc.phrase(rate, 1, level, bright=bright)
+    y = render(cls, values, rate, 1,
+               macros=ONLY1 + ((SENS, midi_of_lin(sens, -90.0, -40.0)),))
+    note = kc.PHRASE_NOTE_MS * rate // 1000
+    out = []
+    for k in range(len(kc.PHRASE_NOTES)):
+        f = kc.PHRASE_NOTES[k]
+        # The string sounds at rate / (period + 0.5): the loop's average
+        # lengthens it by half a sample.
+        hz = rate / (rate // f + 0.5)
+        lo = k * note + note // 2
+        hi = k * note + note - rate // 50
+        heard = [float(v) for v in values[lo:hi]]
+        got = list(y[lo:hi])
+        line = level_db(heard, hz, rate)
+        clock = 20.0 * math.log10(10.0 ** (line / 20.0)
+                                  * clock_attenuation(hz, fc) / 32768.0)
+        rms_in = math.sqrt(sum(v * v for v in heard) / len(heard))
+        rms_out = math.sqrt(sum(v * v for v in got) / len(got))
+        out.append((f, clock - sens, level_db(got, hz / 2.0, rate) - line,
+                    20.0 * math.log10((rms_out + 1e-9) / rms_in)))
+    return out
+
+
+def t7_verdict(cells, notes):
+    """The first fault among `notes` (indexes into the phrase), or None: a
+    note whose clock is over Sensitivity by the margin must have its octave,
+    and one under it by the margin must be silent."""
+    for k in notes:
+        f, margin, octave, level = cells[k]
+        if margin >= T7_TRACK_MARGIN_DB and abs(octave) > T7_TRACK_DB:
+            return "%d Hz, clock %.1f dB over Sensitivity: f/2 %.1f dB" \
+                   " against the note" % (f, margin, octave)
+        if margin <= -T7_SILENT_MARGIN_DB and level > T7_SILENT_DB:
+            return "%d Hz, clock %.1f dB under Sensitivity: %.1f dB against" \
+                   " the input, not silent" % (f, margin, level)
+    return None
+
+
+# --------------------------------------------------------------------------
 # The planted faults
 
 
@@ -955,6 +1029,50 @@ class T6Tone(TestCase):
                   (t6_change(DoubleTone, 48000, f, 324.0)
                    for f in self.NOTES_HZ)]
         self.assertGreater(max(misses), 0.25, misses)
+
+
+#: The phrase's notes inside the tracking window of patch 0 that divide:
+#: A2, E2, D3 and G3.
+T7_HELD = (0, 1, 2, 3)
+#: B3 and E4, the top of the window.
+T7_TOP = (4, 5)
+
+
+class T7RealMaterial(TestCase):
+    """T1 to T5 were measured on sines and partial sums at one level. This
+    plays a plucked phrase (six strings, one at a time, noisy at the attack
+    and decaying through every level under their peak) at -24, -12 and
+    -3 dBFS, with Sensitivity at -70, -60 and -50, and holds each note whose
+    clock stands over Sensitivity by 12 dB to its octave and each one under
+    it by 6 dB to silence."""
+
+    def test_the_lower_notes_divide_and_fall_silent_at_every_level(self):
+        for rate in RATES:
+            for level in kc.LEVELS_DBFS:
+                for sens in T7_SENSITIVITIES:
+                    cells = t7_read(Octaver, rate, level, sens)
+                    self.assertIsNone(t7_verdict(cells, T7_HELD),
+                                      (rate, level, sens))
+
+    def test_a_wire_for_the_octave_is_red_on_real_material(self):
+        cells = t7_read(WireOctave, 48000, -12, -70.0)
+        self.assertIsNotNone(t7_verdict(cells, T7_HELD))
+
+    def test_a_one_point_comparator_is_red_on_real_material(self):
+        cells = t7_read(OneBinCurve, 48000, -24, -50.0)
+        self.assertIsNotNone(t7_verdict(cells, T7_HELD))
+
+    @expected_failure
+    def test_the_top_of_the_window_divides_on_real_material(self):
+        """Known fault (audiocomponents#190): on the phrase's B3 and E4
+        Octave 1 plays the dry note where it should play the octave, at
+        every level and wherever Sensitivity lets it play at all, and with
+        the clock 15 dB under Sensitivity at E4 the note itself still comes
+        through. The card claims every note from E2 to A4 at patch 0."""
+        for level in kc.LEVELS_DBFS:
+            for sens in T7_SENSITIVITIES:
+                cells = t7_read(Octaver, 48000, level, sens)
+                self.assertIsNone(t7_verdict(cells, T7_TOP), (level, sens))
 
 
 class TheAdoption(TestCase):
