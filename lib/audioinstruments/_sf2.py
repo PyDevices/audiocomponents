@@ -38,6 +38,10 @@ typing at runtime.
 import array
 import struct
 
+#: Keys (bank, program, key) whose regions a bank keeps built: building one
+#: is most of what a note costs on a board.
+REGION_CACHE = 512
+
 # Generator operators (specification section 8.1.2).
 GEN_START_OFFSET = 0
 GEN_END_OFFSET = 1
@@ -257,6 +261,7 @@ class SoundFont(object):
         self._ibag = None
         self._igen = None
         self._index = {}         # (bank, program) -> [candidate, ...]
+        self._built = {}         # (bank, program, key) -> [[candidate, Region or None], ...]
         try:
             self._parse()
             if load_samples:
@@ -498,15 +503,27 @@ class SoundFont(object):
         """The regions that sound for `key` at `velocity` on a preset.
 
         Raises KeyError for a preset the bank does not have. An empty list
-        means the preset has nothing for that key and velocity.
+        means the preset has nothing for that key and velocity. The regions
+        are kept for the next note on the same key (up to `REGION_CACHE`
+        keys), so they are shared: read them, don't change them.
         """
-        candidates = self._index.get((bank, program))
-        if candidates is None:
-            candidates = self._index_preset((bank, program))
+        built = self._built.get((bank, program, key))
+        if built is None:
+            candidates = self._index.get((bank, program))
+            if candidates is None:
+                candidates = self._index_preset((bank, program))
+            if len(self._built) >= REGION_CACHE:
+                self._built.clear()
+            built = [[c, None] for c in candidates if c[0] <= key <= c[1]]
+            self._built[(bank, program, key)] = built
         out = []
-        for k_lo, k_hi, v_lo, v_hi, ig, pg in candidates:
-            if k_lo <= key <= k_hi and v_lo <= velocity <= v_hi:
-                out.append(self._region(k_lo, k_hi, v_lo, v_hi, ig, pg, key))
+        for entry in built:
+            c = entry[0]
+            if c[2] <= velocity <= c[3]:
+                region = entry[1]
+                if region is None:
+                    region = entry[1] = self._region(c[0], c[1], c[2], c[3], c[4], c[5], key)
+                out.append(region)
         return out
 
     def read_sample(self, sample, start=None, end=None):
@@ -523,6 +540,34 @@ class SoundFont(object):
             return _pcm(self._smpl[start * 2:end * 2])
         return _pcm(self._read(self._smpl_offset + start * 2,
                                (end - start) * 2))
+
+    def read_sample_into(self, sample, buf, start=None, end=None):
+        """Read frames `[start, end)` of a sample (the whole sample when no
+        bounds are given) into `buf`, a writable buffer of at least that
+        many 16-bit frames, with no copy on the way. The bytes go in as
+        the file holds them, little-endian."""
+        if start is None:
+            start = sample.start
+        if end is None:
+            end = sample.end
+        if start < 0 or end > self._smpl_frames or end < start:
+            raise SoundFontError("sample %r out of the smpl chunk" % sample.name)
+        size = (end - start) * 2
+        out = memoryview(buf)
+        if getattr(out, "itemsize", 1) != 1 and hasattr(out, "cast"):
+            out = out.cast("B")
+        if len(out) < size:
+            raise ValueError("the buffer holds fewer frames than the sample")
+        if self._smpl is not None:
+            out[:size] = self._smpl[start * 2:end * 2]
+            return
+        self._file.seek(self._smpl_offset + start * 2)
+        got = 0
+        while got < size:
+            n = self._file.readinto(out[got:size])
+            if not n:
+                raise SoundFontError("truncated at %d" % (self._smpl_offset + start * 2 + got))
+            got += n
 
     def load_samples(self):
         """Read the whole smpl chunk into memory, for `read_sample` to slice."""

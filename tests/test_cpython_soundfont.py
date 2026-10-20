@@ -524,11 +524,11 @@ class SharedVoicesTest(unittest.TestCase):
 
 
 class BoundedCacheTest(unittest.TestCase):
-    """The samples a bank keeps stay under its `cache_bytes`, the least
-    recently played let go first and read again when a note wants them,
-    and a voice playing a sample let go plays on. The tiny bank's samples:
-    low_c4 400 bytes (piano below 66), high_c5 300 (piano above), snare
-    200 (kit 38)."""
+    """The samples a bank keeps live in an arena of at most `cache_bytes`,
+    taken once: the oldest read are let go first and read again when a note
+    wants them, and a sample a voice is playing, or fading out, stays put.
+    The tiny bank's samples: low_c4 400 bytes (piano below 66), high_c5 300
+    (piano above), snare 200 (kit 38)."""
 
     @classmethod
     def setUpClass(cls):
@@ -544,8 +544,11 @@ class BoundedCacheTest(unittest.TestCase):
         import audioinstruments._sf2 as _sf2
         self.font = _sf2.SoundFont(self.path)
         self.made = []
+        self.tail_ms = soundfont.TAIL_MS
+        soundfont.TAIL_MS = 0  # a stopped note's fade lets go at once, unless a test says otherwise
 
     def tearDown(self):
+        soundfont.TAIL_MS = self.tail_ms
         for inst in self.made:
             inst.deinit()
         self.font.close()
@@ -565,50 +568,111 @@ class BoundedCacheTest(unittest.TestCase):
         bank = soundfont.open_bank(self.font)
         self.assertEqual(bank.cache_bytes, soundfont.CACHE_BYTES)
 
+    def test_the_arena_is_taken_once_and_no_bigger_than_the_file(self):
+        bank = soundfont.open_bank(self.font, cache_bytes=10 ** 6)
+        self.assertEqual(bank.arena_bytes, self.font._smpl_frames * 2)
+        slabs = bank._slabs
+        soundfont.open_bank(self.font, cache_bytes=10 ** 6)  # the same bound again
+        self.assertIs(bank._slabs, slabs)
+
+    def test_a_sample_is_read_into_the_arena(self):
+        bank, piano, _ = self.bank(450)
+        piano.note_on(60, 100)
+        region = self.font.regions(0, 0, 60)[0]
+        pcm = bank.buffer(region)[0]
+        self.assertIs(pcm.obj, bank._slabs[0])  # a view of the arena, not a copy
+        self.assertEqual(list(pcm), list(self.font.read_sample(region.sample,
+                                                               region.start, region.end)))
+
     def test_the_cache_stays_under_its_bound(self):
         bank, piano, _ = self.bank(450)
         piano.note_on(60, 100)
         self.assertEqual((bank.cached, bank.reads, bank.evicted), (400, 1, 0))
+        piano.reset()                # the voices stop, so their samples can go
         piano.note_on(80, 100)
         self.assertEqual(self.names(bank), ["high_c5"])
         self.assertEqual((bank.cached, bank.reads, bank.evicted), (300, 2, 1))
+        piano.reset()
         piano.note_on(61, 100)       # low_c4 again: read from the file again
         self.assertEqual(self.names(bank), ["low_c4"])
         self.assertEqual((bank.cached, bank.reads, bank.evicted), (400, 3, 2))
+        self.assertEqual(bank.outside, 0)
 
-    def test_the_least_recently_played_goes_first(self):
+    def test_the_oldest_read_goes_first(self):
         bank, piano, kit = self.bank(700)
         piano.note_on(60, 100)       # low_c4
         piano.note_on(80, 100)       # high_c5
-        piano.note_on(62, 100)       # low_c4 played again: high_c5 is older
+        piano.reset()
+        piano.note_on(62, 100)       # low_c4 played again, from the arena
         self.assertEqual(bank.reads, 2)
-        kit.note_on(38, 100)         # snare: one has to go
-        self.assertEqual(self.names(bank), ["low_c4", "snare"])
-        self.assertEqual(bank.cached, 600)
+        piano.reset()
+        kit.note_on(38, 100)         # snare: low_c4 was read first, so it goes
+        self.assertEqual(self.names(bank), ["high_c5", "snare"])
+        self.assertEqual(bank.cached, 500)
 
-    def test_a_voice_plays_on_after_its_sample_goes(self):
+    def test_a_sounding_voice_keeps_its_sample(self):
         bank, piano, _ = self.bank(450)
         piano.note_on(80, 100)       # high_c5, which loops until release
-        piano.note_on(60, 100)       # low_c4 takes the cache
-        self.assertEqual(self.names(bank), ["low_c4"])
+        piano.note_on(60, 100)       # low_c4 has no room beside it
+        self.assertEqual(self.names(bank), ["high_c5"])
+        self.assertEqual(bank.outside, 1)
         player = piano._player
         high = player.held[(0, 80)][0]
+        low = player.held[(0, 60)][0]
         self.assertTrue(piano.output.voice[high].playing)
+        self.assertTrue(piano.output.voice[low].playing)  # played from a buffer of its own
         self.assertGreater(sf2_play.peak(sf2_play.render(piano, 0.05)),
                            0.0005)
         self.assertTrue(piano.output.voice[high].playing)
 
-    def test_lowering_the_bound_lets_go_at_once(self):
+    def test_a_fading_note_keeps_its_sample_for_tail_ms(self):
+        bank, piano, _ = self.bank(450)
+        soundfont.TAIL_MS = 60000
+        piano.note_on(80, 100)
+        piano.reset()                # stopped: its 5 ms fade still reads high_c5
+        piano.note_on(60, 100)
+        self.assertEqual(self.names(bank), ["high_c5"])
+        self.assertEqual(bank.outside, 1)
+        soundfont.TAIL_MS = 0
+        piano.reset()
+        piano.note_on(61, 100)
+        self.assertEqual(self.names(bank), ["low_c4"])
+
+    def test_no_memory_for_a_sample_drops_it_not_the_music(self):
+        bank, piano, kit = self.bank(450)
+        piano.note_on(80, 100)       # high_c5 sounding: low_c4 has to go outside
+
+        def full(size):
+            raise MemoryError("no room")
+
+        soundfont.bytearray = full   # the heap has nothing left either
+        try:
+            piano.note_on(60, 100)
+        finally:
+            del soundfont.bytearray
+        self.assertEqual((bank.outside, bank.dropped), (1, 1))
+        self.assertNotIn((0, 60), [k for k, v in piano._player.held.items() if v])
+        kit.note_on(38, 100)         # and the next note still plays
+        self.assertGreater(kit.sounding(), 0)
+
+    def test_a_new_bound_takes_a_new_arena(self):
         bank, piano, kit = self.bank(10000)
         piano.note_on(60, 100)
         piano.note_on(80, 100)
         kit.note_on(38, 100)
         self.assertEqual(bank.cached, 900)
-        bank.cache_bytes = 500       # the two played last fit
-        self.assertEqual(self.names(bank), ["high_c5", "snare"])
-        self.assertEqual(bank.cached, 500)
+        old = bank._slabs
+        bank.cache_bytes = 500
+        self.assertEqual((bank.samples, bank.cached, bank.arena_bytes), ({}, 0, 500))
+        self.assertIsNot(bank._slabs, old)
+        piano.reset()
+        piano.note_on(80, 100)
+        self.assertEqual(self.names(bank), ["high_c5"])
         soundfont.open_bank(bank, cache_bytes=0)
-        self.assertEqual((bank.samples, bank.cached), ({}, 0))
+        self.assertEqual((bank.samples, bank.cached, bank.arena_bytes), ({}, 0, 0))
+        kit.note_on(38, 100)         # no arena: the note still plays, from its own buffer
+        self.assertEqual(bank.outside, 1)
+        self.assertGreater(kit.sounding(), 0)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ engine wants them, the loop modes, the exclusive class, the stereo link, and
 reading frames from disk or from memory.
 """
 
+import array
 import os
 import pathlib
 import sys
@@ -187,6 +188,26 @@ class SoundFontTest(unittest.TestCase):
                              [6000, 6001, 6002])
         with self.assertRaises(sf2.SoundFontError):
             self.bank.read_sample(r.sample, 0, 10 ** 9)
+
+    def test_read_sample_into_a_buffer(self):
+        r = self.one(0, 0, 60)
+        buf = bytearray(400 + 4)
+        self.bank.read_sample_into(r.sample, memoryview(buf)[2:402])
+        frames = memoryview(buf).cast("h")
+        self.assertEqual(frames[0], 0)              # the bytes before are untouched
+        self.assertEqual(list(frames[1:201]), list(self.bank.read_sample(r.sample)))
+        self.assertEqual(frames[201], 0)            # and the bytes after
+        part = array.array("h", [0] * 187)
+        self.bank.read_sample_into(r.sample, part, r.start, r.end)
+        self.assertEqual(list(part), list(range(5, 192)))
+        with sf2.SoundFont(self.path, load_samples=True) as loaded:
+            again = bytearray(400)
+            loaded.read_sample_into(r.sample, again)
+            self.assertEqual(again, buf[2:402])
+        with self.assertRaises(ValueError):
+            self.bank.read_sample_into(r.sample, bytearray(10))
+        with self.assertRaises(sf2.SoundFontError):
+            self.bank.read_sample_into(r.sample, bytearray(400), 0, 10 ** 9)
 
     def test_lazy_index_matches_eager(self):
         with sf2.SoundFont(self.path, index=False) as lazy:
