@@ -6,7 +6,7 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
-## Unreleased
+## v0.4.1.dev3 (2026-10-20)
 
 ### Added
 
@@ -37,6 +37,12 @@ there, and are recorded in its changelog.
   every held note on that channel releases with its own release envelope.
   Keys still pressed are untouched, and a key struck again while its old
   note is held starts a new note.
+
+- Lifecycle matrix: run the CircuitPython end-of-source cells a patched build can finish (#193)
+- Effect kit: a depth model for six wires, a level pass on real material, and a finer pitch trait (#194)
+- A MIDI dispatcher that plays instruments from bytes, messages or a file (#189)
+- SoundFont sustain pedal (CC 64) and more effect kit checks (#188)
+- Every drum kit answers pad keys 36 to 51 (#187)
 
 ## v0.4.1.dev2 (2026-10-20)
 
