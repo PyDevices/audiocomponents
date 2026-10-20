@@ -153,7 +153,8 @@ class Flanger(_component.Component):
     line held and returns to patch 0.
     On a CircuitPython board, stop the flanger from the host if your source
     can run dry: CircuitPython's own flanger waits on a source that comes
-    back empty.
+    back empty. Firmware built with micropython-pydevices' build_mp.py
+    carries the fix and returns.
     """
 
     NAME = 'Flanger'

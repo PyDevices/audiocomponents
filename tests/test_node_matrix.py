@@ -31,8 +31,9 @@ sys.path.insert(0, os.path.join(ROOT, "tests", "support"))
 import lifecycle                                          # noqa: E402
 import node_matrix                                        # noqa: E402
 from tests.test_lifecycle_matrix import (FULL, check_known,  # noqa: E402
-                                   digest, native_binaries, parse,
-                                   red_cells, skipped)
+                                   digest, native_binaries, native_extra,
+                                   parse, red_cells, skipped,
+                                   split_lifted_e8)
 from tests.test_lifecycle_matrix import changed_files  # noqa: E402
 
 VENDOR = "PyDevices"
@@ -74,6 +75,14 @@ KNOWN_P6 = {
         32, "4f7dcebd", None, None,
         "a host reset of upstream's Mixer re-primes its voices and drops the "
         "source frames they held (audiodsp#229)"),
+}
+
+#: The E8 cells a CircuitPython that returns from a looped empty source
+#: runs, in the shape of test_lifecycle_matrix.KNOWN_P6_E8: upstream's
+#: PitchShift splices other bytes (NodePitchShift's KNOWN_P6 reason), with
+#: the same verdicts. Counted at audiocomponents 52cc6e0.
+KNOWN_P6_E8 = {
+    "NodePitchShift": (14, "f36d3780", None, None),
 }
 
 
@@ -181,12 +190,12 @@ def names():
     return [n for n in picked if n in node_matrix.NODES]
 
 
-def start_native(binary, picked, scratch):
+def start_native(binary, picked, scratch, extra=()):
     env = dict(os.environ, MICROPYPATH="lib:tests/support",
                GCOV_PREFIX=scratch, PYTHONDONTWRITEBYTECODE="1")
     return subprocess.Popen(
         [binary, "-X", "heapsize=256M", "tests/support/lifecycle.py"]
-        + list(picked) + ([] if FULL else ["--quick"]),
+        + list(picked) + ([] if FULL else ["--quick"]) + list(extra),
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         cwd=ROOT, env=env)
 
@@ -199,10 +208,13 @@ class TestNodeMatrix(unittest.TestCase):
         cls.natives = native_binaries()
         cls.scratch = tempfile.TemporaryDirectory()
         cls.procs = {}
+        cls.lifted = {}
         for family, binary in cls.natives.items():
             if binary is not None and cls.names:
+                extra = native_extra(family, binary, cls.scratch.name)
+                cls.lifted[family] = bool(extra)
                 cls.procs[family] = start_native(binary, cls.names,
-                                                 cls.scratch.name)
+                                                 cls.scratch.name, extra)
         cls.cpython = {}
         for name in cls.names:
             lines = []
@@ -243,6 +255,9 @@ class TestNodeMatrix(unittest.TestCase):
             keys = [key for key in sorted(set(ours) | set(theirs))
                     if ours.get(key) != theirs.get(key)
                     and not skipped(theirs.get(key))]
+            keys = split_lifted_e8(name, keys, KNOWN_P6_E8,
+                                   self.lifted.get(family), problems,
+                                   family, ours, theirs)
             entry = KNOWN_P6.get(name)
             if entry is not None:
                 count, dig = (entry[2], entry[3]) if FULL else entry[:2]

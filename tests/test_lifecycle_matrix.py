@@ -96,6 +96,70 @@ KNOWN_P6 = {
 }
 KNOWN_P6.update(lifecycle_known.KNOWN_P6)
 
+#: A CircuitPython that returns from a pull on a looped source that ends
+#: empty (built with micropython-pydevices' patches/circuitpython/0008) runs
+#: the E8 cells `lifecycle.EMPTY_SOURCE_SKIPS` keeps from stock
+#: CircuitPython. Where its own pitch shifter renders other bytes than ours
+#: (KNOWN_P6's reason), those cells print other render hashes, with the same
+#: verdicts: class -> (E8 cells that differ in the quick matrix, their
+#: digest, the same for the full matrix). Flanger, the one class here whose
+#: E8 is lifted, prints CPython's lines there, so it has no row.
+KNOWN_P6_E8 = {}
+
+#: One pull of each of CircuitPython's own Echo, PitchShift,
+#: GranularPitchShift and Flanger on an empty looping source. Stock
+#: CircuitPython never returns from it.
+EMPTY_SOURCE_PROBE = """
+import audiocore, audiodelays
+from array import array
+kw = dict(buffer_size=512, sample_rate=8000, channel_count=1)
+for node in (audiodelays.Echo(max_delay_ms=50, **kw),
+             audiodelays.PitchShift(**kw),
+             audiodelays.GranularPitchShift(**kw),
+             audiodelays.Flanger(**kw)):
+    node.play(audiocore.RawSample(array("h"), sample_rate=8000), loop=True)
+    audiocore.get_buffer(node)
+print("returned")
+"""
+
+
+def empty_source_returns(binary, scratch, timeout=20):
+    """True when `binary` is a CircuitPython whose own delay nodes return
+    from a pull on a looped source that ends empty, so the helper can be
+    told to run the cells it otherwise skips there."""
+    env = dict(os.environ, GCOV_PREFIX=scratch)
+    try:
+        done = subprocess.run([binary, "-c", EMPTY_SOURCE_PROBE],
+                              capture_output=True, text=True,
+                              timeout=timeout, env=env)
+    except subprocess.TimeoutExpired:
+        return False
+    return done.returncode == 0 and done.stdout.split()[-1:] == ["returned"]
+
+
+def native_extra(family, binary, scratch):
+    """The helper's arguments for this interpreter beyond the classes."""
+    if family == "circuitpython" and empty_source_returns(binary, scratch):
+        return ["--empty-source-returns"]
+    return []
+
+
+def split_lifted_e8(name, keys, table, lifted, problems, family, ours,
+                    theirs):
+    """`keys` without the E8 cells a lifted skip let run, which are checked
+    here against `table` (KNOWN_P6_E8's shape) instead."""
+    if not lifted or name not in table:
+        return keys
+    e8 = [key for key in keys if key[1].startswith("E8-")]
+    entry = table[name]
+    count, dig = (entry[2], entry[3]) if FULL else entry[:2]
+    if count is not None and (len(e8), digest(e8)) != (count, dig):
+        for key in e8:
+            problems.append("%s: %s cpython %s, %s %s" % (
+                family, "|".join(map(str, key)), ours.get(key), family,
+                theirs.get(key)))
+    return [key for key in keys if not key[1].startswith("E8-")]
+
 #: LIFECYCLE_FULL=1 runs the full matrix (every event at every patch);
 #: otherwise the quick one (lifecycle.run_class(quick=True)).
 FULL = bool(os.environ.get("LIFECYCLE_FULL"))
@@ -298,12 +362,13 @@ def run_native(binary, names, extra=()):
     return lines
 
 
-def start_native(binary, names, scratch):
+def start_native(binary, names, scratch, extra=()):
     env = dict(os.environ, MICROPYPATH="lib:tests/support",
                GCOV_PREFIX=scratch, PYTHONDONTWRITEBYTECODE="1")
     return subprocess.Popen(
         [binary, "-X", "heapsize=256M", "tests/support/lifecycle.py"]
-        + list(names) + ([] if FULL else ["--quick"]), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        + list(names) + ([] if FULL else ["--quick"]) + list(extra),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, cwd=ROOT, env=env)
 
 
@@ -359,10 +424,13 @@ class TestMatrix(unittest.TestCase):
         cls.natives = native_binaries()
         cls.scratch = tempfile.TemporaryDirectory()
         cls.procs = {}
+        cls.lifted = {}
         for family, binary in cls.natives.items():
             if binary is not None and cls.names:
+                extra = native_extra(family, binary, cls.scratch.name)
+                cls.lifted[family] = bool(extra)
                 cls.procs[family] = start_native(binary, cls.names,
-                                                 cls.scratch.name)
+                                                 cls.scratch.name, extra)
         cls.cpython = run_cpython_all(cls.names)
         cls.native_lines = {}
         for family, proc in cls.procs.items():
@@ -401,6 +469,9 @@ class TestMatrix(unittest.TestCase):
                     if ours.get(key) != theirs.get(key)
                     and not skipped(theirs.get(key))
                     and not skipped(ours.get(key))]
+            keys = split_lifted_e8(name, keys, KNOWN_P6_E8,
+                                   self.lifted.get(family), problems,
+                                   family, ours, theirs)
             entry = KNOWN_P6.get(name)
             if entry is not None:
                 count, dig = (entry[2], entry[3]) if FULL else entry[:2]
@@ -660,6 +731,35 @@ class TestPlants(unittest.TestCase):
         # Three declared properties in two cells: the SUMMARY counts cells.
         self.assertEqual(sum(l.count(":decl") for l in lines), 3)
         self.assertTrue(lines[-1].endswith("|declared 2"), lines[-1])
+
+    def test_the_empty_source_rows_are_skip_rows(self):
+        # `--empty-source-returns` lifts these and nothing else, so each
+        # must be a SKIP row, and only for CircuitPython's E8.
+        for row in lifecycle.EMPTY_SOURCE_SKIPS:
+            self.assertIn(row, lifecycle.SKIP)
+            self.assertEqual(row[1:], ("E8-", "circuitpython"))
+
+    @unittest.skipIf(os.name == "nt", "the stand-ins are shell scripts")
+    def test_the_empty_source_probe_reads_a_hang_as_no(self):
+        # Stand-in interpreters: one prints what a returning build prints,
+        # one spins as stock CircuitPython does, one fails.
+        with tempfile.TemporaryDirectory() as scratch:
+            def fake(name, body):
+                path = os.path.join(scratch, name)
+                with open(path, "w") as f:
+                    f.write("#!/bin/sh\n" + body + "\n")
+                os.chmod(path, 0o755)
+                return path
+            returns = fake("returns", "echo returned")
+            spins = fake("spins", "exec sleep 30")
+            fails = fake("fails", "echo returned; exit 1")
+            self.assertTrue(empty_source_returns(returns, scratch, 2))
+            self.assertFalse(empty_source_returns(spins, scratch, 2))
+            self.assertFalse(empty_source_returns(fails, scratch, 2))
+            self.assertEqual(native_extra("circuitpython", returns, scratch),
+                             ["--empty-source-returns"])
+            self.assertEqual(native_extra("micropython", returns, scratch),
+                             [])
 
     def test_a_skipped_cell_prints_na_and_never_runs(self):
         class Raises(lifecycle.Plain):

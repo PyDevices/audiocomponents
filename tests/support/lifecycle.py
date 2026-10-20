@@ -805,6 +805,23 @@ SKIP = {
         " CPython and MicroPython)",
 }
 
+#: The SKIP rows above that are there only because CircuitPython's own Echo,
+#: PitchShift, GranularPitchShift and Flanger never return from a pull on a
+#: looped source that ends empty. A CircuitPython built with
+#: micropython-pydevices' patches/circuitpython/0008 returns there, and the
+#: host lifts these rows (`--empty-source-returns`) once it has seen the
+#: binary return from such a pull; stock CircuitPython keeps them.
+#: ShimmerHall keeps its row on every CircuitPython: its E8 cells return
+#: there and pass P1 to P5, but once they run, 444 of the quick matrix's
+#: later ShimmerHall cells render other bytes than they do with E8 skipped.
+EMPTY_SOURCE_SKIPS = (
+    ("NodeEcho", "E8-", "circuitpython"),
+    ("NodePitchShift", "E8-", "circuitpython"),
+    ("NodeGranularPitchShift", "E8-", "circuitpython"),
+    ("NodeFlanger", "E8-", "circuitpython"),
+    ("Flanger", "E8-", "circuitpython"),
+)
+
 #: PR (a reset or a return from Mix 0 renders as a fresh instance) is
 #: excused only here, never in DECLARED: a class NAME -> the free-running
 #: phase that keeps it from matching a fresh instance, named (an LFO, a
@@ -2431,6 +2448,9 @@ def _cli(argv):
             only = arg.split("=", 1)[1].split(",")
         elif arg == "--quick":
             quick = True
+        elif arg == "--empty-source-returns":
+            for row in EMPTY_SOURCE_SKIPS:
+                SKIP.pop(row, None)
         else:
             names.append(arg)
     for name in names:
