@@ -6,7 +6,7 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
-## Unreleased
+## v0.4.1.dev2 (2026-10-20)
 
 ### Added
 
@@ -116,6 +116,23 @@ there, and are recorded in its changelog.
 - The two placeholder effect classes, `ExampleStock` and `ExampleAudiodsp`,
   which stood in for the two portability tiers before shipped classes
   covered both. They were never in `ALL` and `create()` never served them.
+
+- Instruments say how many notes they sound at once, and a SoundFont pool's count can change while it plays
+- SoundFont voices send their writes together, and keep the arena out of the collected heap
+- SoundFont samples live in an arena taken once, read straight into it
+- Keep audioeffects.rebuilt.<module> importable
+- Move the delay, reverb, pitch and rack classes out of rebuilt/
+- Remove the ExampleStock and ExampleAudiodsp placeholder classes
+- Distortion, Overdrive, Saturation: round to single precision without audiodsp_util
+- Roadmap: drop what shipped in 0.4.0, add the MIDI-to-instrument dispatcher
+- API page: what to expect after a reset, a rejoin or a control move
+- SoundFont banks keep a bounded amount of samples
+- Kit checks: audiodsp/ citation prefix, Volume as a level word; docs: unmapped drum notes are ignored
+- SoundFont instruments: shared Voices, with a reserve and a gain (#178)
+- SoundFont instruments: a Pan macro, driven by CC 10 (#177)
+- SoundFont instruments: soundfont and soundfont_drums (#176)
+- Roadmap: a catalog of names, as JSON, MIDNAM and .ins, with each release (#175)
+- Instruments built on two threads at once keep their own synthesizers (#174)
 
 ## v0.4.1.dev1 (2026-10-15)
 
