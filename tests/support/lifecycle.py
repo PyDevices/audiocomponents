@@ -64,11 +64,51 @@ STEP_DEN = 2
 #: Frames of silence P3 waits for when a class reports no tail.
 NO_TAIL_WAIT = 10 * 48000
 
-#: The class's wet/dry control, by macro label. A class not named here uses
-#: the macro labelled "Mix".
+#: The class's wet/dry control, by macro index. A class not named here uses
+#: the macro labelled "Mix". A class whose wire is a level at 0 and has no
+#: "Mix" label needs a row here, or its E5 and E9 cells never run; a class
+#: that has one and is not given a row is listed in `UNRUN_WIRE_CONTROL`
+#: until it can be, and a class with none in `NO_WIRE_CONTROL`.
 MIX_INDEX = {
     "SlapbackDelay": 1,        # "Level": the slap's level; 0 is the dry
     "Octaver": 1,              # "Octave 1": 0 is the wire at patch 0
+}
+
+#: Classes with a macro that is a wire at 0 and no "Mix" label, whose E5 and
+#: E9 cells do not run yet: name -> (macro index, why). A row in `MIX_INDEX`
+#: today turns hundreds of cells red, because the matrix takes Mix to 0 and
+#: back as a crossfade and holds every other event to a control built with
+#: Mix at 0, and a depth or a range is not one: moving it restarts an
+#: oscillator, a detector or an envelope. Red cells in the quick matrix with
+#: the macro as `MIX_INDEX` (AutoPan 224, Tremolo 325, Notch 323, DeEsser
+#: 438, NoiseGate 46, Expander 68). Each wants its own scoped declared rows, or a model of its own,
+#: before it moves to `MIX_INDEX` (audiocomponents#183).
+UNRUN_WIRE_CONTROL = {
+    "AutoPan": (1, "Depth: 0 is a wire"),
+    "Tremolo": (2, "Depth: 0 is a wire"),
+    "Notch": (3, "Depth: 0 is a wire"),
+    "DeEsser": (1, "Range: 0 is a wire, broadband and not listening"),
+    "NoiseGate": (4, "Range: 0 dB, the knob's bottom, is a wire"),
+    "Expander": (2, "Depth: 0 dB, the knob's bottom, is a wire"),
+}
+
+#: The classes with no wet/dry control, and why, so that a new class has to
+#: be sorted into one table or the other (`test_every_class_has_its_wire`).
+#: A class here has no macro that renders the source byte for byte at 0 and
+#: not at its defaults (checked by playing each macro at its stops).
+NO_WIRE_CONTROL = {
+    "GraphicEQ": "a flat curve is the wire, with every band at its detent",
+    "Limiter": "Gain is make-up gain and Ceiling a threshold: the class is a"
+    " wire at its defaults and at Gain 0, neither a level that mixes",
+    "ParametricEQ": "a flat curve is the wire, with every gain at its"
+    " detent",
+    "Rack": "no macros of its own",
+    "StereoWidener": "Width 0 is a wire in Haas character and mono in"
+    " Mid/Side",
+    "TransientShaper": "Attack and Sustain at their detent are the wire,"
+    " the middle of a bipolar knob and not a level at 0",
+    "Vibrato": "Depth 0 and Level 0 leave the delay line in the path, and"
+    " neither renders the source byte for byte",
 }
 
 #: The interpreters a DECLARED or SKIP row can name.
@@ -1318,6 +1358,11 @@ def material_for(which, rate, channels):
             _MATERIAL[key] = click_noise(8192, channels)
         elif which == "tri":
             _MATERIAL[key] = triangle(8192, channels, rate)
+        elif which == "loud":
+            # Loud from the first frame, and never sparse: a level that
+            # lands late in the Mixer has something to scale in every
+            # block. 2400 frames is whole periods at 100 Hz and 48 kHz.
+            _MATERIAL[key] = triangle(2400, channels, rate, amp=24000)
         else:
             raise ValueError(which)
     return _MATERIAL[key]
@@ -1468,7 +1513,10 @@ def main_render(cls, ev, rate, channels, patch, options, controls):
     """P2, P3, P4 from one instance, against a shared control."""
     fsize = 2 * channels
     res = {}
-    values = material_for("loop", rate, channels)
+    # E12 moves a control before the first pull and judges the first block,
+    # so its source must already be loud there.
+    values = material_for("loud" if ev.fresh is not None else "loop", rate,
+                          channels)
     feed = Feed(values, rate, channels, ev.kind, loop=True)
     e = _build(cls, feed, rate, patch, options, False)
     ctx = Ctx(e, patch)

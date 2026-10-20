@@ -117,6 +117,19 @@ class WrapKitQuiet(WrapKit):
     INPUT_CEILING_DBFS = -7
 
 
+class LongTail(KitPlain):
+    """Ceiling: the control with a declared tail of 5 s, so its window is
+    5 s and not the default 2."""
+    NAME = "LongTail"
+    TAIL_SAMPLES = 5 * 48000
+
+
+class EndlessTail(KitPlain):
+    """Ceiling: a tail past any window, held to the longest one."""
+    NAME = "EndlessTail"
+    TAIL_SAMPLES = 100 * 48000
+
+
 class ClipKit(KitPlain):
     """Ceiling: twice the input, clamped, so a loud input sits on the
     rail."""
@@ -198,6 +211,31 @@ class ComboWrap(CondKit):
 
     def _bad(self):
         return self._at(0, 127) and self._at(1, 127) and self._at(2, 0)
+
+
+class PatchComboRail(CondKit):
+    """Ceiling: sits on the rail only on patch 1, with Mix and Level at 127
+    and Tone at 0 together: the combination ComboWrap is bad on, but at a
+    patch the default-patch cells never reach. A rail, because the combined
+    cells on a patch run on the squares, which a wrap does not show on."""
+    NAME = "PatchComboRail"
+    _born = None
+
+    def program_change(self, index, *args, **kw):
+        # Any macro move forgets the patch index, so the plant keeps the
+        # patch it was last given.
+        self._born = index
+        return CondKit.program_change(self, index, *args, **kw)
+
+    def _bad(self):
+        return (self._born == 1 and self._at(0, 127)
+                and self._at(1, 127) and self._at(2, 0))
+
+    def _apply_macro(self, index, position):
+        if self._bad():
+            self._shaper.set(curve=self._table(_clip2), post_gain=1.0)
+        else:
+            CondKit._apply_macro(self, index, position)
 
 
 class AllWrap(CondKit):

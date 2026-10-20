@@ -431,6 +431,61 @@ def plant_cell(plant, event, prop, patch=None, rate=48000, channels=2):
                   "d" if patch is None else str(patch))][prop]
 
 
+class TestWireControl(unittest.TestCase):
+    """E5 and E9 move the wet/dry control, and need to know which macro it
+    is. Every class either has one (a macro labelled "Mix", or a row in
+    `lifecycle.MIX_INDEX`), or is listed in `lifecycle.NO_WIRE_CONTROL` with
+    the reason it has none, or in `lifecycle.UNRUN_WIRE_CONTROL` with the
+    reason its wire is not judged yet: a class whose wire is a level at 0
+    under another name cannot go unnoticed."""
+
+    def test_every_class_has_its_wire_or_says_why_not(self):
+        tables = (lifecycle.NO_WIRE_CONTROL, lifecycle.UNRUN_WIRE_CONTROL)
+        loose = []
+        for name in GATED:
+            has = lifecycle.mix_index(effect_class(name)) is not None
+            listed = [t for t in tables if name in t]
+            if not has and not listed:
+                loose.append("%s has no wet/dry control and no reason"
+                             % name)
+            if has and listed:
+                loose.append("%s has a wet/dry control and a reason it has"
+                             " none" % name)
+            if len(listed) > 1:
+                loose.append("%s is in both tables" % name)
+        self.assertEqual(loose, [], "\n".join(loose))
+
+    def test_the_tables_name_real_classes(self):
+        for table in (lifecycle.MIX_INDEX, lifecycle.NO_WIRE_CONTROL,
+                      lifecycle.UNRUN_WIRE_CONTROL, lifecycle.MIX_KEYWORD):
+            for name in table:
+                self.assertIn(name, GATED, name)
+
+    def test_a_row_names_a_macro_the_class_has(self):
+        rows = dict(lifecycle.MIX_INDEX)
+        rows.update((n, row[0])
+                    for n, row in lifecycle.UNRUN_WIRE_CONTROL.items())
+        for name, index in rows.items():
+            self.assertLess(index, len(effect_class(name).MACRO_LABELS),
+                            name)
+
+
+class TestPreFirstPullSource(unittest.TestCase):
+    """E12 moves a control before the first pull and compares the first
+    block with a fresh instance's, so its source must sound from the first
+    frame, in every 128 frames of it: a level that lands late in the Mixer
+    is invisible on a source that is quiet there."""
+
+    def test_the_source_is_loud_in_every_short_stretch(self):
+        for rate in lifecycle.RATES:
+            for channels in lifecycle.CHANNELS:
+                values = lifecycle.material_for("loud", rate, channels)
+                step = 128 * channels
+                for start in range(0, len(values) - step, step):
+                    peak = max(abs(v) for v in values[start:start + step])
+                    self.assertGreater(peak, 2000, (rate, channels, start))
+
+
 class TestPlants(unittest.TestCase):
     """Every property can fail: each plant is red on its cell, and its
     control is green on the same cell."""

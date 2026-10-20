@@ -6,10 +6,11 @@ input was not on, and never goes silent while the input plays.
 attribute in dBFS (0 or below). A class that states none is held to 0 dBFS,
 full scale. The material's peak is round(32767 x 10^(dBFS/20)).
 
-**The material**, 2 s at the rate: a 100 Hz square, a 50 Hz sine, one
+**The material**, 2 s at the rate (longer for a class with a long tail, see
+**The window**): a 100 Hz square, a 50 Hz sine, one
 -sample clicks of alternating sign every 97 frames, LCG noise, a DC step
 (silence for the first eighth, then the peak held), and squares on the low
-notes 41, 55, 82, 110 and 147 Hz (`sq41` ...), where a filter or a level
+notes 41, 55, 82, 110, 147, 163 and 220 Hz (`sq41` ...), where a filter or a level
 that rings on a long half-cycle shows.
 
 **The settings**: the defaults, every patch, each macro alone at 0, 64 and
@@ -17,8 +18,17 @@ that rings on a long half-cycle shows.
 together. A macro whose label holds Level, Mix, Octave, Direct, Voice or
 Gain is level-like; `lv=127+m<i>=<v>` holds every level-like macro at 127
 and one other macro at each of its stops (0 and 127), the others where the
-defaults put them. A docstring's own worst setting is usually one of these.
+defaults put them, at the defaults and then on every patch
+(`p<n>+lv=127+m<i>=<v>`, on the sine and the squares only). A docstring's own worst
+setting is usually one of these.
 At 48 and 22.05 kHz, stereo and mono (`--quick`: 48 kHz stereo).
+
+**The window.** 2 s is enough for most classes and too short for a long
+hall, whose worst case only builds up as the tail does (ShimmerHall peaks
+near 11 s). A cell's window is the tail the instance reports once its
+settings are in (`tail_samples`), rounded up to whole seconds, never under
+2 s and never over `MAX_SECONDS` (12 s); a class that reports no tail gets
+2 s. A `sq` or `dc` cell's material is as long as its window.
 
 **The bars**, each its own clause in a RED verdict:
 
@@ -49,12 +59,19 @@ import lifecycle
 
 CHECK = "ceiling"
 SECONDS = 2
+#: The longest window a long tail can ask for, in seconds.
+MAX_SECONDS = 12
 #: The low notes a square is played on besides 100 Hz: E1, A1, E2, A2, D3,
 #: and 163 Hz, between D3 and E3, where ConvolutionReverb's default room peaks
 #: highest and none of the others reached (a full 1/8-octave walk from 40 to
 #: 160 Hz would be 17 squares, near three times the cells).
-LOW_NOTES = (41, 55, 82, 110, 147, 163)
+LOW_NOTES = (41, 55, 82, 110, 147, 163, 220)
 MATERIALS = ("square", "sine", "clicks", "noise", "dc") + tuple(
+    "sq%d" % hz for hz in LOW_NOTES)
+#: The materials the combinations on every patch (`p<n>+lv=...`) run on:
+#: the slow ones, where the worst case sits. Every patch times every other
+#: macro's stops times every material would be most of the check.
+PATCH_COMBO_MATERIALS = ("sine", "square") + tuple(
     "sq%d" % hz for hz in LOW_NOTES)
 #: A macro label holding one of these is level-like.
 LEVEL_WORDS = ("Level", "Mix", "Octave", "Direct", "Voice", "Gain",
@@ -71,10 +88,20 @@ def peak(cls):
     return int(32767 * 10.0 ** (db / 20.0) + 0.5)
 
 
-def material(which, rate, channels, amp):
-    key = (which, rate, channels, amp)
+def window(e, rate):
+    """Seconds the cell renders: the instance's tail, rounded up, between
+    SECONDS and MAX_SECONDS."""
+    tail = e.tail_samples
+    if not tail:
+        return SECONDS
+    seconds = (tail + rate - 1) // rate
+    return max(SECONDS, min(MAX_SECONDS, seconds))
+
+
+def material(which, rate, channels, amp, seconds=SECONDS):
+    key = (which, rate, channels, amp, seconds)
     if key not in _MAT:
-        frames = SECONDS * rate
+        frames = seconds * rate
         if which == "square":
             values = kc.square(frames, channels, amp, rate // 100)
         elif which == "sine":
@@ -126,7 +153,7 @@ def wrap_at(out, values, channels, lat):
     return None
 
 
-def judge(data, values, channels, rate, lat, which):
+def judge(data, values, channels, rate, lat, which, seconds=SECONDS):
     out = kc.samples(data)
     reds = []
     if which != "noise":
@@ -137,7 +164,7 @@ def judge(data, values, channels, rate, lat, which):
     if run > kc.RAIL_RUN:
         reds.append("rail %d frames from %d" % (run, where))
     if which != "dc":
-        lo = (SECONDS - 1) * rate * channels
+        lo = (seconds - 1) * rate * channels
         if lifecycle._is_zero(data[2 * lo:]):
             quiet = True
             for i in range(lo, len(values)):
@@ -177,25 +204,41 @@ def configs(cls):
         out.append(("all=127", None, [(i, 127) for i in range(n)]))
     levels = level_like(cls)
     if levels:
-        for i in range(n):
-            if i in levels:
-                continue
-            for v in (0, 127):
-                knobs = [(j, 127) for j in levels] + [(i, v)]
-                out.append(("lv=127+m%d=%d" % (i, v), None, knobs))
+        # The level-like macros at 127 together (Mix at full: dry and wet
+        # both at unity) with each other macro at its stops, at the
+        # defaults and then on every patch.
+        for patch in [None] + sorted(cls.PATCHES):
+            lead = "" if patch is None else "p%d+" % patch
+            for i in range(n):
+                if i in levels:
+                    continue
+                for v in (0, 127):
+                    knobs = [(j, 127) for j in levels] + [(i, v)]
+                    out.append(("%slv=127+m%d=%d" % (lead, i, v), patch,
+                                knobs))
     return out
 
 
 def measure(cls, rate, channels, which, patch, knobs, options=None):
     amp = peak(cls)
-    values = material(which, rate, channels, amp)
+    # The window is read off the instance, so the material is made after it.
+    probe = kc.feed(kc.square(1024, channels, amp, 100), rate, channels)
+    e = kc.build(cls, probe.port, rate, patch, options)
+    try:
+        for index, value in knobs or ():
+            e.set_macro(index, value)
+        seconds = window(e, rate)
+    finally:
+        e.deinit()
+    values = material(which, rate, channels, amp, seconds)
     feed = kc.feed(values, rate, channels)
     e = kc.build(cls, feed.port, rate, patch, options)
     try:
         for index, value in knobs or ():
             e.set_macro(index, value)
-        data = kc.render(e, SECONDS * rate)
-        reds = judge(data, values, channels, rate, e.latency_samples, which)
+        data = kc.render(e, seconds * rate)
+        reds = judge(data, values, channels, rate, e.latency_samples, which,
+                     seconds)
     finally:
         e.deinit()
     verdict = "RED(%s)" % "; ".join(reds) if reds else "ok"
@@ -216,6 +259,9 @@ def run(cls, emit=print, quick=False, rates=None, channels=None,
             for which in materials:
                 for key, patch, knobs in configs(cls):
                     if only is not None and key not in only:
+                        continue
+                    if patch is not None and knobs and \
+                            which not in PATCH_COMBO_MATERIALS:
                         continue
                     ckey = "%s/%d/%d/%s" % (which, rate, ch, key)
                     try:

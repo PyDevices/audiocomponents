@@ -356,6 +356,29 @@ class TestCeiling(unittest.TestCase):
         knobs = [knob] if isinstance(knob, tuple) else knob
         return kit_ceiling.measure(cls, 48000, 2, which, patch, knobs)[0]
 
+    def window(self, cls):
+        feed = kc.feed(kc.square(1024, 2, 3000, 100), 48000, 2)
+        e = kc.build(cls, feed.port, 48000)
+        try:
+            return kit_ceiling.window(e, 48000)
+        finally:
+            e.deinit()
+
+    def test_a_long_tail_sets_the_window(self):
+        self.assertEqual(self.window(kp.KitPlain), 2)
+        self.assertEqual(self.window(kp.LongTail), 5)
+        self.assertEqual(self.window(kp.EndlessTail), kit_ceiling.MAX_SECONDS)
+
+    def test_the_window_is_what_a_cell_renders(self):
+        # Same signal path, different declared tail: the render is longer,
+        # so its digest differs from the two-second one's.
+        short = kit_ceiling.measure(kp.KitPlain, 48000, 2, "sine", None,
+                                    None)
+        long = kit_ceiling.measure(kp.LongTail, 48000, 2, "sine", None, None)
+        self.assertEqual(short[0], "ok")
+        self.assertEqual(long[0], "ok")
+        self.assertNotEqual(short[1], long[1])
+
     def test_a_wrap_is_red(self):
         self.assertTrue(self.v(kp.WrapKit).startswith("RED(wrap"))
         self.assertEqual(self.v(kp.KitPlain), "ok")
@@ -409,15 +432,35 @@ class TestCeiling(unittest.TestCase):
     def test_the_combined_settings_are_driven(self):
         self.assertEqual(kit_ceiling.level_like(kp.CondKit), [0, 1])
         combo = self.sine_cells(kp.ComboWrap)
-        self.assertEqual([k for k in combo if red(combo[k])],
-                         ["sine/48000/2/lv=127+m2=0"])
+        # The combination is bad at every patch: the defaults' cell and
+        # each patch's.
+        self.assertEqual(sorted(k for k in combo if red(combo[k])),
+                         ["sine/48000/2/lv=127+m2=0",
+                          "sine/48000/2/p0+lv=127+m2=0",
+                          "sine/48000/2/p1+lv=127+m2=0"])
         every = self.sine_cells(kp.AllWrap)
         self.assertEqual(sorted(k for k in every if red(every[k])),
                          ["sine/48000/2/all=127",
-                          "sine/48000/2/lv=127+m2=127"])
+                          "sine/48000/2/lv=127+m2=127",
+                          "sine/48000/2/p0+lv=127+m2=127",
+                          "sine/48000/2/p1+lv=127+m2=127"])
         control = self.sine_cells(kp.CondKit)
         self.assertEqual([k for k in control if red(control[k])], [])
         self.assertIn("sine/48000/2/lv=127+m2=0", control)
+
+    def test_the_combined_settings_are_driven_on_every_patch(self):
+        lines = []
+        kit_ceiling.run(kp.PatchComboRail, emit=lines.append, quick=True,
+                        materials=("sine", "noise"))
+        got = dict((k[2], v["V"]) for k, v in kc.parse(lines).items())
+        reds = [k for k in got if red(got[k])]
+        self.assertEqual(reds, ["sine/48000/2/p1+lv=127+m2=0"])
+        self.assertTrue(got[reds[0]].startswith("RED(rail"), got[reds[0]])
+        self.assertIn("sine/48000/2/p0+lv=127+m2=0", got)
+        # The default patch's combination is fine; so is every other
+        # material's, which runs the defaults' combinations only.
+        self.assertEqual(got["sine/48000/2/lv=127+m2=0"], "ok")
+        self.assertNotIn("noise/48000/2/p1+lv=127+m2=0", got)
 
     def test_the_low_notes_are_played(self):
         for which in ("sq41", "sq55"):

@@ -146,15 +146,19 @@ hands it:
 **ceiling** (`kit_ceiling.py`). At the level the class says it is clean
 at, on the worst material, the output does not wrap, sit on a rail, or go
 silent. The class states `INPUT_CEILING_DBFS` (dBFS, 0 or below); with
-none it is held to 0 dBFS. The material, 2 s at the peak: a 100 Hz square,
+none it is held to 0 dBFS. The material, 2 s at the peak (longer for a
+class with a long tail: the window is the tail the instance reports once
+its settings are in, rounded up to whole seconds, at most 12; a long hall's
+worst case builds up as its tail does): a 100 Hz square,
 a 50 Hz sine, one-sample clicks of alternating sign, noise, a DC step, and
-squares on the low notes 41, 55, 82, 110, 147 and 163 Hz (`sq41` ...;
+squares on the low notes 41, 55, 82, 110, 147, 163 and 220 Hz (`sq41` ...;
 163 Hz is where ConvolutionReverb's default room peaks highest, between the
 notes the others are on). The
 settings: the defaults, every patch, each macro alone at 0, 64 and 127,
 every macro at 127 together (`all=127`), and every level-like macro (a
 label holding Level, Mix, Octave, Direct, Voice or Gain) at 127 with each
-other macro at each of its stops (`lv=127+m<i>=<v>`). At 48 and 22.05 kHz,
+other macro at each of its stops (`lv=127+m<i>=<v>`), and the same on
+every patch (`p<n>+lv=127+m<i>=<v>`, on the sine and the squares only). At 48 and 22.05 kHz,
 stereo and mono (`--quick`: 48 kHz stereo). The bars:
 
 - `wrap`: neighbouring samples of opposite sign more than 32768 apart,

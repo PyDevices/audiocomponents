@@ -179,6 +179,7 @@ BEND_RANGE = 2.0
 _CC_BANK_MSB = 0
 _CC_BANK_LSB = 32
 _CC_PAN = 10
+_CC_SUSTAIN = 64
 
 
 def _bipolar(value0):
@@ -842,6 +843,8 @@ class _Player(object):
         self.sampler = voices.sampler
         self.slots = voices.slots
         self.held = {}         # key -> [slot index, ...]
+        self.pedal = set()     # channels whose sustain pedal is down
+        self.sustained = set() # keys let go while their pedal was down
         self.default_bank = default_bank
         self.bank_number = default_bank
         self.program = 0
@@ -977,6 +980,7 @@ class _Player(object):
             pool.keep_free()
 
     def release(self, key):
+        self.sustained.discard(key)
         indices = self.held.pop(key, None)
         if not indices:
             return
@@ -1009,6 +1013,19 @@ class _Player(object):
                 self.pool.voice[i].stop()
                 self.slots[i] = None
         self.held.clear()
+        self.sustained.clear()
+        self.pedal.clear()
+
+    def sustain(self, channel, down):
+        """Move `channel`'s sustain pedal. Up, every note let go while it
+        was down releases now, with its own release envelope; keys still
+        pressed keep sounding."""
+        if down:
+            self.pedal.add(channel)
+            return
+        self.pedal.discard(channel)
+        for key in [k for k in self.sustained if k[0] == channel]:
+            self.release(key)
 
     def relevel(self):
         voices = self.pool.voice
@@ -1038,7 +1055,11 @@ class _Player(object):
             self.note_on(key_of(channel, note_id, data0), data0, value0,
                          value1)
         elif event_type in (EVENT_NOTE_OFF, EVENT_NOTE_ON):
-            self.release(key_of(channel, note_id, data0))
+            key = key_of(channel, note_id, data0)
+            if channel in self.pedal and key in self.held:
+                self.sustained.add(key)     # sounds on until the pedal lifts
+            else:
+                self.release(key)
         elif event_type == EVENT_PARAMETER:
             if data0 == 0:
                 self.volume = value0
@@ -1061,6 +1082,8 @@ class _Player(object):
                 self.bank_msb = int(value0 * 127 + 0.5)
             elif data0 == _CC_BANK_LSB:
                 self.bank_lsb = int(value0 * 127 + 0.5)
+            elif data0 == _CC_SUSTAIN:
+                self.sustain(channel, int(value0 * 127 + 0.5) >= 64)
 
 
 class SoundFontInstrument(Instrument):
@@ -1096,7 +1119,11 @@ class SoundFontInstrument(Instrument):
 
     def control_change(self, controller, value, channel=0, sample_position=0):
         """Control Change 10 (Pan) moves the Pan macro, so the macro value
-        and the sound agree; the rest reach the player as they are."""
+        and the sound agree; the rest reach the player as they are.
+
+        Control Change 64 (Sustain Pedal) at 64 or more holds the notes
+        released on that channel until it drops below 64, then releases
+        them. A key struck again while its note is held starts a new note."""
         if controller == _CC_PAN:
             self.set_macro(PAN_MACRO, value, channel=channel,
                            sample_position=sample_position)
