@@ -110,7 +110,8 @@ Providers declare their public shape as module or class data:
 
 - `MACRO_LABELS` and `MACRO_MODES` describe up to 16 controls.
 - `PATCHES` maps contiguous program numbers to named, MIDI-scale settings.
-- `NOTE_MAP` identifies the actual voices of a drum machine.
+- `NOTE_MAP` identifies the actual voices of a drum machine, and `PAD_MAP`
+  says what each pad key from 36 to 51 plays on it.
 
 `tools/validate_metadata.py` checks those declarations; the runtime API and
 `tools/validate_api.py` check that a constructed provider implements the live

@@ -183,6 +183,42 @@ def _note_map(owner, errors):
     return True
 
 
+def _pad_map(owner, errors):
+    """``PAD_MAP``: the voice each pad key 36-51 sounds on a drum kit."""
+    declared = vars(owner)
+    if "PAD_MAP" not in declared:
+        return
+    pads = declared["PAD_MAP"]
+    if not isinstance(pads, tuple):
+        _error(errors, "PAD_MAP", "must be a tuple")
+        return
+    voices = set()
+    for entry in declared.get("NOTE_MAP", ()):
+        if isinstance(entry, tuple) and entry:
+            voices.add(entry[0])
+    keys = []
+    for entry in pads:
+        if (not isinstance(entry, tuple) or len(entry) != 2
+                or any(isinstance(n, bool) or not isinstance(n, int)
+                       for n in entry)):
+            _error(errors, "PAD_MAP", "entries must be (key, voice) integers")
+            continue
+        key, voice = entry
+        keys.append(key)
+        if voice not in voices:
+            _error(errors, "PAD_MAP",
+                   "key %d sounds note %d, which NOTE_MAP does not list"
+                   % (key, voice))
+        elif key in voices and voice != key:
+            _error(errors, "PAD_MAP",
+                   "key %d has a voice of its own and must sound it, not %d"
+                   % (key, voice))
+    if len(keys) != len(set(keys)):
+        _error(errors, "PAD_MAP", "keys must be unique")
+    if sorted(keys) != list(range(36, 52)):
+        _error(errors, "PAD_MAP", "must cover every key from 36 through 51")
+
+
 def validate_component(owner, *, kind, expected_name=None, vendor_owner=None):
     """Validate one instrument module or public effect class.
 
@@ -218,8 +254,12 @@ def validate_component(owner, *, kind, expected_name=None, vendor_owner=None):
     percussion = False
     if kind == "instrument":
         percussion = _note_map(owner, errors)
+        if percussion:
+            _pad_map(owner, errors)
     elif "NOTE_MAP" in declared:
         _error(errors, "NOTE_MAP", "is only valid on instruments")
+    elif "PAD_MAP" in declared:
+        _error(errors, "PAD_MAP", "is only valid on instruments")
 
     if errors:
         label = name or expected_name or repr(owner)
@@ -234,7 +274,7 @@ def validate_component(owner, *, kind, expected_name=None, vendor_owner=None):
 #: `synthio` exists; a comprehension there is a `ValueError` in every
 #: consumer (audiocomponents#83).
 LITERAL_FIELDS = ("NAME", "DISPLAY_NAME", "MACRO_LABELS", "MACRO_MODES",
-                  "PATCHES")
+                  "PATCHES", "NOTE_MAP", "PAD_MAP")
 
 
 def _literal_fields(module, errors):

@@ -58,6 +58,29 @@ NOTE_MAP = (
     (70, "Maracas"),
 )
 
+#: The voice each pad key 36-51 sounds: the first bank of a common pad
+#: controller. Where the kit has no voice for a key, the nearest one it
+#: has, named in the comment. `create(strict_pads=True)` turns this off;
+#: `create(pad_map=...)` replaces it.
+PAD_MAP = (
+    (36, 36),
+    (37, 37),
+    (38, 38),
+    (39, 39),
+    (40, 38),  # Electric Snare -> Snare
+    (41, 41),
+    (42, 42),
+    (43, 41),  # High Floor Tom -> Low Tom
+    (44, 42),  # Pedal Hat -> Closed Hat
+    (45, 45),
+    (46, 46),
+    (47, 45),  # Low-Mid Tom -> Mid Tom
+    (48, 48),
+    (49, 49),
+    (50, 48),  # High Tom -> Hi Tom
+    (51, 49),  # Ride -> Cymbal
+)
+
 import math
 
 import synthio
@@ -212,7 +235,8 @@ def _metal_table(sample_rate, hp_hz=_METAL_HP_HZ, hp_order=_METAL_HP_ORDER,
 COWBELL = make_table(((2, 1.0), (3, 0.72)))
 
 
-def create(sample_rate, channel_count=2, transport=None):
+def create(sample_rate, channel_count=2, transport=None, pad_map=None,
+           strict_pads=False):
     SR = sample_rate
     NOISE_HZ = SR / 8192.0
     # Built here rather than at import so its harmonic series can be capped
@@ -518,5 +542,7 @@ def create(sample_rate, channel_count=2, transport=None):
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
                             transport=transport, note_map=NOTE_MAP,
+                            pad_map=_support.pad_table(PAD_MAP, pad_map,
+                                                       strict_pads),
                             voices=None)
     return instrument

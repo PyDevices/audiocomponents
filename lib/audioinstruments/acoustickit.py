@@ -100,8 +100,9 @@ MACRO_MODES = {
 }
 
 #: GM percussion, and only the notes this kit actually has a voice for. A hit
-#: it has no voice for makes no sound, which is the library's rule: a pattern
-#: with a splash in it loses the splash rather than turning into noise.
+#: outside keys 36-51 it has no voice for makes no sound, which is the
+#: library's rule: a pattern with a splash in it loses the splash rather than
+#: turning into noise. Keys 36-51 are answered by PAD_MAP, below.
 NOTE_MAP = (
     (35, "Acoustic Bass Drum"),
     (36, "Bass Drum 1"),
@@ -117,6 +118,29 @@ NOTE_MAP = (
     (49, "Crash Cymbal 1"),
     (51, "Ride Cymbal 1"),
     (53, "Ride Bell"),
+)
+
+#: The voice each pad key 36-51 sounds: the first bank of a common pad
+#: controller. Where the kit has no voice for a key, the nearest one it
+#: has, named in the comment. `create(strict_pads=True)` turns this off;
+#: `create(pad_map=...)` replaces it.
+PAD_MAP = (
+    (36, 36),
+    (37, 37),
+    (38, 38),
+    (39, 38),  # Clap -> Acoustic Snare
+    (40, 38),  # Electric Snare -> Acoustic Snare
+    (41, 41),
+    (42, 42),
+    (43, 41),  # High Floor Tom -> Low Floor Tom
+    (44, 44),
+    (45, 45),
+    (46, 46),
+    (47, 47),
+    (48, 48),
+    (49, 49),
+    (50, 48),  # High Tom -> Hi-Mid Tom
+    (51, 51),
 )
 
 #: Level macros sit at 127 by default. The headroom a kit needs for several
@@ -408,7 +432,8 @@ def _norms(rate):
             / _unit_peak(name, rate) for name in _TRIM}
 
 
-def create(sample_rate, channel_count=2, transport=None):
+def create(sample_rate, channel_count=2, transport=None, pad_map=None,
+           strict_pads=False):
     SR = sample_rate
     NOISE_HZ = SR / 8192.0
     NORM = _norms(SR)
@@ -723,4 +748,6 @@ def create(sample_rate, channel_count=2, transport=None):
     # presses and always rode the seam. See docs/sequencing.md.
     return Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
                       output=mixer, transport=transport, note_map=NOTE_MAP,
+                            pad_map=_support.pad_table(PAD_MAP, pad_map,
+                                                       strict_pads),
                       voices=None)

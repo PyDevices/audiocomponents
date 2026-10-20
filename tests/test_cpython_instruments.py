@@ -83,6 +83,84 @@ class InstrumentLibraryTest(unittest.TestCase):
                     self.fail("%s %s (note %d) is silent on every patch"
                               % (name, label, note))
 
+    def heard(self, name, patch, key, **options):
+        """Whether `key` sounds on a fresh instrument set to `patch`."""
+        instrument = audioinstruments.create(name, SAMPLE_RATE, **options)
+        instrument.program_change(patch)
+        instrument.note_on(key)
+        return peak(instrument.output, 6) > 0.001
+
+    def answered(self, name, patch):
+        """The notes the machine playing under `patch` has a voice for: the
+        module's own, or for `drumkits` the selected kit's."""
+        if name == "drumkits":
+            name = audioinstruments.load("drumkits").KITS[patch]
+        return {note for note, _ in audioinstruments.load(name).NOTE_MAP}
+
+    def test_every_pad_key_sounds_on_every_kit(self):
+        # Keys 36-51 are the first bank of the common pad controllers, and
+        # every kit answers all sixteen: its own voice where it has one, the
+        # nearest it has otherwise (PAD_MAP). Outside them the old rule
+        # stands - a key the kit has no voice for is silent.
+        for name in audioinstruments.DRUM_MACHINES:
+            patches = sorted(audioinstruments.load(name).PATCHES)
+            for patch in (patches if name == "drumkits" else patches[:1]):
+                mapped = self.answered(name, patch)
+                for key in range(128):
+                    sounds = self.heard(name, patch, key)
+                    self.assertEqual(
+                        sounds, key in mapped or 36 <= key <= 51,
+                        "%s patch %d: key %d %s"
+                        % (name, patch, key, "sounds but is not mapped"
+                           if sounds else "is silent"))
+
+    def test_strict_pads_is_exactly_the_note_map(self):
+        for name in audioinstruments.DRUM_MACHINES:
+            patches = sorted(audioinstruments.load(name).PATCHES)
+            self.assertFalse(
+                audioinstruments.create(name, SAMPLE_RATE).strict_pads, name)
+            for patch in (patches if name == "drumkits" else patches[:1]):
+                mapped = self.answered(name, patch)
+                for key in range(128):
+                    self.assertEqual(
+                        self.heard(name, patch, key, strict_pads=True),
+                        key in mapped,
+                        "%s strict, patch %d: key %d" % (name, patch, key))
+
+    def test_pad_map_replaces_the_table(self):
+        def strike(key, **options):
+            instrument = audioinstruments.load("tr808").create(
+                SAMPLE_RATE, **options)
+            instrument.note_on(key)
+            return b"".join(bytes(audiocore.get_buffer(instrument.output)[1])
+                            for _ in range(6))
+
+        self.assertEqual(strike(40, pad_map=((40, 36),)), strike(36))
+        self.assertEqual(strike(40, pad_map={40: 36}), strike(36))
+        # Replaces, not adds to: 43 is no longer in the table.
+        self.assertEqual(set(strike(43, pad_map=((40, 36),))), {0})
+        self.assertNotEqual(set(strike(43)), {0})
+        with self.assertRaises(ValueError):
+            strike(40, pad_map=((40, 36),), strict_pads=True)
+
+    def test_every_pad_table_names_a_voice_the_kit_has(self):
+        # The substitute is chosen by what the kit actually has, and a key
+        # with a voice of its own sounds it rather than a neighbour.
+        for name in audioinstruments.DRUM_MACHINES:
+            module = audioinstruments.load(name)
+            if name == "drumkits":
+                # No table of its own: each key goes to the kit playing,
+                # whose table answers it. tests/test_cpython_drumkits.py.
+                self.assertNotIn("PAD_MAP", vars(module))
+                continue
+            mapped = {note for note, _ in module.NOTE_MAP}
+            pads = dict(module.PAD_MAP)
+            self.assertEqual(sorted(pads), list(range(36, 52)), name)
+            for key, voice in pads.items():
+                self.assertIn(voice, mapped, "%s key %d" % (name, key))
+                if key in mapped:
+                    self.assertEqual(voice, key, "%s key %d" % (name, key))
+
     def test_every_melodic_instrument_sounds_a_chord(self):
         # Enough blocks for the slow string and pad attacks to get going.
         for name in audioinstruments.MELODIC:

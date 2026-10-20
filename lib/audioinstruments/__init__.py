@@ -8,7 +8,10 @@ Each instrument is a self-contained `synthio` program - no samples - exposing:
                   a freshly created instrument makes
     NOTE_MAP      percussion instruments only: ((midi_note, label), ...) for
                   the voices the machine actually maps
+    PAD_MAP       drum machines only: ((key, voice), ...), what each pad key
+                  36-51 sounds - its own voice, else the nearest the kit has
     create(sample_rate, channel_count=2, transport=None) -> Instrument
+                  drum machines also take pad_map= and strict_pads=
 
 `transport` is an optional callable returning the host's playback position as
 ``(playing, seconds, bpm, ts_numerator, ts_denominator)``; instruments that

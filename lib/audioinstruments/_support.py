@@ -1032,7 +1032,7 @@ class Instrument:
     """
 
     def __init__(self, synth, handle_event, patches, macro_labels,
-                 output=None, transport=None, note_map=None,
+                 output=None, transport=None, note_map=None, pad_map=None,
                  capabilities=(), latency_samples=0, tail_samples=0,
                  schedulable=True, voices=None):
         self.synth = synth
@@ -1054,6 +1054,9 @@ class Instrument:
         self.patches = patches
         self.macro_labels = tuple(macro_labels)
         self.note_map = note_map
+        # key -> the voice that sounds for it; a key not in it sounds as
+        # itself (or, on a drum kit, not at all). Empty is strict.
+        self._pads = {} if pad_map is None else dict(pad_map)
         self.transport = static_transport if transport is None else transport
         self._handle = handle_event
         # The public identity is (channel, note_id) when a note id is
@@ -1125,6 +1128,13 @@ class Instrument:
         return self._voices
 
     @property
+    def strict_pads(self):
+        """True when a drum kit answers only the keys it has a voice for:
+        no pad table is substituting a near neighbour for the rest."""
+        self._check_live()
+        return not self._pads
+
+    @property
     def patch_index(self):
         self._check_live()
         return self._patch_index
@@ -1143,14 +1153,16 @@ class Instrument:
         key = key_of(channel, note_id, pitch)
         if velocity > 0:
             self._active[key] = (pitch, note_id)
-            self._handle(EVENT_NOTE_ON, channel, note_id, pitch,
+            self._handle(EVENT_NOTE_ON, channel, note_id,
+                         self._pads.get(pitch, pitch),
                          velocity / 127.0, detune, sample_position)
         else:
             # MIDI note-on with zero velocity is a note-off, including at the
             # provider boundary. Do not send a note-on event that a provider
             # might reasonably ignore because its velocity is zero.
             if self._active.pop(key, None) is not None:
-                self._handle(EVENT_NOTE_OFF, channel, note_id, pitch, 0.0,
+                self._handle(EVENT_NOTE_OFF, channel, note_id,
+                             self._pads.get(pitch, pitch), 0.0,
                              0.0, sample_position)
 
     def note_off(self, pitch, channel=0, note_id=-1, sample_position=0):
@@ -1161,7 +1173,8 @@ class Instrument:
         sample_position = _sample_position(sample_position)
         key = key_of(channel, note_id, pitch)
         if self._active.pop(key, None) is not None:
-            self._handle(EVENT_NOTE_OFF, channel, note_id, pitch, 0.0, 0.0,
+            self._handle(EVENT_NOTE_OFF, channel, note_id,
+                         self._pads.get(pitch, pitch), 0.0, 0.0,
                          sample_position)
 
     def set_macro(self, index, value, channel=0, note_id=-1, sample_position=0):
@@ -1206,8 +1219,9 @@ class Instrument:
     def poly_pressure(self, pitch, value, channel=0, note_id=-1,
                       sample_position=0):
         self._check_live()
+        pitch = _midi_value(pitch, "pitch")
         self._handle(EVENT_POLY_PRESSURE, _channel(channel), _note_id(note_id),
-                     _midi_value(pitch, "pitch"), _bounded_midi(value) / 127.0,
+                     self._pads.get(pitch, pitch), _bounded_midi(value) / 127.0,
                      0.0, _sample_position(sample_position))
 
     def pitch_bend(self, value, channel=0, sample_position=0):
@@ -1373,6 +1387,27 @@ def _tail_value(value):
     if value is None:
         return None
     return _nonnegative_int(value, "tail_samples")
+
+
+def pad_table(table, override=None, strict=False):
+    """The pad table a drum kit's ``create`` hands its `Instrument`.
+
+    ``table`` is the module's ``PAD_MAP``: ``((key, voice), ...)``, the voice
+    each key sounds. ``override`` replaces it (a tuple of pairs or a dict).
+    ``strict`` drops it, so the kit is silent on every key it has no voice
+    for; asking for both is a mistake and raises.
+    """
+    if strict:
+        if override is not None:
+            raise ValueError("strict_pads and pad_map cannot be combined")
+        return None
+    pairs = table if override is None else override
+    if hasattr(pairs, "items"):
+        pairs = pairs.items()
+    checked = {}
+    for key, voice in pairs:
+        checked[_midi_value(key, "pad key")] = _midi_value(voice, "pad voice")
+    return checked
 
 
 def _midi_value(value, name):

@@ -14,10 +14,11 @@ for audio; the one you just left keeps ringing out until the next change, so
 a crash carries over a kit switch the way it would if you hit it and reached
 for another box.
 
-A hit a kit has no voice for makes no sound. That is the library's rule and
-it is the whole reason this instrument is coherent: a pattern with congas in
-it does not turn into noise when you switch to a TR-606, it just loses the
-congas until you switch back.
+A hit a kit has no voice for makes no sound, except on keys 36-51, the first
+bank of a pad controller, where the kit plays the nearest voice it has (its
+own PAD_MAP). That is the library's rule and it is the whole reason this
+instrument is coherent: a pattern with congas in it does not turn into noise
+when you switch to a TR-606, it just loses the congas until you switch back.
 
 The sixteen macros are one fixed cross-kit set - the host cannot be told new
 parameter names on a program change, and a label that lies for nine kits out
@@ -156,6 +157,7 @@ from audioinstruments import load  # noqa: E402
 from audioinstruments._support import (  # noqa: E402
     EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, EVENT_PITCH_BEND,
     EVENT_CONTROL_CHANGE, EVENT_CHANNEL_PRESSURE, EVENT_POLY_PRESSURE,
+    pad_table,
 )
 from audioinstruments._support import Instrument  # noqa: E402
 
@@ -166,10 +168,16 @@ from audioinstruments._support import Instrument  # noqa: E402
 class DrumKits(Instrument):
     """The ten kits behind one set of macros and one program list."""
 
-    def __init__(self, sample_rate, channel_count=2, transport=None):
+    def __init__(self, sample_rate, channel_count=2, transport=None,
+                 pad_map=None, strict_pads=False):
+        # Pad keys 36-51 are not substituted here. They go to the kit that is
+        # playing, whose own PAD_MAP knows its nearest voice, so a program is
+        # still the machine itself. `pad_map` replaces that, ahead of the kit.
+        self._strict_pads = bool(strict_pads)
         self._kits = [load(name).create(sample_rate,
                                         channel_count=channel_count,
-                                        transport=transport)
+                                        transport=transport,
+                                        strict_pads=strict_pads)
                       for name in KITS]
         self._mixer = audiomixer.Mixer(
             voice_count=2, sample_rate=sample_rate,
@@ -186,6 +194,7 @@ class DrumKits(Instrument):
         super().__init__(
             None, self._dispatch, PATCHES, MACRO_LABELS,
             output=self._mixer, transport=transport, note_map=NOTE_MAP,
+            pad_map=pad_table((), pad_map),
             latency_samples=_MIXER_BYTES // (2 * channel_count))
 
     def _sched_keys(self):
@@ -198,6 +207,12 @@ class DrumKits(Instrument):
         its tail from being cut off.
         """
         return self._kits[self._kit_index]._sched_keys()
+
+    @property
+    def strict_pads(self):
+        """True when each kit answers only the keys it has a voice for."""
+        self._check_live()
+        return self._strict_pads
 
     @property
     def kit(self):
@@ -267,6 +282,8 @@ def _byte(value):
     return int(value * 127.0 + 0.5)
 
 
-def create(sample_rate, channel_count=2, transport=None):
+def create(sample_rate, channel_count=2, transport=None, pad_map=None,
+           strict_pads=False):
     return DrumKits(sample_rate, channel_count=channel_count,
-                    transport=transport)
+                    transport=transport, pad_map=pad_map,
+                    strict_pads=strict_pads)

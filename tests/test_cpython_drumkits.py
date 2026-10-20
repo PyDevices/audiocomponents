@@ -91,12 +91,47 @@ class DrumKitsTest(unittest.TestCase):
         switcher.program_change(drumkits.KITS.index("tr606"))
         mapped = dict(audioinstruments.load("tr606").NOTE_MAP)
         for note, label in drumkits.NOTE_MAP:
-            if note in mapped:
-                continue
+            if note in mapped or 36 <= note <= 51:
+                continue    # 36-51 are the pad bank, which every kit answers
             switcher.note_on(note, 127)
             self.assertEqual(
                 0.0, peak(frames(switcher.output, 2000 + LAG_FRAMES)),
                 "the TR-606 answered %s (note %d)" % (label, note))
+
+    def test_every_program_answers_the_pad_bank_as_the_machine_does(self):
+        # 36-51: no table here. The key goes to the kit that is playing and
+        # that kit's own PAD_MAP picks the voice, so a program still is the
+        # machine - on a substituted key too, not only on the ones it has.
+        for index, kit in enumerate(drumkits.KITS):
+            for key in range(36, 52):
+                with self.subTest(kit=kit, key=key):
+                    alone = audioinstruments.create(kit, SAMPLE_RATE)
+                    alone.note_on(key, 100)
+                    expected = frames(alone.output, 6000)
+                    self.assertGreater(peak(expected), 0.001)
+
+                    switcher = audioinstruments.create("drumkits", SAMPLE_RATE)
+                    switcher.program_change(index)
+                    switcher.note_on(key, 100)
+                    played = frames(switcher.output, 6000 + LAG_FRAMES)
+                    self.assertEqual(expected, played[LAG_FRAMES * 4:])
+
+    def test_strict_pads_reaches_every_kit(self):
+        switcher = audioinstruments.create("drumkits", SAMPLE_RATE,
+                                           strict_pads=True)
+        self.assertTrue(switcher.strict_pads)
+        self.assertFalse(
+            audioinstruments.create("drumkits", SAMPLE_RATE).strict_pads)
+        for index, kit in enumerate(drumkits.KITS):
+            mapped = {n for n, _ in audioinstruments.load(kit).NOTE_MAP}
+            switcher.program_change(index)
+            for key in range(36, 52):
+                if key in mapped:
+                    continue
+                switcher.note_on(key, 127)
+                self.assertEqual(
+                    0.0, peak(frames(switcher.output, 2000 + LAG_FRAMES)),
+                    "strict %s answered key %d" % (kit, key))
 
     def test_every_macro_reaches_the_control_its_kit_maps(self):
         for index, kit in enumerate(drumkits.KITS):
