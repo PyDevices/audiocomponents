@@ -30,10 +30,6 @@ the real thing.
 
 ## Later: instruments
 
-- A MIDI-to-instrument dispatcher: one component that routes incoming MIDI
-  notes and controllers to instruments, so a MIDI file or a controller can
-  play them without your own dispatch loop. This is the
-  [known seam gap](docs/audio-component-api.md#midi-and-control-methods).
 - acoustickit: a shallow pitch drop on hard tom hits, a reworked hi-hat, and
   a sourced model for the snare wires.
 - acoustickit cymbals: a bloom shaped into the strike, and mode sets that

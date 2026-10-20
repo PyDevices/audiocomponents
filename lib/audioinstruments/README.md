@@ -297,6 +297,23 @@ still sounding, and the held notes among them. Inside `with
 pool.deferred():` the voices' writes are sent together at the end, which on
 a board whose audio pump is busy is one wait instead of one per write.
 
+## Playing from MIDI
+
+`midi_dispatch` turns MIDI into the calls above, so a controller, a port or
+a MIDI file plays an instrument without a dispatch loop of your own:
+
+```python
+from audioinstruments.midi_dispatch import MidiDispatcher
+
+midi = MidiDispatcher(piano, drums=kit)   # channel 10 to the kit, the rest to the piano
+midi.feed(buf, n)                         # raw bytes from a port's readinto()
+midi.message(msg)                         # or an adafruit_midi message
+```
+
+`route(channel, *instruments)` sends a channel somewhere else, and
+`read_midi_file()` reads a Standard MIDI File into events for `send()`. The
+[module docstring](midi_dispatch.py) has the details.
+
 ## Where these came from
 
 They were written for micropython-vst3, where each was a script bound to that

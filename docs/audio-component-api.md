@@ -223,15 +223,17 @@ MIDI values, but it does not define a hidden CC-to-macro map.
 `detune` is a pitch offset in semitones and is not a controller value. A note
 with velocity zero is equivalent to `note_off()`.
 
-**Known seam gap:** this API defines component *methods*, not a MIDI wire
-intake. No shared adapter from MIDI bytes or event streams to these methods
-ships yet: each consumer hand-rolls its own dispatch (micropython-vst3's
-`mpvst_adapter` does, and so does `deliver()` in
-`lib/audiorender/events.py`), and pairings that need a wire decoder in
-front of a component — for example, playing a Standard MIDI File straight
-into an instrument — are consequently undelivered. A shared intake is
-future work owned by this message model; until it exists, budget for
-writing the dispatch loop yourself.
+**Playing from MIDI.** These are component *methods*; to drive them from
+MIDI itself, put `audioinstruments.midi_dispatch.MidiDispatcher` in front.
+It takes raw bytes (running status included), `adafruit_midi` message
+objects, or one message at a time as a status byte and its data, and calls
+the methods above on the instrument each channel is routed to, passing the
+channel so note identity is `(channel, pitch)`. A velocity-0 note-on is a
+note-off, Control Change 120 and 123 call `all_notes_off()`, and every other
+controller reaches `control_change()` as it is. Channel 9 (General MIDI's
+channel 10) goes to a drum kit when you give one. `read_midi_file()` turns
+a Standard MIDI File into timed events for it. The module docstring has
+the routing calls and an example: [midi_dispatch.py](../lib/audioinstruments/midi_dispatch.py).
 
 Notes are identified by `(channel, note_id)` when `note_id >= 0`. If no note
 ID is supplied (`note_id == -1`), the identity is `(channel, pitch)`. A note

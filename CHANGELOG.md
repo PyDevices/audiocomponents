@@ -10,6 +10,15 @@ there, and are recorded in its changelog.
 
 ### Added
 
+- `audioinstruments.midi_dispatch` plays instruments from MIDI. A
+  `MidiDispatcher` takes raw bytes with running status, `adafruit_midi`
+  message objects (what `midiports` and `receive()` give you), or one
+  message as a status byte and data, and routes each channel to an
+  instrument, or several: notes, controllers, program change, pitch bend
+  and pressure, with a velocity-0 note-on as a note-off and Control Change
+  120 and 123 as all-notes-off. Channel 10 goes to a drum kit if you pass
+  one. It allocates nothing of its own per message. `read_midi_file()`
+  turns a Standard MIDI File into timed events for it.
 - The SoundFont instruments answer the sustain pedal, Control Change 64. At
   64 or more, a note let go keeps sounding; when the pedal drops below 64
   every held note on that channel releases with its own release envelope.
