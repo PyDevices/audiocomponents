@@ -97,8 +97,8 @@ KNOWN_P6 = {
 KNOWN_P6.update(lifecycle_known.KNOWN_P6)
 
 #: A CircuitPython that returns from a pull on a looped source that ends
-#: empty (built with micropython-pydevices' patches/circuitpython/0008) runs
-#: the E8 cells `lifecycle.EMPTY_SOURCE_SKIPS` keeps from stock
+#: empty (built with micropython-pydevices' patches/circuitpython/0008 and
+#: 0009) runs the E8 cells `lifecycle.EMPTY_SOURCE_SKIPS` keeps from stock
 #: CircuitPython. Where its own pitch shifter renders other bytes than ours
 #: (KNOWN_P6's reason), those cells print other render hashes, with the same
 #: verdicts: class -> (E8 cells that differ in the quick matrix, their
@@ -107,8 +107,9 @@ KNOWN_P6.update(lifecycle_known.KNOWN_P6)
 KNOWN_P6_E8 = {}
 
 #: One pull of each of CircuitPython's own Echo, PitchShift,
-#: GranularPitchShift and Flanger on an empty looping source. Stock
-#: CircuitPython never returns from it.
+#: GranularPitchShift, Flanger and MultiTapDelay on an empty looping source.
+#: Stock CircuitPython never returns from it, and neither does a build that
+#: has 0008 but not 0009.
 EMPTY_SOURCE_PROBE = """
 import audiocore, audiodelays
 from array import array
@@ -116,7 +117,9 @@ kw = dict(buffer_size=512, sample_rate=8000, channel_count=1)
 for node in (audiodelays.Echo(max_delay_ms=50, **kw),
              audiodelays.PitchShift(**kw),
              audiodelays.GranularPitchShift(**kw),
-             audiodelays.Flanger(**kw)):
+             audiodelays.Flanger(**kw),
+             audiodelays.MultiTapDelay(max_delay_ms=50, delay_ms=20,
+                                       decay=0.5, mix=0.5, **kw)):
     node.play(audiocore.RawSample(array("h"), sample_rate=8000), loop=True)
     audiocore.get_buffer(node)
 print("returned")
