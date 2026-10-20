@@ -56,6 +56,25 @@ EDGE = 0.03125
 CLOCK_Q = 0.5
 TONE_Q = 0.7071
 
+#: The clock's slow mean: three first-order low-passes at MEAN_HZ in a row,
+#: which `_centre` takes out of the clock before the comparator. A direct
+#: offset in the input passes the Tracking low-pass whole where a high
+#: note's fundamental does not, so the comparator's zero sat outside the
+#: clock; with the mean taken out the zero follows the clock's own centre.
+#: Each pole is an all-pass at half mix, which is exactly 1 at DC however
+#: low the corner (a low-pass biquad at 10 Hz is not: its coefficients
+#: round in single precision and its DC gain reads 0.90 to 1.24). Three
+#: poles make what is subtracted fall as the cube of the frequency, so the
+#: clock's phase at the note moves by less than a degree (A2) and the square
+#: still turns over on the signal's own crossings; a high-pass at the same
+#: corner would lead by 10 degrees there and move the octave's level. The
+#: corner is a trade between two rows: the mean forgets the attack's step
+#: in about 50 ms at 20 Hz, where at 10 Hz a note above the range (E5) kept
+#: a pulse in its clock past 125 ms and played for that long, and from
+#: 30 Hz the A2 decay's spread and seed-7 level move.
+MEAN_HZ = 20.0
+MEAN_POLES = 3
+
 #: The dividers turn over on the comparator's ticks: one LSB, under TICK.
 CLOCK_THRESHOLD = 1.0 / 32768.0
 CLOCK_HOLD_MS = 1.0
@@ -157,14 +176,12 @@ class Octaver(_component.Component):
     octave goes silent.
     Between -90 and -84.5 dBFS Sensitivity changes nothing: that whole
     stretch is one step of the clock.
+    A direct offset in the input, as a plucked string rings round, does not
+    take the top of the range from you: the divider turns over on the
+    clock's own centre, not on zero.
 
     **Limits.** It plays one note at a time: on a power chord (A2 and E3)
     about two fifths of the octave is intermodulation.
-    An offset in the input, a direct current, goes through Tracking's
-    low-pass whole where a high note's fundamental does not, so it ends the
-    range: at patch 0 an offset of 3 % of a note's peak stops B3, 1 % stops
-    E4 and 0.3 % stops A4, and what plays is the note itself.
-    The ranges above are for an input with none.
     A stereo source is clocked on its mid: with the right channel 45
     degrees ahead of the left, the fifth sits 3.2 dB under the octave
     instead of 4.4, on both channels.
@@ -286,6 +303,7 @@ class Octaver(_component.Component):
         self._dry = split.tap(0)
         self._allpass = None
         self._clock = []
+        self._mean = []
         signal = self._own(audioroute.Splitter(
             self._signal_leg(split.tap(1)), taps=2), reset=False)
         ticks = self._own(audioroute.Splitter(
@@ -395,6 +413,7 @@ class Octaver(_component.Component):
             section.play(clock)
             clock = section
             self._clock.append(section)
+        clock = self._centre(clock)
         self._comparator = self._own(audioshaper.Waveshaper(
             sample_rate=self._sample_rate,
             channel_count=self._channel_count, curve=self._curve(),
@@ -402,6 +421,40 @@ class Octaver(_component.Component):
             post_gain=1.0))
         self._comparator.play(clock)
         return self._comparator
+
+    def _centre(self, clock):
+        """The clock less its slow mean, for the comparator.
+
+        The mean is `MEAN_POLES` first-order low-passes at `MEAN_HZ`,
+        negated by a multiply and summed with the clock by a two-voice
+        mixer, which adds sample by sample. The clock's waveform is
+        otherwise untouched, so a decaying note reaches the comparator as
+        before; what moves is where its zero sits, which follows the
+        offset the clock carries."""
+        rate = self._sample_rate
+        channels = self._channel_count
+        split = self._own(audioroute.Splitter(clock, taps=2), reset=False)
+        mean = split.tap(1)
+        for _ in range(MEAN_POLES):
+            pole = self._own(audiobiquad.AllPass(
+                stages=1, frequency=MEAN_HZ, feedback=0.0, mix=0.5,
+                sample_rate=rate, channel_count=channels))
+            pole.play(mean)
+            mean = pole
+            self._mean.append(pole)
+        minus_one = self._own(audiocore.RawSample(
+            array("h", [-32768] * (2 * channels)),
+            sample_rate=rate, channel_count=channels), reset=False)
+        negative = self._own(audiomath.Multiply(
+            mean, minus_one, mix=1.0, sample_rate=rate,
+            channel_count=channels))
+        # Not reset, as the output mixer: no voice holds a block between
+        # two pulls once the graph is armed (`_arm`).
+        centred = self._own(audiomixer.Mixer(
+            voice_count=2, **self._pcm(BLOCK * channels * 4)), reset=False)
+        centred.voice[0].play(split.tap(0), loop=True)
+        centred.voice[1].play(negative, loop=True)
+        return centred
 
     def _divide(self, tap, order):
         """A divider on the comparator: a +-1 square at a half (order 1)
@@ -549,7 +602,8 @@ class Octaver(_component.Component):
         # block walks a corner move over 20 ms (#162); cleared, it takes a
         # Tone or Tracking set before the first pull as it stands, as a
         # fresh build does (audiocomponents#164).
-        for node in self._clock + [self._tone1, self._tone1b, self._tone2]:
+        for node in (self._clock + self._mean
+                     + [self._tone1, self._tone1b, self._tone2]):
             audiocore.reset_buffer(node)
 
     def _pull(self):

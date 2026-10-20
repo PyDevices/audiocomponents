@@ -20,10 +20,6 @@ the real thing.
 - An auto-wah (an envelope filter that opens as you play harder) and its
   pedal-swept sibling, Wah. They share one resonant filter that has to move
   fast enough to sound smooth.
-- Octaver that blocks a direct offset in its input, so the top of its range
-  (B3 to A4 at patch 0) divides on a signal with a little DC in it. A plain
-  high-pass on both legs moves the notes' octave levels, so it needs its
-  corner and phase worked out against the clock first.
 - SpringReverb, the dispersive "boing" of a spring tank, which a plate or hall
   reverb cannot give you.
 - Ensemble, a multi-voice chorus where the number of voices is the effect, and

@@ -73,6 +73,19 @@ there, and are recorded in its changelog.
 
 ### Fixed
 
+- `Octaver` divides on an input with a direct offset in it. A plucked note
+  rings round an offset of 1 to 2 % of its peak, which the Tracking low-pass
+  passes whole while it takes the fundamental of B3 and E4 down by 37 and
+  46 dB: the divider's clock never crossed zero, and those notes played
+  themselves. The comparator now sees the clock less its slow mean (three
+  first-order poles at 20 Hz), so its zero follows the clock's own centre and
+  the clock's waveform is otherwise untouched. B3, E4 and A4 divide with an
+  offset of 30 % of the peak, where 3 %, 1 % and 0.3 % used to stop them, and
+  the A2 decay, the tracking windows, the peak gain and the rest of the kit
+  read as before. The limit the Changed entry above names is gone, and so is
+  its roadmap bullet. The clock leg gains a splitter, three all-pass poles, a
+  multiply and a two-voice mixer; its cost on a board is not measured
+  ([#190](https://github.com/PyDevices/audiocomponents/issues/190)).
 - `Expander`'s `tail_samples` is finite with Key Listen on. It said 0 while
   the key filters rang for 2 304 frames or more; it now bounds that ring from
   Key Low, Key High and the rate (at most about 5 100 frames at 48 kHz), and
