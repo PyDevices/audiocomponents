@@ -79,7 +79,27 @@ DECLARED = {
         "with Direct at 0 only the octaves sound, and one-sample clicks"
         " through the clock's low-pass stay under Sensitivity, where the"
         " octaves are silent by design (trait T3 b)",
+    ("Bitcrusher", "levels", "-24/48000/2/p6"):
+        "Broken Converter keeps about 4 bits, a step of 4096 LSB, and a"
+        " phrase peaking at 2068 (-24 dBFS) is under one step: a bit crusher"
+        " silences it by design",
+    ("Bitcrusher", "levels", "-24/22050/1/p6"):
+        "Broken Converter keeps about 4 bits, a step of 4096 LSB, and a"
+        " phrase peaking at 2068 (-24 dBFS) is under one step: a bit crusher"
+        " silences it by design",
+    ("Rack", "levels", ""):
+        "ConvolutionReverb ends the probe chain and rails at its defaults"
+        " whatever the level (its own ceiling cell, see Rack's ceiling row):"
+        " a finding for that class, not a rack defect",
 }
+
+# Five classes rail on the phrase at -3 dBFS and state no input ceiling, so
+# they are held to 0 dBFS (audiocomponents#192).
+for _name in ("Chorus", "CombFilter", "LadderFilter", "Reverb",
+              "TransientShaper"):
+    DECLARED[(_name, "levels", "-3/")] = (
+        "rails on the plucked phrase at -3 dBFS with no input ceiling"
+        " stated, so held to 0 dBFS (audiocomponents#192)")
 
 # MultiTapDelay on CircuitPython: its audiodelays.MultiTapDelay is
 # upstream's own, whose reset_buffer keeps the write heads where they were,
