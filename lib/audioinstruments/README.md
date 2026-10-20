@@ -279,16 +279,20 @@ sampler to render rather than sixteen and a mixer.
 ```python
 from audioinstruments import soundfont
 
-pool = soundfont.Voices(48000, 2, voice_count=64, reserve=8, gain=0.2)
+pool = soundfont.Voices(48000, 2, voice_count=64, reserve=8, gain=0.2,
+                        max_voice_count=128)
 strings = audioinstruments.create("soundfont", 48000, voice_pool=pool)
 kit = audioinstruments.create("soundfont_drums", 48000, voice_pool=pool)
 audio_out.play(pool.output)    # every instrument's output is this sampler
 pool.voice_count = 40          # a board that can't render 64: set it live
 ```
 
-`voice_count` can change while the pool plays, up to `pool.max_voice_count`
-(the engine's ceiling); fewer stops the voices above the new count with a
-5 ms fade. `reserve` stops the oldest releasing voices early, each fading
+`voice_count` can change while the pool plays, up to `pool.max_voice_count`;
+fewer stops the voices above the new count with a 5 ms fade. The sampler is
+made with `voice_count` voices (or `max_voice_count` when you give more), and
+a sampler's voices can't be added to, so ask for the room you'll want: each
+voice costs memory whether it sounds or not, which is why a board leaves
+`max_voice_count` out (the build's most is `audiosampler.MAX_VOICES`). `reserve` stops the oldest releasing voices early, each fading
 out over 5 ms, so a new note takes a free voice rather than cutting a
 sounding one off with a click. `gain` is headroom: sixteen parts at full
 level clip in a dense piece, and 0.2 is about what General MIDI players run

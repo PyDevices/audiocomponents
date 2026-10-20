@@ -703,6 +703,52 @@ class SharedVoicesTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             pool.voice_count = 0
 
+    def test_a_small_pool_does_not_make_the_ceiling(self):
+        """A sampler's voices cost memory sounding or not (about 32 KB more
+        for 48 than 128 do on MicroPython), so a pool's sampler has the
+        voices it was asked for, not the build's most."""
+        import audiosampler
+        self.assertLess(8, audiosampler.MAX_VOICES)
+        pool = self.voices                 # voice_count=8
+        self.assertEqual(pool.sampler.voice_count, 8)
+        self.assertEqual(pool.max_voice_count, 8)
+        self.assertEqual(len(pool.voice), 8)
+        with self.assertRaises(ValueError):
+            pool.voice_count = 9
+        own = audioinstruments.create("soundfont", SR, bank=self.path,
+                                      voices=4)
+        try:
+            self.assertEqual(own.voice_pool.sampler.voice_count, 4)
+        finally:
+            own.deinit()
+        dflt = soundfont.Voices(SR, 2)
+        try:
+            self.assertEqual(dflt.sampler.voice_count,
+                             soundfont.SHARED_VOICES)
+        finally:
+            dflt.deinit()
+
+    def test_a_pool_that_wants_room_asks_for_it(self):
+        pool = soundfont.Voices(SR, 2, voice_count=4, max_voice_count=12)
+        try:
+            self.assertEqual(pool.voice_count, 4)
+            self.assertEqual(pool.sampler.voice_count, 12)
+            self.assertEqual(pool.max_voice_count, 12)
+            pool.voice_count = 12
+            self.assertEqual(len(pool.slots), 12)
+            with self.assertRaises(ValueError):
+                pool.voice_count = 13
+        finally:
+            pool.deinit()
+        # asking for less than the count is the count
+        small = soundfont.Voices(SR, 2, voice_count=6, max_voice_count=2)
+        try:
+            self.assertEqual(small.sampler.voice_count, 6)
+        finally:
+            small.deinit()
+        with self.assertRaises(ValueError):
+            soundfont.Voices(SR, 2, voice_count=0)
+
 
 class BoundedCacheTest(unittest.TestCase):
     """The samples a bank keeps live in an arena of at most `cache_bytes`,

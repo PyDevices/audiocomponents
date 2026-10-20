@@ -200,8 +200,8 @@ instrument.voices    # 1 for a monophonic instrument, its voice limit
 
 A note past the limit takes a sounding note's voice, so a part that overlaps
 itself wants an instrument whose `voices` covers the overlap. A SoundFont
-instrument's count is its pool's `voice_count`, which a board that can't
-render the engine's ceiling sets lower.
+instrument's count is its pool's `voice_count`, which can be set lower while
+it plays, and higher up to the voices the pool's sampler was made with.
 
 It also provides the optional MIDI methods below. They are present as safe
 no-ops when the instrument does not use a message:
