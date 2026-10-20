@@ -381,11 +381,11 @@ class SharedVoicesTest(unittest.TestCase):
     def setUp(self):
         self.voices = soundfont.Voices(SR, 2, voice_count=8)
         self.a = audioinstruments.create("soundfont", SR, bank=self.path,
-                                         voices=self.voices)
+                                         voice_pool=self.voices)
         self.b = audioinstruments.create("soundfont", SR, bank=self.path,
-                                         voices=self.voices)
+                                         voice_pool=self.voices)
         self.kit = audioinstruments.create("soundfont_drums", SR,
-                                           bank=self.path, voices=self.voices)
+                                           bank=self.path, voice_pool=self.voices)
 
     def tearDown(self):
         for inst in (self.a, self.b, self.kit):
@@ -396,7 +396,8 @@ class SharedVoicesTest(unittest.TestCase):
         self.assertIs(self.a.output, self.voices.output)
         self.assertIs(self.b.output, self.voices.output)
         self.assertIs(self.kit.output, self.voices.output)
-        self.assertIs(self.a.voices, self.voices)
+        self.assertIs(self.a.voice_pool, self.voices)
+        self.assertEqual(self.a.voices, 8)
         self.assertEqual(self.voices.voice_count, 8)
 
     def test_a_busy_part_takes_the_idle_ones_voices(self):
@@ -448,7 +449,7 @@ class SharedVoicesTest(unittest.TestCase):
 
     def test_the_choke_stays_in_its_own_kit(self):
         kit2 = audioinstruments.create("soundfont_drums", SR, bank=self.path,
-                                       voices=self.voices)
+                                       voice_pool=self.voices)
         try:
             kit2.note_on(46, 100)          # open hat on the second kit
             self.kit.note_on(42, 100)      # closed hat on the first
@@ -472,7 +473,7 @@ class SharedVoicesTest(unittest.TestCase):
     def test_the_reserve_fades_a_tail_rather_than_cutting_it(self):
         pool = soundfont.Voices(SR, 2, voice_count=8, reserve=2)
         inst = audioinstruments.create("soundfont", SR, bank=self.path,
-                                       voices=pool)
+                                       voice_pool=pool)
         try:
             for key in range(60, 66):      # six held, two free
                 inst.note_on(key, 100)
@@ -528,18 +529,55 @@ class SharedVoicesTest(unittest.TestCase):
         try:
             with self.assertRaises(ValueError):
                 audioinstruments.create("soundfont", SR, bank=self.path,
-                                        voices=other)
+                                        voice_pool=other)
         finally:
             other.deinit()
 
     def test_its_own_pool_is_the_old_instrument(self):
         inst = audioinstruments.create("soundfont", SR, bank=self.path)
         try:
-            self.assertFalse(inst.voices.shared)
-            self.assertEqual(inst.voices.voice_count, soundfont.MAX_VOICES)
+            self.assertFalse(inst.voice_pool.shared)
+            self.assertEqual(inst.voices, soundfont.MAX_VOICES)
             self.assertIsNot(inst.output, self.voices.output)
         finally:
             inst.deinit()
+
+    def test_its_own_pool_takes_a_voice_count(self):
+        inst = audioinstruments.create("soundfont", SR, bank=self.path,
+                                       voices=4)
+        try:
+            self.assertEqual(inst.voices, 4)
+            for key in range(60, 66):      # six notes on four voices
+                inst.note_on(key, 100)
+            self.assertEqual(inst.sounding(), 4)
+            self.assertEqual(inst.voice_pool.stolen, 2)
+        finally:
+            inst.deinit()
+        with self.assertRaises(ValueError):  # a shared pool sets its own
+            audioinstruments.create("soundfont", SR, bank=self.path,
+                                    voice_pool=self.voices, voices=4)
+
+    def test_the_voice_count_changes_while_it_plays(self):
+        pool = self.voices
+        self.assertGreaterEqual(pool.max_voice_count, 8)
+        for key in range(60, 68):
+            self.a.note_on(key, 100)
+        self.assertEqual(pool.sounding(), 8)
+        pool.voice_count = 5               # three stopped, each fading
+        self.assertEqual(self.a.voices, 5)
+        self.assertEqual(len(pool.slots), 5)
+        self.assertEqual(len(self.a._player.held), 5)
+        self.a.note_on(70, 100)            # five voices: a steal
+        self.assertEqual(pool.stolen, 1)
+        pool.voice_count = 7               # room again: no steal
+        self.a.note_on(71, 100)
+        self.a.note_on(72, 100)
+        self.assertEqual(pool.stolen, 1)
+        self.assertEqual(self.a.sounding(), 7)
+        with self.assertRaises(ValueError):
+            pool.voice_count = pool.max_voice_count + 1
+        with self.assertRaises(ValueError):
+            pool.voice_count = 0
 
 
 class BoundedCacheTest(unittest.TestCase):

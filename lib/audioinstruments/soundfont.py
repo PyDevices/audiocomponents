@@ -58,8 +58,8 @@ off releases a voice through its own release stage; loop mode 3 lets the
 sample run on to its end.
 
 Several instruments can share one pool of voices instead, as a General MIDI
-module's sixteen parts do: make a `Voices`, pass it as `voices=` to every
-`create()`, and play its `output` once. A busy part then takes the voices
+module's sixteen parts do: make a `Voices`, pass it as `voice_pool=` to
+every `create()`, and play its `output` once. A busy part then takes the voices
 an idle one isn't using, a new note anywhere steals the oldest releasing
 voice in the whole pool, and there is one sampler to render rather than one
 per instrument and a mixer to sum them.
@@ -562,12 +562,19 @@ def open_bank(bank=None, cache_bytes=None):
 class Voices(object):
     """Engine voices on one sampler, for one instrument or shared by several.
 
-        voices = soundfont.Voices(48000, 2)
+        pool = soundfont.Voices(48000, 2, voice_count=48)
         melodic = audioinstruments.create("soundfont", 48000, bank=path,
-                                          voices=voices)
+                                          voice_pool=pool)
         kit = audioinstruments.create("soundfont_drums", 48000, bank=path,
-                                      voices=voices)
-        audio_out.play(voices.output)
+                                      voice_pool=pool)
+        audio_out.play(pool.output)
+
+    `voice_count` is how many notes' worth of engine voices the pool plays
+    at once, and it can change while it plays: fewer stops the voices above
+    the new count (each fades out over 5 ms), more takes effect at the next
+    note. The sampler is made with `audiosampler.MAX_VOICES`, the build's
+    ceiling, so a count up to that needs nothing new; an idle voice costs
+    the render nothing. A board that can't render the ceiling sets less.
 
     Every instrument made on it has this sampler as its `output`, so play
     it once. Deinitialising one of them stops its own voices and leaves the
@@ -599,7 +606,8 @@ class Voices(object):
 
     def __init__(self, sample_rate, channel_count=2,
                  voice_count=SHARED_VOICES, shared=True, reserve=0, gain=1.0):
-        self.sampler = _sampler(sample_rate, channel_count, voice_count)
+        self.sampler = _sampler(sample_rate, channel_count,
+                                max(int(voice_count), _ceiling()))
         self.sample_rate = sample_rate
         self.channel_count = channel_count
         self.shared = shared
@@ -608,11 +616,14 @@ class Voices(object):
         #: is `HELD`, `RELEASING` or `FADED`, `level`, `pitch` and `pan` are
         #: the region's own, before the live macros, and `player` is the
         #: instrument's that holds it.
-        self.slots = [None] * self.sampler.voice_count
+        if int(voice_count) < 1:
+            raise ValueError("voice_count must be at least 1")
+        self.slots = [None] * int(voice_count)
         self._queue = None     # the writes waiting, while deferred
         self._pending = {}     # voice index -> playing, as the queue leaves it
         self._depth = 0
-        self.voice = [_Queued(self, i) for i in range(len(self.slots))]
+        self.voice = [_Queued(self, i)
+                      for i in range(self.sampler.voice_count)]
         self.serial = 0
         self.reserve = int(reserve)
         self.gain = float(gain)
@@ -626,7 +637,31 @@ class Voices(object):
 
     @property
     def voice_count(self):
+        """How many engine voices the pool plays at once; settable, up to
+        `max_voice_count`."""
         return len(self.slots)
+
+    @voice_count.setter
+    def voice_count(self, count):
+        count = int(count)
+        if not 1 <= count <= self.max_voice_count:
+            raise ValueError("voice_count must be 1 to %d"
+                             % self.max_voice_count)
+        slots = self.slots
+        if count < len(slots):
+            voice = self.voice
+            for i in range(count, len(slots)):
+                if slots[i] is not None:
+                    voice[i].stop()
+                    _free(slots, i)
+            del slots[count:]  # in place: every player holds this list
+        else:
+            slots.extend([None] * (count - len(slots)))
+
+    @property
+    def max_voice_count(self):
+        """The most `voice_count` can be: the sampler's voices."""
+        return self.sampler.voice_count
 
     def sounding(self):
         """How many voices are sounding now, releases included."""
@@ -1084,6 +1119,13 @@ class SoundFontInstrument(Instrument):
 
     @property
     def voices(self):
+        """How many notes' worth of engine voices this instrument can sound
+        at once: its pool's `voice_count`, shared with the pool's other
+        instruments when it has some."""
+        return self._player.pool.voice_count
+
+    @property
+    def voice_pool(self):
         """The `Voices` this instrument plays on."""
         return self._player.pool
 
@@ -1106,6 +1148,15 @@ class SoundFontInstrument(Instrument):
         self._deinited = True
 
 
+def _ceiling():
+    """The engine's most voices on one sampler, as this build has it."""
+    try:
+        import audiosampler
+        return int(audiosampler.MAX_VOICES)
+    except (ImportError, AttributeError):
+        return SHARED_VOICES
+
+
 def _sampler(sample_rate, channel_count, voice_count=MAX_VOICES):
     import audiosampler
     return audiosampler.Sampler(voice_count=voice_count,
@@ -1113,23 +1164,27 @@ def _sampler(sample_rate, channel_count, voice_count=MAX_VOICES):
                                 sample_rate=sample_rate)
 
 
-def voices_for(sample_rate, channel_count, voices=None):
-    """`voices` checked against the instrument's format, or a pool of its
-    own when None."""
-    if voices is None:
-        return Voices(sample_rate, channel_count, MAX_VOICES, shared=False)
-    if (voices.sample_rate != sample_rate
-            or voices.channel_count != channel_count):
+def voices_for(sample_rate, channel_count, voice_pool=None, voices=None):
+    """`voice_pool` checked against the instrument's format, or a pool of
+    its own of `voices` voices (`MAX_VOICES` when None)."""
+    if voice_pool is None:
+        return Voices(sample_rate, channel_count,
+                      MAX_VOICES if voices is None else voices, shared=False)
+    if voices is not None:
+        raise ValueError("a shared pool's voice_count is set on the pool")
+    if (voice_pool.sample_rate != sample_rate
+            or voice_pool.channel_count != channel_count):
         raise ValueError("the shared voices are %d Hz, %d channels"
-                         % (voices.sample_rate, voices.channel_count))
-    return voices
+                         % (voice_pool.sample_rate, voice_pool.channel_count))
+    return voice_pool
 
 
 def create(sample_rate, channel_count=2, transport=None, bank=None,
-           voices=None):
+           voice_pool=None, voices=None):
     """The bank's melodic presets as one instrument; `bank` is a path, an
-    open `SoundFont`, or None to look in the usual places. `voices` is a
-    `Voices` to share with other instruments, or None for its own."""
+    open `SoundFont`, or None to look in the usual places. `voice_pool` is
+    a `Voices` to share with other instruments, or None for its own of
+    `voices` voices (`MAX_VOICES` when None)."""
     loaded = open_bank(bank)
     melodic = loaded.melodic_bank()
     programs = loaded.programs(melodic)
@@ -1143,7 +1198,7 @@ def create(sample_rate, channel_count=2, transport=None, bank=None,
             name = "Program %d (empty)" % program
         patches[program] = (name, DEFAULT_MACROS)
         targets[program] = (melodic, program)
-    player = _Player(loaded, voices_for(sample_rate, channel_count, voices),
-                     melodic)
+    player = _Player(loaded, voices_for(sample_rate, channel_count,
+                                        voice_pool, voices), melodic)
     return SoundFontInstrument(player, patches, targets, MACRO_LABELS,
                                transport=transport)

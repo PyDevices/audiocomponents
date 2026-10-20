@@ -191,6 +191,18 @@ note_off(pitch, channel=0, note_id=-1, sample_position=0)
 all_notes_off()
 ```
 
+and says how many notes it can sound at once:
+
+```python
+instrument.voices    # 1 for a monophonic instrument, its voice limit
+                     # otherwise, or None for a drum machine (voices per pad)
+```
+
+A note past the limit takes a sounding note's voice, so a part that overlaps
+itself wants an instrument whose `voices` covers the overlap. A SoundFont
+instrument's count is its pool's `voice_count`, which a board that can't
+render the engine's ceiling sets lower.
+
 It also provides the optional MIDI methods below. They are present as safe
 no-ops when the instrument does not use a message:
 

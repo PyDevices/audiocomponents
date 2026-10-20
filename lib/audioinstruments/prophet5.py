@@ -161,5 +161,6 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 15: lfo_scale.a = value0 * 1000.0
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
-                            transport=transport)
+                            transport=transport,
+                            voices=MAX_VOICES)
     return instrument

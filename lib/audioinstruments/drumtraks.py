@@ -255,5 +255,6 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 15: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
-                            transport=transport, note_map=NOTE_MAP)
+                            transport=transport, note_map=NOTE_MAP,
+                            voices=None)
     return instrument

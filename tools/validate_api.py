@@ -56,6 +56,11 @@ def _check(component, label, effect):
         raise ValueError("%s has the wrong channel count" % label)
     if component.patch_index != 0:
         raise ValueError("%s did not start on patch 0" % label)
+    if not effect:
+        voices = component.voices
+        if voices is not None and (type(voices) is not int or voices < 1):
+            raise TypeError("%s voices is %r: a positive int or None"
+                            % (label, voices))
     result, data = audiocore.get_buffer(component.output, False, 0)
     if len(data) == 0 or len(data) % (2 * component.channel_count):
         raise ValueError("%s returned malformed audio" % label)

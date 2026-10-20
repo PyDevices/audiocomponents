@@ -722,4 +722,5 @@ def create(sample_rate, channel_count=2, transport=None):
     # the hat's choke goes with it. The layer notes and the stick were always
     # presses and always rode the seam. See docs/sequencing.md.
     return Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
-                      output=mixer, transport=transport, note_map=NOTE_MAP)
+                      output=mixer, transport=transport, note_map=NOTE_MAP,
+                      voices=None)
