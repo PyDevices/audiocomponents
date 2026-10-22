@@ -48,6 +48,11 @@ there, and are recorded in its changelog.
 
 ### Changed
 
+- **The audiodsp pin moves to v0.6.9, and the floor to `>=0.6.9`** in both
+  packages. v0.6.9 is the first audiodsp release with the 128-voice sampler
+  the SoundFont instruments are built on. No node the components use renders
+  differently from f98eb17: the Ladder's new `cutoff` input is off unless
+  connected, and `LadderFilter` does not connect it.
 - The gates run against audiodsp f98eb17, where the sampler's voice ceiling
   is 128, so a SoundFont pool built with `max_voice_count` above 64 gets the
   voices it asks for. The loop shifter that `PitchShifter`'s feedback runs
