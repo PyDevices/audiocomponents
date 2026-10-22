@@ -6,6 +6,18 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## v0.4.1 (2026-10-22)
+
+- Tests: a release pull request and its merge skip the suite (#204)
+- Move AUDIODSP_PIN to audiodsp v0.6.9 and raise both floors to >=0.6.9 (#203)
+- Adopt publishing-v15: a release also asks the library index to rebuild (#202)
+- Move AUDIODSP_PIN to audiodsp f98eb17, the 128-voice sampler (#201)
+- SoundFont pool: the sampler has the voices it was asked for (#199)
+- Octaver: the comparator follows the clock's slow mean, so a direct offset no longer stops B3 and E4 (#200)
+- Effects: Expander's tail follows Key Listen; classes state their residue beside the tail; Distortion's reset residue is held (#198)
+- Effects: DeEsser Range 0 is a wire after a reset and at every buffer size; Chorus states its ceiling; Octaver and four more say what rails them (#197)
+- Lifecycle matrix: run MultiTapDelay's CircuitPython end-of-source cells a patched build can finish (#196)
+
 ## v0.4.1.dev3 (2026-10-20)
 
 ### Added
