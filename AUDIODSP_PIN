@@ -432,5 +432,19 @@
 # test_measure_effect_cost run the loop shifter on held material and move
 # with #284; their digests are re-read there.
 #
+# Moved to v0.6.9 (4de7609) on 2026-10-21: the release, for the
+# audioeffects and audioinstruments 0.4.1 release, and the first release to
+# carry audiosampler and its 128-voice ceiling, so the pin is named by tag
+# again. What moved beneath the components, by `git log f98eb17..v0.6.9 --
+# src`: audiograph is new, a C graph runner over the existing kernels on
+# all three interpreters; audiomath gains cast_into; audiopump.Ring comes to
+# CircuitPython; the MP3 decoder takes its buffers from the heap on ESP32
+# and the other CMake builds; and audioladder.Ladder takes a `cutoff` audio
+# input, with the oscillator's exp2 moved into a shared header for it. A
+# Ladder with no cutoff input connected renders the configured filter bit
+# for bit, and LadderFilter moves its cutoff with set() only, so no node a
+# component builds on renders differently. The pyproject floors rise to
+# >=0.6.9.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-f98eb17695c1c1e64284a4ef1f2abee7f3cdeefa f98eb17695c1c1e64284a4ef1f2abee7f3cdeefa
+v0.6.9 4de7609268d0ade9aaf652e232a0ffb1bae9e8ec
