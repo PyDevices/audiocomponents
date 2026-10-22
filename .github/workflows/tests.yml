@@ -8,16 +8,19 @@ name: Tests
 
 # Once per change: pushes to main and pull requests. Documentation-only changes
 # skip it; the two package READMEs under lib/ are not skipped, because tests
-# read them and the wheels carry them.
+# read them and the wheels carry them. So does a release pull request, which
+# changes only VERSION and CHANGELOG.md, and its merge: the code it releases
+# already passed here, and publish-release-packages.yml runs the suite again
+# at the release tag before anything is published.
 on:
   push:
     branches: [main]
-    paths-ignore: ['docs/**', 'README.md', 'ROADMAP.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE']
+    paths-ignore: ['docs/**', 'README.md', 'ROADMAP.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE', 'VERSION']
   pull_request:
     # `labeled` too: adding the `lifecycle: all classes` label re-runs the
     # pull request with the whole lifecycle matrix (see the test step).
     types: [opened, synchronize, reopened, labeled]
-    paths-ignore: ['docs/**', 'README.md', 'ROADMAP.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE']
+    paths-ignore: ['docs/**', 'README.md', 'ROADMAP.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE', 'VERSION']
   # The full matrix on demand, for a branch that should see every Python
   # before it merges rather than after.
   workflow_dispatch:
