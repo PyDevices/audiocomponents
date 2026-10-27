@@ -1121,6 +1121,18 @@ class ALookaheadThatGrowsPlaysNothingOld(unittest.TestCase):
         self.assertGreater(after, 2000)
 
 
+#: The planted faults the tests above use, for the kit's plant check: each
+#: differs from the clean class and no knob or patch reaches it. The two
+#: that only show with lookahead are judged with it on.
+KIT_PLANTS = {
+    "L1-sample": (SlowAttack, 2),
+    "L2": (NoCatchStage, 1),
+    "L1-true-peak": (NoTruePeakReserve, 5),
+    "L6-ratio": FiniteRatio,
+    "L6-knee": (SoftKneeAlways, 3),
+}
+
+
 #: The ESP32-S3 figure the docstring gives: both stages with True Peak on,
 #: as measured on the board, against one 256-frame block at 48 kHz.
 BOARD_COST = {"S3_true_peak_ms": 6.550, "block_ms": 5.333}
