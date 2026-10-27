@@ -692,5 +692,15 @@ class Claims(unittest.TestCase):
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
+KIT_PLANTS = {
+    "ChopperOnMultiplier": ChopperOnMultiplier,
+    "SineOnSwitching": (SineOnSwitching, 5),
+    "FlatCarrier": FlatCarrier,
+    "HardChopper": HardChopper,
+    "MakeupOnChopper": MakeupOnChopper,
+    "ZeroMod": ZeroMod,
+}
+
+
 if __name__ == "__main__":
     unittest.main()

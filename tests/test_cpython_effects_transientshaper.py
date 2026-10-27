@@ -412,5 +412,10 @@ class Claims(unittest.TestCase):
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
+KIT_PLANTS = {
+    "NoPeakHold": (NoPeakHold, 6),
+}
+
+
 if __name__ == "__main__":
     unittest.main()

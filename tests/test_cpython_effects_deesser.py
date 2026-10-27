@@ -1893,5 +1893,11 @@ class Claims(unittest.TestCase):
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
+KIT_PLANTS = {
+    "FrozenCrossover": FrozenCrossover,
+    "SlowRelease": SlowRelease,
+}
+
+
 if __name__ == "__main__":       # pragma: no cover
     unittest.main()

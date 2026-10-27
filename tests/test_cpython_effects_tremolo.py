@@ -802,3 +802,19 @@ class Claims(unittest.TestCase):
                                                    "sometimes a gate")))
         self.assertTrue(claim_problems(
             doc, CLAIMS + (("Silence in", ("TheClaims.test_nothing_here",)),)))
+
+
+KIT_PLANTS = {
+    "BlockHold": BlockHold,
+    "FrozenLink": FrozenLink,
+    "TriangleLFO": TriangleLFO,
+    "ShallowLinear": ShallowLinear,
+    "MuteDepth": MuteDepth,
+    "IgnoreBias": (IgnoreBias, 0),
+    "BiasTracker": BiasTracker,
+    "EqualTau": (EqualTau, 3),
+    "SineOpto": SineOpto,
+    "GateOpto": (GateOpto, 6),
+    "NoLag": (NoLag, 3),
+    "DoubleRate": DoubleRate,
+}

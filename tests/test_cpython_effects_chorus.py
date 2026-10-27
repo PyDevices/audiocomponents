@@ -745,3 +745,14 @@ class Claims(unittest.TestCase):
                                                    "at most 10 dB")))
         self.assertTrue(claim_problems(
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
+
+
+KIT_PLANTS = {
+    "RegeneratingChorus": RegeneratingChorus,
+    "LinearTriangleChorus": LinearTriangleChorus,
+    "OpenToneChorus": OpenToneChorus,
+    "HalfMixChorus": HalfMixChorus,
+    "DoubleRateChorus": DoubleRateChorus,
+    "SineWowChorus": SineWowChorus,
+    "WetOnly": WetOnly,
+}
