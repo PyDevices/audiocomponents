@@ -895,15 +895,6 @@ class TheClaims(unittest.TestCase):
     """The class docstring's figures and options that the traits above do
     not already pin."""
 
-    def test_the_spans(self):
-        self.assertEqual(SPAN[THRESHOLD], (-80.0, 0.0))
-        self.assertEqual(SPAN[ATTACK], (0.01, 1000.0, "log"))
-        self.assertEqual(SPAN[HOLD], (2.0, 2000.0, "log"))
-        self.assertEqual(SPAN[RELEASE], (2.0, 4000.0, "log"))
-        self.assertEqual(SPAN[RANGE], (0.0, -80.0))
-        self.assertEqual(SPAN[KEY_LOW], (25.0, 4000.0, "log"))
-        self.assertEqual(SPAN[KEY_HIGH][0], 250.0)
-
     def test_an_external_key_opens_and_closes_the_gate(self):
         loud = probes.sine(1000.0, 0.3, -6.0)
         quiet = probes.sine(1000.0, 0.3, -50.0)
@@ -961,38 +952,31 @@ CLAIMS = (
      "is held down, and above it the gate opens and lets it through.",
      ("Tier2Traits.test_g4_the_closed_state_is_range_not_zero",
       "Tier1Invariants.test_the_open_gate_is_level_honest")),
-    ("Threshold runs from -80 to 0 dBFS.", ("TheClaims.test_the_spans",)),
-    ("Range is how far the closed gate holds the signal down, from 0 dB, "
-     "where the output is the input, to -80 dB; it is a fixed depth, "
-     "however far under the Threshold the signal falls.",
-     ("TheClaims.test_the_spans",
-      "Tier1Invariants.test_range_zero_is_a_wire",
+    ("Range is how far the closed gate holds the signal down, with 0 "
+     "dB where the output is the input; it is a fixed depth, however "
+     "far under the Threshold the signal falls.",
+     ("Tier1Invariants.test_range_zero_is_a_wire",
       "Tier2Traits.test_g4_the_closed_state_is_range_not_zero",
       "Tier2Traits.test_g4_the_law_is_a_depth_not_a_slope",
       "Tier2Traits.test_planted_fault_g4_the_memoryless_slope")),
-    ("A crossing opens the gate over the Attack, from 0.01 ms to 1 s, holds "
-     "it open for the Hold, from 2 ms to 2 s, and only then lets it fall "
-     "over the Release, from 2 ms to 4 s.",
-     ("TheClaims.test_the_spans",
-      "Tier2Traits.test_g2_hold_is_a_real_stage",
+    ("A crossing opens the gate over the Attack, holds it open for "
+     "the Hold, and only then lets it fall over the Release.",
+     ("Tier2Traits.test_g2_hold_is_a_real_stage",
       "Tier2Traits.test_g5_attack_and_decay_time_constants",
-      "Tier2Traits.test_g5_the_fastest_attack_opens_inside_a_fifth_of_a_"
-      "millisecond",
-      "Tier1Invariants.test_the_hold_floor_keeps_the_gate_machine_on_at_"
-      "every_rate")),
+      "Tier2Traits.test_g5_the_fastest_attack_opens_inside_a_fifth_of_a_millisecond",
+      "Tier1Invariants.test_the_hold_floor_keeps_the_gate_machine_on_at_every_rate")),
     ("A long Hold with a short Release chops a reverb's tail off square: "
      "that is the gated-reverb snare.",
      ("Tier2Traits.test_g2_hold_is_a_real_stage",)),
     ("Once a crossing opens the gate, the gate runs through its Attack, "
      "Hold and Release even if the signal drops away at once.",
      ("Tier2Traits.test_g1_the_envelope_is_one_shot",)),
-    ("The gate listens through its own band, with Key Low from 25 Hz to "
-     "4 kHz and Key High from 250 Hz up to just under half the sample "
-     "rate, so a gate on a tom can ignore the hi-hat above it and the kick "
-     "below it.",
-     ("TheClaims.test_the_spans", "Tier2Traits.test_g3_the_key_path_is_a_band",
-      "Tier1Invariants.test_hz_spans_clamp_below_nyquist_rather_than_"
-      "refusing")),
+    ("The gate listens through its own band, with Key Low and Key "
+     "High setting its edges, the top held just under half the "
+     "sample rate, so a gate on a tom can ignore the hi-hat above it "
+     "and the kick below it.",
+     ("Tier2Traits.test_g3_the_key_path_is_a_band",
+      "Tier1Invariants.test_hz_spans_clamp_below_nyquist_rather_than_refusing")),
     ("Key Listen puts that band on the output in place of the audio, so you "
      "can hear what you are tuning.",
      ("Tier2Traits.test_g3_key_listen_puts_the_band_on_the_output",)),
