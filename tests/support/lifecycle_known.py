@@ -39,10 +39,6 @@ R_LADDER_OSC = (
 R_STATED_P1 = (
     "Listen (DynamicEQ) and Output (Exciter) are stated not to be a"
     " bypass at Mix 0 (audiocomponents#156)")
-R_142 = (
-    "at patch 6 and 22.05 kHz a rejoin off Mix 0 differs from a fresh"
-    " instance a few frames in; the 48 kHz first-frames half of the finding"
-    " closed when Overdrive began building lazily (audiocomponents#142)")
 
 #: (class NAME, event prefix, property) -> (quick cells, digest, full
 #: cells, digest, reason). The full matrix was not counted here (None).
@@ -259,8 +255,6 @@ KNOWN_RED = {
     ('Overdrive', 'E1-reset@block', 'P4'): (34, 'aaf11cd2', None, None, R_STATE),
     ('Overdrive', 'E1-reset@part', 'P4'): (34, '75164359', None, None, R_STATE),
     ('Overdrive', 'E10-macros', 'P4'): (4, 'ca627259', None, None, R_STATE),
-    ('Overdrive', 'E10-mix0', 'P4'): (2, '170e6132', None, None, R_STATE),
-    ('Overdrive', 'E10-mix0', 'PR'): (2, 'acc31d24', None, None, R_142),
     ('Overdrive', 'E10-patch', 'P4'): (4, 'a20f495c', None, None, R_STATE),
     ('Overdrive', 'E10-reset', 'P4'): (4, '34caff5e', None, None, R_STATE),
     ('Overdrive', 'E11-', 'P4'): (8, '294ebbde', None, None, R_STATE),
@@ -269,7 +263,6 @@ KNOWN_RED = {
     ('Overdrive', 'E4-', 'P5'): (2, '7fd4cd6f', None, None, R_JUMP),
     ('Overdrive', 'E5-mix0', 'P4'): (18, '60d901f0', None, None, R_STATE),
     ('Overdrive', 'E5-mix0', 'P5'): (16, '5e835e27', None, None, R_JUMP),
-    ('Overdrive', 'E5-mix0', 'PR'): (2, 'd8985f28', None, None, R_142),
     ('Overdrive', 'E6-', 'P4'): (44, 'f84cecd5', None, None, R_STATE),
     ('Overdrive', 'E6-', 'P5'): (3, 'dc935331', None, None, R_JUMP),
     ('Overdrive', 'E9-', 'P4'): (90, 'e2899302', None, None, R_STATE),
