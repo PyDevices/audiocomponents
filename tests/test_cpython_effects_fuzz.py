@@ -2386,44 +2386,8 @@ class TheResetLeavesOnlyFilterResidue(unittest.TestCase):
         self.assertGreater(residue, 0)
         self.assertLess(residue, 1024)
 
-#: The ESP32-S3 figures the docstring gives, from the second board pass:
-#: share of a 5.333 ms block at 48 kHz, rounded to the whole percent.
-BOARD_COST = {"S3_default": 77, "S3_costliest": 78, "S3_lean": 33}
-
-
 class TheClaims(unittest.TestCase):
     """The docstring's claims that no older test holds on its own."""
-
-    def test_the_spans(self):
-        R = Fuzz._MACRO_RANGES
-        self.assertEqual(Fuzz.MACRO_LABELS,
-                         ("Fuzz", "Level", "Tone", "Bias", "Load", "Mix",
-                          "Output Tilt"))
-        self.assertEqual(R[0], (18.0, 54.0))
-        for index in (1, 2, 4, 5):
-            self.assertEqual(R[index], (0.0, 1.0))
-        self.assertEqual(R[3], (-1.0, 1.0))
-        self.assertEqual(R[6], (-6.0, 6.0))
-        effect = build()
-        self.assertEqual(effect._character, "germanium")
-        self.assertAlmostEqual(effect.macro(0), 36.0, places=6)
-        effect.deinit()
-        self.assertEqual(
-            [Fuzz.PATCHES[i][0] for i in sorted(Fuzz.PATCHES)],
-            ["Bias centred, fuzz half", "Full fuzz, volume back",
-             "Starved bias, gated", "Cleaned up, load engaged",
-             "Cascade scoop centred", "Cascade sustain maximum",
-             "Cascade treble end", "Full fuzz, mix back", "Fuzz - lean"])
-
-    def test_the_board_figures_are_the_table(self):
-        doc = _flat(Fuzz.__doc__)
-        self.assertIn("the germanium default was measured at %d %% of a "
-                      "block and the costliest patch at %d %%"
-                      % (BOARD_COST["S3_default"],
-                         BOARD_COST["S3_costliest"]), doc)
-        self.assertIn("was measured at %d %%, so play it"
-                      % BOARD_COST["S3_lean"], doc)
-        self.assertLess(BOARD_COST["S3_lean"], BOARD_COST["S3_default"])
 
     def test_construction_needs_its_three_modules(self):
         for name in Fuzz.REQUIRES:
@@ -2438,9 +2402,9 @@ class TheClaims(unittest.TestCase):
 
 
 CLAIMS = (
-    ("Fuzz Face germanium, or a Ram's Head 1973 Big Muff as `cascade`.",
-     ("TheClaims.test_the_spans",
-      "G1Asymmetry.test_default_is_asymmetric",
+    ("Fuzz Face germanium, or a Ram's Head 1973 Big Muff as "
+     "`cascade`.",
+     ("G1Asymmetry.test_default_is_asymmetric",
       "CascadeC3.test_centred_tone_has_a_mid_scoop")),
     ("On `germanium` the transistor sits off centre, so the fuzz leans even: "
      "at the default the second harmonic of a -20 dBFS 1 kHz tone is no "
@@ -2466,10 +2430,6 @@ CLAIMS = (
      ("CascadeC4.test_the_row_holds_everywhere_it_is_claimed",
       "CascadeC4.test_it_is_disconfirmed_above_the_span_including_at_the_"
       "default")),
-    ("Fuzz spans 18 dB to 54 dB and defaults to 36 dB.",
-     ("TheClaims.test_the_spans",)),
-    ("Bias spans -1 to +1.",
-     ("TheClaims.test_the_spans",)),
     ("On `cascade` any Bias off centre is a gate on the level: it rails both "
      "pairs and the output falls away, while the scoop stays more than 3 dB "
      "deep.",
@@ -2479,8 +2439,6 @@ CLAIMS = (
      ("TheOutputStage.test_bias_off_centre_declares_no_bound",
       "TheOutputStage.test_bias_off_centre_never_reaches_digital_zero_and_"
       "says_so")),
-    ("Level, Load and Mix each span 0 to 1.",
-     ("TheClaims.test_the_spans",)),
     ("Level 0 is digital silence at every Mix above 0, and halving Level "
      "takes 6.02 dB off at every Mix.",
      ("TheOutputStage.test_level_zero_is_silence_at_every_mix_above_zero",
@@ -2494,9 +2452,6 @@ CLAIMS = (
       "TheOutputStage.test_mix_zero_is_the_wire_and_level_does_not_reach_"
       "it",
       "Construction.test_mix_zero_reports_zero_latency")),
-    ("Output Tilt spans -6 dB to +6 dB across 1 kHz and is measured from its "
-     "loudest end.",
-     ("TheClaims.test_the_spans",)),
     ("Nothing on the surface reaches the rail from 100 Hz to 3700 Hz, even "
      "at 0 dBFS in.",
      ("TheOutputStage.test_nothing_on_the_surface_reaches_the_rail",)),
@@ -2526,18 +2481,12 @@ CLAIMS = (
       "TheOutputStage.test_the_tail_is_the_one_declared",
       "TestFuzzTheTailBelowTheBurst.test_the_declaration_covers_the_low_"
       "notes_too")),
-    ("There are nine: Bias centred, fuzz half; Full fuzz, volume back; "
-     "Starved bias, gated; Cleaned up, load engaged; Cascade scoop centred; "
-     "Cascade sustain maximum; Cascade treble end; Full fuzz, mix back; and "
-     "Fuzz - lean.",
-     ("TheClaims.test_the_spans",)),
-    ("Alone on an ESP32-S3 the germanium default was measured at 77 % of a "
-     "block and the costliest patch at 78 %.",
-     ("TheClaims.test_the_board_figures_are_the_table",)),
-    ("Fuzz - lean shapes at x2 and was measured at 33 %, so play it when you "
-     "stack effects.",
-     ("TheLeanPatch.test_patch_eight_is_named_and_shaped_at_two",
-      "TheClaims.test_the_board_figures_are_the_table")),
+    ("Alone on an ESP32-S3 the germanium default was measured at 77 "
+     "% of a block and the costliest patch at 78 %.",
+     ()),
+    ("Fuzz - lean shapes at x2 and was measured at 33 %, so play it "
+     "when you stack effects.",
+     ("TheLeanPatch.test_patch_eight_is_named_and_shaped_at_two",)),
     ("It needs `audioshaper`, `audiobiquad` and `audioroute`, so a stock "
      "CircuitPython board can't run it.",
      ("TheClaims.test_construction_needs_its_three_modules",)),

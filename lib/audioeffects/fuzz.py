@@ -617,20 +617,22 @@ class Fuzz(_component.Component):
     Fuzz 18 dB to 32 dB, Tone moves the scoop's centre over more than half
     an octave; from 34 dB up the clipper fills the scoop in.
 
-    **Fuzz and Bias.** Fuzz spans 18 dB to 54 dB and defaults to 36 dB. Bias
-    spans -1 to +1. On `cascade` any Bias off centre is a gate on the level:
-    it rails both pairs and the output falls away, while the scoop stays
-    more than 3 dB deep. With Bias off centre the output settles near zero
-    rather than on it, so the class declares no tail there.
+    **Fuzz and Bias.** Fuzz is how hard the transistor is driven, and Bias
+    moves it off centre. The Effect controls page lists what the knobs span
+    and the patches. On `cascade` any Bias off centre is a gate on the
+    level: it rails both pairs and the output falls away, while the scoop
+    stays more than 3 dB deep. With Bias off centre the output settles near
+    zero rather than on it, so the class declares no tail there.
 
-    **Level, Load and Mix.** Level, Load and Mix each span 0 to 1. Level 0 is
-    digital silence at every Mix above 0, and halving Level takes 6.02 dB
-    off at every Mix. Load 1 takes 6.02 dB off at every Mix. At Mix 0 the
-    output is the source itself, at its own level, and the latency is 0.
+    **Level, Load and Mix.** Level, Load and Mix set the volume, the load
+    and the blend. Level 0 is digital silence at every Mix above 0, and
+    halving Level takes 6.02 dB off at every Mix. Load 1 takes 6.02 dB off
+    at every Mix. At Mix 0 the output is the source itself, at its own
+    level, and the latency is 0.
 
-    **Output Tilt.** Output Tilt spans -6 dB to +6 dB across 1 kHz and is
-    measured from its loudest end. Nothing on the
-    surface reaches the rail from 100 Hz to 3700 Hz, even at 0 dBFS in.
+    **Output Tilt.** Output Tilt tilts the balance of lows and highs.
+    Nothing on the surface reaches the rail from 100 Hz to 3700 Hz, even at
+    0 dBFS in.
 
     **Aliasing.** At 48 kHz and 44.1 kHz, at the default, the aliasing is at
     least 50 dB under a 1010 Hz tone and 35 dB under a 3700 Hz one. Nowhere
@@ -642,13 +644,9 @@ class Fuzz(_component.Component):
     latency; `cascade` shapes at x2 and reports 2, and so does Fuzz - lean.
     With Bias centred the tail is 24576 samples.
 
-    **Patches.** There are nine: Bias centred, fuzz half; Full fuzz, volume
-    back; Starved bias, gated; Cleaned up, load engaged; Cascade scoop
-    centred; Cascade sustain maximum; Cascade treble end; Full fuzz, mix
-    back; and Fuzz - lean. Alone on an ESP32-S3 the germanium default was
-    measured at 77 % of a block and the costliest patch at 78 %. Fuzz - lean
-    shapes at x2 and was measured at 33 %, so play it when you stack
-    effects.
+    **Patches.** Alone on an ESP32-S3 the germanium default was measured at
+    77 % of a block and the costliest patch at 78 %. Fuzz - lean shapes at
+    x2 and was measured at 33 %, so play it when you stack effects.
 
     It needs `audioshaper`, `audiobiquad` and `audioroute`, so a stock
     CircuitPython board can't run it.
