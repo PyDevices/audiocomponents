@@ -532,6 +532,7 @@ class Overdrive(_component.Component):
         (0.5, 1.0),
         (-1.0, 1.0),
     )
+    _MACRO_UNITS = {4: "Hz"}
     PATCHES = {
         0: ("Mid Drive Flat", (64, 64, 100, 127, 64, 127, 64)),
         1: ("Low Drive Bright", (16, 110, 100, 127, 64, 127, 64)),

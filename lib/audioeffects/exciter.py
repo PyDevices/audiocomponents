@@ -515,6 +515,7 @@ class Exciter(_component.Component):
         (0.0, 1.0),
         (-24.0, 0.0),
     )
+    _MACRO_UNITS = {0: "Hz", 4: "dB"}
     PATCHES = {
         0: ("Voice Air", (105, 32, 54, 0, 127)),
         1: ("Percussive Edge", (89, 102, 82, 127, 127)),

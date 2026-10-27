@@ -140,18 +140,18 @@ Patches: Metallic; Ringing Pitch; Soft Ripple; Dark Resonator; Single Slap; Filt
 | Knob | Spans |
 |---|---|
 | Character | 0 to 3 |
-| Threshold | -60 to 0 |
+| Threshold | -60 dB to 0 dB |
 | Ratio | 1 to 1000, log |
-| Attack | 300 to 0.02, log |
-| Release | 5000 to 20, log |
-| Release Slow | 25000 to 100, log |
+| Attack | 300 ms to 0.02 ms, log |
+| Release | 5000 ms to 20 ms, log |
+| Release Slow | 25000 ms to 100 ms, log |
 | Memory | 0 to 1 |
-| Knee | 0 to 36 |
+| Knee | 0 dB to +36 dB |
 | Detector | off or on |
-| RMS Window | 1 to 100, log |
+| RMS Window | 1 ms to 100 ms, log |
 | Emphasis | 0 to 1 |
-| Emphasis Freq | 30 to 2000, log |
-| Makeup | -12 to 24 |
+| Emphasis Freq | 30 Hz to 2 kHz, log |
+| Makeup | -12 dB to +24 dB |
 | Mix | 0 to 1 |
 
 Patches: Level Ride; Fast Peak Catch; Everything At Once; Bus Glue; Voice Ride; Let The Stick Through; Parallel Squash; Wide Knee Glue; Vari-Mu TC1; Vari-Mu TC2; Vari-Mu TC3; Vari-Mu TC4; Vari-Mu TC5; Vari-Mu TC6; Compressor - lean.
@@ -217,7 +217,7 @@ Patches: Clean Repeats; Eighth Notes; Dotted Eighths; Short Doubling; Long Ambie
 | Mix | 0 to 1 |
 | Character | off or on |
 | Ceiling | 0.5 to 2 |
-| Boost | 0 to 35 |
+| Boost | 0 dB to +35 dB |
 | Asymmetry | 0 to 1 |
 | Body | 0 to 1 |
 
@@ -246,11 +246,11 @@ Patches: Wide Band; Boxiness Control; Harshness Control; Low End Tamer; Sibilanc
 
 | Knob | Spans |
 |---|---|
-| Tune | 600 to 6000, log |
+| Tune | 600 Hz to 6 kHz, log |
 | Harmonics | 0 to 1 |
 | Mix | 0 to 0.7 |
 | Character | off or on |
-| Output | -24 to 0 |
+| Output | -24 dB to 0 dB |
 
 Patches: Voice Air; Percussive Edge; Mix Sheen; Mid Presence; Transient Bite; Transient Soft; Wet Sidechain.
 
@@ -504,7 +504,7 @@ Patches: Octave down under the dry; Both octaves; Octaves alone, no dry; Bass gu
 | Tone | 0 to 1 |
 | Level | 0 to 1 |
 | Mix | 0 to 1 |
-| Body | 360 to 1440, log |
+| Body | 360 Hz to 1.44 kHz, log |
 | Ceiling | 0.5 to 1 |
 | Symmetry | -1 to 1 |
 
