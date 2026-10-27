@@ -1,252 +1,257 @@
 """`Fuzz` - a biased germanium pair, with a Big Muff cascade as a second character.
 
-Rebuilt from scratch for Phase 4 against its dossier, traits frozen at
-Station A on 2026-09-17 before this file existed. The old `drive.py:Fuzz`
-was not consulted except for the five defects the dossier's section 7 names;
-it was the class the library served until this one was adopted on the boards
-on 2026-09-18, and `drive.py` went with the promotion.
-
-**What it sounds like.** `germanium` (default) is a Fuzz Face: Q1 sits off
-centre, so small signals clip on one half first and both halves go square
-when you hit it. There is no tone stack. `cascade` is a Ram's Head 1973 Big
-Muff: two silicon pairs and a mid scoop between 482 Hz and 1206 Hz.
-
-**Mix back up from 0 plays nothing from before.** At Mix 0 the class hands
-back its source and nothing behind it is pulled; it used to keep what it
-held and play it when Mix came back, up to 23 153 LSB out of silence. It
-now comes back as it was built: cleared, the output pole charged on the
-bias, the tone mixer's voices re-armed (audiocomponents#113).
-
-**What the default surrenders.** Mix 1, Fuzz 36 dB, Bias 0, Load 0, Tilt 0.
-Tone is inert on germanium. G2's 0.5 dB-per-step THD staircase is not met
-here (the last steps are +0.17 / +0.04 / +0.008 dB); h2/h1 still moves.
-Cascade C2's 25 dB THD-vs-Sustain bar is not met at −20 dBFS: both ends of
-Sustain are already hard-clipped. Gating is the Bias macro's starved end,
-not a moving bias - the node cannot follow an envelope.
-
-**On `cascade`, Bias is a gate and not a bias, and what it gates is the
-level.** Any position off centre rails both silicon pairs and the output
-falls away: C3's three probe tones read **−15.5 dBFS** on average at
-centre, **−26.8** at ±0.25, **−43.9** at ±0.5, **−56.2** at ±0.85 and
-**−67.8** at ±1, monotone at all three rates. The **scoop survives the
-whole travel** (+3.93 … +7.63 dB). Until the fourth fix round this row
-said the opposite - "three probe tones come out at the same level, C3's
-scoop reads 0.002 dB" - and that reading was the **DC**: with no coupling
-capacitor behind the second clipper, three tones sitting on the same
-−6 dBFS offset give three identical RMS readings whatever the tone stack
-does (audiocomponents#89). Patch 2 "Starved bias, gated" is the only
-shipped patch that moves Bias, and that is what it is for; its scoop reads
-**2.561 dB** against C3's 3 dB bar, a **0.44 dB** miss where the offset
-used to make it 1.9.
-
-**C4 is claimed at Fuzz 18 … 32 dB and is disconfirmed above it, which
-includes the `cascade` constructor's own 36 dB.** Inside the span the
-notch centre moves 1206 / 762 / 482 Hz over Tone 0.25 / 0.5 / 0.75, a
-**1.323 octave** span, at all three rates. At 34 dB and above the clipper
-has filled the notch in and the Tone 0.75 curve rises monotonically across
-the whole 150-2000 Hz probe grid - there is no interior minimum left to
-read. The row used to claim 36 dB; that cell passed on the 300 Hz probe
-reading **0.041 dB** under the 150 Hz one, which is not a notch, and the
-output pole exposed it by taking 0.2-0.6 dB of sub-31 Hz content out of
-the 150 Hz cell. Eight of the nine shipped patches sit at 36 dB or above
-and are outside the row; only patch 3 `Cleaned up, load engaged` is
-inside it.
-
-**G1's peak clause was restated on 2026-09-17 under vision §7.2**, after the
-output coupling went back where the circuit has it (below). At shipped
-defaults, 1 kHz −20 dBFS: h2 **−26.92 dBc** and the even series h2+h4+h6+h8
-**−21.33 dB** of the fundamental - the two clauses now, both ratios. The old
-peak-split clause read **8.221 dB** and every bit of it was the DC offset
-nothing was blocking; with the offset gone it is **0.768 dB** and cannot
-express the asymmetry at all, because at 36 dB both halves are already at
-the rail. Span: input **−46 … −20 dBFS**, and **G1 is level-free across it** -
-walked at −46, −33 and −20 dBFS, the hardest point is −20 and it passes
-there, which is the model ruling (m) asks every other row to follow. Also
-**Fuzz ≤ 36 dB**, **Mix ≥ 0.5**,
-**Output Tilt ≥ −3 dB**, Bias centred, any Level above 0, any Load, any
-Tone, at all three rates - worst cell in it h2 −29.765, even −24.464. G1
-holds at **patches 0, 2, 3 and 8** and misses at **1, 4, 5, 6 and 7** -
-every patch at Fuzz 48 dB or above, where both halves square and h2 falls to
-−38.91 … −47.46 dBc. That is the product at full fuzz, not a defect, and it
-is why the claim is the default's.
-
-**A4's alias floor was redefined on 2026-09-17 under vision §7.2, and
-amended the same day** when the replacement turned out to be false at
-22.05 kHz, on the Fuzz macro's own grid and at patch 8. The original target
-was 20 Hz–20 kHz inharmonic energy ≥ 60 dB below the fundamental at 1010
-*and* 3700 Hz at maximum Fuzz; at the shipped ×8 that holds at 1010 Hz only
-up to Fuzz 30 dB and at **3700 Hz it fails at every position of the macro**.
-What this class claims instead, all on the wet branch: **at 48 and
-44.1 kHz**, at the shipped default, the floor is **≥ 50 dB** down at 1010 Hz
-and **≥ 35 dB** at 3700 Hz (measured **−55.02 / −38.50** and
-**−55.91 / −36.68**); ×8 is **≥ 20 dB** better than ×1 at both (measured
-34.79 / 25.41 and 36.79 / 25.32); and **nowhere on the ×8 surface** - every
-Fuzz, Bias and Output Tilt position and every shipped patch but the lean one
-- does it rise above **35 dB** at 1010 Hz or **28 dB** at 3700 Hz. **The
-worst cell is not the one the pack published.** Swept jointly rather than
-one macro at a time, the 125-cell Fuzz × Bias × Tilt grid's worst is
-**−35.407 dB at 44.1 kHz** (Fuzz 127, Bias centred, Tilt 127) and −36.322
-at 48 kHz, against the −38.154 the row carried; at 3700 Hz it is −30.425
-(44.1 kHz) against −30.478. **The margin at 1010 Hz is 0.4 dB**, not 3,
-and a finer grid reaches −35.431 (audit 3 (p)3). The trait stands and the
-number was wrong. Two things it gives up, in the same words as the pack
-and the catalogue row: **patch 8 `Fuzz - lean` shapes at ×2 and reads
-−30.57 / −19.59**, which is what the S3's block costs; and **at 22.05 kHz
-the row is disconfirmed** (−25.09 / −13.47), because a fuzz's own harmonic
-series crosses Nyquist at the *output* rate - h11 of 1010 Hz and h3 of
-3700 Hz are both above 11.025 kHz - so what folds was never in the
-oversampled path to be filtered, and ×8 buys 11.2 dB there against 34.8 at
-48 kHz. At Phase 7, listen at full Fuzz on a high note for a thin metallic
-ring that does not move with the note.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audioshaper", "audiobiquad",
-"audioroute")`). On a stock CircuitPython board this module imports and
-construction raises `ImportError`.
-
-**Cost, palette, reference patch 0 (germanium, oversample 8)**, re-derived
-2026-09-18 at the rows both boards took that morning:
-3×Biquad 0.324/0.612 + Waveshaper ×8 1.933/3.368 + glue 0.0
-= **2.257 / 3.980 ms → P4 42 %, S3 75 %** of a 5.333 ms stereo block.
-**Patch 8 `Fuzz - lean`** shapes at ×2 through a second shaper the tilt
-stage plays instead: 3×Biquad + Waveshaper ×2 0.558/1.017 = **0.882 /
-1.629 ms → 17 % / 31 %**. That patch, not the constructor, is the S3's
-shipped position.
-The boards measured **44.4 % / 76.8 %** at patch 0, **18.5 % / 32.8 %** at
-patch 8 and **44.6 % / 77.7 %** at the costliest shipped patch (second pass,
-256-frame blocks, 2026-09-18) — **over by 2.1 / 2.2 points**, and the node
-census confirms the count, so it is not a miscount.
-
-**Alone on an ESP32-S3 this uses 77 % of a block at its default germanium
-patch, 78 % at its costliest; use patch 8 `Fuzz - lean` (33 %) to stack.**
-
-**The cause of the palette miss is not located**, and the shape
-of it is the finding: the miss is **0.122 ms on the P4 and 0.116 ms on the
-S3**, near enough the same absolute number on two chips that differ by 1.8×
-in speed — CPU work does not do that. It is not the shaper's settings
-either: the palette row's `pre_gain` 11.77 / `post_gain` 1.0 and this
-class's 63.1 / 0.42 measure **0.0718 against 0.0691 ms/block** on desktop
-MicroPython at ×8, order-balanced over six runs. `germanium` builds no
-`Mixer` and no `Splitter` and hands back a 256-frame block, so the
-block-length glue `Saturation` carries is not it either.
-
-The first build of this class summed **2.447 / 4.318** over eight nodes -
-three Butterworth high-passes where the pedal has three *first-order*
-coupling caps, a 2-tap `Splitter` and a `Mixer` doing a dry/wet blend the
-`Waveshaper` has a `mix` parameter for, and a `MidSide` tail whose only job
-was to keep a `Mixer` off the end of the chain. Four of those eight are
-gone. `cascade` keeps its splitter and a three-voice tone mixer, because its
-dry leg has to reach the sum past a tone stack, and since the fourth fix
-round it carries a sixth Biquad - the output coupling capacitor
-(audiocomponents#89).
-
-**`cascade` ships at `oversample=2`, and it used not to.** At ×8 the boards
-read **4.782 / 8.580 ms — 90 % of a P4 block and 161 % of an S3 one, real
-time factor 1.00 and 0.56**: it does not run on a T-Embed S3 at 48 kHz. The
-docstring said to build it at ×2 and **nothing enforced it**, while
-`create()` defaulted to 8 for both characters. `shipped_oversample()` picks
-the factor now, ×8 on `germanium` and **×2 on `cascade`**, and a test holds
-it. At ×2 the boards read **2.163 / 3.902 ms — 40.6 % / 73.2 %, rt 1.97 /
-1.10** against a palette sum of 2×Splitter-2 0.414/0.736 + 6×Biquad
-0.648/1.224 + 2×Waveshaper ×2 1.116/2.034 + Mixer 0.050/0.175 = **2.228 /
-4.169 ms, 42 % / 78 %**: **inside on both boards**. ×4 is 3.250 / 5.971 ms,
-**61 % / 112 %**, so it does not run on the S3 either and is not offered as
-a default on any board. What ×2 costs is **2.9 / 5.3 dB of alias floor at
-the default and 5.6 / 5.6 dB at maximum Fuzz** — see `CASCADE_OVERSAMPLE`,
-which has the whole table. `oversample=` still takes any of 1, 2, 4, 8 for
-anyone who wants the ×8 graph on a P4 and knows what it costs.
-
-**What Mix does here, and what it gives up.** On `germanium` the dry/wet
-blend is the `Waveshaper`'s own `mix`, so the dry leg is the signal *after*
-the pedal's input coupling rather than the bare source: at 0 < Mix < 1 the
-dry is down 0.51 dB at 100 Hz and 2.71 dB at 40 Hz. Output Tilt then rides
-the blend rather than the wet alone. **Mix 0 is the borrowed source itself**,
-not a path through the graph, so the wire invariant is exact by construction.
-
-**Level and Load are the whole output, at every Mix.** They used to ride the
-shaper's `post_gain`, which is the wet half of `out = (1-mix)*source +
-mix*post_gain*shaped` - so Level 0 mutes only at Mix exactly 1, and at Mix
-0.756 it still emitted −35.3 dBFS (audiocomponents#74, second audit). They
-are now written as `mix' = 1 - trim*(1-mix)` with `post_gain' =
-trim*mix*post_gain/mix'`, which is the same node scaled whole: **Level 0 is
-digital silence at every Mix above 0, halving Level is −6.021 dB at every
-Mix, and Load 1 is −6.021 dB at every Mix**. Mix 0 is the exception and it
-is the wire invariant: at Mix 0 the output *is* the borrowed source, at the
-source's own level, and nothing the class has scales it.
-
-**Output Tilt is referenced to its loudest end**, and the number on the
-macro is the difference across 1 kHz: at +6 dB the top of the band sits
-where Tilt 0 left it and the bottom is 6 dB down. As a plain `HIGH_SHELF`
-adding its boost on top, this stage **clipped at +3 dB and above at every
-input level** (1035 pinned samples of 9600 at +6 dB, at −20 dBFS in as much
-as at 0 dBFS). It clips nowhere **between 100 Hz and 3700 Hz**, which is the span that
-sweep covered: the worst peak there is **30 185 of 32 767** (patch 2,
-100 Hz, 0 dBFS in). **Below 100 Hz it does reach the rail**: at the
-constructor default with Fuzz at maximum a steady 30 Hz sine at 0 dBFS
-pins **10 samples of 6 400**, at −1 dBFS 8, and 40 Hz pins 2. The worst
-shipped *patch* below 100 Hz is 32 144 (patch 4, 30 Hz, 0 dBFS), a
-**0.16 dB** margin. A fuzz at maximum pinning its rail on a 30 Hz sine is
-arguably the pedal, so what changes is the claim's span and not the class
-(audit 3 (p)5).
-
-**The tail, and where it does not end.** `TAIL_SAMPLES` is **24 576**
-(0.512 s at 48 kHz) since the third fix round. 16 384 was a 1 kHz number
-and a low note outlives it: after a −6 dBFS burst at **40 Hz** the output
-is still not zero at 16 627 frames at the constructor default and **18 750
-at patch 5**, and 100 Hz is over it at patches 1, 5 and 7 (audit 3 (p)1).
-The declaration covers the worst of 40, 100, 220 and 1000 Hz at those four
-settings at all three rates, and it is a −6 dBFS reading - the tail is
-shorter at every quieter input. **With Bias off centre there is no
-bound, and `tail_samples` is None** (Mix 0 aside, which is the dry alone).
-The shaper answers silence with a constant and the coupling poles behind it
-settle near zero rather than on it: on `germanium` the output was still
-nonzero 6 s after the input at every Bias stop but the three either side of
-centre, and on `cascade` it settled at some stops and not at others. What
-stays is small: a wander of about ±11 LSB at patch 2's Bias −0.85 and ±3 at
-Bias +1, and at Bias −1 a constant that depends on what was played - 177 LSB
-(−45.3 dBFS) after a −6 dBFS DC step, 44 after full-scale noise - which is
-DC and not heard. Patch 2 ships Bias −0.85 and has it.
-
-**The output pole is charged before the first block.** S1's third
-capacitor is the output one and its section is behind the shaper, but it
-started cold: shipped patch 2 put **21 971 LSB, −3.5 dBFS**, out of
-digital silence and took 0.2 s to bleed (audit 3 (p)2, ruling (n)).
-`_charge_output` pulls the offset through the pole with the shapers fed
-the class's own zero sample - the split is not pulled and no source frame
-is consumed - so silence in is silence out at every shipped patch **within
-the 16 LSB wander**, and a `program_change` onto silence peaks at 11 LSB
-where it peaked at 21 971. It costs one block of input when Bias moves
-live on `germanium`; **`cascade` is not re-charged live**, because its wet
-leg comes off a `Splitter` and a re-point there would leave one tap a
-block ahead of the other.
-
-**`cascade` has its output coupling capacitor now** (audiocomponents#89,
-ruling (n), fourth fix round). Without it the low arm of the tone stack is
-a `LOW_PASS`, which passes DC, and there is nothing behind the second
-clipper to block the clipper's own offset: Bias off centre held
-**−16 383 to +16 382 LSB, −6.0 dBFS, on the output for ever**, at eight of
-the nine stops of a front-panel macro, at every rate. A Big Muff has that
-capacitor between the second clipper and the tone stack and this class now
-does too, at 31 Hz - the pedal's own corner, and the one already in front
-of that clipper. In the band it costs **1.268 dB at 40 Hz, 0.053 at 100
-and 0.000 at 482 Hz and above**. Walked over 108 cells (3 rates × 2 characters × 9 Bias
-stops × built-at-the-value and moved-to-it-live), the **settled mean is at
-most 7.1 LSB and the peak at most 13**, both on `germanium`; `cascade`'s
-worst is 6 LSB of each. That walk played tones; after a DC step at Bias
-−1 the constant left is 177 LSB (the tail paragraph above). What it takes with it is C3's Bias clause and C4's Fuzz span,
-both restated above; **C1 does not move** (h2 −79.059 → −79.379, peak
-growth 0.012 → 0.013 dB).
-
-**Latency.** Mix 1 at oversample 8 is the waveshaper group delay **3.9 samples
-(0.083 ms at 48 kHz)**; this class reports **4**. Mix 0 reports **0**.
-Oversample 4 reports **3** (3.3 samples, 0.069 ms); oversample 2 and patch 8
-report **2** (2.2 samples, 0.046 ms); oversample 1 reports **0**. Named here
-because the half-bands are the only lookahead. **`cascade` ships at ×2, so
-it reports 2 where `germanium` reports 4** — `LATENCY_SAMPLES` is the class
-constant for the shipped `germanium` default and `latency_samples` on the
-instance is the one to read.
-
-`capabilities = ()`: nothing reads `self._transport()`.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# Rebuilt from scratch for Phase 4 against its dossier, traits frozen at
+# Station A on 2026-09-17 before this file existed. The old `drive.py:Fuzz`
+# was not consulted except for the five defects the dossier's section 7 names;
+# it was the class the library served until this one was adopted on the boards
+# on 2026-09-18, and `drive.py` went with the promotion.
+#
+# What it sounds like. `germanium` (default) is a Fuzz Face: Q1 sits off
+# centre, so small signals clip on one half first and both halves go square
+# when you hit it. There is no tone stack. `cascade` is a Ram's Head 1973 Big
+# Muff: two silicon pairs and a mid scoop between 482 Hz and 1206 Hz.
+#
+# Mix back up from 0 plays nothing from before. At Mix 0 the class hands
+# back its source and nothing behind it is pulled; it used to keep what it
+# held and play it when Mix came back, up to 23 153 LSB out of silence. It
+# now comes back as it was built: cleared, the output pole charged on the
+# bias, the tone mixer's voices re-armed (audiocomponents#113).
+#
+# What the default surrenders. Mix 1, Fuzz 36 dB, Bias 0, Load 0, Tilt 0.
+# Tone is inert on germanium. G2's 0.5 dB-per-step THD staircase is not met
+# here (the last steps are +0.17 / +0.04 / +0.008 dB); h2/h1 still moves.
+# Cascade C2's 25 dB THD-vs-Sustain bar is not met at −20 dBFS: both ends of
+# Sustain are already hard-clipped. Gating is the Bias macro's starved end,
+# not a moving bias - the node cannot follow an envelope.
+#
+# On `cascade`, Bias is a gate and not a bias, and what it gates is the
+# level. Any position off centre rails both silicon pairs and the output
+# falls away: C3's three probe tones read −15.5 dBFS on average at
+# centre, −26.8 at ±0.25, −43.9 at ±0.5, −56.2 at ±0.85 and
+# −67.8 at ±1, monotone at all three rates. The scoop survives the
+# whole travel (+3.93 … +7.63 dB). Until the fourth fix round this row
+# said the opposite - "three probe tones come out at the same level, C3's
+# scoop reads 0.002 dB" - and that reading was the DC: with no coupling
+# capacitor behind the second clipper, three tones sitting on the same
+# −6 dBFS offset give three identical RMS readings whatever the tone stack
+# does (audiocomponents#89). Patch 2 "Starved bias, gated" is the only
+# shipped patch that moves Bias, and that is what it is for; its scoop reads
+# 2.561 dB against C3's 3 dB bar, a 0.44 dB miss where the offset
+# used to make it 1.9.
+#
+# C4 is claimed at Fuzz 18 … 32 dB and is disconfirmed above it, which
+# includes the `cascade` constructor's own 36 dB. Inside the span the
+# notch centre moves 1206 / 762 / 482 Hz over Tone 0.25 / 0.5 / 0.75, a
+# 1.323 octave span, at all three rates. At 34 dB and above the clipper
+# has filled the notch in and the Tone 0.75 curve rises monotonically across
+# the whole 150-2000 Hz probe grid - there is no interior minimum left to
+# read. The row used to claim 36 dB; that cell passed on the 300 Hz probe
+# reading 0.041 dB under the 150 Hz one, which is not a notch, and the
+# output pole exposed it by taking 0.2-0.6 dB of sub-31 Hz content out of
+# the 150 Hz cell. Eight of the nine shipped patches sit at 36 dB or above
+# and are outside the row; only patch 3 `Cleaned up, load engaged` is
+# inside it.
+#
+# G1's peak clause was restated on 2026-09-17 under vision §7.2, after the
+# output coupling went back where the circuit has it (below). At shipped
+# defaults, 1 kHz −20 dBFS: h2 −26.92 dBc and the even series h2+h4+h6+h8
+# −21.33 dB of the fundamental - the two clauses now, both ratios. The old
+# peak-split clause read 8.221 dB and every bit of it was the DC offset
+# nothing was blocking; with the offset gone it is 0.768 dB and cannot
+# express the asymmetry at all, because at 36 dB both halves are already at
+# the rail. Span: input −46 … −20 dBFS, and G1 is level-free across it -
+# walked at −46, −33 and −20 dBFS, the hardest point is −20 and it passes
+# there, which is the model ruling (m) asks every other row to follow. Also
+# Fuzz ≤ 36 dB, Mix ≥ 0.5,
+# Output Tilt ≥ −3 dB, Bias centred, any Level above 0, any Load, any
+# Tone, at all three rates - worst cell in it h2 −29.765, even −24.464. G1
+# holds at patches 0, 2, 3 and 8 and misses at 1, 4, 5, 6 and 7 -
+# every patch at Fuzz 48 dB or above, where both halves square and h2 falls to
+# −38.91 … −47.46 dBc. That is the product at full fuzz, not a defect, and it
+# is why the claim is the default's.
+#
+# A4's alias floor was redefined on 2026-09-17 under vision §7.2, and
+# amended the same day when the replacement turned out to be false at
+# 22.05 kHz, on the Fuzz macro's own grid and at patch 8. The original target
+# was 20 Hz–20 kHz inharmonic energy ≥ 60 dB below the fundamental at 1010
+# *and* 3700 Hz at maximum Fuzz; at the shipped ×8 that holds at 1010 Hz only
+# up to Fuzz 30 dB and at 3700 Hz it fails at every position of the macro.
+# What this class claims instead, all on the wet branch: at 48 and
+# 44.1 kHz, at the shipped default, the floor is ≥ 50 dB down at 1010 Hz
+# and ≥ 35 dB at 3700 Hz (measured −55.02 / −38.50 and
+# −55.91 / −36.68); ×8 is ≥ 20 dB better than ×1 at both (measured
+# 34.79 / 25.41 and 36.79 / 25.32); and nowhere on the ×8 surface - every
+# Fuzz, Bias and Output Tilt position and every shipped patch but the lean one
+# - does it rise above 35 dB at 1010 Hz or 28 dB at 3700 Hz. The
+# worst cell is not the one the pack published. Swept jointly rather than
+# one macro at a time, the 125-cell Fuzz × Bias × Tilt grid's worst is
+# −35.407 dB at 44.1 kHz (Fuzz 127, Bias centred, Tilt 127) and −36.322
+# at 48 kHz, against the −38.154 the row carried; at 3700 Hz it is −30.425
+# (44.1 kHz) against −30.478. The margin at 1010 Hz is 0.4 dB, not 3,
+# and a finer grid reaches −35.431 (audit 3 (p)3). The trait stands and the
+# number was wrong. Two things it gives up, in the same words as the pack
+# and the catalogue row: patch 8 `Fuzz - lean` shapes at ×2 and reads
+# −30.57 / −19.59, which is what the S3's block costs; and at 22.05 kHz
+# the row is disconfirmed (−25.09 / −13.47), because a fuzz's own harmonic
+# series crosses Nyquist at the *output* rate - h11 of 1010 Hz and h3 of
+# 3700 Hz are both above 11.025 kHz - so what folds was never in the
+# oversampled path to be filtered, and ×8 buys 11.2 dB there against 34.8 at
+# 48 kHz. At Phase 7, listen at full Fuzz on a high note for a thin metallic
+# ring that does not move with the note.
+#
+# Portability tier: audiodsp (`REQUIRES = ("audioshaper", "audiobiquad",
+# "audioroute")`). On a stock CircuitPython board this module imports and
+# construction raises `ImportError`.
+#
+# Cost, palette, reference patch 0 (germanium, oversample 8), re-derived
+# 2026-09-18 at the rows both boards took that morning:
+# 3×Biquad 0.324/0.612 + Waveshaper ×8 1.933/3.368 + glue 0.0
+# = 2.257 / 3.980 ms → P4 42 %, S3 75 % of a 5.333 ms stereo block.
+# Patch 8 `Fuzz - lean` shapes at ×2 through a second shaper the tilt
+# stage plays instead: 3×Biquad + Waveshaper ×2 0.558/1.017 = 0.882 /
+# 1.629 ms → 17 % / 31 %. That patch, not the constructor, is the S3's
+# shipped position.
+# The boards measured 44.4 % / 76.8 % at patch 0, 18.5 % / 32.8 % at
+# patch 8 and 44.6 % / 77.7 % at the costliest shipped patch (second pass,
+# 256-frame blocks, 2026-09-18) — over by 2.1 / 2.2 points, and the node
+# census confirms the count, so it is not a miscount.
+#
+# Alone on an ESP32-S3 this uses 77 % of a block at its default germanium
+# patch, 78 % at its costliest; use patch 8 `Fuzz - lean` (33 %) to stack.
+#
+# The cause of the palette miss is not located, and the shape
+# of it is the finding: the miss is 0.122 ms on the P4 and 0.116 ms on the
+# S3, near enough the same absolute number on two chips that differ by 1.8×
+# in speed — CPU work does not do that. It is not the shaper's settings
+# either: the palette row's `pre_gain` 11.77 / `post_gain` 1.0 and this
+# class's 63.1 / 0.42 measure 0.0718 against 0.0691 ms/block on desktop
+# MicroPython at ×8, order-balanced over six runs. `germanium` builds no
+# `Mixer` and no `Splitter` and hands back a 256-frame block, so the
+# block-length glue `Saturation` carries is not it either.
+#
+# The first build of this class summed 2.447 / 4.318 over eight nodes -
+# three Butterworth high-passes where the pedal has three *first-order*
+# coupling caps, a 2-tap `Splitter` and a `Mixer` doing a dry/wet blend the
+# `Waveshaper` has a `mix` parameter for, and a `MidSide` tail whose only job
+# was to keep a `Mixer` off the end of the chain. Four of those eight are
+# gone. `cascade` keeps its splitter and a three-voice tone mixer, because its
+# dry leg has to reach the sum past a tone stack, and since the fourth fix
+# round it carries a sixth Biquad - the output coupling capacitor
+# (audiocomponents#89).
+#
+# `cascade` ships at `oversample=2`, and it used not to. At ×8 the boards
+# read 4.782 / 8.580 ms — 90 % of a P4 block and 161 % of an S3 one, real
+# time factor 1.00 and 0.56: it does not run on a T-Embed S3 at 48 kHz. The
+# docstring said to build it at ×2 and nothing enforced it, while
+# `create()` defaulted to 8 for both characters. `shipped_oversample()` picks
+# the factor now, ×8 on `germanium` and ×2 on `cascade`, and a test holds
+# it. At ×2 the boards read 2.163 / 3.902 ms — 40.6 % / 73.2 %, rt 1.97 /
+# 1.10 against a palette sum of 2×Splitter-2 0.414/0.736 + 6×Biquad
+# 0.648/1.224 + 2×Waveshaper ×2 1.116/2.034 + Mixer 0.050/0.175 = 2.228 /
+# 4.169 ms, 42 % / 78 %: inside on both boards. ×4 is 3.250 / 5.971 ms,
+# 61 % / 112 %, so it does not run on the S3 either and is not offered as
+# a default on any board. What ×2 costs is 2.9 / 5.3 dB of alias floor at
+# the default and 5.6 / 5.6 dB at maximum Fuzz — see `CASCADE_OVERSAMPLE`,
+# which has the whole table. `oversample=` still takes any of 1, 2, 4, 8 for
+# anyone who wants the ×8 graph on a P4 and knows what it costs.
+#
+# What Mix does here, and what it gives up. On `germanium` the dry/wet
+# blend is the `Waveshaper`'s own `mix`, so the dry leg is the signal *after*
+# the pedal's input coupling rather than the bare source: at 0 < Mix < 1 the
+# dry is down 0.51 dB at 100 Hz and 2.71 dB at 40 Hz. Output Tilt then rides
+# the blend rather than the wet alone. Mix 0 is the borrowed source itself,
+# not a path through the graph, so the wire invariant is exact by construction.
+#
+# Level and Load are the whole output, at every Mix. They used to ride the
+# shaper's `post_gain`, which is the wet half of `out = (1-mix)*source +
+# mix*post_gain*shaped` - so Level 0 mutes only at Mix exactly 1, and at Mix
+# 0.756 it still emitted −35.3 dBFS (audiocomponents#74, second audit). They
+# are now written as `mix' = 1 - trim*(1-mix)` with `post_gain' =
+# trim*mix*post_gain/mix'`, which is the same node scaled whole: Level 0 is
+# digital silence at every Mix above 0, halving Level is −6.021 dB at every
+# Mix, and Load 1 is −6.021 dB at every Mix. Mix 0 is the exception and it
+# is the wire invariant: at Mix 0 the output *is* the borrowed source, at the
+# source's own level, and nothing the class has scales it.
+#
+# Output Tilt is referenced to its loudest end, and the number on the
+# macro is the difference across 1 kHz: at +6 dB the top of the band sits
+# where Tilt 0 left it and the bottom is 6 dB down. As a plain `HIGH_SHELF`
+# adding its boost on top, this stage clipped at +3 dB and above at every
+# input level (1035 pinned samples of 9600 at +6 dB, at −20 dBFS in as much
+# as at 0 dBFS). It clips nowhere between 100 Hz and 3700 Hz, which is the span that
+# sweep covered: the worst peak there is 30 185 of 32 767 (patch 2,
+# 100 Hz, 0 dBFS in). Below 100 Hz it does reach the rail: at the
+# constructor default with Fuzz at maximum a steady 30 Hz sine at 0 dBFS
+# pins 10 samples of 6 400, at −1 dBFS 8, and 40 Hz pins 2. The worst
+# shipped *patch* below 100 Hz is 32 144 (patch 4, 30 Hz, 0 dBFS), a
+# 0.16 dB margin. A fuzz at maximum pinning its rail on a 30 Hz sine is
+# arguably the pedal, so what changes is the claim's span and not the class
+# (audit 3 (p)5).
+#
+# The tail, and where it does not end. `TAIL_SAMPLES` is 24 576
+# (0.512 s at 48 kHz) since the third fix round. 16 384 was a 1 kHz number
+# and a low note outlives it: after a −6 dBFS burst at 40 Hz the output
+# is still not zero at 16 627 frames at the constructor default and 18 750
+# at patch 5, and 100 Hz is over it at patches 1, 5 and 7 (audit 3 (p)1).
+# The declaration covers the worst of 40, 100, 220 and 1000 Hz at those four
+# settings at all three rates, and it is a −6 dBFS reading - the tail is
+# shorter at every quieter input. With Bias off centre there is no
+# bound, and `tail_samples` is None (Mix 0 aside, which is the dry alone).
+# The shaper answers silence with a constant and the coupling poles behind it
+# settle near zero rather than on it: on `germanium` the output was still
+# nonzero 6 s after the input at every Bias stop but the three either side of
+# centre, and on `cascade` it settled at some stops and not at others. What
+# stays is small: a wander of about ±11 LSB at patch 2's Bias −0.85 and ±3 at
+# Bias +1, and at Bias −1 a constant that depends on what was played - 177 LSB
+# (−45.3 dBFS) after a −6 dBFS DC step, 44 after full-scale noise - which is
+# DC and not heard. Patch 2 ships Bias −0.85 and has it.
+#
+# The output pole is charged before the first block. S1's third
+# capacitor is the output one and its section is behind the shaper, but it
+# started cold: shipped patch 2 put 21 971 LSB, −3.5 dBFS, out of
+# digital silence and took 0.2 s to bleed (audit 3 (p)2, ruling (n)).
+# `_charge_output` pulls the offset through the pole with the shapers fed
+# the class's own zero sample - the split is not pulled and no source frame
+# is consumed - so silence in is silence out at every shipped patch within
+# the 16 LSB wander, and a `program_change` onto silence peaks at 11 LSB
+# where it peaked at 21 971. It costs one block of input when Bias moves
+# live on `germanium`; `cascade` is not re-charged live, because its wet
+# leg comes off a `Splitter` and a re-point there would leave one tap a
+# block ahead of the other.
+#
+# `cascade` has its output coupling capacitor now (audiocomponents#89,
+# ruling (n), fourth fix round). Without it the low arm of the tone stack is
+# a `LOW_PASS`, which passes DC, and there is nothing behind the second
+# clipper to block the clipper's own offset: Bias off centre held
+# −16 383 to +16 382 LSB, −6.0 dBFS, on the output for ever, at eight of
+# the nine stops of a front-panel macro, at every rate. A Big Muff has that
+# capacitor between the second clipper and the tone stack and this class now
+# does too, at 31 Hz - the pedal's own corner, and the one already in front
+# of that clipper. In the band it costs 1.268 dB at 40 Hz, 0.053 at 100
+# and 0.000 at 482 Hz and above. Walked over 108 cells (3 rates × 2 characters × 9 Bias
+# stops × built-at-the-value and moved-to-it-live), the settled mean is at
+# most 7.1 LSB and the peak at most 13, both on `germanium`; `cascade`'s
+# worst is 6 LSB of each. That walk played tones; after a DC step at Bias
+# −1 the constant left is 177 LSB (the tail paragraph above). What it takes with it is C3's Bias clause and C4's Fuzz span,
+# both restated above; C1 does not move (h2 −79.059 → −79.379, peak
+# growth 0.012 → 0.013 dB).
+#
+# Latency. Mix 1 at oversample 8 is the waveshaper group delay 3.9 samples
+# (0.083 ms at 48 kHz); this class reports 4. Mix 0 reports 0.
+# Oversample 4 reports 3 (3.3 samples, 0.069 ms); oversample 2 and patch 8
+# report 2 (2.2 samples, 0.046 ms); oversample 1 reports 0. Named here
+# because the half-bands are the only lookahead. `cascade` ships at ×2, so
+# it reports 2 where `germanium` reports 4 — `LATENCY_SAMPLES` is the class
+# constant for the shipped `germanium` default and `latency_samples` on the
+# instance is the one to read.
+#
+# `capabilities = ()`: nothing reads `self._transport()`.
 
 VENDOR = "PyDevices"
 
@@ -596,7 +601,58 @@ def _group_delay_samples(oversample):
 
 
 class Fuzz(_component.Component):
-    """Fuzz Face germanium, or a Ram's Head 1973 Big Muff as `cascade`."""
+    """Fuzz Face germanium, or a Ram's Head 1973 Big Muff as `cascade`.
+
+    **Character.** `character` picks the pedal when you build it:
+    `germanium` (the default) or `cascade`. On `germanium` the transistor
+    sits off centre, so the fuzz leans even: at the default the second
+    harmonic of a -20 dBFS 1 kHz tone is no more than 30 dB under it, and
+    the even harmonics together no more than 26 dB. Turned up to 48 dB of
+    Fuzz and past, both halves go square and the lean is gone. There is no
+    tone stack on `germanium`: the band stays flat within 1 dB, and 40 Hz
+    within 3 dB of 1 kHz.
+
+    **Cascade.** `cascade` is two silicon pairs with a mid scoop between
+    them. With Tone and Bias centred the scoop is more than 3 dB deep. From
+    Fuzz 18 dB to 32 dB, Tone moves the scoop's centre over more than half
+    an octave; from 34 dB up the clipper fills the scoop in.
+
+    **Fuzz and Bias.** Fuzz spans 18 dB to 54 dB and defaults to 36 dB. Bias
+    spans -1 to +1. On `cascade` any Bias off centre is a gate on the level:
+    it rails both pairs and the output falls away, while the scoop stays
+    more than 3 dB deep. With Bias off centre the output settles near zero
+    rather than on it, so the class declares no tail there.
+
+    **Level, Load and Mix.** Level, Load and Mix each span 0 to 1. Level 0 is
+    digital silence at every Mix above 0, and halving Level takes 6.02 dB
+    off at every Mix. Load 1 takes 6.02 dB off at every Mix. At Mix 0 the
+    output is the source itself, at its own level, and the latency is 0.
+
+    **Output Tilt.** Output Tilt spans -6 dB to +6 dB across 1 kHz and is
+    measured from its loudest end. Nothing on the
+    surface reaches the rail from 100 Hz to 3700 Hz, even at 0 dBFS in.
+
+    **Aliasing.** At 48 kHz and 44.1 kHz, at the default, the aliasing is at
+    least 50 dB under a 1010 Hz tone and 35 dB under a 3700 Hz one. Nowhere
+    else on the surface, Fuzz - lean aside, does it come closer than 35 dB
+    and 28 dB. At 22.05 kHz that does not hold, because the fuzz's own
+    harmonics fold back at the output rate.
+
+    **Latency and tail.** `germanium` shapes at x8 and reports 4 samples of
+    latency; `cascade` shapes at x2 and reports 2, and so does Fuzz - lean.
+    With Bias centred the tail is 24576 samples.
+
+    **Patches.** There are nine: Bias centred, fuzz half; Full fuzz, volume
+    back; Starved bias, gated; Cleaned up, load engaged; Cascade scoop
+    centred; Cascade sustain maximum; Cascade treble end; Full fuzz, mix
+    back; and Fuzz - lean. Alone on an ESP32-S3 the germanium default was
+    measured at 77 % of a block and the costliest patch at 78 %. Fuzz - lean
+    shapes at x2 and was measured at 33 %, so play it when you stack
+    effects.
+
+    It needs `audioshaper`, `audiobiquad` and `audioroute`, so a stock
+    CircuitPython board can't run it.
+    """
 
     NAME = 'Fuzz'
     DISPLAY_NAME = 'Fuzz'
