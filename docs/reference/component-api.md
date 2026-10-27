@@ -331,9 +331,11 @@ few LSB after a control move and about 43 LSB that persists after a reset.
 800 LSB of slow coupling-pole residue that persists. What you hear is a
 re-attack, the same as switching a pedal on.
 
-After a patch change, or a reset in the middle of a buffer, `Compressor`
-measured 9,600 to 24,000 LSB that hadn't settled 78 blocks later. Whether that
-is the effect or the measurement isn't known yet.
+After a patch change, `Compressor` can be 10,000 to 13,000 LSB from an
+untouched copy for up to about 110 blocks while its detector re-attacks,
+because the characters a patch moves between have releases of up to two
+seconds. A reset in the middle of a source buffer is the same as one on a
+block boundary.
 
 **Behaviours that are not a bypass.** Three are stated, not accidental:
 

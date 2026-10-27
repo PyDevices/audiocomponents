@@ -298,8 +298,19 @@ class Compressor(_component.Component):
         # `_component.deinit()` looks the method up with `getattr` and skips
         # what is not there - so this is correct against the pinned audiodsp as
         # well as the current one.
-        split = self._own(audioroute.Splitter(self._source, taps=2),
-                          reset=False)
+        # A width-1 `MidSide` ahead of the Splitter re-blocks the source to
+        # 256 frames, byte for byte, so the taps hand whole blocks and the
+        # dry voice holds no part of a source buffer across a reset. On
+        # 100-frame source buffers a reset used to drop what it held: the
+        # dry leg then ran 28 frames ahead of the source (audiocomponents
+        # #208, #157). `reset=False` for the reason the Splitter has it: the
+        # frames it holds are the ones that come next.
+        head = self._own(audioroute.MidSide(
+            width=1.0, sample_rate=self._sample_rate,
+            channel_count=self._channel_count), reset=False)
+        head.play(self._source)
+        self._head = head
+        split = self._own(audioroute.Splitter(head, taps=2), reset=False)
         self._split = split
         self._wet_tap = self._own(split.tap(0), reset=False)
         self._dry_tap = self._own(split.tap(1), reset=False)
@@ -401,10 +412,12 @@ class Compressor(_component.Component):
         # stage it reads restarts its gain either way: the class comes back
         # as it was built, envelopes and all. And the Splitter drops the
         # source frames it took before the bypass, which the host has since
-        # read past (`_component.let_go_of_source`).
+        # read past, and the adapter ahead of it what it held of a source
+        # buffer (`_component.let_go_of_source`).
         if self._rejoin():
-            _component.let_go_of_source(self._split, self._source,
-                                        ((self._fast, self._wet_tap),))
+            self._let_go_of_source(self._head, self._source)
+            self._let_go_of_source(self._split, self._head,
+                                   ((self._fast, self._wet_tap),))
             self._primed = False
         if not self._primed:
             self._prime()
@@ -431,7 +444,9 @@ class Compressor(_component.Component):
         elif index in (10, 11):
             self._push_emphasis()
         elif index == 12:
-            if self._lean():
+            # The stage the wet voice plays, which a macro move after patch
+            # 14 leaves on the lean route though the patch index is unset.
+            if self._routed_lean:
                 self._fast.set(makeup_db=value)
             else:
                 self._slow.set(makeup_db=value)
@@ -439,6 +454,13 @@ class Compressor(_component.Component):
             self._wet.level = value
             self._dry.level = 1.0 - value
             self._refresh_output()
+        if self._routed_lean and self._slow_memory() > 0.0:
+            # The lean route is exact only while the slow stage is a wire.
+            # A Character or Memory move that gives it work to do takes the
+            # route back through it; left lean, the output stayed up to
+            # 9,000 LSB off the same settings built fresh (audiocomponents
+            # #208).
+            self._route()
 
     def _push_gain_computer(self):
         """Threshold, ratio and knee together, because on the `fet`
@@ -474,10 +496,9 @@ class Compressor(_component.Component):
         which renders byte-identical to its input (dossier App. J.2)."""
         if self._character == OPTICAL:
             release_ms = OPTICAL_RELEASE_SLOW_MS
-            memory = OPTICAL_MEMORY
         else:
             release_ms = self.macro(5)
-            memory = self.macro(6)
+        memory = self._slow_memory()
         attack_ms = release_ms * SLOW_ATTACK_FRACTION
         if attack_ms < SLOW_ATTACK_MIN_MS:
             attack_ms = SLOW_ATTACK_MIN_MS
@@ -486,6 +507,13 @@ class Compressor(_component.Component):
         self._slow.set(ratio=1.0 + SLOW_RATIO_SPAN * memory)
         self._slow.set(attack_ms=attack_ms)
         self._slow.set(release_ms=release_ms / RELEASE_MEASURED_PER_SET)
+
+    def _slow_memory(self):
+        """The second stage's Memory: the T4's own on `optical`, the macro
+        elsewhere. At 0 the stage is a wire."""
+        if self._character == OPTICAL:
+            return OPTICAL_MEMORY
+        return self.macro(6)
 
     def _push_detector(self):
         """Peak or true-RMS, and the RMS averaging window. `program_attack`
@@ -514,7 +542,11 @@ class Compressor(_component.Component):
 
     def _lean(self):
         """Patch 14 `Compressor - lean` is the only pull chain that
-        drops the slow stage. Every other patch keeps both Dynamics."""
+        drops the slow stage. Every other patch keeps both Dynamics. A
+        macro move after it keeps the route while the slow stage stays a
+        wire, and leaves it when it stops being one (`_apply_macro`)."""
+        if self._patch_index is None:
+            return self._routed_lean and self._slow_memory() <= 0.0
         return self._patch_index == 14
 
     def _route(self):
