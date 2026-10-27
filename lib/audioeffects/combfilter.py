@@ -259,6 +259,7 @@ class CombFilter(_component.Component):
         (-18.0, 18.0),              # 4  Trim, dB (input)
         (0.0, 1.0),                 # 5  Glide, delay-seconds per second
     )
+    _MACRO_UNITS = {0: "Hz", 3: "Hz", 4: "dB"}
     #: Named for settings, never for products; every value is `macro_of()` of
     #: the setting in the comment beside it.
     PATCHES = {

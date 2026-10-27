@@ -720,6 +720,7 @@ class Saturation(_component.Component):
         4: "BIPOLAR", 5: "UNIPOLAR", 6: "BIPOLAR", 7: "UNIPOLAR",
     }
     _MACRO_RANGES = _RANGES
+    _MACRO_UNITS = {0: "dB", 1: "dB", 3: "dB", 5: "ips", 6: "dB"}
     PATCHES = {
         0: ("Gentle thickening",
             _patch(0.0, 0.0, 1.0, 0.0, 0.0, 15.0, 0.0, 0.0)),

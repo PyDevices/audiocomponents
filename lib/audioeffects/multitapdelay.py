@@ -297,6 +297,7 @@ class MultiTapDelay(_component.Component):
         (0.0, 1.0),                         # 7  Sync
         (0.0, 15.0),                        # 8  Division index
     )
+    _MACRO_UNITS = {0: "ms", 6: "Hz"}
 
     #: `_component.macro_of` of the dossier's section 6 settings; patch 0
     #: is the constructor's defaults on the grid.

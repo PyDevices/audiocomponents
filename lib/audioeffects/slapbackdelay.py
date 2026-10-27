@@ -204,6 +204,7 @@ class SlapbackDelay(_component.Component):
         (0.0, WOW_MAX_CENTS),               # 4  Wow, cents peak at 0.7 Hz
         (0.0, REPEATS_MAX),                 # 5  Repeats, feedback
     )
+    _MACRO_UNITS = {0: "ms", 3: "Hz", 4: "cents"}
 
     #: `_component.macro_of` of the dossier's section 6 settings; patch 0 is
     #: the constructor's defaults on the grid.

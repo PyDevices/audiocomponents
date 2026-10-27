@@ -304,6 +304,9 @@ class Vibrato(_component.Component):
         7: "UNIPOLAR",
     }
     _MACRO_RANGES = _RANGES
+    _MACRO_UNITS = {
+        0: "Hz", 1: "cents", 2: "s", 4: "ms", 5: "Hz", 6: "Hz", 7: "dB",
+    }
     PATCHES = {
         0: ("Published defaults",
             _patch(5.0, 30.0, 1.0, True, 4.0, 17000.0, 40.0, 0.0)),

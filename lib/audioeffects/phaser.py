@@ -337,6 +337,7 @@ class Phaser(_component.Component):
         8: "TOGGLE", 9: "UNIPOLAR",
     }
     _MACRO_RANGES = _RANGES
+    _MACRO_UNITS = {0: "Hz", 2: "Hz"}
     PATCHES = {
         0: ("Four stage, no feedback",
             _patch(0.4, 0.7, 400.0, 0.0, 0.5, 0.0, 0.5, 0.3, 0.0, 2.0)),

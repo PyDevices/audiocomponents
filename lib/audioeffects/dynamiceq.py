@@ -191,6 +191,7 @@ class DynamicEQ(_component.Component):
         (0.0, 1.0),                 # Mix, which is also Range
         (0.0, 1.0),                 # Listen
     )
+    _MACRO_UNITS = {0: "Hz", 2: "dBFS", 4: "ms", 5: "ms"}
     #: Patch 0 is the constructor's defaults on the 0-127 grid;
     #: `tests/test_cpython_effects_dynamiceq.py` holds it to them span by
     #: span rather than to a hand-copied list.

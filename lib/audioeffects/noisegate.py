@@ -180,6 +180,9 @@ class NoiseGate(_component.Component):
         (250.0, 35000.0, "log"),     # 6 Key High, Hz (clamped by _hz)
         (0.0, 1.0),                  # 7 Key Listen
     )
+    _MACRO_UNITS = {
+        0: "dBFS", 1: "ms", 2: "ms", 3: "ms", 4: "dB", 5: "Hz", 6: "Hz",
+    }
     PATCHES = {
         0: ("Default", (64, 51, 59, 77, 127, 0, 113, 0)),
         1: ("Tom Tighten", (79, 43, 63, 68, 64, 29, 71, 0)),

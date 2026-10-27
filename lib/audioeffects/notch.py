@@ -144,6 +144,7 @@ class Notch(_component.Component):
         (0.0, 1.0),                     # 3  Depth, 0 is a wire
         (-12.0, 12.0),                  # 4  Trim, dB
     )
+    _MACRO_UNITS = {0: "Hz", 4: "dB"}
     #: Named for settings, never for products, and every value is
     #: `macro_of()` of the setting in the comment beside it. A 7-bit step on
     #: a 20 Hz - 16 kHz log span is 5.4 %, so the settings below are what

@@ -233,6 +233,9 @@ class AirSpace(_component.Component):
         (500.0, 16000.0, "log"),            # 9  Damping, Hz
         (0.0, 2.0),                         # 10 Mix; dry at unity to 1
     )
+    _MACRO_UNITS = {
+        0: "ms", 2: "ms", 4: "Hz", 5: "Hz", 6: "Hz", 7: "Hz", 8: "s", 9: "Hz",
+    }
 
     #: `_component.macro_of` of the card's settings; patch 0 is the
     #: constructor's defaults on the grid (`DEFAULT_STEPS`).

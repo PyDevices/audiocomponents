@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import audioinstruments
 
-from support import note_table
+from support import controls_table, note_table
 from tools.validate_metadata import MetadataError, validate_component
 
 
@@ -111,3 +111,30 @@ class DrumNoteTableTest(unittest.TestCase):
             for note in (36, 38, 42, 46, 49):
                 self.assertIn(note, mapped,
                               "%s does not answer %d" % (name, note))
+
+
+class EffectControlsPageTest(unittest.TestCase):
+    """The controls page has to stay the classes' own answer: a knob's span
+    typed by hand is true the day it is written and wrong a month later."""
+
+    PAGE = (pathlib.Path(__file__).resolve().parent.parent
+            / "docs" / "reference" / "effect-controls.md")
+
+    def test_the_page_is_what_the_classes_say(self):
+        self.assertEqual(self.PAGE.read_text(encoding="utf-8"),
+                         controls_table.render())
+
+    def test_the_page_goes_red_on_a_stale_span(self):
+        page = self.PAGE.read_text(encoding="utf-8")
+        self.assertNotEqual(page.replace("40 Hz to 800 Hz", "40 Hz to 900 Hz"),
+                            controls_table.render())
+
+    def test_every_unit_names_a_ranged_knob(self):
+        units = ("ms", "s", "Hz", "dB", "dBFS", "semitones", "cents",
+                 "degrees", "ips", "um")
+        for cls in controls_table.classes():
+            for index, unit in getattr(cls, "_MACRO_UNITS", {}).items():
+                with self.subTest(cls=cls.NAME, index=index):
+                    self.assertIn(index, range(len(cls._MACRO_RANGES)))
+                    self.assertNotEqual(cls.MACRO_MODES[index], "TOGGLE")
+                    self.assertIn(unit, units)

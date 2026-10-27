@@ -314,6 +314,7 @@ class CabinetSim(_component.Component):
         (-30.0, -12.0),             # 6 Air, dB
         (0.0, 1.0),                 # 7 Mix
     )
+    _MACRO_UNITS = {1: "Hz", 2: "dB", 3: "Hz", 4: "dB", 5: "Hz", 6: "dB"}
     #: The grid each macro's engineering value is quantised onto, or None
     #: where the value is a toggle read against 0.5.
     _MACRO_GRIDS = (None, HZ_GRID_LOW, DB_GRID, HZ_GRID, DB_GRID, HZ_GRID,

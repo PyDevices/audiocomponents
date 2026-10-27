@@ -336,6 +336,9 @@ class Reverb(_component.Component):
         (-12.0, 12.0),                  # 11 Tone, dB end to end
         (0.0, 2.0),                     # 12 Mix; dry at unity to 1
     )
+    _MACRO_UNITS = {
+        1: "s", 3: "ms", 5: "Hz", 6: "Hz", 7: "Hz", 8: "ms", 9: "Hz", 11: "dB",
+    }
 
     #: `_component.macro_of` of the dossier's section 6 settings, Character
     #: at 0 / 42 / 85 / 127; patch 0 is the constructor's defaults on the

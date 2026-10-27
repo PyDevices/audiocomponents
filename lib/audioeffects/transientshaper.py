@@ -162,6 +162,7 @@ class TransientShaper(_component.Component):
                    3: "UNIPOLAR", 4: "UNIPOLAR"}
     _MACRO_RANGES = ((-15.0, 15.0), (-24.0, 24.0), (-22.0, 6.0),
                      (0.2, 5.0, "log"), (0.0, 500.0))
+    _MACRO_UNITS = {0: "dB", 1: "dB", 2: "dB", 4: "ms"}
     PATCHES = {
         0: ("Flat", (64, 64, 100, 64, 38)),
         1: ("Snap", (102, 64, 100, 64, 38)),

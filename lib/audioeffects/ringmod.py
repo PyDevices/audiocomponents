@@ -229,6 +229,7 @@ class RingMod(_component.Component):
         (-180.0, 180.0),
         (0.0, 1.0),
     )
+    _MACRO_UNITS = {0: "Hz", 7: "dBFS", 8: "ms", 9: "Hz", 10: "degrees"}
     PATCHES = {
         0: ("Clean Ring", (87, 127, 127, 0, 64, 64, 127, 21, 64, 25, 64, 0)),
         1: ("Textbook AM", (46, 64, 127, 0, 64, 64, 127, 21, 64, 25, 64, 0)),

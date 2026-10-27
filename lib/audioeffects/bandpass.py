@@ -154,6 +154,7 @@ class BandPass(_component.Component):
     MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "TOGGLE", 3: "UNIPOLAR"}
     _MACRO_RANGES = ((20.0, 16000.0, "log"), (0.5, 32.0, "log"),
                      (0.0, 1.0), (0.0, 1.0))
+    _MACRO_UNITS = {0: "Hz"}
     PATCHES = {
         0: ("Wide Mid", (74, 11, 0, 127)),
         1: ("Telephone", (81, 27, 127, 127)),

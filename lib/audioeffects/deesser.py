@@ -242,6 +242,7 @@ class DeEsser(_component.Component):
                      (1.0, 200.0, "log"),      # ms
                      (0.1, 10.0, "log"),       # ms
                      (0.0, 1.0))               # Listen
+    _MACRO_UNITS = {0: "Hz", 1: "dB", 2: "dB", 4: "ms", 5: "ms"}
     PATCHES = {
         0: ("Vocal", (63, 76, 79, 0, 30, 83, 0)),
         1: ("Bright Vocal", (89, 102, 90, 0, 30, 83, 0)),

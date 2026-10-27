@@ -630,6 +630,7 @@ class Fuzz(_component.Component):
         4: "UNIPOLAR", 5: "UNIPOLAR", 6: "BIPOLAR",
     }
     _MACRO_RANGES = _RANGES
+    _MACRO_UNITS = {0: "dB", 6: "dB"}
     PATCHES = {
         0: ("Bias centred, fuzz half",
             _patch(36.0, 1.0, 0.5, 0.0, 0.0, 1.0, 0.0)),
