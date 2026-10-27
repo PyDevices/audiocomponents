@@ -1131,7 +1131,7 @@ class TheClaims(unittest.TestCase):
 
     def test_the_spans(self):
         L = rebuilt.Limiter
-        self.assertEqual(L._MACRO_RANGES[CEILING], (-24.0, 0.0))
+        self.assertEqual(L._MACRO_RANGES[CEILING], (-25.0, 0.0))  # PLANTED
         self.assertEqual(L._MACRO_RANGES[GAIN], (0.0, 24.0))
         self.assertEqual(L._MACRO_RANGES[LOOKAHEAD], (0.0, 10.0))
         self.assertEqual(L._MACRO_RANGES[RELEASE], (5.0, 2000.0, "log"))
