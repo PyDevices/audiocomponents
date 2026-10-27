@@ -1,81 +1,137 @@
 """A lookahead brickwall limiter: a ceiling the signal does not get past.
 
-There is no circuit behind this class and no pedal it is named after. What it
-models is a *specification* - ITU-R BS.1770-5 Annex 2 for what "the peak did
-not exceed the ceiling" means, and Hamalainen's DAFx-02 paper for what a
-lookahead limiter has to do to keep that promise. The classic peak limiters
-are `Compressor`'s characters; none of them looks ahead and none of them
-guarantees a ceiling.
-
-**Two nodes, and the second is the one that makes the promise.**
-
-    source -> shape (DYN_COMPRESS, ratio 1e6)  -> catch (DYN_LIMIT) -> output
-              knee, lookahead, true peak, gain    attack 0, no lookahead
-
-A lone lookahead limiter is *worse* than none: the node delays the audio while
-its detector releases on the live input, so by the time a peak reaches the
-output the gain has been coming back up for the whole lookahead window. That is
-the DAFx-02 result, and it is measurable - a 1 ms burst into a -12 dBFS ceiling
-comes out at -12.00 dBFS with no lookahead and **-10.55 dBFS with 10 ms of it**
-on one node. The second `Dynamics`, at the same ceiling with `attack_ms=0` and
-no lookahead of its own, holds -12.00 dBFS at every setting: with a zero
-attack the envelope *is* the current sample, `DYN_LIMIT` returns exactly
-`-over`, and that gain multiplies that same sample. A sample-exact brickwall by
-construction, not an approximation.
-
-**Latency: zero by default.** The Lookahead macro is the only thing in this
-class that delays anything, it defaults to **0 ms**, and `latency_samples`
-reports what it is set to the moment it moves - `floor(ms x rate / 1000)`, up
-to 480 samples (10 ms) at 48 kHz. True Peak adds **no latency at all**: the 4x
-reconstruction runs on the detector signal and never reaches the audio path.
-
-**A lookahead that grows starts from silence.** The node writes its line
-only as far as its delay reaches, so lengthening it used to expose what
-the line held the last time it was that long: Lookahead off and back on
-after a pause replayed the last note at full level (31 373 LSB), and True
-Peak moving its twelve-sample reserve between the stages did the same. A
-stage whose delay grows is now reset first (audiocomponents#113). The node
-cannot clear its line alone, so that stage's gain restarts too: with the
-shape stage's zero attack it catches the next peak on its first sample, and
-the catch stage holds the ceiling throughout. Lengthening the lookahead
-while audio plays therefore inserts that much silence, where it used to
-insert old audio.
-
-**True Peak costs real time, and it costs lookahead.** The palette prices
-each `Dynamics` with `true_peak=2` at the +options row: **1.611 ms / 3.461 ms**
-marginal on the P4 / S3. This class lights it on *both* stages, so the
-toggle is **3.222 ms / 6.922 ms** (61 % / 130 % of a 5.333 ms block) - the
-S3 cannot hold that graph (measured 6.550 ms/block, rt 0.81 at the old Loud
-setting). Leave it off unless you have a P4 and need the inter-sample
-ceiling. With True Peak off (the default), a worst-phase tone at a quarter
-of the sample rate leaves a -6 dBFS ceiling **3.01 dB high** in the
-reconstructed waveform at 48000, 44100 and 22050 Hz - the ceiling is held
-on the samples and broken between them. With it on, and **any** lookahead
-at all, the worst of the 65 kit probes at 48 kHz and 44.1 kHz, at
-Lookahead 0.25, 1.5 and 10 ms, is **+0.22 dB** over the ceiling against a
-0.50 dB bar, with no probe red. With True Peak on and Lookahead at **0**
-it is a sample ceiling and nothing more: a full-scale ramp escapes by
-**+2.22 dB TP** and a DC step by +1.12. That is not a bug that can be fixed - the detector
-names an inter-sample peak five and a half samples after it happened, so
-catching one costs delay. The last twelve samples of the Lookahead macro go
-to the catch stage for exactly this, which is why turning True Peak on adds
-no latency of its own. Every shipped patch that turns it on also asks for
-lookahead, and those patches (*Catch The Peaks*, *Delivery Ceiling*,
-*Loud (True Peak)*) are **P4 only**. Turn it on for anything that will be
-converted or encoded, and give it a millisecond.
-
-**Release is the distortion knob, and it is honest about it.** The gain is
-computed per sample with no smoothing of its own, so release time and
-smoothing are one control. A 60 Hz sine driven 12 dB into the ceiling measures
-**12.0 % THD at the 5 ms end** of the macro and 0.36 % at 300 ms; the default
-patch sits at 149 ms and 0.71 %. Fast release on bass material is a fuzz
-setting - use it on purpose or stay above about 110 ms.
-
-Stereo is **always channel-linked**: the detector takes the maximum across the
-two channels, so the image does not wander when one side is loud. That is not
-switchable on this node. A mono source is limited on its one channel, not
-summed.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# There is no circuit behind this class and no pedal it is named after. What it
+# models is a *specification* - ITU-R BS.1770-5 Annex 2 for what "the peak did
+# not exceed the ceiling" means, and Hamalainen's DAFx-02 paper for what a
+# lookahead limiter has to do to keep that promise. The classic peak limiters
+# are `Compressor`'s characters; none of them looks ahead and none of them
+# guarantees a ceiling.
+#
+# Two nodes, and the second is the one that makes the promise.
+#
+#     source -> shape (DYN_COMPRESS, ratio 1e6)  -> catch (DYN_LIMIT) -> output
+#               knee, lookahead, true peak, gain    attack 0, no lookahead
+#
+# A lone lookahead limiter is *worse* than none: the node delays the audio while
+# its detector releases on the live input, so by the time a peak reaches the
+# output the gain has been coming back up for the whole lookahead window. That is
+# the DAFx-02 result, and it is measurable - a 1 ms burst into a -12 dBFS ceiling
+# comes out at -12.00 dBFS with no lookahead and -10.55 dBFS with 10 ms of it
+# on one node. The second `Dynamics`, at the same ceiling with `attack_ms=0` and
+# no lookahead of its own, holds -12.00 dBFS at every setting: with a zero
+# attack the envelope *is* the current sample, `DYN_LIMIT` returns exactly
+# `-over`, and that gain multiplies that same sample. A sample-exact brickwall by
+# construction, not an approximation.
+#
+# Latency: zero by default. The Lookahead macro is the only thing in this
+# class that delays anything, it defaults to 0 ms, and `latency_samples`
+# reports what it is set to the moment it moves - `floor(ms x rate / 1000)`, up
+# to 480 samples (10 ms) at 48 kHz. True Peak adds no latency at all: the 4x
+# reconstruction runs on the detector signal and never reaches the audio path.
+#
+# A lookahead that grows starts from silence. The node writes its line
+# only as far as its delay reaches, so lengthening it used to expose what
+# the line held the last time it was that long: Lookahead off and back on
+# after a pause replayed the last note at full level (31 373 LSB), and True
+# Peak moving its twelve-sample reserve between the stages did the same. A
+# stage whose delay grows is now reset first (audiocomponents#113). The node
+# cannot clear its line alone, so that stage's gain restarts too: with the
+# shape stage's zero attack it catches the next peak on its first sample, and
+# the catch stage holds the ceiling throughout. Lengthening the lookahead
+# while audio plays therefore inserts that much silence, where it used to
+# insert old audio.
+#
+# True Peak costs real time, and it costs lookahead. The palette prices
+# each `Dynamics` with `true_peak=2` at the +options row: 1.611 ms / 3.461 ms
+# marginal on the P4 / S3. This class lights it on *both* stages, so the
+# toggle is 3.222 ms / 6.922 ms (61 % / 130 % of a 5.333 ms block) - the
+# S3 cannot hold that graph (measured 6.550 ms/block, rt 0.81 at the old Loud
+# setting). Leave it off unless you have a P4 and need the inter-sample
+# ceiling. With True Peak off (the default), a worst-phase tone at a quarter
+# of the sample rate leaves a -6 dBFS ceiling 3.01 dB high in the
+# reconstructed waveform at 48000, 44100 and 22050 Hz - the ceiling is held
+# on the samples and broken between them. With it on, and any lookahead
+# at all, the worst of the 65 kit probes at 48 kHz and 44.1 kHz, at
+# Lookahead 0.25, 1.5 and 10 ms, is +0.22 dB over the ceiling against a
+# 0.50 dB bar, with no probe red. With True Peak on and Lookahead at 0
+# it is a sample ceiling and nothing more: a full-scale ramp escapes by
+# +2.22 dB TP and a DC step by +1.12. That is not a bug that can be fixed - the detector
+# names an inter-sample peak five and a half samples after it happened, so
+# catching one costs delay. The last twelve samples of the Lookahead macro go
+# to the catch stage for exactly this, which is why turning True Peak on adds
+# no latency of its own. Every shipped patch that turns it on also asks for
+# lookahead, and those patches (*Catch The Peaks*, *Delivery Ceiling*,
+# *Loud (True Peak)*) are P4 only. Turn it on for anything that will be
+# converted or encoded, and give it a millisecond.
+#
+# Release is the distortion knob, and it is honest about it. The gain is
+# computed per sample with no smoothing of its own, so release time and
+# smoothing are one control. A 60 Hz sine driven 12 dB into the ceiling measures
+# 12.0 % THD at the 5 ms end of the macro and 0.36 % at 300 ms; the default
+# patch sits at 149 ms and 0.71 %. Fast release on bass material is a fuzz
+# setting - use it on purpose or stay above about 110 ms.
+#
+# Stereo is always channel-linked: the detector takes the maximum across the
+# two channels, so the image does not wander when one side is loud. That is not
+# switchable on this node. A mono source is limited on its one channel, not
+# summed.
+#
+# The class docstring before the player's text, kept for its figures.
+#
+# Brickwall limiting against a ceiling, with optional lookahead and
+#     true-peak detection. `audiodsp` tier: it needs `audiodynamics`.
+#
+#     Two `audiodynamics.Dynamics` in series - a shaping stage that carries the
+#     Knee, the Lookahead and the true-peak detector, and a catch stage that is
+#     the reason lookahead never overshoots. A lone lookahead limiter is worse
+#     than none: measured, a 1 ms burst into a -12 dBFS ceiling comes out at
+#     -12.00 dBFS with no lookahead and -10.55 dBFS with 10 ms of it, because
+#     the node delays the audio while its detector releases on the live input.
+#     With the catch stage the same burst reads -12.00 dBFS at every setting.
+#
+#     Latency is 0 by default. Lookahead is the only thing here that delays
+#     anything; it spans 0 ms to 10 ms (up to 480 samples at 48 kHz) and
+#     `latency_samples` reports `floor(ms x rate / 1000)` the moment the macro
+#     moves. True Peak adds no latency at all - the 4x reconstruction runs on
+#     the detector signal and never reaches the audio.
+#
+#     Release is the distortion knob and this docstring says so. The gain is
+#     computed per sample with no smoothing of its own, so release time and
+#     smoothing are one control. A 60 Hz sine driven 12 dB into the ceiling
+#     measures 12.0 % THD at the 5 ms end of the Release macro, 3.1 % at
+#     30 ms and 0.36 % at 300 ms; the default patch sits at 149 ms and 0.71 %.
+#     The 1 % line falls between 100 ms (1.05 %) and 149 ms. Fast release on low
+#     material is a fuzz setting - reach for it on purpose, or stay above about
+#     110 ms.
+#
+#     True Peak costs real time. Each stage it lights is a `Dynamics`
+#     +options row on the palette (1.611 / 3.461 ms); both stages together
+#     are 61 % / 130 % of a block and miss the S3 deadline (rt 0.81).
+#     With True Peak off (the default), a worst-phase tone at a quarter of
+#     the sample rate leaves a -6 dBFS ceiling 3.01 dB high in the
+#     reconstructed waveform at 48000, 44100 and 22050 Hz. On, with any
+#     lookahead at all, the worst of the 65 kit probes at both rates
+#     is +0.22 dB over, and none is red. With True Peak on and
+#     Lookahead 0 it is a sample ceiling only - `ramp_fs` escapes by
+#     +2.22 dB TP, `dc_step` by +1.12 - because an inter-sample
+#     peak cannot be caught with no delay to catch it in. The last twelve
+#     samples of the Lookahead macro are the catch stage's, so True Peak still
+#     adds no latency of its own; every shipped patch that turns it on asks
+#     for lookahead too, and those patches are P4 only.
+#
+#     On an ESP32-S3, Catch The Peaks, Delivery Ceiling and Loud (True
+#     Peak) can't keep up and the sound breaks up; play Delivery Ceiling -
+#     lean instead. It keeps Delivery Ceiling's lookahead and release,
+#     turns True Peak off, and sits 3 dB lower (-3.97 dB), which is the most a
+#     peak between samples was measured to rise over a sample ceiling: a
+#     worst-phase tone driven 6 dB into it reads -0.96 dB TP, where
+#     Delivery Ceiling reads -0.77.
 
 VENDOR = "PyDevices"
 
@@ -117,53 +173,57 @@ _DB_PER_TIME_CONSTANT = 8.685889638065035
 
 class Limiter(_component.Component):
     """Brickwall limiting against a ceiling, with optional lookahead and
-    true-peak detection. `audiodsp` tier: it needs `audiodynamics`.
+    true-peak detection.
 
-    Two `audiodynamics.Dynamics` in series - a shaping stage that carries the
-    Knee, the Lookahead and the true-peak detector, and a catch stage that is
-    the reason lookahead never overshoots. A lone lookahead limiter is worse
-    than none: measured, a 1 ms burst into a -12 dBFS ceiling comes out at
-    -12.00 dBFS with no lookahead and -10.55 dBFS with 10 ms of it, because
-    the node delays the audio while its detector releases on the live input.
-    With the catch stage the same burst reads -12.00 dBFS at every setting.
+    **Ceiling and Gain.** Ceiling sets the level nothing gets past, from
+    -24 dB to 0 dB. Gain drives the signal into it, from 0 dB to 24 dB, and
+    below the ceiling it is exactly the gain it says, within 0.1 dB. Below
+    the ceiling nothing else is touched: the level holds within 0.05 dB, and
+    at Ceiling 0 dB with no Gain the limiter is a wire.
 
-    **Latency is 0 by default.** Lookahead is the only thing here that delays
-    anything; it spans **0 ms to 10 ms** (up to **480 samples** at 48 kHz) and
-    `latency_samples` reports `floor(ms x rate / 1000)` the moment the macro
-    moves. True Peak adds no latency at all - the 4x reconstruction runs on
-    the detector signal and never reaches the audio.
+    **Lookahead.** Lookahead spans 0 ms to 10 ms and defaults to 0 ms, so
+    out of the box the limiter adds no latency. With it on, the latency is
+    the lookahead in whole samples, up to 480 samples at 48 kHz and 220 at
+    22.05 kHz, and the host is told the moment you move it. A short burst
+    stays within 0.1 dB of the ceiling at every Lookahead setting, and a
+    single-sample spike is caught at every setting from 0.5 ms up.
+    Lengthening the lookahead while audio plays inserts that much silence;
+    it never replays old audio.
 
-    **Release is the distortion knob and this docstring says so.** The gain is
-    computed per sample with no smoothing of its own, so release time and
-    smoothing are one control. A 60 Hz sine driven 12 dB into the ceiling
-    measures **12.0 % THD at the 5 ms end** of the Release macro, 3.1 % at
-    30 ms and 0.36 % at 300 ms; the default patch sits at 149 ms and 0.71 %.
-    The 1 % line falls between 100 ms (1.05 %) and 149 ms. Fast release on low
-    material is a fuzz setting - reach for it on purpose, or stay above about
-    110 ms.
+    **Release is the distortion knob.** The gain follows the signal sample
+    by sample, so a fast release distorts low notes. Release spans 5 ms to
+    2 s, and a 60 Hz sine driven 12 dB into the ceiling measures
+    12.0 % THD at the 5 ms end of the Release macro.
+    The default patch sits at 149 ms and 0.71 %, under 1 % at 48 kHz and
+    44.1 kHz.
 
-    **True Peak costs real time.** Each stage it lights is a `Dynamics`
-    +options row on the palette (1.611 / 3.461 ms); both stages together
-    are 61 % / 130 % of a block and **miss the S3 deadline** (rt 0.81).
-    With True Peak off (the default), a worst-phase tone at a quarter of
-    the sample rate leaves a -6 dBFS ceiling **3.01 dB high** in the
-    reconstructed waveform at 48000, 44100 and 22050 Hz. On, with any
-    lookahead at all, the worst of the 65 kit probes at both rates
-    is **+0.22 dB** over, and none is red. With True Peak on and
-    **Lookahead 0** it is a sample ceiling only - `ramp_fs` escapes by
-    **+2.22 dB TP**, `dc_step` by +1.12 - because an inter-sample
-    peak cannot be caught with no delay to catch it in. The last twelve
-    samples of the Lookahead macro are the catch stage's, so True Peak still
-    adds no latency of its own; every shipped patch that turns it on asks
-    for lookahead too, and those patches are P4 only.
+    **True Peak.** Off, the ceiling holds on the samples, and a peak between
+    two samples can rise more than 2.5 dB over it. On, with any lookahead at
+    all, the waveform between the samples stays within 0.5 dB of the ceiling
+    at 48 kHz and 44.1 kHz. On with Lookahead 0 it is a sample ceiling only:
+    a full-scale ramp gets more than 2 dB past it, because a peak between
+    samples can't be caught with no delay to catch it in. True Peak adds no
+    latency of its own.
 
-    **On an ESP32-S3, Catch The Peaks, Delivery Ceiling and Loud (True
-    Peak) can't keep up and the sound breaks up; play Delivery Ceiling -
-    lean instead.** It keeps Delivery Ceiling's lookahead and release,
-    turns True Peak off, and sits 3 dB lower (-3.97 dB), which is the most a
-    peak between samples was measured to rise over a sample ceiling: a
-    worst-phase tone driven 6 dB into it reads **-0.96 dB TP**, where
-    Delivery Ceiling reads -0.77.
+    **Knee.** At Knee 0 the ceiling is a brickwall. Knee spans 0 dB to
+    12 dB, and at 12 dB the bend is more than 4 dB wide.
+
+    **Stereo.** The two channels are always limited together, so the image
+    doesn't wander when one side is loud. A mono source is limited on its
+    own channel.
+
+    **Patches.** There are seven: Safety Ceiling, Catch The Peaks, Loud,
+    Soft Ceiling, Delivery Ceiling, Loud (True Peak) and Delivery Ceiling -
+    lean. Catch The Peaks, Delivery Ceiling and Loud (True Peak) turn True
+    Peak on, and an ESP32-S3 can't keep up with them: both stages with True
+    Peak on were measured at 6.550 ms of work in a 5.333 ms block, and the
+    sound breaks up. Play Delivery Ceiling - lean there instead. It keeps Delivery
+    Ceiling's lookahead and release, turns True Peak off and sits 3 dB
+    lower, and a worst-phase tone driven 6 dB into it stays under -0.94 dB
+    even between the samples.
+
+    Latency is the lookahead, and so is the tail. It needs `audiodynamics`,
+    so a stock CircuitPython board can't run it.
     """
 
     NAME = 'Limiter'

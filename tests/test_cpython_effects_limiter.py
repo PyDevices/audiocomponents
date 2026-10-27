@@ -1121,5 +1121,206 @@ class ALookaheadThatGrowsPlaysNothingOld(unittest.TestCase):
         self.assertGreater(after, 2000)
 
 
+#: The ESP32-S3 figure the docstring gives: both stages with True Peak on,
+#: as measured on the board, against one 256-frame block at 48 kHz.
+BOARD_COST = {"S3_true_peak_ms": 6.550, "block_ms": 5.333}
+
+
+class TheClaims(unittest.TestCase):
+    """The docstring's claims that no older test holds on its own."""
+
+    def test_the_spans(self):
+        L = rebuilt.Limiter
+        self.assertEqual(L._MACRO_RANGES[CEILING], (-24.0, 0.0))
+        self.assertEqual(L._MACRO_RANGES[GAIN], (0.0, 24.0))
+        self.assertEqual(L._MACRO_RANGES[LOOKAHEAD], (0.0, 10.0))
+        self.assertEqual(L._MACRO_RANGES[RELEASE], (5.0, 2000.0, "log"))
+        self.assertEqual(L._MACRO_RANGES[KNEE], (0.0, 12.0))
+        self.assertEqual(
+            [name for name, _ in (L.PATCHES[i] for i in sorted(L.PATCHES))],
+            ["Safety Ceiling", "Catch The Peaks", "Loud", "Soft Ceiling",
+             "Delivery Ceiling", "Loud (True Peak)",
+             "Delivery Ceiling - lean"])
+        on = [L.PATCHES[i][0] for i in sorted(L.PATCHES)
+              if L.PATCHES[i][1][TRUE_PEAK] >= 64]
+        self.assertEqual(on, ["Catch The Peaks", "Delivery Ceiling",
+                              "Loud (True Peak)"])
+        lean = build(frames=1024, patch=6)
+        full = build(frames=1024, patch=4)
+        self.assertAlmostEqual(full.macro(CEILING) - lean.macro(CEILING),
+                               3.0, delta=0.05)
+        self.assertEqual(lean.macro(LOOKAHEAD), full.macro(LOOKAHEAD))
+        self.assertEqual(lean.macro(RELEASE), full.macro(RELEASE))
+        self.assertLess(lean.macro(TRUE_PEAK), 0.5)
+        lean.deinit()
+        full.deinit()
+
+    def test_the_two_channels_are_limited_together(self):
+        # A full-scale burst on the left only, a quiet tone on the right
+        # under the ceiling. Linked, the right side ducks with the left;
+        # limited on its own it would not move.
+        frames = 48000
+        index = np.arange(frames)
+        left = np.zeros(frames)
+        left[4800:9600] = 1.0
+        right = 10.0 ** (-30.0 / 20.0) * np.sin(
+            2.0 * math.pi * 1000.0 * index / RATE)
+        both = np.stack([left, right], axis=1)
+        pcm = array("h", np.clip(np.round(both * 32768.0), -32768, 32767)
+                    .astype(np.int64).reshape(-1).tolist())
+        effect = build(probe=pcm, ceiling_db=-12.0)
+        result = render(effect, frames)
+        effect.deinit()
+        during = kit.peak_db(result.float[7000:9000, 1])
+        before = kit.peak_db(result.float[2000:4000, 1])
+        self.assertAlmostEqual(before, -30.0, delta=0.1)
+        self.assertLess(during, before - 10.0)
+
+    def test_the_board_figures_are_the_table(self):
+        doc = _flat(rebuilt.Limiter.__doc__)
+        self.assertIn("were measured at %.3f ms of work in a %.3f ms block"
+                      % (BOARD_COST["S3_true_peak_ms"],
+                         BOARD_COST["block_ms"]), doc)
+        self.assertAlmostEqual(BOARD_COST["block_ms"],
+                               256 * 1000.0 / RATE, places=3)
+        self.assertGreater(BOARD_COST["S3_true_peak_ms"],
+                           BOARD_COST["block_ms"])
+
+    def test_construction_needs_audiodynamics(self):
+        saved = sys.modules["audiodynamics"]
+        sys.modules["audiodynamics"] = None
+        try:
+            with self.assertRaises(ImportError):
+                build(frames=1024)
+        finally:
+            sys.modules["audiodynamics"] = saved
+
+
+CLAIMS = (
+    ("Ceiling sets the level nothing gets past, from -24 dB to 0 dB.",
+     ("TheClaims.test_the_spans",
+      "L1SamplePeak.test_the_clean_class_holds_the_ceiling_at_three_rates")),
+    ("Gain drives the signal into it, from 0 dB to 24 dB, and below the "
+     "ceiling it is exactly the gain it says, within 0.1 dB.",
+     ("TheClaims.test_the_spans",
+      "TierOne.test_the_gain_macro_is_the_gain_it_says")),
+    ("Below the ceiling nothing else is touched: the level holds within "
+     "0.05 dB, and at Ceiling 0 dB with no Gain the limiter is a wire.",
+     ("TierOne.test_level_honest_through_the_dry_path",
+      "TierOne.test_the_ceiling_at_zero_is_a_wire")),
+    ("Lookahead spans 0 ms to 10 ms and defaults to 0 ms, so out of the box "
+     "the limiter adds no latency.",
+     ("TheClaims.test_the_spans",
+      "L5ZeroByDefault.test_constructed_with_no_options")),
+    ("With it on, the latency is the lookahead in whole samples, up to 480 "
+     "samples at 48 kHz and 220 at 22.05 kHz, and the host is told the "
+     "moment you move it.",
+     ("L4LatencyIsTheLookahead.test_reported_matches_the_arithmetic_at_three_"
+      "rates",
+      "L4LatencyIsTheLookahead.test_the_click_agrees_with_the_report_to_the_"
+      "sample",
+      "TierOne.test_the_lookahead_clamps_rather_than_refusing_at_a_low_"
+      "rate")),
+    ("A short burst stays within 0.1 dB of the ceiling at every Lookahead "
+     "setting, and a single-sample spike is caught at every setting from "
+     "0.5 ms up.",
+     ("L2LookaheadNeverOvershoots.test_the_peak_stays_under_the_ceiling_and_"
+      "does_not_grow",
+      "L3ShortPeaksAreCaught.test_every_non_zero_setting")),
+    ("Lengthening the lookahead while audio plays inserts that much silence; "
+     "it never replays old audio.",
+     ("ALookaheadThatGrowsPlaysNothingOld.test_lookahead_back_after_silence_"
+      "plays_nothing",)),
+    ("Release spans 5 ms to 2 s, and a 60 Hz sine driven 12 dB into the "
+     "ceiling measures 12.0 % THD at the 5 ms end of the Release macro.",
+     ("TheClaims.test_the_spans",
+      "L7SmoothingIsADocumentedTrade.test_the_docstring_names_the_trade")),
+    ("The default patch sits at 149 ms and 0.71 %, under 1 % at 48 kHz and "
+     "44.1 kHz.",
+     ("L7SmoothingIsADocumentedTrade.test_the_docstring_names_the_trade",
+      "L7SmoothingIsADocumentedTrade.test_the_default_patch_is_under_one_"
+      "percent")),
+    ("Off, the ceiling holds on the samples, and a peak between two samples "
+     "can rise more than 2.5 dB over it.",
+     ("L1TruePeak.test_with_it_off_three_decibels_escape",)),
+    ("On, with any lookahead at all, the waveform between the samples stays "
+     "within 0.5 dB of the ceiling at 48 kHz and 44.1 kHz.",
+     ("L1TruePeak.test_true_peak_on_holds_the_ceiling_at_both_rates",
+      "TheTruePeakReserve.test_the_promise_holds_at_every_non_zero_"
+      "lookahead")),
+    ("On with Lookahead 0 it is a sample ceiling only: a full-scale ramp "
+     "gets more than 2 dB past it, because a peak between samples can't be "
+     "caught with no delay to catch it in.",
+     ("TheTruePeakReserve.test_at_lookahead_zero_it_is_a_sample_ceiling_and_"
+      "says_so",)),
+    ("True Peak adds no latency of its own.",
+     ("TheTruePeakReserve.test_the_reserve_does_not_move_the_reported_"
+      "latency",)),
+    ("At Knee 0 the ceiling is a brickwall.",
+     ("L6BrickwallAndKnee.test_the_law_is_a_brickwall_with_no_knee_at_knee_"
+      "zero",)),
+    ("Knee spans 0 dB to 12 dB, and at 12 dB the bend is more than 4 dB "
+     "wide.",
+     ("TheClaims.test_the_spans",
+      "L6BrickwallAndKnee.test_the_knee_tracks_its_macro")),
+    ("The two channels are always limited together, so the image doesn't "
+     "wander when one side is loud.",
+     ("TheClaims.test_the_two_channels_are_limited_together",)),
+    ("There are seven: Safety Ceiling, Catch The Peaks, Loud, Soft Ceiling, "
+     "Delivery Ceiling, Loud (True Peak) and Delivery Ceiling - lean.",
+     ("TheClaims.test_the_spans",)),
+    ("Catch The Peaks, Delivery Ceiling and Loud (True Peak) turn True Peak "
+     "on, and an ESP32-S3 can't keep up with them: both stages with True "
+     "Peak on were measured at 6.550 ms of work in a 5.333 ms block, and the "
+     "sound breaks up.",
+     ("TheClaims.test_the_spans",
+      "TheClaims.test_the_board_figures_are_the_table")),
+    ("It keeps Delivery Ceiling's lookahead and release, turns True Peak off "
+     "and sits 3 dB lower, and a worst-phase tone driven 6 dB into it stays "
+     "under -0.94 dB even between the samples.",
+     ("TheClaims.test_the_spans",
+      "TheTruePeakReserve.test_the_lean_delivery_ceiling_holds_the_same_"
+      "true_peak")),
+    ("It needs `audiodynamics`, so a stock CircuitPython board can't run it.",
+     ("TheClaims.test_construction_needs_audiodynamics",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = rebuilt.__doc__ + " " + rebuilt.Limiter.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(doc.replace("within 0.05 dB",
+                                                   "within 0.5 dB")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
+
+
 if __name__ == "__main__":
     unittest.main()
