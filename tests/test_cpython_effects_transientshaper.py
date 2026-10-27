@@ -31,6 +31,7 @@ from audioeffects import transientshaper          # noqa: E402
 #: These tests still import the home module so a planted-fault subclass is
 #: measured against this file, not only `create()`.
 import effect_measurements as kit                         # noqa: E402
+from support import kit_ceiling                             # noqa: E402
 from support import kit_probes as probes                  # noqa: E402
 
 VENDOR = "PyDevices"
@@ -321,7 +322,19 @@ class TheClaims(unittest.TestCase):
             sys.modules["audiodynamics"] = saved
 
 
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # square is where it rails first: p1 at -9 dBFS.
+        cls = transientshaper.TransientShaper
+        self.assertEqual(kit_ceiling.stated_level_reds(cls, "square"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            cls, "square", db=-9, keys=("p1",)))
+
+
 CLAIMS = (
+    ("Keep the input under -12 dBFS and the defaults and patches stay "
+     "off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
     ("There is no threshold and no ratio: the gain follows the difference "
      "between two envelopes of your own signal, so between -20 and -40 dBFS "
      "a quiet hit is shaped as hard as a loud one, to within 0.5 dB.",
