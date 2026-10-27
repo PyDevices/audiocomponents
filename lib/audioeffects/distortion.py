@@ -545,6 +545,7 @@ class Distortion(_component.Component):
         (0.0, 1.0),
         (0.0, 1.0),
     )
+    _MACRO_UNITS = {7: "dB"}
     PATCHES = {
         0: ("Filter Half Mid Gain", (64, 64, 64, 100, 127, 0, 42, 0, 0, 0)),
         1: ("Filter Open Low Gain", (24, 0, 64, 110, 127, 0, 42, 0, 0, 0)),

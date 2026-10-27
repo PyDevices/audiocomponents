@@ -233,6 +233,8 @@ class Compressor(_component.Component):
         (-12.0, 24.0),                  # 12 Makeup, dB
         (0.0, 1.0),                     # 13 Mix
     )
+    _MACRO_UNITS = {1: "dB", 3: "ms", 4: "ms", 5: "ms", 7: "dB", 9: "ms", 11: "Hz",
+                    12: "dB"}
 
     #: Patches 8-13 are the Fairchild's six TIME CONSTANT positions, in the
     #: manual's order, and are the only patches traits M2 and M3 are read on.
