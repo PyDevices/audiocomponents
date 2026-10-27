@@ -3126,6 +3126,15 @@ CLAIMS = (
     ("A host that calls `audiocore.reset_buffer` on the output does the "
      "same.",
      "test_a_host_reset_buffer_silences_the_block_and_keeps_held_frames"),
+    ("The player's text is the class docstring, and every sentence in it "
+     "that makes a claim is tied to a test by the `CLAIMS` table in the "
+     "class's test file.", "test_every_claim_is_in_the_docstring_and_tested"),
+    ("A room behind your dry signal, made by convolution: synthesized from "
+     "five knobs, or the room your own impulse was recorded in.",
+     ("test_what_each_knob_does",
+      "test_a_wav_loads_the_same_room_as_its_frames")),
+    ("With nothing loaded the class synthesizes a short room from noise.",
+     ("test_the_laws_at_the_defaults", "test_room_picks_one_of_64_rooms")),
 )
 
 #: The family's two limits, as ruled on 2026-09-28, word for word; the
@@ -3178,7 +3187,9 @@ def counting(frames, channels):
 
 class TheClaims(unittest.TestCase):
     def test_every_claim_is_in_the_docstring_and_tested(self):
-        doc = _flat(ConvolutionReverb.__doc__)
+        # The player's text: the module's docstring, then the class's.
+        doc = _flat(sys.modules[ConvolutionReverb.__module__].__doc__ + " " +
+                    ConvolutionReverb.__doc__)
         tests = set()
         for value in globals().values():
             if isinstance(value, type) and issubclass(value,
@@ -3187,7 +3198,8 @@ class TheClaims(unittest.TestCase):
         rest = doc
         for sentence, test in CLAIMS:
             self.assertIn(sentence, doc, sentence)
-            self.assertIn(test, tests, sentence)
+            for name in (test,) if isinstance(test, str) else test:
+                self.assertIn(name, tests, sentence)
             rest = rest.replace(sentence, " ")
         self.assertIn("**Limits shared by the family.**", doc)
         for sentence in FAMILY:

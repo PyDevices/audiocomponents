@@ -3007,6 +3007,21 @@ CLAIMS = (
     ("The class needs audiodsp's `audioecho`, and on a board without it "
      "construction raises `ImportError`.",
      ("TrialClaims.test_construction_needs_audioecho",)),
+    ("`DigitalDelay` - a clean digital delay with the Boss DD-2's control "
+     "law.", ("T4TimeLaw.test_the_map_at_the_stops_and_between",
+              "T1DryIsAWire.test_defaults_stereo_and_mono")),
+    ("Your dry signal passes untouched, and one clean repeat follows it, fed "
+     "back for more.", ("T1DryIsAWire.test_defaults_stereo_and_mono",
+                        "TrialClaims.test_mix_2_is_the_repeats_alone",
+                        "Tier1Fast.test_the_tail_is_bounded_at_every_feedback")),
+    ("A clean digital delay with the DD-2's control law: the dry path is a "
+     "wire, and turning Time pitch-bends the repeats instead of clicking. "
+     "audiodsp tier; zero latency.",
+     ("T1DryIsAWire.test_defaults_stereo_and_mono",
+      "T2TimeResamples.test_a_rising_move_at_the_default_glide",
+      "TrialClaims.test_glide_0_jumps_with_a_click",
+      "TheSurface.test_macros_patches_tier_latency",
+      "Tier1Fast.test_click_delay_is_zero")),
 )
 
 #: Model names that carry digits and are not figures.
@@ -3042,8 +3057,9 @@ def claim_problems(doc, claims=CLAIMS):
 
 class Claims(unittest.TestCase):
     def test_every_claim_is_in_the_docstring_and_tested(self):
-        self.assertEqual(claim_problems(dd.__doc__), [])
-        self.assertEqual(claim_problems(DigitalDelay.__doc__, ()), [])
+        # The player's text: the module's docstring, then the class's.
+        self.assertEqual(claim_problems(dd.__doc__ + " " +
+                                        DigitalDelay.__doc__), [])
         self.assertIn(FAMILY_HEADING, _flat(dd.__doc__))
         # The checker can fail: a figure outside a claim, a claim the
         # docstring does not carry, a test that does not exist.

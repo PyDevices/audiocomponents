@@ -2545,6 +2545,10 @@ CLAIMS = (
     ("The class needs audiodsp's `audioecho`, and on a board without it "
      "construction raises `ImportError`.",
      ("TrialClaims.test_construction_needs_audioecho",)),
+    ("The player's text is the class docstring, and every sentence in it "
+     "that makes a claim is tied to a test by the `CLAIMS` table in the "
+     "class's test file.",
+     ("Claims.test_every_claim_is_in_the_docstring_and_tested",)),
 )
 
 FAMILY_HEADING = "**Limits shared by the family.**"
@@ -2576,8 +2580,9 @@ def claim_problems(doc, claims=CLAIMS):
 
 class Claims(unittest.TestCase):
     def test_every_claim_is_in_the_docstring_and_tested(self):
-        self.assertEqual(claim_problems(PingPongDelay.__doc__), [])
-        self.assertEqual(claim_problems(pp.__doc__, ()), [])
+        # The player's text: the module's docstring, then the class's.
+        self.assertEqual(claim_problems(pp.__doc__ + " " +
+                                        PingPongDelay.__doc__), [])
         self.assertIn(FAMILY_HEADING, _flat(PingPongDelay.__doc__))
         # The checker can fail: a figure outside a claim, a claim the
         # docstring does not carry, a test that does not exist.

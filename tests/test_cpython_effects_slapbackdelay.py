@@ -1432,6 +1432,21 @@ class T3Mono(unittest.TestCase):
             result = t3_measure(SlapbackDelay, RATE, **options)
             self.assertTrue(result["passed"], (options, result))
 
+    def test_the_copy_comes_back_quieter(self):
+        # A click at the defaults: the dry passes at its own level and the
+        # copy comes back about 134 ms on, above zero and under the dry.
+        data = array("h", [0] * (12000 * 2))
+        data[20] = data[21] = 20000
+        effect = SlapbackDelay(probes.ArraySource(data, rate=RATE, channels=2,
+                                                  block=BLOCK),
+                               sample_rate=RATE)
+        out = pull(effect, 12000)
+        effect.deinit()
+        self.assertEqual(list(out[10]), [20000, 20000])
+        copy = int(abs(out[200:]).max())
+        self.assertGreater(copy, 0)
+        self.assertLess(copy, 20000)
+
     def test_a_panned_repeat_is_red(self):
         result = t3_measure(PannedSlapback, RATE)
         self.assertFalse(result["passed"])
@@ -1947,6 +1962,19 @@ CLAIMS = (
      "test_a_jumping_control_steps_the_output"),
     ("When your source ends, the tail rings out as it would on silence.",
      "test_the_tail_rings_out_when_the_source_ends"),
+    ("`SlapbackDelay` - one tape repeat after the dry, in mono: the Sun "
+     "Studio slap.", ("test_defaults_three_rates_stereo_and_mono",
+                      "test_the_defaults_the_corner_and_the_patches")),
+    ("The player's text is the class docstring, and every sentence in it "
+     "that makes a claim is tied to a test by the `CLAIMS` table in the "
+     "class's test file.", "test_every_claim_is_in_the_docstring_and_tested"),
+    ("One tape repeat after the dry, in the same place: the Sun Studio slap.",
+     ("test_defaults_three_rates_stereo_and_mono",
+      "test_the_defaults_the_corner_and_the_patches")),
+    ("Your dry signal passes untouched, and one copy of it comes back a "
+     "moment later, a little quieter: the two-machine tape echo on Sam "
+     "Phillips' Sun sides.", ("test_the_dry_is_unity_until_the_repeat",
+                              "test_the_copy_comes_back_quieter")),
 )
 
 
@@ -2043,7 +2071,9 @@ def _midtail(ctor, moves, at=2048, rate=RATE):
 
 class TheClaims(unittest.TestCase):
     def test_every_claim_is_in_the_docstring_and_tested(self):
-        doc = _flat(SlapbackDelay.__doc__)
+        # The player's text: the module's docstring, then the class's.
+        doc = _flat(sys.modules[SlapbackDelay.__module__].__doc__ + " " +
+                    SlapbackDelay.__doc__)
         tests = set()
         for value in globals().values():
             if isinstance(value, type) and issubclass(value,
@@ -2052,7 +2082,8 @@ class TheClaims(unittest.TestCase):
         rest = doc
         for sentence, test in CLAIMS:
             self.assertIn(sentence, doc, sentence)
-            self.assertIn(test, tests, sentence)
+            for name in (test,) if isinstance(test, str) else test:
+                self.assertIn(name, tests, sentence)
             rest = rest.replace(sentence, " ")
         self.assertIn("**Limits shared by the family.**", doc)
         numbers = [w for w in rest.split() if any(c.isdigit() for c in w)]
