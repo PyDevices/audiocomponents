@@ -4,17 +4,16 @@ chamber and a hall.
 Your dry signal passes untouched and a reverb tail rises behind it.
 Character picks the machine: `plate` is dense from the first milliseconds,
 the way the EMT 140's steel sheet is, while `room`, `chamber` and `hall`
-start sparse and build. Decay (0.3 to 10 s) sets how long the tail rings,
-Size (0.5 to 1.5) stretches every line of the network, and Predelay (0 to
-200 ms) holds the tail back from the dry. Diffusion (0 to 0.9) smears the
-early echoes, Damping (500 Hz to 16 kHz) darkens the tail as it rings, and
-Bandwidth (500 Hz to 20 kHz) darkens what goes in. Low Cut (20 to 500 Hz)
-keeps the bass out of the tank while the dry keeps it. Mod Depth (0 to 2 ms)
-and Mod Rate (0.1 to 5 Hz) wobble two lines inside the tank, Width (0 to 1)
-sets the stereo spread, and Tone (-12 to +12 dB) tilts the tail. Mix (0 to
-2) is `audiodelays.Echo`'s: the dry at unity until 1, the tail alone at 2.
-Mix 0 is a byte-exact wire while the tank keeps ringing behind it. Latency
-is zero: nothing looks ahead, and Predelay delays only the tail.
+start sparse and build. Decay sets how long the tail rings, Size stretches
+the network's lines, and Predelay holds the tail back from the dry.
+Diffusion smears the early echoes, Damping darkens the tail as it rings,
+and Bandwidth darkens what goes in. Low Cut keeps the bass out of the tank
+while the dry keeps it. Mod Depth and Mod Rate wobble two lines inside the
+tank, Width sets the stereo spread, and Tone tilts the tail. Mix is
+`audiodelays.Echo`'s: the dry at unity until 1, the tail alone at 2. Mix 0
+is a byte-exact wire while the tank keeps ringing behind it. Latency is
+zero: nothing looks ahead, and Predelay delays only the tail. The Effect
+controls page lists what the knobs span and the patches.
 
 On the plate, Decay also moves the tail's loss corner, the way the EMT
 140's damping panel does: open at Decay 8 s and above, at the Damping
@@ -49,10 +48,6 @@ uniform noise at 4 000 LSB RMS at Mix 1, no shipped patch reaches the rail
 at 48, 44.1 or 22.05 kHz; Bright Chamber at 44.1 kHz is not claimed.
 A plucked phrase stays off the rails on every patch to -4 dBFS; at -3 dBFS
 Slow Bloom rails.
-
-**The patches:** Steel Plate (the defaults), Short Plate, Damped Plate,
-Bass-Free Plate, Small Room, Live Room, Concert Hall, Dark Chamber, Bright
-Chamber, Slow Bloom.
 
 `tail_samples` bounds the frames until the output is exactly zero once
 your input stops: 222 868 frames at the defaults at 48 kHz. One int16

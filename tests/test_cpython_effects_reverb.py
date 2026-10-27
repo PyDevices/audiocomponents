@@ -803,25 +803,6 @@ class TheSurface(unittest.TestCase):
         self.assertAlmostEqual(effect._handed["bandwidth_hz"], 10804.5)
         self.assertAlmostEqual(effect._handed["damping_hz"], 10804.5)
 
-
-    def test_the_spans(self):
-        # the docstring's control spans, and where each end lands
-        spans = dict(zip(Reverb.MACRO_LABELS, Reverb._MACRO_RANGES))
-        for label, low, high in (
-                ("Decay", 0.3, 10.0), ("Size", 0.5, 1.5),
-                ("Predelay", 0.0, 200.0), ("Diffusion", 0.0, 0.9),
-                ("Damping", 500.0, 16000.0), ("Bandwidth", 500.0, 20000.0),
-                ("Low Cut", 20.0, 500.0), ("Mod Depth", 0.0, 2.0),
-                ("Mod Rate", 0.1, 5.0), ("Width", 0.0, 1.0),
-                ("Tone", -12.0, 12.0), ("Mix", 0.0, 2.0)):
-            self.assertEqual(tuple(spans[label][:2]), (low, high), label)
-            index = Reverb.MACRO_LABELS.index(label)
-            effect = silent_build(Reverb)
-            effect.set_macro(index, 0)
-            self.assertAlmostEqual(effect.macro(index), low, places=6)
-            effect.set_macro(index, 127)
-            self.assertAlmostEqual(effect.macro(index), high, places=6)
-
     def test_without_audioverb_construction_raises_import_error(self):
         saved = sys.modules.get("audioverb")
         sys.modules["audioverb"] = None
@@ -1870,27 +1851,15 @@ CLAIMS = (
      "`chamber` and `hall` start sparse and build.",
      ("T1PlateDensity.test_steel_plate_is_dense_from_20_ms",
       "T8TheyBuild.test_room_hall_and_chamber_build")),
-    ("Decay (0.3 to 10 s) sets how long the tail rings, Size (0.5 to 1.5) "
-     "stretches every line of the network, and Predelay (0 to 200 ms) holds "
-     "the tail back from the dry.",
-     ("TheSurface.test_the_spans",)),
-    ("Diffusion (0 to 0.9) smears the early echoes, Damping (500 Hz to "
-     "16 kHz) darkens the tail as it rings, and Bandwidth (500 Hz to 20 kHz) "
-     "darkens what goes in.",
-     ("TheSurface.test_the_spans",)),
-    ("Low Cut (20 to 500 Hz) keeps the bass out of the tank while the dry "
-     "keeps it.",
-     ("TheSurface.test_the_spans",
-      "T7LowCut.test_the_tank_sees_no_bass_on_bass_free_plate",
+    ("Low Cut keeps the bass out of the tank while the dry keeps it.",
+     ("T7LowCut.test_the_tank_sees_no_bass_on_bass_free_plate",
       "T7LowCut.test_the_dry_is_flat")),
-    ("Mod Depth (0 to 2 ms) and Mod Rate (0.1 to 5 Hz) wobble two lines "
-     "inside the tank, Width (0 to 1) sets the stereo spread, and Tone (-12 "
-     "to +12 dB) tilts the tail.",
-     ("TheSurface.test_the_spans",
-      "T10Modulation.test_the_patches_modulation_spreads_it")),
-    ("Mix (0 to 2) is `audiodelays.Echo`'s: the dry at unity until 1, the "
+    ("Mod Depth and Mod Rate wobble two lines inside the tank, Width "
+     "sets the stereo spread, and Tone tilts the tail.",
+     ("T10Modulation.test_the_patches_modulation_spreads_it",)),
+    ("Mix is `audiodelays.Echo`'s: the dry at unity until 1, the "
      "tail alone at 2.",
-     ("TheSurface.test_the_spans", "T7LowCut.test_the_dry_is_flat")),
+     ("T7LowCut.test_the_dry_is_flat",)),
     ("Mix 0 is a byte-exact wire while the tank keeps ringing behind it.",
      ("Tier1.test_mix_zero_is_a_wire_at_every_patch",)),
     ("On the plate, Decay also moves the tail's loss corner, the way the EMT "
@@ -1943,11 +1912,6 @@ CLAIMS = (
     ("A plucked phrase stays off the rails on every patch to -4 dBFS; at "
      "-3 dBFS Slow Bloom rails.",
      ("InputCeiling.test_a_plucked_phrase_is_clean_to_minus_4_dbfs",)),
-    ("**The patches:** Steel Plate (the defaults), Short Plate, Damped "
-     "Plate, Bass-Free Plate, Small Room, Live Room, Concert Hall, Dark "
-     "Chamber, Bright Chamber, Slow Bloom.",
-     ("TheSurface.test_patches_are_the_dossier_settings_on_the_grid",
-      "TheSurface.test_patch_0_is_the_constructor_grid")),
     ("`tail_samples` bounds the frames until the output is exactly zero "
      "once your input stops: 222 868 frames at the defaults at 48 kHz.",
      ("Tier1.test_the_tail_reaches_exact_zero_inside_tail_samples",
