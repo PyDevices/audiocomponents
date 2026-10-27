@@ -1,61 +1,68 @@
-"""`Vibrato` — a clock-modulated bucket-brigade line, wet alone.
+"""`Vibrato` - a clock-modulated bucket-brigade line, wet alone.
 
-Rebuilt from scratch for Phase 3 against a dossier whose trait table was
-frozen at Station A before this file existed. The old
-`modulation.py:Vibrato` is consulted only for the six defects that dossier's
-section 7 names.
-
-**What it sounds like.** There is no dry path when engaged: the output is
-the delayed signal, pitch-wobbled because a sine-family LFO moves the
-*clock* of the line, not an additive delay. Rate is 2–15 Hz. Depth is peak
-cents, held against Rate by solving the clock index m. Rise (150 ms–5 s)
-ramps that depth in when Engage turns on, and out when it turns off, in a
-straight line whose 10–90 % is Rise, on every interpreter: the ramp is the
-delay node's own (`wow_depth_ramp_ms`), so nothing in Python runs while it
-travels. Any other knob that moves the depth glides there over 20 ms, which
-also finishes an Engage ramp still under way. The audio path is never
-switched.
-Delay is the mean line, default 4 ms, and that number is
-`latency_samples`. Tone and Body are the wet reconstruction low-pass and
-high-pass (−3 dB at 17 kHz and 40 Hz at the published defaults). Level is
-an output trim.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audioecho",)`). The stock
-`audiodelays.PitchShift` is a granular window resampler that sums dry+wet
-at mix 1. On a stock CircuitPython board this module imports cleanly and
-construction raises `ImportError`.
-
-**Cost: FeedbackDelay at the default; Mixer only when Level leaves 0 dB.**
-`audioecho.FeedbackDelay` with a shipped `wow_shape` clock-law table,
-`feedback=0`, `mix=2` (wet alone). No looping `RawSample` carrier — the
-256-point table is borrowed by the delay node (already in the +options
-row). Patch 0 / constructor pull **one** node: +options 0.434 + glue 0.0
-→ **P4 ≤ 9 %, S3 ≤ 15 %**. The Mixer (0.036 / 0.018 ms) is optioned. The
-2026-09-08 extra-source row is not in this graph.
-
-**Latency: the mean delay.** Default **4.0 ms (192 samples at 48 kHz)**.
-Nothing looks ahead. The Delay macro is both the effect and the click
-delay, because there is no dry path. Delay is snapped to a whole sample
-so the interpolator does not eat 17 kHz; a 7-bit Delay that lands within
-two samples of 4.00 ms becomes the published 4.00 ms, so constructor and
-`program_change(0)` agree.
-
-**At the constructor default, Level is 0 dB so the Mixer is not pulled.
-No-dry is no 1/d comb (200–800 Hz p-p under 1 dB); a 2 kHz window can tilt
-past 1 dB above 10 kHz at default Depth because Tone sits at −3 dB at
-17 kHz (disconfirmed at 48 / 44.1 / 22.05 kHz). The 17 kHz −3 dB band is
-at 48 kHz with a whole-sample Delay (constructor and program_change(0)
-are 4.00 ms / 192 samples). T4 and T7 magnitude are Published defaults
-only. T7 quadrature is disconfirmed. Palette bar at patch 0 is 9/15
-(FeedbackDelay +options, no Mixer, no extra RawSample).**
-
-T4 (smooth LFO, third harmonic ≥ 25 dB down) is stated at `Published
-defaults` only. Patch 4 `Deep slow` sits where the clock law's own third
-already fails that bar (dossier §8.5).
-
-`capabilities = ()`: the LFO is a free-running oscillator. This class
-never reads `self._transport()`.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# `Vibrato` — a clock-modulated bucket-brigade line, wet alone.
+#
+# Rebuilt from scratch for Phase 3 against a dossier whose trait table was
+# frozen at Station A before this file existed. The old
+# `modulation.py:Vibrato` is consulted only for the six defects that dossier's
+# section 7 names.
+#
+# What it sounds like. There is no dry path when engaged: the output is
+# the delayed signal, pitch-wobbled because a sine-family LFO moves the
+# *clock* of the line, not an additive delay. Rate is 2–15 Hz. Depth is peak
+# cents, held against Rate by solving the clock index m. Rise (150 ms–5 s)
+# ramps that depth in when Engage turns on, and out when it turns off, in a
+# straight line whose 10–90 % is Rise, on every interpreter: the ramp is the
+# delay node's own (`wow_depth_ramp_ms`), so nothing in Python runs while it
+# travels. Any other knob that moves the depth glides there over 20 ms, which
+# also finishes an Engage ramp still under way. The audio path is never
+# switched.
+# Delay is the mean line, default 4 ms, and that number is
+# `latency_samples`. Tone and Body are the wet reconstruction low-pass and
+# high-pass (−3 dB at 17 kHz and 40 Hz at the published defaults). Level is
+# an output trim.
+#
+# Portability tier: audiodsp (`REQUIRES = ("audioecho",)`). The stock
+# `audiodelays.PitchShift` is a granular window resampler that sums dry+wet
+# at mix 1. On a stock CircuitPython board this module imports cleanly and
+# construction raises `ImportError`.
+#
+# Cost: FeedbackDelay at the default; Mixer only when Level leaves 0 dB.
+# `audioecho.FeedbackDelay` with a shipped `wow_shape` clock-law table,
+# `feedback=0`, `mix=2` (wet alone). No looping `RawSample` carrier — the
+# 256-point table is borrowed by the delay node (already in the +options
+# row). Patch 0 / constructor pull one node: +options 0.434 + glue 0.0
+# → P4 ≤ 9 %, S3 ≤ 15 %. The Mixer (0.036 / 0.018 ms) is optioned. The
+# 2026-09-08 extra-source row is not in this graph.
+#
+# Latency: the mean delay. Default 4.0 ms (192 samples at 48 kHz).
+# Nothing looks ahead. The Delay macro is both the effect and the click
+# delay, because there is no dry path. Delay is snapped to a whole sample
+# so the interpolator does not eat 17 kHz; a 7-bit Delay that lands within
+# two samples of 4.00 ms becomes the published 4.00 ms, so constructor and
+# `program_change(0)` agree.
+#
+# At the constructor default, Level is 0 dB so the Mixer is not pulled.
+# No-dry is no 1/d comb (200–800 Hz p-p under 1 dB); a 2 kHz window can tilt
+# past 1 dB above 10 kHz at default Depth because Tone sits at −3 dB at
+# 17 kHz (disconfirmed at 48 / 44.1 / 22.05 kHz). The 17 kHz −3 dB band is
+# at 48 kHz with a whole-sample Delay (constructor and program_change(0)
+# are 4.00 ms / 192 samples). T4 and T7 magnitude are Published defaults
+# only. T7 quadrature is disconfirmed. Palette bar at patch 0 is 9/15
+# (FeedbackDelay +options, no Mixer, no extra RawSample).
+#
+# T4 (smooth LFO, third harmonic ≥ 25 dB down) is stated at `Published
+# defaults` only. Patch 4 `Deep slow` sits where the clock law's own third
+# already fails that bar (dossier §8.5).
+#
+# `capabilities = ()`: the LFO is a free-running oscillator. This class
+# never reads `self._transport()`.
 
 VENDOR = "PyDevices"
 
@@ -242,20 +249,34 @@ def _patch(rate, depth_cents, rise, engage, delay_ms, tone_hz, body_hz,
 
 
 class Vibrato(_component.Component):
-    """Boss VB-2–informed vibrato: a sine on the BBD clock, wet alone.
-    audiodsp tier; latency is the mean delay (4 ms at the default).
+    """A vibrato after the Boss VB-2: your signal comes out only through a
+    short bucket-brigade line whose clock a sine sweeps, so the pitch
+    wobbles and none of the dry is left to comb against it.
 
-    **Latency is the Delay macro**, in samples, at the running rate. Default
-    4.0 ms = 192 samples at 48 kHz, 176 samples at 44.1 kHz. No lookahead.
+    **Controls.** Rate runs the sweep from 2 to 15 Hz. Depth is the peak
+    pitch swing, from 0 to 60 cents, and stays that size wherever Rate
+    and Delay sit. Engage turns the vibrato on and off without switching
+    the audio: Rise, from 0.15 to 5 s, is how long the depth takes to go
+    from 10 % to 90 % of the way, in a straight line. Any other knob that
+    moves the depth glides there over 20 ms rather than stepping. Delay is
+    the line's average length, from 1 to 12 ms. Tone is the wet voice's
+    low-pass, from 2 to 18 kHz, and Body its high-pass, from 20 to 200 Hz;
+    at the defaults the band is 3 dB down at 40 Hz and at 17 kHz. Level
+    cuts the output by up to 12 dB; above 0 dB it holds the output at the
+    input's level.
 
-    At the constructor default, Level is 0 dB so the Mixer is not pulled.
-    No-dry is no 1/d comb (200–800 Hz p-p under 1 dB); a 2 kHz window can tilt
-    past 1 dB above 10 kHz at default Depth because Tone sits at −3 dB at
-    17 kHz (disconfirmed at 48 / 44.1 / 22.05 kHz). The 17 kHz −3 dB band is
-    at 48 kHz with a whole-sample Delay (constructor and program_change(0)
-    are 4.00 ms / 192 samples). T4 and T7 magnitude are Published defaults
-    only. T7 quadrature is disconfirmed. Palette bar at patch 0 is 9/15
-    (FeedbackDelay +options, no Mixer, no extra RawSample).
+    **The sound.** With no dry path there is no comb: from 200 Hz to 2 kHz
+    the level stays within 1 dB at any Depth up to 60 cents. At the
+    default patch the sweep is a smooth sine, its third harmonic more than
+    25 dB down. The sweep runs free and does not follow a host's tempo;
+    `reset()` starts it afresh.
+
+    **Timing.** Latency is the Delay, snapped to a whole sample: 4 ms by
+    default, which is 192 samples at 48 kHz and 176 at 44.1 kHz. Nothing
+    looks ahead.
+
+    **On a board.** The class needs audiodsp's `audioecho`, and on a board
+    without it construction raises `ImportError`.
     """
 
     NAME = 'Vibrato'
