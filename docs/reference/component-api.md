@@ -321,13 +321,19 @@ reset, a rejoin or a control move, the level detectors and coupling filters
 of `Compressor`, `DynamicEQ`, `MultibandCompressor`, `DeEsser`,
 `CombFilter`, `Exciter`, `Fuzz`, `Overdrive` and `Distortion` can take
 longer to settle than the tail says. The worst measured differences from a
-freshly built instance are `Compressor` up to 1,575 LSB for 20 to 50
-blocks, `DynamicEQ` about 1,000 LSB for 5 to 20 blocks, and
-`MultibandCompressor` and `DeEsser` under 16 LSB within three blocks.
-`CombFilter` rings at 1 LSB about 500 frames past its tail, `Exciter`,
-`Overdrive` and `Fuzz` carry a few LSB of float residue, and `Distortion`
-keeps up to about 800 LSB of slow coupling-pole residue that persists. What you
-hear is a re-attack, the same as switching a pedal on.
+freshly built instance are `Compressor` up to 1,575 LSB for 20 to 50 blocks
+after a Mix move, `DynamicEQ` about 1,000 LSB for 18 to 27 blocks,
+`MultibandCompressor` under 16 LSB within three blocks, and `DeEsser` up to
+20 LSB for one block after a reset. `CombFilter` stays within 1 LSB of its
+tail and `Exciter` carries about 1 LSB of float residue. `Overdrive` carries a
+few LSB after a control move and about 43 LSB that persists after a reset.
+`Fuzz` keeps 200 to 300 LSB that persists, and `Distortion` up to about
+800 LSB of slow coupling-pole residue that persists. What you hear is a
+re-attack, the same as switching a pedal on.
+
+After a patch change, or a reset in the middle of a buffer, `Compressor`
+measured 9,600 to 24,000 LSB that hadn't settled 78 blocks later. Whether that
+is the effect or the measurement isn't known yet.
 
 **Behaviours that are not a bypass.** Three are stated, not accidental:
 

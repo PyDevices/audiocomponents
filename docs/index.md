@@ -18,7 +18,6 @@ MicroPython-compatible boards, CircuitPython-compatible boards and a desktop.
 
 ## Reference
 
-- [API reference](reference/index.rst)
 - [Audio component runtime API](reference/component-api.md)
 - [Audio component metadata manifest](reference/metadata.md)
 - [Instruments](https://github.com/PyDevices/audiocomponents/blob/main/lib/audioinstruments/README.md)
