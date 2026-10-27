@@ -5,50 +5,29 @@ audiocomponents is the part of OmniPython that makes sound: 55 instruments
 pure Python, built on audiodsp's audio nodes, and the same on
 MicroPython-compatible boards, CircuitPython-compatible boards and a desktop.
 
-- **[Get started](get-started/install.md)**: install it and render a note through an effect.
-- **Guides**: chain effects, keep an output wire, sequence a part.
-- **Reference**: the runtime contract, the metadata manifest, and every instrument, effect and module.
-- **[How it works](how-it-works/index.md)**: the model behind it.
-- **[Changelog](changelog.md)**
+## Get started
 
-```{toctree}
-:hidden:
-:caption: Get started
+- [Install](get-started/install.md)
+- [Your first program](get-started/first-program.md)
 
-get-started/install
-get-started/first-program
-```
+## Guides
 
-```{toctree}
-:hidden:
-:caption: Guides
+- [Chain effects](guides/chain-effects.md)
+- [Keep an effect's output wire](guides/keep-an-output-wire.md)
+- [Sequence a part on the audio's clock](guides/sequence-a-part.md)
 
-guides/chain-effects
-guides/keep-an-output-wire
-guides/sequence-a-part
-```
+## Reference
 
-```{toctree}
-:hidden:
-:caption: Reference
+- [API reference](reference/index.rst)
+- [Audio component runtime API](reference/component-api.md)
+- [Audio component metadata manifest](reference/metadata.md)
+- [Instruments](https://github.com/PyDevices/audiocomponents/blob/main/lib/audioinstruments/README.md)
+- [Effects](https://github.com/PyDevices/audiocomponents/blob/main/lib/audioeffects/README.md)
 
-reference/index
-reference/component-api
-reference/metadata
-reference/instruments
-reference/effects
-```
+## How it works
 
-```{toctree}
-:hidden:
-:caption: How it works
+- [How it works](how-it-works/index.md)
 
-how-it-works/index
-```
+## Changelog
 
-```{toctree}
-:hidden:
-:caption: Changelog
-
-changelog
-```
+- [Changelog](changelog.md)

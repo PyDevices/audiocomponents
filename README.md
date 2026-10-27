@@ -48,6 +48,6 @@ That plays middle C on a Minimoog through a tape delay and writes it to
 `minimoog_delay.wav`. On a board, hand `echo.output` to `audio_out.play()`
 instead.
 
-[Docs](https://pydevices.readthedocs.io/projects/audiocomponents/) · [Examples](https://pydevices.github.io/pydevices-examples/gallery/) · [Roadmap](ROADMAP.md)
+[Docs](https://github.com/PyDevices/audiocomponents/blob/main/docs/index.md) · [Examples](https://pydevices.github.io/pydevices-examples/gallery/) · [Roadmap](ROADMAP.md)
 
 OmniPython is made by [PyDevices](https://pydevices.com).

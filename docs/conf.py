@@ -33,3 +33,7 @@ settings["exclude_patterns"].append("dev")
 settings["suppress_warnings"] = ["docutils"]
 
 globals().update(settings)
+
+# index.md is plain Markdown so the docs read on GitHub too; the site
+# navigation lives in contents.md.
+master_doc = "contents"
