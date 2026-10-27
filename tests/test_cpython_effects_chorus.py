@@ -8,6 +8,7 @@ pack, not in this file.
 
 import math
 import os
+import re
 import sys
 import unittest
 from array import array
@@ -607,3 +608,140 @@ class NullBuildRed(unittest.TestCase):
                 rebuilt.Chorus, measure, label="Chorus %s" % name)
             self.assertFalse(result["null"]["passed"], name)
             self.assertTrue(result["control"]["passed"], name)
+
+
+class TheClaims(unittest.TestCase):
+    """The class docstring's figures that the rows above do not reach."""
+
+    def _ten_khz_down(self, tone_hz):
+        levels = {}
+        for hz in (200.0, 10000.0):
+            effect = WetOnly(sine_src(hz, RATE, level=8000), sample_rate=RATE,
+                             delay_ms=8.0, depth=0.0, tone_hz=tone_hz)
+            wet = pull_left(effect, RATE)[RATE // 4:].astype(float)
+            levels[hz] = 20.0 * math.log10(float(np.sqrt(np.mean(wet ** 2))))
+        return levels[10000.0] - levels[200.0]
+
+    def test_the_spans_and_defaults(self):
+        self.assertEqual(rebuilt.Chorus._MACRO_RANGES,
+                         ((0.3, 10.0, "log"), (0.0, 0.35), (0.0, 1.0),
+                          (3.0, 20.0), (1000.0, 12000.0, "log")))
+        effect = build(frames=256)
+        for index, want in enumerate((0.8, 0.35, 0.815, 8.8, 3000.0)):
+            self.assertAlmostEqual(effect._value(index), want,
+                                   delta=want * 0.01)
+
+    def test_tone_at_its_ends(self):
+        self.assertLess(self._ten_khz_down(3000.0), -10.0)
+        self.assertGreater(self._ten_khz_down(12000.0), -6.0)
+
+    def test_mix_one_reaches_twice_the_input(self):
+        # 100 Hz against a 10 ms line: the wet voice lands in phase.
+        effect = rebuilt.Chorus(sine_src(100.0, RATE, level=8000),
+                                sample_rate=RATE, mix=1.0, delay_ms=10.0,
+                                depth=0.0, tone_hz=12000.0)
+        left = pull_left(effect, RATE)[RATE // 4:].astype(int)
+        self.assertGreater(int(np.max(np.abs(left))), 2 * 8000 - 20)
+
+    def test_mix_zero_is_a_wire_at_full_scale(self):
+        data = probes.ramp_fs(frames=4096)
+        effect = rebuilt.Chorus(
+            probes.ArraySource(data, rate=RATE, channels=2, block=256),
+            sample_rate=RATE, mix=0.0)
+        left = pull_left(effect, 4096)
+        self.assertTrue(np.array_equal(
+            left, np.array(data[0::2], dtype=np.int16)[:len(left)]))
+
+    def test_construction_needs_audioecho(self):
+        saved = sys.modules["audioecho"]
+        sys.modules["audioecho"] = None
+        try:
+            with self.assertRaises(ImportError):
+                build(frames=256)
+        finally:
+            sys.modules["audioecho"] = saved
+
+
+CLAIMS = (
+    ("`Chorus` - one delayed voice on a clock-modulated bucket-brigade "
+     "line.",
+     ("T1OneVoice.test_one_wet_arrival_at_defaults",)),
+    ("A one-voice analog chorus, the way a bucket-brigade pedal does it: one "
+     "delayed copy of your signal, its pitch swirling because a triangle "
+     "moves the line's clock rather than its delay.",
+     ("T1OneVoice.test_one_wet_arrival_at_defaults",
+      "T2Reciprocal.test_offset_ramps_inside_a_half",
+      "T6ClockLaw.test_second_harmonic_near_m_over_two")),
+    ("Rate runs the sweep from 0.3 to 10 Hz.",
+     ("TheClaims.test_the_spans_and_defaults",
+      "T5RateSpan.test_rate_stops_span_more_than_ten_to_one")),
+    ("Depth is how far the clock swings, from none to 35 % either way.",
+     ("TheClaims.test_the_spans_and_defaults",)),
+    ("Mix sets the wet voice against your signal, which stays at full "
+     "level: 0 is a wire, the default 0.815 is the vintage blend, and 1 "
+     "puts the two level.",
+     ("Tier1Fast.test_mix_zero_is_a_wire",
+      "T4NearEqual.test_vintage_mix_near_0_815",
+      "TheClaims.test_the_spans_and_defaults")),
+    ("Delay is the line's average length, from 3 to 20 ms, 8.8 ms by "
+     "default.",
+     ("TheClaims.test_the_spans_and_defaults",)),
+    ("Tone is the wet voice's low-pass, from 1 to 12 kHz: at its default "
+     "3 kHz the wet voice is at least 10 dB down at 10 kHz, the dark sound "
+     "of the originals, and at 12 kHz it is less than 6 dB down there.",
+     ("TheClaims.test_the_spans_and_defaults",
+      "TheClaims.test_tone_at_its_ends",
+      "T3DarkWet.test_ten_khz_is_at_least_ten_db_down")),
+    ("A hit comes back once, with no repeats: there is no feedback.",
+     ("T1OneVoice.test_one_wet_arrival_at_defaults",
+      "T1OneVoice.test_feedback_plants_a_train")),
+    ("The wet voice adds to your signal, so at Mix 1 the output can reach "
+     "twice the input.",
+     ("TheClaims.test_mix_one_reaches_twice_the_input",)),
+    ("Keep the input under -6.03 dBFS and no setting reaches a rail; with "
+     "the ceiling taken away, a phrase peaking at -3 dBFS rails.",
+     ("TheSurface.test_clean_at_the_stated_input_ceiling",)),
+    ("Mix 0 is a wire at any level.",
+     ("Tier1Fast.test_mix_zero_is_a_wire",
+      "TheClaims.test_mix_zero_is_a_wire_at_full_scale")),
+    ("Latency is zero at every setting: the wet voice's delay is the "
+     "effect, and your own signal comes through on time.",
+     ("Tier1Fast.test_click_delay_is_zero",
+      "TheSurface.test_macros_patches_tier_latency")),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = rebuilt.__doc__ + " " + rebuilt.Chorus.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(doc.replace("at least 10 dB",
+                                                   "at most 10 dB")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))

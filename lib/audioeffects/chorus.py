@@ -1,48 +1,55 @@
-"""`Chorus` — one delayed voice on a clock-modulated bucket-brigade line.
+"""`Chorus` - one delayed voice on a clock-modulated bucket-brigade line.
 
-Rebuilt from scratch for Phase 3 against a dossier whose trait table was
-frozen at Station A before this file existed. The old `modulation.py:Chorus`
-is consulted only for the six defects that dossier's section 7 names.
-
-**What it sounds like.** A single wet voice, delayed a few milliseconds,
-swirls because a triangle LFO moves the *clock* of the line, not the delay
-time: delay is N/(2·f_clk), so the pitch offset ramps inside each half-cycle
-instead of holding a square. Rate is how fast that triangle runs (about
-0.3 Hz to 10 Hz). Depth is how far the clock swings (0 to ±35 %). Mix at
-the vintage summing network is 0.815 wet against unity dry; Mix 0 is a
-wire. Delay is the mean line, 3–20 ms, default 8.8 ms from the vintage
-100 pF timing capacitor. Tone is the wet voice's reconstruction low-pass,
-default 3 kHz, far darker than anti-aliasing requires.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audioecho",)`). The stock
-`audiodelays.Chorus` reads whole-sample taps, moves them once per block, and
-with `voices=1` emits no delayed voice at all. On a stock CircuitPython
-board this module imports cleanly and construction raises `ImportError`.
-
-**Cost: one node.** `audioecho.FeedbackDelay` with a shipped `wow_shape`
-clock-law table, `feedback=0`, Mix ≤ 1 so the dry stays at unity. Palette
-row: FeedbackDelay +options (the 256-point table is borrowed by the node,
-not an extra looping `RawSample` pull). Budget **P4 ≤ 9 %, S3 ≤ 15 %** of
-a 5.333 ms stereo block (dossier §3). Measured at patch 0: **8.1 % P4 /
-9.8 % S3**. No `" - lean"` patch.
-
-**What the default surrenders:** the within-half pitch-offset ratio is
-1.98, not (d_max/d_min)² = 3.60 (T2). Tone 12 kHz is 2.4 dB down at
-10 kHz, not ≥10 dB (T3). The constructor Tone 3 kHz still meets T3.
-
-**Input ceiling: -6 dBFS.** The dry stays at unity and the wet voice
-adds to it (Mix 0.815 at the defaults, 1 at the top), so the output peaks at
-up to twice the input: a phrase peaking at -3 dBFS comes out 3 dB over
-full scale at the defaults. Keep the input under -6.03 dBFS and no setting
-reaches a rail; Mix 0 is still a wire at any level.
-
-**Latency: zero samples, at every setting and every rate.** Nothing looks
-ahead. The 8–13 ms mean delay is the wet path, not latency. No option adds
-latency, so there is none to default off and none to name in milliseconds.
-
-`capabilities = ()`: the LFO is a free-running relaxation oscillator. This
-class never reads `self._transport()`.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# `Chorus` — one delayed voice on a clock-modulated bucket-brigade line.
+#
+# Rebuilt from scratch for Phase 3 against a dossier whose trait table was
+# frozen at Station A before this file existed. The old `modulation.py:Chorus`
+# is consulted only for the six defects that dossier's section 7 names.
+#
+# What it sounds like. A single wet voice, delayed a few milliseconds,
+# swirls because a triangle LFO moves the *clock* of the line, not the delay
+# time: delay is N/(2·f_clk), so the pitch offset ramps inside each half-cycle
+# instead of holding a square. Rate is how fast that triangle runs (about
+# 0.3 Hz to 10 Hz). Depth is how far the clock swings (0 to ±35 %). Mix at
+# the vintage summing network is 0.815 wet against unity dry; Mix 0 is a
+# wire. Delay is the mean line, 3–20 ms, default 8.8 ms from the vintage
+# 100 pF timing capacitor. Tone is the wet voice's reconstruction low-pass,
+# default 3 kHz, far darker than anti-aliasing requires.
+#
+# Portability tier: audiodsp (`REQUIRES = ("audioecho",)`). The stock
+# `audiodelays.Chorus` reads whole-sample taps, moves them once per block, and
+# with `voices=1` emits no delayed voice at all. On a stock CircuitPython
+# board this module imports cleanly and construction raises `ImportError`.
+#
+# Cost: one node. `audioecho.FeedbackDelay` with a shipped `wow_shape`
+# clock-law table, `feedback=0`, Mix ≤ 1 so the dry stays at unity. Palette
+# row: FeedbackDelay +options (the 256-point table is borrowed by the node,
+# not an extra looping `RawSample` pull). Budget P4 ≤ 9 %, S3 ≤ 15 % of
+# a 5.333 ms stereo block (dossier §3). Measured at patch 0: 8.1 % P4 /
+# 9.8 % S3. No `" - lean"` patch.
+#
+# What the default surrenders: the within-half pitch-offset ratio is
+# 1.98, not (d_max/d_min)² = 3.60 (T2). Tone 12 kHz is 2.4 dB down at
+# 10 kHz, not ≥10 dB (T3). The constructor Tone 3 kHz still meets T3.
+#
+# Input ceiling: -6 dBFS. The dry stays at unity and the wet voice
+# adds to it (Mix 0.815 at the defaults, 1 at the top), so the output peaks at
+# up to twice the input: a phrase peaking at -3 dBFS comes out 3 dB over
+# full scale at the defaults. Keep the input under -6.03 dBFS and no setting
+# reaches a rail; Mix 0 is still a wire at any level.
+#
+# Latency: zero samples, at every setting and every rate. Nothing looks
+# ahead. The 8–13 ms mean delay is the wet path, not latency. No option adds
+# latency, so there is none to default off and none to name in milliseconds.
+#
+# `capabilities = ()`: the LFO is a free-running relaxation oscillator. This
+# class never reads `self._transport()`.
 
 VENDOR = "PyDevices"
 
@@ -141,16 +148,32 @@ def nominal_damping_hz(corner_hz, sample_rate):
 
 
 class Chorus(_component.Component):
-    """One-voice analog chorus: a triangle on the BBD clock, not on the
-    delay. audiodsp tier; zero latency.
+    """A one-voice analog chorus, the way a bucket-brigade pedal does it:
+    one delayed copy of your signal, its pitch swirling because a triangle
+    moves the line's clock rather than its delay.
 
-    **Latency is 0.** No lookahead, no partition, no pitch window. The Delay
-    macro is the wet-path mean (3–20 ms at 48 kHz) and is the effect, not
-    a reportable delay on the dry path.
+    **Controls.** Rate runs the sweep from 0.3 to 10 Hz. Depth is how far
+    the clock swings, from none to 35 % either way. Mix sets the wet voice
+    against your signal, which stays at full level: 0 is a wire, the
+    default 0.815 is the vintage blend, and 1 puts the two level. Delay is
+    the line's average length, from 3 to 20 ms, 8.8 ms by default. Tone is
+    the wet voice's low-pass, from 1 to 12 kHz: at its default 3 kHz the
+    wet voice is at least 10 dB down at 10 kHz, the dark sound of the
+    originals, and at 12 kHz it is less than 6 dB down there.
 
-    **What the default surrenders:** the within-half pitch-offset ratio is
-    1.98, not (d_max/d_min)² = 3.60 (T2). Tone 12 kHz is 2.4 dB down at
-    10 kHz, not ≥10 dB (T3). The constructor Tone 3 kHz still meets T3.
+    **One voice.** A hit comes back once, with no repeats: there is no
+    feedback. The sweep runs free and does not follow a host's tempo.
+
+    **Levels.** The wet voice adds to your signal, so at Mix 1 the output
+    can reach twice the input. Keep the input under -6.03 dBFS and no
+    setting reaches a rail; with the ceiling taken away, a phrase peaking
+    at -3 dBFS rails. Mix 0 is a wire at any level.
+
+    **Timing.** Latency is zero at every setting: the wet voice's delay is
+    the effect, and your own signal comes through on time.
+
+    **On a board.** The class needs audiodsp's `audioecho`, and on a board
+    without it construction raises `ImportError`.
     """
 
     NAME = 'Chorus'
