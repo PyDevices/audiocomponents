@@ -2602,6 +2602,30 @@ def current_native_interpreters():
     return found
 
 
+def natives_at_the_pin(case):
+    """The native interpreters at AUDIODSP_PIN, as {family: path}, and the
+    families with none, sorted. Skips the test when there is no workspace
+    bin/ above this checkout. A family with no binary at the pin is not
+    run: a binary built before the pin renders a node the pin does not name,
+    so what it renders proves nothing either way (audiocomponents#144)."""
+    found = current_native_interpreters()
+    if found is None:
+        case.skipTest("no workspace bin/ above this checkout")
+    return ({family: path for family, path in found.items() if path},
+            sorted(family for family, path in found.items() if not path))
+
+
+def skip_the_missing(case, missing):
+    """After the interpreters that were found have been judged, skip with
+    the ones that weren't, so a partial run never reads as a pass."""
+    if missing:
+        case.skipTest("no %s binary contains AUDIODSP_PIN's audiodsp: build "
+                      "one at the pin, or name it with %s" % (
+                          " or ".join(missing),
+                          " and ".join("LIFECYCLE_" + f.upper()
+                                       for f in missing)))
+
+
 def routes_module():
     """`ROUTES_MODULE` imported in this process, for its plants."""
     module = sys.modules.get("mtd_routes")
@@ -2759,19 +2783,14 @@ class ReauditRoundOne(unittest.TestCase):
         self._judge_blocks(results)
 
     def test_routes_before_the_first_pull_and_source_buffers_native(self):
-        found = current_native_interpreters()
-        if found is None:
-            self.skipTest("no workspace bin/ above this checkout")
+        found, missing = natives_at_the_pin(self)
         for family, binary in sorted(found.items()):
-            # A binary present but built before the pin renders a node the
-            # pin does not name; that is a failure, not a skip.
-            self.assertIsNotNone(binary, "no %s in the workspace bin/ "
-                                 "contains AUDIODSP_PIN's audiodsp" % family)
             results = run_routes(binary, (
                 "clean,oldwiring=firstdry,firstheads",
                 "clean,adapterreset,sourcebypass=blocks"))
             self._judge_routes(results)
             self._judge_blocks(results)
+        skip_the_missing(self, missing)
 
     def test_the_route_plants_are_not_on_the_surface(self):
         module = routes_module()
@@ -2910,13 +2929,10 @@ class ReauditRoundTwo(unittest.TestCase):
         self._judge_ng(run_routes(sys.executable, NG_GROUPS))
 
     def test_the_no_get_buffer_words_native(self):
-        found = current_native_interpreters()
-        if found is None:
-            self.skipTest("no workspace bin/ above this checkout")
+        found, missing = natives_at_the_pin(self)
         for family, binary in sorted(found.items()):
-            self.assertIsNotNone(binary, "no %s in the workspace bin/ "
-                                 "contains AUDIODSP_PIN's audiodsp" % family)
             self._judge_ng(run_routes(binary, NG_GROUPS))
+        skip_the_missing(self, missing)
 
     def test_the_tail_reading_is_red_on_a_bound_one_lap_short(self):
         # The stall cell's tail sits far inside its bound, so the stall
@@ -3134,11 +3150,8 @@ class TheClaims(unittest.TestCase):
         # exact, and every other interpreter is exact.
         exact = {2: (0, 0, 0, 99999), 1: (0, 0, 0, 99999)}
         self.assertEqual(run_hot(sys.executable), exact)
-        found = current_native_interpreters()
-        if found is None:
-            self.skipTest("no workspace bin/ above this checkout")
+        found, missing = natives_at_the_pin(self)
         for family, binary in sorted(found.items()):
-            self.assertIsNotNone(binary, family)
             got = run_hot(binary)
             if family == "circuitpython":
                 self.assertEqual(got[1], exact[1])
@@ -3147,6 +3160,7 @@ class TheClaims(unittest.TestCase):
                 self.assertEqual(right, 63)
             else:
                 self.assertEqual(got, exact, family)
+        skip_the_missing(self, missing)
 
     def test_the_knob_spans(self):
         effect = MultiTapDelay(Endless(silence()), sample_rate=RATE)
