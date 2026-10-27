@@ -1,92 +1,99 @@
-"""Transient shaping in the SPL Transient Designer's shape.
+"""`TransientShaper` - transient shaping in the SPL Transient Designer's shape.
 
-Turn the stick up or down without touching the room, and the room up or down
-without touching the stick. There is no threshold and no ratio here: both
-control voltages are *differences between two envelopes of the same signal*,
-so over the levels this holds at, a ghost note is shaped as hard as a
-rimshot.
-
-**Where it holds, measured** (dossier T1, and the Phase 2 refutation pass
-that narrowed it): the gain trace agrees within 0.5 dB point by point over
-**-20 to -40 dBFS at any Attack setting** (spread 0.163 dB), and over -6 to
--40 dBFS only where the render does not clip - Attack +6 or less, spread
-0.160 dB. It does **not** hold as first written: at Attack +12 over
--6/-20/-40 dBFS the point-by-point spread is **3.422 dB**, because the
--6 dBFS render clips 578 samples at full scale, and the peak readout is one
-setting's number too (at Attack -12 the peak spread over -6...-60 dBFS is
-**1.395 dB**). Below -60 dBFS the node's own +1e-5 envelope floor
-(`audiodsp_dynamics.c:628-630`) is a -100 dBFS pedestal on a difference of
-logs, so the law stops being scale-free: +11.076 dB at -80 dBFS against
-+12.000 at -6. **T1 is disconfirmed as stated and true over the span above.**
-
-**Attack** moves the first few milliseconds of every hit, +/-15 dB, and the
-span tracks the setting within 0.005 dB on material with headroom.
-**Sustain** moves what rings after it, +/-24 dB, and the two run at once
-rather than one at a time - a snare can get more stick *and* less room from
-one instance. The Sustain figure is a figure of the note as much as of the
-control: on a 10 dB/s decay it reads -24.321 dB, and on a **3 dB/s** decay
-it saturates **8 dB short of its stated end** (-16.353 dB over 12 s, still
-climbing when the render stops). **T3's Sustain leg is disconfirmed**; the
-Attack leg is not. **Output** puts the level back, -22 to +6 dB, as SPL's
-own rack module does. **Attack Speed** scales the attack detector's four
-time constants together, 0.2x to 5x. **Sustain Hold** is how long the
-sustain envelope holds at the peak before it lets go, 0 to 500 ms; at 0 it
-is a plain follower again, which is the pre-Phase-1 behaviour - and because
-that setting is a knob, the dossier's T4 has no fault the panel cannot dial
-and its peak-hold clause is **unmeasured**, not demonstrated.
-
-**Input ceiling.** Attack and Sustain only add gain where they are turned
-up, so a hit that is already loud rails by design, and no one input level is
-clean on every setting. A plucked phrase stays off the rails on every patch
-to -10 dBFS; at -3 dBFS Snap and Kick Punch rail. Turn Output down, or the
-input.
-
-**Latency: 0 samples, 0.00 ms, at every setting and every sample rate.** A
-differential envelope cannot look ahead - the difference is between two
-envelopes of the same *past* - so this class ships no look-ahead option and
-adds nothing to a live pedalboard's round trip (vision section 9a).
-`tail_samples` is 0: a VCA multiplies, so silence in is exactly zero out in
-the same frame.
-
-**Portability tier: audiodsp.** It is one `audiodynamics.Dynamics` node, and
-`audiodynamics` is audiodsp's own module rather than a CircuitPython port
-(`audiodsp/docs/upstream-diff.md:661`), so a stock CircuitPython board raises
-`ImportError` at construction. **Cost** is one node: four one-pole
-followers, a peak-hold, an RMS one-pole and one multiply per frame - and it
-is still **over its Tier 3 budget on both boards**, 14.9 % of a stereo block
-on the ESP32-P4 against 5 % and 31.3 % on the ESP32-S3 against 10 %
-(measured 2026-09-07). **There is no `" - lean"` patch, and the measurement
-says why rather than the argument**: every shipped patch costs 102-106 % of
-patch 0 because no macro touches the node's build, the only cheaper
-configuration that still processes is the peak detector at 89 %, and a node
-of this kind in this graph doing *nothing at all* still costs 75 %. The budget needs two thirds
-off. **At construction defaults this class is a wire** - a cost figure taken
-there is a graph idling, so measure it at patch 1 (Snap).
-
-**Three things this class does not claim.**
-
-* *The time constants do not follow the material.* Both sources say SPL's
-  are "automated and optimized adaptively"; neither gives a mechanism or a
-  number, and the node's coefficients are computed once per block from
-  fixed settings. Measured (dossier section 8 Q2): gain-trace 10-90 % rise
-  times of 0.042, 0.042 and 0.041 ms across material whose own rises span
-  16:1 - a ratio of 1.02:1 where the trait asked 5:1. **T6 is
-  disconfirmed**, the class ships fixed constants, and **Attack Speed** is
-  the manual stand-in.
-* *The attack section is not settled 100 ms into a held note.* The trait
-  asked for unity within 0.5 dB in the steady section 100 ms after the
-  onset; measured on a 1 kHz burst at Attack +12 it reads **+0.541 dB**
-  there, and falls inside the bar by 122 ms (+0.211 dB at 150 ms, +0.116 dB
-  at 200 ms). The cause is the attack pair's own 25 ms slow attack still
-  converging, not a standing gain - and **Attack Speed** 2x reads +0.119 dB
-  at 100 ms with the transient peak still at +12.000. **T5 is disconfirmed
-  on that clause at the 1x default**, and the default was not moved to fit
-  the number.
-* *The control is normalised over 6 dB.* The envelope difference is divided
-  by 6 dB and clamped to +/-1 before it scales the setting
-  (`audiodsp_dynamics.c:630-636`), so every transient sharper than 6 dB gets
-  the whole of Attack and no more. That is the node's law, not a knob.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# Transient shaping in the SPL Transient Designer's shape.
+#
+# Turn the stick up or down without touching the room, and the room up or down
+# without touching the stick. There is no threshold and no ratio here: both
+# control voltages are *differences between two envelopes of the same signal*,
+# so over the levels this holds at, a ghost note is shaped as hard as a
+# rimshot.
+#
+# Where it holds, measured (dossier T1, and the Phase 2 refutation pass
+# that narrowed it): the gain trace agrees within 0.5 dB point by point over
+# -20 to -40 dBFS at any Attack setting (spread 0.163 dB), and over -6 to
+# -40 dBFS only where the render does not clip - Attack +6 or less, spread
+# 0.160 dB. It does not hold as first written: at Attack +12 over
+# -6/-20/-40 dBFS the point-by-point spread is 3.422 dB, because the
+# -6 dBFS render clips 578 samples at full scale, and the peak readout is one
+# setting's number too (at Attack -12 the peak spread over -6...-60 dBFS is
+# 1.395 dB). Below -60 dBFS the node's own +1e-5 envelope floor
+# (`audiodsp_dynamics.c:628-630`) is a -100 dBFS pedestal on a difference of
+# logs, so the law stops being scale-free: +11.076 dB at -80 dBFS against
+# +12.000 at -6. T1 is disconfirmed as stated and true over the span above.
+#
+# Attack moves the first few milliseconds of every hit, +/-15 dB, and the
+# span tracks the setting within 0.005 dB on material with headroom.
+# Sustain moves what rings after it, +/-24 dB, and the two run at once
+# rather than one at a time - a snare can get more stick *and* less room from
+# one instance. The Sustain figure is a figure of the note as much as of the
+# control: on a 10 dB/s decay it reads -24.321 dB, and on a 3 dB/s decay
+# it saturates 8 dB short of its stated end (-16.353 dB over 12 s, still
+# climbing when the render stops). T3's Sustain leg is disconfirmed; the
+# Attack leg is not. Output puts the level back, -22 to +6 dB, as SPL's
+# own rack module does. Attack Speed scales the attack detector's four
+# time constants together, 0.2x to 5x. Sustain Hold is how long the
+# sustain envelope holds at the peak before it lets go, 0 to 500 ms; at 0 it
+# is a plain follower again, which is the pre-Phase-1 behaviour - and because
+# that setting is a knob, the dossier's T4 has no fault the panel cannot dial
+# and its peak-hold clause is unmeasured, not demonstrated.
+#
+# Input ceiling. Attack and Sustain only add gain where they are turned
+# up, so a hit that is already loud rails by design, and no one input level is
+# clean on every setting. A plucked phrase stays off the rails on every patch
+# to -10 dBFS; at -3 dBFS Snap and Kick Punch rail. Turn Output down, or the
+# input.
+#
+# Latency: 0 samples, 0.00 ms, at every setting and every sample rate. A
+# differential envelope cannot look ahead - the difference is between two
+# envelopes of the same *past* - so this class ships no look-ahead option and
+# adds nothing to a live pedalboard's round trip (vision section 9a).
+# `tail_samples` is 0: a VCA multiplies, so silence in is exactly zero out in
+# the same frame.
+#
+# Portability tier: audiodsp. It is one `audiodynamics.Dynamics` node, and
+# `audiodynamics` is audiodsp's own module rather than a CircuitPython port
+# (`audiodsp/docs/upstream-diff.md:661`), so a stock CircuitPython board raises
+# `ImportError` at construction. Cost is one node: four one-pole
+# followers, a peak-hold, an RMS one-pole and one multiply per frame - and it
+# is still over its Tier 3 budget on both boards, 14.9 % of a stereo block
+# on the ESP32-P4 against 5 % and 31.3 % on the ESP32-S3 against 10 %
+# (measured 2026-09-07). There is no `" - lean"` patch, and the measurement
+# says why rather than the argument: every shipped patch costs 102-106 % of
+# patch 0 because no macro touches the node's build, the only cheaper
+# configuration that still processes is the peak detector at 89 %, and a node
+# of this kind in this graph doing *nothing at all* still costs 75 %. The budget needs two thirds
+# off. At construction defaults this class is a wire - a cost figure taken
+# there is a graph idling, so measure it at patch 1 (Snap).
+#
+# Three things this class does not claim.
+#
+# * *The time constants do not follow the material.* Both sources say SPL's
+#   are "automated and optimized adaptively"; neither gives a mechanism or a
+#   number, and the node's coefficients are computed once per block from
+#   fixed settings. Measured (dossier section 8 Q2): gain-trace 10-90 % rise
+#   times of 0.042, 0.042 and 0.041 ms across material whose own rises span
+#   16:1 - a ratio of 1.02:1 where the trait asked 5:1. T6 is
+#   disconfirmed, the class ships fixed constants, and Attack Speed is
+#   the manual stand-in.
+# * *The attack section is not settled 100 ms into a held note.* The trait
+#   asked for unity within 0.5 dB in the steady section 100 ms after the
+#   onset; measured on a 1 kHz burst at Attack +12 it reads +0.541 dB
+#   there, and falls inside the bar by 122 ms (+0.211 dB at 150 ms, +0.116 dB
+#   at 200 ms). The cause is the attack pair's own 25 ms slow attack still
+#   converging, not a standing gain - and Attack Speed 2x reads +0.119 dB
+#   at 100 ms with the transient peak still at +12.000. T5 is disconfirmed
+#   on that clause at the 1x default, and the default was not moved to fit
+#   the number.
+# * *The control is normalised over 6 dB.* The envelope difference is divided
+#   by 6 dB and clamped to +/-1 before it scales the setting
+#   (`audiodsp_dynamics.c:630-636`), so every transient sharper than 6 dB gets
+#   the whole of Attack and no more. That is the node's law, not a knob.
 
 VENDOR = "PyDevices"
 
@@ -99,8 +106,42 @@ except ImportError:      # a stock CircuitPython board, or an old audiodsp
 
 
 class TransientShaper(_component.Component):
-    """SPL Transient Designer - Differential Envelope Technology on
-    `audiodynamics.Dynamics(DYN_TRANSIENT)`."""
+    """A transient shaper after the SPL Transient Designer: turn the hit up
+    or down without touching the ring, and the ring without touching the
+    hit.
+
+    **No threshold.** There is no threshold and no ratio: the gain follows
+    the difference between two envelopes of your own signal, so between -20
+    and -40 dBFS a quiet hit is shaped as hard as a loud one, to within
+    0.5 dB.
+
+    **Controls.** Attack moves the first few milliseconds of every hit,
+    from -15 to +15 dB. Sustain moves what rings after it, from -24 to
+    +24 dB, and the two act at once: a snare can get more stick and less
+    room from one instance. Output sets the level back, from -22 to +6 dB.
+    Attack Speed runs the attack section from 0.2 to 5 times its own speed.
+    Sustain Hold, from 0 to 500 ms, is how long the ring section holds at
+    the peak before it lets go; held, it digs deeper into the ring than a
+    plain follower does.
+
+    **Where it falls short.** A held note at Attack +12 is still lifted by
+    more than 0.5 dB 100 ms after the hit, and back within 0.5 dB by
+    150 ms, since the detector reads the note's RMS rather than its peaks.
+    On a slow decay Sustain runs out before its end: on a note fading at
+    3 dB a second, Sustain -24 reaches about -16 dB.
+
+    **Levels.** At its defaults the class is a wire. Attack and Sustain add
+    gain where they are turned up, so a hit that is already loud reaches
+    the rails. A plucked phrase stays off the rails on every patch to
+    -10 dBFS; at -3 dBFS Snap and Kick Punch rail. Turn Output down, or
+    your input.
+
+    **Timing.** Latency is zero at every setting, and so is the tail:
+    silence in is silence out in the same frame.
+
+    **On a board.** The class needs audiodsp's `audiodynamics`, and on a
+    board without it construction raises `ImportError`.
+    """
 
     NAME = 'TransientShaper'
     DISPLAY_NAME = 'Transient Shaper'

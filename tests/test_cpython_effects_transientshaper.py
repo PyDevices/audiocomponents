@@ -9,8 +9,11 @@ The evidence pack is the record; the numbers there
 come from the driver, not from this file.
 """
 
+import math
 import os
+import re
 import sys
+from array import array
 import unittest
 
 import numpy as np
@@ -231,6 +234,182 @@ class TheInputCeiling(unittest.TestCase):
         self.assertEqual(kit_levels.red_patches(cls, -3), [1, 5])
         self.assertEqual([cls.PATCHES[k][0] for k in (1, 5)],
                          ["Snap", "Kick Punch"])
+
+
+def attack(db):
+    return 127 * (db + 15.0) / 30.0
+
+
+def sustain(db):
+    return 127 * (db + 24.0) / 48.0
+
+
+def output(db):
+    return 127 * (db + 22.0) / 28.0
+
+
+def tone(dbfs, seconds=0.3, hz=1000.0):
+    """A held sine at `dbfs`, both channels, from the first frame."""
+    count = int(RATE * seconds)
+    peak = 10 ** (dbfs / 20.0) * 32767
+    out = array("h", bytes(4 * count))
+    for index in range(count):
+        out[2 * index] = out[2 * index + 1] = int(round(
+            peak * math.sin(2 * math.pi * hz * index / RATE)))
+    return bytes(memoryview(out).cast("B")), count
+
+
+class TheClaims(unittest.TestCase):
+    """The class docstring's figures that the tests above do not reach."""
+
+    def test_the_spans(self):
+        cls = transientshaper.TransientShaper
+        self.assertEqual(cls._MACRO_RANGES,
+                         ((-15.0, 15.0), (-24.0, 24.0), (-22.0, 6.0),
+                          (0.2, 5.0, "log"), (0.0, 500.0)))
+        self.assertEqual(cls.MACRO_LABELS[:5],
+                         ("Attack", "Sustain", "Output", "Attack Speed",
+                          "Sustain Hold"))
+
+    def test_attack_reaches_its_ends_on_a_hit(self):
+        pcm, count = tone(-20.0)
+        for db in (15.0, -15.0):
+            values = trace(pcm, count, macros={0: attack(db)})
+            reached = np.nanmax(values) if db > 0 else np.nanmin(values)
+            self.assertAlmostEqual(reached, db, delta=0.25)
+
+    def test_quiet_hits_are_shaped_as_hard_as_loud_ones(self):
+        macros = {0: attack(12.0), 1: sustain(-12.0)}
+        traces = {}
+        for dbfs in (-20.0, -30.0, -40.0):
+            pcm, count = tone(dbfs)
+            traces[dbfs] = trace(pcm, count, macros=dict(macros))
+        for dbfs in (-30.0, -40.0):
+            spread = np.nanmax(np.abs(traces[dbfs] - traces[-20.0]))
+            self.assertLess(spread, 0.5, dbfs)
+
+    def test_output_reaches_plus_six(self):
+        pcm, count = tone(-20.0)
+        values = trace(pcm, count, macros={2: output(6.0)})
+        self.assertAlmostEqual(float(np.nanmedian(values)), 6.0, delta=0.1)
+
+    def test_the_held_note_is_still_lifted_at_100_ms(self):
+        pcm, count = tone(-6.0)
+        values = trace(pcm, count, macros={0: ATTACK_UP})
+        self.assertGreater(float(values[100]), 0.5)
+        self.assertLess(float(values[150]), 0.5)
+
+    def test_sustain_runs_out_on_a_slow_decay(self):
+        pcm, count = decaying(3.0, 12.0)
+        slow = float(np.nanmin(trace(pcm, count, macros={1: sustain(-24.0)})))
+        self.assertAlmostEqual(slow, -16.0, delta=1.0)
+        pcm, count = decaying(10.0, 3.0)
+        fast = float(np.nanmin(trace(pcm, count, macros={1: sustain(-24.0)})))
+        self.assertLess(fast, -23.5)
+
+    def test_latency_is_zero(self):
+        self.assertEqual(transientshaper.TransientShaper.LATENCY_SAMPLES, 0)
+        pcm, count = tone(-20.0, seconds=0.05)
+        effect = transientshaper.TransientShaper(
+            probes.ArraySource(pcm, rate=RATE, block=256, channels=2),
+            sample_rate=RATE)
+        self.assertEqual(effect.latency_samples, 0)
+        effect.deinit()
+
+    def test_construction_needs_audiodynamics(self):
+        cls = transientshaper.TransientShaper
+        self.assertEqual(cls.REQUIRES, ("audiodynamics",))
+        saved = sys.modules["audiodynamics"]
+        sys.modules["audiodynamics"] = None
+        try:
+            pcm, count = tone(-20.0, seconds=0.01)
+            with self.assertRaises(ImportError):
+                cls(probes.ArraySource(pcm, rate=RATE, block=256,
+                                       channels=2), sample_rate=RATE)
+        finally:
+            sys.modules["audiodynamics"] = saved
+
+
+CLAIMS = (
+    ("There is no threshold and no ratio: the gain follows the difference "
+     "between two envelopes of your own signal, so between -20 and -40 dBFS "
+     "a quiet hit is shaped as hard as a loud one, to within 0.5 dB.",
+     ("TheClaims.test_quiet_hits_are_shaped_as_hard_as_loud_ones",)),
+    ("Attack moves the first few milliseconds of every hit, from -15 to "
+     "+15 dB.",
+     ("TheClaims.test_the_spans",
+      "TheClaims.test_attack_reaches_its_ends_on_a_hit")),
+    ("Sustain moves what rings after it, from -24 to +24 dB, and the two act "
+     "at once: a snare can get more stick and less room from one instance.",
+     ("TheClaims.test_the_spans",
+      "TraitTests.test_t2_both_sections_act_at_once_and_the_selector_"
+      "cannot")),
+    ("Output sets the level back, from -22 to +6 dB.",
+     ("TheClaims.test_the_spans", "TheClaims.test_output_reaches_plus_six")),
+    ("Attack Speed runs the attack section from 0.2 to 5 times its own "
+     "speed.",
+     ("TheClaims.test_the_spans",)),
+    ("Sustain Hold, from 0 to 500 ms, is how long the ring section holds at "
+     "the peak before it lets go; held, it digs deeper into the ring than a "
+     "plain follower does.",
+     ("TheClaims.test_the_spans",
+      "TraitTests.test_t4_the_sustain_envelope_holds_and_a_follower_does_"
+      "not")),
+    ("A held note at Attack +12 is still lifted by more than 0.5 dB 100 ms "
+     "after the hit, and back within 0.5 dB by 150 ms, since the detector "
+     "reads the note's RMS rather than its peaks.",
+     ("TheClaims.test_the_held_note_is_still_lifted_at_100_ms",
+      "TraitTests.test_t5_the_rms_detector_settles_where_the_peak_detector_"
+      "does_not")),
+    ("On a slow decay Sustain runs out before its end: on a note fading at "
+     "3 dB a second, Sustain -24 reaches about -16 dB.",
+     ("TheClaims.test_sustain_runs_out_on_a_slow_decay",)),
+    ("A plucked phrase stays off the rails on every patch to -10 dBFS; at "
+     "-3 dBFS Snap and Kick Punch rail.",
+     ("TheInputCeiling.test_a_plucked_phrase_is_clean_to_minus_10_dbfs",
+      "TheInputCeiling.test_at_minus_3_dbfs_snap_and_kick_punch_rail")),
+    ("Latency is zero at every setting, and so is the tail: silence in is "
+     "silence out in the same frame.",
+     ("TheClaims.test_latency_is_zero",
+      "InvariantTests.test_the_tail_is_exactly_zero")),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = (transientshaper.__doc__ + " "
+               + transientshaper.TransientShaper.__doc__)
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(doc.replace("as hard as",
+                                                   "harder than")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
 if __name__ == "__main__":
