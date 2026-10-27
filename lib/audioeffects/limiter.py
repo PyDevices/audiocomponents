@@ -175,25 +175,26 @@ class Limiter(_component.Component):
     """Brickwall limiting against a ceiling, with optional lookahead and
     true-peak detection.
 
-    **Ceiling and Gain.** Ceiling sets the level nothing gets past, from
-    -24 dB to 0 dB. Gain drives the signal into it, from 0 dB to 24 dB, and
-    below the ceiling it is exactly the gain it says, within 0.1 dB. Below
-    the ceiling nothing else is touched: the level holds within 0.05 dB, and
-    at Ceiling 0 dB with no Gain the limiter is a wire.
+    **Ceiling and Gain.** Ceiling sets the level nothing gets past. Gain
+    drives the signal into it, and below the ceiling it is exactly the gain
+    it says, within 0.1 dB. Below the ceiling nothing else is touched: the
+    level holds within 0.05 dB, and at Ceiling 0 dB with no Gain the
+    limiter is a wire. The Effect controls page lists what the knobs span
+    and the patches.
 
-    **Lookahead.** Lookahead spans 0 ms to 10 ms and defaults to 0 ms, so
-    out of the box the limiter adds no latency. With it on, the latency is
-    the lookahead in whole samples, up to 480 samples at 48 kHz and 220 at
-    22.05 kHz, and the host is told the moment you move it. A short burst
-    stays within 0.1 dB of the ceiling at every Lookahead setting, and a
-    single-sample spike is caught at every setting from 0.5 ms up.
-    Lengthening the lookahead while audio plays inserts that much silence;
-    it never replays old audio.
+    **Lookahead.** Lookahead defaults to 0 ms, so out of the box the
+    limiter adds no latency. With it on, the latency is the lookahead in
+    whole samples, up to 480 samples at 48 kHz and 220 at 22.05 kHz, and
+    the host is told the moment you move it. A short burst stays within 0.1
+    dB of the ceiling at every Lookahead setting, and a single-sample spike
+    is caught at every setting from 0.5 ms up. Lengthening the lookahead
+    while audio plays inserts that much silence; it never replays old
+    audio.
 
     **Release is the distortion knob.** The gain follows the signal sample
-    by sample, so a fast release distorts low notes. Release spans 5 ms to
-    2 s, and a 60 Hz sine driven 12 dB into the ceiling measures
-    12.0 % THD at the 5 ms end of the Release macro.
+    by sample, so a fast release distorts low notes. Release is how fast
+    the gain recovers, and a 60 Hz sine driven 12 dB into the ceiling
+    measures 12.0 % THD at the 5 ms end of the Release macro.
     The default patch sits at 149 ms and 0.71 %, under 1 % at 48 kHz and
     44.1 kHz.
 
@@ -205,22 +206,20 @@ class Limiter(_component.Component):
     samples can't be caught with no delay to catch it in. True Peak adds no
     latency of its own.
 
-    **Knee.** At Knee 0 the ceiling is a brickwall. Knee spans 0 dB to
-    12 dB, and at 12 dB the bend is more than 4 dB wide.
+    **Knee.** At Knee 0 the ceiling is a brickwall. Knee softens the bend,
+    and at 12 dB the bend is more than 4 dB wide.
 
     **Stereo.** The two channels are always limited together, so the image
     doesn't wander when one side is loud. A mono source is limited on its
     own channel.
 
-    **Patches.** There are seven: Safety Ceiling, Catch The Peaks, Loud,
-    Soft Ceiling, Delivery Ceiling, Loud (True Peak) and Delivery Ceiling -
-    lean. Catch The Peaks, Delivery Ceiling and Loud (True Peak) turn True
-    Peak on, and an ESP32-S3 can't keep up with them: both stages with True
-    Peak on were measured at 6.550 ms of work in a 5.333 ms block, and the
-    sound breaks up. Play Delivery Ceiling - lean there instead. It keeps Delivery
-    Ceiling's lookahead and release, turns True Peak off and sits 3 dB
-    lower, and a worst-phase tone driven 6 dB into it stays under -0.94 dB
-    even between the samples.
+    **Patches.** Catch The Peaks, Delivery Ceiling and Loud (True Peak)
+    turn True Peak on, and an ESP32-S3 can't keep up with them: both stages
+    with True Peak on were measured at 6.550 ms of work in a 5.333 ms
+    block, and the sound breaks up. Play Delivery Ceiling - lean there
+    instead. It keeps Delivery Ceiling's lookahead and release, turns True
+    Peak off and sits 3 dB lower, and a worst-phase tone driven 6 dB into
+    it stays under -0.94 dB even between the samples.
 
     Latency is the lookahead, and so is the tail. It needs `audiodynamics`,
     so a stock CircuitPython board can't run it.
