@@ -48,6 +48,8 @@ uniform noise at 4 000 LSB RMS at Mix 1, no shipped patch reaches the rail
 at 48, 44.1 or 22.05 kHz; Bright Chamber at 44.1 kHz is not claimed.
 A plucked phrase stays off the rails on every patch to -4 dBFS; at -3 dBFS
 Slow Bloom rails.
+Keep the input under -12 dBFS and the defaults and patches stay off the
+rails.
 
 `tail_samples` bounds the frames until the output is exactly zero once
 your input stops: 222 868 frames at the defaults at 48 kHz. One int16

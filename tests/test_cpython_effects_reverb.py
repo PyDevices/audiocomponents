@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import audiocore                                            # noqa: E402
+import kit_ceiling                                          # noqa: E402
 import kit_faults                                           # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 from audioeffects import _component                         # noqa: E402
@@ -1838,12 +1839,24 @@ class InputCeiling(unittest.TestCase):
         self.assertLess(g8 - g4, -1.0, (g4, g8))
 
 
+class TheInputCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # sq220 is where it rails first: p9 at -9 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(Reverb, "sq220"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            Reverb, "sq220", db=-9, keys=("p9",)))
+
+
 # -- the claims ---------------------------------------------------------------
 
 #: Every sentence of the docstrings that makes a claim, word for word, and
 #: the tests that assert it (the trial brief). A sentence that is not here
 #: may hold no number.
 CLAIMS = (
+    ("Keep the input under -12 dBFS and the defaults and patches stay "
+     "off the rails.",
+     ("TheInputCeiling.test_clean_at_the_stated_input_level",)),
     ("Your dry signal passes untouched and a reverb tail rises behind it.",
      ("T7LowCut.test_the_dry_is_flat",)),
     ("Character picks the machine: `plate` is dense from the first "
