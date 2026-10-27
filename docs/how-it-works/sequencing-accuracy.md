@@ -35,7 +35,7 @@ A bar of sixteenths on a grid, as error against the frame each hit asked for:
 | board | scheduled | the same bar, Python-timed |
 |---|---|---|
 | ESP32-P4 | 16 of 16 hits, **4.4 ms mean / 11.6 ms worst** | 12 to 15 of 16 over four runs; 15.5-23.9 ms mean, 28.9-60.7 ms worst |
-| ESP32-S3 | 16 of 16, **2.6 ms mean / 5.0 ms worst**, the same with the screen busy and idle | 8 of 16, 22 ms mean |
+| ESP32-S3 | 16 of 16, **2.6 ms mean / 5.0 ms worst**, the same with the screen busy and idle | 8 of 16, 21 ms mean, the same busy and idle |
 
 The re-entrancy guard described under "A tick can land inside your own bar" in
 the guide has no board run. Its test uses `sys.settrace`, which is CPython
