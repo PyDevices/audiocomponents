@@ -132,9 +132,8 @@ class TransientShaper(_component.Component):
     **Levels.** At its defaults the class is a wire. Attack and Sustain add
     gain where they are turned up, so a hit that is already loud reaches the
     rails. Keep the input under -12 dBFS and the defaults and patches stay off
-    the rails. Attack at its top can still push the output onto the rails. A
-    plucked phrase stays off the rails on every patch to -10 dBFS; at -3 dBFS
-    Snap and Kick Punch rail. Turn Output down, or your input.
+    the rails. Attack at its top can still push the output onto the rails. Turn
+    Output down, or your input.
 
     **Timing.** Latency is zero at every setting, and so is the tail:
     silence in is silence out in the same frame.

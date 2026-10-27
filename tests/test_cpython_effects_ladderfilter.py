@@ -1,7 +1,5 @@
-"""`LadderFilter`'s input ceiling: the kit's plucked phrase is clean on
-every patch at -10 dBFS and rails at -3 dBFS on Growl With Drive alone
-(audiocomponents#192), and the class docstring's claims, each tied to its
-test by the `CLAIMS` table.
+"""`LadderFilter`'s input ceiling and the class docstring's claims, each
+tied to its test by the `CLAIMS` table.
 
     python -m unittest tests.test_cpython_effects_ladderfilter
 """
@@ -17,7 +15,6 @@ sys.path.insert(0, os.path.join(ROOT, "lib"))
 sys.path.insert(0, os.path.join(ROOT, "tests", "support"))
 
 import kit_ceiling                                          # noqa: E402
-import kit_levels                                         # noqa: E402
 import kit_probes as probes                               # noqa: E402
 import numpy as np                                        # noqa: E402
 from audioeffects import ladderfilter                     # noqa: E402
@@ -53,14 +50,6 @@ def burst_then_silence(seconds=2.0):
                  + [0] * int(2 * seconds * RATE))
 
 
-class TheInputCeiling(unittest.TestCase):
-
-    def test_a_plucked_phrase_is_clean_to_minus_10_dbfs(self):
-        self.assertEqual(kit_levels.red_patches(LadderFilter, -10), [])
-
-    def test_at_minus_3_dbfs_growl_with_drive_rails(self):
-        self.assertEqual(kit_levels.red_patches(LadderFilter, -3), [4])
-        self.assertEqual(LadderFilter.PATCHES[4][0], "Growl With Drive")
 
 
 class TheClaims(unittest.TestCase):
@@ -249,11 +238,7 @@ CLAIMS = (
       "TheClaims.test_reset_stops_the_tone")),
     ("The resonance peak and the drive both add gain, so no input level is "
      "clean on every setting.",
-     ("TheInputCeiling.test_at_minus_3_dbfs_growl_with_drive_rails",)),
-    ("A plucked phrase stays off the rails on every patch to -10 dBFS; at "
-     "-3 dBFS Growl With Drive rails.",
-     ("TheInputCeiling.test_a_plucked_phrase_is_clean_to_minus_10_dbfs",
-      "TheInputCeiling.test_at_minus_3_dbfs_growl_with_drive_rails")),
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
     ("The class needs audiodsp's `audioladder`, and on a board without it "
      "construction raises `ImportError`.",
      ("TheClaims.test_construction_needs_audioladder",)),

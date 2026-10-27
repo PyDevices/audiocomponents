@@ -43,13 +43,10 @@ reads more than 20 dB under.
 
 **Input ceiling.** There is no input gain, and the tank's lines clamp at the
 rail on every write whatever Mix is: a steady 362 Hz tone at 8 000 LSB RMS
-comes back more than 1 dB quieter in the tail than at 4 000. On 2 s of
-uniform noise at 4 000 LSB RMS at Mix 1, no shipped patch reaches the rail
-at 48, 44.1 or 22.05 kHz; Bright Chamber at 44.1 kHz is not claimed.
-A plucked phrase stays off the rails on every patch to -4 dBFS; at -3 dBFS
-Slow Bloom rails.
-Keep the input under -12 dBFS and the defaults and patches stay off the
-rails.
+comes back more than 1 dB quieter in the tail than at 4 000. On 2 s of uniform
+noise at 4 000 LSB RMS at Mix 1, no shipped patch reaches the rail at 48, 44.1
+or 22.05 kHz; Bright Chamber at 44.1 kHz is not claimed. Keep the input under
+-12 dBFS and the defaults and patches stay off the rails.
 
 `tail_samples` bounds the frames until the output is exactly zero once
 your input stops: 222 868 frames at the defaults at 48 kHz. One int16
