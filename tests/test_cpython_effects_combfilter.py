@@ -20,6 +20,7 @@ second difference at the block boundaries for the click.
 import array
 import math
 import os
+import re
 import sys
 import unittest
 
@@ -1206,6 +1207,171 @@ class TheInputCeiling(unittest.TestCase):
         names = [combfilter.CombFilter.PATCHES[k][0] for k in (1, 3, 4, 5)]
         self.assertEqual(names, ["Ringing Pitch", "Dark Resonator",
                                  "Single Slap", "Filter Only"])
+
+
+class TheClaims(unittest.TestCase):
+    """The docstring's claims that no older test holds on its own."""
+
+    def test_the_spans(self):
+        cls = combfilter.CombFilter
+        self.assertEqual(cls._MACRO_RANGES,
+                         ((20.0, 4000.0, "log"), (0.0, 0.95), (0.0, 2.0),
+                          (500.0, 24000.0, "log"), (-18.0, 18.0),
+                          (0.0, 1.0)))
+        self.assertEqual([cls.PATCHES[i][0] for i in sorted(cls.PATCHES)],
+                         ["Metallic", "Ringing Pitch", "Soft Ripple",
+                          "Dark Resonator", "Single Slap", "Filter Only"])
+
+    def test_the_trim_is_in_front_of_the_comb(self):
+        effect = combfilter.CombFilter.create(tone(220.0, 4096),
+                                              SAMPLE_RATE)
+        self.assertEqual(list(effect._nodes), [effect._trim, effect._comb])
+
+    def test_the_default_tail(self):
+        effect = combfilter.CombFilter.create(tone(220.0, 4096),
+                                              SAMPLE_RATE)
+        self.assertEqual(effect.tail_samples, 3219)
+
+    def test_construction_needs_its_two_modules(self):
+        for name in combfilter.CombFilter.REQUIRES:
+            with self.subTest(module=name):
+                saved = sys.modules.get(name)
+                sys.modules[name] = None
+                try:
+                    with self.assertRaises(ImportError):
+                        combfilter.CombFilter.create(tone(220.0, 4096),
+                                                     SAMPLE_RATE)
+                finally:
+                    sys.modules[name] = saved
+
+
+CLAIMS = (
+    ("A tuned comb: a delay line short enough to be a pitch, fed back on "
+     "itself, so noise turns into a note and a chord turns metallic.",
+     ("TheCombTunesFractionally.test_every_request_lands_within_five_cents",
+      "TheFeedbackKnobIsThePeakHeight.test_the_peak_and_null_follow_the_"
+      "closed_form")),
+    ("Frequency spans 20 Hz to 4 kHz and is the note the comb rings at, "
+     "tuned between samples.",
+     ("TheClaims.test_the_spans",
+      "TheCombTunesFractionally.test_rounding_onto_the_sample_grid_is_red")),
+    ("From 55 Hz to 3.52 kHz the first repeat lands within 5 cents of the "
+     "note you asked for, and at 880 Hz it does at 48 kHz, 44.1 kHz and "
+     "22.05 kHz, and in mono.",
+     ("TheCombTunesFractionally.test_every_request_lands_within_five_cents",
+      "TheClassIsRateHonest.test_the_tuning_holds_at_every_rate",
+      "MonoIsTheSameComb.test_a_mono_source_gets_the_same_tuning")),
+    ("While it rings, it rings on that pitch, and then it stops.",
+     ("TheRingIsTheAskedPitchAndEnds.test_1760_at_feedback_08_rings_on_the_"
+      "asked_pitch_then_ends",
+      "TheRingIsTheAskedPitchAndEnds.test_1000_rings_on_the_asked_pitch_"
+      "then_ends")),
+    ("Feedback spans 0 to 0.95 and sets how tall the resonances stand: at "
+     "200 Hz the peak is 1/(1-Feedback) and the null 1/(1+Feedback), within "
+     "0.2 dB.",
+     ("TheClaims.test_the_spans",
+      "TheFeedbackKnobIsThePeakHeight.test_the_peak_and_null_follow_the_"
+      "closed_form")),
+    ("At Feedback 0 it is the feedforward comb, with nulls more than 60 dB "
+     "down and peaks 6 dB up, within 0.1 dB.",
+     ("ZeroFeedbackIsTheFeedforwardComb.test_the_null_is_total_and_the_"
+      "peak_is_six_decibels",)),
+    ("Mix spans 0 to 2: 0 is a wire, 1 is dry plus comb, and 2 is the comb "
+     "alone.",
+     ("TheClaims.test_the_spans",
+      "TheBypassIsAWire.test_mix_zero_is_byte_identical_to_the_source",
+      "ZeroFeedbackIsTheFeedforwardComb.test_the_null_is_total_and_the_"
+      "peak_is_six_decibels",
+      "TheCombTunesFractionally.test_every_request_lands_within_five_cents")),
+    ("Mix 0 is the source sample for sample, whatever Trim is set to.",
+     ("TheBypassIsAWire.test_mix_zero_is_byte_identical_to_the_source",
+      "TheBypassIsAWire.test_mix_zero_with_a_trim_asked_for_is_still_a_"
+      "wire")),
+    ("Tone spans 500 Hz to 24 kHz and is a low-pass inside the loop, "
+     "darkening each pass.",
+     ("TheClaims.test_the_spans",)),
+    ("Its top stop is off, and turning it off after it has been in leaves "
+     "nothing behind.",
+     ("TheToneOffStopIsTheFilterOut.test_the_off_stop_hands_exactly_zero",
+      "TheToneOffStopIsTheFilterOut.test_tone_back_in_after_silence_stays_"
+      "silent",
+      "TheToneOffStopIsTheFilterOut.test_the_off_stop_after_tone_is_the_"
+      "filter_out")),
+    ("Trim spans -18 dB to +18 dB and sits in front of the comb, so turning "
+     "it down makes room for the resonance before the gain rather than "
+     "after.",
+     ("TheClaims.test_the_spans",
+      "TheClaims.test_the_trim_is_in_front_of_the_comb")),
+    ("Glide spans 0 to 1 and slides the tuning, so turning Frequency bends "
+     "the note rather than clicking.",
+     ("TheClaims.test_the_spans",
+      "TheTuningKnobIsClickFree.test_the_boundary_is_not_findable",
+      "TheTuningKnobIsClickFree.test_a_jumped_read_head_is_red")),
+    ("A comb gains, so a loud input can reach the rail by design.",
+     ("TheInputCeiling.test_at_minus_3_dbfs_four_patches_rail",)),
+    ("A plucked phrase is clean on every patch up to -9 dBFS; at -3 dBFS "
+     "Ringing Pitch, Dark Resonator, Single Slap and Filter Only rail.",
+     ("TheInputCeiling.test_a_plucked_phrase_is_clean_to_minus_9_dbfs",
+      "TheInputCeiling.test_at_minus_3_dbfs_four_patches_rail")),
+    ("`reset()` empties the line.",
+     ("ResetEmptiesTheLine.test_reset_leaves_the_line_silent_and_the_"
+      "source_rendering",)),
+    ("It adds no latency at any setting.",
+     ("TheSurface.test_the_six_macros_and_six_patches_are_the_frozen_ones",
+      "TheLatencyIsZero.test_the_measured_delay_matches_the_reported_zero")),
+    ("The tail always reaches exact zero, and `tail_samples` says when, for "
+     "the settings as they stand: 3219 frames at the defaults at 48 kHz.",
+     ("TheTailReachesExactZero.test_below_half_the_line_reaches_exact_zero",
+      "TheTailReachesExactZero.test_a_whole_sample_tuning_reaches_exact_"
+      "zero_inside_the_bound",
+      "TheTailIsDeclared.test_finite_at_every_patch_and_every_stop",
+      "TheTailIsDeclared.test_the_lap_bound_holds_where_it_is_tight",
+      "TheClaims.test_the_default_tail")),
+    ("There are six: Metallic; Ringing Pitch; Soft Ripple; Dark Resonator; "
+     "Single Slap; and Filter Only.",
+     ("TheClaims.test_the_spans",)),
+    ("Each tunes the comb to a different note.",
+     ("TheSurface.test_every_patch_is_reachable_and_moves_the_comb",)),
+    ("It needs `audioecho` and `audiobiquad`, so a stock CircuitPython "
+     "board can't run it.",
+     ("TheClaims.test_construction_needs_its_two_modules",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = combfilter.__doc__ + " " + combfilter.CombFilter.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(_flat(doc).replace(
+            "up to -9 dBFS", "up to -6 dBFS")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
 if __name__ == "__main__":                              # pragma: no cover
