@@ -66,8 +66,8 @@ Providers declare their public shape as module or class data:
 - `NOTE_MAP` identifies the actual voices of a drum machine, and `PAD_MAP`
   says what each pad key from 36 to 51 plays on it.
 
-`tools/validate_metadata.py` checks those declarations; the runtime API and
-`tools/validate_api.py` check that a constructed provider implements the live
+[`tools/validate_metadata.py`](../../tools/validate_metadata.py) checks those declarations; the runtime API and
+[`tools/validate_api.py`](../../tools/validate_api.py) check that a constructed provider implements the live
 surface. If a host needs finer automation, macro values may be floats even
 though patch values are the 0-127 MIDI grid. The declarations are specified in
 [the metadata manifest](../reference/metadata.md).

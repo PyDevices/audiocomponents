@@ -185,7 +185,7 @@ Metadata is discoverable from module/class declarations without constructing
 an audio graph. `audioinstruments.ALL` identifies instrument modules. Public
 concrete effect classes are the effect providers; private helpers and base
 classes are excluded. The portable validator in
-`tools/validate_metadata.py` is the authority used by tests and tooling.
+[`tools/validate_metadata.py`](../../tools/validate_metadata.py) is the authority used by tests and tooling.
 
 `audioinstruments.DRUM_MACHINES` is derived from modules that declare a
 non-empty `NOTE_MAP`; `MELODIC` is the remainder of `ALL`. This avoids a
@@ -237,7 +237,7 @@ the declarations to build a UI, initialize values, or offer program changes;
 the metadata remains mandatory even when that consumer chooses not to use
 those features.
 
-Rack providers ship in `lib/audioeffects/`
+Rack providers ship in [`lib/audioeffects/`](https://github.com/PyDevices/audiocomponents/tree/main/lib/audioeffects)
 (`rack.py`, `shimmerhall.py`, `airspace.py`):
 `Rack` (the generic serial-chain mechanism, built from a portable `chain`
 literal), `ShimmerHall`, and `AirSpace` (fixed topologies with a macro

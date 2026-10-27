@@ -291,11 +291,11 @@ CI doesn't run all of it on every pull request:
 
 - A pull request runs the classes whose own module it changes. When it
   changes a shared file (the base class, the package modules,
-  `tests/support/`, the matrix test or `AUDIODSP_PIN`), it also runs a fixed
+  [`tests/support/`](./), the matrix test or `AUDIODSP_PIN`), it also runs a fixed
   sample of one class per mechanism family: Bitcrusher, Tremolo,
   DigitalDelay, Reverb, Octaver, LowPass, Rack, Saturation and Distortion.
-  That takes about 13 minutes (`SAMPLE` in `tests/test_lifecycle_matrix.py`).
-- The node matrix (`tests/test_node_matrix.py`, the 13 audiodsp nodes the
+  That takes about 13 minutes (`SAMPLE` in [`tests/test_lifecycle_matrix.py`](../test_lifecycle_matrix.py)).
+- The node matrix ([`tests/test_node_matrix.py`](../test_node_matrix.py), the 13 audiodsp nodes the
   classes stand on) follows the same rule. A pull request runs the nodes
   whose own adapter class or table rows it changes, and a fixed sample
   (`NODE_SAMPLE`) when it changes a shared file: `AUDIODSP_PIN`, the base
@@ -324,7 +324,7 @@ before a release.
   model of what a class should do with a quieter note: a trait that turns on
   the input level (Octaver's tracking near Sensitivity) is held to the same
   phrase in the class's own tests (`T7` in
-  `tests/test_cpython_effects_octaver.py`).
+  [`tests/test_cpython_effects_octaver.py`](../test_cpython_effects_octaver.py)).
 
 ## Options
 
@@ -349,7 +349,7 @@ the other two. Nothing else skips a cell.
 
 ## The plants
 
-`tests/test_kit.py` holds every check red on a planted fault and its control
+[`tests/test_kit.py`](../test_kit.py) holds every check red on a planted fault and its control
 green on the same cell, with the plants in `kit_planted.py` (a Waveshaper
 and a level around the source; `KitPlain` is the control): `ShortTail` and
 `EventTail` (tail; `EchoTail` the control), `NoneSilent` and `NoneDC` (a
