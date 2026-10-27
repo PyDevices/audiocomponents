@@ -295,10 +295,9 @@ class Phaser(_component.Component):
 
     **Drive and Feedback.** Drive is 0.3 when you construct the class, and
     there the Feedback hump stays under 5 dB. Turn Drive to 0 and Feedback
-    lifts it more than 5 dB. The Phaser - lean patch is the default with
-    Drive at 0.
-    Keep the input under -9 dBFS and the defaults and patches stay off the
-    rails.
+    lifts it more than 5 dB. The Phaser - lean patch is the default with Drive
+    at 0. Keep the input under -9 dBFS and the defaults and patches stay off
+    the rails. Feedback at its top can still push the output onto the rails.
 
     **Sync.** With Sync on, the sweep locks to the host: Division picks the
     length of a sweep in bars, a bar is read from the host's time
@@ -334,6 +333,8 @@ class Phaser(_component.Component):
     #: clean at this level; at -6 dBFS, patch 1 rails on
     #: a 147 Hz square.
     INPUT_CEILING_DBFS = -9
+    #: Settings that clip by design: the rail check skips them.
+    CLIPS_AT_TOP = (3,)
 
     MACRO_LABELS = ("Rate", "Depth", "Centre", "Feedback", "Mix",
                     "Stages", "Shape", "Drive", "Sync", "Division")

@@ -8,13 +8,14 @@ for the eight defects the dossier's section 7 names.
 **What it sounds like.** One knob decides where the bottom stops, and above
 that corner nothing is touched: rumble, handling noise, a subsonic DC offset
 and the mud under a vocal go, and the voice does not. The second knob is how
-loud the corner itself stands - at Resonance 0.707 it is 3 dB down and the
-cut is as gentle as a cut gets, at 2 it is 6 dB up and you can hear where you
-put it, at 16 it is 24 dB up and the filter whistles at its own corner. The
-Slope switch is a desk's: 12 dB/oct for a low-cut you do not want to notice,
-24 dB/oct when the rumble has to actually leave. There is no drive and no
-growl anywhere in it - a high-pass is linear. Keep the input under -9 dBFS
-and the defaults and patches stay off the rails.
+loud the corner itself stands - at Resonance 0.707 it is 3 dB down and the cut
+is as gentle as a cut gets, at 2 it is 6 dB up and you can hear where you put
+it, at 16 it is 24 dB up and the filter whistles at its own corner. The Slope
+switch is a desk's: 12 dB/oct for a low-cut you do not want to notice, 24
+dB/oct when the rumble has to actually leave. There is no drive and no growl
+anywhere in it - a high-pass is linear. Keep the input under -9 dBFS and the
+defaults and patches stay off the rails. Trim at its top can still push the
+output onto the rails.
 
 **Three things the knobs do not do exactly, found by the Phase 2 gate audit
 and its patch sweep, and
@@ -202,6 +203,8 @@ class HighPass(_component.Component):
     #: clean at this level; at -6 dBFS, patch 1 rails on
     #: a 100 Hz square.
     INPUT_CEILING_DBFS = -9
+    #: Settings that clip by design: the rail check skips them.
+    CLIPS_AT_TOP = (4,)
 
     MACRO_LABELS = ("Frequency", "Resonance", "Slope", "Mix", "Trim")
     MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "TOGGLE",

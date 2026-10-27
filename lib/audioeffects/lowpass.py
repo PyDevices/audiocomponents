@@ -7,16 +7,15 @@ for the seven defects the dossier's section 7 names.
 
 **What it sounds like.** One knob slides the whole curve along the frequency
 axis without changing its shape, and one knob decides how loud the corner
-itself stands: at Resonance 0.707 the corner is 3 dB down and the curve is
-the gentlest roll-off there is, at 2 it is 6 dB up and the filter starts to
-whistle where you put it, at 16 it is 24 dB up and a click at the input rings
-for seconds. There is no drive, no saturation and no growl anywhere in it -
-a low-pass is linear, and the thing that makes a Moog a Moog belongs to
+itself stands: at Resonance 0.707 the corner is 3 dB down and the curve is the
+gentlest roll-off there is, at 2 it is 6 dB up and the filter starts to whistle
+where you put it, at 16 it is 24 dB up and a click at the input rings for
+seconds. There is no drive, no saturation and no growl anywhere in it - a
+low-pass is linear, and the thing that makes a Moog a Moog belongs to
 `LadderFilter`. The Slope switch is a console's: 12 dB/oct is the analog
 prototype, 24 dB/oct is a second section behind it for when a rumble has to
-actually go away.
-Keep the input under -3 dBFS and the defaults and patches stay off the
-rails.
+actually go away. Keep the input under -3 dBFS and the defaults and patches
+stay off the rails. Trim at its top can still push the output onto the rails.
 
 **Where those two sentences stop being exact.** The Phase 2 gate audit
 (2026-09-07) disconfirmed four of the five traits off the point they were
@@ -178,6 +177,8 @@ class LowPass(_component.Component):
     #: clean at this level; at full scale, patch 5 rails on
     #: a 50 Hz sine.
     INPUT_CEILING_DBFS = -3
+    #: Settings that clip by design: the rail check skips them.
+    CLIPS_AT_TOP = (4,)
 
     MACRO_LABELS = ("Frequency", "Resonance", "Slope", "Mix", "Trim")
     MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "TOGGLE",

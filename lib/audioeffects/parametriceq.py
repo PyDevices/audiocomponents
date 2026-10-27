@@ -48,10 +48,11 @@ carries the level each stops at (its section 1d, twelve stops from -40 to
 
 All of it is the clip, not the filter: the coefficients are reciprocal and
 proportional at every level, which is what
-`tests/test_cpython_effects_parametriceq.py` reads. Drive this EQ from a
-signal with headroom for the boost you dial, or trim into it, and the curves
-are the ones the traits describe. Keep the input under -12 dBFS and the
-defaults and patches stay off the rails.
+`tests/test_cpython_effects_parametriceq.py` reads. Drive this EQ from a signal
+with headroom for the boost you dial, or trim into it, and the curves are the
+ones the traits describe. Keep the input under -12 dBFS and the defaults and
+patches stay off the rails. A boost or Output at its top can still push the
+output onto the rails.
 
 **Cost.** Eight sections, always built, and no patch changes that. Measured
 2026-09-07 on both boards at construction defaults - where patch 0 is a wire,
@@ -221,6 +222,8 @@ class ParametricEQ(_component.Component):
     #: clean at this level; at -9 dBFS, patch 3 rails on
     #: a DC step.
     INPUT_CEILING_DBFS = -12
+    #: Settings that clip by design: the rail check skips them.
+    CLIPS_AT_TOP = (1, 4, 6, 8, 11, 15)
 
     MACRO_LABELS = (
         "Low Freq", "Low Boost", "Low Atten",

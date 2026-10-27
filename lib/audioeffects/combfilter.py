@@ -259,12 +259,12 @@ class CombFilter(_component.Component):
     **Glide.** Glide slides the tuning, so turning Frequency bends the note
     rather than clicking.
 
-    **Level.** A comb gains, so a loud input can reach the rail by design.
-    A plucked phrase is clean on every patch up to -9 dBFS; at -3 dBFS
-    Ringing Pitch, Dark Resonator, Single Slap and Filter Only rail.
-    Keep the input under -24 dBFS and the defaults and patches stay off the
-    rails.
-    `reset()` empties the line.
+    **Level.** A comb gains, so a loud input can reach the rail by design. A
+    plucked phrase is clean on every patch up to -9 dBFS; at -3 dBFS Ringing
+    Pitch, Dark Resonator, Single Slap and Filter Only rail. Keep the input
+    under -24 dBFS and the defaults and patches stay off the rails. Feedback or
+    Trim at its top can still push the output onto the rails. `reset()` empties
+    the line.
 
     **Latency and tail.** It adds no latency at any setting. The tail
     always reaches exact zero, and `tail_samples` says when, for the
@@ -300,6 +300,8 @@ class CombFilter(_component.Component):
     #: clean at this level; at -18 dBFS, patch 1 rails on
     #: a DC step.
     INPUT_CEILING_DBFS = -24
+    #: Settings that clip by design: the rail check skips them.
+    CLIPS_AT_TOP = (1, 4)
 
     MACRO_LABELS = ("Frequency", "Feedback", "Mix", "Tone", "Trim", "Glide")
     MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "UNIPOLAR",

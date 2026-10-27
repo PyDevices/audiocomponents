@@ -217,7 +217,8 @@ class GraphicEQ(_component.Component):
     **Level.** Bands overlap and add: three adjacent sliders at +6 dB lift
     the middle one's frequency by more than 7 dB. Every section hands the
     next an int16, so leave headroom, and pull Volume down when you push
-    Gain up.
+    Gain up. A band, Gain or Volume at its top can push a full-scale input
+    onto the rails.
 
     **Patches.** Scooped Mids, Pushed Mids and Full Boost pull Volume down,
     so stepping through them you hear the curve rather than the level. A
@@ -249,6 +250,9 @@ class GraphicEQ(_component.Component):
 
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = _DESIGN_TAIL_SAMPLES
+
+    #: Settings that clip by design: the rail check skips them.
+    CLIPS_AT_TOP = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
 
     MACRO_LABELS = ("31", "63", "125", "250", "500", "1k", "2k", "4k", "8k",
                     "16k Shelf", "Gain", "Volume", "Band Q", "Constant Q")
