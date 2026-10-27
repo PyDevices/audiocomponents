@@ -1,217 +1,222 @@
-"""`Saturation` - a 12AX7 stage, a tape chain, or transformer iron.
+"""`Saturation` - a tube stage, a tape chain, or transformer iron.
 
-Rebuilt from scratch for Phase 4 against its dossier, traits frozen at
-Station A on 2026-09-17 before this file existed. The old `drive.py:Saturation`
-was not consulted except for the six defects the dossier's section 7 names;
-it was the class the library served until this one was adopted on the boards
-on 2026-09-18, and `drive.py` went with the promotion.
-
-**What it sounds like.** `tube` (default) is a 12AX7 common-cathode stage:
-even harmonics below 0.5 V grid, a hard plate ceiling one way and grid
-conduction the other. `tape` is a reel-to-reel chain: odd Langevin
-saturation and a playback-loss curve that slides with Speed. `console` is
-transformer iron: flux-driven, saturating from the bottom up.
-
-All three are AC-coupled after the shaping, at 20 Hz — the plate coupling
-capacitor, the playback head that cannot see DC, the flux high-pass. That
-is where Bias's operating-point shift goes instead of onto the output.
-
-**Controls moved and moved back play nothing out of silence**
-(audiocomponents#113). Mix back up from 0 comes back as the class was
-built - cleared, the voices re-armed - where it used to play what it held,
-up to 7 927 LSB. **Bias is folded into the table**, which answers silence
-with exactly zero at every Bias, so the plate pole never holds an offset:
-off centre (patches 4 and 6) silence in is silence out from the first
-frame, and a Bias, Drive, Output, Headroom or Hysteresis move leaves the
-pole nothing to bleed out. That holds where `audiocore.get_buffer` is
-compiled out (CircuitPython's board builds) as well, because nothing is
-charged by pulling. Hysteresis back in starts its play operator at the
-centre instead of where it froze (314 LSB). And a Bias move pulls no block
-off the dry tap: that once put the dry leg 256 frames ahead of the wet one
-after every `program_change`, a comb at patch 7 (Mix 44), and left a block
-of old audio in the Splitter for the next Mix move off 0 to play
-(13 071 LSB).
-
-**Bias sounds over its whole travel.** On `tube` its ends move the
-operating point **±1.25 V** of grid (`TUBE_BIAS_REACH`), towards cutoff one
-way and grid conduction the other, and stop short of both: at −6 dBFS the
-ends read 5.6 and 7.0 dB under Bias 0 and hold there. Bias used to reach
-±10 V, and past about a quarter of its travel either way the stage was cut
-off or pinned, so the sound died away within a tenth of a second of the
-move (Bias −0.4 rendered digital silence). `tape` and `console` keep the
-whole span, whose ends read 6.8 and 6.9 dB down.
-
-**What the default surrenders.** Mix 1, Drive 0 dB, Headroom 0, Bias 0,
-Tilt 0, Hysteresis 0, Speed 15 ips (inert on tube).
-
-**Headroom is Drive, spent the other way round, and they share one
-ceiling.** Headroom moves the character's knee and Drive moves the signal
-at it; in front of one curve on one node that is a single number. It used
-to be two — `pre = pre0·drive/head` — which gave the pair **+27 dB** of
-reach behind a documented **+15 dB** cap, and the alias floor failed from
-the shipped surface at Headroom −6 / Output +6 (**−45.621 dB** at 3700 Hz,
-audiocomponents#70). **Drive − Headroom stops at +15 dB** however you
-reach it: that is where the floor still holds 60 dB down at 1010 and
-3700 Hz (−70.6 / −63.8 at 48 kHz). It costs the top of the range and the
-plate has long since pinned by then.
-
-**The alias floor is a ratio, and 16 bits is not.** It is claimed at
-48 kHz, on `tube`, at the class's own output level. Wherever the output is
-quiet the ratio reads badly whatever the shaper did, one dB for one:
-Output −12 / −18 / −24 read **−69.007 / −63.233 / −57.301**, and
-`character="console"` reads **−46.094** at Drive 0 because its 5 Hz flux
-pair takes 25 dB out before the jack. Bias holds the bar over its whole
-travel: its ends read **−71.770 / −72.135** at 3700 Hz and Drive 0, and
-−71.521 / −63.075 at maximum Drive.
-Over the whole Drive × Headroom plane at 48 kHz the worst cell is
-**−63.863** (3700 Hz, maximum Drive, Headroom −3) and every cell clears.
-**At 44.1 kHz the 3700 Hz probe cannot reach the bar at any factor**
-(−47.763 at maximum Drive, **−41.880** at the plane's worst): h6 of
-3700 Hz is above that rate's Nyquist and folds back whatever the internal
-rate was. **At 22.05 kHz it misses at the shipped default** (−58.181) and
-reads **−17.591** at maximum Drive, because h3 is already above Nyquist
-there. The dossier does not claim 22.05 kHz; this says so out loud.
-
-**The even lead holds from 0.05 V to 0.5 V of grid, not below.** Under the
-freeze's own quietest probe the table runs out: at 0.0316 V the h2−h3 lead
-is **7.294 dB** and at 0.0089 V it is **−15.049** (48 kHz). One table cell
-is 0.0195 V of grid, so a 0.0089 V peak sweeps less than half a cell and
-what h2 reports there is interpolation residue, not a triode. Worst cell
-inside the bound, over 63 (level, rate) cells: **16.008 dB**.
-
-The Hysteresis macro is off; TP3 is not a graded trait (dossier §8 Q1).
-Drive compensation keeps small-signal level from jumping with the knob.
-Switching into or out of patch 8 re-routes the pull chain, so it steps at
-the block boundary like the patch change it is (3357 LSB against 1281 for
-an ordinary patch change on the same material) — a setup choice, not a
-knob to ride.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audioshaper", "audiobiquad",
-"audioroute", "audioecho")`). On a stock CircuitPython board this module
-imports and construction raises `ImportError`.
-
-**The rate picks the oversampling factor**, on the measurement in
-`OVERSAMPLE_RATE_HZ`: **×4 at 48 and 44.1 kHz, ×2 at 22.05 kHz.** ×8 was
-shipped everywhere and bought nothing at the default — ×1 and ×4 are
-within 2 dB there (−76.806 against −77.693 at 1010 Hz) — while costing the
-S3 1.408 ms a block. At maximum Drive, where it is the oversampler's fold
-to lose, ×4 clears the bar (−63.847 at 3700 Hz) and ×8 adds 0.923 dB.
-
-**Cost, palette, reference patch 0 (tube, 48 kHz, oversample ×4)**, priced
-at the rows both boards took on 2026-09-18:
-Splitter-2 0.207/0.368 + Waveshaper ×4 1.069/1.918 + 3×Biquad 0.324/0.612
-+ Mixer 0.050/0.175 + glue 0.0
-= **1.650 / 3.073 ms → P4 31 %, S3 58 %** of a 5.333 ms stereo block.
-**Three biquads and not four**: `_after` *is* `_couple` on `tube` and
-`tape`, so the board's attribute census counted one node under two names.
-The boards measured **34.3 % / 62.2 %** — **over by 3.4 / 4.6 points**, and
-the node count is not what is over. Every node the class drops leaves the
-sum by exactly its palette row, so the miss is the same afterwards: what is
-over is the **per-block glue** every budget in this program prices at 0.0.
-The class handed back a **128-frame** block (`Mixer._render_size` is
-`buffer_size // 2 // 4 * 4` bytes), so everything behind it was pulled twice
-per 256-frame block, and one extra Python-level pull is worth about
-**0.18 ms on the P4 and 0.11 ms on the S3** — read off the boards' own rows,
-`Splitter+3 − Splitter+tap` (an extra tap pulled from Python) against
-`Mixer@3active − Mixer@2active` (the same extra tap pulled from C). On the
-P4 that is the whole 3.4 points. `MIXER_BUFFER_BYTES × channel_count` makes
-one pull one block and **moves no byte**: `ffb5e07e33e2732d` at patch 0 and
-`58444f96ff950621` at patch 8, at either block length, on CPython,
-MicroPython and CircuitPython. **The second board pass measured that graph
-on 2026-09-18 and the miss is gone**: 29.4 % / 55.4 % at patch 0, 20.8 % /
-39.6 % at patch 8, 29.9 % / 56.4 % at its costliest patch.
-
-**Alone on an ESP32-S3 this uses 55 % of a block at its default patch,
-56 % at its costliest; use patch 8 `Saturation - lean` (40 %) to stack.**
-
-At 22.05 kHz the block is 11.61 ms and ×2 prices at
-1.139 / 2.172 ms, **10 % / 19 %**.
-The identity `MidSide` tail is gone: it was there so the class would not end
-on a Mixer, and what it bought instead was an LSB on every full-scale sample
-(audiodsp#95). At Mix 0 the output **is** the borrowed source, so the wire is
-exact by construction and nothing in the graph is pulled at all.
-Patch 8 `Saturation - lean` is one factor below whatever the rate ships —
-×2 at 48 kHz, through a second node nothing else pulls: Waveshaper ×2
-0.558/1.017 + the same rest = **1.139 / 2.172 ms → 21 % / 41 %**, measured
-**24.7 % / 46.4 %**, which is the same glue over the same graph. It buys
-that partly out of the floor and the pack says so: 1010 Hz still clears at
-maximum Drive, 3700 Hz reads **−56.686** and does not.
-`hysteresis` has no palette row (gap). The silence sample is pulled once,
-at construction, so it is not a source row. `tape` adds a fourth biquad for
-the playback loss — 1.758 / 3.277 ms, **33 % / 61 %** — and `console`
-replaces one biquad with two bare FeedbackDelay rows, which have no Phase 4
-row at all. Neither is this bar.
-
-**Latency — one reading, said plainly.** There were two, and the class
-declared a third: `_GROUP_DELAY_SAMPLES` is where the half-band's
-*centroid* sits, and the onset of a symmetric response arrives **before**
-its centroid, so `tube` graded sub-sample and failed the integer onset by
-2 samples while `console` did the opposite — **10 of 18 build × rate
-cells red** (audit 3 (p)8). `latency_samples` is the **measured integer
-onset** now, per character and factor (`CLICK_ONSET_SAMPLES`), which is
-the reading a host's delay compensation can use and the one `Distortion`
-already declares: **tube 1 / tape 2 / console 4** at the shipped ×4,
-**0 / 1 / 3** at ×2, **2 / 2 / 5** at ×8, and 0 / 0 / 2 at ×1. Mix 0 is a
-dry tap and reports **0**. All 18 build × rate cells now read within the
-kit's 1-sample bar, stereo and mono.
-
-The sub-sample reading is the graph's own group delay and is **not** what
-this reports: 3.912 samples at tube ×4, 4.753 at tape, 6.418 at console,
-and on `console` it is probe-dependent besides — 12.774 on an impulse and
-16.808 on a 4 ms burst, which is the 5 Hz damping and cut filters inside
-its two flux sections (`kit.click`'s own words).
-
-**Output is decibels out for decibels asked, and there is a makeup stage
-behind the shaper.** What the node gives up at `NODE_CEILING` used to go
-onto the wet mixer voice as `level > 1.0` — and **a mixer voice clamps at
-1.0**, so Output +6 delivered **+5.965 dB** and Output +12 delivered
-**+7.866** (1 kHz, −12 dBFS), while the test that should have caught it
-multiplied two numbers in Python and never rendered (audit 3 (p)1, ruling
-(o)). `MAKEUP_SHELF_HZ` is a `HIGH_SHELF` at 10 Hz — flat everywhere a
-note lives, 0.02 dB down at 100 Hz — and it carries the excess. Rendered,
-+3 / +6 / +9 / +12 dB of Output now deliver within **0.25 dB** of what
-they say, on `tube` and on `console`. It is 0 dB at 63 of the 75 shipped
-positions, whose bytes do not move. **Output adds up to +12 dB, so a
-full-scale input can clip at the rails**: with every macro at its top, a
-0 dBFS sine or noise does.
-
-**The tube table does not invert any more.** A triode inverts, and a table
-that carried the inversion put the wet leg 180° out of phase with the dry
-one, so **Mix was a notch rather than a blend**: rendered at −12 dBFS the
-level walked −15.011 → −18.609 → −24.676 → **−33.580** → −23.125 dBFS
-across Mix 0 … 1, with the deepest point three quarters of the way up
-(audit 3 (p)2). Every unit this models has an even number of gain stages
-for exactly that reason, so the sign moved into
-`saturation_curve.tube_points()` and no harmonic magnitude moved with it.
-Mix now walks −15.011 → −16.515 → −18.301 → −20.469 → −23.125.
-
-**Silence answers silence at every Bias.** `Bias` is an offset into an
-asymmetric curve. As the node's own offset it made the shaper answer
-silence with a constant, and the pole behind it passed the step that
-started it: shipped patches 4 and 6 put **8 489 and 7 044 LSB** out of
-digital silence, and charging the pole by pulling it left 1 LSB. The class
-now builds the table the shapers read: the curve at `(1 + |Bias|) * u +
-Bias`, less its value at `u = 0`, so silence reads exactly zero and the
-curve's rails sit where they did. It is built in integers on a grid of
-1/256 of a table step, so a board builds the table a desktop builds.
-
-**Tail.** `TAIL_SAMPLES = 65536` (1.365 s at 48 kHz), measured: a 200 ms
-0 dBFS burst's residual reaches 0 LSB **3282 frames** after the burst on
-`tube`, 3196 on `tape` and **13759 on `console`**, whose flux corner is at
-5 Hz. The 655360 it used to declare was 13.65 s and was in neither the
-pack nor a measurement. **Those are 1 kHz numbers**: a 40 Hz burst on
-`console` reads **19 317** frames, so the declaration is 3.4× the worst
-measured and not the 4.8× the pack claimed (audit 3 (p)7).
-
-**Insertion loss, which no row carried.** At the default, a −12 dBFS
-1 kHz sine comes out **8.1 dB** down on `tube`, **13.4** on `tape` and
-**33.6** on `console`. That is the unit's own gain structure — a saturator
-is a gain stage followed by a ceiling — and `Output` is what puts it
-back, but a row that says nothing about it leaves a user thinking Mix 1 is
-unity. It is not.
-
-`capabilities = ()`: nothing reads `self._transport()`.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# Rebuilt from scratch for Phase 4 against its dossier, traits frozen at
+# Station A on 2026-09-17 before this file existed. The old `drive.py:Saturation`
+# was not consulted except for the six defects the dossier's section 7 names;
+# it was the class the library served until this one was adopted on the boards
+# on 2026-09-18, and `drive.py` went with the promotion.
+#
+# What it sounds like. `tube` (default) is a 12AX7 common-cathode stage:
+# even harmonics below 0.5 V grid, a hard plate ceiling one way and grid
+# conduction the other. `tape` is a reel-to-reel chain: odd Langevin
+# saturation and a playback-loss curve that slides with Speed. `console` is
+# transformer iron: flux-driven, saturating from the bottom up.
+#
+# All three are AC-coupled after the shaping, at 20 Hz — the plate coupling
+# capacitor, the playback head that cannot see DC, the flux high-pass. That
+# is where Bias's operating-point shift goes instead of onto the output.
+#
+# Controls moved and moved back play nothing out of silence
+# (audiocomponents#113). Mix back up from 0 comes back as the class was
+# built - cleared, the voices re-armed - where it used to play what it held,
+# up to 7 927 LSB. Bias is folded into the table, which answers silence
+# with exactly zero at every Bias, so the plate pole never holds an offset:
+# off centre (patches 4 and 6) silence in is silence out from the first
+# frame, and a Bias, Drive, Output, Headroom or Hysteresis move leaves the
+# pole nothing to bleed out. That holds where `audiocore.get_buffer` is
+# compiled out (CircuitPython's board builds) as well, because nothing is
+# charged by pulling. Hysteresis back in starts its play operator at the
+# centre instead of where it froze (314 LSB). And a Bias move pulls no block
+# off the dry tap: that once put the dry leg 256 frames ahead of the wet one
+# after every `program_change`, a comb at patch 7 (Mix 44), and left a block
+# of old audio in the Splitter for the next Mix move off 0 to play
+# (13 071 LSB).
+#
+# Bias sounds over its whole travel. On `tube` its ends move the
+# operating point ±1.25 V of grid (`TUBE_BIAS_REACH`), towards cutoff one
+# way and grid conduction the other, and stop short of both: at −6 dBFS the
+# ends read 5.6 and 7.0 dB under Bias 0 and hold there. Bias used to reach
+# ±10 V, and past about a quarter of its travel either way the stage was cut
+# off or pinned, so the sound died away within a tenth of a second of the
+# move (Bias −0.4 rendered digital silence). `tape` and `console` keep the
+# whole span, whose ends read 6.8 and 6.9 dB down.
+#
+# What the default surrenders. Mix 1, Drive 0 dB, Headroom 0, Bias 0,
+# Tilt 0, Hysteresis 0, Speed 15 ips (inert on tube).
+#
+# Headroom is Drive, spent the other way round, and they share one
+# ceiling. Headroom moves the character's knee and Drive moves the signal
+# at it; in front of one curve on one node that is a single number. It used
+# to be two — `pre = pre0·drive/head` — which gave the pair +27 dB of
+# reach behind a documented +15 dB cap, and the alias floor failed from
+# the shipped surface at Headroom −6 / Output +6 (−45.621 dB at 3700 Hz,
+# audiocomponents#70). Drive − Headroom stops at +15 dB however you
+# reach it: that is where the floor still holds 60 dB down at 1010 and
+# 3700 Hz (−70.6 / −63.8 at 48 kHz). It costs the top of the range and the
+# plate has long since pinned by then.
+#
+# The alias floor is a ratio, and 16 bits is not. It is claimed at
+# 48 kHz, on `tube`, at the class's own output level. Wherever the output is
+# quiet the ratio reads badly whatever the shaper did, one dB for one:
+# Output −12 / −18 / −24 read −69.007 / −63.233 / −57.301, and
+# `character="console"` reads −46.094 at Drive 0 because its 5 Hz flux
+# pair takes 25 dB out before the jack. Bias holds the bar over its whole
+# travel: its ends read −71.770 / −72.135 at 3700 Hz and Drive 0, and
+# −71.521 / −63.075 at maximum Drive.
+# Over the whole Drive × Headroom plane at 48 kHz the worst cell is
+# −63.863 (3700 Hz, maximum Drive, Headroom −3) and every cell clears.
+# At 44.1 kHz the 3700 Hz probe cannot reach the bar at any factor
+# (−47.763 at maximum Drive, −41.880 at the plane's worst): h6 of
+# 3700 Hz is above that rate's Nyquist and folds back whatever the internal
+# rate was. At 22.05 kHz it misses at the shipped default (−58.181) and
+# reads −17.591 at maximum Drive, because h3 is already above Nyquist
+# there. The dossier does not claim 22.05 kHz; this says so out loud.
+#
+# The even lead holds from 0.05 V to 0.5 V of grid, not below. Under the
+# freeze's own quietest probe the table runs out: at 0.0316 V the h2−h3 lead
+# is 7.294 dB and at 0.0089 V it is −15.049 (48 kHz). One table cell
+# is 0.0195 V of grid, so a 0.0089 V peak sweeps less than half a cell and
+# what h2 reports there is interpolation residue, not a triode. Worst cell
+# inside the bound, over 63 (level, rate) cells: 16.008 dB.
+#
+# The Hysteresis macro is off; TP3 is not a graded trait (dossier §8 Q1).
+# Drive compensation keeps small-signal level from jumping with the knob.
+# Switching into or out of patch 8 re-routes the pull chain, so it steps at
+# the block boundary like the patch change it is (3357 LSB against 1281 for
+# an ordinary patch change on the same material) — a setup choice, not a
+# knob to ride.
+#
+# Portability tier: audiodsp (`REQUIRES = ("audioshaper", "audiobiquad",
+# "audioroute", "audioecho")`). On a stock CircuitPython board this module
+# imports and construction raises `ImportError`.
+#
+# The rate picks the oversampling factor, on the measurement in
+# `OVERSAMPLE_RATE_HZ`: ×4 at 48 and 44.1 kHz, ×2 at 22.05 kHz. ×8 was
+# shipped everywhere and bought nothing at the default — ×1 and ×4 are
+# within 2 dB there (−76.806 against −77.693 at 1010 Hz) — while costing the
+# S3 1.408 ms a block. At maximum Drive, where it is the oversampler's fold
+# to lose, ×4 clears the bar (−63.847 at 3700 Hz) and ×8 adds 0.923 dB.
+#
+# Cost, palette, reference patch 0 (tube, 48 kHz, oversample ×4), priced
+# at the rows both boards took on 2026-09-18:
+# Splitter-2 0.207/0.368 + Waveshaper ×4 1.069/1.918 + 3×Biquad 0.324/0.612
+# + Mixer 0.050/0.175 + glue 0.0
+# = 1.650 / 3.073 ms → P4 31 %, S3 58 % of a 5.333 ms stereo block.
+# Three biquads and not four: `_after` *is* `_couple` on `tube` and
+# `tape`, so the board's attribute census counted one node under two names.
+# The boards measured 34.3 % / 62.2 % — over by 3.4 / 4.6 points, and
+# the node count is not what is over. Every node the class drops leaves the
+# sum by exactly its palette row, so the miss is the same afterwards: what is
+# over is the per-block glue every budget in this program prices at 0.0.
+# The class handed back a 128-frame block (`Mixer._render_size` is
+# `buffer_size // 2 // 4 * 4` bytes), so everything behind it was pulled twice
+# per 256-frame block, and one extra Python-level pull is worth about
+# 0.18 ms on the P4 and 0.11 ms on the S3 — read off the boards' own rows,
+# `Splitter+3 − Splitter+tap` (an extra tap pulled from Python) against
+# `Mixer@3active − Mixer@2active` (the same extra tap pulled from C). On the
+# P4 that is the whole 3.4 points. `MIXER_BUFFER_BYTES × channel_count` makes
+# one pull one block and moves no byte: `ffb5e07e33e2732d` at patch 0 and
+# `58444f96ff950621` at patch 8, at either block length, on CPython,
+# MicroPython and CircuitPython. The second board pass measured that graph
+# on 2026-09-18 and the miss is gone: 29.4 % / 55.4 % at patch 0, 20.8 % /
+# 39.6 % at patch 8, 29.9 % / 56.4 % at its costliest patch.
+#
+# Alone on an ESP32-S3 this uses 55 % of a block at its default patch,
+# 56 % at its costliest; use patch 8 `Saturation - lean` (40 %) to stack.
+#
+# At 22.05 kHz the block is 11.61 ms and ×2 prices at
+# 1.139 / 2.172 ms, 10 % / 19 %.
+# The identity `MidSide` tail is gone: it was there so the class would not end
+# on a Mixer, and what it bought instead was an LSB on every full-scale sample
+# (audiodsp#95). At Mix 0 the output is the borrowed source, so the wire is
+# exact by construction and nothing in the graph is pulled at all.
+# Patch 8 `Saturation - lean` is one factor below whatever the rate ships —
+# ×2 at 48 kHz, through a second node nothing else pulls: Waveshaper ×2
+# 0.558/1.017 + the same rest = 1.139 / 2.172 ms → 21 % / 41 %, measured
+# 24.7 % / 46.4 %, which is the same glue over the same graph. It buys
+# that partly out of the floor and the pack says so: 1010 Hz still clears at
+# maximum Drive, 3700 Hz reads −56.686 and does not.
+# `hysteresis` has no palette row (gap). The silence sample is pulled once,
+# at construction, so it is not a source row. `tape` adds a fourth biquad for
+# the playback loss — 1.758 / 3.277 ms, 33 % / 61 % — and `console`
+# replaces one biquad with two bare FeedbackDelay rows, which have no Phase 4
+# row at all. Neither is this bar.
+#
+# Latency — one reading, said plainly. There were two, and the class
+# declared a third: `_GROUP_DELAY_SAMPLES` is where the half-band's
+# *centroid* sits, and the onset of a symmetric response arrives before
+# its centroid, so `tube` graded sub-sample and failed the integer onset by
+# 2 samples while `console` did the opposite — 10 of 18 build × rate
+# cells red (audit 3 (p)8). `latency_samples` is the measured integer
+# onset now, per character and factor (`CLICK_ONSET_SAMPLES`), which is
+# the reading a host's delay compensation can use and the one `Distortion`
+# already declares: tube 1 / tape 2 / console 4 at the shipped ×4,
+# 0 / 1 / 3 at ×2, 2 / 2 / 5 at ×8, and 0 / 0 / 2 at ×1. Mix 0 is a
+# dry tap and reports 0. All 18 build × rate cells now read within the
+# kit's 1-sample bar, stereo and mono.
+#
+# The sub-sample reading is the graph's own group delay and is not what
+# this reports: 3.912 samples at tube ×4, 4.753 at tape, 6.418 at console,
+# and on `console` it is probe-dependent besides — 12.774 on an impulse and
+# 16.808 on a 4 ms burst, which is the 5 Hz damping and cut filters inside
+# its two flux sections (`kit.click`'s own words).
+#
+# Output is decibels out for decibels asked, and there is a makeup stage
+# behind the shaper. What the node gives up at `NODE_CEILING` used to go
+# onto the wet mixer voice as `level > 1.0` — and a mixer voice clamps at
+# 1.0, so Output +6 delivered +5.965 dB and Output +12 delivered
+# +7.866 (1 kHz, −12 dBFS), while the test that should have caught it
+# multiplied two numbers in Python and never rendered (audit 3 (p)1, ruling
+# (o)). `MAKEUP_SHELF_HZ` is a `HIGH_SHELF` at 10 Hz — flat everywhere a
+# note lives, 0.02 dB down at 100 Hz — and it carries the excess. Rendered,
+# +3 / +6 / +9 / +12 dB of Output now deliver within 0.25 dB of what
+# they say, on `tube` and on `console`. It is 0 dB at 63 of the 75 shipped
+# positions, whose bytes do not move. Output adds up to +12 dB, so a
+# full-scale input can clip at the rails: with every macro at its top, a
+# 0 dBFS sine or noise does.
+#
+# The tube table does not invert any more. A triode inverts, and a table
+# that carried the inversion put the wet leg 180° out of phase with the dry
+# one, so Mix was a notch rather than a blend: rendered at −12 dBFS the
+# level walked −15.011 → −18.609 → −24.676 → −33.580 → −23.125 dBFS
+# across Mix 0 … 1, with the deepest point three quarters of the way up
+# (audit 3 (p)2). Every unit this models has an even number of gain stages
+# for exactly that reason, so the sign moved into
+# `saturation_curve.tube_points()` and no harmonic magnitude moved with it.
+# Mix now walks −15.011 → −16.515 → −18.301 → −20.469 → −23.125.
+#
+# Silence answers silence at every Bias. `Bias` is an offset into an
+# asymmetric curve. As the node's own offset it made the shaper answer
+# silence with a constant, and the pole behind it passed the step that
+# started it: shipped patches 4 and 6 put 8 489 and 7 044 LSB out of
+# digital silence, and charging the pole by pulling it left 1 LSB. The class
+# now builds the table the shapers read: the curve at `(1 + |Bias|) * u +
+# Bias`, less its value at `u = 0`, so silence reads exactly zero and the
+# curve's rails sit where they did. It is built in integers on a grid of
+# 1/256 of a table step, so a board builds the table a desktop builds.
+#
+# Tail. `TAIL_SAMPLES = 65536` (1.365 s at 48 kHz), measured: a 200 ms
+# 0 dBFS burst's residual reaches 0 LSB 3282 frames after the burst on
+# `tube`, 3196 on `tape` and 13759 on `console`, whose flux corner is at
+# 5 Hz. The 655360 it used to declare was 13.65 s and was in neither the
+# pack nor a measurement. Those are 1 kHz numbers: a 40 Hz burst on
+# `console` reads 19 317 frames, so the declaration is 3.4× the worst
+# measured and not the 4.8× the pack claimed (audit 3 (p)7).
+#
+# Insertion loss, which no row carried. At the default, a −12 dBFS
+# 1 kHz sine comes out 8.1 dB down on `tube`, 13.4 on `tape` and
+# 33.6 on `console`. That is the unit's own gain structure — a saturator
+# is a gain stage followed by a ceiling — and `Output` is what puts it
+# back, but a row that says nothing about it leaves a user thinking Mix 1 is
+# unity. It is not.
+#
+# `capabilities = ()`: nothing reads `self._transport()`.
 
 VENDOR = "PyDevices"
 
@@ -686,7 +691,61 @@ def shipped_oversample(sample_rate):
 
 
 class Saturation(_component.Component):
-    """A 12AX7 stage, a tape machine, or transformer iron."""
+    """A 12AX7 stage, a tape machine, or transformer iron.
+
+    **Character.** `character` picks the stage when you build it: `tube`
+    (the default), `tape` or `console`. On `tube` the second harmonic leads
+    the third by more than 15 dB from -26 dBFS to -6 dBFS, and by more than
+    20 dB at -6 dBFS. On `tape` the curve is odd: at the default the second
+    harmonic of a -12 dBFS tone stays 40 dB under it. `console` is
+    transformer iron, and it saturates from the bottom up.
+
+    **Drive and Headroom.** Drive spans -12 dB to +15 dB and Headroom
+    -12 dB to +12 dB. Headroom is Drive spent the other way round, and the
+    two share one ceiling: Drive less Headroom stops at +15 dB however you
+    reach it.
+
+    **Aliasing.** At 48 kHz on `tube` the aliasing stays more than 60 dB
+    under a 1010 Hz or a 3700 Hz tone, at the default and at full Drive, and
+    at every Headroom down to -12 dB. That is a ratio, so wherever the output
+    is quiet it reads worse, one dB for one, and `console` at Drive 0 dB
+    does not reach it.
+
+    **Output and Mix.** Output spans -24 dB to +12 dB, and +3, +6, +9 and
+    +12 dB come out within 0.25 dB of what they say. At the default the
+    stage takes level away: a -12 dBFS 1 kHz tone comes out about 8 dB down
+    on `tube`, 13 dB on `tape` and 33 dB on `console`, and Output is what
+    puts it back. With every macro at its top a full-scale input can clip.
+    Mix runs from the dry signal at 0 to the stage at 1, and it is a blend:
+    the level never rises on the way and there is no notch. At Mix 0 the
+    output is the source itself and the latency is 0.
+
+    **Bias.** Bias spans -1 to +1 and moves the stage's operating point. Every
+    position sounds: none takes more than 12 dB off the level at Bias 0, and
+    none wanders more than 1 dB once it has settled. Silence in is silence
+    out at every Bias and every patch.
+
+    **Speed, Tilt and Hysteresis.** Speed is the tape's, from 3.75 to 30
+    inches a second, and slides its playback loss; on `tube` it changes
+    nothing. Tilt spans -6 dB to +6 dB about 1 kHz. Hysteresis spans 0 to 1
+    and is off by default.
+
+    **Latency and tail.** The rate picks the oversampling: x4 at 48 kHz and
+    44.1 kHz, x2 at 22.05 kHz. At x4 the latency is 1 sample on `tube`, 2 on
+    `tape` and 4 on `console`, and the host is told. After a burst every
+    patch is back to silence within the declared tail of 65536 samples.
+
+    **Patches.** There are nine: Gentle thickening; Hot into the curve; Tape
+    at fifteen; Tape at seven and a half; Under-biased and bright; Iron, low
+    end working; Offset, even harmonics; Mix back; and Saturation - lean.
+    Alone on an ESP32-S3 the class was measured at 55 % of a block at its
+    default patch and 56 % at its costliest. Saturation - lean runs one
+    oversampling factor lower and was measured at 40 %, so play it when you
+    stack effects.
+
+    It needs `audioshaper`, `audiobiquad`, `audioroute` and `audioecho`, so
+    a stock CircuitPython board can't run it.
+    """
 
     #: Construction arms the voices on silence (`Component._play_voice`),
     #: so a Mix 0 set before the first pull hands out the source whole.
