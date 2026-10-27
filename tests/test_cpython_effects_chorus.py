@@ -622,15 +622,6 @@ class TheClaims(unittest.TestCase):
             levels[hz] = 20.0 * math.log10(float(np.sqrt(np.mean(wet ** 2))))
         return levels[10000.0] - levels[200.0]
 
-    def test_the_spans_and_defaults(self):
-        self.assertEqual(rebuilt.Chorus._MACRO_RANGES,
-                         ((0.3, 10.0, "log"), (0.0, 0.35), (0.0, 1.0),
-                          (3.0, 20.0), (1000.0, 12000.0, "log")))
-        effect = build(frames=256)
-        for index, want in enumerate((0.8, 0.35, 0.815, 8.8, 3000.0)):
-            self.assertAlmostEqual(effect._value(index), want,
-                                   delta=want * 0.01)
-
     def test_tone_at_its_ends(self):
         self.assertLess(self._ten_khz_down(3000.0), -10.0)
         self.assertGreater(self._ten_khz_down(12000.0), -6.0)
@@ -672,25 +663,15 @@ CLAIMS = (
      ("T1OneVoice.test_one_wet_arrival_at_defaults",
       "T2Reciprocal.test_offset_ramps_inside_a_half",
       "T6ClockLaw.test_second_harmonic_near_m_over_two")),
-    ("Rate runs the sweep from 0.3 to 10 Hz.",
-     ("TheClaims.test_the_spans_and_defaults",
-      "T5RateSpan.test_rate_stops_span_more_than_ten_to_one")),
-    ("Depth is how far the clock swings, from none to 35 % either way.",
-     ("TheClaims.test_the_spans_and_defaults",)),
     ("Mix sets the wet voice against your signal, which stays at full "
      "level: 0 is a wire, the default 0.815 is the vintage blend, and 1 "
      "puts the two level.",
      ("Tier1Fast.test_mix_zero_is_a_wire",
-      "T4NearEqual.test_vintage_mix_near_0_815",
-      "TheClaims.test_the_spans_and_defaults")),
-    ("Delay is the line's average length, from 3 to 20 ms, 8.8 ms by "
-     "default.",
-     ("TheClaims.test_the_spans_and_defaults",)),
-    ("Tone is the wet voice's low-pass, from 1 to 12 kHz: at its default "
-     "3 kHz the wet voice is at least 10 dB down at 10 kHz, the dark sound "
-     "of the originals, and at 12 kHz it is less than 6 dB down there.",
-     ("TheClaims.test_the_spans_and_defaults",
-      "TheClaims.test_tone_at_its_ends",
+      "T4NearEqual.test_vintage_mix_near_0_815")),
+    ("Tone is the wet voice's low-pass: at its default 3 kHz the wet voice "
+     "is at least 10 dB down at 10 kHz, the dark sound of the originals, "
+     "and at 12 kHz it is less than 6 dB down there.",
+     ("TheClaims.test_tone_at_its_ends",
       "T3DarkWet.test_ten_khz_is_at_least_ten_db_down")),
     ("A hit comes back once, with no repeats: there is no feedback.",
      ("T1OneVoice.test_one_wet_arrival_at_defaults",

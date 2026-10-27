@@ -152,14 +152,14 @@ class Chorus(_component.Component):
     one delayed copy of your signal, its pitch swirling because a triangle
     moves the line's clock rather than its delay.
 
-    **Controls.** Rate runs the sweep from 0.3 to 10 Hz. Depth is how far
-    the clock swings, from none to 35 % either way. Mix sets the wet voice
-    against your signal, which stays at full level: 0 is a wire, the
-    default 0.815 is the vintage blend, and 1 puts the two level. Delay is
-    the line's average length, from 3 to 20 ms, 8.8 ms by default. Tone is
-    the wet voice's low-pass, from 1 to 12 kHz: at its default 3 kHz the
-    wet voice is at least 10 dB down at 10 kHz, the dark sound of the
-    originals, and at 12 kHz it is less than 6 dB down there.
+    **Controls.** Rate is the sweep's speed, and Depth is how far the
+    clock swings either way. Mix sets the wet voice against your signal,
+    which stays at full level: 0 is a wire, the default 0.815 is the
+    vintage blend, and 1 puts the two level. Delay is the line's average
+    length. Tone is the wet voice's low-pass: at its default 3 kHz the wet
+    voice is at least 10 dB down at 10 kHz, the dark sound of the
+    originals, and at 12 kHz it is less than 6 dB down there. The Effect
+    controls page lists what the knobs span.
 
     **One voice.** A hit comes back once, with no repeats: there is no
     feedback. The sweep runs free and does not follow a host's tempo.
