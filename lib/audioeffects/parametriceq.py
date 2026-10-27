@@ -50,7 +50,8 @@ All of it is the clip, not the filter: the coefficients are reciprocal and
 proportional at every level, which is what
 `tests/test_cpython_effects_parametriceq.py` reads. Drive this EQ from a
 signal with headroom for the boost you dial, or trim into it, and the curves
-are the ones the traits describe.
+are the ones the traits describe. Keep the input under -12 dBFS and the
+defaults and patches stay off the rails.
 
 **Cost.** Eight sections, always built, and no patch changes that. Measured
 2026-09-07 on both boards at construction defaults - where patch 0 is a wire,
