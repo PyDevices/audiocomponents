@@ -7,13 +7,13 @@ hall waits for it. In Rise the shifter sits in a feedback loop: the hall
 starts at once, and each pass comes back shifted again, so the tail climbs
 while Damping darkens every pass until it fades.
 
-Shimmer (0 to 1) is how loud the shifted copy goes into the hall. Bloom (20
-to 800 ms) is the wait in Bloom and the time between passes in Rise. Rise (0
-to 0.9) is how strongly each pass returns, in Rise only. Interval picks one
-of five shifts: -12, -5, +7, +12 or +24 semitones. Decay (0.3 to 10 s), Size
-(0.5 to 1.5) and Damping (500 Hz to 16 kHz) set the hall, and Damping also
-darkens each pass of the loop. Mix (0 to 2) is `audiodelays.Echo`'s: your
-dry signal at unity up to 1, the hall alone at 2.
+Shimmer is how loud the shifted copy goes into the hall. Bloom is the wait
+in Bloom and the time between passes in Rise. Rise is how strongly each
+pass returns, in Rise only. Interval picks one of five shifts: -12, -5, +7,
++12 or +24 semitones. Decay, Size and Damping set the hall, and Damping
+also darkens each pass of the loop. Mix is `audiodelays.Echo`'s: your dry
+signal at unity up to 1, the hall alone at 2. The Effect controls page
+lists what the knobs span and the patches.
 
 In Bloom, move Bloom and the shifted copy moves by the same time, within 512
 frames. Its energy centres within 2.5 semitones of the Interval. In Rise the
@@ -34,12 +34,11 @@ hall to the rail.
 
 `tail_samples` bounds how long the output takes to reach exact zero once
 your input stops: 82 s at Rise 0.9 and Bloom 800 ms. `reset()` empties the
-hall, the line and the shifter, and restores patch 0. The patches: Octave
-Rise (the defaults), Short Stagger, Fifth Halo, Slow Rise, Rise Damped,
-Falling Octaves, Octave Bloom. Octave Rise is Octave Bloom in Rise at Rise
-0: one octave, once, and the hall starts at once. On an ESP32-S3 the Bloom
-patches (Octave Bloom, Short Stagger and Fifth Halo) take longer than a
-block and cannot keep up; the defaults and every Rise patch keep up.
+hall, the line and the shifter, and restores patch 0. Octave Rise is Octave
+Bloom in Rise at Rise 0: one octave, once, and the hall starts at once. On
+an ESP32-S3 the Bloom patches (Octave Bloom, Short Stagger and Fifth Halo)
+take longer than a block and cannot keep up; the defaults and every Rise
+patch keep up.
 
 **Limits**
 
