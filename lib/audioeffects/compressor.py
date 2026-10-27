@@ -201,7 +201,7 @@ class Compressor(_component.Component):
     #: After a reset, a rejoin or a control move the detector can leave
     #: the output up to 1,575 LSB from an untouched copy for 20 to 50
     #: blocks: a re-attack, which `tail_samples` does not bound. See
-    #: "Detector and coupling state" in docs/audio-component-api.md.
+    #: "Detector and coupling state" in docs/reference/component-api.md.
     TAIL_SAMPLES = 0
 
     MACRO_LABELS = ("Character", "Threshold", "Ratio", "Attack", "Release",

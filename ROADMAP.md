@@ -8,7 +8,7 @@ the real thing.
 
 - Control moves that ramp instead of stepping: Mix, levels and depths over
   20 ms in audiodsp's nodes, then filter corners, then crossfaded patch
-  changes. The policy is in [docs/control-smoothing.md](docs/control-smoothing.md).
+  changes. The policy is in [docs/how-it-works/control-smoothing.md](docs/how-it-works/control-smoothing.md).
 
 ## Later: effects
 

@@ -1,11 +1,11 @@
 # Audio component metadata manifest
 
 The live-object construction and processing surface is specified separately in
-[`audio-component-api.md`](audio-component-api.md). This document defines only
+[`component-api.md`](component-api.md). This document defines only
 the static provider metadata and its consumer rules.
 
-An **audio component** is an audiodsp instrument, effect, or effect rack. The
-component's metadata is a static declaration owned by `audiodsp`. Consumers
+An **audio component** is an instrument, effect, or effect rack built on audiodsp's nodes. The
+component's metadata is a static declaration owned by the component. Consumers
 such as the offline renderer and `micropython-vst3` may use as much or as
 little of the optional metadata as they need.
 
@@ -70,14 +70,12 @@ Each patch name is a unique, non-empty human-readable string. Each values
 tuple has exactly one integer per macro, and every value is in MIDI range
 `0..127`.
 
-**Patch values are integers deliberately, and this is settled** (2026-09-02,
-after the question was raised by instruments whose declared
-defaults did not land on a grid point). The live surface and the patch
+**Patch values are integers deliberately.** The live surface and the patch
 surface do different jobs, and the asymmetry is the boundary between them:
 
 - **Live macro values are performance** — continuous, at whatever resolution
   the host offers. A DAW turning a knob sends a gradual slope, and
-  `get_macro()` returns a fractional value (see `audio-component-api.md`).
+  `get_macro()` returns a fractional value (see [the runtime API](component-api.md)).
 - **Patch values are storage** — discrete, portable, and meant to reproduce.
 
 Opening patches to floats would be comfortable for a DAW and would then
@@ -98,7 +96,8 @@ Corollary worth stating, because it is easy to get wrong: since construction
 applies patch `0` and a patch supplies every macro, **a source-level default
 for a macro-controlled parameter is never observable.** What ships is patch
 `0`. Where the two disagree, the source is documentation that contradicts the
-artifact — see [audiodsp#17](https://github.com/PyDevices/audiodsp/issues/17). Patch `0` is the component's default state. When there is only one
+artifact.
+Patch `0` is the component's default state. When there is only one
 patch, `Default` is the convention but not a validity requirement. When
 there are multiple patches, patch `0` has a descriptive name like every other
 patch. A macro-less component uses an empty values tuple.
@@ -157,11 +156,11 @@ no numbers of their own to keep. The four that shipped with MIDI turn out to
 have put their voices on GM's slots anyway, bar one — the DrumTraks cabasa,
 which its chart puts on 58, where GM has a vibraslap; it is on 69 here. Those
 charts also gave several voices a second key number, the accented hit on
-hardware with no velocity. Velocity is that channel now, so the second numbers
-are not answered.
+hardware with no velocity. Velocity carries that, so the second numbers are
+not answered.
 
 Which kit answers which hit is a table in
-[`lib/audioinstruments/README.md`](../lib/audioinstruments/README.md),
+[the instruments reference](instruments.md),
 rendered from the modules' own `NOTE_MAP`s by the tests.
 
 The presence of a valid `NOTE_MAP` is the sole percussion discriminator;
@@ -196,9 +195,8 @@ second hand-maintained classification list.
 
 An audio component is portable source code. It may run under CircuitPython,
 MicroPython, or CPython on Linux, Windows, WebAssembly, Android (wheels
-build and publish; playback is not yet validated on an emulator or a
-device), or another
-host supported by the surrounding audio stack. Component code must therefore
+build and publish; playback is untested on an emulator or a device), or
+another host supported by the surrounding audio stack. Component code must therefore
 use the common Python/audiodsp surface. When an operation differs by runtime,
 the component supplies another route for the other runtimes rather than
 silently depending on a CPython-only function or object.
@@ -239,11 +237,11 @@ the declarations to build a UI, initialize values, or offer program changes;
 the metadata remains mandatory even when that consumer chooses not to use
 those features.
 
-**Shipped status:** rack providers ship in `lib/audioeffects/`
-(`rack.py`, `shimmerhall.py`, `airspace.py`) —
+Rack providers ship in `lib/audioeffects/`
+(`rack.py`, `shimmerhall.py`, `airspace.py`):
 `Rack` (the generic serial-chain mechanism, built from a portable `chain`
 literal), `ShimmerHall`, and `AirSpace` (fixed topologies with a macro
-surface, ported from micropython-vst3's shared soundtrack racks). All
+surface). All
 three are ordinary `audioeffects` providers: class-scope metadata,
 validated by `tools/validate_metadata.py` with the other effect classes.
 
@@ -254,9 +252,3 @@ A consumer must use `NAME` as the stable lookup identity and may use
 note maps when useful. It must not assume optional metadata exists. It may
 also provide a generic UI when macros or patches are empty, although every
 provider still declares those fields explicitly.
-
-<!-- Home: this document and audio-component-api.md live here, in
-     audiocomponents/docs/, and nowhere else. They address components rather
-     than audiodsp, and audiocomponents is the repository that ships the
-     components; audiodsp's copies are retired with its component copies
-     (audiocomponents#2). Edit them here. -->

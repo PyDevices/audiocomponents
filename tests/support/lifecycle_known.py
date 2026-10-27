@@ -10,7 +10,7 @@ issue that tracks it, or the docstring sentence that states it.
 
 R_JUMP = (
     "a control that jumps hands its node the new value at once, so the"
-    " output steps; disclosed in docs/control-smoothing.md, lifted when"
+    " output steps; disclosed in docs/how-it-works/control-smoothing.md, lifted when"
     " the node ramps land (audiocomponents#153)")
 R_STATE_RAMP = (
     "state that outlives tail_samples, as R_STATE (audiocomponents#155);"

@@ -2,7 +2,7 @@
 
 Exports and metadata, the factory and the rate it owns, building and
 rendering, chaining into each other and out of an instrument, and the patch
-surface - what docs/audio-component-api.md states about the catalogue as a
+surface - what docs/reference/component-api.md states about the catalogue as a
 whole rather than about any one effect. Nothing here names an effect for its
 character, so a family phase can rebuild its classes from scratch without
 touching this file: what a rebuild must not break is written here, once,

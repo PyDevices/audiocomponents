@@ -2,7 +2,7 @@
 
 This document defines the runtime contract for an **audio component**: an
 instrument, an effect, or an effect rack. The metadata contract is documented
-separately in `audio-components.md`.
+separately in [the metadata manifest](metadata.md).
 
 The contract is structural. A provider does not have to inherit from an
 `audiodsp` helper class, but it must expose the required attributes and methods.
@@ -23,7 +23,7 @@ instrument = audioinstruments.create(
 
 effect = audioeffects.create(
     "Reverb", instrument.output, sample_rate=48000,
-    transport=transport, preset="hall",
+    transport=transport, character="hall",
 )
 ```
 
@@ -83,7 +83,7 @@ component.reset()
 component.deinit()
 ```
 
-The current method names are part of API v1. New optional arguments may be
+The method names are part of API v1. New optional arguments may be
 added compatibly, but existing names and their basic call patterns remain
 valid.
 
@@ -110,10 +110,9 @@ Names describe meaningful optional behavior, for example
 `"poly_pressure"`, or `"tempo_sync"`. Capability discovery is advisory; the
 optional methods remain safe to call even when a capability is absent.
 
-**Shipped status:** the effects with a Sync control declare `"tempo_sync"`.
-No other capability is declared yet, so a host cannot use discovery to find,
-say, a pitch-bend-aware instrument; declaring the rest across the shipped
-libraries is deferred to future component work, not dropped.
+Only the effects with a Sync control declare a capability, `"tempo_sync"`. No
+instrument declares any, so a host cannot use discovery to find, say, a
+pitch-bend-aware instrument.
 
 ### `output` is stable for the life of the component
 
@@ -233,7 +232,7 @@ note-off, Control Change 120 and 123 call `all_notes_off()`, and every other
 controller reaches `control_change()` as it is. Channel 9 (General MIDI's
 channel 10) goes to a drum kit when you give one. `read_midi_file()` turns
 a Standard MIDI File into timed events for it. The module docstring has
-the routing calls and an example: [midi_dispatch.py](../lib/audioinstruments/midi_dispatch.py).
+the routing calls and an example: [midi_dispatch.py](https://github.com/PyDevices/audiocomponents/blob/main/lib/audioinstruments/midi_dispatch.py).
 
 Notes are identified by `(channel, note_id)` when `note_id >= 0`. If no note
 ID is supplied (`note_id == -1`), the identity is `(channel, pitch)`. A note
@@ -280,7 +279,7 @@ instruments still play live. `audioinstruments.sequencer.Sequencer` refuses
 one rather than playing its part early.
 
 Writing a part against this, and the two traps that cost a run: the
-[sequencing guide](sequencing.md).
+[sequencing guide](../guides/sequence-a-part.md).
 
 ## Macro and patch state
 
@@ -374,10 +373,10 @@ for block in host_blocks():
     audio_out.write(effect.output)
 ```
 
-**Shipped status:** the effects with a Sync control consume the transport:
-the delays (`DigitalDelay`, `TapeDelay`, `AnalogDelay`, `PingPongDelay`,
-`MultiTapDelay`), `Phaser`, `AutoPan` and `Tremolo`. No instrument syncs to
-tempo yet.
+The effects with a Sync control consume the transport: the delays
+(`DigitalDelay`, `TapeDelay`, `AnalogDelay`, `PingPongDelay`,
+`MultiTapDelay`), `Flanger`, `Phaser`, `AutoPan` and `Tremolo`. No instrument
+syncs to tempo.
 
 Construction may allocate the complete graph and bounded resources. Pulling
 from `output` must not allocate, block, perform I/O, or depend on garbage
@@ -393,14 +392,13 @@ control. An effect rack has exactly the effect shape even when its internal
 graph contains serial, parallel, or mixed effects. Racks may contain and be
 used by other racks.
 
-**Shipped status:** rack providers ship in `lib/audioeffects/`
+Rack providers ship in `lib/audioeffects/`
 (`rack.py`, `shimmerhall.py`, `airspace.py`).
 `Rack` is the generic mechanism — a serial chain of the package's own
 effects described by portable literals
 (`create("Rack", source, rate, chain=(("Reverb", {"character": "hall"}),))`) —
 and `ShimmerHall` and `AirSpace` are fixed-topology racks with a macro
-surface over their children, ported from micropython-vst3's shared
-soundtrack racks. A rack is one more `audioeffects` provider: it is
+surface over their children. A rack is one more `audioeffects` provider: it is
 discovered through `audioeffects.ALL`, constructed by
 `audioeffects.create()`, and reports its complete graph's latency
 (children summed) and tail (`None` as soon as any child's is unbounded).

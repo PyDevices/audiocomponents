@@ -59,3 +59,7 @@ tools/compressor_deinit_use.py
 *.wav
 *.WAV
 tools/effect_probes/*/
+
+# Generated on every docs build
+docs/reference/index.rst
+docs/reference/audio*.rst

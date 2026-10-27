@@ -173,7 +173,7 @@ class DynamicEQ(_component.Component):
     #: After a reset, a rejoin or a control move the detectors can leave
     #: the output about 1,000 LSB from an untouched copy for 5 to 20
     #: blocks: a re-attack, which `tail_samples` does not bound. See
-    #: "Detector and coupling state" in docs/audio-component-api.md.
+    #: "Detector and coupling state" in docs/reference/component-api.md.
     TAIL_SAMPLES = 0
 
     MACRO_LABELS = ("Frequency", "Width", "Threshold", "Ratio", "Attack",

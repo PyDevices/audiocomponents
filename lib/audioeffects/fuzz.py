@@ -619,8 +619,8 @@ class Fuzz(_component.Component):
     #:
     #: After a reset, a rejoin or a control move a few LSB of float
     #: residue can remain in the output beside an untouched copy, past
-    #: `tail_samples`. See "Detector and coupling state" in docs/audio-
-    #: component-api.md.
+    #: `tail_samples`. See "Detector and coupling state" in
+    #: docs/reference/component-api.md.
     TAIL_SAMPLES = 24576
 
     MACRO_LABELS = ("Fuzz", "Level", "Tone", "Bias", "Load", "Mix",

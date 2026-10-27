@@ -8,7 +8,7 @@ Cells, all on an 8192-frame click and noise train then silence:
 - `stops-m<i>`: 0, 64 and 127 are accepted and `get_macro` reads each
   back within 1e-4.
 - `bad-m<i>`: NaN, +inf, -inf, -1, 128 and +-10**400 (an int past
-  float's range). The contract (audio-component-api.md, "Macro and patch
+  float's range). The contract (docs/reference/component-api.md, "Macro and patch
   state") clamps: NaN, -inf, -1 and -10**400 read back 0, +inf, 128 and
   10**400 read back 127, and each renders exactly
   what `set_macro(i, readback)` renders (`c`). A raise of any kind is
@@ -188,7 +188,7 @@ def patch_cell(cls, patch):
                     i, kc.num(got[i]), want[i])
         # Back at patch 0 it reads patch 0's values, not a fresh
         # instance's: a declared default may sit off patch 0's grid
-        # (docs/audio-components.md; the kit holds reset-equals-fresh, not
+        # (docs/reference/metadata.md; the kit holds reset-equals-fresh, not
         # fresh-equals-patch-0, ruled 2026-10-14).
         e.program_change(0)
         back = gets(e)

@@ -32,8 +32,8 @@ side effect of other work.
   the audiodsp floor, `pydevices-audiodsp>=<release>` — the newest audiodsp
   *release*. That is not the pin: `AUDIODSP_PIN` may name a commit ahead of
   the floor, and the gates use the pin.
-- `docs/audio-component-api.md` — the runtime contract (construction,
-  methods, properties). `docs/audio-components.md` — the static metadata
+- `docs/reference/component-api.md` — the runtime contract (construction,
+  methods, properties). `docs/reference/metadata.md` — the static metadata
   manifest. `tools/validate_api.py` and `tools/validate_metadata.py` enforce
   them, and the tests import the latter.
 - `tests/parity/` — the instrument parity harness, its probes and goldens.

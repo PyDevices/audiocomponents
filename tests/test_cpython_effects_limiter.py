@@ -820,7 +820,7 @@ class TierOne(unittest.TestCase):
                                           dtype="<i2")).sum())
         effect.reset()
         # reset() restores patch 0, which puts the lookahead back to zero
-        # (the contract: audio-component-api.md:201-202). Re-arm it, so what
+        # (the contract: docs/reference/component-api.md). Re-arm it, so what
         # is read next is the ring itself and not the live input.
         effect.set_macro(LOOKAHEAD, macro_of(LOOKAHEAD, 10.0))
         after = int(np.abs(np.frombuffer(render(effect, 256).pcm,
