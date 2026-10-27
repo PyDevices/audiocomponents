@@ -109,7 +109,7 @@ hands it:
 - `stops-m<i>`: 0, 64 and 127 are accepted and read back within 1e-4.
 - `bad-m<i>`: NaN, +-inf, -1, 128 and +-10**400 (an int past float's
   range), held to the contract's one answer
-  ([audio-component-api.md](../../docs/audio-component-api.md#macro-and-patch-state)):
+  ([component-api.md](../../docs/reference/component-api.md#macro-and-patch-state)):
   a value off the range is clamped, never refused. NaN, -inf, -1 and
   -10**400 read back 0, +inf, 128 and 10**400 read back 127, and each
   renders exactly what
@@ -117,7 +117,7 @@ hands it:
 - `patch-p<k>`: `program_change(k)` sets `patch_index` and reads back the
   patch's values, and `program_change(0)` reads back patch 0's. Not what a
   fresh instance read: a declared default may sit off patch 0's grid
-  ([audio-components.md](../../docs/audio-components.md)), so the kit
+  ([metadata.md](../../docs/reference/metadata.md)), so the kit
   holds a reset to a fresh instance (`fresh`), not a fresh instance to
   patch 0.
 - `ctor-<option>`: each numeric keyword of `_build` at 0 and NaN (a
@@ -245,7 +245,7 @@ patch 0, from every patch:
   for a node the rebuild released.
 - `boot/<rate>/<ch>`, informational: whether a fresh instance at its
   defaults is patch 0 exactly. Patch values are integers and a declared
-  default may sit off their grid ([audio-components.md](../../docs/audio-components.md)),
+  default may sit off their grid ([metadata.md](../../docs/reference/metadata.md)),
   so a difference prints `na(info: ...)` and is never red.
 
 Each cell compares 2 s from the reset and stops at the first difference.

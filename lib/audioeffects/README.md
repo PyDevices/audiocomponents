@@ -13,7 +13,7 @@ comp = audioeffects.create("Compressor", source, 48000,
 tape = audioeffects.create("TapeDelay", comp.output, 48000,
                            time_ms=340, feedback=0.4, mix=0.25)
 hall = audioeffects.create("Reverb", tape.output, 48000,
-                           preset="hall", mix=0.3)
+                           character="hall", mix=0.3)
 audio_out.play(hall.output)
 ```
 
@@ -23,10 +23,10 @@ an `audioinstruments` instrument's `output`, a host input, or another
 effect's `.output`. Every effect hands back its chain tail as `.output`, keeps
 its underlying nodes as attributes (`.node`, `.mixer`, `.cutoff`, ...) so you
 can bind parameters straight to them, and follows the common component
-surface in `docs/audio-component-api.md`: `set_macro()`, `program_change()`,
+surface in `docs/reference/component-api.md`: `set_macro()`, `program_change()`,
 `latency_samples`, `tail_samples` and the rest. Every class declares `NAME`,
 `MACRO_LABELS`, `MACRO_MODES` and `PATCHES`; the provider rules are in
-`docs/audio-components.md`. Constructing a class directly also works, and
+`docs/reference/metadata.md`. Constructing a class directly also works, and
 reads the format off the source it is handed.
 
 Nearly everything here needs the audiodsp tier of nodes
@@ -304,7 +304,7 @@ grid point for the 220 Hz default is 215.7.
 An effect rack is one audio component whose internal graph chains or mixes
 multiple effect nodes; `rack.py` above is where this package ships them,
 declaring the same required metadata at class scope like any other effect
-class. See `docs/audio-components.md` for the complete rack rule.
+class. See `docs/reference/metadata.md` for the complete rack rule.
 
 ## A note on chaining after a Mixer
 

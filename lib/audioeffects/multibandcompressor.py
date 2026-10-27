@@ -250,7 +250,7 @@ class MultibandCompressor(_component.Component):
     #: After a reset, a rejoin or a control move the detectors can leave
     #: the output under 16 LSB from an untouched copy for up to three
     #: blocks, which `tail_samples` does not bound. See "Detector and
-    #: coupling state" in docs/audio-component-api.md.
+    #: coupling state" in docs/reference/component-api.md.
     TAIL_SAMPLES = 0
 
     MACRO_LABELS = (

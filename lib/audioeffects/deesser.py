@@ -187,7 +187,7 @@ class DeEsser(_component.Component):
     #: After a reset, a rejoin or a control move the detector can leave
     #: the output under 16 LSB from an untouched copy for up to three
     #: blocks, which `tail_samples` does not bound. See "Detector and
-    #: coupling state" in docs/audio-component-api.md.
+    #: coupling state" in docs/reference/component-api.md.
     TAIL_SAMPLES = 256
 
     MACRO_LABELS = ("Frequency", "Range", "Sensitivity", "Mode", "Release",

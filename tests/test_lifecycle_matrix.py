@@ -825,7 +825,7 @@ class TestPlants(unittest.TestCase):
             (["lib/audioeffects/tapedelay.py"], ["TapeDelay"]),
             (["lib/audioeffects/phaser.py", "lib/audioeffects/vibrato.py"],
              ["Phaser", "Vibrato"]),
-            (["docs/control-smoothing.md", "CHANGELOG.md"], []),
+            (["docs/how-it-works/control-smoothing.md", "CHANGELOG.md"], []),
             (["tests/test_cpython_effects_tapedelay.py"], []),
         )
         for files, want in cases:

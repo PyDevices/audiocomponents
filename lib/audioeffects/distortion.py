@@ -514,7 +514,7 @@ class Distortion(_component.Component):
     #: After a reset the coupling pole leaves a slow residue of up to
     #: about 800 LSB beside an untouched copy (787 mono and 630 stereo
     #: measured), past `tail_samples`; `TheResetResidue` holds it. See
-    #: "Detector and coupling state" in docs/audio-component-api.md.
+    #: "Detector and coupling state" in docs/reference/component-api.md.
     TAIL_SAMPLES = 48000
 
     MACRO_LABELS = (

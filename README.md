@@ -1,182 +1,53 @@
 # audiocomponents
 
-The PyDevices audio component tier: **`audioinstruments`** — 55 classic
-synthesizers, electromechanical keyboards and drum machines — and
-**`audioeffects`** — 45 effect classes, effect racks included. Both are pure
-Python built on [audiodsp](https://github.com/PyDevices/audiodsp)'s audio nodes,
-and both run unchanged on CPython, MicroPython and CircuitPython.
+audiocomponents is the part of OmniPython that makes sound: 55 instruments
+(synthesizers, electromechanical keyboards and drum machines) and 45 effects,
+pure Python on audiodsp's audio nodes, the same on MicroPython-compatible
+boards, CircuitPython-compatible boards and a desktop.
 
-New here? Start with the [newcomer's guide](docs/newcomers.md) for the
-repository map, public component flow, and contributor boundary.
+```bash
+pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ pydevices-audioinstruments pydevices-audioeffects
+```
 
 ```python
-import audioinstruments, audioeffects
-
-minimoog = audioinstruments.create("minimoog", sample_rate=48000)
-chain = audioeffects.create("TapeDelay", minimoog.output, sample_rate=48000)
+import mip
+mip.install("audioinstruments", index="https://PyDevices.github.io/mip")
+mip.install("audioeffects", index="https://PyDevices.github.io/mip")
 ```
 
-## `output` is a wire you can keep
-
-Hold `fx.output`, wire it anywhere — a mixer voice, a rack, an `audio_out.play()`,
-a C pump pulling the graph from another thread — and every later knob move is
-heard, **including Mix from zero**:
+The first is for a desktop. The second is for a board whose firmware carries
+audiodsp; [Install](docs/get-started/install.md) has the rest.
 
 ```python
-fx = audioeffects.create("Overdrive", source, 48000)
-mixer.voice[0].play(fx.output)      # take it once
+import wave
+import audiocore
+import audioeffects
+import audioinstruments
 
-fx.set_macro(fx.MACRO_LABELS.index("Mix"), 127)   # and now you hear it
-fx.program_change(3)                              # and now you hear that
+RATE = 48000
+synth = audioinstruments.create("minimoog", sample_rate=RATE)
+echo = audioeffects.create("TapeDelay", synth.output, sample_rate=RATE)
+synth.note_on(60)
+pcm = bytearray()
+for _ in range(100):
+    _, block = audiocore.get_buffer(echo.output)
+    pcm += bytes(block)
+with wave.open("minimoog_delay.wav", "wb") as wav:
+    wav.setnchannels(2)
+    wav.setsampwidth(2)
+    wav.setframerate(RATE)
+    wav.writeframes(bytes(pcm))
+print(len(pcm) // 4, "frames,", round(len(pcm) / 4 / RATE, 2), "seconds")
 ```
 
-That used to be untrue and it was quiet about it. About twenty classes rebuild
-part of their graph when a control crosses a threshold — a Phaser changing its
-number of stages, a Distortion rebuilding the whole thing — and handed out a
-new node afterwards, so whoever was holding the old one went on playing the
-graph the class had finished with, or went silent. Turning a Mix macro up from
-0 did nothing at all.
-
-An effect now ends in a wire that gets re-pointed rather than replaced, so the
-object never changes. Two things follow from it being a wire and not a node:
-it is not the last node the class built, and at Mix 0 it is a wire onto the
-source you handed in rather than that source itself. The contract, and the one
-interpreter where the promise does not hold, are in
-[docs/audio-component-api.md](docs/audio-component-api.md#output-is-stable-for-the-life-of-the-component).
-
-An instrument can also play a part on the audio's clock rather than on
-Python's, so a garbage collection does not land as a late note:
-[docs/sequencing.md](docs/sequencing.md).
-
-## Status: the shipping source
-
-This repository publishes `audioinstruments` and `audioeffects`: the
-`pydevices-audioinstruments` and `pydevices-audioeffects` distributions on
-TestPyPI, and the `audioinstruments` and `audioeffects` entries in the MIP
-index. [PyDevices/audiodsp](https://github.com/PyDevices/audiodsp) publishes
-the core only — the native nodes and the CircuitPython-compatible `synthio`
-layer these components stand on.
-
-The release chain lives in `.github/workflows/` and calls the org's reusable
-workflows: `prepare-release.yml` opens the release PR (`VERSION` and
-`CHANGELOG.md`), `tag-release.yml` tags the merged `VERSION`, and
-`publish-release-packages.yml` runs the gates, builds both packages from the
-tag, publishes them, and requests the two MIP entries. The version is a
-human's to name, in the release PR; `VERSION` holds a placeholder until then,
-and `tag-release.yml` refuses to tag anything that is not a release version.
-
-The repository was seeded from audiodsp at **v0.1.1** with the components' own
-history intact, and the accuracy rewrite has happened here since. audiodsp's pre-rewrite
-copies of `lib/audioinstruments/` and `lib/audioeffects/` were deleted on
-2026-09-03, so this is the only copy
-([#2](https://github.com/PyDevices/audiocomponents/issues/2) has the move).
-
-What's planned next is in [ROADMAP.md](ROADMAP.md).
-
-## Layout
-
-- `lib/audioinstruments/` — one module per instrument, plus `_support.py`
-  (the shared voice/patch/wavetable machinery) and `midi_cc.py`
-- `lib/audioeffects/` — one module per effect, plus `_component.py` (the
-  base every effect is built on) and `rebuilt/`, which only keeps the old
-  `audioeffects.rebuilt.<module>` import paths working
-- `docs/audio-component-api.md` — the runtime contract every component
-  satisfies; `docs/audio-components.md` — the static metadata manifest;
-  `docs/sequencing.md` — writing a part that keeps time in frames
-- `tools/validate_api.py`, `tools/validate_metadata.py` — the two validators
-  that enforce those documents
-- `tests/` — the CPython suites; `tests/parity/` — the instrument parity
-  harness and its goldens
-- `AUDIODSP_PIN` — the exact audiodsp release every gate runs against
-- `VERSION` — the version the next tag carries; a placeholder until the
-  maintainer names the release
-- `.github/workflows/` — CI (`tests.yml`, `lint.yml`) and the release chain
-
-Each package keeps its own `pyproject.toml` under `lib/<package>/`, which is
-both what makes it a standalone distribution and what the MIP publisher
-expects. Leave that layout alone. Each `pyproject.toml` carries the audiodsp
-floor, `pydevices-audiodsp>=<release>`, the newest audiodsp *release*; that is
-not the pin — `AUDIODSP_PIN` may name a commit ahead of the floor, and the
-gates use the pin.
-
-## Developing
-
-```bash
-python3 -m venv .venv
-.venv/bin/pip install "pydevices-audiodsp @ git+https://github.com/PyDevices/audiodsp@v0.2.0"
-.venv/bin/pip install -e lib/audioinstruments -e lib/audioeffects
+```text
+25600 frames, 0.53 seconds
 ```
 
-The pin matters. `AUDIODSP_PIN` names the audiodsp release the gates are read
-against, for the same reason audiodsp pins CircuitPython in
-`CIRCUITPYTHON_ORACLE`: with a floating core underneath, a component failure
-is unattributable — you cannot tell a rewritten instrument from a moved node
-beneath it. A local install from TestPyPI (`pip install -i
-https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/
-pydevices-audiodsp`) is fine for poking around; it is not what a gate result
-may be reported against.
+That plays middle C on a Minimoog through a tape delay and writes it to
+`minimoog_delay.wav`. On a board, hand `echo.output` to `audio_out.play()`
+instead.
 
-## Testing
+[Docs](https://pydevices.readthedocs.io/projects/audiocomponents/) · [Examples](https://pydevices.github.io/pydevices-examples/gallery/) · [Roadmap](ROADMAP.md)
 
-CI covers the structural contract, which is everything that can run without a
-workspace:
-
-```bash
-python -m unittest discover -s tests -p "test_*.py"
-python tools/validate_api.py
-python tests/parity/effects_library_smoke.py
-python -m flake8
-```
-
-Most work does not need that full suite. `tools/scoped_tests.py` picks the files a change can break:
-
-| Work | Scope |
-|---|---|
-| One class | `tools/scoped_tests.py class:DeEsser` (that class's tests plus the contract) |
-| Kit, `__init__`, or `_component` | `tools/scoped_tests.py auto` (widens from `git diff`) |
-| Every effect, no instruments | `tools/scoped_tests.py effects` |
-| Shared promises only | `tools/scoped_tests.py contract` |
-| Gate, integration, audit, release | `tools/scoped_tests.py full` |
-
-`--list` prints the choice and runs nothing. Instrument tests (`test_cpython_instruments`, `test_cpython_piano_polyphony`) run only when `lib/audioinstruments/` or `AUDIODSP_PIN` moved, or when `full` is named.
-
-The instrument parity gate is workspace-local by design. It renders each
-component under every interpreter it can find and holds it to a hash captured
-from the original micropython-vst3 script, read out of that repository's git
-history at a fixed revision so the oracle cannot drift:
-
-```bash
-python3 tests/parity/run_instruments_parity.py --verify --batch all
-```
-
-It needs a MicroPython binary with audiodsp built in at `../bin/micropython`
-(or pass `--micropython`) and an `mpvst` checkout beside this one (or
-`--old-root`), so CI does not attempt it. Comparison is always *within* one
-interpreter — `ulab`'s vectorized sine and libm's are different functions, so
-two interpreters agreeing is an observation, never a gate.
-
-**During the accuracy rewrite these goldens are the thing being changed.**
-A failure there is the expected outcome of a deliberate rebuild, not a
-regression — but it stops being a gate the moment it is re-captured casually.
-Re-capture is a blessing, and blessings are the maintainer's.
-
-## Sound stability
-
-The API is our contract: class names, signatures, metadata, and macro surfaces
-stay stable and change only deliberately. The *sound* is not part of that
-contract. These components sound great, but they are not all as accurate as
-they could be, and implementations will keep being refined as the library
-matures — so a component may render audibly differently from one release to
-the next. If a composition depends on the exact sound of a release, pin that
-release rather than tracking the latest.
-
-Beneath the components sits a harder guarantee, and it is audiodsp's, not
-ours: the CircuitPython-compatible `synthio`/`audiocore`/effects-module core
-is held bit-exact to CircuitPython itself and does not change release to
-release. Where CircuitPython and audiodsp disagree, that is a bug and it is
-reported upstream. The components are where the sound evolves; the floor they
-stand on does not.
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+OmniPython is made by [PyDevices](https://pydevices.com).

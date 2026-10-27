@@ -280,7 +280,7 @@ AUDIODSP_MODULES = (
     "audioladder", "audiomath", "audioroute", "audioshaper", "audioverb",
 )
 
-#: The three public macro modes, as `audio-components.md` defines them.
+#: The three public macro modes, as `docs/reference/metadata.md` defines them.
 MODES = ("UNIPOLAR", "BIPOLAR", "TOGGLE")
 
 MAX_MACROS = 16

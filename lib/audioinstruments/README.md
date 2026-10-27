@@ -40,14 +40,14 @@ not.
 This package follows audiodsp's audio component metadata manifest. Every
 instrument module explicitly declares `NAME`, `MACRO_LABELS`,
 `MACRO_MODES`, and `PATCHES`; percussion modules also declare `NOTE_MAP`.
-The complete provider rules are in `docs/audio-components.md`.
+The complete provider rules are in `docs/reference/metadata.md`.
 
 A module is one instrument and exposes
 `create(sample_rate, channel_count=2, transport=None)`;
 `audioinstruments.create(name, sample_rate, channel_count=2, transport=None,
 **options)` is the lookup helper for hosts (extra keyword options pass
 through to the module's `create`). Either returns an `Instrument`
-implementing the audio component API — `docs/audio-component-api.md` is the
+implementing the audio component API — `docs/reference/component-api.md` is the
 authority; this table is the summary:
 
 | Method | |
@@ -89,9 +89,8 @@ across the whole MIDI 1.0 controller table.
 
 `transport` is an optional callable returning the host's playback position
 as `(playing, seconds, bpm, ts_numerator, ts_denominator)`. Every
-instrument accepts and stores it, but none reads it yet — no shipped
-instrument is tempo-synced (see the shipped-status note in
-`docs/audio-component-api.md`).
+instrument accepts and stores it, but none reads it: no shipped
+instrument is tempo-synced (see `docs/reference/component-api.md`).
 
 `audioinstruments.ALL`, `DRUM_MACHINES` and `MELODIC` list the modules;
 `load(name)` imports one without instantiating it.
@@ -316,7 +315,7 @@ midi.message(msg)                         # or an adafruit_midi message
 
 `route(channel, *instruments)` sends a channel somewhere else, and
 `read_midi_file()` reads a Standard MIDI File into events for `send()`. The
-[module docstring](midi_dispatch.py) has the details.
+[module docstring](https://github.com/PyDevices/audiocomponents/blob/main/lib/audioinstruments/midi_dispatch.py) has the details.
 
 ## Where these came from
 

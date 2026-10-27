@@ -745,7 +745,7 @@ def create(sample_rate, channel_count=2, transport=None, pad_map=None,
     # gave the pump both halves with a frame on them, `STRIKE` and `CHOKE`,
     # so `load()` above lays the whole mode table on the queue instead and
     # the hat's choke goes with it. The layer notes and the stick were always
-    # presses and always rode the seam. See docs/sequencing.md.
+    # presses and always rode the seam. See docs/guides/sequence-a-part.md.
     return Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
                       output=mixer, transport=transport, note_map=NOTE_MAP,
                             pad_map=_support.pad_table(PAD_MAP, pad_map,

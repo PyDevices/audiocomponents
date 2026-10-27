@@ -20,7 +20,7 @@ The contract says a reset clears every node and restores patch 0. So:
   released (Distortion's scoop patches once raised here).
 - `boot/<rate>/<ch>`, informational: whether a fresh instance at its
   defaults is patch 0 exactly. Patch values are integers and a declared
-  default may sit off their grid (docs/audio-components.md), so a
+  default may sit off their grid (docs/reference/metadata.md), so a
   difference prints `na(info: ...)` and is never red.
 
 Every cell compares `WINDOW_S` seconds from the reset, block by block,
