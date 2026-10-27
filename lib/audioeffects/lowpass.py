@@ -15,6 +15,8 @@ a low-pass is linear, and the thing that makes a Moog a Moog belongs to
 `LadderFilter`. The Slope switch is a console's: 12 dB/oct is the analog
 prototype, 24 dB/oct is a second section behind it for when a rumble has to
 actually go away.
+Keep the input under -3 dBFS and the defaults and patches stay off the
+rails.
 
 **Where those two sentences stop being exact.** The Phase 2 gate audit
 (2026-09-07) disconfirmed four of the five traits off the point they were
