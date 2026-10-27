@@ -261,25 +261,24 @@ class CabinetSim(_component.Component):
     100 Hz than the stack, and a notch between 100 Hz and 300 Hz that
     stays at every Low Cut.
 
-    **Low Cut and Body.** Low Cut spans 55 Hz to 140 Hz and Body -6 dB to
-    +6 dB. 40 Hz sits at least 12 dB under 1 kHz at every patch, and 20 Hz
-    at least 20 dB under at the default. 60 Hz stays at least 20 dB under
-    over the whole Body travel, at 48 kHz, 44.1 kHz and 22.05 kHz.
+    **Low Cut and Body.** Low Cut and Body shape the bottom. 40 Hz sits at
+    least 12 dB under 1 kHz at every patch, and 20 Hz at least 20 dB under
+    at the default. 60 Hz stays at least 20 dB under over the whole Body
+    travel, at 48 kHz, 44.1 kHz and 22.05 kHz.
 
-    **Break-up and Bite.** Break-up spans 1.8 kHz to 3.6 kHz and moves the
-    speaker's two break-up peaks; over its whole travel each stands at least
-    3 dB over 1 kHz with a dip of at least 2 dB between them. Bite spans
-    0 dB to 8 dB and sets how tall they are. At Bite 0 they are switched
-    off, so there is no break-up at all.
+    **Break-up and Bite.** Break-up moves the speaker's two break-up peaks;
+    over its whole travel each stands at least 3 dB over 1 kHz with a dip
+    of at least 2 dB between them. Bite sets how tall they are. At Bite 0
+    they are switched off, so there is no break-up at all.
 
-    **Top and Air.** Top spans 4.5 kHz to 7 kHz and Air -30 dB to -12 dB.
-    Between 5 kHz and 8 kHz the response falls by at least 15 dB at every
-    patch. Between 8 kHz and 16 kHz it falls by no more than 12 dB at the
-    default, and by more once Top is at its 7 kHz stop.
+    **Top and Air.** Top and Air shape the top end. Between 5 kHz and 8 kHz
+    the response falls by at least 15 dB at every patch. Between 8 kHz and
+    16 kHz it falls by no more than 12 dB at the default, and by more once
+    Top is at its 7 kHz stop.
 
-    **Mix.** Mix spans 0 to 1 and blends every section at once, and Mix 0
-    is a wire. The top-end fall holds down to Mix MIDI 120 and is gone by
-    96; the low cut holds down to Mix MIDI 96 and is gone by 32.
+    **Mix.** Mix blends every section at once, and Mix 0 is a wire. The
+    top-end fall holds down to Mix MIDI 120 and is gone by 96; the low cut
+    holds down to Mix MIDI 96 and is gone by 32.
 
     **Level.** The response is a boost and there is no output trim, so
     leave headroom. At the hottest setting, combo with Low Cut 55 Hz and
@@ -305,10 +304,9 @@ class CabinetSim(_component.Component):
     position snaps to the nearest, so a board and a desktop build the same
     filters.
 
-    **Patches.** There are seven: Sealed Four By Twelve; Open-Backed
-    Twelve; Off-Axis Close Mic; Cone Centre; Dark Practice Box; Bright
-    Small Box; and Bass-Heavy Room. Alone on an ESP32-S3 the default was
-    measured at 28 % of a block.
+    **Patches.** Alone on an ESP32-S3 the default was measured at 28 % of a
+    block. The Effect controls page lists what the knobs span and the
+    patches.
 
     It needs `audiobiquad`, so a stock CircuitPython board can't run it.
     """
