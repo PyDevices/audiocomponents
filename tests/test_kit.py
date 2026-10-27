@@ -451,6 +451,19 @@ class TestCeiling(unittest.TestCase):
         self.assertEqual(kit_ceiling.wrap_at(wrapped, [0] * 6, 1, 0),
                          (3, 0))
 
+    def test_a_filter_ringing_under_a_click_is_not_a_wrap(self):
+        # Notch's own output, Q at its top, under a full-scale click: the
+        # click falls 32767 on its return, one short of WRAP_JUMP, and the
+        # filter's undershoot falls with it on the same frame.
+        values = [0, 0, 32767, 0, 0, 0, 0, 0]
+        out = [0, 0, 32767, -20080, -16203, -12726, -9637, -6925]
+        self.assertIsNone(kit_ceiling.wrap_at(out, values, 1, 0))
+        # The same output with no click under it is a wrap...
+        self.assertEqual(kit_ceiling.wrap_at(out, [0] * 8, 1, 0), (3, 0))
+        # ...and so is one that jumps against the input's edge.
+        rising = [0, 0, -32767, 0, 0, 0, 0, 0]
+        self.assertEqual(kit_ceiling.wrap_at(out, rising, 1, 0), (3, 0))
+
     def test_a_ring_at_nyquist_is_not_a_wrap(self):
         # A boosted filter's ring after a click, clipped at the rails: it
         # leaps into each jump and out of it, where an overflow creeps up.

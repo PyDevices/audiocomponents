@@ -43,7 +43,9 @@ settings are in (`tail_samples`), rounded up to whole seconds, never under
   the first, and the signal runs the same way on both sides of the jump
   (into it before, out of it after, each step under 32768): an int16 sum
   that overflowed, and the input made no such jump `latency_samples`
-  earlier, nor, when the class reports any latency, the same way in the
+  earlier (half that, when it went the same way: a click's return and
+  the undershoot of a filter it rang), nor, when the class reports any
+  latency, the same way in the
   last `HOLD` frames up to the jump's own. A square's edge is flat on
   both sides, a click's return lands far from its peak, and a clipped
   ring at Nyquist leaps into the jump and out of it, so none is one. A
@@ -99,6 +101,12 @@ LEVEL_WORDS = ("Level", "Mix", "Octave", "Direct", "Voice", "Gain",
 #: silence.
 SILENT_AT_ZERO_WORDS = ("Level", "Volume")
 WRAP_JUMP = 32768
+
+#: A full-scale click falls 32767 on its return, one short of WRAP_JUMP,
+#: and a filter that rings below zero falls with it on the same frame.
+#: An output jump the same way as an input jump this big, on the frame
+#: the input made it, follows the input and is not a wrap.
+CLICK_JUMP = 16384
 #: The furthest a class that reports latency may move an edge, in frames:
 #: Bitcrusher's lowest Rate holds 47 frames at 48 kHz. A wrap the same way
 #: as an input edge this far back, or a rail the input was on, is that
@@ -191,6 +199,8 @@ def wrap_at(out, values, channels, lat):
                     after >= WRAP_JUMP or -after >= WRAP_JUMP:
                 continue
             if _input_jumped(values, channels, ch, nin, 0, [f - lat]) or \
+                    _input_jumped(values, channels, ch, nin, jump, [f - lat],
+                                  CLICK_JUMP) or \
                     (lat and _input_jumped(values, channels, ch, nin, jump,
                                            range(f - HOLD, f + 1))):
                 continue
@@ -198,14 +208,14 @@ def wrap_at(out, values, channels, lat):
     return None
 
 
-def _input_jumped(values, channels, ch, nin, jump, frames):
-    """Whether the input made a jump of WRAP_JUMP or more at one of
-    `frames`: the same way as `jump`, or either way when `jump` is 0."""
+def _input_jumped(values, channels, ch, nin, jump, frames,
+                  size=WRAP_JUMP):
+    """Whether the input made a jump of `size` or more at one of `frames`:
+    the same way as `jump`, or either way when `jump` is 0."""
     for g in frames:
         if 1 <= g < nin:
             x = values[g * channels + ch] - values[(g - 1) * channels + ch]
-            if (x >= WRAP_JUMP and jump >= 0) or (-x >= WRAP_JUMP and
-                                                   jump <= 0):
+            if (x >= size and jump >= 0) or (-x >= size and jump <= 0):
                 return True
     return False
 
