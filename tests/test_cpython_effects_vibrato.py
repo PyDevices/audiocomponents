@@ -291,7 +291,7 @@ class TheSurface(unittest.TestCase):
         effect = build()
         playing = _component.port_target
         self.assertIsNot(playing(effect.output), effect._mixer)
-        effect.set_macro(LEVEL_I, 127)
+        effect.set_macro(LEVEL_I, 0)
         self.assertIs(playing(effect.output), effect._mixer)
         effect.set_macro(LEVEL_I, rebuilt.Vibrato.PATCHES[0][1][LEVEL_I])
         self.assertIsNot(playing(effect.output), effect._mixer)
@@ -874,7 +874,7 @@ class TheClaims(unittest.TestCase):
                          ((2.0, 15.0, "log"), (0.0, 60.0),
                           (0.15, 5.0, "log"), (0.0, 1.0), (1.0, 12.0),
                           (2000.0, 18000.0, "log"), (20.0, 200.0, "log"),
-                          (-12.0, 6.0)))
+                          (-12.0, 0.0)))
         self.assertEqual(rebuilt.RISE_10_90, 0.8)
         self.assertEqual(rebuilt.DEPTH_GLIDE_MS, 20.0)
 
@@ -893,11 +893,16 @@ class TheClaims(unittest.TestCase):
             self.assertAlmostEqual(float(np.percentile(cents, 99.5)), 30.0,
                                    delta=3.0)
 
-    def test_level_cuts_and_holds_unity_above_zero(self):
+    def test_level_cuts_up_to_12_db_and_tops_out_at_unity(self):
         self.assertAlmostEqual(self._gain_db(level_db=-12.0), -12.0,
                                delta=0.2)
-        # audiocomponents#216: the boost half is lost to the mixer's clamp.
-        self.assertAlmostEqual(self._gain_db(level_db=6.0), 0.0, delta=0.2)
+        self.assertAlmostEqual(self._gain_db(level_db=0.0), 0.0, delta=0.2)
+        # audiocomponents#216: the whole knob is audible, so its top is 0 dB.
+        effect = build()
+        effect.set_macro(LEVEL_I, 127)
+        self.assertAlmostEqual(effect._value(7), 0.0, places=6)
+        effect.set_macro(LEVEL_I, 0)
+        self.assertAlmostEqual(effect._value(7), -12.0, places=6)
 
     def test_latency_at_44_1_khz(self):
         effect = rebuilt.Vibrato(silence_src(256, rate=44100),
@@ -943,9 +948,9 @@ CLAIMS = (
      "at 40 Hz and at 17 kHz.",
      ("TheClaims.test_the_spans",
       "T6Band.test_corners_at_48k_whole_sample_delay")),
-    ("Level cuts the output by up to 12 dB; above 0 dB it holds the output "
-     "at the input's level.",
-     ("TheClaims.test_level_cuts_and_holds_unity_above_zero",)),
+    ("Level cuts the output by up to 12 dB; at the top of its travel the "
+     "output is at the input's level.",
+     ("TheClaims.test_level_cuts_up_to_12_db_and_tops_out_at_unity",)),
     ("With no dry path there is no comb: from 200 Hz to 2 kHz the level "
      "stays within 1 dB at any Depth up to 60 cents.",
      ("T1NoDry.test_no_comb_at_default_depths",)),
