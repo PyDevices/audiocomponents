@@ -115,14 +115,13 @@ class TransientShaper(_component.Component):
     and -40 dBFS a quiet hit is shaped as hard as a loud one, to within
     0.5 dB.
 
-    **Controls.** Attack moves the first few milliseconds of every hit,
-    from -15 to +15 dB. Sustain moves what rings after it, from -24 to
-    +24 dB, and the two act at once: a snare can get more stick and less
-    room from one instance. Output sets the level back, from -22 to +6 dB.
-    Attack Speed runs the attack section from 0.2 to 5 times its own speed.
-    Sustain Hold, from 0 to 500 ms, is how long the ring section holds at
-    the peak before it lets go; held, it digs deeper into the ring than a
-    plain follower does.
+    **Controls.** Attack moves the first few milliseconds of every hit.
+    Sustain moves what rings after it, and the two act at once: a snare can
+    get more stick and less room from one instance. Output sets the level
+    back. Attack Speed sets how fast the attack section runs. Sustain Hold
+    is how long the ring section holds at the peak before it lets go; held,
+    it digs deeper into the ring than a plain follower does. The Effect
+    controls page lists what the knobs span.
 
     **Where it falls short.** A held note at Attack +12 is still lifted by
     more than 0.5 dB 100 ms after the hit, and back within 0.5 dB by
