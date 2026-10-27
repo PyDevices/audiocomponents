@@ -649,23 +649,6 @@ class TheSurface(TestCase):
         self.assertEqual(PitchShifter.CAPABILITIES, ())
         self.assertEqual(PitchShifter.LATENCY_SAMPLES, 0)
 
-    def test_the_spans(self):
-        e = PitchShifter(kc.feed(array("h", bytes(16)), 48000, 2).port)
-        try:
-            ends = []
-            for index in range(5):
-                row = []
-                for midi in (0, 64, 127):
-                    e.set_macro(index, midi)
-                    row.append(e.macro(index))
-                ends.append(row)
-            self.assertEqual(ends, [[-12.0, 0.0, 12.0], [-50.0, 0.0, 50.0],
-                                    [0.0, 1.0, 2.0], [0.0, 112.5 * 64 / 127,
-                                                      112.5],
-                                    [0.0, 0.95 * 64 / 127, 0.95]])
-        finally:
-            e.deinit()
-
     def test_pitch_plays_whole_semitones(self):
         e = PitchShifter(kc.feed(array("h", bytes(16)), 48000, 2).port)
         try:
@@ -1361,29 +1344,23 @@ class T4TheDry(TestCase):
 
 #: Every claim sentence of the class docstring and the test that holds it.
 CLAIMS = (
-    ("Pitch is the interval in whole semitones, from an octave down to an "
-     "octave up.",
-     ("test_the_spans", "test_pitch_plays_whole_semitones")),
-    ("Fine detunes it by up to 50 cents either way.",
-     ("test_the_spans", "test_pitch_moves_by_the_semitones_it_reads")),
+    ("Pitch is the interval in whole semitones.",
+     ("test_pitch_plays_whole_semitones",)),
     ("The shifter reads in steps of 1/256 of the speed, so Fine moves in "
      "steps of about 7 cents near unity and 13.5 near the octave down, and "
      "the interval is within 0.5 % of the one Pitch and Fine name.",
      ("test_fine_steps_are_the_ratio_grid",
       "test_pitch_moves_by_the_semitones_it_reads",
       "test_linear_ratio_is_red")),
-    ("Mix keeps your dry signal at unity up to its centre, 1, with the "
-     "shifted voice coming up to unity beside it; at 2 you hear the shifted "
-     "voice alone, and at 0 the output is your input.",
-     ("test_the_spans", "test_the_dry_is_untouched",
-      "test_mix_2_is_the_shifted_voice_alone", "test_mix_0_is_the_input")),
-    ("Delay holds the shifted voice back by up to 112.5 ms.",
-     ("test_the_spans", "test_mix_2_is_the_shifted_voice_alone")),
-    ("Feedback, up to 0.95, sends the shifted voice round again, and every "
-     "repeat is shifted once more: at a fifth up the repeats climb a fifth, "
+    ("Mix keeps your dry signal at unity up to its centre, 1, with "
+     "the shifted voice coming up to unity beside it; at 2 you hear "
+     "the shifted voice alone, and at 0 the output is your input.",
+     ("test_the_dry_is_untouched", "test_mix_2_is_the_shifted_voice_alone",
+      "test_mix_0_is_the_input")),
+    ("Feedback sends the shifted voice round again, and every repeat "
+     "is shifted once more: at a fifth up the repeats climb a fifth, "
      "then a ninth, then a thirteenth.",
-     ("test_the_spans", "test_each_repeat_is_shifted_again",
-      "test_flat_loop_is_red")),
+     ("test_each_repeat_is_shifted_again", "test_flat_loop_is_red")),
     ("Off unity, each note comes back anywhere from straight away to one "
      "window and 1.3 ms late, plus Delay, the delay sweeping and jumping at "
      "every splice.",

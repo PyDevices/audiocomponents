@@ -99,21 +99,21 @@ class NoiseGate(_component.Component):
     """A noise gate after the Drawmer DS201: below the Threshold your signal
     is held down, and above it the gate opens and lets it through.
 
-    **Controls.** Threshold runs from -80 to 0 dBFS. Range is how far the
-    closed gate holds the signal down, from 0 dB, where the output is the
-    input, to -80 dB; it is a fixed depth, however far under the Threshold
-    the signal falls. A crossing opens the gate over the Attack, from
-    0.01 ms to 1 s, holds it open for the Hold, from 2 ms to 2 s, and only
-    then lets it fall over the Release, from 2 ms to 4 s. A long Hold with a
-    short Release chops a reverb's tail off square: that is the gated-reverb
-    snare. Once a crossing opens the gate, the gate runs through its Attack,
-    Hold and Release even if the signal drops away at once.
+    **Controls.** Threshold is the level where the gate opens. Range is how
+    far the closed gate holds the signal down, with 0 dB where the output
+    is the input; it is a fixed depth, however far under the Threshold the
+    signal falls. A crossing opens the gate over the Attack, holds it open
+    for the Hold, and only then lets it fall over the Release. A long Hold
+    with a short Release chops a reverb's tail off square: that is the
+    gated-reverb snare. Once a crossing opens the gate, the gate runs
+    through its Attack, Hold and Release even if the signal drops away at
+    once. The Effect controls page lists what the knobs span.
 
     **The key never touches the sound.** The gate listens through its own
-    band, with Key Low from 25 Hz to 4 kHz and Key High from 250 Hz up to
-    just under half the sample rate, so a gate on a tom can ignore the
-    hi-hat above it and the kick below it. Key Listen puts that band on the
-    output in place of the audio, so you can hear what you are tuning.
+    band, with Key Low and Key High setting its edges, the top held just
+    under half the sample rate, so a gate on a tom can ignore the hi-hat
+    above it and the kick below it. Key Listen puts that band on the output
+    in place of the audio, so you can hear what you are tuning.
 
     **Options.** Give the class `key=` another stream and that stream opens
     and closes the gate, which is how one sound gates another.

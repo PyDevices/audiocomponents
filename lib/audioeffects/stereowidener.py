@@ -94,9 +94,9 @@ class StereoWidener(_component.Component):
     """Widen a stereo part: Haas delays the right channel a few milliseconds
     behind the left, and Mid/Side scales the difference between the channels.
 
-    **The controls.** Width runs from 0 to 2, with its centre detent at 1.
-    Delay runs from 1 to 40 ms, and only Haas uses it.
-    Character picks Haas or Mid/Side.
+    **The controls.** Width sets how wide the part sounds. Delay is how
+    late the Haas copy is, and only Haas uses it. Character picks Haas or
+    Mid/Side. The Effect controls page lists what the knobs span.
 
     **Haas.** The ear places a sound by the first arrival and hears the late
     copy as width.

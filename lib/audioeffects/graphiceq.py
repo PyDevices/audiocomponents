@@ -200,31 +200,29 @@ class GraphicEQ(_component.Component):
     top shelf, between a Gain and a Volume slider.
 
     **Bands.** The bands sit an octave apart from 31.25 Hz to 8 kHz, and
-    the top one is a shelf at 16 kHz; each spans -12 dB to +12 dB. At its
-    centre detent a band is out of the circuit, so a flat bank is the
-    source byte for byte. A band brought back from the detent starts from
-    nothing. `centres=` retunes the bank to ten ascending frequencies, and
-    the shelf stays the top band.
+    the top one is a shelf at 16 kHz. At its centre detent a band is out of
+    the circuit, so a flat bank is the source byte for byte. A band brought
+    back from the detent starts from nothing. `centres=` retunes the bank
+    to ten ascending frequencies, and the shelf stays the top band.
 
     **Band Q and Constant Q.** As on the pedal, a band narrows as its
-    slider travels. Band Q, from 0.7 to 2.5, is its width at full travel,
-    and it is wider than that a few dB in. Constant Q holds every band at
-    Band Q at every setting.
+    slider travels. Band Q is its width at full travel, and it is wider
+    than that a few dB in. Constant Q holds every band at Band Q at every
+    setting.
 
     **Gain and Volume.** Gain sits before the bank and Volume after it.
-    Each spans -12 dB to +12 dB and moves every frequency alike, within
-    0.15 dB.
+    Each moves every frequency alike, within 0.15 dB. The Effect controls
+    page lists what the knobs span and the patches.
 
     **Level.** Bands overlap and add: three adjacent sliders at +6 dB lift
     the middle one's frequency by more than 7 dB. Every section hands the
     next an int16, so leave headroom, and pull Volume down when you push
     Gain up.
 
-    **Patches.** There are six: Flat; Scooped Mids; Pushed Mids; Trimmed
-    Bottom; Rolled Top; and Full Boost. Scooped Mids, Pushed Mids and Full
-    Boost pull Volume down, so stepping through them you hear the curve
-    rather than the level. A patch change starts the bank clean and doesn't
-    overshoot; a knob move rides through.
+    **Patches.** Scooped Mids, Pushed Mids and Full Boost pull Volume down,
+    so stepping through them you hear the curve rather than the level. A
+    patch change starts the bank clean and doesn't overshoot; a knob move
+    rides through.
 
     **Sample rate.** At 48 kHz and 44.1 kHz every band is where its label
     says. At 22.05 kHz the 16 kHz shelf is past Nyquist, so it is built

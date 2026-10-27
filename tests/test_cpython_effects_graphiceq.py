@@ -1029,18 +1029,12 @@ class TheLevelMacros(unittest.TestCase):
 class TheClaims(unittest.TestCase):
     """The docstring's claims that no older test holds on its own."""
 
-    def test_the_spans(self):
+    def test_the_bank_is_nine_bells_and_a_shelf_and_three_patches_trim_volume(
+            self):
         cls = graphiceq.GraphicEQ
         self.assertEqual(graphiceq.DEFAULT_CENTRES,
                          (31.25, 62.5, 125.0, 250.0, 500.0, 1000.0, 2000.0,
                           4000.0, 8000.0, 16000.0))
-        self.assertEqual(cls._MACRO_RANGES,
-                         ((-12.0, 12.0),) * 12 + ((0.7, 2.5), (0.0, 1.0)))
-        self.assertEqual(cls.MACRO_LABELS[10:],
-                         ("Gain", "Volume", "Band Q", "Constant Q"))
-        self.assertEqual([cls.PATCHES[i][0] for i in sorted(cls.PATCHES)],
-                         ["Flat", "Scooped Mids", "Pushed Mids",
-                          "Trimmed Bottom", "Rolled Top", "Full Boost"])
         trimmed = [cls.PATCHES[i][0] for i in sorted(cls.PATCHES)
                    if cls.PATCHES[i][1][11] < DETENT]
         self.assertEqual(trimmed, ["Scooped Mids", "Pushed Mids",
@@ -1074,16 +1068,19 @@ class TheClaims(unittest.TestCase):
 
 
 CLAIMS = (
-    ("`GraphicEQ` - ten octave bands and two level sliders, after the MXR "
-     "M-108 Ten Band.",
-     ("TheClaims.test_the_spans",)),
-    ("A ten-band octave graphic EQ after the MXR M-108: nine bells and a "
-     "top shelf, between a Gain and a Volume slider.",
-     ("TheClaims.test_the_spans",
+    ("`GraphicEQ` - ten octave bands and two level sliders, after "
+     "the MXR M-108 Ten Band.",
+     ("TheClaims.test_the_bank_is_nine_bells_and_a_shelf_and_three_"
+      "patches_trim_volume",)),
+    ("A ten-band octave graphic EQ after the MXR M-108: nine bells "
+     "and a top shelf, between a Gain and a Volume slider.",
+     ("TheClaims.test_the_bank_is_nine_bells_and_a_shelf_and_three_"
+      "patches_trim_volume",
       "TheSurface.test_fourteen_macros_and_six_patches")),
-    ("The bands sit an octave apart from 31.25 Hz to 8 kHz, and the top one "
-     "is a shelf at 16 kHz; each spans -12 dB to +12 dB.",
-     ("TheClaims.test_the_spans",)),
+    ("The bands sit an octave apart from 31.25 Hz to 8 kHz, and the "
+     "top one is a shelf at 16 kHz.",
+     ("TheClaims.test_the_bank_is_nine_bells_and_a_shelf_and_three_"
+      "patches_trim_volume",)),
     ("At its centre detent a band is out of the circuit, so a flat bank is "
      "the source byte for byte.",
      ("TheDetentIsAWire.test_patch_zero_is_byte_identical_to_the_source",
@@ -1099,31 +1096,27 @@ CLAIMS = (
     ("As on the pedal, a band narrows as its slider travels.",
      ("TheQLaw.test_q_narrows_as_the_slider_travels",
       "TheQLaw.test_clean_class_stays_green_on_the_same_measurement")),
-    ("Band Q, from 0.7 to 2.5, is its width at full travel, and it is wider "
-     "than that a few dB in.",
-     ("TheClaims.test_the_spans",
-      "TheQLaw.test_q_narrows_as_the_slider_travels",
+    ("Band Q is its width at full travel, and it is wider than that "
+     "a few dB in.",
+     ("TheQLaw.test_q_narrows_as_the_slider_travels",
       "TheQLaw.test_the_band_q_macro_moves_every_bell_at_once")),
     ("Constant Q holds every band at Band Q at every setting.",
      ("TheQLaw.test_constant_q_pins_every_band_to_the_anchor",)),
     ("Gain sits before the bank and Volume after it.",
      ("TheLevelMacros.test_gain_and_volume_are_flat_broadband_trims",)),
-    ("Each spans -12 dB to +12 dB and moves every frequency alike, within "
-     "0.15 dB.",
-     ("TheClaims.test_the_spans",
-      "TheLevelMacros.test_gain_and_volume_are_flat_broadband_trims")),
+    ("Each moves every frequency alike, within 0.15 dB.",
+     ("TheLevelMacros.test_gain_and_volume_are_flat_broadband_trims",)),
     ("Bands overlap and add: three adjacent sliders at +6 dB lift the middle "
      "one's frequency by more than 7 dB.",
      ("TheClaims.test_three_bands_at_six_add_up_past_seven",)),
     ("Every section hands the next an int16, so leave headroom, and pull "
      "Volume down when you push Gain up.",
      ("TheLevelMacros.test_gain_and_volume_are_flat_broadband_trims",)),
-    ("There are six: Flat; Scooped Mids; Pushed Mids; Trimmed Bottom; "
-     "Rolled Top; and Full Boost.",
-     ("TheClaims.test_the_spans",)),
     ("Scooped Mids, Pushed Mids and Full Boost pull Volume down, so "
-     "stepping through them you hear the curve rather than the level.",
-     ("TheClaims.test_the_spans",)),
+     "stepping through them you hear the curve rather than the "
+     "level.",
+     ("TheClaims.test_the_bank_is_nine_bells_and_a_shelf_and_three_"
+      "patches_trim_volume",)),
     ("A patch change starts the bank clean and doesn't overshoot; a knob "
      "move rides through.",
      ("TheJumpDoesNotSlam.test_a_patch_change_does_not_overshoot_its_own_"

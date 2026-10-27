@@ -4,22 +4,21 @@ You send your signal to a tape echo whose repeats feed an echo chamber, and
 your dry signal comes back exactly as it went in: the filters, the drive and
 the tape act only on the send.
 
-Time (20 to 500 ms) is the gap between repeats and Feedback (0 to 0.85) how
-much of each repeat goes round again. Loop Top (1 to 16 kHz) and Loop Bass
-(20 Hz to 1 kHz) filter the loop, so each repeat is darker than the last,
-and Drive (0 to 1) saturates it. Top Cut (1 to 16 kHz) darkens everything
-sent to the chamber, once. Low Cut (20 to 500 Hz), Decay (0.3 to 10 s) and
-Damping (500 Hz to 16 kHz) set the chamber. Mix (0 to 2) is
-`audiodelays.Echo`'s: the dry at unity up to 1, the chamber alone at 2.
+Time is the gap between repeats and Feedback how much of each repeat goes
+round again. Loop Top and Loop Bass filter the loop, so each repeat is
+darker than the last, and Drive saturates it. Top Cut darkens everything
+sent to the chamber, once. Low Cut, Decay and Damping set the chamber. Mix
+is `audiodelays.Echo`'s: the dry at unity up to 1, the chamber alone at 2.
+The Effect controls page lists what the knobs span and the patches.
 
 More Feedback makes the chamber's tail longer: at Time 500 ms, Feedback 0.85
 at least triples it. At the defaults you hear the repeats as a longer
 chamber, not as a rhythm of echoes.
 
 Move Time while it plays and the repeats bend in pitch, the way tape does:
-down while it lengthens, up while it shortens. Glide (1 to 10 s) is how long
-a move across the whole Time range takes, so it sets how far they bend: 12 %
-at the default of 4 s.
+down while it lengthens, up while it shortens. Glide is how long a move
+across the whole Time range takes, so it sets how far they bend: 12 % at
+the default of 4 s.
 
 Keep your input at or under -17 dBFS: at Mix 1 the dry and the chamber are
 both at unity and add, so a hotter input can reach the rail. That holds on
@@ -27,9 +26,6 @@ every patch and with any one macro at either end. Open two or more of
 Feedback, Decay and Time together and the chamber builds further, by up to
 25 dB: keep your input at or under -26 dBFS there. Latency is zero. `reset()` empties the tape and the chamber and restores patch 0, whose
 Time of 111 ms lands at once instead of gliding.
-
-The patches: Chamber Send (the defaults), Short Send, Long Send, Dark Loop,
-Bright Chamber, Driven Tape, Plain Chamber.
 
 **Limits**
 

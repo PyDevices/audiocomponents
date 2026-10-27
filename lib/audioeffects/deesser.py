@@ -171,13 +171,13 @@ class DeEsser(_component.Component):
     takes, around -55 dBFS, other Sensitivity settings can drift by more
     than 1 dB.
 
-    **Frequency** is where the "s" lives, from 800 Hz to 8 kHz, and it moves
-    the crossover and the detector together. **Range** is the most it may
-    take away, from 0 dB to 20 dB, and it never takes more than 0.05 dB past
-    it. Range 0 is a wire, byte for byte. The reduction approaches Range
-    without reaching it: at Range 12 the deepest any Sensitivity gets is
-    more than 0.5 dB short. **Sensitivity**, from 0 dB to 48 dB, is how
-    close to the full-band level the band may come before it counts.
+    **Frequency** is where the "s" lives, and it moves the crossover and
+    the detector together. **Range** is the most it may take away, and it
+    never takes more than 0.05 dB past it. Range 0 is a wire, byte for
+    byte. The reduction approaches Range without reaching it: at Range 12
+    the deepest any Sensitivity gets is more than 0.5 dB short.
+    **Sensitivity** is how close to the full-band level the band may come
+    before it counts.
 
     **Mode.** Broadband ducks the whole signal, for a vocal: the high and
     low bands move within 0.5 dB of each other. HF Only ducks the high band
@@ -185,14 +185,12 @@ class DeEsser(_component.Component):
     0.25 dB. With nothing to duck, HF Only's split sums back flat within
     0.25 dB.
 
-    **Release** spans 1 ms to 200 ms. The default 3.5 ms recovers at the
-    dbx 902's own 925 dB a second, within 10 %, and the rest of the span
-    moves the rate well away from it. **Attack** spans 0.1 ms to 10 ms and
-    gets shorter as the "s" gets louder. **Listen** plays the band the
-    detector hears.
-
-    **Patches.** There are six: Vocal, Bright Vocal, Whispered Verse,
-    Guitar Pick Noise, Cymbal Edge and Hard De-Ess.
+    **Release** is how fast the reduction lets go. The default 3.5 ms
+    recovers at the dbx 902's own 925 dB a second, within 10 %, and the
+    rest of the knob moves the rate well away from it. **Attack** gets
+    shorter as the "s" gets louder. **Listen** plays the band the detector
+    hears. The Effect controls page lists what the knobs span and the
+    patches.
 
     Latency is zero, and no setting adds any. The tail reaches exact zero
     within 256 samples. It needs `audiobiquad`, `audiodynamics` and

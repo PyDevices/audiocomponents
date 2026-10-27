@@ -517,15 +517,6 @@ class TheClaims(unittest.TestCase):
                                  frequency=1500, **options)
         return pull(effect, frames)
 
-    def test_the_spans(self):
-        spans = rebuilt.RingMod._MACRO_RANGES
-        self.assertEqual(spans[FREQ], (0.1, 8000.0, "log"))
-        self.assertEqual(spans[BAL], (-1.0, 1.0))
-        self.assertEqual(spans[PBAL], (-1.0, 1.0))
-        self.assertEqual(spans[rebuilt.CLOW], (2.0, 200.0, "log"))
-        self.assertEqual(spans[rebuilt.PHASE], (-180.0, 180.0))
-        self.assertEqual(rebuilt.NYQUIST_FRAC, 0.45)
-
     def test_half_depth_is_textbook_am(self):
         y = self._run(depth=0.5)[:, 0]
         self.assertAlmostEqual(db_at(y, 500), 0.0, delta=0.1)
@@ -602,10 +593,9 @@ CLAIMS = (
      "carrier, so at Depth 1 the pitches you played vanish and only their "
      "sum and difference with the carrier remain, metallic and out of key.",
      ("RingModTraits.test_m1_multiplier_sidebands",)),
-    ("Frequency sets the carrier from 0.1 Hz to 8 kHz, and stops short of "
-     "0.45 times the sample rate.",
-     ("TheClaims.test_the_spans",
-      "RingModInvariants.test_frequency_clamps_below_nyquist_fraction")),
+    ("Frequency sets the carrier, and stops short of 0.45 times the "
+     "sample rate.",
+     ("RingModInvariants.test_frequency_clamps_below_nyquist_fraction",)),
     ("Depth blends the carrier with a steady level: at 1 your signal is gone "
      "and the two sidebands come out level with each other, at 0.5 it is "
      "textbook AM, your signal 6 dB over each sideband, and at 0 the class "
@@ -624,23 +614,20 @@ CLAIMS = (
       "row")),
     ("While Character is on the multiplier, Shape does nothing.",
      ("TheClaims.test_shape_is_the_chopper_s_alone",)),
-    ("Balance and Program Bal each add a steady offset to the carrier, from "
-     "-1 to 1, so your signal comes through under the ring: at 0.5 it is "
-     "level with each sideband, to within 0.5 dB.",
-     ("TheClaims.test_the_spans",
-      "TheClaims.test_both_balances_let_the_program_through_alike")),
+    ("Balance and Program Bal each add a steady offset to the "
+     "carrier, so your signal comes through under the ring: at 0.5 "
+     "it is level with each sideband, to within 0.5 dB.",
+     ("TheClaims.test_both_balances_let_the_program_through_alike",)),
     ("They do the same thing.",
      ("TheClaims.test_both_balances_let_the_program_through_alike",)),
-    ("Stereo Phase shifts the right channel's carrier against the left's by "
-     "up to 180 degrees either way, and at 0 the two channels match.",
-     ("TheClaims.test_the_spans",
-      "TheClaims.test_stereo_phase_splits_the_channels")),
-    ("Carrier Low, from 2 to 200 Hz, is a high-pass on the carrier and "
-     "matters only with Frequency turned down near it: at its default 5 Hz, "
-     "a 2 Hz carrier comes out about 8.6 dB under a 200 Hz one.",
-     ("TheClaims.test_the_spans", "RingModTraits.test_m4_carrier_low",
-      "RingModTraits.test_m4_same_kind_plant_inert_at_constructor_"
-      "frequency")),
+    ("Stereo Phase shifts the right channel's carrier against the "
+     "left's, and at 0 the two channels match.",
+     ("TheClaims.test_stereo_phase_splits_the_channels",)),
+    ("Carrier Low is a high-pass on the carrier and matters only "
+     "with Frequency turned down near it: at its default 5 Hz, a 2 "
+     "Hz carrier comes out about 8.6 dB under a 200 Hz one.",
+     ("RingModTraits.test_m4_carrier_low",
+      "RingModTraits.test_m4_same_kind_plant_inert_at_constructor_frequency")),
     ("Squelch, Threshold and Release do not change the sound: the output is "
      "the same sample for sample wherever they sit.",
      ("TheClaims.test_squelch_threshold_and_release_do_nothing",)),

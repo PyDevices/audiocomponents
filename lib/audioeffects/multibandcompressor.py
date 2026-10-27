@@ -239,37 +239,35 @@ class MultibandCompressor(_component.Component):
     compressor on the whole mix lets the bass pump everything else.
 
     **Bands.** Build it with `bands=2` or `bands=3`; nothing else is
-    accepted. At three bands the splits are Crossover Low, 40 Hz to 800 Hz,
-    and Crossover High, 800 Hz to 8 kHz. Crossover High is held at least
-    eight times Crossover Low: ask for less and it moves up rather than
-    refusing, and `crossover_high_hz` reports where it landed. At two bands
-    the split is at Crossover Low, the upper band uses the High macros, and
-    Crossover High and the three Mid macros do nothing, which
-    `macro_is_live()` reports.
+    accepted. The splits are Crossover Low and Crossover High. Crossover
+    High is held at least eight times Crossover Low: ask for less and it
+    moves up rather than refusing, and `crossover_high_hz` reports where it
+    landed. At two bands the split is at Crossover Low, the upper band uses
+    the High macros, and Crossover High and the three Mid macros do
+    nothing, which `macro_is_live()` reports.
 
     **Flat at rest.** With every Ratio at 1 the bands sum to within 0.25 dB
     of the input from 30 Hz to 16 kHz, at two bands and at three. Each
     band alone is 6 dB down at its corner, within 0.5 dB.
 
-    **Each band.** Each band has a Threshold, -60 dB to 0 dB, a Ratio, 1 to
-    20, and a Gain, -12 dB to +12 dB. Attack spans 0.1 ms to 100 ms and
-    Release 5 ms to 1000 ms, shared by every band. Driving one band to
-    12 dB of reduction moves the middle of that band by 12 dB, within
-    0.5 dB, and the other bands by under 0.5 dB. Towards its own corners a
-    band compresses less than you dialled, so dial the number you want for
-    the middle of the band.
+    **Each band.** The bands have a Threshold, a Ratio and a Gain apiece,
+    and Attack and Release are shared across the bands. Driving one band to
+    12 dB of reduction moves the middle of that band by 12 dB, within 0.5
+    dB, and the other bands by under 0.5 dB. Towards its own corners a band
+    compresses less than you dialled, so dial the number you want for the
+    middle of the band. The Effect controls page lists what the knobs span
+    and the patches.
 
-    **Mix.** Mix spans 0 to 1 and crossfades the input with the summed
-    bands, so between its stops it is parallel compression. Mix 0 is the
-    source byte for byte, at 22.05 kHz, 44.1 kHz and 48 kHz, mono and
-    stereo, and moving off it does not click. Brought back up from 0, it
-    starts as it was built rather than playing what the bands held.
+    **Mix.** Mix crossfades the input with the summed bands, so between its
+    stops it is parallel compression. Mix 0 is the source byte for byte, at
+    22.05 kHz, 44.1 kHz and 48 kHz, mono and stereo, and moving off it does
+    not click. Brought back up from 0, it starts as it was built rather
+    than playing what the bands held.
 
     **Latency and tail.** It adds no latency at any setting. The tail
     reaches exact zero, and `tail_samples` says when.
 
-    **Patches.** There are five: Master Glue; Bass Control; Vocal Bus;
-    De-Boom; and Loudness. Master Glue is the constructor's defaults.
+    **Patches.** Master Glue is the constructor's defaults.
 
     **Boards.** At three bands its costliest patch was measured at 54 % of a
     block on an ESP32-P4 and 107 % on an ESP32-S3, so the S3 can't keep up.

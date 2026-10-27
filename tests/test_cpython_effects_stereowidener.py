@@ -543,22 +543,6 @@ class TheSurface(TestCase):
         finally:
             e.deinit()
 
-    def test_the_spans(self):
-        e = StereoWidener(source(array("h", bytes(16)), 48000))
-        try:
-            e.set_macro(WIDTH_I, 0)
-            self.assertEqual(e.macro(WIDTH_I), 0.0)
-            e.set_macro(WIDTH_I, 64)
-            self.assertEqual(e.macro(WIDTH_I), 1.0)
-            e.set_macro(WIDTH_I, 127)
-            self.assertEqual(e.macro(WIDTH_I), 2.0)
-            e.set_macro(DELAY_I, 0)
-            self.assertAlmostEqual(e.macro(DELAY_I), 1.0, places=9)
-            e.set_macro(DELAY_I, 127)
-            self.assertAlmostEqual(e.macro(DELAY_I), 40.0, places=9)
-        finally:
-            e.deinit()
-
     def test_patches_are_the_card_settings_on_the_grid(self):
         table = {0: (1.0, 14.0, 0), 1: (1.0, 6.0, 0), 2: (1.0, 25.0, 0),
                  3: (1.5, 14.0, 0), 4: (1.5, 14.0, 1), 5: (0.5, 14.0, 1),
@@ -1075,10 +1059,8 @@ class WTheWire(TestCase):
 
 #: Every claim sentence of the class docstring and the test that holds it.
 CLAIMS = (
-    ("Width runs from 0 to 2, with its centre detent at 1.",
-     "test_the_spans"),
-    ("Delay runs from 1 to 40 ms, and only Haas uses it.",
-     ("test_the_spans", "test_delay_does_nothing_in_mid_side")),
+    ("Delay is how late the Haas copy is, and only Haas uses it.",
+     ("test_delay_does_nothing_in_mid_side",)),
     ("At Width 1 the left channel passes untouched and the right channel is "
      "your right channel, exactly Delay late.",
      ("test_the_copy_is_the_right_exactly_delay_late",

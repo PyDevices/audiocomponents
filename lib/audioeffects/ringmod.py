@@ -143,12 +143,13 @@ class RingMod(_component.Component):
     carrier, so at Depth 1 the pitches you played vanish and only their sum
     and difference with the carrier remain, metallic and out of key.
 
-    **Controls.** Frequency sets the carrier from 0.1 Hz to 8 kHz, and
-    stops short of 0.45 times the sample rate. Depth blends the carrier
-    with a steady level: at 1 your signal is gone and the two sidebands
-    come out level with each other, at 0.5 it is textbook AM, your signal
-    6 dB over each sideband, and at 0 the class is a wire. Mix sets the
-    result against your signal, and Mix 0 is a wire too.
+    **Controls.** Frequency sets the carrier, and stops short of 0.45 times
+    the sample rate. Depth blends the carrier with a steady level: at 1
+    your signal is gone and the two sidebands come out level with each
+    other, at 0.5 it is textbook AM, your signal 6 dB over each sideband,
+    and at 0 the class is a wire. Mix sets the result against your signal,
+    and Mix 0 is a wire too. The Effect controls page lists what the knobs
+    span.
 
     **Character and Shape.** Character switches the carrier from Bode's
     multiplier to his switching chopper. Shape then moves the chopper from
@@ -158,16 +159,15 @@ class RingMod(_component.Component):
     Character is on the multiplier, Shape does nothing.
 
     **Letting your signal through.** Balance and Program Bal each add a
-    steady offset to the carrier, from -1 to 1, so your signal comes
-    through under the ring: at 0.5 it is level with each sideband, to
-    within 0.5 dB. They do the same thing.
+    steady offset to the carrier, so your signal comes through under the
+    ring: at 0.5 it is level with each sideband, to within 0.5 dB. They do
+    the same thing.
 
     **Stereo and the low end.** Stereo Phase shifts the right channel's
-    carrier against the left's by up to 180 degrees either way, and at 0
-    the two channels match. Carrier Low, from 2 to 200 Hz, is a high-pass
-    on the carrier and matters only with Frequency turned down near it: at
-    its default 5 Hz, a 2 Hz carrier comes out about 8.6 dB under a
-    200 Hz one.
+    carrier against the left's, and at 0 the two channels match. Carrier
+    Low is a high-pass on the carrier and matters only with Frequency
+    turned down near it: at its default 5 Hz, a 2 Hz carrier comes out
+    about 8.6 dB under a 200 Hz one.
 
     **Controls that do nothing.** Squelch, Threshold and Release do not
     change the sound: the output is the same sample for sample wherever

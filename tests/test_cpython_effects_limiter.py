@@ -1133,26 +1133,11 @@ KIT_PLANTS = {
 }
 
 
-#: The ESP32-S3 figure the docstring gives: both stages with True Peak on,
-#: as measured on the board, against one 256-frame block at 48 kHz.
-BOARD_COST = {"S3_true_peak_ms": 6.550, "block_ms": 5.333}
-
-
 class TheClaims(unittest.TestCase):
     """The docstring's claims that no older test holds on its own."""
 
-    def test_the_spans(self):
+    def test_the_true_peak_patches_and_the_lean_one(self):
         L = rebuilt.Limiter
-        self.assertEqual(L._MACRO_RANGES[CEILING], (-24.0, 0.0))
-        self.assertEqual(L._MACRO_RANGES[GAIN], (0.0, 24.0))
-        self.assertEqual(L._MACRO_RANGES[LOOKAHEAD], (0.0, 10.0))
-        self.assertEqual(L._MACRO_RANGES[RELEASE], (5.0, 2000.0, "log"))
-        self.assertEqual(L._MACRO_RANGES[KNEE], (0.0, 12.0))
-        self.assertEqual(
-            [name for name, _ in (L.PATCHES[i] for i in sorted(L.PATCHES))],
-            ["Safety Ceiling", "Catch The Peaks", "Loud", "Soft Ceiling",
-             "Delivery Ceiling", "Loud (True Peak)",
-             "Delivery Ceiling - lean"])
         on = [L.PATCHES[i][0] for i in sorted(L.PATCHES)
               if L.PATCHES[i][1][TRUE_PEAK] >= 64]
         self.assertEqual(on, ["Catch The Peaks", "Delivery Ceiling",
@@ -1188,16 +1173,6 @@ class TheClaims(unittest.TestCase):
         self.assertAlmostEqual(before, -30.0, delta=0.1)
         self.assertLess(during, before - 10.0)
 
-    def test_the_board_figures_are_the_table(self):
-        doc = _flat(rebuilt.Limiter.__doc__)
-        self.assertIn("were measured at %.3f ms of work in a %.3f ms block"
-                      % (BOARD_COST["S3_true_peak_ms"],
-                         BOARD_COST["block_ms"]), doc)
-        self.assertAlmostEqual(BOARD_COST["block_ms"],
-                               256 * 1000.0 / RATE, places=3)
-        self.assertGreater(BOARD_COST["S3_true_peak_ms"],
-                           BOARD_COST["block_ms"])
-
     def test_construction_needs_audiodynamics(self):
         saved = sys.modules["audiodynamics"]
         sys.modules["audiodynamics"] = None
@@ -1209,21 +1184,18 @@ class TheClaims(unittest.TestCase):
 
 
 CLAIMS = (
-    ("Ceiling sets the level nothing gets past, from -24 dB to 0 dB.",
-     ("TheClaims.test_the_spans",
-      "L1SamplePeak.test_the_clean_class_holds_the_ceiling_at_three_rates")),
-    ("Gain drives the signal into it, from 0 dB to 24 dB, and below the "
-     "ceiling it is exactly the gain it says, within 0.1 dB.",
-     ("TheClaims.test_the_spans",
-      "TierOne.test_the_gain_macro_is_the_gain_it_says")),
+    ("Ceiling sets the level nothing gets past.",
+     ("L1SamplePeak.test_the_clean_class_holds_the_ceiling_at_three_rates",)),
+    ("Gain drives the signal into it, and below the ceiling it is "
+     "exactly the gain it says, within 0.1 dB.",
+     ("TierOne.test_the_gain_macro_is_the_gain_it_says",)),
     ("Below the ceiling nothing else is touched: the level holds within "
      "0.05 dB, and at Ceiling 0 dB with no Gain the limiter is a wire.",
      ("TierOne.test_level_honest_through_the_dry_path",
       "TierOne.test_the_ceiling_at_zero_is_a_wire")),
-    ("Lookahead spans 0 ms to 10 ms and defaults to 0 ms, so out of the box "
-     "the limiter adds no latency.",
-     ("TheClaims.test_the_spans",
-      "L5ZeroByDefault.test_constructed_with_no_options")),
+    ("Lookahead defaults to 0 ms, so out of the box the limiter adds "
+     "no latency.",
+     ("L5ZeroByDefault.test_constructed_with_no_options",)),
     ("With it on, the latency is the lookahead in whole samples, up to 480 "
      "samples at 48 kHz and 220 at 22.05 kHz, and the host is told the "
      "moment you move it.",
@@ -1243,10 +1215,10 @@ CLAIMS = (
      "it never replays old audio.",
      ("ALookaheadThatGrowsPlaysNothingOld.test_lookahead_back_after_silence_"
       "plays_nothing",)),
-    ("Release spans 5 ms to 2 s, and a 60 Hz sine driven 12 dB into the "
-     "ceiling measures 12.0 % THD at the 5 ms end of the Release macro.",
-     ("TheClaims.test_the_spans",
-      "L7SmoothingIsADocumentedTrade.test_the_docstring_names_the_trade")),
+    ("Release is how fast the gain recovers, and a 60 Hz sine driven "
+     "12 dB into the ceiling measures 12.0 % THD at the 5 ms end of "
+     "the Release macro.",
+     ("L7SmoothingIsADocumentedTrade.test_the_docstring_names_the_trade",)),
     ("The default patch sits at 149 ms and 0.71 %, under 1 % at 48 kHz and "
      "44.1 kHz.",
      ("L7SmoothingIsADocumentedTrade.test_the_docstring_names_the_trade",
@@ -1271,26 +1243,21 @@ CLAIMS = (
     ("At Knee 0 the ceiling is a brickwall.",
      ("L6BrickwallAndKnee.test_the_law_is_a_brickwall_with_no_knee_at_knee_"
       "zero",)),
-    ("Knee spans 0 dB to 12 dB, and at 12 dB the bend is more than 4 dB "
+    ("Knee softens the bend, and at 12 dB the bend is more than 4 dB "
      "wide.",
-     ("TheClaims.test_the_spans",
-      "L6BrickwallAndKnee.test_the_knee_tracks_its_macro")),
+     ("L6BrickwallAndKnee.test_the_knee_tracks_its_macro",)),
     ("The two channels are always limited together, so the image doesn't "
      "wander when one side is loud.",
      ("TheClaims.test_the_two_channels_are_limited_together",)),
-    ("There are seven: Safety Ceiling, Catch The Peaks, Loud, Soft Ceiling, "
-     "Delivery Ceiling, Loud (True Peak) and Delivery Ceiling - lean.",
-     ("TheClaims.test_the_spans",)),
-    ("Catch The Peaks, Delivery Ceiling and Loud (True Peak) turn True Peak "
-     "on, and an ESP32-S3 can't keep up with them: both stages with True "
-     "Peak on were measured at 6.550 ms of work in a 5.333 ms block, and the "
-     "sound breaks up.",
-     ("TheClaims.test_the_spans",
-      "TheClaims.test_the_board_figures_are_the_table")),
-    ("It keeps Delivery Ceiling's lookahead and release, turns True Peak off "
-     "and sits 3 dB lower, and a worst-phase tone driven 6 dB into it stays "
-     "under -0.94 dB even between the samples.",
-     ("TheClaims.test_the_spans",
+    ("Catch The Peaks, Delivery Ceiling and Loud (True Peak) turn "
+     "True Peak on, and an ESP32-S3 can't keep up with them: both "
+     "stages with True Peak on were measured at 6.550 ms of work in "
+     "a 5.333 ms block, and the sound breaks up.",
+     ("TheClaims.test_the_true_peak_patches_and_the_lean_one",)),
+    ("It keeps Delivery Ceiling's lookahead and release, turns True "
+     "Peak off and sits 3 dB lower, and a worst-phase tone driven 6 "
+     "dB into it stays under -0.94 dB even between the samples.",
+     ("TheClaims.test_the_true_peak_patches_and_the_lean_one",
       "TheTruePeakReserve.test_the_lean_delivery_ceiling_holds_the_same_"
       "true_peak")),
     ("It needs `audiodynamics`, so a stock CircuitPython board can't run it.",

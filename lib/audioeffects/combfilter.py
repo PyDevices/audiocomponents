@@ -235,31 +235,29 @@ class CombFilter(_component.Component):
     """A tuned comb: a delay line short enough to be a pitch, fed back on
     itself, so noise turns into a note and a chord turns metallic.
 
-    **Frequency.** Frequency spans 20 Hz to 4 kHz and is the note the comb
-    rings at, tuned between samples. From 55 Hz to 3.52 kHz the first
-    repeat lands within 5 cents of the note you asked for, and at 880 Hz it
-    does at 48 kHz, 44.1 kHz and 22.05 kHz, and in mono. While it rings, it
-    rings on that pitch, and then it stops.
+    **Frequency.** Frequency is the note the comb rings at, tuned between
+    samples. From 55 Hz to 3.52 kHz the first repeat lands within 5 cents
+    of the note you asked for, and at 880 Hz it does at 48 kHz, 44.1 kHz
+    and 22.05 kHz, and in mono. While it rings, it rings on that pitch, and
+    then it stops.
 
-    **Feedback.** Feedback spans 0 to 0.95 and sets how tall the resonances
-    stand: at 200 Hz the peak is 1/(1-Feedback) and the null 1/(1+Feedback),
-    within 0.2 dB. At Feedback 0 it is the feedforward comb, with nulls more
-    than 60 dB down and peaks 6 dB up, within 0.1 dB.
+    **Feedback.** Feedback sets how tall the resonances stand: at 200 Hz
+    the peak is 1/(1-Feedback) and the null 1/(1+Feedback), within 0.2 dB.
+    At Feedback 0 it is the feedforward comb, with nulls more than 60 dB
+    down and peaks 6 dB up, within 0.1 dB.
 
-    **Mix.** Mix spans 0 to 2: 0 is a wire, 1 is dry plus comb, and 2 is
-    the comb alone. Mix 0 is the source sample for sample, whatever Trim is
-    set to.
+    **Mix.** Mix 0 is a wire, 1 is dry plus comb, and 2 is the comb alone.
+    Mix 0 is the source sample for sample, whatever Trim is set to.
 
-    **Tone.** Tone spans 500 Hz to 24 kHz and is a low-pass inside the
-    loop, darkening each pass. Its top stop is off, and turning it off
-    after it has been in leaves nothing behind.
+    **Tone.** Tone is a low-pass inside the loop, darkening the repeats.
+    Its top stop is off, and turning it off after it has been in leaves
+    nothing behind.
 
-    **Trim.** Trim spans -18 dB to +18 dB and sits in front of the comb,
-    so turning it down makes room for the resonance before the gain rather
-    than after.
+    **Trim.** Trim sits in front of the comb, so turning it down makes room
+    for the resonance before the gain rather than after.
 
-    **Glide.** Glide spans 0 to 1 and slides the tuning, so turning
-    Frequency bends the note rather than clicking.
+    **Glide.** Glide slides the tuning, so turning Frequency bends the note
+    rather than clicking.
 
     **Level.** A comb gains, so a loud input can reach the rail by design.
     A plucked phrase is clean on every patch up to -9 dBFS; at -3 dBFS
@@ -270,9 +268,8 @@ class CombFilter(_component.Component):
     always reaches exact zero, and `tail_samples` says when, for the
     settings as they stand: 3219 frames at the defaults at 48 kHz.
 
-    **Patches.** There are six: Metallic; Ringing Pitch; Soft Ripple; Dark
-    Resonator; Single Slap; and Filter Only. Each tunes the comb to a
-    different note.
+    **Patches.** Each patch tunes the comb to a different note. The Effect
+    controls page lists what the knobs span and the patches.
 
     It needs `audioecho` and `audiobiquad`, so a stock CircuitPython board
     can't run it.

@@ -49,15 +49,16 @@ class AutoPan(_component.Component):
     """An auto-panner: an LFO sweeps your signal between the speakers, with
     a new pan position on every sample, under a pan law.
 
-    **The controls.** Rate runs the sweep from 2 to 20 Hz. Depth is how far
-    it swings: at Depth 1 it reaches each side, where the far speaker is
+    **The controls.** Rate is the sweep's speed. Depth is how far it
+    swings: at Depth 1 it reaches each side, where the far speaker is
     silent, and at Depth 0 the output is the input. Shape runs the sweep
-    from a triangle at 0 to a sine at 1. Law is how far the centre dips,
-    from 3.01 dB, where the power holds steady across the sweep, to 6.02
-    dB. Centre moves the middle of the sweep towards one side. Phase moves
-    where the sweep starts: at 0 it starts on the left. With Sync on, Rate
-    snaps to the nearest of one, two, four or eight sweeps a beat of the
-    host's tempo; with no host tempo, Rate stays where the knob is.
+    from a triangle at 0 to a sine at 1. Law is how far the centre dips; at
+    3.01 dB the power holds steady across the sweep. Centre moves the
+    middle of the sweep towards one side. Phase moves where the sweep
+    starts: at 0 it starts on the left. With Sync on, Rate snaps to the
+    nearest of one, two, four or eight sweeps a beat of the host's tempo;
+    with no host tempo, Rate stays where the knob is. The Effect controls
+    page lists what the knobs span.
 
     **Levels.** The sweep sits 6 dB under your source: hard over, the near
     speaker plays it at half level. A mono source passes untouched, and

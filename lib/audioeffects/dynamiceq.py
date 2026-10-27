@@ -158,21 +158,21 @@ class DynamicEQ(_component.Component):
     add back to the input within 0.05 dB from 100 Hz to 12 kHz, and an
     impulse comes out at its own height.
 
-    **The controls.** Frequency spans 30 Hz to 16 kHz, Width is a Q from
-    0.5 to 12, Threshold runs from -60 dBFS to 0 dBFS, Ratio from 1 to 20,
-    Attack from 0.1 ms to 100 ms and Release from 5 ms to 1000 ms.
+    **The controls.** Frequency places the band, Width is its Q, Threshold
+    is where the cut starts, Ratio is how far it cuts, and Attack and
+    Release are how fast it moves. The Effect controls page lists what the
+    knobs span and the patches.
 
     **The law.** At the default, a 3 kHz tone follows the compressor law
     within 1 dB, and across the bell the cut follows the closed form within
     0.5 dB. Two octaves down nothing moves by as much as 0.2 dB, idle or
     working.
 
-    **Mix is the Range.** Mix spans 0 to 1 and also caps the deepest cut:
-    at 0.75 the band can move by at most 12 dB, and at 1 there is no limit.
-    Across Mix the cut follows that blend within 0.2 dB, and out of band
-    nothing moves. Mix 0 is the source byte for byte, at full scale and at
-    48 kHz, 44.1 kHz and 22.05 kHz. Bringing Mix back after silence plays
-    nothing.
+    **Mix is the Range.** Mix also caps the deepest cut: at 0.75 the band
+    can move by at most 12 dB, and at 1 there is no limit. Across Mix the
+    cut follows that blend within 0.2 dB, and out of band nothing moves.
+    Mix 0 is the source byte for byte, at full scale and at 48 kHz, 44.1
+    kHz and 22.05 kHz. Bringing Mix back after silence plays nothing.
 
     **Listen.** Listen solos the band being processed.
 
@@ -186,9 +186,6 @@ class DynamicEQ(_component.Component):
 
     **Latency and tail.** It adds no latency at any setting. The tail
     reaches exact zero inside `tail_samples`, after a knob move too.
-
-    **Patches.** There are six: Wide Band; Boxiness Control; Harshness
-    Control; Low End Tamer; Sibilance; and Half Measure.
 
     It needs `audiobiquad`, `audiodynamics` and `audioroute`, so a stock
     CircuitPython board can't run it.

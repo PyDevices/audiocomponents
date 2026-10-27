@@ -514,19 +514,6 @@ class TheClaims(unittest.TestCase):
     """The class docstring's claims that the tiers above do not already
     hold."""
 
-    def test_the_spans(self):
-        effect = _made()
-        try:
-            for index, low, high in ((RATE_I, 2.0, 20.0),
-                                     (LAW_I, 3.0103, 6.0206),
-                                     (CENTRE_I, -1.0, 1.0)):
-                effect.set_macro(index, 0)
-                self.assertAlmostEqual(effect.macro(index), low, places=3)
-                effect.set_macro(index, 127)
-                self.assertAlmostEqual(effect.macro(index), high, places=3)
-        finally:
-            effect.deinit()
-
     def test_shape_runs_from_a_triangle_to_a_sine(self):
         effect = _made()
         try:
@@ -608,9 +595,6 @@ CLAIMS = (
      ("TierTwo.test_a3_per_sample_at_floor_five_and_twenty",
       "TierTwo.test_a3_block_held_is_red_at_defaults",
       "TierTwo.test_a1_constant_power_at_defaults_rate")),
-    ("Rate runs the sweep from 2 to 20 Hz.",
-     ("TheClaims.test_the_spans",
-      "TierTwo.test_a3_per_sample_at_floor_five_and_twenty")),
     ("Depth is how far it swings: at Depth 1 it reaches each side, where "
      "the far speaker is silent, and at Depth 0 the output is the input.",
      ("TierTwo.test_a6_hard_over_and_shallow_fault",
@@ -618,9 +602,9 @@ CLAIMS = (
       "TierTwo.test_a6_depth_zero_wire")),
     ("Shape runs the sweep from a triangle at 0 to a sine at 1.",
      ("TheClaims.test_shape_runs_from_a_triangle_to_a_sine",)),
-    ("Law is how far the centre dips, from 3.01 dB, where the power holds "
-     "steady across the sweep, to 6.02 dB.",
-     ("TheClaims.test_the_spans", "TierTwo.test_a2_three_laws",
+    ("Law is how far the centre dips; at 3.01 dB the power holds "
+     "steady across the sweep.",
+     ("TierTwo.test_a2_three_laws",
       "TierTwo.test_a1_constant_power_at_defaults_rate",
       "TierTwo.test_a4_complement_and_mixer_fault")),
     ("Centre moves the middle of the sweep towards one side.",

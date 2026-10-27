@@ -262,15 +262,6 @@ def tone(dbfs, seconds=0.3, hz=1000.0):
 class TheClaims(unittest.TestCase):
     """The class docstring's figures that the tests above do not reach."""
 
-    def test_the_spans(self):
-        cls = transientshaper.TransientShaper
-        self.assertEqual(cls._MACRO_RANGES,
-                         ((-15.0, 15.0), (-24.0, 24.0), (-22.0, 6.0),
-                          (0.2, 5.0, "log"), (0.0, 500.0)))
-        self.assertEqual(cls.MACRO_LABELS[:5],
-                         ("Attack", "Sustain", "Output", "Attack Speed",
-                          "Sustain Hold"))
-
     def test_attack_reaches_its_ends_on_a_hit(self):
         pcm, count = tone(-20.0)
         for db in (15.0, -15.0):
@@ -335,26 +326,15 @@ CLAIMS = (
      "between two envelopes of your own signal, so between -20 and -40 dBFS "
      "a quiet hit is shaped as hard as a loud one, to within 0.5 dB.",
      ("TheClaims.test_quiet_hits_are_shaped_as_hard_as_loud_ones",)),
-    ("Attack moves the first few milliseconds of every hit, from -15 to "
-     "+15 dB.",
-     ("TheClaims.test_the_spans",
-      "TheClaims.test_attack_reaches_its_ends_on_a_hit")),
-    ("Sustain moves what rings after it, from -24 to +24 dB, and the two act "
-     "at once: a snare can get more stick and less room from one instance.",
-     ("TheClaims.test_the_spans",
-      "TraitTests.test_t2_both_sections_act_at_once_and_the_selector_"
-      "cannot")),
-    ("Output sets the level back, from -22 to +6 dB.",
-     ("TheClaims.test_the_spans", "TheClaims.test_output_reaches_plus_six")),
-    ("Attack Speed runs the attack section from 0.2 to 5 times its own "
-     "speed.",
-     ("TheClaims.test_the_spans",)),
-    ("Sustain Hold, from 0 to 500 ms, is how long the ring section holds at "
-     "the peak before it lets go; held, it digs deeper into the ring than a "
+    ("Attack moves the first few milliseconds of every hit.",
+     ("TheClaims.test_attack_reaches_its_ends_on_a_hit",)),
+    ("Sustain moves what rings after it, and the two act at once: a "
+     "snare can get more stick and less room from one instance.",
+     ("TraitTests.test_t2_both_sections_act_at_once_and_the_selector_cannot",)),
+    ("Sustain Hold is how long the ring section holds at the peak "
+     "before it lets go; held, it digs deeper into the ring than a "
      "plain follower does.",
-     ("TheClaims.test_the_spans",
-      "TraitTests.test_t4_the_sustain_envelope_holds_and_a_follower_does_"
-      "not")),
+     ("TraitTests.test_t4_the_sustain_envelope_holds_and_a_follower_does_not",)),
     ("A held note at Attack +12 is still lifted by more than 0.5 dB 100 ms "
      "after the hit, and back within 0.5 dB by 150 ms, since the detector "
      "reads the note's RMS rather than its peaks.",

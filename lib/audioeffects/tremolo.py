@@ -211,16 +211,16 @@ class Tremolo(_component.Component):
     wobble of a Fender's bias-vary circuit, and Optical, a neon lamp pulsing
     into a photocell.
 
-    **Controls.** Character picks Bias or Optical. Rate runs from 0.5 to
-    15 Hz, and Depth from 0, where the output is your signal untouched, to
-    1. Speed Link makes the depth fall as Rate falls, the way one pot moves
-    the amp's whole RC section. Bias runs from a cold idle to a hot one, and
-    a hot idle makes the Bias wobble more than 6 dB shallower. In Optical,
-    Lag, from 5 to 100 ms, is how slowly the photocell recovers, so a fast
-    Rate loses depth; Shape sets how much of each cycle the signal spends
-    dimmed, less as Shape rises. Stereo Phase, from -180 to 180 degrees,
-    offsets the right channel's wobble from the left's: at 180 one side
-    swells as the other dips.
+    **Controls.** Character picks Bias or Optical. Rate is the sweep's
+    speed, and at Depth 0 the output is your signal untouched. Speed Link
+    makes the depth fall as Rate falls, the way one pot moves the amp's
+    whole RC section. Bias runs from a cold idle to a hot one, and a hot
+    idle makes the Bias wobble more than 6 dB shallower. In Optical, Lag is
+    how slowly the photocell recovers, so a fast Rate loses depth; Shape
+    sets how much of each cycle the signal spends dimmed, less as Shape
+    rises. Stereo Phase offsets the right channel's wobble from the left's:
+    at 180 one side swells as the other dips. The Effect controls page
+    lists what the knobs span.
 
     **Bias.** At half Depth the wobble is close to a sine, every harmonic of
     it more than 26 dB down. Its dips go further below the average than its

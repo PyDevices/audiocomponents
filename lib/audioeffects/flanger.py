@@ -102,19 +102,16 @@ class Flanger(_component.Component):
     late, the delay swept up and down by a triangle, so the comb of notches
     the sum makes moves through the spectrum.
 
-    **The controls.** Rate runs the sweep from 0.05 to 10 Hz.
-    Manual, from 0.25 to 5 ms, is the sweep's floor, and Range is how far
-    it climbs from there towards 10 ms: at Range 0 the comb holds still at
-    Manual.
-    Color, from 0 to 0.95, feeds the copy back into the line and raises the
-    comb's peaks into a ring.
-    Mix is the copy's level against a dry that never moves: 1 is equal
-    weight and the deepest notches, 0 is a wire.
-    Polarity minus turns the comb over and puts a notch at DC.
-    With Sync on, one sweep lasts Division bars (4 bars down to an eighth)
-    at the host's tempo and meter, and Rate is ignored.
-    Constructor values play exactly until their knob first moves or a patch
-    loads.
+    **The controls.** Rate is the sweep's speed. Manual is the sweep's
+    floor, and Range is how far it climbs from there towards 10 ms: at
+    Range 0 the comb holds still at Manual. Color feeds the copy back into
+    the line and raises the comb's peaks into a ring. Mix is the copy's
+    level against a dry that never moves: 1 is equal weight and the deepest
+    notches, 0 is a wire. Polarity minus turns the comb over and puts a
+    notch at DC. With Sync on, one sweep lasts Division bars at the host's
+    tempo and meter, and Rate is ignored. Constructor values play exactly
+    until their knob first moves or a patch loads. The Effect controls page
+    lists what the knobs span.
 
     **What you hear.** The copy is your signal exactly Manual late, added
     at Mix.

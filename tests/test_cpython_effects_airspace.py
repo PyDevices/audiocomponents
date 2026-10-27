@@ -705,16 +705,6 @@ class TheAdoption(unittest.TestCase):
 
 class TheSurface(unittest.TestCase):
 
-    def test_the_spans(self):
-        effect = fresh()
-        for index, (low, high, _log) in SPANS.items():
-            for midi, want in ((0, low), (127, high)):
-                with self.subTest(index=index, midi=midi):
-                    effect.set_macro(index, midi)
-                    self.assertAlmostEqual(effect.macro(index), want,
-                                           delta=abs(want) * 1e-9)
-        effect.deinit()
-
     def test_the_labels_and_modes(self):
         self.assertEqual(AirSpace.MACRO_LABELS, (
             "Time", "Feedback", "Glide", "Drive", "Loop Top", "Loop Bass",
@@ -840,11 +830,6 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(effect.latency_samples, 0)
         self.assertEqual(AirSpace.LATENCY_SAMPLES, 0)
         effect.deinit()
-
-    def test_the_patches(self):
-        self.assertEqual(tuple(AirSpace.PATCHES[k][0]
-                               for k in sorted(AirSpace.PATCHES)),
-                         PATCH_NAMES)
 
     def test_patch_0_is_the_defaults_on_the_grid(self):
         steps = AirSpace.PATCHES[0][1]
@@ -1314,24 +1299,19 @@ CLAIMS = (
      ("T1DryIsUntouched.test_every_patch_stereo_48k",
       "T1DryIsUntouched.test_the_times_and_the_hardest_settings",
       "T1DryIsUntouched.test_red_on_the_top_cut_ahead_of_the_splitter")),
-    ("Time (20 to 500 ms) is the gap between repeats and Feedback (0 to "
-     "0.85) how much of each repeat goes round again.",
-     ("TheSurface.test_the_spans",
-      "TheSurface.test_time_lands_on_whole_frames",
+    ("Time is the gap between repeats and Feedback how much of each "
+     "repeat goes round again.",
+     ("TheSurface.test_time_lands_on_whole_frames",
       "TheSurface.test_what_the_tape_and_the_filter_are_handed")),
-    ("Loop Top (1 to 16 kHz) and Loop Bass (20 Hz to 1 kHz) filter the "
-     "loop, so each repeat is darker than the last, and Drive (0 to 1) "
-     "saturates it.",
-     ("TheSurface.test_the_spans",
-      "TheSurface.test_what_the_tape_and_the_filter_are_handed",
+    ("Loop Top and Loop Bass filter the loop, so each repeat is "
+     "darker than the last, and Drive saturates it.",
+     ("TheSurface.test_what_the_tape_and_the_filter_are_handed",
       "T2EachRepeatDarker.test_loop_top_darkens_each_repeat")),
-    ("Top Cut (1 to 16 kHz) darkens everything sent to the chamber, once.",
-     ("TheSurface.test_the_spans",
-      "T2EachRepeatDarker.test_top_cut_darkens_once")),
-    ("Low Cut (20 to 500 Hz), Decay (0.3 to 10 s) and Damping (500 Hz to "
-     "16 kHz) set the chamber.",
-     ("TheSurface.test_the_spans", "TheSurface.test_the_chamber_follows")),
-    ("Mix (0 to 2) is `audiodelays.Echo`'s: the dry at unity up to 1, the "
+    ("Top Cut darkens everything sent to the chamber, once.",
+     ("T2EachRepeatDarker.test_top_cut_darkens_once",)),
+    ("Low Cut, Decay and Damping set the chamber.",
+     ("TheSurface.test_the_chamber_follows",)),
+    ("Mix is `audiodelays.Echo`'s: the dry at unity up to 1, the "
      "chamber alone at 2.",
      ("TheSurface.test_the_mix_law",
       "TheSurface.test_mix_two_is_the_chamber_alone")),
@@ -1344,8 +1324,8 @@ CLAIMS = (
     ("Move Time while it plays and the repeats bend in pitch, the way tape "
      "does: down while it lengthens, up while it shortens.",
      "T5TimeBendsThePitch.test_the_bend_both_ways_at_every_glide"),
-    ("Glide (1 to 10 s) is how long a move across the whole Time range "
-     "takes, so it sets how far they bend: 12 % at the default of 4 s.",
+    ("Glide is how long a move across the whole Time range takes, so "
+     "it sets how far they bend: 12 % at the default of 4 s.",
      ("TheSurface.test_the_glide_law",
       "T5TimeBendsThePitch.test_the_bend_both_ways_at_every_glide")),
     ("Keep your input at or under -17 dBFS: at Mix 1 the dry and the "
@@ -1374,12 +1354,6 @@ CLAIMS = (
      ("TheReset.test_reset_renders_as_a_fresh_instance",
       "TheReset.test_reset_restores_patch_0_and_the_chamber",
       "TheReset.test_red_on_a_reset_that_keeps_the_tape")),
-    ("The patches: Chamber Send (the defaults), Short Send, Long Send, "
-     "Dark Loop, Bright Chamber, Driven Tape, Plain Chamber.",
-     ("TheSurface.test_the_patches",
-      "TheSurface.test_patch_0_is_the_defaults_on_the_grid",
-      "TheSurface.test_a_fresh_instance_reads_patch_0_and_plays_the_"
-      "defaults")),
     ("A control that jumps makes the output step: move it in small steps "
      "from the host if you need it smooth.",
      ("DECLARED:AirSpace,E5-,P5", "DECLARED:AirSpace,E4-m6=,P5")),

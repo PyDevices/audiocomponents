@@ -1243,35 +1243,6 @@ class TheSurface(TestCase):
                        channels)
         return Harmonizer(feed.port, sample_rate=rate, **options)
 
-    def test_the_spans(self):
-        e = self._fresh()
-        for i in (PITCH,) + VOICE:
-            e.set_macro(i, 0)
-            self.assertEqual(e.macro(i), -12.0)
-            e.set_macro(i, 127)
-            self.assertEqual(e.macro(i), 12.0)
-        for m in range(128):
-            e.set_macro(VOICE[0], m)
-            self.assertEqual(semis_of_midi(m), math.floor(e.macro(1) + 0.5))
-        for i in LEVEL:
-            e.set_macro(i, 127)
-            self.assertAlmostEqual(e.macro(i), 0.0, places=9)
-            e.set_macro(i, 1)
-            self.assertAlmostEqual(e.macro(i), -40.0, places=9)
-            e.set_macro(i, 0)
-            self.assertLess(e.macro(i), -40.0)
-        e.set_macro(DETUNE, 127)
-        self.assertAlmostEqual(e.macro(DETUNE), 25.0, places=9)
-        e.set_macro(SPREAD, 127)
-        self.assertAlmostEqual(e.macro(SPREAD), 1.0, places=9)
-        e.set_macro(MIX, 127)
-        self.assertAlmostEqual(e.macro(MIX), 2.0, places=9)
-        self.assertEqual(Harmonizer.MACRO_LABELS,
-                         ("Pitch", "Voice 1", "Voice 2", "Voice 3",
-                          "Level 1", "Level 2", "Level 3", "Detune",
-                          "Spread", "Mix"))
-        e.deinit()
-
     def test_constructor_values_land_on_the_grid(self):
         e = self._fresh(voice1=4.4, level1_db=-6.1, detune_cents=13.0,
                         spread=0.33, mix=1.3, pitch=-2.2)
@@ -1526,25 +1497,23 @@ CLAIMS = (
      "keyboard, so one singer is three-part harmony.",
      ("T1Independent.test_the_sum_of_the_solos",
       "T2Intervals.test_pitch_moves_every_voice")),
-    ("Voice 1 to Voice 3 set each voice's interval in whole semitones, an "
-     "octave either way, and Pitch moves all three together, so a voice "
-     "reaches two octaves either way.",
-     ("TheSurface.test_the_spans",
-      "T2Intervals.test_every_voice_1_position",
+    ("Voice 1 to Voice 3 set each voice's interval in whole "
+     "semitones, and Pitch moves all three together.",
+     ("T2Intervals.test_every_voice_1_position",
       "T2Intervals.test_pitch_moves_every_voice")),
-    ("Level 1 to Level 3 run from -40 to 0 dB, and the bottom step turns "
-     "the voice off.",
-     ("TheSurface.test_the_spans", "T5Balance.test_level",
-      "T6Return.test_the_return", "TheSurface.test_the_tail")),
-    ("Detune pulls voice 1 down and voice 2 up, by up to 25 cents.",
-     ("TheSurface.test_the_spans",
-      "T3SteadyDetune.test_every_eighth_position")),
+    ("Level 1 to Level 3 set each voice's level, and the bottom step "
+     "turns the voice off.",
+     ("T5Balance.test_level", "T6Return.test_the_return",
+      "TheSurface.test_the_tail")),
+    ("Detune pulls voice 1 down and voice 2 up.",
+     ("T3SteadyDetune.test_every_eighth_position",)),
     ("Spread pans voice 1 left and voice 2 right; the dry and voice 3 stay "
      "in the centre.",
      "T5Balance.test_spread"),
-    ("Mix holds the dry at unity up to 1 while the voices rise to their "
-     "Levels; from 1 to 2 the dry fades, and at 2 the voices play alone.",
-     ("T5Balance.test_mix", "TheSurface.test_the_spans")),
+    ("Mix holds the dry at unity up to 1 while the voices rise to "
+     "their Levels; from 1 to 2 the dry fades, and at 2 the voices "
+     "play alone.",
+     ("T5Balance.test_mix",)),
     ("Constructor values land on the nearest of each knob's 128 steps; "
      "`window_ms`, 5 to 60 ms (21.33 by default), is fixed for good.",
      ("TheSurface.test_constructor_values_land_on_the_grid",

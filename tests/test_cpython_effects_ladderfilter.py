@@ -64,12 +64,7 @@ class TheInputCeiling(unittest.TestCase):
 
 class TheClaims(unittest.TestCase):
 
-    def test_the_spans(self):
-        spans = LadderFilter._MACRO_RANGES
-        self.assertEqual(spans[0], (20.0, 18000.0, "log"))
-        self.assertEqual(spans[1], (0.0, 4.2))
-        self.assertEqual(spans[2], (0.0, 24.0))
-        self.assertEqual(spans[4], (1.0, 4.0))
+    def test_cutoff_is_held_under_half_the_sample_rate(self):
         effect = LadderFilter.create(
             probes.ArraySource(probes.sine(1000.0, 0.05, -6.0), rate=22050),
             22050)
@@ -198,10 +193,9 @@ CLAIMS = (
      "with a saturator inside the loop.",
      ("TheClaims.test_the_response_at_the_cutoff_and_two_octaves_up",
       "TheClaims.test_drive_makes_the_growl")),
-    ("Cutoff runs from 20 Hz to 18 kHz, held just under half the sample "
-     "rate.", ("TheClaims.test_the_spans",)),
-    ("Resonance is the loop's feedback, from 0 to 4.2.",
-     ("TheClaims.test_the_spans",)),
+    ("Cutoff is the filter's corner, held just under half the sample "
+     "rate.",
+     ("TheClaims.test_cutoff_is_held_under_half_the_sample_rate",)),
     ("As it rises the cutoff sharpens and the whole passband sinks, about "
      "14 dB by a Resonance of 4: that droop is the circuit's sound, not a "
      "fault.",
@@ -210,15 +204,14 @@ CLAIMS = (
      "it has heard anything it keeps singing after your signal stops.",
      ("TheClaims.test_from_four_up_it_sings_at_the_cutoff_after_the_input_"
       "stops",)),
-    ("Drive, from 0 to 24 dB, is how hard the saturator is hit, so the "
-     "growl follows your input level the way it does in the hardware.",
-     ("TheClaims.test_the_spans", "TheClaims.test_drive_makes_the_growl")),
+    ("Drive is how hard the saturator is hit, so the growl follows "
+     "your input level the way it does in the hardware.",
+     ("TheClaims.test_drive_makes_the_growl",)),
     ("Passband Comp puts the sunk passband back: at 1 the passband holds its "
      "level at any Resonance.",
      ("TheClaims.test_resonance_sinks_the_passband_and_comp_puts_it_back",)),
     ("Poles picks the output from one to four poles.",
-     ("TheClaims.test_the_spans",
-      "TheClaims.test_the_response_at_the_cutoff_and_two_octaves_up")),
+     ("TheClaims.test_the_response_at_the_cutoff_and_two_octaves_up",)),
     ("Oversample runs the loop at twice the rate; it is on by default, and "
      "the Ladder - lean patch is Wide Open with it off, for slower boards.",
      ("TheClaims.test_oversample_defaults_on_and_lean_is_wide_open_without_"

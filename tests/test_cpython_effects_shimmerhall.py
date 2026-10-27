@@ -896,24 +896,6 @@ class TheSurface(TestCase):
                           "Octave Bloom"])
         self.assertEqual(sorted(ShimmerHall.PATCHES), list(range(7)))
 
-    def test_the_spans(self):
-        e = ShimmerHall(_port())
-        try:
-            ends = []
-            for index in range(1, 9):
-                if index == INTERVAL_I:
-                    continue
-                row = []
-                for midi in (0, 127):
-                    e.set_macro(index, midi)
-                    row.append(round(e.macro(index), 9))
-                ends.append(row)
-            self.assertEqual(ends, [[0.0, 1.0], [0.0, 0.9], [20.0, 800.0],
-                                    [0.3, 10.0], [0.5, 1.5],
-                                    [500.0, 16000.0], [0.0, 2.0]])
-        finally:
-            e.deinit()
-
     def test_interval_has_five_zones(self):
         e = ShimmerHall(_port())
         try:
@@ -1704,25 +1686,25 @@ CLAIMS = (
      "Damping darkens every pass until it fades.",
      ("test_each_octave_arrives_one_bloom_later", "test_pinned_loop_is_red",
       "test_damping_stops_the_climb", "test_undamped_loop_is_red")),
-    ("Shimmer (0 to 1) is how loud the shifted copy goes into the hall.",
-     ("test_the_spans", "test_the_shift_is_the_interval")),
-    ("Bloom (20 to 800 ms) is the wait in Bloom and the time between passes "
-     "in Rise.",
-     ("test_the_spans", "test_the_octave_lands_bloom_after_you_play",
+    ("Shimmer is how loud the shifted copy goes into the hall.",
+     ("test_the_shift_is_the_interval",)),
+    ("Bloom is the wait in Bloom and the time between passes in "
+     "Rise.",
+     ("test_the_octave_lands_bloom_after_you_play",
       "test_each_octave_arrives_one_bloom_later")),
-    ("Rise (0 to 0.9) is how strongly each pass returns, in Rise only.",
-     ("test_the_spans", "test_rise_sets_how_strongly_each_pass_returns",
+    ("Rise is how strongly each pass returns, in Rise only.",
+     ("test_rise_sets_how_strongly_each_pass_returns",
       "test_held_feedback_is_red", "test_rise_in_bloom_is_red")),
     ("Interval picks one of five shifts: -12, -5, +7, +12 or +24 semitones.",
      ("test_interval_has_five_zones", "test_the_shift_is_the_interval",
       "test_always_octave_is_red")),
-    ("Decay (0.3 to 10 s), Size (0.5 to 1.5) and Damping (500 Hz to 16 kHz) "
-     "set the hall, and Damping also darkens each pass of the loop.",
-     ("test_the_spans", "test_the_hall_follows_decay_size_and_damping",
+    ("Decay, Size and Damping set the hall, and Damping also darkens "
+     "each pass of the loop.",
+     ("test_the_hall_follows_decay_size_and_damping",
       "test_damping_stops_the_climb", "test_undamped_loop_is_red")),
-    ("Mix (0 to 2) is `audiodelays.Echo`'s: your dry signal at unity up to "
-     "1, the hall alone at 2.",
-     ("test_the_spans", "test_the_dry_never_carries_the_shimmer")),
+    ("Mix is `audiodelays.Echo`'s: your dry signal at unity up to 1, "
+     "the hall alone at 2.",
+     ("test_the_dry_never_carries_the_shimmer",)),
     ("In Bloom, move Bloom and the shifted copy moves by the same time, "
      "within 512 frames.",
      ("test_the_octave_lands_bloom_after_you_play",
@@ -1768,10 +1750,6 @@ CLAIMS = (
      "the first 256 frames, 5 ms at 48 kHz, play at the old level.",
      ("test_an_output_taken_before_mix_moves_plays_the_old_level_at_first",
       "test_only_a_move_that_changes_a_voice_level_re_arms")),
-    ("The patches: Octave Rise (the defaults), Short Stagger, Fifth Halo, "
-     "Slow Rise, Rise Damped, Falling Octaves, Octave Bloom.",
-     ("test_macros_patches_tier_latency",
-      "test_a_fresh_instance_reads_patch_0")),
     ("Octave Rise is Octave Bloom in Rise at Rise 0: one octave, once, and "
      "the hall starts at once.",
      ("test_the_defaults_are_octave_bloom_in_rise_at_rise_0",

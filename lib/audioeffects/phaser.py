@@ -283,25 +283,24 @@ class Phaser(_component.Component):
     """A phaser after the Phase 90: notches swept up and down your signal on
     a triangle.
 
-    **Controls.** Rate runs the sweep from 0 to 10 Hz, and at 0 the notches
-    hold still. Depth is how far they swing, and Centre puts the lower
-    notch, mid-sweep, anywhere from 60 Hz to 2 kHz. Stages picks 4, 6, 8,
-    10 or 12 all-pass stages, and each pair makes a notch: four stages make
-    two, the second about two and a half octaves above the first. Mix at 0
-    is your dry signal, and at 0.5, the default, the notches go deeper than
-    40 dB. Feedback, from 0 to 0.9, lifts a hump between the notches. Shape
-    leans the triangle, from a rise of 0.35 of the cycle to 0.65. Drive, from
-    0 to 1, softens the signal on its way into the stages, so it grows
-    harmonics as your level rises.
+    **Controls.** Rate is the sweep's speed, and at 0 the notches hold
+    still. Depth is how far they swing, and Centre puts the lower notch,
+    mid-sweep. Stages sets how many all-pass stages there are, and each
+    pair makes a notch: four stages make two, the second about two and a
+    half octaves above the first. Mix at 0 is your dry signal, and at 0.5,
+    the default, the notches go deeper than 40 dB. Feedback lifts a hump
+    between the notches. Shape leans the triangle. Drive softens the signal
+    on its way into the stages, so it grows harmonics as your level rises.
+    The Effect controls page lists what the knobs span.
 
     **Drive and Feedback.** Drive is 0.3 when you construct the class, and
     there the Feedback hump stays under 5 dB. Turn Drive to 0 and Feedback
     lifts it more than 5 dB. The Phaser - lean patch is the default with
     Drive at 0.
 
-    **Sync.** With Sync on, the sweep locks to the host: Division picks 4,
-    2, 1, 1/2, 1/3, 1/4 or 1/8 of a bar a sweep, a bar is read from the
-    host's time signature, and a change of tempo or meter is followed.
+    **Sync.** With Sync on, the sweep locks to the host: Division picks the
+    length of a sweep in bars, a bar is read from the host's time
+    signature, and a change of tempo or meter is followed.
 
     **Timing.** Latency is zero at every setting. Silence in is silence out
     once the notches ring down, which at musical settings is quick; the

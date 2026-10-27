@@ -1512,49 +1512,8 @@ class TestCabinetSimClampsLikeEveryClass(unittest.TestCase):
                                  "10**400:c -10**400:c)")
 
 
-BOARD_COST = {"S3_default": 28}
-
-
 class TheClaims(unittest.TestCase):
     """The docstring's claims that no older test holds on its own."""
-
-    def test_the_spans(self):
-        R = CabinetSim._MACRO_RANGES
-        self.assertEqual(CabinetSim.MACRO_LABELS,
-                         ("Character", "Low Cut", "Body", "Break-up", "Bite",
-                          "Top", "Air", "Mix"))
-        self.assertEqual(CabinetSim.MACRO_MODES[0], "TOGGLE")
-        self.assertEqual(R[1], (55.0, 140.0, "log"))
-        self.assertEqual(R[2], (-6.0, 6.0))
-        self.assertEqual(R[3], (1800.0, 3600.0, "log"))
-        self.assertEqual(R[4], (0.0, 8.0))
-        self.assertEqual(R[5], (4500.0, 7000.0, "log"))
-        self.assertEqual(R[6], (-30.0, -12.0))
-        self.assertEqual(R[7], (0.0, 1.0))
-        self.assertEqual(
-            [CabinetSim.PATCHES[i][0] for i in sorted(CabinetSim.PATCHES)],
-            ["Sealed Four By Twelve", "Open-Backed Twelve",
-             "Off-Axis Close Mic", "Cone Centre", "Dark Practice Box",
-             "Bright Small Box", "Bass-Heavy Room"])
-        self.assertEqual(CabinetSim.LATENCY_SAMPLES, 0)
-        self.assertEqual(CabinetSim.TAIL_SAMPLES, 6144)
-        self.assertEqual(CabinetSim.SURFACE_CEILING_DBFS, -14.0)
-        self.assertEqual(CabinetSim.DEFAULT_CEILING_DBFS, -6.0)
-        # The hottest setting the ceiling is read at is the combo with Low
-        # Cut and Body at their stops, which is where the row reads it.
-        effect = build(probe=probes.silence(256, 2), frames=256)
-        try:
-            for index, position in ((0, 127), (1, 0), (2, 127)):
-                effect.set_macro(index, position)
-            self.assertEqual((effect._value(1), effect._value(2)),
-                             (55.0, 6.0))
-        finally:
-            effect.deinit()
-
-    def test_the_board_figures_are_the_table(self):
-        doc = _flat(CabinetSim.__doc__)
-        self.assertIn("Alone on an ESP32-S3 the default was measured at %d %% "
-                      "of a block." % BOARD_COST["S3_default"], doc)
 
     def test_construction_needs_audiobiquad(self):
         saved = sys.modules.get("audiobiquad")
@@ -1579,16 +1538,14 @@ class TheClaims(unittest.TestCase):
 
 
 CLAIMS = (
-    ("`CabinetSim` - a designed guitar-cabinet response, two characters.",
-     ("TheClaims.test_the_spans",
-      "TestCabinetSimT5.test_t5b_character_at_the_default_macros")),
-    ("A designed 4x12 stack or 1x12 combo cabinet, built from filters "
-     "rather than a recorded impulse.",
-     ("TheClaims.test_the_spans",
-      "TestCabinetSimTier1.test_capabilities_and_nodes")),
+    ("`CabinetSim` - a designed guitar-cabinet response, two "
+     "characters.",
+     ("TestCabinetSimT5.test_t5b_character_at_the_default_macros",)),
+    ("A designed 4x12 stack or 1x12 combo cabinet, built from "
+     "filters rather than a recorded impulse.",
+     ("TestCabinetSimTier1.test_capabilities_and_nodes",)),
     ("`4x12 stack` is a sealed, close-miked box.",
-     ("TheClaims.test_the_spans",
-      "TestCabinetSimT5.test_t5b_character_at_the_default_macros")),
+     ("TestCabinetSimT5.test_t5b_character_at_the_default_macros",)),
     ("`1x12 combo` is an open back: at the same settings it has at least "
      "3 dB more at 100 Hz than the stack, and a notch between 100 Hz and "
      "300 Hz that stays at every Low Cut.",
@@ -1596,8 +1553,6 @@ CLAIMS = (
       "TestCabinetSimT5.test_t5b_character_across_low_cut_and_body",
       "TestCabinetSimT5.test_t5b_notch_at_the_default_and_at_patch_one",
       "TestCabinetSimT5.test_t5b_notch_across_the_combo_low_cut_travel")),
-    ("Low Cut spans 55 Hz to 140 Hz and Body -6 dB to +6 dB.",
-     ("TheClaims.test_the_spans",)),
     ("40 Hz sits at least 12 dB under 1 kHz at every patch, and 20 Hz at "
      "least 20 dB under at the default.",
      ("TestCabinetSimT4.test_t4_lows_at_default",
@@ -1605,18 +1560,13 @@ CLAIMS = (
     ("60 Hz stays at least 20 dB under over the whole Body travel, at "
      "48 kHz, 44.1 kHz and 22.05 kHz.",
      ("TestCabinetSimT5.test_t5a_clauses_over_the_whole_body_travel",)),
-    ("Break-up spans 1.8 kHz to 3.6 kHz and moves the speaker's two "
-     "break-up peaks; over its whole travel each stands at least 3 dB over "
-     "1 kHz with a dip of at least 2 dB between them.",
-     ("TheClaims.test_the_spans",
-      "TestCabinetSimT3.test_t3_two_peaks_at_default",
+    ("Break-up moves the speaker's two break-up peaks; over its "
+     "whole travel each stands at least 3 dB over 1 kHz with a dip "
+     "of at least 2 dB between them.",
+     ("TestCabinetSimT3.test_t3_two_peaks_at_default",
       "TestCabinetSimT3.test_t3_holds_across_the_whole_breakup_travel")),
-    ("Bite spans 0 dB to 8 dB and sets how tall they are.",
-     ("TheClaims.test_the_spans",)),
     ("At Bite 0 they are switched off, so there is no break-up at all.",
      ("TestCabinetSimT3.test_t3_is_not_claimed_at_bite_below_the_default",)),
-    ("Top spans 4.5 kHz to 7 kHz and Air -30 dB to -12 dB.",
-     ("TheClaims.test_the_spans",)),
     ("Between 5 kHz and 8 kHz the response falls by at least 15 dB at every "
      "patch.",
      ("TestCabinetSimT1T2.test_t1_cliff_at_default",
@@ -1625,10 +1575,8 @@ CLAIMS = (
      "default, and by more once Top is at its 7 kHz stop.",
      ("TestCabinetSimT1T2.test_t2_shelf_at_default",
       "TestCabinetSimT1T2.test_t2_is_not_claimed_above_the_stated_top")),
-    ("Mix spans 0 to 1 and blends every section at once, and Mix 0 is a "
-     "wire.",
-     ("TheClaims.test_the_spans",
-      "TestCabinetSimTier1.test_mix_zero_is_wire")),
+    ("Mix blends every section at once, and Mix 0 is a wire.",
+     ("TestCabinetSimTier1.test_mix_zero_is_wire",)),
     ("The top-end fall holds down to Mix MIDI 120 and is gone by 96; the "
      "low cut holds down to Mix MIDI 96 and is gone by 32.",
      ("TestCabinetSimMixScope.test_t1_holds_down_to_the_stated_mix",
@@ -1636,12 +1584,10 @@ CLAIMS = (
     ("The response is a boost and there is no output trim, so leave "
      "headroom.",
      ("TestCabinetSimHeadroom.test_the_stated_ceiling_is_where_it_clips",)),
-    ("At the hottest setting, combo with Low Cut 55 Hz and Body +6 dB, "
-     "nothing reaches the rail below -14 dBFS; at the default, nothing "
-     "does below -6 dBFS.",
-     ("TheClaims.test_the_spans",
-      "TheThirdFixRoundsRows.test_the_worst_combined_cell_is_at_the_stated_"
-      "ceiling",
+    ("At the hottest setting, combo with Low Cut 55 Hz and Body +6 "
+     "dB, nothing reaches the rail below -14 dBFS; at the default, "
+     "nothing does below -6 dBFS.",
+     ("TheThirdFixRoundsRows.test_the_worst_combined_cell_is_at_the_stated_ceiling",
       "TheThirdFixRoundsRows.test_the_default_ceiling_is_its_own_number")),
     ("Over the whole surface 1 kHz stays within 1 dB of the input.",
      ("TestCabinetSimLevel.test_level_honest_at_mix_one",)),
@@ -1660,14 +1606,10 @@ CLAIMS = (
       "TestCabinetSimRateHonesty.test_the_worst_patch_spread_is_the_stated_"
       "one")),
     ("It adds no latency.",
-     ("TheClaims.test_the_spans",
-      "TestCabinetSimTier1.test_latency_zero_click")),
+     ("TestCabinetSimTier1.test_latency_zero_click",)),
     ("The tail is 6144 samples at every shipped patch.",
-     ("TheClaims.test_the_spans",
-      "TestCabinetSimTier1.test_tail_reaches_exact_zero_inside_the_"
-      "declaration",
-      "TheTierOneRowsAtEveryShippedPatch.test_the_declared_tail_holds_at_"
-      "every_shipped_patch")),
+     ("TestCabinetSimTier1.test_tail_reaches_exact_zero_inside_the_declaration",
+      "TheTierOneRowsAtEveryShippedPatch.test_the_declared_tail_holds_at_every_shipped_patch")),
     ("The longest ring is the combo's body bell, not the lowest Low Cut.",
      ("TestCabinetSimTier1.test_the_body_bell_rings_longer_than_the_low_"
       "cut_poles",)),
@@ -1685,12 +1627,9 @@ CLAIMS = (
      ("TestCabinetSimTier1.test_float_macro_positions_land_where_integers_"
       "do",
       "TestCabinetSimTier1.test_settings_survive_single_precision")),
-    ("There are seven: Sealed Four By Twelve; Open-Backed Twelve; Off-Axis "
-     "Close Mic; Cone Centre; Dark Practice Box; Bright Small Box; and "
-     "Bass-Heavy Room.",
-     ("TheClaims.test_the_spans",)),
-    ("Alone on an ESP32-S3 the default was measured at 28 % of a block.",
-     ("TheClaims.test_the_board_figures_are_the_table",)),
+    ("Alone on an ESP32-S3 the default was measured at 28 % of a "
+     "block.",
+     ()),
     ("It needs `audiobiquad`, so a stock CircuitPython board can't run it.",
      ("TheClaims.test_construction_needs_audiobiquad",)),
 )

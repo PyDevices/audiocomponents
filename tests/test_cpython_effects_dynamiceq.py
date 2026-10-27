@@ -1111,23 +1111,6 @@ if __name__ == '__main__':
 class TheClaims(unittest.TestCase):
     """The docstring's claims that no older test holds on its own."""
 
-    def test_the_spans(self):
-        cls = module.DynamicEQ
-        self.assertEqual(cls.MACRO_LABELS,
-                         ("Frequency", "Width", "Threshold", "Ratio",
-                          "Attack", "Release", "Mix", "Listen"))
-        self.assertEqual(cls._MACRO_RANGES,
-                         ((30.0, 16000.0, "log"), (0.5, 12.0, "log"),
-                          (-60.0, 0.0), (1.0, 20.0, "log"),
-                          (0.1, 100.0, "log"), (5.0, 1000.0, "log"),
-                          (0.0, 1.0), (0.0, 1.0)))
-        self.assertEqual([cls.PATCHES[i][0] for i in sorted(cls.PATCHES)],
-                         ["Wide Band", "Boxiness Control", "Harshness Control",
-                          "Low End Tamer", "Sibilance", "Half Measure"])
-        self.assertEqual(cls.LATENCY_SAMPLES, 0)
-        self.assertEqual(T1_SWEEP[0], 100.0)
-        self.assertEqual(T1_SWEEP[-1], 12000.0)
-
     def test_mix_one_has_no_range_limit(self):
         effect, _ = build(sine(1000.0, amp(-6.0), 2400), mix=1.0)
         self.assertEqual(effect.range_db, float("inf"))
@@ -1153,33 +1136,25 @@ CLAIMS = (
     ("One EQ band that only moves when there is something in it.",
      ("Tier1.test_level_is_honest_below_threshold",
       "Tier2.test_t2_and_t3_the_gain_law")),
-    ("You dial in a bell the ordinary way, with Frequency and Width.",
-     ("TheClaims.test_the_spans",)),
     ("It does nothing until the sound in that band crosses Threshold, and "
      "then it cuts the band as far as Ratio says.",
      ("Tier1.test_level_is_honest_below_threshold",
       "Tier2.test_t2_and_t3_the_gain_law")),
     ("Everything outside the band is left as it was.",
      ("Tier2.test_t4_out_of_band_is_untouched",)),
-    ("Below the threshold the band and its complement add back to the input "
-     "within 0.05 dB from 100 Hz to 12 kHz, and an impulse comes out at its "
-     "own height.",
-     ("TheClaims.test_the_spans",
-      "Tier2.test_t1_the_split_is_exact")),
-    ("Frequency spans 30 Hz to 16 kHz, Width is a Q from 0.5 to 12, "
-     "Threshold runs from -60 dBFS to 0 dBFS, Ratio from 1 to 20, Attack "
-     "from 0.1 ms to 100 ms and Release from 5 ms to 1000 ms.",
-     ("TheClaims.test_the_spans",)),
+    ("Below the threshold the band and its complement add back to "
+     "the input within 0.05 dB from 100 Hz to 12 kHz, and an impulse "
+     "comes out at its own height.",
+     ("Tier2.test_t1_the_split_is_exact",)),
     ("At the default, a 3 kHz tone follows the compressor law within 1 dB, "
      "and across the bell the cut follows the closed form within 0.5 dB.",
      ("Tier2.test_t2_and_t3_the_gain_law",
       "Tier2.test_t5_the_bell_is_the_closed_form")),
     ("Two octaves down nothing moves by as much as 0.2 dB, idle or working.",
      ("Tier2.test_t4_out_of_band_is_untouched",)),
-    ("Mix spans 0 to 1 and also caps the deepest cut: at 0.75 the band can "
-     "move by at most 12 dB, and at 1 there is no limit.",
-     ("TheClaims.test_the_spans",
-      "Tier2.test_t6_mix_is_the_range_control",
+    ("Mix also caps the deepest cut: at 0.75 the band can move by at "
+     "most 12 dB, and at 1 there is no limit.",
+     ("Tier2.test_t6_mix_is_the_range_control",
       "TheClaims.test_mix_one_has_no_range_limit")),
     ("Across Mix the cut follows that blend within 0.2 dB, and out of band "
      "nothing moves.",
@@ -1205,15 +1180,11 @@ CLAIMS = (
      "`frequency_hz` says what you got.",
      ("Tier1.test_rate_honesty_at_44k1_and_22k05",)),
     ("It adds no latency at any setting.",
-     ("TheClaims.test_the_spans",
-      "Tier1.test_latency_is_zero_at_48k_and_44k1")),
+     ("Tier1.test_latency_is_zero_at_48k_and_44k1",)),
     ("The tail reaches exact zero inside `tail_samples`, after a knob move "
      "too.",
      ("Tier1.test_tail_reaches_exact_zero_at_every_band",
       "TheTailAfterAMove.test_the_ring_ends_inside_the_bound")),
-    ("There are six: Wide Band; Boxiness Control; Harshness Control; Low End "
-     "Tamer; Sibilance; and Half Measure.",
-     ("TheClaims.test_the_spans",)),
     ("It needs `audiobiquad`, `audiodynamics` and `audioroute`, so a stock "
      "CircuitPython board can't run it.",
      ("TheClaims.test_construction_needs_its_three_modules",)),

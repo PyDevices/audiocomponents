@@ -884,19 +884,6 @@ class TestPhaserFollowsTheMeter(unittest.TestCase):
 
 class TheClaims(unittest.TestCase):
 
-    def test_the_spans(self):
-        spans = Phaser._MACRO_RANGES
-        self.assertEqual(spans[RATE_I], (0.0, 10.0))
-        self.assertEqual(spans[CENTRE_I], (60.0, 2000.0, "log"))
-        self.assertEqual(spans[FEEDBACK_I], (0.0, 0.9))
-        self.assertEqual(spans[MIX_I], (0.0, 1.0))
-        self.assertEqual(spans[SHAPE_I], (0.35, 0.65))
-        self.assertEqual(spans[DRIVE_I], (0.0, 1.0))
-        self.assertEqual(tuple(phaser_module.STAGES_CHOICES),
-                         (4, 6, 8, 10, 12))
-        self.assertEqual(phaser_module.DIVISION_BARS,
-                         (4.0, 2.0, 1.0, 0.5, 1.0 / 3.0, 0.25, 0.125))
-
     def test_the_constructor_drive_and_mix(self):
         effect = built()
         self.assertAlmostEqual(effect.macro(DRIVE_I), 0.3, delta=0.01)
@@ -937,38 +924,24 @@ CLAIMS = (
      ("TestPhaserTraits.test_p1_two_notches_at_defaults_six_stages_is_"
       "three",
       "TestPhaserTraits.test_default_lfo_is_builtin_not_a_table")),
-    ("Rate runs the sweep from 0 to 10 Hz, and at 0 the notches hold "
-     "still.",
-     ("TheClaims.test_the_spans",
-      "TestPhaserTraits.test_p1_two_notches_at_defaults_six_stages_is_"
-      "three")),
-    ("Depth is how far they swing, and Centre puts the lower notch, "
-     "mid-sweep, anywhere from 60 Hz to 2 kHz.",
-     ("TheClaims.test_the_spans",
-      "TestPhaserInvariants.test_rate_honest_construction")),
-    ("Stages picks 4, 6, 8, 10 or 12 all-pass stages, and each pair makes a "
-     "notch: four stages make two, the second about two and a half octaves "
-     "above the first.",
-     ("TheClaims.test_the_spans",
-      "TestPhaserTraits.test_p1_two_notches_at_defaults_six_stages_is_"
-      "three")),
+    ("Rate is the sweep's speed, and at 0 the notches hold still.",
+     ("TestPhaserTraits.test_p1_two_notches_at_defaults_six_stages_is_three",)),
+    ("Stages sets how many all-pass stages there are, and each pair "
+     "makes a notch: four stages make two, the second about two and "
+     "a half octaves above the first.",
+     ("TestPhaserTraits.test_p1_two_notches_at_defaults_six_stages_is_three",)),
     ("Mix at 0 is your dry signal, and at 0.5, the default, the notches go "
      "deeper than 40 dB.",
      ("TestPhaserInvariants.test_mix_zero_is_a_wire",
       "TheClaims.test_the_constructor_drive_and_mix",
       "TestPhaserTraits.test_p4_null_at_defaults_mix_one_is_shallow",
       "TestPhaserTraits.test_mix_one_fault_fires_at_default_macros")),
-    ("Feedback, from 0 to 0.9, lifts a hump between the notches.",
-     ("TheClaims.test_the_spans",
-      "TestPhaserTraits.test_p5_feedback_raises_peak_stuck_is_flat")),
-    ("Shape leans the triangle, from a rise of 0.35 of the cycle to 0.65.",
-     ("TheClaims.test_the_spans",)),
-    ("Drive, from 0 to 1, softens the signal on its way into the stages, so "
-     "it grows harmonics as your level rises.",
-     ("TheClaims.test_the_spans",
-      "TestPhaserTraits.test_p7_harmonics_grow_fault_is_flat",
-      "TestPhaserTraits.test_p7_harmonics_at_constructor_drive_fault_is_"
-      "flat")),
+    ("Feedback lifts a hump between the notches.",
+     ("TestPhaserTraits.test_p5_feedback_raises_peak_stuck_is_flat",)),
+    ("Drive softens the signal on its way into the stages, so it "
+     "grows harmonics as your level rises.",
+     ("TestPhaserTraits.test_p7_harmonics_grow_fault_is_flat",
+      "TestPhaserTraits.test_p7_harmonics_at_constructor_drive_fault_is_flat")),
     ("Drive is 0.3 when you construct the class, and there the Feedback "
      "hump stays under 5 dB.",
      ("TheClaims.test_the_constructor_drive_and_mix",
@@ -977,12 +950,10 @@ CLAIMS = (
      ("TestPhaserTraits.test_p5_feedback_raises_peak_stuck_is_flat",)),
     ("The Phaser - lean patch is the default with Drive at 0.",
      ("TheClaims.test_the_constructor_drive_and_mix",)),
-    ("With Sync on, the sweep locks to the host: Division picks 4, 2, 1, "
-     "1/2, 1/3, 1/4 or 1/8 of a bar a sweep, a bar is read from the host's "
-     "time signature, and a change of tempo or meter is followed.",
-     ("TheClaims.test_the_spans",
-      "TestPhaserInvariants.test_capabilities_declare_tempo_sync_and_read_"
-      "transport",
+    ("With Sync on, the sweep locks to the host: Division picks the "
+     "length of a sweep in bars, a bar is read from the host's time "
+     "signature, and a change of tempo or meter is followed.",
+     ("TestPhaserInvariants.test_capabilities_declare_tempo_sync_and_read_transport",
       "TestPhaserFollowsTheMeter.test_the_bar_is_the_time_signature",
       "TestPhaserFollowsTheMeter.test_a_meter_change_is_followed")),
     ("Latency is zero at every setting.",

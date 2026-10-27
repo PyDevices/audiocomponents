@@ -134,20 +134,20 @@ class Expander(_component.Component):
     floor you set, without the slam of a gate. Above the threshold it is a
     wire.
 
-    **Controls.** Threshold runs from -80 to 0 dBFS. Ratio, from 1 to 8,
-    is how many dB the output falls for every dB the input falls below
-    the threshold; with the RMS detector the slope stays within 5 % of it
-    even at 8. Depth, from 0 to -80 dB, is the floor: a quiet passage
-    falls no further than that, to within 0.5 dB. Ratio 1 and Depth 0 are
-    each a wire, byte for byte. Attack, from 0.01 ms to 1 s, and Release,
-    from 2 ms to 4 s, set how fast the detector follows the level.
+    **Controls.** Threshold is where the expansion starts. Ratio is
+    how many dB the output falls for every dB the input falls below the
+    threshold; with the RMS detector the slope stays within 5 % of it even
+    at 8. Depth is the floor: a quiet passage falls no further than that,
+    to within 0.5 dB. Ratio 1 and Depth 0 are each a wire, byte for byte.
+    Attack and Release set how fast the detector follows the level. The
+    Effect controls page lists what the knobs span.
 
-    **The key.** Key Low, from 25 Hz to 4 kHz, and Key High, from 250 Hz
-    to just under Nyquist, narrow the band the detector hears, at
-    12 dB/octave at each end, so a loud tone outside the band can still
-    open it. Key Listen puts that band on the output so you can hear what
-    the detector hears. Pass `key=` another stream and the detector reads
-    that instead of your signal, the DS201's external key.
+    **The key.** Key Low and Key High, the top just under Nyquist, narrow
+    the band the detector hears, at 12 dB/octave at each end, so a loud
+    tone outside the band can still open it. Key Listen puts that band on
+    the output so you can hear what the detector hears. Pass `key=` another
+    stream and the detector reads that instead of your signal, the DS201's
+    external key.
 
     **Detector.** RMS, the default, gives a sine and a square of equal RMS
     the same gain, to within 0.1 dB at Ratio 2 with the band wide open.

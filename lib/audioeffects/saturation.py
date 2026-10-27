@@ -700,10 +700,9 @@ class Saturation(_component.Component):
     harmonic of a -12 dBFS tone stays 40 dB under it. `console` is
     transformer iron, and it saturates from the bottom up.
 
-    **Drive and Headroom.** Drive spans -12 dB to +15 dB and Headroom
-    -12 dB to +12 dB. Headroom is Drive spent the other way round, and the
-    two share one ceiling: Drive less Headroom stops at +15 dB however you
-    reach it.
+    **Drive and Headroom.** Headroom is Drive spent the other way round,
+    and the two share one ceiling: Drive less Headroom stops at +15 dB
+    however you reach it.
 
     **Aliasing.** At 48 kHz on `tube` the aliasing stays more than 60 dB
     under a 1010 Hz or a 3700 Hz tone, at the default and at full Drive, and
@@ -711,37 +710,34 @@ class Saturation(_component.Component):
     is quiet it reads worse, one dB for one, and `console` at Drive 0 dB
     does not reach it.
 
-    **Output and Mix.** Output spans -24 dB to +12 dB, and +3, +6, +9 and
-    +12 dB come out within 0.25 dB of what they say. At the default the
-    stage takes level away: a -12 dBFS 1 kHz tone comes out about 8 dB down
-    on `tube`, 13 dB on `tape` and 33 dB on `console`, and Output is what
-    puts it back. With every macro at its top a full-scale input can clip.
-    Mix runs from the dry signal at 0 to the stage at 1, and it is a blend:
-    the level never rises on the way and there is no notch. At Mix 0 the
-    output is the source itself and the latency is 0.
+    **Output and Mix.** Output's +3, +6, +9 and +12 dB come out within 0.25
+    dB of what they say. At the default the stage takes level away: a -12
+    dBFS 1 kHz tone comes out about 8 dB down on `tube`, 13 dB on `tape`
+    and 33 dB on `console`, and Output is what puts it back. With every
+    macro at its top a full-scale input can clip. Mix runs from the dry
+    signal at 0 to the stage at 1, and it is a blend: the level never rises
+    on the way and there is no notch. At Mix 0 the output is the source
+    itself and the latency is 0.
 
-    **Bias.** Bias spans -1 to +1 and moves the stage's operating point. Every
-    position sounds: none takes more than 12 dB off the level at Bias 0, and
-    none wanders more than 1 dB once it has settled. Silence in is silence
-    out at every Bias and every patch.
+    **Bias.** Bias moves the stage's operating point. Every position
+    sounds: none takes more than 12 dB off the level at Bias 0, and none
+    wanders more than 1 dB once it has settled. Silence in is silence out
+    at every Bias and every patch.
 
-    **Speed, Tilt and Hysteresis.** Speed is the tape's, from 3.75 to 30
-    inches a second, and slides its playback loss; on `tube` it changes
-    nothing. Tilt spans -6 dB to +6 dB about 1 kHz. Hysteresis spans 0 to 1
-    and is off by default.
+    **Speed, Tilt and Hysteresis.** Speed is the tape's, in inches a
+    second, and slides its playback loss; on `tube` it changes nothing.
+    Tilt tilts the balance about 1 kHz. Hysteresis is off by default. The
+    Effect controls page lists what the knobs span and the patches.
 
     **Latency and tail.** The rate picks the oversampling: x4 at 48 kHz and
     44.1 kHz, x2 at 22.05 kHz. At x4 the latency is 1 sample on `tube`, 2 on
     `tape` and 4 on `console`, and the host is told. After a burst every
     patch is back to silence within the declared tail of 65536 samples.
 
-    **Patches.** There are nine: Gentle thickening; Hot into the curve; Tape
-    at fifteen; Tape at seven and a half; Under-biased and bright; Iron, low
-    end working; Offset, even harmonics; Mix back; and Saturation - lean.
-    Alone on an ESP32-S3 the class was measured at 55 % of a block at its
-    default patch and 56 % at its costliest. Saturation - lean runs one
-    oversampling factor lower and was measured at 40 %, so play it when you
-    stack effects.
+    **Patches.** Alone on an ESP32-S3 the class was measured at 55 % of a
+    block at its default patch and 56 % at its costliest. Saturation - lean
+    runs one oversampling factor lower and was measured at 40 %, so play it
+    when you stack effects.
 
     It needs `audioshaper`, `audiobiquad`, `audioroute` and `audioecho`, so
     a stock CircuitPython board can't run it.
