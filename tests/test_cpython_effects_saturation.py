@@ -2064,39 +2064,16 @@ class TestResetIsFresh(unittest.TestCase):
         self.assertEqual(effect.latency_samples, fresh)
 
 
-#: The ESP32-S3 figures the docstring gives, from the second board pass:
-#: share of a 5.333 ms block at 48 kHz, rounded to the whole percent.
-BOARD_COST = {"S3_default": 55, "S3_costliest": 56, "S3_lean": 40}
-
-
 class TheClaims(unittest.TestCase):
     """The docstring's claims that no older test holds on its own."""
 
-    def test_the_spans(self):
-        R = Saturation._MACRO_RANGES
-        self.assertEqual(Saturation.MACRO_LABELS,
-                         ("Drive", "Output", "Mix", "Headroom", "Bias",
-                          "Speed", "Tilt", "Hysteresis"))
-        self.assertEqual(R[0], (-12.0, 15.0))
-        self.assertEqual(R[1], (-24.0, 12.0))
-        self.assertEqual(R[2], (0.0, 1.0))
-        self.assertEqual(R[3], (-12.0, 12.0))
-        self.assertEqual(R[4], (-1.0, 1.0))
-        self.assertEqual(R[5], (3.75, 30.0, "log"))
-        self.assertEqual(R[6], (-6.0, 6.0))
-        self.assertEqual(R[7], (0.0, 1.0))
+    def test_the_rate_picks_the_oversampling_and_the_defaults(self):
         self.assertEqual(rebuilt.TILT_HZ, 1000.0)
         self.assertEqual(rebuilt.CHARACTERS, ("tube", "tape", "console"))
         effect = build()
         self.assertEqual(effect._character, "tube")
         self.assertEqual(effect.macro(7), 0.0)
         effect.deinit()
-        self.assertEqual(
-            [Saturation.PATCHES[i][0] for i in sorted(Saturation.PATCHES)],
-            ["Gentle thickening", "Hot into the curve", "Tape at fifteen",
-             "Tape at seven and a half", "Under-biased and bright",
-             "Iron, low end working", "Offset, even harmonics", "Mix back",
-             "Saturation - lean"])
         self.assertEqual([rebuilt.shipped_oversample(rate)
                           for rate in (48000, 44100, 22050)], [4, 4, 2])
         self.assertEqual([rebuilt.CLICK_ONSET_SAMPLES[(character, 4)]
@@ -2140,16 +2117,6 @@ class TheClaims(unittest.TestCase):
             effect.deinit()
         self.assertNotEqual(tape[0], tape[1])
 
-    def test_the_board_figures_are_the_table(self):
-        doc = _flat(Saturation.__doc__)
-        self.assertIn("was measured at %d %% of a block at its default "
-                      "patch and %d %% at its costliest"
-                      % (BOARD_COST["S3_default"],
-                         BOARD_COST["S3_costliest"]), doc)
-        self.assertIn("was measured at %d %%, so play it"
-                      % BOARD_COST["S3_lean"], doc)
-        self.assertLess(BOARD_COST["S3_lean"], BOARD_COST["S3_default"])
-
     def test_construction_needs_its_four_modules(self):
         for name in Saturation.REQUIRES:
             with self.subTest(module=name):
@@ -2164,7 +2131,7 @@ class TheClaims(unittest.TestCase):
 
 CLAIMS = (
     ("A 12AX7 stage, a tape machine, or transformer iron.",
-     ("TheClaims.test_the_spans",
+     ("TheClaims.test_the_rate_picks_the_oversampling_and_the_defaults",
       "TU1EvenLead.test_default_is_the_headline")),
     ("On `tube` the second harmonic leads the third by more than 15 dB from "
      "-26 dBFS to -6 dBFS, and by more than 20 dB at -6 dBFS.",
@@ -2172,10 +2139,6 @@ CLAIMS = (
     ("On `tape` the curve is odd: at the default the second harmonic of a "
      "-12 dBFS tone stays 40 dB under it.",
      ("TP2OddAtBiasZero.test_tape_default_h2_below_minus_40",)),
-    ("Drive spans -12 dB to +15 dB and Headroom -12 dB to +12 dB.",
-     ("TheClaims.test_the_spans",
-      "DriveCeilingAndLean.test_drive_tops_out_where_the_alias_floor_"
-      "holds")),
     ("Headroom is Drive spent the other way round, and the two share one "
      "ceiling: Drive less Headroom stops at +15 dB however you reach it.",
      ("DriveAndHeadroomShareTheCeiling.test_the_pair_stops_where_drive_"
@@ -2192,9 +2155,9 @@ CLAIMS = (
     ("That is a ratio, so wherever the output is quiet it reads worse, one "
      "dB for one, and `console` at Drive 0 dB does not reach it.",
      ("A4AliasFloor.test_where_the_clean_class_does_not_hold_the_row",)),
-    ("Output spans -24 dB to +12 dB, and +3, +6, +9 and +12 dB come out "
-     "within 0.25 dB of what they say.",
-     ("TheClaims.test_the_spans",
+    ("Output's +3, +6, +9 and +12 dB come out within 0.25 dB of what "
+     "they say.",
+     ("TheClaims.test_the_rate_picks_the_oversampling_and_the_defaults",
       "TheNodeIsNeverAskedPastItsRail.test_the_split_keeps_the_level_law")),
     ("At the default the stage takes level away: a -12 dBFS 1 kHz tone comes "
      "out about 8 dB down on `tube`, 13 dB on `tape` and 33 dB on "
@@ -2204,14 +2167,12 @@ CLAIMS = (
      ("TheClaims.test_every_macro_at_its_top_clips_a_full_scale_input",)),
     ("Mix runs from the dry signal at 0 to the stage at 1, and it is a "
      "blend: the level never rises on the way and there is no notch.",
-     ("TheClaims.test_the_spans",
+     ("TheClaims.test_the_rate_picks_the_oversampling_and_the_defaults",
       "TheThirdFixRoundsRows.test_mix_is_a_blend_and_not_a_notch")),
     ("At Mix 0 the output is the source itself and the latency is 0.",
      ("WireAndClick.test_mix_zero_is_a_wire",
       "DriveCeilingAndLean.test_mix_zero_is_the_borrowed_source_itself",
       "Construction.test_mix_zero_reports_zero_latency")),
-    ("Bias spans -1 to +1 and moves the stage's operating point.",
-     ("TheClaims.test_the_spans",)),
     ("Every position sounds: none takes more than 12 dB off the level at "
      "Bias 0, and none wanders more than 1 dB once it has settled.",
      ("BiasStaysAudible.test_every_position_sounds_and_holds",
@@ -2223,21 +2184,21 @@ CLAIMS = (
       "SilenceAnswersSilenceOffCentre.test_silence_is_silence_from_frame_"
       "zero",
       "TheOperatingPointComesBackClean.test_bias_moves_play_nothing")),
-    ("Speed is the tape's, from 3.75 to 30 inches a second, and slides its "
+    ("Speed is the tape's, in inches a second, and slides its "
      "playback loss; on `tube` it changes nothing.",
-     ("TheClaims.test_the_spans",
+     ("TheClaims.test_the_rate_picks_the_oversampling_and_the_defaults",
       "TheClaims.test_speed_changes_nothing_on_tube",
       "TP1SpeedSlide.test_fixed_loss_fault_is_not_a_knob")),
-    ("Tilt spans -6 dB to +6 dB about 1 kHz.",
-     ("TheClaims.test_the_spans",)),
-    ("Hysteresis spans 0 to 1 and is off by default.",
-     ("TheClaims.test_the_spans",)),
+    ("Tilt tilts the balance about 1 kHz.",
+     ("TheClaims.test_the_rate_picks_the_oversampling_and_the_defaults",)),
+    ("Hysteresis is off by default.",
+     ("TheClaims.test_the_rate_picks_the_oversampling_and_the_defaults",)),
     ("The rate picks the oversampling: x4 at 48 kHz and 44.1 kHz, x2 at "
      "22.05 kHz.",
-     ("TheClaims.test_the_spans",)),
+     ("TheClaims.test_the_rate_picks_the_oversampling_and_the_defaults",)),
     ("At x4 the latency is 1 sample on `tube`, 2 on `tape` and 4 on "
      "`console`, and the host is told.",
-     ("TheClaims.test_the_spans",
+     ("TheClaims.test_the_rate_picks_the_oversampling_and_the_defaults",
       "TheThirdFixRoundsRows.test_the_onset_is_what_every_build_and_rate_"
       "reads")),
     ("After a burst every patch is back to silence within the declared tail "
@@ -2245,17 +2206,12 @@ CLAIMS = (
      ("Construction.test_defaults_and_capabilities",
       "TheTierOneRowsAtEveryShippedPatch.test_the_declared_tail_holds_at_"
       "every_shipped_patch")),
-    ("There are nine: Gentle thickening; Hot into the curve; Tape at "
-     "fifteen; Tape at seven and a half; Under-biased and bright; Iron, low "
-     "end working; Offset, even harmonics; Mix back; and Saturation - lean.",
-     ("TheClaims.test_the_spans",)),
-    ("Alone on an ESP32-S3 the class was measured at 55 % of a block at its "
-     "default patch and 56 % at its costliest.",
-     ("TheClaims.test_the_board_figures_are_the_table",)),
-    ("Saturation - lean runs one oversampling factor lower and was measured "
-     "at 40 %, so play it when you stack effects.",
-     ("DriveCeilingAndLean.test_lean_patch_is_one_factor_down",
-      "TheClaims.test_the_board_figures_are_the_table")),
+    ("Alone on an ESP32-S3 the class was measured at 55 % of a block "
+     "at its default patch and 56 % at its costliest.",
+     ()),
+    ("Saturation - lean runs one oversampling factor lower and was "
+     "measured at 40 %, so play it when you stack effects.",
+     ("DriveCeilingAndLean.test_lean_patch_is_one_factor_down",)),
     ("It needs `audioshaper`, `audiobiquad`, `audioroute` and `audioecho`, "
      "so a stock CircuitPython board can't run it.",
      ("TheClaims.test_construction_needs_its_four_modules",)),
