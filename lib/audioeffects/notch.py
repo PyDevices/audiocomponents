@@ -13,7 +13,8 @@ wider than the note it sits on and reads as a scoop; at Q 30 it is a few
 hertz across and you hear the tone leave without hearing the music change.
 Harmonics adds a second notch an octave up, half as wide in hertz, because
 mains hum is a series and one notch at 50 or 60 Hz leaves the buzz. Depth is
-a blend, not a filter control - at 0 the class is a wire.
+a blend, not a filter control - at 0 the class is a wire. Keep the input
+under -6 dBFS and the defaults and patches stay off the rails.
 
 **Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`). All three
 sections are `audiobiquad.Biquad`: float state, and a tail that reaches

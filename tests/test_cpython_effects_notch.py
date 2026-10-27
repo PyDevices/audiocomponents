@@ -31,6 +31,7 @@ import audiofilters
 import synthio
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+import kit_ceiling                                          # noqa: E402
 import kit_faults as faults                            # noqa: E402
 from effects_measure import SAMPLE_RATE                # noqa: E402
 
@@ -571,6 +572,15 @@ class TheResetWalkReachesEveryNode(unittest.TestCase):
         effect.deinit()
         for node in nodes:
             self.assertTrue(getattr(node, "_deinited", True))
+
+
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # square is where it rails first: p1 at -3 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(notch_module.Notch, "square"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            notch_module.Notch, "square", db=-3, keys=("p1",)))
 
 
 if __name__ == "__main__":
