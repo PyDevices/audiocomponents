@@ -1,112 +1,115 @@
 """`Expander` - a downward expander in the Drawmer DS201's shape.
 
-What a reader needs here:
-
-**What it is.** Below the threshold the output falls `ratio` dB for every
-dB the input falls, down to a floor the Depth knob sets - so a quiet
-passage gets quieter without the door-slam of a gate. Above the threshold
-it is a wire. The side chain is a two-ended key band (12 dB/octave at each
-end, `sidechain_poles=2`), the detector is true RMS by default, and an
-external key stream may drive it instead of the audio.
-
-**Portability tier: audiodsp.** `audiodynamics` is audiodsp's own module and
-not a CircuitPython port (`audiodsp/docs/upstream-diff.md:661`), so the
-import below is guarded and construction raises `ImportError` on a stock
-CircuitPython board.
-
-**Latency is zero, at every setting, and no option adds any.** Neither
-source reached shows a delay element in the DS201's audio path, and
-RaneNote 155 puts look-ahead in the *gate*'s block diagram rather than the
-expander's - so this class ships no look-ahead option at all and there is
-no latency-adding option to name a millisecond figure for.
-`latency_samples` is 0; measured, an impulse comes back in the frame it
-arrived in. One delay is worth naming and is *not* latency: narrowing the
-key band slows the detector's response to a transient, which the DS201's
-own manual warns about. That is a detector effect and is never reported in
-`latency_samples`.
-
-**The tail is zero, except with Key Listen on.** The gain is a per-sample
-multiply on the audio, so silence in is exactly zero out in the same frame
-however the envelope stands - measured on the kit's `burst_silence` probe,
-there is no non-zero sample after the burst at all, at any of the three
-rates. Key Listen is the exception: it puts the *side chain's* signal on the
-output instead of the audio, and the key filters have memory, measured on
-that probe at 2373 / 2180 / 1089 frames at 48 / 44.1 / 22.05 kHz with Key Low
-at its minimum. With Key Listen on, `tail_samples` is a bound on that ring
-that follows Key Low, Key High and the rate (at most about 5 100 frames at
-48 kHz, with Key Low at its minimum); with it off it is 0. Key Listen is
-off in every patch.
-
-**Two wire states, both byte-identical to the source:** Ratio at 1.0, where
-the gain computer's `over x (ratio - 1)` is zero, and Depth at 0 dB, where the
-floor is zero. Measured, worst 0 LSB on a full-scale ramp.
-
-**The ratio law is the RMS detector's, and the Detector toggle changes it.**
-With `detector="rms"` - the default, and what five of the seven patches use -
-the slope tracks the set ratio to within 1.92 % anywhere on the Ratio and
-Threshold macros' travel. Put the Detector at *peak* and it does not: a peak
-follower rides each cycle of the waveform, so the gain is modulated inside the
-period and the settled slope falls short - measured -2.48 % at ratio 4,
-**-7.52 % at ratio 8** against the trait's 5 % bar, and **-29.33 %** at patch
-5 *Hard Downward*'s own shipped settings, whose worst point is 3.75 dB off the
-fitted line. Musically that is the difference between a downward expander and
-a soft, slightly gritty gate; it is what the peak position is *for*, and patch
-5 is named for it. But the number in E1 is the RMS detector's, and nothing
-here claims the law at the other position.
-
-**What it costs, and the one lever the panel has.** Measured on the boards
-2026-09-07: 8.4 % of a 5.333 ms stereo block on the ESP32-P4 and 16.3 % on
-the ESP32-S3, against dossier budgets of 6 % and 12 % - **over both**. The
-class is one node, so there are no bands, stages or nodes to drop and no
-oversampling to lower; the only cost lever a patch can reach is the Detector
-toggle, and patch 6 `Expander - lean` is patch 0 with it at peak. It is
-worth 5-8 % of the node's own per-frame work on the desktop, where the
-budget needs 26-29 %, so it does **not** bring the class inside the budget
-and it is not offered as if it did. It changes the sound: see the ratio-law
-paragraph above. The budget itself is under review for the whole phase
-(audiocomponents#48).
-
-**Three things the dossier asked for that this class does not do**, each
-measured rather than assumed, each with its number in the evidence pack:
-
-* **No Hold, and no one-shot envelope** (dossier E5). The node's
-  closed/attack/hold/decay machine is gated on `mode ==
-  AUDIODSP_DYNAMICS_GATE` (`audiodsp/src/shared/audiodsp_dynamics.c:452-453`)
-  and *replaces* the gain computer with a binary open/floor
-  (`:679-724`), so the ratio law and the one-shot envelope cannot both
-  exist in one node. `hold_ms` in `DYN_EXPAND` is silently inert -
-  measured, a 1 ms burst under a 200 ms attack renders the same trace with
-  and without it. An expander is the continuous law; `NoiseGate` is the
-  box with the trigger, and E5 is that class's to demonstrate.
-* **The key band is 12 dB/octave, not a brick wall** (dossier E3). Two
-  poles at each end reject about 25 dB two octaves outside the band, so a
-  loud out-of-band tone *will* open the expander. E3 as the dossier states
-  it - the gain held at its floor for an out-of-band tone all the way to
-  0 dBFS - would need better than 40 dB an octave out, which is an
-  eighth-order key filter no hardware gate carries.
-* **The knob times are one-pole time constants** (dossier E6), not
-  10-90 % times. `attack_ms` and `release_ms` are the follower's tau; the
-  10-90 % time of the gain-in-dB trace depends on the size of the level
-  step as well as on the setting.
-
-**The detector's own window.** With `detector="rms"` the level is a
-one-pole mean square over a fixed 10 ms window (the node's unset default,
-`audiodsp_dynamics.c:77-82`). That window is what makes a sine and a square
-of equal RMS get the same gain, and it also puts a floor of its own order
-under the Attack knob. The Detector toggle's peak position removes both.
-
-**But the detector reads the key *band*, not the signal**, and that costs the
-RMS claim twice over. A sine and a square of equal RMS get the same gain only
-while the band is wide and the ratio moderate: measured at 1 kHz, 15 dB below
-a -6 dBFS threshold, the two are 0.09 dB apart at ratio 2 with Key High at
-the top of its span, **0.55 dB apart at ratio 4**, and 0.74 dB apart at
-ratio 2 once Key High comes down to 3 kHz - because the low-pass strips the
-square's harmonics out of the detector and the gain computer multiplies what
-is left by (ratio - 1). Both `Snare Tighten` and `Guitar Amp Hum` narrow the
-band, so both are in that region. It is what a key filter is for and it is
-not a fault; it is a bound the evidence pack's E2 states and this docstring
-would be wrong to leave out.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# What it is. Below the threshold the output falls `ratio` dB for every
+# dB the input falls, down to a floor the Depth knob sets - so a quiet
+# passage gets quieter without the door-slam of a gate. Above the threshold
+# it is a wire. The side chain is a two-ended key band (12 dB/octave at each
+# end, `sidechain_poles=2`), the detector is true RMS by default, and an
+# external key stream may drive it instead of the audio.
+#
+# Portability tier: audiodsp. `audiodynamics` is audiodsp's own module and
+# not a CircuitPython port (`audiodsp/docs/upstream-diff.md:661`), so the
+# import below is guarded and construction raises `ImportError` on a stock
+# CircuitPython board.
+#
+# Latency is zero, at every setting, and no option adds any. Neither
+# source reached shows a delay element in the DS201's audio path, and
+# RaneNote 155 puts look-ahead in the *gate*'s block diagram rather than the
+# expander's - so this class ships no look-ahead option at all and there is
+# no latency-adding option to name a millisecond figure for.
+# `latency_samples` is 0; measured, an impulse comes back in the frame it
+# arrived in. One delay is worth naming and is *not* latency: narrowing the
+# key band slows the detector's response to a transient, which the DS201's
+# own manual warns about. That is a detector effect and is never reported in
+# `latency_samples`.
+#
+# The tail is zero, except with Key Listen on. The gain is a per-sample
+# multiply on the audio, so silence in is exactly zero out in the same frame
+# however the envelope stands - measured on the kit's `burst_silence` probe,
+# there is no non-zero sample after the burst at all, at any of the three
+# rates. Key Listen is the exception: it puts the *side chain's* signal on the
+# output instead of the audio, and the key filters have memory, measured on
+# that probe at 2373 / 2180 / 1089 frames at 48 / 44.1 / 22.05 kHz with Key Low
+# at its minimum. With Key Listen on, `tail_samples` is a bound on that ring
+# that follows Key Low, Key High and the rate (at most about 5 100 frames at
+# 48 kHz, with Key Low at its minimum); with it off it is 0. Key Listen is
+# off in every patch.
+#
+# Two wire states, both byte-identical to the source: Ratio at 1.0, where
+# the gain computer's `over x (ratio - 1)` is zero, and Depth at 0 dB, where the
+# floor is zero. Measured, worst 0 LSB on a full-scale ramp.
+#
+# The ratio law is the RMS detector's, and the Detector toggle changes it.
+# With `detector="rms"` - the default, and what five of the seven patches use -
+# the slope tracks the set ratio to within 1.92 % anywhere on the Ratio and
+# Threshold macros' travel. Put the Detector at *peak* and it does not: a peak
+# follower rides each cycle of the waveform, so the gain is modulated inside the
+# period and the settled slope falls short - measured -2.48 % at ratio 4,
+# -7.52 % at ratio 8 against the trait's 5 % bar, and -29.33 % at patch
+# 5 *Hard Downward*'s own shipped settings, whose worst point is 3.75 dB off the
+# fitted line. Musically that is the difference between a downward expander and
+# a soft, slightly gritty gate; it is what the peak position is *for*, and patch
+# 5 is named for it. But the number in E1 is the RMS detector's, and nothing
+# here claims the law at the other position.
+#
+# What it costs, and the one lever the panel has. Measured on the boards
+# 2026-09-07: 8.4 % of a 5.333 ms stereo block on the ESP32-P4 and 16.3 % on
+# the ESP32-S3, against dossier budgets of 6 % and 12 % - over both. The
+# class is one node, so there are no bands, stages or nodes to drop and no
+# oversampling to lower; the only cost lever a patch can reach is the Detector
+# toggle, and patch 6 `Expander - lean` is patch 0 with it at peak. It is
+# worth 5-8 % of the node's own per-frame work on the desktop, where the
+# budget needs 26-29 %, so it does not bring the class inside the budget
+# and it is not offered as if it did. It changes the sound: see the ratio-law
+# paragraph above. The budget itself is under review for the whole phase
+# (audiocomponents#48).
+#
+# Three things the dossier asked for that this class does not do, each
+# measured rather than assumed, each with its number in the evidence pack:
+#
+# * No Hold, and no one-shot envelope (dossier E5). The node's
+#   closed/attack/hold/decay machine is gated on `mode ==
+#   AUDIODSP_DYNAMICS_GATE` (`audiodsp/src/shared/audiodsp_dynamics.c:452-453`)
+#   and *replaces* the gain computer with a binary open/floor
+#   (`:679-724`), so the ratio law and the one-shot envelope cannot both
+#   exist in one node. `hold_ms` in `DYN_EXPAND` is silently inert -
+#   measured, a 1 ms burst under a 200 ms attack renders the same trace with
+#   and without it. An expander is the continuous law; `NoiseGate` is the
+#   box with the trigger, and E5 is that class's to demonstrate.
+# * The key band is 12 dB/octave, not a brick wall (dossier E3). Two
+#   poles at each end reject about 25 dB two octaves outside the band, so a
+#   loud out-of-band tone *will* open the expander. E3 as the dossier states
+#   it - the gain held at its floor for an out-of-band tone all the way to
+#   0 dBFS - would need better than 40 dB an octave out, which is an
+#   eighth-order key filter no hardware gate carries.
+# * The knob times are one-pole time constants (dossier E6), not
+#   10-90 % times. `attack_ms` and `release_ms` are the follower's tau; the
+#   10-90 % time of the gain-in-dB trace depends on the size of the level
+#   step as well as on the setting.
+#
+# The detector's own window. With `detector="rms"` the level is a
+# one-pole mean square over a fixed 10 ms window (the node's unset default,
+# `audiodsp_dynamics.c:77-82`). That window is what makes a sine and a square
+# of equal RMS get the same gain, and it also puts a floor of its own order
+# under the Attack knob. The Detector toggle's peak position removes both.
+#
+# But the detector reads the key *band*, not the signal, and that costs the
+# RMS claim twice over. A sine and a square of equal RMS get the same gain only
+# while the band is wide and the ratio moderate: measured at 1 kHz, 15 dB below
+# a -6 dBFS threshold, the two are 0.09 dB apart at ratio 2 with Key High at
+# the top of its span, 0.55 dB apart at ratio 4, and 0.74 dB apart at
+# ratio 2 once Key High comes down to 3 kHz - because the low-pass strips the
+# square's harmonics out of the detector and the gain computer multiplies what
+# is left by (ratio - 1). Both `Snare Tighten` and `Guitar Amp Hum` narrow the
+# band, so both are in that region. It is what a key filter is for and it is
+# not a fault; it is a bound the evidence pack's E2 states and this docstring
+# would be wrong to leave out.
 
 VENDOR = "PyDevices"
 
@@ -126,8 +129,43 @@ except ImportError:      # a stock CircuitPython board, or an old audiodsp
 
 
 class Expander(_component.Component):
-    """Downward expander: below the threshold, quiet gets quieter, by a
-    settable ratio and down to a settable floor."""
+    """A downward expander in the Drawmer DS201's shape: below the
+    threshold, quiet passages get quieter, by a ratio you set and down to a
+    floor you set, without the slam of a gate. Above the threshold it is a
+    wire.
+
+    **Controls.** Threshold runs from -80 to 0 dBFS. Ratio, from 1 to 8,
+    is how many dB the output falls for every dB the input falls below
+    the threshold; with the RMS detector the slope stays within 5 % of it
+    even at 8. Depth, from 0 to -80 dB, is the floor: a quiet passage
+    falls no further than that, to within 0.5 dB. Ratio 1 and Depth 0 are
+    each a wire, byte for byte. Attack, from 0.01 ms to 1 s, and Release,
+    from 2 ms to 4 s, set how fast the detector follows the level.
+
+    **The key.** Key Low, from 25 Hz to 4 kHz, and Key High, from 250 Hz
+    to just under Nyquist, narrow the band the detector hears, at
+    12 dB/octave at each end, so a loud tone outside the band can still
+    open it. Key Listen puts that band on the output so you can hear what
+    the detector hears. Pass `key=` another stream and the detector reads
+    that instead of your signal, the DS201's external key.
+
+    **Detector.** RMS, the default, gives a sine and a square of equal RMS
+    the same gain, to within 0.1 dB at Ratio 2 with the band wide open.
+    Peak rides each cycle of the waveform, so the slope falls short of the
+    ratio and the expander turns into a soft, slightly gritty gate; the
+    Hard Downward patch is built on it.
+
+    **No hold.** There is no Hold and no one-shot envelope: the expander
+    follows the level continuously. For a gate with a trigger, use
+    `NoiseGate`.
+
+    **Timing.** Latency is zero at every setting. So is the tail, except
+    with Key Listen on, when the key filters ring on after your signal
+    stops: `tail_samples` bounds that ring, under 6000 frames at 48 kHz.
+
+    **On a board.** The class needs audiodsp's `audiodynamics`, and on a
+    board without it construction raises `ImportError`.
+    """
 
     NAME = 'Expander'
     DISPLAY_NAME = 'Expander'
