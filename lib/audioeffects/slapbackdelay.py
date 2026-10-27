@@ -135,6 +135,8 @@ class SlapbackDelay(_component.Component):
     Up to Level 1 the dry passes untouched until the repeat arrives, however
     hard Saturation drives the repeat.
     A hot input can reach the rail, since the repeat adds to a dry at unity.
+    Keep the input under -6 dBFS and the defaults and patches stay off the
+    rails.
     At Repeats 0 there is one repeat and no second.
     Repeats above 0 sends the repeat round for more.
     Wow swings the repeat's pitch by the cents the knob reads, at a slow
