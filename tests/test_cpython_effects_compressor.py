@@ -283,5 +283,105 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
                 stale.planted(self.CLS, fault), self.MIX), 10000)
 
 
+# -- the lean route after a macro move (audiocomponents#208) -------------
+
+import lifecycle                                                # noqa: E402
+
+
+def _render(effect, feed_blocks, channels):
+    out = bytearray()
+    lifecycle._pull_to(effect, out, feed_blocks * 256 * 2 * channels,
+                       2 * channels)
+    return bytes(out)
+
+
+class TheLeanRouteFollowsTheMacros(unittest.TestCase):
+    """Patch 14 `Compressor - lean` drops the slow stage from the pull
+    chain, which is exact only while that stage is a wire (Memory 0, not
+    `optical`). A macro move unsets the patch index, and the class used to
+    stay on the lean route regardless: Makeup went to the slow stage, out of
+    the path, and a Character or Memory that gave the slow stage work was
+    never heard. Patch 14 and back to the defaults by macros stayed about
+    9,000 LSB off an untouched copy for as long as it played."""
+
+    CLS = compressor.Compressor
+
+    def _pair(self, channels, build_a, build_b, blocks=64):
+        values = lifecycle.material_for("loop", RATE, channels)
+        feeds = [lifecycle.Feed(values, RATE, channels, "256", loop=True)
+                 for _ in range(2)]
+        a = build_a(feeds[0].port)
+        b = build_b(feeds[1].port)
+        try:
+            return (_render(a, blocks, channels),
+                    _render(b, blocks, channels))
+        finally:
+            a.deinit()
+            b.deinit()
+
+    def test_macros_back_to_patch_0_leave_the_lean_route(self):
+        steps = self.CLS.PATCHES[0][1]
+
+        def moved(port):
+            effect = self.CLS(port, sample_rate=RATE, patch=14)
+            for index, value in enumerate(steps):
+                effect.set_macro(index, value)
+            return effect
+
+        for channels in (2, 1):
+            with self.subTest(channels=channels):
+                got, want = self._pair(channels, moved, lambda port: self.CLS(
+                    port, sample_rate=RATE, patch=0))
+                self.assertEqual(got, want)
+
+    def test_makeup_moved_on_the_lean_route_is_heard(self):
+        # Patch 1 has patch 14's settings on the full route, where the slow
+        # stage at Memory 0 is a wire. Makeup applied by the other stage
+        # rounds differently, 2 LSB apart unmoved and 7 at Makeup 100; a
+        # Makeup that never reached the path is thousands.
+        def lean(port):
+            effect = self.CLS(port, sample_rate=RATE, patch=14)
+            effect.set_macro(12, 100)
+            return effect
+
+        def full(port):
+            effect = self.CLS(port, sample_rate=RATE, patch=1)
+            effect.set_macro(12, 100)
+            return effect
+
+        got, want = self._pair(2, lean, full)
+        got = array("h", got)
+        want = array("h", want)
+        self.assertLessEqual(
+            max(abs(x - y) for x, y in zip(got, want)), 16)
+
+    def test_patch_14_and_back_mid_stream_settles(self):
+        # The lifecycle matrix's E6 cell at the defaults: the move lands
+        # before pull 12 and the macros go back 2 pulls later. The detector
+        # re-attacks, and then the two meet exactly.
+        values = lifecycle.material_for("loop", RATE, 2)
+        feeds = [lifecycle.Feed(values, RATE, 2, "256", loop=True)
+                 for _ in range(2)]
+        effect = self.CLS(feeds[0].port, sample_rate=RATE)
+        control = self.CLS(feeds[1].port, sample_rate=RATE)
+        ctx = lifecycle.Ctx(effect, None)
+        out = bytearray()
+        cout = bytearray()
+        try:
+            for k in range(400):
+                if k == 12:
+                    effect.program_change(14)
+                if k == 14:
+                    lifecycle.restore(effect, ctx)
+                lifecycle._pull_to(effect, out, (k + 1) * 1024, 4)
+                lifecycle._pull_to(control, cout, (k + 1) * 1024, 4)
+        finally:
+            effect.deinit()
+            control.deinit()
+        tail = 200 * 1024
+        self.assertEqual(bytes(out[tail:400 * 1024]),
+                         bytes(cout[tail:400 * 1024]))
+
+
 if __name__ == "__main__":
     unittest.main()

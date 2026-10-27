@@ -1011,8 +1011,8 @@ class Fuzz(_component.Component):
                 # The head (the first coupling cap, or cascade's Splitter)
                 # drops the source frames it took before the bypass, which
                 # the host has since read past.
-                _component.let_go_of_source(self._head, self._source,
-                                            self._head_consumers)
+                self._let_go_of_source(self._head, self._source,
+                                       self._head_consumers)
                 self._rearm()
             self._output = self._tilt
             self._latency = self._wet_delay

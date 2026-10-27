@@ -39,9 +39,6 @@ R_LADDER_OSC = (
 R_STATED_P1 = (
     "Listen (DynamicEQ) and Output (Exciter) are stated not to be a"
     " bypass at Mix 0 (audiocomponents#156)")
-R_EXCITER_PART = (
-    "a reset on 100-frame buffers runs 28 frames ahead of the control"
-    " afterwards; with #155's float residue (audiocomponents#157)")
 R_142 = (
     "at patch 6 and 22.05 kHz a rejoin off Mix 0 differs from a fresh"
     " instance a few frames in; the 48 kHz first-frames half of the finding"
@@ -76,7 +73,7 @@ KNOWN_RED = {
     ('BandPass', 'E9-', 'P4'): (20, '7c7d321c', None, None, R_STATE),
     ('BandPass', 'E9-', 'P5'): (140, '331bff40', None, None, R_JUMP),
     ('Bitcrusher', 'E1-reset@block', 'P4'): (16, '0c568ee1', None, None, R_PHASE),
-    ('Bitcrusher', 'E1-reset@part', 'P4'): (32, '28fc347f', None, None, R_PHASE),
+    ('Bitcrusher', 'E1-reset@part', 'P4'): (16, 'efb72d5f', None, None, R_PHASE),
     ('Bitcrusher', 'E11-', 'P4'): (6, 'ddb49c52', None, None, R_PHASE),
     ('Bitcrusher', 'E11-', 'P5'): (8, 'b8cd0394', None, None, R_JUMP),
     ('Bitcrusher', 'E4-', 'P4'): (8, '00998826', None, None, R_PHASE),
@@ -122,7 +119,6 @@ KNOWN_RED = {
     ('CombFilter', 'E9-', 'P5'): (140, '0123c6b0', None, None, R_JUMP),
     ('Compressor', 'E1-reset@block', 'P4'): (64, '425ab558', None, None, R_STATE),
     ('Compressor', 'E1-reset@part', 'P4'): (64, '56933d4c', None, None, R_STATE),
-    ('Compressor', 'E10-patch', 'P4'): (4, '00f31b8a', None, None, R_STATE),
     ('Compressor', 'E11-', 'P4'): (8, 'e6342cf4', None, None, R_STATE),
     ('Compressor', 'E11-', 'P5'): (8, 'e77977a7', None, None, R_JUMP),
     ('Compressor', 'E4-', 'P4'): (12, '8e419543', None, None, R_STATE),
@@ -172,7 +168,7 @@ KNOWN_RED = {
     ('DynamicEQ', 'E9-', 'P4'): (104, 'eeee87de', None, None, R_STATE),
     ('DynamicEQ', 'E9-', 'P5'): (20, 'cd16412c', None, None, R_JUMP),
     ('Exciter', 'E1-reset@block', 'P4'): (32, '2ea00aec', None, None, R_STATE),
-    ('Exciter', 'E1-reset@part', 'P4'): (32, '862fb9d8', None, None, R_EXCITER_PART),
+    ('Exciter', 'E1-reset@part', 'P4'): (32, '862fb9d8', None, None, R_STATE),
     ('Exciter', 'E11-', 'P4'): (14, '43436585', None, None, R_STATE),
     ('Exciter', 'E11-', 'P5'): (4, '7a299ce8', None, None, R_JUMP),
     ('Exciter', 'E4-', 'P1'): (4, '99c82410', None, None, R_STATED_P1),

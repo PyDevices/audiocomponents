@@ -12,9 +12,12 @@ an integrator or an auditor needs everything.
     tools/scoped_tests.py effects         # every effect, no instruments
     tools/scoped_tests.py contract        # the shared promises only
     tools/scoped_tests.py full            # everything, for a gate
+    tools/scoped_tests.py --ci origin/main  # a pull request's tests, for CI
 
 It prints the scope it chose and why before running, so a report can quote it.
-Exit status is the suite's own.
+Exit status is the suite's own. `--ci` runs nothing: it prints the test files
+for pytest, or `full`, on stdout, and its reasons on stderr.
+
 """
 import os
 import re
@@ -228,7 +231,93 @@ def choose(scope, modules):
     return sorted(picked), "; ".join(why[:4])
 
 
+#: What a pull request always runs, whatever it touched: the kit's tests, the
+#: shared promises, and the two lifecycle matrices, which pick their own
+#: classes and nodes from the same diff (LIFECYCLE_CHANGED_FROM).
+CI_ALWAYS = KIT + ("test_kit",) + CONTRACT + (
+    "test_lifecycle_matrix", "test_node_matrix")
+
+#: Paths every test leans on. A pull request that touches one runs the whole
+#: suite, because no mapping can say which tests it moved.
+CI_SHARED = (
+    ".github/",
+    "tests/support/",
+    "tests/conftest.py",
+    "tools/effect_measurements",
+    "tools/effect_probes/",
+    "tools/scoped_tests.py",
+    "lib/audioeffects/_",
+    "lib/audioeffects/__init__.py",
+    "AUDIODSP_PIN",
+)
+
+#: The roster tests that name every effect class, run when one class moves.
+_ROSTERS = ("test_metadata_contract", "test_shared_circuit_overlap",
+            "test_cpython_effects_library")
+
+#: Paths no test reads, besides the ones the workflow already ignores.
+_CI_SILENT = ("docs/", "LICENSE", "VERSION")
+
+
+def _changed_since(base):
+    """The files this branch changed since it left `base`."""
+    done = subprocess.run(["git", "diff", "--name-only", base + "...HEAD"],
+                          cwd=ROOT, capture_output=True, text=True)
+    if done.returncode:
+        raise SystemExit("git cannot diff from %s: %s"
+                         % (base, done.stderr.strip()))
+    return sorted(p for p in done.stdout.split("\n") if p.strip())
+
+
+def choose_ci(changed, modules):
+    """Return (test modules, or None for the whole suite; the reasons).
+
+    Anything this cannot map to its own tests runs the whole suite: a
+    narrower run that misses a break is worse than a slow one.
+    """
+    picked, why = set(m for m in CI_ALWAYS if m in modules), []
+    for path in changed:
+        if path.startswith(CI_SHARED):
+            return None, ["%s is shared, so the whole suite runs" % path]
+        if path.startswith(_CI_SILENT) or (
+                path.endswith(".md") and not path.startswith("lib/")):
+            continue
+        name = os.path.basename(path)
+        if path.startswith("tests/") and "/" not in path[6:] and \
+                name.endswith(".py"):
+            if name[:-3] in modules:
+                picked.add(name[:-3])
+                why.append("%s edited" % name[:-3])
+            continue
+        if path.startswith("lib/audioeffects/") and \
+                "/" not in path[17:] and name.endswith(".py"):
+            hits = _test_for_effect(name[:-3], modules)
+            if hits and hits != ["test_cpython_effects_library"]:
+                picked.update(hits)
+                # The rosters that name every class read this one too.
+                picked.update(m for m in _ROSTERS if m in modules)
+                why.append("%s -> %s" % (name[:-3], ", ".join(hits)))
+                continue
+        return None, ["%s has no tests of its own, so the whole suite runs"
+                      % path]
+    return sorted(picked), why or ["only the tests every change runs"]
+
+
+def ci(base):
+    modules = _modules()
+    chosen, why = choose_ci(_changed_since(base), modules)
+    for line in why:
+        print(line, file=sys.stderr)
+    if chosen is None:
+        print("full")
+    else:
+        print(" ".join("tests/%s.py" % m for m in chosen))
+    return 0
+
+
 def main(argv):
+    if "--ci" in argv:
+        return ci(argv[argv.index("--ci") + 1])
     listing = "--list" in argv
     argv = [a for a in argv if a != "--list"]
     scope = argv[1] if len(argv) > 1 else "auto"

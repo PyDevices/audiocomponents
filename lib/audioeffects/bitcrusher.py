@@ -1382,7 +1382,18 @@ class Bitcrusher(_component.Component):
         channels = self._channel_count
         pcm = self._pcm(1024)
 
-        split = audioroute.Splitter(self._source, taps=2)
+        # A width-1 `MidSide` ahead of the Splitter re-blocks the source to
+        # 256 frames, byte for byte, so the taps hand whole blocks and the
+        # dry voice holds no part of a source buffer across a reset. On
+        # 100-frame source buffers a reset used to drop what it held: the
+        # dry leg then ran 28 frames ahead of the source (audiocomponents
+        # #157).
+        head = audioroute.MidSide(
+            width=1.0, sample_rate=self._sample_rate,
+            channel_count=self._channel_count)
+        head.play(self._source)
+        self._head = head
+        split = audioroute.Splitter(head, taps=2)
         dry = split.tap(0)
         wet_in = split.tap(1)
 
@@ -1472,6 +1483,7 @@ class Bitcrusher(_component.Component):
         self._own(dry, reset=False)
         self._own(wet_in, reset=False)
         self._own(split, reset=False)
+        self._own(head, reset=False)
         self._own(silence, reset=False)
 
         self._output = blend
@@ -1599,8 +1611,9 @@ class Bitcrusher(_component.Component):
             # limit's first section, or the hold with Band Limit off.
             head = self._sections[0] if self._hold_source is not \
                 self._wet_in else self._hold
-            _component.let_go_of_source(self._split, self._source,
-                                        ((head, self._wet_in),))
+            self._let_go_of_source(self._head, self._source)
+            self._let_go_of_source(self._split, self._head,
+                                   ((head, self._wet_in),))
             # Back off the bypass: every node is cleared - the hold's last
             # value, the band limit's memory, the dither gate - and the
             # voices, which still hold the blocks they had queued, are
