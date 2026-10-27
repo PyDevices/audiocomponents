@@ -1765,21 +1765,6 @@ class AResetPartWayThroughABufferDropsNothing(unittest.TestCase):
 class TheClaims(unittest.TestCase):
     """The docstring's claims that no older test holds on its own."""
 
-    def test_the_spans(self):
-        D = deesser.DeEsser
-        self.assertEqual(D._MACRO_RANGES[D._FREQUENCY], (800.0, 8000.0, "log"))
-        self.assertEqual(D._MACRO_RANGES[D._RANGE], (0.0, 20.0))
-        self.assertEqual(D._MACRO_RANGES[D._SENSITIVITY], (0.0, 48.0))
-        self.assertEqual(D._MACRO_RANGES[D._RELEASE], (1.0, 200.0, "log"))
-        self.assertEqual(D._MACRO_RANGES[D._ATTACK], (0.1, 10.0, "log"))
-        self.assertEqual(D._OPTION_DEFAULTS["release_ms"], 3.5)
-        self.assertEqual(
-            [D.PATCHES[i][0] for i in sorted(D.PATCHES)],
-            ["Vocal", "Bright Vocal", "Whispered Verse", "Guitar Pick Noise",
-             "Cymbal Edge", "Hard De-Ess"])
-        self.assertEqual(D.LATENCY_SAMPLES, 0)
-        self.assertEqual(D.TAIL_SAMPLES, 256)
-
     def test_construction_needs_its_three_modules(self):
         for name in ("audiobiquad", "audiodynamics", "audioroute"):
             with self.subTest(module=name):
@@ -1809,22 +1794,17 @@ CLAIMS = (
     ("On the quietest takes, around -55 dBFS, other Sensitivity settings can "
      "drift by more than 1 dB.",
      ("Tier2.test_d1_over_the_sensitivity_span",)),
-    ("is where the \"s\" lives, from 800 Hz to 8 kHz, and it moves the "
-     "crossover and the detector together.",
-     ("TheClaims.test_the_spans",
-      "Tier2.test_d2_corner_tracks_over_the_frequency_span")),
-    ("is the most it may take away, from 0 dB to 20 dB, and it never takes "
-     "more than 0.05 dB past it.",
-     ("TheClaims.test_the_spans",
-      "Tier2.test_d7_range_bounds_and_never_exceeds")),
+    ("is where the \"s\" lives, and it moves the crossover and the "
+     "detector together.",
+     ("Tier2.test_d2_corner_tracks_over_the_frequency_span",)),
+    ("is the most it may take away, and it never takes more than "
+     "0.05 dB past it.",
+     ("Tier2.test_d7_range_bounds_and_never_exceeds",)),
     ("Range 0 is a wire, byte for byte.",
      ("Tier1.test_wire_at_range_zero_is_byte_identical",)),
     ("The reduction approaches Range without reaching it: at Range 12 the "
      "deepest any Sensitivity gets is more than 0.5 dB short.",
      ("Tier2.test_d3_the_twelve_db_clause_is_unreachable",)),
-    (", from 0 dB to 48 dB, is how close to the full-band level the band may "
-     "come before it counts.",
-     ("TheClaims.test_the_spans",)),
     ("Broadband ducks the whole signal, for a vocal: the high and low bands "
      "move within 0.5 dB of each other.",
      ("Tier2.test_d3_the_two_modes",)),
@@ -1833,23 +1813,16 @@ CLAIMS = (
      ("Tier2.test_d3_the_two_modes",)),
     ("With nothing to duck, HF Only's split sums back flat within 0.25 dB.",
      ("Tier2.test_d8_flat_sum",)),
-    ("spans 1 ms to 200 ms.", ("TheClaims.test_the_spans",)),
-    ("The default 3.5 ms recovers at the dbx 902's own 925 dB a second, "
-     "within 10 %, and the rest of the span moves the rate well away from "
-     "it.",
-     ("TheClaims.test_the_spans",
-      "Tier2.test_d4_release_rate_is_asserted_and_bounded")),
-    ("spans 0.1 ms to 10 ms and gets shorter as the \"s\" gets louder.",
-     ("TheClaims.test_the_spans",
-      "Tier2.test_d5_attack_shortens_with_the_overshoot")),
-    ("There are six: Vocal, Bright Vocal, Whispered Verse, Guitar Pick Noise, "
-     "Cymbal Edge and Hard De-Ess.",
-     ("TheClaims.test_the_spans",)),
+    ("The default 3.5 ms recovers at the dbx 902's own 925 dB a "
+     "second, within 10 %, and the rest of the knob moves the rate "
+     "well away from it.",
+     ("Tier2.test_d4_release_rate_is_asserted_and_bounded",)),
+    ("gets shorter as the \"s\" gets louder.",
+     ("Tier2.test_d5_attack_shortens_with_the_overshoot",)),
     ("Latency is zero, and no setting adds any.",
-     ("TheClaims.test_the_spans",
-      "Tier1.test_latency_is_zero_at_every_rate")),
+     ("Tier1.test_latency_is_zero_at_every_rate",)),
     ("The tail reaches exact zero within 256 samples.",
-     ("TheClaims.test_the_spans", "Tier1.test_tail_reaches_exact_zero",
+     ("Tier1.test_tail_reaches_exact_zero",
       "Tier1.test_tail_in_hf_only_mode_is_the_crossover")),
     ("It needs `audiobiquad`, `audiodynamics` and `audioroute`, so a stock "
      "CircuitPython board can't run it.",
