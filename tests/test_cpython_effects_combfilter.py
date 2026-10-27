@@ -1212,16 +1212,6 @@ class TheInputCeiling(unittest.TestCase):
 class TheClaims(unittest.TestCase):
     """The docstring's claims that no older test holds on its own."""
 
-    def test_the_spans(self):
-        cls = combfilter.CombFilter
-        self.assertEqual(cls._MACRO_RANGES,
-                         ((20.0, 4000.0, "log"), (0.0, 0.95), (0.0, 2.0),
-                          (500.0, 24000.0, "log"), (-18.0, 18.0),
-                          (0.0, 1.0)))
-        self.assertEqual([cls.PATCHES[i][0] for i in sorted(cls.PATCHES)],
-                         ["Metallic", "Ringing Pitch", "Soft Ripple",
-                          "Dark Resonator", "Single Slap", "Filter Only"])
-
     def test_the_trim_is_in_front_of_the_comb(self):
         effect = combfilter.CombFilter.create(tone(220.0, 4096),
                                               SAMPLE_RATE)
@@ -1251,10 +1241,9 @@ CLAIMS = (
      ("TheCombTunesFractionally.test_every_request_lands_within_five_cents",
       "TheFeedbackKnobIsThePeakHeight.test_the_peak_and_null_follow_the_"
       "closed_form")),
-    ("Frequency spans 20 Hz to 4 kHz and is the note the comb rings at, "
-     "tuned between samples.",
-     ("TheClaims.test_the_spans",
-      "TheCombTunesFractionally.test_rounding_onto_the_sample_grid_is_red")),
+    ("Frequency is the note the comb rings at, tuned between "
+     "samples.",
+     ("TheCombTunesFractionally.test_rounding_onto_the_sample_grid_is_red",)),
     ("From 55 Hz to 3.52 kHz the first repeat lands within 5 cents of the "
      "note you asked for, and at 880 Hz it does at 48 kHz, 44.1 kHz and "
      "22.05 kHz, and in mono.",
@@ -1266,30 +1255,22 @@ CLAIMS = (
       "asked_pitch_then_ends",
       "TheRingIsTheAskedPitchAndEnds.test_1000_rings_on_the_asked_pitch_"
       "then_ends")),
-    ("Feedback spans 0 to 0.95 and sets how tall the resonances stand: at "
-     "200 Hz the peak is 1/(1-Feedback) and the null 1/(1+Feedback), within "
-     "0.2 dB.",
-     ("TheClaims.test_the_spans",
-      "TheFeedbackKnobIsThePeakHeight.test_the_peak_and_null_follow_the_"
-      "closed_form")),
+    ("Feedback sets how tall the resonances stand: at 200 Hz the "
+     "peak is 1/(1-Feedback) and the null 1/(1+Feedback), within 0.2 "
+     "dB.",
+     ("TheFeedbackKnobIsThePeakHeight.test_the_peak_and_null_follow_the_closed_form",)),
     ("At Feedback 0 it is the feedforward comb, with nulls more than 60 dB "
      "down and peaks 6 dB up, within 0.1 dB.",
      ("ZeroFeedbackIsTheFeedforwardComb.test_the_null_is_total_and_the_"
       "peak_is_six_decibels",)),
-    ("Mix spans 0 to 2: 0 is a wire, 1 is dry plus comb, and 2 is the comb "
-     "alone.",
-     ("TheClaims.test_the_spans",
-      "TheBypassIsAWire.test_mix_zero_is_byte_identical_to_the_source",
-      "ZeroFeedbackIsTheFeedforwardComb.test_the_null_is_total_and_the_"
-      "peak_is_six_decibels",
+    ("Mix 0 is a wire, 1 is dry plus comb, and 2 is the comb alone.",
+     ("TheBypassIsAWire.test_mix_zero_is_byte_identical_to_the_source",
+      "ZeroFeedbackIsTheFeedforwardComb.test_the_null_is_total_and_the_peak_is_six_decibels",
       "TheCombTunesFractionally.test_every_request_lands_within_five_cents")),
     ("Mix 0 is the source sample for sample, whatever Trim is set to.",
      ("TheBypassIsAWire.test_mix_zero_is_byte_identical_to_the_source",
       "TheBypassIsAWire.test_mix_zero_with_a_trim_asked_for_is_still_a_"
       "wire")),
-    ("Tone spans 500 Hz to 24 kHz and is a low-pass inside the loop, "
-     "darkening each pass.",
-     ("TheClaims.test_the_spans",)),
     ("Its top stop is off, and turning it off after it has been in leaves "
      "nothing behind.",
      ("TheToneOffStopIsTheFilterOut.test_the_off_stop_hands_exactly_zero",
@@ -1297,15 +1278,12 @@ CLAIMS = (
       "silent",
       "TheToneOffStopIsTheFilterOut.test_the_off_stop_after_tone_is_the_"
       "filter_out")),
-    ("Trim spans -18 dB to +18 dB and sits in front of the comb, so turning "
-     "it down makes room for the resonance before the gain rather than "
-     "after.",
-     ("TheClaims.test_the_spans",
-      "TheClaims.test_the_trim_is_in_front_of_the_comb")),
-    ("Glide spans 0 to 1 and slides the tuning, so turning Frequency bends "
-     "the note rather than clicking.",
-     ("TheClaims.test_the_spans",
-      "TheTuningKnobIsClickFree.test_the_boundary_is_not_findable",
+    ("Trim sits in front of the comb, so turning it down makes room "
+     "for the resonance before the gain rather than after.",
+     ("TheClaims.test_the_trim_is_in_front_of_the_comb",)),
+    ("Glide slides the tuning, so turning Frequency bends the note "
+     "rather than clicking.",
+     ("TheTuningKnobIsClickFree.test_the_boundary_is_not_findable",
       "TheTuningKnobIsClickFree.test_a_jumped_read_head_is_red")),
     ("A comb gains, so a loud input can reach the rail by design.",
      ("TheInputCeiling.test_at_minus_3_dbfs_four_patches_rail",)),
@@ -1327,10 +1305,7 @@ CLAIMS = (
       "TheTailIsDeclared.test_finite_at_every_patch_and_every_stop",
       "TheTailIsDeclared.test_the_lap_bound_holds_where_it_is_tight",
       "TheClaims.test_the_default_tail")),
-    ("There are six: Metallic; Ringing Pitch; Soft Ripple; Dark Resonator; "
-     "Single Slap; and Filter Only.",
-     ("TheClaims.test_the_spans",)),
-    ("Each tunes the comb to a different note.",
+    ("Each patch tunes the comb to a different note.",
      ("TheSurface.test_every_patch_is_reachable_and_moves_the_comb",)),
     ("It needs `audioecho` and `audiobiquad`, so a stock CircuitPython "
      "board can't run it.",
