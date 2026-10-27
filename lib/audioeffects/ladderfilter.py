@@ -79,9 +79,10 @@ class LadderFilter(_component.Component):
     no tail bound, and `reset()` stops it at any setting.
 
     **Levels.** The resonance peak and the drive both add gain, so no input
-    level is clean on every setting. A plucked phrase stays off the rails on
-    every patch to -10 dBFS; at -3 dBFS Growl With Drive rails. Turn Drive,
-    Resonance or your input down.
+    level is clean on every setting. Keep the input under -15 dBFS and the
+    defaults and patches stay off the rails. A plucked phrase stays off the
+    rails on every patch to -10 dBFS; at -3 dBFS Growl With Drive rails. Turn
+    Drive, Resonance or your input down.
 
     **On a board.** The class needs audiodsp's `audioladder`, and on a board
     without it construction raises `ImportError`.

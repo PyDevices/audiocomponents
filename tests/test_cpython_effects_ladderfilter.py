@@ -16,6 +16,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "lib"))
 sys.path.insert(0, os.path.join(ROOT, "tests", "support"))
 
+import kit_ceiling                                          # noqa: E402
 import kit_levels                                         # noqa: E402
 import kit_probes as probes                               # noqa: E402
 import numpy as np                                        # noqa: E402
@@ -182,7 +183,19 @@ class TheClaims(unittest.TestCase):
         self.assertEqual(LadderFilter.REQUIRES, ("audioladder",))
 
 
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # square is where it rails first: p4 at -12 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(LadderFilter, "square"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            LadderFilter, "square", db=-12, keys=("p4",)))
+
+
 CLAIMS = (
+    ("Keep the input under -15 dBFS and the defaults and patches stay "
+     "off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
     ("`LadderFilter` - the Moog transistor ladder, rebuilt on "
      "`audioladder`.",
      ("TheClaims.test_construction_needs_audioladder",)),
