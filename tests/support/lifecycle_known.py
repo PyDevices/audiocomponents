@@ -43,12 +43,6 @@ R_142 = (
     "at patch 6 and 22.05 kHz a rejoin off Mix 0 differs from a fresh"
     " instance a few frames in; the 48 kHz first-frames half of the finding"
     " closed when Overdrive began building lazily (audiocomponents#142)")
-R_DIST_P7 = (
-    "a move to patch 7 or 8 before the first pull, at 22.05 kHz, stereo and"
-    " mono, stays a few LSB off a fresh build (2 at patch 7, up to 8 at"
-    " patch 8) from frame 4 to 10 on, and never settles: a rounding residue"
-    " nobody hears. The quiet source the check used to play showed only"
-    " patch 7 in stereo (audiocomponents#161)")
 
 #: (class NAME, event prefix, property) -> (quick cells, digest, full
 #: cells, digest, reason). The full matrix was not counted here (None).
@@ -139,13 +133,8 @@ KNOWN_RED = {
     ('DeEsser', 'E9-src256', 'P4'): (19, '9f6acd29', None, None, R_STATE),
     ('Distortion', 'E1-reset@block', 'P4'): (48, 'd84a1067', None, None, R_STATE),
     ('Distortion', 'E1-reset@part', 'P4'): (48, 'ce661657', None, None, R_STATE),
-    ('Distortion', 'E10-mix0', 'P4'): (1, 'dc494f03', None, None, R_STATE),
     ('Distortion', 'E11-', 'P4'): (4, 'b2d5e10e', None, None, R_STATE),
     ('Distortion', 'E11-', 'P5'): (12, '5be4892b', None, None, R_JUMP),
-    ('Distortion', 'E12-p7', 'P4'): (2, '8b534547', None, None, R_DIST_P7),
-    ('Distortion', 'E12-p7', 'PF'): (2, 'cd9cbfe2', None, None, R_DIST_P7),
-    ('Distortion', 'E12-p8', 'P4'): (2, '1d217570', None, None, R_DIST_P7),
-    ('Distortion', 'E12-p8', 'PF'): (2, '5bee8fd5', None, None, R_DIST_P7),
     ('Distortion', 'E4-', 'P4'): (8, '8fd46470', None, None, R_STATE),
     ('Distortion', 'E4-', 'P5'): (12, '30b1a8d2', None, None, R_JUMP),
     ('Distortion', 'E5-mix0', 'P4'): (44, '14ea31c6', None, None, R_STATE),
