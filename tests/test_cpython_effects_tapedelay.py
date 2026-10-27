@@ -2052,6 +2052,36 @@ class Tier1Fast(unittest.TestCase):
         out = render(effect, 4096)[:, 0]
         self.assertTrue(np.array_equal(out, np.round(x)))
 
+    def test_more_spacing_darkens_the_repeats(self):
+        # The loss corner falls as the head sits further off: about 611 Hz
+        # at 2 um, 523 at 5 and 306 at 20.
+        corners = []
+        for spacing in (2.0, 5.0, 20.0):
+            effect = TapeDelay(src_of(np.zeros(512)), spacing_um=spacing)
+            render(effect, 512)
+            corners.append(effect._corner)
+        self.assertGreater(corners[0], corners[1])
+        self.assertGreater(corners[1], corners[2])
+
+    def test_record_level_squashes_each_pass(self):
+        # A tone ten times louder comes back ten times louder at Record
+        # Level 0, and about 8.4 times at Record Level 1: the loud pass is
+        # squashed, the quiet one barely touched.
+        def gain(record_level):
+            peaks = []
+            for amp in (3000.0, 30000.0):
+                x = np.zeros(14400)
+                x[:2400] = sine(TONE, amp, 2400)
+                out = render(TapeDelay(src_of(x), mix=2.0, time_ms=100.0,
+                                       feedback=0.0, wow_cents=0.0,
+                                       flutter_cents=0.0,
+                                       record_level=record_level),
+                             14400)[:, 0]
+                peaks.append(float(np.max(np.abs(out[4800:]))))
+            return peaks[1] / peaks[0]
+        self.assertAlmostEqual(gain(0.0), 10.0, delta=0.05)
+        self.assertLess(gain(1.0), 9.0)
+
     def test_the_control_spans(self):
         # Time runs 20 to 1 200 ms and Feedback stops at 0.99, handed so.
         effect = TapeDelay(src_of(np.zeros(512)))
@@ -2941,6 +2971,21 @@ BOARD_COST = {
 #: Every claim the module docstring makes, word for word, and the tests that
 #: assert it ("Class.test_name", in this file).
 CLAIMS = (
+    ("`TapeDelay` - a tape echo with two transports: the Roland RE-201's "
+     "motor and the Maestro EP-3's sliding head.",
+     ("TheSurface.test_macros_characters_tier_latency",
+      "T1aVarispeed.test_the_named_moves", "T1bSlidingHead.test_the_ramp")),
+    ("Your dry signal passes untouched, and the repeats follow it off a "
+     "loop of tape, each one a little darker than the last.",
+     ("Tier1Fast.test_the_dry_is_unity_until_the_repeat",
+      "T2LossLaw.test_n_passes")),
+    ("Spacing is how far the worn head sits off the tape: more spacing, "
+     "darker repeats.", ("Tier1Fast.test_more_spacing_darkens_the_repeats",)),
+    ("Record Level drives the tape harder, a soft squash on every pass.",
+     ("Tier1Fast.test_record_level_squashes_each_pass",)),
+    ("A tape echo with the RE-201's motor or the EP-3's sliding head.",
+     ("TheSurface.test_macros_characters_tier_latency",
+      "T1aVarispeed.test_the_named_moves", "T1bSlidingHead.test_the_ramp")),
     ("Time is the delay, from 20 to 1200 ms, and Feedback is how much of "
      "each repeat goes round again, up to 0.99.",
      ("Tier1Fast.test_the_control_spans",)),
@@ -3060,8 +3105,8 @@ def claim_problems(doc, claims=CLAIMS):
 
 class Claims(unittest.TestCase):
     def test_every_claim_is_in_the_docstring_and_tested(self):
-        self.assertEqual(claim_problems(tape.__doc__), [])
-        self.assertEqual(claim_problems(TapeDelay.__doc__, ()), [])
+        self.assertEqual(
+            claim_problems(tape.__doc__ + " " + TapeDelay.__doc__), [])
         self.assertIn(FAMILY_HEADING, _flat(tape.__doc__))
         # The checker can fail: a figure outside a claim, a claim the
         # docstring does not carry, a test that does not exist.

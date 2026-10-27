@@ -3032,6 +3032,21 @@ CLAIMS = (
     ("A control that jumps makes the output step: move it in small steps "
      "from the host if you need it smooth.",
      "test_a_jumping_control_steps_the_output"),
+    ("`MultiTapDelay` - one recording read by several heads on a fixed "
+     "grid.", ("test_laps_land_on_the_grid",
+               "test_first_lap_at_the_defaults_three_rates_both_graphs")),
+    ("The player's text is the class docstring, and every sentence in it "
+     "that makes a claim is tied to a test by the `CLAIMS` table in the "
+     "class's test file.", "test_every_claim_is_in_the_docstring_and_tested"),
+    ("How it works, and why, is in the docstrings of `_route`, `_wire` and "
+     "`_resync` below.", "test_the_how_is_in_the_named_docstrings"),
+    ("A multi-head echo: one recording read by several heads on a grid.",
+     ("test_laps_land_on_the_grid",
+      "test_first_lap_at_the_defaults_three_rates_both_graphs")),
+    ("The heads of a multi-head tape echo, after the Roland Space Echo's "
+     "multi-head modes: your dry signal passes untouched, and a pattern of "
+     "echoes follows it.", ("test_first_lap_over_modes_heads_and_time_stops",
+                            "test_the_mix_stops")),
 )
 
 
@@ -3103,7 +3118,9 @@ def _flat(text):
 
 class TheClaims(unittest.TestCase):
     def test_every_claim_is_in_the_docstring_and_tested(self):
-        doc = _flat(MultiTapDelay.__doc__)
+        # The player's text: the module's docstring, then the class's.
+        doc = _flat(sys.modules[MultiTapDelay.__module__].__doc__ + " " +
+                    MultiTapDelay.__doc__)
         tests = set()
         for value in globals().values():
             if isinstance(value, type) and issubclass(value,
@@ -3112,7 +3129,8 @@ class TheClaims(unittest.TestCase):
         rest = doc
         for sentence, test in CLAIMS:
             self.assertIn(sentence, doc, sentence)
-            self.assertIn(test, tests, sentence)
+            for name in (test,) if isinstance(test, str) else test:
+                self.assertIn(name, tests, sentence)
             rest = rest.replace(sentence, " ")
         self.assertIn("**Limits shared by the family.**", doc)
         numbers = [w for w in rest.split() if any(c.isdigit() for c in w)]
@@ -3190,6 +3208,11 @@ class TheClaims(unittest.TestCase):
             self.assertEqual(nonzero(out), [10 + 960 * k for k in laps],
                              heads)
             effect.deinit()
+
+    def test_the_how_is_in_the_named_docstrings(self):
+        for name in ("_route", "_wire", "_resync"):
+            doc = getattr(MultiTapDelay, name).__doc__
+            self.assertTrue(doc and len(doc.split()) > 20, name)
 
     def test_the_mix_stops(self):
         for channels in (2, 1):

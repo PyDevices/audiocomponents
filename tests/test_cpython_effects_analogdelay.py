@@ -2503,6 +2503,17 @@ CLAIMS = (
      "test_a_jumping_control_steps_the_output"),
     ("When your source ends, the tail rings out as it would on silence.",
      "test_the_tail_rings_out_when_the_source_ends"),
+    ("The player's text is the class docstring, and every sentence in it "
+     "that makes a claim is tied to a test by the `CLAIMS` table in the "
+     "class's test file.", "test_every_claim_is_in_the_docstring_and_tested"),
+    ("A bucket brigade has a fixed number of stages, so a longer delay is a "
+     "slower clock and a lower band limit: the repeats get darker as you "
+     "turn Time up, and your dry signal passes untouched.",
+     ("test_the_only_corner_moves_with_time", "test_the_stops_and_the_corner")),
+    ("Feedback sends each repeat round again.",
+     "test_feedback_sends_each_repeat_round_again"),
+    ("Spread feeds each side's repeats into the other.",
+     "test_spread_feeds_each_sides_repeats_into_the_other"),
 )
 
 
@@ -2533,7 +2544,8 @@ def _cell(event, patch, channels=1, rate=RATE):
 
 class TheClaims(unittest.TestCase):
     def test_every_claim_is_in_the_docstring_and_tested(self):
-        doc = _flat(AnalogDelay.__doc__)
+        # The player's text: the module's docstring, then the class's.
+        doc = _flat(ad.__doc__ + " " + AnalogDelay.__doc__)
         tests = set()
         for value in globals().values():
             if isinstance(value, type) and issubclass(value,
@@ -2542,11 +2554,56 @@ class TheClaims(unittest.TestCase):
         rest = doc
         for sentence, test in CLAIMS:
             self.assertIn(sentence, doc, sentence)
-            self.assertIn(test, tests, sentence)
+            for name in (test,) if isinstance(test, str) else test:
+                self.assertIn(name, tests, sentence)
             rest = rest.replace(sentence, " ")
         self.assertIn("**Limits shared by the family.**", doc)
         numbers = [w for w in rest.split() if any(c.isdigit() for c in w)]
         self.assertEqual(numbers, [])
+
+    def test_feedback_sends_each_repeat_round_again(self):
+        # A click, wet only, 100 ms: with Feedback each lap brings another
+        # repeat, quieter than the last; without it there is one.
+        lap = whole(100.0, RATE)
+
+        def repeats(feedback):
+            values = [20000] + [0] * (5 * lap)
+            effect = AnalogDelay(array_src(values, 1), sample_rate=RATE,
+                                 time_ms=100.0, feedback=feedback, mix=2.0)
+            out = np.abs(np.array(pull(effect, 5 * lap, 1), dtype=float))
+            effect.deinit()
+            return [int(out[k * lap - lap // 2:k * lap + lap // 2].max())
+                    for k in range(1, 5)]
+
+        once = repeats(0.0)
+        self.assertGreater(once[0], 0)
+        self.assertEqual(once[1:], [0, 0, 0])
+        again = repeats(0.5)
+        self.assertEqual(again[0], once[0])
+        for k in range(1, 4):
+            self.assertGreater(again[k], 0, again)
+            self.assertLess(again[k], again[k - 1], again)
+
+    def test_spread_feeds_each_sides_repeats_into_the_other(self):
+        # A click on the left alone: at Spread 0 the right stays silent;
+        # at Spread 1 the left's repeat comes back on the right a lap on.
+        lap = whole(100.0, RATE)
+
+        def right(spread):
+            data = array("h", [0] * (4 * lap * 2))
+            data[0] = 20000
+            source = probes.ArraySource(data, rate=RATE, channels=2,
+                                        block=BLOCK)
+            effect = AnalogDelay(source, sample_rate=RATE, time_ms=100.0,
+                                 feedback=0.5, mix=2.0, spread=spread)
+            out = np.array(pull(effect, 4 * lap, 2), dtype=float)
+            effect.deinit()
+            return np.abs(out[1::2])
+
+        self.assertEqual(int(right(0.0).max()), 0)
+        crossed = right(1.0)
+        self.assertEqual(int(crossed[:lap + lap // 2].max()), 0)
+        self.assertGreater(int(crossed.max()), 0)
 
     def test_the_knob_spans(self):
         effect = AnalogDelay(silence_src(64), sample_rate=RATE)

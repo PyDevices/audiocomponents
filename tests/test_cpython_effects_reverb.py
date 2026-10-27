@@ -1972,6 +1972,17 @@ CLAIMS = (
     ("Latency is zero: nothing looks ahead, and Predelay delays only the "
      "tail.",
      ("Tier1.test_click_delay_is_zero",)),
+    ("`Reverb` - Dattorro's plate network, cut four ways: a plate, a room, a "
+     "chamber and a hall.",
+     ("TheCut.test_the_plate_tank_is_dattorros_at_48k",
+      "T8TheyBuild.test_room_hall_and_chamber_build")),
+    ("Dattorro's network as four machines: an EMT plate that is dense at "
+     "once and darkens as Decay shortens, and a room, chamber and hall that "
+     "build.",
+     ("TheCut.test_the_plate_tank_is_dattorros_at_48k",
+      "T1PlateDensity.test_steel_plate_is_dense_from_20_ms",
+      "T3Damper.test_the_upper_band_shortens_more_as_decay_shortens",
+      "T8TheyBuild.test_room_hall_and_chamber_build")),
 )
 
 
