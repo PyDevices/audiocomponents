@@ -1668,12 +1668,44 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class _NoHiding:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
 class TheScoopBuildsWithoutGetBuffer(unittest.TestCase):
     """Where `audiocore.get_buffer` is compiled out (CircuitPython's board
     builds) the scoop patches build, take a patch change and reset without
-    raising, and every patch renders the bytes it renders with it: the
-    scoop tables answer zero with zero, so the output capacitor has
-    nothing to settle."""
+    raising, and every patch but one renders the bytes it renders with it:
+    the scoop tables answer zero with zero, so the output capacitor has
+    nothing to settle.
+
+    Patch 7's table leaves a few LSB of offset that only a build with
+    `get_buffer` can settle before the first block, so there the output
+    stays within `PATCH_7_LSB` of it. A build moved to patch 7 renders
+    exactly what a build made at patch 7 renders."""
+
+    #: The most patch 7 differs by without `get_buffer`.
+    PATCH_7_LSB = 4
+
+    def _render(self, patch, actions, moved, hide):
+        import kit_args
+        import kit_common as kc
+        import kit_nogb
+        feed = kc.feed(kit_args.probe(2), RATE, 2)
+        with kit_nogb.hidden(rebuilt.Distortion) if hide else _NoHiding():
+            if moved:
+                effect = kc.build(rebuilt.Distortion, feed.port, RATE, patch)
+            else:
+                effect = rebuilt.Distortion(feed.port, sample_rate=RATE,
+                                            patch=patch)
+            try:
+                return kc.render(effect, kit_nogb.FRAMES, actions)
+            finally:
+                effect.deinit()
 
     def test_every_patch_builds_and_resets(self):
         import kit_nogb
@@ -1684,7 +1716,19 @@ class TheScoopBuildsWithoutGetBuffer(unittest.TestCase):
                     got = kit_nogb._bytes_cell(
                         rebuilt.Distortion, {}, RATE, 2, patch,
                         scenarios[label])
-                    self.assertEqual(got, "ok")
+                    if patch != 7:
+                        self.assertEqual(got, "ok")
+                        continue
+                    actions = scenarios[label]
+                    moved = self._render(patch, actions, True, True)
+                    self.assertEqual(
+                        moved, self._render(patch, actions, False, True))
+                    full = array.array(
+                        "h", self._render(patch, actions, True, False))
+                    moved = array.array("h", moved)
+                    self.assertLessEqual(
+                        max(abs(a - b) for a, b in zip(full, moved)),
+                        self.PATCH_7_LSB)
 
     def test_a_program_change_onto_a_scoop_patch(self):
         import kit_nogb
@@ -1742,3 +1786,42 @@ class TheFloat32FallbackRounds(unittest.TestCase):
                 with self.subTest(module=name, value=value):
                     self.assertNotEqual(single, value)
                     self.assertEqual(module._f32(value), single)
+
+
+class TestDistortionPatchBeforeTheFirstPull(unittest.TestCase):
+    """A patch chosen after construction, before anything was pulled, plays
+    what a Distortion built at that patch plays, byte for byte. A move to
+    patch 7 or 8 once built and charged its graph at the Character macro,
+    before the later macros took their patch values, and at 22.05 kHz stayed
+    a few LSB off for good (audiocomponents#161)."""
+
+    def _pull(self, effect, frames, channels):
+        import lifecycle
+        out = bytearray()
+        lifecycle._pull_to(effect, out, frames * 2 * channels, 2 * channels)
+        return bytes(out[:frames * 2 * channels])
+
+    def test_a_patch_moved_to_before_the_first_pull_is_a_fresh_build(self):
+        import lifecycle
+        frames = 40 * lifecycle.BLOCK
+        for rate in (22050, 48000):
+            for channels in (2, 1):
+                for patch in (7, 8):
+                    values = lifecycle.material_for("loud", rate, channels)
+                    moved_feed = lifecycle.Feed(values, rate, channels, "256",
+                                                loop=True)
+                    fresh_feed = lifecycle.Feed(values, rate, channels, "256",
+                                                loop=True)
+                    moved = Distortion(moved_feed.port, sample_rate=rate)
+                    fresh = Distortion(fresh_feed.port, sample_rate=rate,
+                                       patch=patch)
+                    try:
+                        moved.program_change(patch)
+                        got = self._pull(moved, frames, channels)
+                        want = self._pull(fresh, frames, channels)
+                    finally:
+                        moved.deinit()
+                        fresh.deinit()
+                    with self.subTest(rate=rate, channels=channels,
+                                      patch=patch):
+                        self.assertEqual(got, want)

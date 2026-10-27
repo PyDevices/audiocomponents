@@ -854,6 +854,7 @@ class Distortion(_component.Component):
         # before a single old node is told to let go, so nothing is ever
         # pulled after it is released.
         self._rebuilt = True
+        old_output = _component.port_target(self._output)
         old_nodes = self._nodes
         self._nodes = []
         self._resets = []
@@ -879,8 +880,48 @@ class Distortion(_component.Component):
             # out at 774 rather than 1028 (audiocomponents#82).
             self._release(old_nodes)
             return
+        if self._patching:
+            # A patch goes in one macro at a time, and Character is macro
+            # 5: connected here, the new graph's output capacitor was
+            # charged and its gates opened before Asymmetry, Ceiling and
+            # Body had their patch values, and it stayed 1 to 8 LSB off a
+            # build at that patch for good (audiocomponents#161). So it is
+            # connected once the whole patch is in, as `_build` connects
+            # it, and until then the old graph, still standing, is what
+            # plays.
+            self._deferred = (self._deferred or []) + old_nodes
+            self._output = old_output
+            return
         self._connect()
         self._release(old_nodes)
+
+    #: Inside `_apply_positions`: a rebuild waits for the whole patch.
+    _patching = False
+    #: The graphs a rebuild inside `_apply_positions` replaced, released
+    #: once the new one is connected.
+    _deferred = None
+
+    def _apply_positions(self, positions, patch_index):
+        if self._constructing:
+            _component.Component._apply_positions(self, positions,
+                                                  patch_index)
+            return
+        self._patching = True
+        try:
+            _component.Component._apply_positions(self, positions,
+                                                  patch_index)
+        finally:
+            self._patching = False
+        old, self._deferred = self._deferred, None
+        if old is None:
+            return
+        if self.macro(MIX) > 0.0:
+            self._stranded = False
+            self._connect()
+            self._output = self._mixer
+        else:
+            self._route_around(self._source)
+        self._release(old)
 
     def _release(self, nodes):
         """Let go of a graph nothing is pointing at any more."""
@@ -938,10 +979,13 @@ class Distortion(_component.Component):
         # the wet leg's 2 there was true of one point on the axis and false
         # of the other 126.
         self._latency = self._wet_latency if mix >= 1.0 else 0
-        if not rejoin:
+        # A rebuild waiting for the rest of its patch: the new graph is
+        # connected, and played, once the patch is in (`_rebuild`).
+        pending = self._deferred is not None
+        if not rejoin and not pending:
             self._output = self._mixer
         self._push_wet(mix, volume)
-        if rejoin:
+        if rejoin and not pending:
             self._connect()
             self._output = self._mixer
 
