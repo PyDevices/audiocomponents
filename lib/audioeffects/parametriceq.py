@@ -216,6 +216,11 @@ class ParametricEQ(_component.Component):
     #: ceiling at every rate. Patch 0 is a wire and its tail is zero.
     TAIL_SAMPLES = 37696
 
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -9 dBFS, patch 3 rails on
+    #: a DC step.
+    INPUT_CEILING_DBFS = -12
+
     MACRO_LABELS = (
         "Low Freq", "Low Boost", "Low Atten",
         "Bell 1 Freq", "Bell 1 Gain",

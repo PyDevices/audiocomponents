@@ -324,6 +324,11 @@ class DigitalDelay(_component.Component):
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
 
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -3 dBFS, patch 3 rails on
+    #: a 100 Hz square.
+    INPUT_CEILING_DBFS = -6
+
     MACRO_LABELS = ("Time", "Feedback", "Mix", "Glide", "Sync", "Division",
                     "Repeat Tone", "Repeat Cut")
     MACRO_MODES = {

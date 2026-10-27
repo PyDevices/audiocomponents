@@ -1400,6 +1400,11 @@ class Bitcrusher(_component.Component):
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = 0
 
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at full scale, patch 1 rails on
+    #: a 50 Hz sine.
+    INPUT_CEILING_DBFS = -3
+
     MACRO_LABELS = ("Bits", "Rate", "Dither", "Band Limit", "Mix", "Output")
     MACRO_MODES = {
         0: "UNIPOLAR", 1: "UNIPOLAR", 2: "UNIPOLAR", 3: "TOGGLE",

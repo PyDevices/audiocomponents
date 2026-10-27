@@ -172,6 +172,11 @@ class LowPass(_component.Component):
     #: input stopped outlived (279 149 at patch 4).
     TAIL_SAMPLES = 528261
 
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at full scale, patch 5 rails on
+    #: a 50 Hz sine.
+    INPUT_CEILING_DBFS = -3
+
     MACRO_LABELS = ("Frequency", "Resonance", "Slope", "Mix", "Trim")
     MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "TOGGLE",
                    3: "UNIPOLAR", 4: "BIPOLAR"}

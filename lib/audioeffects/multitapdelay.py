@@ -273,6 +273,11 @@ class MultiTapDelay(_component.Component):
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
 
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -3 dBFS, the defaults rail on
+    #: a 100 Hz square.
+    INPUT_CEILING_DBFS = -6
+
     MACRO_LABELS = ("Time", "Pattern", "Heads", "Feedback", "Mix", "Tilt",
                     "Repeat Tone", "Sync", "Division")
     MACRO_MODES = {

@@ -298,6 +298,11 @@ class Reverb(_component.Component):
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
 
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -9 dBFS, patch 9 rails on
+    #: a 220 Hz square.
+    INPUT_CEILING_DBFS = -12
+
     MACRO_LABELS = ("Character", "Decay", "Size", "Predelay", "Diffusion",
                     "Damping", "Bandwidth", "Low Cut", "Mod Depth",
                     "Mod Rate", "Width", "Tone", "Mix")

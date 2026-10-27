@@ -304,6 +304,11 @@ class MultibandCompressor(_component.Component):
     #: coupling state" in docs/reference/component-api.md.
     TAIL_SAMPLES = 0
 
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -6 dBFS, patch 3 rails on
+    #: a 147 Hz square.
+    INPUT_CEILING_DBFS = -9
+
     MACRO_LABELS = (
         "Crossover Low", "Crossover High",
         "Low Threshold", "Mid Threshold", "High Threshold",

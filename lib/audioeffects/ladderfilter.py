@@ -107,6 +107,11 @@ class LadderFilter(_component.Component):
     #: bounds the decay; at and above it the filter sustains by design.
     TAIL_SAMPLES = None
 
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -12 dBFS, patch 4 rails on
+    #: a 100 Hz square.
+    INPUT_CEILING_DBFS = -15
+
     MACRO_LABELS = ("Cutoff", "Resonance", "Drive", "Passband Comp",
                     "Poles", "Oversample", "Mix")
     MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "UNIPOLAR",

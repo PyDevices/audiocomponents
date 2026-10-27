@@ -155,6 +155,11 @@ class TransientShaper(_component.Component):
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = 0
 
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -9 dBFS, patch 1 rails on
+    #: a 100 Hz square.
+    INPUT_CEILING_DBFS = -12
+
     MACRO_LABELS = ("Attack", "Sustain", "Output", "Attack Speed",
                     "Sustain Hold")
     MACRO_MODES = {0: "BIPOLAR", 1: "BIPOLAR", 2: "BIPOLAR",

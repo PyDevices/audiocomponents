@@ -328,6 +328,11 @@ class Phaser(_component.Component):
     #: comment; musical settings die much sooner. Ceiling, next 2048.
     TAIL_SAMPLES = 552960
 
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -6 dBFS, patch 1 rails on
+    #: a 147 Hz square.
+    INPUT_CEILING_DBFS = -9
+
     MACRO_LABELS = ("Rate", "Depth", "Centre", "Feedback", "Mix",
                     "Stages", "Shape", "Drive", "Sync", "Division")
     MACRO_MODES = {

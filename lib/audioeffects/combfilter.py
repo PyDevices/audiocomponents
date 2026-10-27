@@ -294,6 +294,11 @@ class CombFilter(_component.Component):
     #: `tail_samples`, the last of its decay.
     TAIL_SAMPLES = None
 
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -18 dBFS, patch 1 rails on
+    #: a DC step.
+    INPUT_CEILING_DBFS = -24
+
     MACRO_LABELS = ("Frequency", "Feedback", "Mix", "Tone", "Trim", "Glide")
     MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "UNIPOLAR",
                    3: "UNIPOLAR", 4: "BIPOLAR", 5: "UNIPOLAR"}

@@ -187,6 +187,11 @@ class SlapbackDelay(_component.Component):
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
 
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -3 dBFS, patch 2 rails on
+    #: a 100 Hz square.
+    INPUT_CEILING_DBFS = -6
+
     MACRO_LABELS = ("Time", "Level", "Saturation", "Tone", "Wow", "Repeats")
     MACRO_MODES = {
         0: "UNIPOLAR",
