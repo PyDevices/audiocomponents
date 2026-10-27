@@ -225,6 +225,8 @@ class MultiTapDelay(_component.Component):
     Up to Mix 1 the dry passes at unity, and at Mix 2 the echoes play alone.
     At unity the dry is exact to the sample, mono and stereo, right up to
     the rails, on every interpreter.
+    Keep the input under -6 dBFS and the defaults and patches stay off the
+    rails.
     Mix 0 is a wire.
     Sync locks Time to Division of the host's beat, clamped to Time's span.
     With no host tempo, Time stays on the knob.
