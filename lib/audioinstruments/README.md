@@ -1,6 +1,6 @@
 # audioinstruments
 
-Fifty-four classic synthesizers, electromechanical keyboards and drum
+Fifty-five classic synthesizers, electromechanical keyboards and drum
 machines, each a self-contained `synthio` program. No samples: every voice is
 oscillators, envelopes and filters, so the whole library is a few hundred
 kilobytes of Python and runs anywhere audiodsp does.
