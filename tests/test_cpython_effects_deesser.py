@@ -24,6 +24,7 @@ split (section 1, "the render is dual-runtime; the analysis is not").
 import array
 import math
 import os
+import re
 import sys
 import unittest
 
@@ -1686,9 +1687,6 @@ class KitChecks(unittest.TestCase):
                           got["target"], got["checked"]))
 
 
-if __name__ == "__main__":       # pragma: no cover
-    unittest.main()
-
 
 class TheResetNeedsNoGetBuffer(unittest.TestCase):
     """`reset()` empties the Splitter rings without `audiocore.get_buffer`,
@@ -1762,3 +1760,144 @@ class AResetPartWayThroughABufferDropsNothing(unittest.TestCase):
         plain = render_with({})
         start = 2 * 256 * (12 + 5)
         self.assertEqual(reset[start:], plain[start:])
+
+
+class TheClaims(unittest.TestCase):
+    """The docstring's claims that no older test holds on its own."""
+
+    def test_the_spans(self):
+        D = deesser.DeEsser
+        self.assertEqual(D._MACRO_RANGES[D._FREQUENCY], (800.0, 8000.0, "log"))
+        self.assertEqual(D._MACRO_RANGES[D._RANGE], (0.0, 20.0))
+        self.assertEqual(D._MACRO_RANGES[D._SENSITIVITY], (0.0, 48.0))
+        self.assertEqual(D._MACRO_RANGES[D._RELEASE], (1.0, 200.0, "log"))
+        self.assertEqual(D._MACRO_RANGES[D._ATTACK], (0.1, 10.0, "log"))
+        self.assertEqual(D._OPTION_DEFAULTS["release_ms"], 3.5)
+        self.assertEqual(
+            [D.PATCHES[i][0] for i in sorted(D.PATCHES)],
+            ["Vocal", "Bright Vocal", "Whispered Verse", "Guitar Pick Noise",
+             "Cymbal Edge", "Hard De-Ess"])
+        self.assertEqual(D.LATENCY_SAMPLES, 0)
+        self.assertEqual(D.TAIL_SAMPLES, 256)
+
+    def test_construction_needs_its_three_modules(self):
+        for name in ("audiobiquad", "audiodynamics", "audioroute"):
+            with self.subTest(module=name):
+                saved = sys.modules[name]
+                sys.modules[name] = None
+                try:
+                    with self.assertRaises(ImportError):
+                        build()
+                finally:
+                    sys.modules[name] = saved
+
+
+CLAIMS = (
+    ("The dbx 902 de-esser: sibilance measured against the programme, not "
+     "against a threshold knob.",
+     ("Tier2.test_d1_level_independence",
+      "Tier2.test_d4_release_rate_is_asserted_and_bounded")),
+    ("It listens to how loud the \"s\" band is against the whole track and "
+     "ducks only when the band comes too close, so one setting works on a "
+     "whisper and a belt.",
+     ("Tier2.test_d1_level_independence",
+      "PlantedFaults.test_d1_goes_red_on_an_absolute_threshold")),
+    ("At every shipped patch's Sensitivity the reduction agrees within 1 dB "
+     "from -6 dBFS down to -55 dBFS, and at any Sensitivity within 0.5 dB "
+     "from -6 dBFS to -40 dBFS.",
+     ("Tier2.test_d1_over_the_sensitivity_span",)),
+    ("On the quietest takes, around -55 dBFS, other Sensitivity settings can "
+     "drift by more than 1 dB.",
+     ("Tier2.test_d1_over_the_sensitivity_span",)),
+    ("is where the \"s\" lives, from 800 Hz to 8 kHz, and it moves the "
+     "crossover and the detector together.",
+     ("TheClaims.test_the_spans",
+      "Tier2.test_d2_corner_tracks_over_the_frequency_span")),
+    ("is the most it may take away, from 0 dB to 20 dB, and it never takes "
+     "more than 0.05 dB past it.",
+     ("TheClaims.test_the_spans",
+      "Tier2.test_d7_range_bounds_and_never_exceeds")),
+    ("Range 0 is a wire, byte for byte.",
+     ("Tier1.test_wire_at_range_zero_is_byte_identical",)),
+    ("The reduction approaches Range without reaching it: at Range 12 the "
+     "deepest any Sensitivity gets is more than 0.5 dB short.",
+     ("Tier2.test_d3_the_twelve_db_clause_is_unreachable",)),
+    (", from 0 dB to 48 dB, is how close to the full-band level the band may "
+     "come before it counts.",
+     ("TheClaims.test_the_spans",)),
+    ("Broadband ducks the whole signal, for a vocal: the high and low bands "
+     "move within 0.5 dB of each other.",
+     ("Tier2.test_d3_the_two_modes",)),
+    ("HF Only ducks the high band alone, for pick noise and cymbal edge, and "
+     "the low band stays within 0.25 dB.",
+     ("Tier2.test_d3_the_two_modes",)),
+    ("With nothing to duck, HF Only's split sums back flat within 0.25 dB.",
+     ("Tier2.test_d8_flat_sum",)),
+    ("spans 1 ms to 200 ms.", ("TheClaims.test_the_spans",)),
+    ("The default 3.5 ms recovers at the dbx 902's own 925 dB a second, "
+     "within 10 %, and the rest of the span moves the rate well away from "
+     "it.",
+     ("TheClaims.test_the_spans",
+      "Tier2.test_d4_release_rate_is_asserted_and_bounded")),
+    ("spans 0.1 ms to 10 ms and gets shorter as the \"s\" gets louder.",
+     ("TheClaims.test_the_spans",
+      "Tier2.test_d5_attack_shortens_with_the_overshoot")),
+    ("There are six: Vocal, Bright Vocal, Whispered Verse, Guitar Pick Noise, "
+     "Cymbal Edge and Hard De-Ess.",
+     ("TheClaims.test_the_spans",)),
+    ("Latency is zero, and no setting adds any.",
+     ("TheClaims.test_the_spans",
+      "Tier1.test_latency_is_zero_at_every_rate")),
+    ("The tail reaches exact zero within 256 samples.",
+     ("TheClaims.test_the_spans", "Tier1.test_tail_reaches_exact_zero",
+      "Tier1.test_tail_in_hf_only_mode_is_the_crossover")),
+    ("It needs `audiobiquad`, `audiodynamics` and `audioroute`, so a stock "
+     "CircuitPython board can't run it.",
+     ("TheClaims.test_construction_needs_its_three_modules",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = deesser.__doc__ + " " + deesser.DeEsser.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(_flat(doc).replace("within 0.25 dB",
+                                                   "within 2.5 dB")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
+
+
+KIT_PLANTS = {
+    "FrozenCrossover": FrozenCrossover,
+    "SlowRelease": SlowRelease,
+}
+
+
+if __name__ == "__main__":       # pragma: no cover
+    unittest.main()

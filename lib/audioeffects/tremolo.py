@@ -1,50 +1,56 @@
 """`Tremolo` — Fender bias-vary and optical characters on one Multiply.
 
-Rebuilt from scratch for Phase 3 against a dossier whose trait table was
-frozen at Station A before this file existed. The old
-`modulation.py:Tremolo` is consulted only for the defects that dossier's
-section 7 names (block-rate MixerVoice.level, CPython LFO freeze, Depth-1
-mute, empty surface).
-
-**What it sounds like.** Two characters, one LFO. *Bias* is a near-sine
-gain wobble that flattens toward cutoff, never mutes, and gets shallower if
-the idle is hot. *Optical* is a neon pulse into a photocell that falls
-faster than it recovers, as a resistive divider, never a gate. Rate is
-0.5–15 Hz (amp patches sit in 3–10 Hz). Depth 0 is a wire. Speed Link
-makes depth fall as Rate falls, the way one pot moves one RC section.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audiomath",)`). On a stock
-CircuitPython board this module imports cleanly and construction raises
-`ImportError`.
-
-**Cost: one Multiply plus a 1024-point synthio Note (not a period-length
-RawSample).** The old Rate-5 Hz table was 9600 frames and pulled whole
-every block (palette 2.468 / 9.591 ms). A 256-point waveform left L1's
-−80 dB bar red on a 1 kHz square at the held-fixed cell (−78.967) and
-on Rate 0.73 / 1.46 Hz staircase images (−61.9 / −60.8). 1024 points
-clears those; `synthio` length does not scale like a looping RawSample
-(palette 256-point extra **0.317 / 0.408**, 1500-point **0.263 / 0.472**).
-Palette: Multiply **0.028 / 0.047** + extra synthio **0.317 / 0.408** +
-glue **0.0** → **0.345 / 0.455 ms → P4 ≤ 7 %, S3 ≤ 9 %**. No `" - lean"`
-patch.
-
-**What the default surrenders:** Default is bias, Depth 0.5, Rate 5 Hz —
-not the optical standout and not L1's Depth 1. Wet peak at the default
-is −1.341 dB vs a 16000-LSB tone, not the ~6 dB `synthio` `>>16` ceiling;
-Depth 0 is still a wire. At 22.05 kHz the default's L1 bar is measured
-at the constructor, not assumed. Optical L1/L2 are disconfirmed; O1–O4
-unmeasured at the constructor.
-
-L1 holds on sine at every rate, and misses by 0.16 dB on SQUARE material at 44.1 kHz only (−79.844 against −80; 48 kHz holds at −82.01).
-
-**Latency: zero samples, at every setting and every rate.** Nothing looks
-ahead. Lag is table *shape*, not a delay line, so there is no latency to
-default off and none to name in milliseconds. `tail_samples` is 0.
-
-`capabilities = ("tempo_sync",)`: when Sync is on the class reads
-`transport()` and snaps Rate to the nearest tempo division; with no BPM it
-holds the Rate knob.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild. The two "same words" paragraphs below are
+# also in `README.md`, and Tier1Fast holds the two copies together.
+#
+# Rebuilt from scratch for Phase 3 against a dossier whose trait table was
+# frozen at Station A before this file existed. The old
+# `modulation.py:Tremolo` is consulted only for the defects that dossier's
+# section 7 names (block-rate MixerVoice.level, CPython LFO freeze, Depth-1
+# mute, empty surface).
+#
+# What it sounds like. Two characters, one LFO. *Bias* is a near-sine
+# gain wobble that flattens toward cutoff, never mutes, and gets shallower if
+# the idle is hot. *Optical* is a neon pulse into a photocell that falls
+# faster than it recovers, as a resistive divider, never a gate. Rate is
+# 0.5–15 Hz (amp patches sit in 3–10 Hz). Depth 0 is a wire. Speed Link
+# makes depth fall as Rate falls, the way one pot moves one RC section.
+#
+# Portability tier: audiodsp (`REQUIRES = ("audiomath",)`). On a stock
+# CircuitPython board this module imports cleanly and construction raises
+# `ImportError`.
+#
+# Cost: one Multiply plus a 1024-point synthio Note (not a period-length
+# RawSample). The old Rate-5 Hz table was 9600 frames and pulled whole
+# every block (palette 2.468 / 9.591 ms). A 256-point waveform left L1's
+# −80 dB bar red on a 1 kHz square at the held-fixed cell (−78.967) and
+# on Rate 0.73 / 1.46 Hz staircase images (−61.9 / −60.8). 1024 points
+# clears those; `synthio` length does not scale like a looping RawSample
+# (palette 256-point extra 0.317 / 0.408, 1500-point 0.263 / 0.472).
+# Palette: Multiply 0.028 / 0.047 + extra synthio 0.317 / 0.408 +
+# glue 0.0 → 0.345 / 0.455 ms → P4 ≤ 7 %, S3 ≤ 9 %. No `" - lean"`
+# patch.
+#
+# What the default surrenders: Default is bias, Depth 0.5, Rate 5 Hz —
+# not the optical standout and not L1's Depth 1. Wet peak at the default
+# is −1.341 dB vs a 16000-LSB tone, not the ~6 dB `synthio` `>>16` ceiling;
+# Depth 0 is still a wire. At 22.05 kHz the default's L1 bar is measured
+# at the constructor, not assumed. Optical L1/L2 are disconfirmed; O1–O4
+# unmeasured at the constructor.
+#
+# L1 holds on sine at every rate, and misses by 0.16 dB on SQUARE material at 44.1 kHz only (−79.844 against −80; 48 kHz holds at −82.01).
+#
+# Latency: zero samples, at every setting and every rate. Nothing looks
+# ahead. Lag is table *shape*, not a delay line, so there is no latency to
+# default off and none to name in milliseconds. `tail_samples` is 0.
+#
+# `capabilities = ("tempo_sync",)`: when Sync is on the class reads
+# `transport()` and snaps Rate to the nearest tempo division; with no BPM it
+# holds the Rate knob.
 
 VENDOR = "PyDevices"
 
@@ -201,20 +207,42 @@ def snap_rate(rate_hz, bpm):
 
 
 class Tremolo(_component.Component):
-    """Bias-vary and optical tremolo on `audiomath.Multiply`. audiodsp tier.
+    """A tremolo with two amp characters on one LFO: Bias, the near-sine
+    wobble of a Fender's bias-vary circuit, and Optical, a neon lamp pulsing
+    into a photocell.
 
-    **Latency is 0.** No lookahead, no partition, no pitch window. Lag is a
-    shape parameter (5–100 ms of photocell recovery) baked into the table,
-    not a reportable delay.
+    **Controls.** Character picks Bias or Optical. Rate runs from 0.5 to
+    15 Hz, and Depth from 0, where the output is your signal untouched, to
+    1. Speed Link makes the depth fall as Rate falls, the way one pot moves
+    the amp's whole RC section. Bias runs from a cold idle to a hot one, and
+    a hot idle makes the Bias wobble more than 6 dB shallower. In Optical,
+    Lag, from 5 to 100 ms, is how slowly the photocell recovers, so a fast
+    Rate loses depth; Shape sets how much of each cycle the signal spends
+    dimmed, less as Shape rises. Stereo Phase, from -180 to 180 degrees,
+    offsets the right channel's wobble from the left's: at 180 one side
+    swells as the other dips.
 
-    **What the default surrenders:** Default is bias, Depth 0.5, Rate 5 Hz —
-    not the optical standout and not L1's Depth 1. Wet peak at the default
-    is −1.341 dB vs a 16000-LSB tone, not the ~6 dB `synthio` `>>16` ceiling;
-    Depth 0 is still a wire. At 22.05 kHz the default's L1 bar is measured
-    at the constructor, not assumed. Optical L1/L2 are disconfirmed; O1–O4
-    unmeasured at the constructor.
+    **Bias.** At half Depth the wobble is close to a sine, every harmonic of
+    it more than 26 dB down. Its dips go further below the average than its
+    swells rise above it, its rise and fall run at about the same speed, and
+    it never mutes: at full Depth the dip stays within 40 dB of the swell.
 
-    L1 holds on sine at every rate, and misses by 0.16 dB on SQUARE material at 44.1 kHz only (−79.844 against −80; 48 kHz holds at −82.01).
+    **Optical.** The light dims the signal faster than it recovers, by more
+    than two to one, so the wobble is a pulse rather than a sine. It is a
+    divider, never a gate: at full Depth the dip sits between 15 and 40 dB
+    below the swell.
+
+    **Sync.** With Sync on, Rate snaps to the nearest of one sweep a whole
+    note, half, quarter, eighth, sixteenth or 32nd note at the host's tempo.
+    With no host the class follows its own 120 bpm, and a host that reports
+    no tempo leaves Rate where the knob is.
+
+    **Levels and timing.** Silence in is silence out. The gain moves every
+    sample, not every block, so at 48 kHz it leaves no block-rate buzz
+    within 80 dB of your signal. Latency and tail are zero at every setting.
+
+    **On a board.** The class needs audiodsp's `audiomath`, and on a board
+    without it construction raises `ImportError`.
     """
 
     NAME = 'Tremolo'

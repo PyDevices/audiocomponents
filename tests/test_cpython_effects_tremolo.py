@@ -5,6 +5,7 @@ Exhaustive rates live in the evidence pack, not in this file.
 
 import math
 import os
+import re
 import sys
 import unittest
 from array import array
@@ -510,6 +511,15 @@ class KnobsKeepTheLfoRunning(unittest.TestCase):
         self.assertTrue(np.array_equal(got[self.MOVE:], ref[self.MOVE:]))
 
 
+def _design_notes():
+    """The module's design-notes comment, with its `#` marks taken off."""
+    path = os.path.join(os.path.dirname(__file__), "..", "lib",
+                        "audioeffects", "tremolo.py")
+    with open(path, "r", encoding="utf-8") as handle:
+        return "\n".join(line[1:].strip() for line in handle
+                         if line.startswith("#"))
+
+
 class Tier1Fast(unittest.TestCase):
     def test_depth_zero_is_a_wire(self):
         frames = 2048
@@ -547,7 +557,7 @@ class Tier1Fast(unittest.TestCase):
         def flat(s):
             return " ".join(s.split())
 
-        self.assertIn(flat(text), flat(rebuilt.Tremolo.__doc__))
+        self.assertIn(flat(text), flat(_design_notes()))
         readme = os.path.join(os.path.dirname(__file__), "..",
                               "lib", "audioeffects", "README.md")
         with open(readme, "r", encoding="utf-8") as handle:
@@ -566,7 +576,7 @@ class Tier1Fast(unittest.TestCase):
         with open(module_path, "r", encoding="utf-8") as handle:
             module_src = handle.read()
         self.assertIn(text, module_src)
-        self.assertIn(text, rebuilt.Tremolo.__doc__)
+        self.assertIn(text, _design_notes())
         readme = os.path.join(os.path.dirname(__file__), "..",
                               "lib", "audioeffects", "README.md")
         with open(readme, "r", encoding="utf-8") as handle:
@@ -624,3 +634,187 @@ class FaultReachability(unittest.TestCase):
                 rebuilt.Tremolo, faulted, reading,
                 lambda cls: build(cls, frames=256))
             self.assertGreaterEqual(result["checked"], 150)
+
+
+class TheClaims(unittest.TestCase):
+
+    def test_the_spans(self):
+        spans = rebuilt.Tremolo._MACRO_RANGES
+        self.assertEqual(spans[rebuilt.RATE], (0.5, 15.0, "log"))
+        self.assertEqual(spans[rebuilt.DEPTH], (0.0, 1.0))
+        self.assertEqual(spans[rebuilt.LAG], (5.0, 100.0))
+        self.assertEqual(spans[rebuilt.PHASE], (-180.0, 180.0))
+
+    def test_optical_shape_shortens_the_dimmed_part(self):
+        below = [env_metrics(render_tone(rebuilt.Tremolo, 2.0,
+                                         character=1.0, depth=1.0,
+                                         shape=shape)[:, 0],
+                             RATE, 5.0)["below"]
+                 for shape in (0.2, 0.5, 0.9)]
+        self.assertGreater(below[0], below[1])
+        self.assertGreater(below[1], below[2])
+
+    def test_stereo_phase_offsets_the_right_channel(self):
+        def correlation(degrees):
+            out = render_tone(rebuilt.Tremolo, 2.0, depth=1.0,
+                              stereo_phase=degrees).astype(float)
+            left, _ = peak_env(out[:, 0], RATE)
+            right, _ = peak_env(out[:, 1], RATE)
+            return np.corrcoef(left[200:], right[200:])[0, 1]
+        self.assertGreater(correlation(0.0), 0.99)
+        self.assertLess(correlation(180.0), -0.99)
+
+    def test_sync_snaps_to_a_note_and_holds_without_a_tempo(self):
+        def rate_of(transport):
+            effect = build(rate=5.0, sync=1.0, transport=transport)
+            return effect._applied[1]
+        # 120 bpm is a 2 Hz beat; 5 Hz is nearest the eighth note's 4.
+        self.assertEqual(rebuilt.tempo_divisions(120.0),
+                         (0.5, 1.0, 2.0, 4.0, 8.0, 16.0))
+        self.assertEqual(rate_of(lambda: (True, 0.0, 120.0, 4, 4)), 4.0)
+        self.assertEqual(rate_of(None), 4.0)
+        self.assertEqual(rate_of(lambda: (False, 0.0, 0.0, 4, 4)), 5.0)
+        self.assertEqual(build(rate=5.0, transport=lambda: (
+            True, 0.0, 120.0, 4, 4))._applied[1], 5.0)
+
+    def test_construction_needs_audiomath(self):
+        saved = sys.modules.get("audiomath", False)
+        sys.modules["audiomath"] = None
+        try:
+            with self.assertRaises(ImportError):
+                build()
+        finally:
+            if saved is False:
+                del sys.modules["audiomath"]
+            else:
+                sys.modules["audiomath"] = saved
+
+
+CLAIMS = (
+    ("`Tremolo` — Fender bias-vary and optical characters on one Multiply.",
+     ("TheSurface.test_macros_patches_tier_latency",)),
+    ("The player's text is the class docstring; the `CLAIMS` table in the "
+     "class's test file ties its claim sentences to tests.",
+     ("Claims.test_every_claim_is_in_the_docstring_and_tested",)),
+    ("A tremolo with two amp characters on one LFO: Bias, the near-sine "
+     "wobble of a Fender's bias-vary circuit, and Optical, a neon lamp "
+     "pulsing into a photocell.",
+     ("L3NearSine.test_harmonics_below_26_at_depth_half",
+      "O2Pulse.test_duty_and_h2")),
+    ("Rate runs from 0.5 to 15 Hz, and Depth from 0, where the output is "
+     "your signal untouched, to 1.",
+     ("TheClaims.test_the_spans", "L4RateLaw.test_defaults_env_matches_rate",
+      "Tier1Fast.test_depth_zero_is_a_wire")),
+    ("Speed Link makes the depth fall as Rate falls, the way one pot moves "
+     "the amp's whole RC section.",
+     ("L2SpeedLink.test_depth_rises_with_rate",
+      "L2SpeedLink.test_frozen_link_is_flat")),
+    ("Bias runs from a cold idle to a hot one, and a hot idle makes the "
+     "Bias wobble more than 6 dB shallower.",
+     ("B3IdleBias.test_hot_is_shallower",
+      "B3IdleBias.test_ignore_bias_is_flat")),
+    ("In Optical, Lag, from 5 to 100 ms, is how slowly the photocell "
+     "recovers, so a fast Rate loses depth; Shape sets how much of each "
+     "cycle the signal spends dimmed, less as Shape rises.",
+     ("TheClaims.test_the_spans",
+      "O4Lag.test_fast_rate_loses_depth_at_default_lag",
+      "O4Lag.test_no_lag_fault_keeps_the_depth",
+      "TheClaims.test_optical_shape_shortens_the_dimmed_part")),
+    ("Stereo Phase, from -180 to 180 degrees, offsets the right channel's "
+     "wobble from the left's: at 180 one side swells as the other dips.",
+     ("TheClaims.test_the_spans",
+      "TheClaims.test_stereo_phase_offsets_the_right_channel")),
+    ("At half Depth the wobble is close to a sine, every harmonic of it "
+     "more than 26 dB down.",
+     ("L3NearSine.test_harmonics_below_26_at_depth_half",
+      "L3NearSine.test_triangle_h3_is_above_the_bar")),
+    ("Its dips go further below the average than its swells rise above it, "
+     "its rise and fall run at about the same speed, and it never mutes: at "
+     "full Depth the dip stays within 40 dB of the swell.",
+     ("B1Asymmetry.test_trough_deeper_than_crest_at_depth_one",
+      "B1Asymmetry.test_shallow_linear_is_under_one_db",
+      "B5TimeSymmetric.test_bias_slopes_match",
+      "B5TimeSymmetric.test_optical_tracker_on_bias_breaks_it",
+      "B2NoMute.test_trough_above_minus_40",
+      "B2NoMute.test_mute_fault_goes_to_silence")),
+    ("The light dims the signal faster than it recovers, by more than two "
+     "to one, so the wobble is a pulse rather than a sine.",
+     ("O1FallFaster.test_fall_at_least_twice_rise",
+      "O1FallFaster.test_equal_tau_is_under_two",
+      "O2Pulse.test_duty_and_h2", "O2Pulse.test_plain_sine_is_not_a_pulse")),
+    ("It is a divider, never a gate: at full Depth the dip sits between 15 "
+     "and 40 dB below the swell.",
+     ("O3Divider.test_trough_in_band", "O3Divider.test_gate_fault_mutes")),
+    ("With Sync on, Rate snaps to the nearest of one sweep a whole note, "
+     "half, quarter, eighth, sixteenth or 32nd note at the host's tempo.",
+     ("TheClaims.test_sync_snaps_to_a_note_and_holds_without_a_tempo",
+      "TheSurface.test_macros_patches_tier_latency")),
+    ("With no host the class follows its own 120 bpm, and a host that "
+     "reports no tempo leaves Rate where the knob is.",
+     ("TheClaims.test_sync_snaps_to_a_note_and_holds_without_a_tempo",)),
+    ("The gain moves every sample, not every block, so at 48 kHz it leaves "
+     "no block-rate buzz within 80 dB of your signal.",
+     ("L1PerSample.test_defaults_48k_below_80",
+      "L1PerSample.test_block_products_below_80_at_5_hz",
+      "L1PerSample.test_staircase_rates_below_80",
+      "L1PerSample.test_block_hold_rises_at_defaults")),
+    ("Latency and tail are zero at every setting.",
+     ("Tier1Fast.test_click_latency_zero",
+      "TheSurface.test_macros_patches_tier_latency")),
+    ("The class needs audiodsp's `audiomath`, and on a board without it "
+     "construction raises `ImportError`.",
+     ("TheClaims.test_construction_needs_audiomath",)),
+    ("Silence in is silence out.", ("Tier1Fast.test_silence_in_silence_out",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = rebuilt.__doc__ + " " + rebuilt.Tremolo.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(doc.replace("never a gate",
+                                                   "sometimes a gate")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Silence in", ("TheClaims.test_nothing_here",)),)))
+
+
+KIT_PLANTS = {
+    "BlockHold": BlockHold,
+    "FrozenLink": FrozenLink,
+    "TriangleLFO": TriangleLFO,
+    "ShallowLinear": ShallowLinear,
+    "MuteDepth": MuteDepth,
+    "IgnoreBias": (IgnoreBias, 0),
+    "BiasTracker": BiasTracker,
+    "EqualTau": (EqualTau, 3),
+    "SineOpto": SineOpto,
+    "GateOpto": (GateOpto, 6),
+    "NoLag": (NoLag, 3),
+    "DoubleRate": DoubleRate,
+}

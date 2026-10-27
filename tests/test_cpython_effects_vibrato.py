@@ -8,6 +8,7 @@ pack, not in this file.
 
 import math
 import os
+import re
 import sys
 import unittest
 from array import array
@@ -857,3 +858,140 @@ class TheGraphPullsWithoutGetBuffer(unittest.TestCase):
                     self.assertEqual(kit_nogb._bytes_cell(
                         rebuilt.Vibrato, {}, RATE, 2, patch,
                         scenarios[label]), "ok")
+
+
+class TheClaims(unittest.TestCase):
+    """The class docstring's figures that the rows above do not reach."""
+
+    def _gain_db(self, **options):
+        effect = rebuilt.Vibrato(sine_src(1000.0, RATE, level=8000),
+                                 sample_rate=RATE, depth=0.0, **options)
+        out = pull_left(effect, RATE)[RATE // 4:]
+        return 20.0 * math.log10(rms(out) / (8000 / math.sqrt(2.0)))
+
+    def test_the_spans(self):
+        self.assertEqual(rebuilt.Vibrato._MACRO_RANGES,
+                         ((2.0, 15.0, "log"), (0.0, 60.0),
+                          (0.15, 5.0, "log"), (0.0, 1.0), (1.0, 12.0),
+                          (2000.0, 18000.0, "log"), (20.0, 200.0, "log"),
+                          (-12.0, 6.0)))
+        self.assertEqual(rebuilt.RISE_10_90, 0.8)
+        self.assertEqual(rebuilt.DEPTH_GLIDE_MS, 20.0)
+
+    def test_depth_holds_its_cents_across_rate_and_delay(self):
+        for delay_ms in (1.0, 4.0, 12.0):
+            for rate_hz in (2.0, 5.0, 15.0):
+                m = rebuilt.m_for_cents(delay_ms, rate_hz, 60.0)
+                self.assertAlmostEqual(
+                    rebuilt.peak_cents(delay_ms, rate_hz, m), 60.0, delta=0.5)
+        for rate_hz in (2.0, 15.0):
+            effect = rebuilt.Vibrato(sine_src(1000.0, RATE * 2, level=8000),
+                                     sample_rate=RATE, rate=rate_hz,
+                                     depth=30.0, rise=0.15)
+            out = pull_left(effect, RATE * 2)[RATE // 2:]
+            cents = 1200.0 * np.log2(inst_hz(out, RATE)[2000:-2000] / 1000.0)
+            self.assertAlmostEqual(float(np.percentile(cents, 99.5)), 30.0,
+                                   delta=3.0)
+
+    def test_level_cuts_and_holds_unity_above_zero(self):
+        self.assertAlmostEqual(self._gain_db(level_db=-12.0), -12.0,
+                               delta=0.2)
+        # audiocomponents#216: the boost half is lost to the mixer's clamp.
+        self.assertAlmostEqual(self._gain_db(level_db=6.0), 0.0, delta=0.2)
+
+    def test_latency_at_44_1_khz(self):
+        effect = rebuilt.Vibrato(silence_src(256, rate=44100),
+                                 sample_rate=44100)
+        self.assertEqual(effect.latency_samples, 176)
+
+    def test_construction_needs_audioecho(self):
+        saved = sys.modules["audioecho"]
+        sys.modules["audioecho"] = None
+        try:
+            with self.assertRaises(ImportError):
+                build(frames=256)
+        finally:
+            sys.modules["audioecho"] = saved
+
+
+CLAIMS = (
+    ("A vibrato after the Boss VB-2: your signal comes out only through a "
+     "short bucket-brigade line whose clock a sine sweeps, so the pitch "
+     "wobbles and none of the dry is left to comb against it.",
+     ("T1NoDry.test_default_is_one_delayed_peak",
+      "T7ClockLaw.test_second_harmonic_near_m_over_two")),
+    ("Rate runs the sweep from 2 to 15 Hz.",
+     ("TheClaims.test_the_spans",
+      "T3RateSpan.test_rate_stops_span_at_least_six_to_one")),
+    ("Depth is the peak pitch swing, from 0 to 60 cents, and stays that "
+     "size wherever Rate and Delay sit.",
+     ("TheClaims.test_the_spans",
+      "TheClaims.test_depth_holds_its_cents_across_rate_and_delay")),
+    ("Engage turns the vibrato on and off without switching the audio: "
+     "Rise, from 0.15 to 5 s, is how long the depth takes to go from 10 % "
+     "to 90 % of the way, in a straight line.",
+     ("TheClaims.test_the_spans",
+      "T5Ramp.test_one_fifty_ms_rise_at_defaults",
+      "T5Ramp.test_a_long_rise_lands_on_time")),
+    ("Any other knob that moves the depth glides there over 20 ms rather "
+     "than stepping.",
+     ("TheClaims.test_the_spans", "MovesGlide.test_each_move_is_smooth")),
+    ("Delay is the line's average length, from 1 to 12 ms.",
+     ("TheClaims.test_the_spans",)),
+    ("Tone is the wet voice's low-pass, from 2 to 18 kHz, and Body its "
+     "high-pass, from 20 to 200 Hz; at the defaults the band is 3 dB down "
+     "at 40 Hz and at 17 kHz.",
+     ("TheClaims.test_the_spans",
+      "T6Band.test_corners_at_48k_whole_sample_delay")),
+    ("Level cuts the output by up to 12 dB; above 0 dB it holds the output "
+     "at the input's level.",
+     ("TheClaims.test_level_cuts_and_holds_unity_above_zero",)),
+    ("With no dry path there is no comb: from 200 Hz to 2 kHz the level "
+     "stays within 1 dB at any Depth up to 60 cents.",
+     ("T1NoDry.test_no_comb_at_default_depths",)),
+    ("At the default patch the sweep is a smooth sine, its third harmonic "
+     "more than 25 dB down.",
+     ("T4SmoothLfo.test_third_harmonic_at_published_defaults",)),
+    ("Latency is the Delay, snapped to a whole sample: 4 ms by default, "
+     "which is 192 samples at 48 kHz and 176 at 44.1 kHz.",
+     ("T2MeanDelay.test_reported_matches_click_at_48k",
+      "TheClaims.test_latency_at_44_1_khz")),
+    ("Nothing looks ahead.",
+     ("Tier1Fast.test_depth_zero_is_a_pure_delay",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = rebuilt.__doc__ + " " + rebuilt.Vibrato.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(doc.replace("within 1 dB",
+                                                   "within 3 dB")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))

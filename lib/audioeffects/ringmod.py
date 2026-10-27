@@ -1,64 +1,71 @@
-"""`RingMod` — Bode multiplier-type ring, with a switching character.
+"""`RingMod` - Bode multiplier-type ring, with a switching character.
 
-Rebuilt from scratch for Phase 3 against a dossier whose trait table was
-frozen at Station A before this file existed. The old `modulation.py:RingMod`
-is consulted only for the defects that dossier's section 7 names.
-
-**What it sounds like.** The program is multiplied by a carrier. At Depth 1
-the originals vanish and only the sum and difference remain. Depth 0.5 is
-textbook AM; Depth 0 is a wire. *Multiplier* (the default) is Bode's
-square-law ring: two sidebands. *Switching* is his chopper: odd harmonics of
-the carrier, truncated below Nyquist. Frequency is the oscillator the 6401
-never owned.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audiomath",)`). On a stock
-CircuitPython board this module imports cleanly and construction raises
-`ImportError`.
-
-**Cost: one Multiply plus a 256-point synthio Note (not a period-length
-RawSample).** The 2026-09-08 extra-source row priced a 1964-frame looping
-table (and the fix round then capped that table at 24000 frames for M4's
-2 Hz pair). Frequency is now `Note.frequency`, so the low end of the range
-does not allocate a longer buffer. Palette: Multiply **0.028 / 0.047** +
-extra synthio 256-point **0.317 / 0.408** + glue **0.0** →
-**0.345 / 0.455 ms → P4 ≤ 7 %, S3 ≤ 9 %**. The old **3 % / 5 %** bar
-used a 256-frame RawSample stand-in: the palette could not price a
-`synthio` source. The **18 % / 52 %** bar counted the 1964-frame pull.
-This is a cheaper implementation of the same effect (brief shape b1),
-not a §7.2 redefinition. No `" - lean"` patch.
-
-**What the default surrenders:** Default is the multiplier at Frequency
-220 Hz, Depth 1, Mix 1 — not the switching standout and not W1's Shape 1.
-At that default, 3·f₂+f₁ sits at **−92.2 dB** (1 s rect, 48 kHz), not
-in W1's −9.5±3 dB window, so W1 is disconfirmed at the constructor
-default. Wet RMS is **−9.03 dB** vs the program (M2 disconfirmed): the
-Q15 product is −3.01 dB and the `synthio` voice sum (`>> 16`, A1/P12)
-takes another 6 dB. Squelch, Threshold and Release do not move the
-audio (M5 disconfirmed). Shape is a byte no-op until Character is
-flipped. Switching products at Character 1 Shape 1 are not a
-demonstrated row. Carrier Low's 5 Hz HPF is **not a demonstrated
-claim** (M4 disconfirmed): a same-kind plant moves the reading by
-**0.0022 dB** at Frequency 220 and by **8.6 dB** only at 2 Hz.
-
-**Latency: zero samples, at every setting and every rate.** Nothing looks
-ahead. No option adds latency (none of Frequency, Depth, Mix, Shape,
-Balance, Squelch, or Character delay the dry path). `tail_samples` is 0.
-
-**Disconfirmed, not dropped.** M2 (unity RMS via +3.01 dB wet makeup): Q15
-carrier cannot take ×√2 without clipping, which fails M1. W4 (switching
-unity RMS): peak-normalizing the Gibbs square to fit Q15 drops RMS; restoring
-it saturates and fails W2. M5 (squelch kills carrier leak): Balance is DC
-on the modulator, so a silent program is still a multiply-by-zero; there is
-no carrier residual to gate. W1 at the constructor default (Character 0):
-the switching products are absent — the row is disconfirmed there, not
-demonstrated at Character 1. M4 (Carrier Low 5 Hz: 2 Hz carrier
-8.6±1.5 dB below 200 Hz): the same-kind plant is inert at Frequency
-220 (**0.0022 dB**) and only fires when the carrier is turned down
-to 2 Hz (**8.6 dB**). Not a claim.
-
-`capabilities = ()`: the carrier is an audio-rate input on the standout.
-This class never reads `self._transport()`.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# `RingMod` — Bode multiplier-type ring, with a switching character.
+#
+# Rebuilt from scratch for Phase 3 against a dossier whose trait table was
+# frozen at Station A before this file existed. The old `modulation.py:RingMod`
+# is consulted only for the defects that dossier's section 7 names.
+#
+# What it sounds like. The program is multiplied by a carrier. At Depth 1
+# the originals vanish and only the sum and difference remain. Depth 0.5 is
+# textbook AM; Depth 0 is a wire. *Multiplier* (the default) is Bode's
+# square-law ring: two sidebands. *Switching* is his chopper: odd harmonics of
+# the carrier, truncated below Nyquist. Frequency is the oscillator the 6401
+# never owned.
+#
+# Portability tier: audiodsp (`REQUIRES = ("audiomath",)`). On a stock
+# CircuitPython board this module imports cleanly and construction raises
+# `ImportError`.
+#
+# Cost: one Multiply plus a 256-point synthio Note (not a period-length
+# RawSample). The 2026-09-08 extra-source row priced a 1964-frame looping
+# table (and the fix round then capped that table at 24000 frames for M4's
+# 2 Hz pair). Frequency is now `Note.frequency`, so the low end of the range
+# does not allocate a longer buffer. Palette: Multiply 0.028 / 0.047 +
+# extra synthio 256-point 0.317 / 0.408 + glue 0.0 →
+# 0.345 / 0.455 ms → P4 ≤ 7 %, S3 ≤ 9 %. The old 3 % / 5 % bar
+# used a 256-frame RawSample stand-in: the palette could not price a
+# `synthio` source. The 18 % / 52 % bar counted the 1964-frame pull.
+# This is a cheaper implementation of the same effect (brief shape b1),
+# not a §7.2 redefinition. No `" - lean"` patch.
+#
+# What the default surrenders: Default is the multiplier at Frequency
+# 220 Hz, Depth 1, Mix 1 — not the switching standout and not W1's Shape 1.
+# At that default, 3·f₂+f₁ sits at −92.2 dB (1 s rect, 48 kHz), not
+# in W1's −9.5±3 dB window, so W1 is disconfirmed at the constructor
+# default. Wet RMS is −9.03 dB vs the program (M2 disconfirmed): the
+# Q15 product is −3.01 dB and the `synthio` voice sum (`>> 16`, A1/P12)
+# takes another 6 dB. Squelch, Threshold and Release do not move the
+# audio (M5 disconfirmed). Shape is a byte no-op until Character is
+# flipped. Switching products at Character 1 Shape 1 are not a
+# demonstrated row. Carrier Low's 5 Hz HPF is not a demonstrated
+# claim (M4 disconfirmed): a same-kind plant moves the reading by
+# 0.0022 dB at Frequency 220 and by 8.6 dB only at 2 Hz.
+#
+# Latency: zero samples, at every setting and every rate. Nothing looks
+# ahead. No option adds latency (none of Frequency, Depth, Mix, Shape,
+# Balance, Squelch, or Character delay the dry path). `tail_samples` is 0.
+#
+# Disconfirmed, not dropped. M2 (unity RMS via +3.01 dB wet makeup): Q15
+# carrier cannot take ×√2 without clipping, which fails M1. W4 (switching
+# unity RMS): peak-normalizing the Gibbs square to fit Q15 drops RMS; restoring
+# it saturates and fails W2. M5 (squelch kills carrier leak): Balance is DC
+# on the modulator, so a silent program is still a multiply-by-zero; there is
+# no carrier residual to gate. W1 at the constructor default (Character 0):
+# the switching products are absent — the row is disconfirmed there, not
+# demonstrated at Character 1. M4 (Carrier Low 5 Hz: 2 Hz carrier
+# 8.6±1.5 dB below 200 Hz): the same-kind plant is inert at Frequency
+# 220 (0.0022 dB) and only fires when the carrier is turned down
+# to 2 Hz (8.6 dB). Not a claim.
+#
+# `capabilities = ()`: the carrier is an audio-rate input on the standout.
+# This class never reads `self._transport()`.
 
 VENDOR = "PyDevices"
 
@@ -132,25 +139,49 @@ def bandlimited_odd(phase, freq_hz, sample_rate, shape):
 
 
 class RingMod(_component.Component):
-    """Bode-style ring modulation. `audiodsp` tier: needs `audiomath`.
+    """A ring modulator after Harald Bode's: your signal is multiplied by a
+    carrier, so at Depth 1 the pitches you played vanish and only their sum
+    and difference with the carrier remain, metallic and out of key.
 
-    **Latency is 0.** No lookahead. `tail_samples` is 0.
+    **Controls.** Frequency sets the carrier from 0.1 Hz to 8 kHz, and
+    stops short of 0.45 times the sample rate. Depth blends the carrier
+    with a steady level: at 1 your signal is gone and the two sidebands
+    come out level with each other, at 0.5 it is textbook AM, your signal
+    6 dB over each sideband, and at 0 the class is a wire. Mix sets the
+    result against your signal, and Mix 0 is a wire too.
 
-    Depth 0 and Mix 0 are a wire (`Multiply.mix = 0`), never a table held at
-    32767. Frequency spans 0.1–8000 Hz and clamps below 0.45·f_s.
+    **Character and Shape.** Character switches the carrier from Bode's
+    multiplier to his switching chopper. Shape then moves the chopper from
+    a sine, where it sounds just like the multiplier, to a band-limited
+    square whose odd harmonics add sidebands of their own: at Shape 1 the
+    third harmonic's pair sits about 9.5 dB under the main pair. While
+    Character is on the multiplier, Shape does nothing.
 
-    **What the default surrenders:** Default is the multiplier at Frequency
-    220 Hz, Depth 1, Mix 1 — not the switching standout and not W1's Shape 1.
-    At that default, 3·f₂+f₁ sits at **−92.2 dB** (1 s rect, 48 kHz), not
-    in W1's −9.5±3 dB window, so W1 is disconfirmed at the constructor
-    default. Wet RMS is **−9.03 dB** vs the program (M2 disconfirmed): the
-    Q15 product is −3.01 dB and the `synthio` voice sum (`>> 16`, A1/P12)
-    takes another 6 dB. Squelch, Threshold and Release do not move the
-    audio (M5 disconfirmed). Shape is a byte no-op until Character is
-    flipped. Switching products at Character 1 Shape 1 are not a
-    demonstrated row. Carrier Low's 5 Hz HPF is **not a demonstrated
-    claim** (M4 disconfirmed): a same-kind plant moves the reading by
-    **0.0022 dB** at Frequency 220 and by **8.6 dB** only at 2 Hz.
+    **Letting your signal through.** Balance and Program Bal each add a
+    steady offset to the carrier, from -1 to 1, so your signal comes
+    through under the ring: at 0.5 it is level with each sideband, to
+    within 0.5 dB. They do the same thing.
+
+    **Stereo and the low end.** Stereo Phase shifts the right channel's
+    carrier against the left's by up to 180 degrees either way, and at 0
+    the two channels match. Carrier Low, from 2 to 200 Hz, is a high-pass
+    on the carrier and matters only with Frequency turned down near it: at
+    its default 5 Hz, a 2 Hz carrier comes out about 8.6 dB under a
+    200 Hz one.
+
+    **Controls that do nothing.** Squelch, Threshold and Release do not
+    change the sound: the output is the same sample for sample wherever
+    they sit.
+
+    **Levels.** At Depth 1 the ring comes out about 9 dB under your
+    signal, and on every patch the output peaks at least 3 dB under the
+    input.
+
+    **Timing.** Latency is zero at every setting, and so is the tail:
+    silence in is silence out.
+
+    **On a board.** The class needs audiodsp's `audiomath`, and on a board
+    without it construction raises `ImportError`.
     """
 
     NAME = "RingMod"

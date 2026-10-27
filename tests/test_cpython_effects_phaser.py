@@ -12,6 +12,7 @@ to retire.
 import array
 import math
 import os
+import re
 import sys
 import unittest
 
@@ -19,6 +20,7 @@ import audiocore
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from audioeffects import _component                            # noqa: E402
 from audioeffects import phaser as phaser_module               # noqa: E402
@@ -878,3 +880,155 @@ class TestPhaserFollowsTheMeter(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertAlmostEqual(effect._lfo.rate, bar_rate(effect, 120.0, 4.0),
                                places=9)
+
+
+class TheClaims(unittest.TestCase):
+
+    def test_the_spans(self):
+        spans = Phaser._MACRO_RANGES
+        self.assertEqual(spans[RATE_I], (0.0, 10.0))
+        self.assertEqual(spans[CENTRE_I], (60.0, 2000.0, "log"))
+        self.assertEqual(spans[FEEDBACK_I], (0.0, 0.9))
+        self.assertEqual(spans[MIX_I], (0.0, 1.0))
+        self.assertEqual(spans[SHAPE_I], (0.35, 0.65))
+        self.assertEqual(spans[DRIVE_I], (0.0, 1.0))
+        self.assertEqual(tuple(phaser_module.STAGES_CHOICES),
+                         (4, 6, 8, 10, 12))
+        self.assertEqual(phaser_module.DIVISION_BARS,
+                         (4.0, 2.0, 1.0, 0.5, 1.0 / 3.0, 0.25, 0.125))
+
+    def test_the_constructor_drive_and_mix(self):
+        effect = built()
+        self.assertAlmostEqual(effect.macro(DRIVE_I), 0.3, delta=0.01)
+        self.assertAlmostEqual(effect.macro(MIX_I), 0.5, delta=0.01)
+        lean = Phaser.PATCHES[8]
+        self.assertEqual(lean[0], "Phaser - lean")
+        self.assertEqual(lean[1][:DRIVE_I], Phaser.PATCHES[0][1][:DRIVE_I])
+        self.assertEqual(lean[1][DRIVE_I], 0)
+        self.assertEqual(lean[1][DRIVE_I + 1:],
+                         Phaser.PATCHES[0][1][DRIVE_I + 1:])
+
+    def test_the_reported_tail_is_the_worst_case(self):
+        self.assertEqual(Phaser.TAIL_SAMPLES, 552960)
+
+    def test_construction_needs_audiobiquad_and_audioshaper(self):
+        self.assertEqual(Phaser.REQUIRES, ("audiobiquad", "audioshaper"))
+        for name in Phaser.REQUIRES:
+            with self.subTest(module=name):
+                saved = sys.modules[name]
+                sys.modules[name] = None
+                try:
+                    with self.assertRaises(ImportError):
+                        Phaser.create(silence(), RATE)
+                finally:
+                    sys.modules[name] = saved
+
+
+CLAIMS = (
+    ("`Phaser` - four first-order all-pass stages swept the way a Phase 90 "
+     "is.",
+     ("TestPhaserTraits.test_p1_two_notches_at_defaults_six_stages_is_"
+      "three",)),
+    ("The player's text is the class docstring; the `CLAIMS` table in the "
+     "class's test file ties its claim sentences to tests.",
+     ("Claims.test_every_claim_is_in_the_docstring_and_tested",)),
+    ("A phaser after the Phase 90: notches swept up and down your signal on "
+     "a triangle.",
+     ("TestPhaserTraits.test_p1_two_notches_at_defaults_six_stages_is_"
+      "three",
+      "TestPhaserTraits.test_default_lfo_is_builtin_not_a_table")),
+    ("Rate runs the sweep from 0 to 10 Hz, and at 0 the notches hold "
+     "still.",
+     ("TheClaims.test_the_spans",
+      "TestPhaserTraits.test_p1_two_notches_at_defaults_six_stages_is_"
+      "three")),
+    ("Depth is how far they swing, and Centre puts the lower notch, "
+     "mid-sweep, anywhere from 60 Hz to 2 kHz.",
+     ("TheClaims.test_the_spans",
+      "TestPhaserInvariants.test_rate_honest_construction")),
+    ("Stages picks 4, 6, 8, 10 or 12 all-pass stages, and each pair makes a "
+     "notch: four stages make two, the second about two and a half octaves "
+     "above the first.",
+     ("TheClaims.test_the_spans",
+      "TestPhaserTraits.test_p1_two_notches_at_defaults_six_stages_is_"
+      "three")),
+    ("Mix at 0 is your dry signal, and at 0.5, the default, the notches go "
+     "deeper than 40 dB.",
+     ("TestPhaserInvariants.test_mix_zero_is_a_wire",
+      "TheClaims.test_the_constructor_drive_and_mix",
+      "TestPhaserTraits.test_p4_null_at_defaults_mix_one_is_shallow",
+      "TestPhaserTraits.test_mix_one_fault_fires_at_default_macros")),
+    ("Feedback, from 0 to 0.9, lifts a hump between the notches.",
+     ("TheClaims.test_the_spans",
+      "TestPhaserTraits.test_p5_feedback_raises_peak_stuck_is_flat")),
+    ("Shape leans the triangle, from a rise of 0.35 of the cycle to 0.65.",
+     ("TheClaims.test_the_spans",)),
+    ("Drive, from 0 to 1, softens the signal on its way into the stages, so "
+     "it grows harmonics as your level rises.",
+     ("TheClaims.test_the_spans",
+      "TestPhaserTraits.test_p7_harmonics_grow_fault_is_flat",
+      "TestPhaserTraits.test_p7_harmonics_at_constructor_drive_fault_is_"
+      "flat")),
+    ("Drive is 0.3 when you construct the class, and there the Feedback "
+     "hump stays under 5 dB.",
+     ("TheClaims.test_the_constructor_drive_and_mix",
+      "TestPhaserTraits.test_p5_misses_at_constructor_drive")),
+    ("Turn Drive to 0 and Feedback lifts it more than 5 dB.",
+     ("TestPhaserTraits.test_p5_feedback_raises_peak_stuck_is_flat",)),
+    ("The Phaser - lean patch is the default with Drive at 0.",
+     ("TheClaims.test_the_constructor_drive_and_mix",)),
+    ("With Sync on, the sweep locks to the host: Division picks 4, 2, 1, "
+     "1/2, 1/3, 1/4 or 1/8 of a bar a sweep, a bar is read from the host's "
+     "time signature, and a change of tempo or meter is followed.",
+     ("TheClaims.test_the_spans",
+      "TestPhaserInvariants.test_capabilities_declare_tempo_sync_and_read_"
+      "transport",
+      "TestPhaserFollowsTheMeter.test_the_bar_is_the_time_signature",
+      "TestPhaserFollowsTheMeter.test_a_meter_change_is_followed")),
+    ("Latency is zero at every setting.",
+     ("TestPhaserInvariants.test_latency_is_zero_and_click_agrees",)),
+    ("Silence in is silence out once the notches ring down, which at "
+     "musical settings is quick; the class reports the worst case, 552960 "
+     "samples, for stages at their sharpest.",
+     ("TestPhaserInvariants.test_silence_tail_reaches_zero",
+      "TheClaims.test_the_reported_tail_is_the_worst_case")),
+    ("The class needs audiodsp's `audiobiquad` and `audioshaper`, and on a "
+     "board without them construction raises `ImportError`.",
+     ("TheClaims.test_construction_needs_audiobiquad_and_audioshaper",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = phaser_module.__doc__ + " " + Phaser.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(doc.replace("deeper than",
+                                                   "shallower than")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))

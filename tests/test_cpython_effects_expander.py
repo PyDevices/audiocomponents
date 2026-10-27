@@ -23,6 +23,7 @@ kit's numpy path, so this file runs in the ordinary CPython suite.
 import array
 import math
 import os
+import re
 import sys
 import unittest
 
@@ -427,6 +428,189 @@ class TheDetectorBoundsTheLaw(unittest.TestCase):
         self.assertGreater(settings[DETECTOR], -1.0)
         self.assertEqual(LAW[DETECTOR], 1.0,
                          "E1's operating point is no longer the RMS one")
+
+
+class TheClaims(unittest.TestCase):
+    """The class docstring's figures that the rows above do not reach."""
+
+    def test_the_spans(self):
+        self.assertEqual(Expander._MACRO_RANGES[:7],
+                         ((-80.0, 0.0), (1.0, 8.0, "log"), (0.0, -80.0),
+                          (0.01, 1000.0, "log"), (2.0, 4000.0, "log"),
+                          (25.0, 4000.0, "log"), (250.0, 35000.0, "log")))
+        effect = build_for_check(Expander)
+        try:
+            self.assertEqual(effect.get_macro(DETECTOR), 127)
+        finally:
+            effect.deinit()
+
+    def test_above_the_threshold_it_is_a_wire(self):
+        self.assertAlmostEqual(gain_db(Expander, tone(1000.0, -10.0, 0.5),
+                                       law_settings({RATIO: 8.0})),
+                               0.0, delta=0.01)
+
+    def test_depth_is_the_floor(self):
+        for depth in (-10.0, -20.0):
+            got = gain_db(Expander, tone(1000.0, -40.0, 0.5),
+                          law_settings({RATIO: 8.0, DEPTH: depth}))
+            self.assertAlmostEqual(got, depth, delta=0.5)
+
+    def test_ratio_one_and_depth_zero_are_wires(self):
+        ramp = array.array("h", [((i // CHANNELS) * 7 % 65536) - 32768
+                                 for i in range(8192 * CHANNELS)])
+        for overrides in ({RATIO: 1.0}, {DEPTH: 0.0}):
+            out = render(Expander, ramp, law_settings(overrides))
+            self.assertEqual(list(out), list(ramp), overrides)
+
+    def test_a_loud_tone_outside_the_key_band_opens_it(self):
+        settings = {THRESHOLD: -40.0, RATIO: 4.0, DEPTH: -60.0,
+                    KEY_LOW: 4000.0}
+        loud = gain_db(Expander, tone(1000.0, -3.0, 0.5), settings)
+        quiet = gain_db(Expander, tone(1000.0, -30.0, 0.5), settings)
+        self.assertGreater(loud, -1.0)
+        self.assertLess(quiet, -10.0)
+
+    def test_an_external_key_drives_the_detector(self):
+        settings = law_settings({RATIO: 4.0, DEPTH: -40.0})
+        quiet = tone(1000.0, -40.0, 0.5)
+        alone = gain_db(Expander, quiet, settings)
+        key = source_of(tone(200.0, -6.0, 0.5))
+        adapter = source_of(quiet)
+        effect = Expander.create(adapter, RATE, key=key)
+        for index, value in settings.items():
+            effect.set_macro(index, position(index, value))
+        frames = len(quiet) // CHANNELS
+        out = array.array("h")
+        while len(out) < frames * CHANNELS:
+            chunk = bytes(audiocore.get_buffer(effect.output, False, 0)[1])
+            if not chunk:
+                break
+            out.frombytes(chunk)
+        effect.deinit()
+        keyed = rms_db(out[:frames * CHANNELS], frames // 2) - rms_db(
+            quiet, frames // 2)
+        self.assertLess(alone, -20.0)
+        self.assertGreater(keyed, -0.5)
+
+    def test_sine_and_square_of_equal_rms_match(self):
+        settings = law_settings({RATIO: 2.0, THRESHOLD: -6.0})
+        sine = gain_db(Expander, tone(1000.0, -21.0, 0.5), settings)
+        square = gain_db(Expander, tone(1000.0, -21.0, 0.5, square=True),
+                         settings)
+        self.assertLess(sine, -10.0)
+        self.assertLess(abs(sine - square), 0.1)
+
+    def test_latency_is_zero(self):
+        data = array.array("h", [0] * (2048 * CHANNELS))
+        data[100 * CHANNELS] = data[100 * CHANNELS + 1] = 30000
+        out = render(Expander, data, {THRESHOLD: -80.0})
+        peak = max(range(0, len(out), CHANNELS), key=lambda i: abs(out[i]))
+        self.assertEqual(peak // CHANNELS, 100)
+        self.assertEqual(Expander.LATENCY_SAMPLES, 0)
+
+    def test_construction_needs_audiodynamics(self):
+        saved = sys.modules["audiodynamics"]
+        sys.modules["audiodynamics"] = None
+        try:
+            with self.assertRaises(ImportError):
+                build_for_check(Expander)
+        finally:
+            sys.modules["audiodynamics"] = saved
+
+
+CLAIMS = (
+    ("`Expander` - a downward expander in the Drawmer DS201's shape.",
+     ("TheDetectorBoundsTheLaw.test_rms_holds_the_law_at_the_top_of_the_"
+      "ratio_span",)),
+    ("A downward expander in the Drawmer DS201's shape: below the threshold, "
+     "quiet passages get quieter, by a ratio you set and down to a floor you "
+     "set, without the slam of a gate.",
+     ("TheDetectorBoundsTheLaw.test_rms_holds_the_law_at_the_top_of_the_"
+      "ratio_span", "TheClaims.test_depth_is_the_floor")),
+    ("Above the threshold it is a wire.",
+     ("TheClaims.test_above_the_threshold_it_is_a_wire",)),
+    ("Threshold runs from -80 to 0 dBFS.",
+     ("TheClaims.test_the_spans",)),
+    ("Ratio, from 1 to 8, is how many dB the output falls for every dB the "
+     "input falls below the threshold; with the RMS detector the slope stays "
+     "within 5 % of it even at 8.",
+     ("TheClaims.test_the_spans",
+      "TheDetectorBoundsTheLaw.test_rms_holds_the_law_at_the_top_of_the_"
+      "ratio_span")),
+    ("Depth, from 0 to -80 dB, is the floor: a quiet passage falls no "
+     "further than that, to within 0.5 dB.",
+     ("TheClaims.test_the_spans", "TheClaims.test_depth_is_the_floor")),
+    ("Ratio 1 and Depth 0 are each a wire, byte for byte.",
+     ("TheClaims.test_ratio_one_and_depth_zero_are_wires",)),
+    ("Attack, from 0.01 ms to 1 s, and Release, from 2 ms to 4 s, set how "
+     "fast the detector follows the level.",
+     ("TheClaims.test_the_spans",)),
+    ("Key Low, from 25 Hz to 4 kHz, and Key High, from 250 Hz to just under "
+     "Nyquist, narrow the band the detector hears, at 12 dB/octave at each "
+     "end, so a loud tone outside the band can still open it.",
+     ("TheClaims.test_the_spans",
+      "TheClaims.test_a_loud_tone_outside_the_key_band_opens_it")),
+    ("Pass `key=` another stream and the detector reads that instead of "
+     "your signal, the DS201's external key.",
+     ("TheClaims.test_an_external_key_drives_the_detector",)),
+    ("RMS, the default, gives a sine and a square of equal RMS the same "
+     "gain, to within 0.1 dB at Ratio 2 with the band wide open.",
+     ("TheClaims.test_the_spans",
+      "TheClaims.test_sine_and_square_of_equal_rms_match")),
+    ("Peak rides each cycle of the waveform, so the slope falls short of the "
+     "ratio and the expander turns into a soft, slightly gritty gate; the "
+     "Hard Downward patch is built on it.",
+     ("TheDetectorBoundsTheLaw.test_peak_does_not",
+      "TheDetectorBoundsTheLaw.test_patch_five_keeps_the_peak_position_and_"
+      "its_own_number")),
+    ("There is no Hold and no one-shot envelope: the expander follows the "
+     "level continuously.",
+     ("TheClaims.test_the_spans",)),
+    ("Latency is zero at every setting.",
+     ("TheClaims.test_latency_is_zero",)),
+    ("So is the tail, except with Key Listen on, when the key filters ring "
+     "on after your signal stops: `tail_samples` bounds that ring, under "
+     "6000 frames at 48 kHz.",
+     ("TheKeyListenTailIsFinite.test_the_tail_is_zero_with_key_listen_off",
+      "TheKeyListenTailIsFinite.test_the_tail_bounds_the_ring_at_every_key_"
+      "setting")),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = _expander.__doc__ + " " + Expander.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(doc.replace("within 0.1 dB",
+                                                   "within 1 dB")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
 if __name__ == "__main__":

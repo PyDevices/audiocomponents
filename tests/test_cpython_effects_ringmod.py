@@ -5,6 +5,7 @@ Exhaustive rates live in the evidence pack, not in this file.
 
 import math
 import os
+import re
 import sys
 import unittest
 from array import array
@@ -495,6 +496,210 @@ class RingModNullBuild(unittest.TestCase):
             rebuilt.RingMod, _m4_ratio, label="RingMod M4")
         self.assertFalse(got["null"]["passed"])
         self.assertTrue(got["control"]["passed"])
+
+
+
+class ZeroMix(rebuilt.RingMod):
+    """A planted fault: the ring left out, the program passed as it came."""
+
+    NAME = "RingMod"
+
+    def _refresh(self):
+        rebuilt.RingMod._refresh(self)
+        self._mul.set(mix=0.0)
+
+
+class TheClaims(unittest.TestCase):
+    """The class docstring's figures that the rows above do not reach."""
+
+    def _run(self, frames=48000, **options):
+        effect = rebuilt.RingMod(sine_src(500, frames), sample_rate=RATE,
+                                 frequency=1500, **options)
+        return pull(effect, frames)
+
+    def test_the_spans(self):
+        spans = rebuilt.RingMod._MACRO_RANGES
+        self.assertEqual(spans[FREQ], (0.1, 8000.0, "log"))
+        self.assertEqual(spans[BAL], (-1.0, 1.0))
+        self.assertEqual(spans[PBAL], (-1.0, 1.0))
+        self.assertEqual(spans[rebuilt.CLOW], (2.0, 200.0, "log"))
+        self.assertEqual(spans[rebuilt.PHASE], (-180.0, 180.0))
+        self.assertEqual(rebuilt.NYQUIST_FRAC, 0.45)
+
+    def test_half_depth_is_textbook_am(self):
+        y = self._run(depth=0.5)[:, 0]
+        self.assertAlmostEqual(db_at(y, 500), 0.0, delta=0.1)
+        for hz in (1000, 2000):
+            self.assertAlmostEqual(db_at(y, hz), -6.02, delta=0.2)
+
+    def test_shape_is_the_chopper_s_alone(self):
+        base = self._run()
+        for options in (dict(shape=1.0), dict(character=1.0, shape=0.0)):
+            self.assertTrue(np.array_equal(self._run(**options), base),
+                            options)
+        chopped = self._run(character=1.0, shape=1.0)
+        self.assertFalse(np.array_equal(chopped, base))
+
+    def test_both_balances_let_the_program_through_alike(self):
+        outs = []
+        for name in ("balance", "program_bal"):
+            y = self._run(**{name: 0.5})
+            self.assertAlmostEqual(db_at(y[:, 0], 500), db_at(y[:, 0], 1000),
+                                   delta=0.5)
+            outs.append(y)
+        self.assertTrue(np.array_equal(outs[0], outs[1]))
+
+    def test_stereo_phase_splits_the_channels(self):
+        same = self._run(frames=8192)
+        self.assertTrue(np.array_equal(same[:, 0], same[:, 1]))
+        for degrees in (90.0, -180.0):
+            split = self._run(frames=8192, stereo_phase=degrees)
+            self.assertFalse(np.array_equal(split[:, 0], split[:, 1]))
+
+    def test_squelch_threshold_and_release_do_nothing(self):
+        base = self._run(frames=8192)
+        for options in (dict(squelch=0.0), dict(threshold_db=0.0),
+                        dict(threshold_db=-72.0), dict(release_ms=5.0),
+                        dict(release_ms=500.0)):
+            self.assertTrue(np.array_equal(self._run(frames=8192, **options),
+                                           base), options)
+
+    def test_no_patch_peaks_above_the_input(self):
+        # Half scale, so a gain would show rather than clip. 11 599 is
+        # 3 dB under the input.
+        self.assertEqual(self._loudest(rebuilt.RingMod), [])
+        # A ring that passed the program untouched would be caught.
+        self.assertTrue(self._loudest(ZeroMix))
+
+    def _loudest(self, cls):
+        frames = 8192
+        over = []
+        for index in sorted(rebuilt.RingMod.PATCHES):
+            for bal in (None, 0, 127):
+                effect = cls(sine_src(500, frames, peak=16384),
+                             sample_rate=RATE)
+                effect.program_change(index)
+                if bal is not None:
+                    effect.set_macro(BAL, bal)
+                    effect.set_macro(PBAL, bal)
+                peak = int(np.max(np.abs(pull(effect, frames).astype(int))))
+                if peak > 11599:
+                    over.append((index, bal, peak))
+        return over
+
+    def test_construction_needs_audiomath(self):
+        saved = sys.modules["audiomath"]
+        sys.modules["audiomath"] = None
+        try:
+            with self.assertRaises(ImportError):
+                rebuilt.RingMod(sine_src(500, 256), sample_rate=RATE)
+        finally:
+            sys.modules["audiomath"] = saved
+
+
+CLAIMS = (
+    ("A ring modulator after Harald Bode's: your signal is multiplied by a "
+     "carrier, so at Depth 1 the pitches you played vanish and only their "
+     "sum and difference with the carrier remain, metallic and out of key.",
+     ("RingModTraits.test_m1_multiplier_sidebands",)),
+    ("Frequency sets the carrier from 0.1 Hz to 8 kHz, and stops short of "
+     "0.45 times the sample rate.",
+     ("TheClaims.test_the_spans",
+      "RingModInvariants.test_frequency_clamps_below_nyquist_fraction")),
+    ("Depth blends the carrier with a steady level: at 1 your signal is gone "
+     "and the two sidebands come out level with each other, at 0.5 it is "
+     "textbook AM, your signal 6 dB over each sideband, and at 0 the class "
+     "is a wire.",
+     ("RingModTraits.test_m1_multiplier_sidebands",
+      "TheClaims.test_half_depth_is_textbook_am",
+      "RingModInvariants.test_depth_zero_is_a_wire")),
+    ("Mix sets the result against your signal, and Mix 0 is a wire too.",
+     ("RingModInvariants.test_mix_zero_is_a_wire",)),
+    ("Shape then moves the chopper from a sine, where it sounds just like "
+     "the multiplier, to a band-limited square whose odd harmonics add "
+     "sidebands of their own: at Shape 1 the third harmonic's pair sits "
+     "about 9.5 dB under the main pair.",
+     ("TheClaims.test_shape_is_the_chopper_s_alone",
+      "RingModTraits.test_w1_switching_odd_orders_are_not_a_demonstrated_"
+      "row")),
+    ("While Character is on the multiplier, Shape does nothing.",
+     ("TheClaims.test_shape_is_the_chopper_s_alone",)),
+    ("Balance and Program Bal each add a steady offset to the carrier, from "
+     "-1 to 1, so your signal comes through under the ring: at 0.5 it is "
+     "level with each sideband, to within 0.5 dB.",
+     ("TheClaims.test_the_spans",
+      "TheClaims.test_both_balances_let_the_program_through_alike")),
+    ("They do the same thing.",
+     ("TheClaims.test_both_balances_let_the_program_through_alike",)),
+    ("Stereo Phase shifts the right channel's carrier against the left's by "
+     "up to 180 degrees either way, and at 0 the two channels match.",
+     ("TheClaims.test_the_spans",
+      "TheClaims.test_stereo_phase_splits_the_channels")),
+    ("Carrier Low, from 2 to 200 Hz, is a high-pass on the carrier and "
+     "matters only with Frequency turned down near it: at its default 5 Hz, "
+     "a 2 Hz carrier comes out about 8.6 dB under a 200 Hz one.",
+     ("TheClaims.test_the_spans", "RingModTraits.test_m4_carrier_low",
+      "RingModTraits.test_m4_same_kind_plant_inert_at_constructor_"
+      "frequency")),
+    ("Squelch, Threshold and Release do not change the sound: the output is "
+     "the same sample for sample wherever they sit.",
+     ("TheClaims.test_squelch_threshold_and_release_do_nothing",)),
+    ("At Depth 1 the ring comes out about 9 dB under your signal, and on "
+     "every patch the output peaks at least 3 dB under the input.",
+     ("RingModTraits.test_m2_is_the_q15_product_at_half_scale",
+      "TheClaims.test_no_patch_peaks_above_the_input")),
+    ("Latency is zero at every setting, and so is the tail: silence in is "
+     "silence out.",
+     ("RingModInvariants.test_latency_and_tail_are_zero",
+      "RingModInvariants.test_click_delay_is_zero",
+      "RingModInvariants.test_silence_in_silence_out")),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = rebuilt.__doc__ + " " + rebuilt.RingMod.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(doc.replace("at least 3 dB",
+                                                   "at most 3 dB")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
+
+
+KIT_PLANTS = {
+    "ChopperOnMultiplier": ChopperOnMultiplier,
+    "SineOnSwitching": (SineOnSwitching, 5),
+    "FlatCarrier": FlatCarrier,
+    "HardChopper": HardChopper,
+    "MakeupOnChopper": MakeupOnChopper,
+    "ZeroMod": ZeroMod,
+}
 
 
 if __name__ == "__main__":
