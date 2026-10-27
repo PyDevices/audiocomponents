@@ -541,6 +541,17 @@ class TestCeiling(unittest.TestCase):
         # A square at full scale sits on the rail because the input does.
         self.assertEqual(self.v(kp.KitPlain, "square"), "ok")
 
+    def test_a_rail_by_design_is_excused_where_declared(self):
+        self.assertTrue(self.v(kp.ClipAtTop).startswith("RED(rail"))
+        self.assertTrue(self.v(kp.ClipAtTop, knob=(0, 127)).startswith(
+            "RED(rail"))
+        self.assertEqual(self.v(kp.ClipAtTop, knob=(1, 127)), "ok")
+        self.assertEqual(self.v(kp.ClipAtTop, knob=[(0, 127), (1, 127)]),
+                         "ok")
+        self.assertEqual(self.v(kp.ClipsAlways), "ok")
+        # A wrap is still judged.
+        self.assertTrue(self.v(kp.WrapsAlways).startswith("RED(wrap"))
+
     def test_silence_at_a_stop_is_red(self):
         self.assertTrue(self.v(kp.DeadStop, knob=(1, 0)).startswith(
             "RED(silent"))

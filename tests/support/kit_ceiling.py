@@ -59,7 +59,11 @@ settings are in (`tail_samples`), rounded up to whole seconds, never under
 - `rail`: more than 8 frames in a row on a rail (|y| >= 32767) where the
   input was on neither `latency_samples` earlier nor in the last
   min(`latency_samples`, `HOLD`) frames: a hold that latched a rail
-  plays it for the length of the hold.
+  plays it for the length of the hold. Not judged where the class says
+  the setting clips by design: `CLIPS_AT_TOP`, a tuple of macro indexes,
+  excuses a cell whose knobs put one of them at 127 (Feedback at its top
+  runs away), and `CLIPS_BY_DESIGN = True` excuses every cell (a fuzz
+  clips at any level). A wrap is still judged there.
 - `silent`: the last second exactly zero while the input played through
   it. Not judged on the DC step, which a high-pass rightly takes to zero,
   nor where a macro whose label holds Level or Volume is at 0: an output
@@ -230,8 +234,20 @@ def turned_down(cls, knobs):
     return False
 
 
+def clips_by_design(cls, knobs):
+    """Whether the class says this cell's knobs clip by design (see `rail`
+    under **The bars**)."""
+    if getattr(cls, "CLIPS_BY_DESIGN", False):
+        return True
+    top = getattr(cls, "CLIPS_AT_TOP", ())
+    for index, value in knobs or ():
+        if value == 127 and index in top:
+            return True
+    return False
+
+
 def judge(data, values, channels, rate, lat, which, seconds=SECONDS,
-          silent_ok=False):
+          silent_ok=False, rail_ok=False):
     out = kc.samples(data)
     reds = []
     if which != "noise":
@@ -239,7 +255,7 @@ def judge(data, values, channels, rate, lat, which, seconds=SECONDS,
         if hit is not None:
             reds.append("wrap at %d ch %d" % hit)
     run, where = kc.rail_run(out, values, channels, lat, HOLD)
-    if run > kc.RAIL_RUN:
+    if run > kc.RAIL_RUN and not rail_ok:
         reds.append("rail %d frames from %d" % (run, where))
     if which != "dc" and not silent_ok:
         lo = (seconds - 1) * rate * channels
@@ -316,7 +332,8 @@ def measure(cls, rate, channels, which, patch, knobs, options=None):
             e.set_macro(index, value)
         data = kc.render(e, seconds * rate)
         reds = judge(data, values, channels, rate, e.latency_samples, which,
-                     seconds, turned_down(cls, knobs))
+                     seconds, turned_down(cls, knobs),
+                     clips_by_design(cls, knobs))
     finally:
         e.deinit()
     verdict = "RED(%s)" % "; ".join(reds) if reds else "ok"
