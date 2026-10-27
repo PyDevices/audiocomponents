@@ -17,7 +17,7 @@ To run it on one class (CPython, or a native binary with
 It prints one line per cell, `class|event|rate|channels|patch|P1:..|...|h:..`,
 and a `SUMMARY` line per class: cells run, cells with any red property,
 and cells with any declared property (a cell with two declared properties
-counts once). `tests/test_lifecycle_matrix.py` runs it on every class the
+counts once). [`tests/test_lifecycle_matrix.py`](../test_lifecycle_matrix.py) runs it on every class the
 package serves (`audioeffects.ALL`), on CPython and both native
 interpreters, and holds the red cells to its `KNOWN_RED` table, whose rows
 live in `lifecycle_known.py` beside this file.

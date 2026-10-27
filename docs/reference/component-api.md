@@ -145,7 +145,7 @@ there.
 Underneath, an effect ends in an `audioroute.Port` — a zero-copy pass-through
 whose `play()` re-points it — and `Component._output` is a property that
 builds one on the first assignment and re-points it on every one after
-(`lib/audioeffects/_component.py`). A class author writes `self._output =
+([`lib/audioeffects/_component.py`](../../lib/audioeffects/_component.py)). A class author writes `self._output =
 node` exactly as before. The port moves no bytes: it hands back its source's
 own buffer, length and result.
 
@@ -398,7 +398,7 @@ control. An effect rack has exactly the effect shape even when its internal
 graph contains serial, parallel, or mixed effects. Racks may contain and be
 used by other racks.
 
-Rack providers ship in `lib/audioeffects/`
+Rack providers ship in [`lib/audioeffects/`](../../lib/audioeffects/)
 (`rack.py`, `shimmerhall.py`, `airspace.py`).
 `Rack` is the generic mechanism — a serial chain of the package's own
 effects described by portable literals

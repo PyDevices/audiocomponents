@@ -23,10 +23,10 @@ an `audioinstruments` instrument's `output`, a host input, or another
 effect's `.output`. Every effect hands back its chain tail as `.output`, keeps
 its underlying nodes as attributes (`.node`, `.mixer`, `.cutoff`, ...) so you
 can bind parameters straight to them, and follows the common component
-surface in `docs/reference/component-api.md`: `set_macro()`, `program_change()`,
+surface in [`docs/reference/component-api.md`](../../docs/reference/component-api.md): `set_macro()`, `program_change()`,
 `latency_samples`, `tail_samples` and the rest. Every class declares `NAME`,
 `MACRO_LABELS`, `MACRO_MODES` and `PATCHES`; the provider rules are in
-`docs/reference/metadata.md`. Constructing a class directly also works, and
+[`docs/reference/metadata.md`](../../docs/reference/metadata.md). Constructing a class directly also works, and
 reads the format off the source it is handed.
 
 Nearly everything here needs the audiodsp tier of nodes
@@ -347,14 +347,14 @@ the measurements and the one-line coefficient fix.
 
 ## Testing
 
-`tests/test_cpython_effects_library.py` holds every class in
+[`tests/test_cpython_effects_library.py`](../../tests/test_cpython_effects_library.py) holds every class in
 `audioeffects.ALL` to the contract - exports and metadata, the factory,
 building and rendering, chaining, the patch surface - under CPython. What
 each class *sounds* like is measured beside it, one module per family:
 `test_cpython_effects_dynamics_eq.py` and `..._modulation.py`, plus one
 module per class that has its own, with
 `test_cpython_convolve_node.py` for the audioconvolve node underneath the
-convolvers. `tests/parity/effects_library_smoke.py` is the coarse half of
+convolvers. [`tests/parity/effects_library_smoke.py`](../../tests/parity/effects_library_smoke.py) is the coarse half of
 all that in portable Python, so MicroPython and patched CircuitPython can
 walk the same catalogue - every class through `create()`, and every patch it
 declares through `program_change()`. micropython-vst3's `tools/test-effects-lib.py`

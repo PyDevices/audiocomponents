@@ -78,7 +78,7 @@ Making the choke frame-exact is tracked in
 ## Limits
 
 - No test here runs a real pump. The gates drive
-  `tests/support/fake_pump.py`, the engine's event queue written out in Python
+  [`tests/support/fake_pump.py`](../../tests/support/fake_pump.py), the engine's event queue written out in Python
   with the same validation, ordering, token rules and apply window. It catches
   everything above the queue — which events the seam writes, in what order, at
   which frames, carrying which notes — and the defects found so far lived there.

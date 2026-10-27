@@ -40,14 +40,14 @@ not.
 This package follows audiodsp's audio component metadata manifest. Every
 instrument module explicitly declares `NAME`, `MACRO_LABELS`,
 `MACRO_MODES`, and `PATCHES`; percussion modules also declare `NOTE_MAP`.
-The complete provider rules are in `docs/reference/metadata.md`.
+The complete provider rules are in [`docs/reference/metadata.md`](../../docs/reference/metadata.md).
 
 A module is one instrument and exposes
 `create(sample_rate, channel_count=2, transport=None)`;
 `audioinstruments.create(name, sample_rate, channel_count=2, transport=None,
 **options)` is the lookup helper for hosts (extra keyword options pass
 through to the module's `create`). Either returns an `Instrument`
-implementing the audio component API — `docs/reference/component-api.md` is the
+implementing the audio component API — [`docs/reference/component-api.md`](../../docs/reference/component-api.md) is the
 authority; this table is the summary:
 
 | Method | |
@@ -321,6 +321,6 @@ midi.message(msg)                         # or an adafruit_midi message
 
 They were written for micropython-vst3, where each was a script bound to that
 plug-in's host module. Moving them here made them host-neutral; the parity
-harness (`tests/parity/run_instruments_parity.py`) renders every original
+harness ([`tests/parity/run_instruments_parity.py`](../../tests/parity/run_instruments_parity.py)) renders every original
 script and holds the ported module to it byte for byte, on each interpreter
 separately.

@@ -12,11 +12,11 @@ neighbouring module happens to work.
 
 | Path | What's there |
 |---|---|
-| `lib/audioinstruments/` | One module per instrument, plus `_support.py` (the shared voice, patch and wavetable machinery) and `midi_cc.py`. |
-| `lib/audioeffects/` | One module per effect, plus `_component.py` (the base every effect is built on) and `rebuilt/`, which only keeps the old `audioeffects.rebuilt.<module>` import paths working. |
-| `tools/validate_api.py`, `tools/validate_metadata.py` | The validators that enforce the runtime API and the metadata manifest. |
+| [`lib/audioinstruments/`](lib/audioinstruments/) | One module per instrument, plus `_support.py` (the shared voice, patch and wavetable machinery) and `midi_cc.py`. |
+| [`lib/audioeffects/`](lib/audioeffects/) | One module per effect, plus `_component.py` (the base every effect is built on) and `rebuilt/`, which only keeps the old `audioeffects.rebuilt.<module>` import paths working. |
+| [`tools/validate_api.py`](tools/validate_api.py), [`tools/validate_metadata.py`](tools/validate_metadata.py) | The validators that enforce the runtime API and the metadata manifest. |
 | `tools/` | Rendering and measurement tools besides. |
-| `tests/` | The CPython suites. `tests/parity/` holds the instrument parity harness and its goldens. |
+| `tests/` | The CPython suites. [`tests/parity/`](tests/parity/) holds the instrument parity harness and its goldens. |
 | `docs/` | The documentation site. |
 | `AUDIODSP_PIN` | The exact audiodsp release every gate runs against. |
 | `VERSION` | The version the next tag carries. |
@@ -53,7 +53,7 @@ python tests/parity/effects_library_smoke.py
 python -m flake8
 ```
 
-Most work does not need the whole suite. `tools/scoped_tests.py` picks the
+Most work does not need the whole suite. [`tools/scoped_tests.py`](tools/scoped_tests.py) picks the
 files a change can break:
 
 | Work | Scope |
@@ -96,9 +96,9 @@ sphinx-build -W --keep-going -b html docs _site
 ```
 
 `-W` fails on any warning, as Read the Docs does. The API pages under
-`docs/reference/` are generated on every build; don't edit or commit them. The
-instrument and effect reference pages include `lib/audioinstruments/README.md`
-and `lib/audioeffects/README.md`, which also go into the wheels.
+[`docs/reference/`](docs/reference/) are generated on every build; don't edit or commit them. The
+instrument and effect reference pages include [`lib/audioinstruments/README.md`](lib/audioinstruments/README.md)
+and [`lib/audioeffects/README.md`](lib/audioeffects/README.md), which also go into the wheels.
 
 ## Release
 

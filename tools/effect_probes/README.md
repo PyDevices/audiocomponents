@@ -11,7 +11,7 @@ tools/effect_probes/<rate>/<n>ch/<name>.wav   the data, generated
 ```
 
 **66 probe names, 388 files, 95.8 MB, none of them in git.** The WAVs are
-generated on demand: `tools/render_effect.py` and the tests (through
+generated on demand: [`tools/render_effect.py`](../render_effect.py) and the tests (through
 `tests/support/kit_probes.probe_path()`) write a probe the first time they
 need it and check its digest every time. To make the whole set at once,
 run `make_probes.py --ensure`; it takes about fifteen seconds. `.gitignore`
