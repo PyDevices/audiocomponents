@@ -28,7 +28,8 @@ precision. At 22.05 kHz the top positions of Repeat Tone sit on one clamp
 below Nyquist and sound the same. The dry sits at unity and the repeats add
 to it, so a hot input can reach the int16 rail. With Repeat Cut out and Mix
 below 1, an input that peaks at or below floor(32767 (1 - Mix)) - 1 cannot
-reach the rail, at any Time or Feedback.
+reach the rail, at any Time or Feedback. Keep the input under -6 dBFS and
+the defaults and patches stay off the rails.
 
 **Limits shared by the family.** A control that jumps makes the output step:
 move it in small steps from the host if you need it smooth. When your source
