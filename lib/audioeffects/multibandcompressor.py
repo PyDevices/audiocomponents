@@ -263,6 +263,8 @@ class MultibandCompressor(_component.Component):
     22.05 kHz, 44.1 kHz and 48 kHz, mono and stereo, and moving off it does
     not click. Brought back up from 0, it starts as it was built rather
     than playing what the bands held.
+    Keep the input under -9 dBFS and the defaults and patches stay off the
+    rails.
 
     **Latency and tail.** It adds no latency at any setting. The tail
     reaches exact zero, and `tail_samples` says when.

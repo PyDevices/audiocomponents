@@ -32,6 +32,7 @@ from audioeffects import multibandcompressor           # noqa: E402
 #: `audioeffects/multibandcompressor.py`; `rebuilt.ADOPTED` no longer lists
 #: it. These tests still import the home module so a planted-fault subclass
 #: is measured against this file, not only `create()`.
+import kit_ceiling                                          # noqa: E402
 import kit_probes as probes                                     # noqa: E402
 from audioeffects import _component                             # noqa: E402
 from tools import effect_measurements as kit                    # noqa: E402
@@ -990,7 +991,19 @@ class TheClaims(unittest.TestCase):
                     sys.modules[name] = saved
 
 
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # sq147 is where it rails first: p3 at -6 dBFS.
+        cls = multibandcompressor.MultibandCompressor
+        self.assertEqual(kit_ceiling.stated_level_reds(cls, "sq147"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            cls, "sq147", db=-6, keys=("p3",)))
+
+
 CLAIMS = (
+    ("Keep the input under -9 dBFS and the defaults and patches stay "
+     "off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
     ("Split-band compression: the mix split into two or three bands, each "
      "with its own compressor, then summed back flat.",
      ("Traits.test_m1_the_bands_sum_flat_at_three_bands",
