@@ -40,6 +40,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import audiocore                                            # noqa: E402
+import kit_ceiling                                          # noqa: E402
 import kit_faults                                           # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 from audioeffects import _component                         # noqa: E402
@@ -2446,6 +2447,15 @@ class SyncAndTransport(unittest.TestCase):
             self.assertEqual(effect._delay._handed["delay_slew"], slew)
 
 
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # square is where it rails first: d at -3 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(AnalogDelay, "square"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            AnalogDelay, "square", db=-3, keys=("d",)))
+
+
 # --------------------------------------------------------------------------
 # The docstring's claims, each tied to the test that asserts it
 
@@ -2453,6 +2463,9 @@ class SyncAndTransport(unittest.TestCase):
 #: that asserts it). Every sentence in the docstring that makes a claim is
 #: here; one that could not be tied to a test was struck.
 CLAIMS = (
+    ("Keep the input under -6 dBFS and the defaults and patches stay "
+     "off the rails.",
+     ("test_clean_at_the_stated_input_level",)),
     ("Time runs from 20 to 600 ms, Feedback from 0 to 0.99 and Mix from 0 "
      "to 2.", "test_the_knob_spans"),
     ("Up to Mix 1 the dry passes untouched until the first repeat arrives.",

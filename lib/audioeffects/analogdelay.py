@@ -190,6 +190,8 @@ class AnalogDelay(_component.Component):
 
     **Level and tail.** Below Mix 1, an input peaking at or below
     floor(32767 (1 - Mix)) - 1 does not reach the rail.
+    Keep the input under -6 dBFS and the defaults and patches stay off the
+    rails.
     `tail_samples` is an upper bound on how long the repeats take to reach
     exact zero after your input stops.
     `reset()` empties the line and returns to patch 0.
