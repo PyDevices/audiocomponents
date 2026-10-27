@@ -1,93 +1,110 @@
-"""Ten octave bands and two level sliders, after the MXR M-108 Ten Band.
+"""`GraphicEQ` - ten octave bands and two level sliders, after the MXR
+M-108 Ten Band.
 
-The M-108 is not ten filters in parallel. It is **one op-amp stage whose gain
-is varied across a tuned circuit**, nine gyrator bells at 31.25 Hz doubling to
-8 kHz and a shelf at 16 kHz, with a mechanical **centre detent** at which each
-band is out of the circuit. Two more sliders, GAIN and VOLUME, sit around the
-bank.
-
-**The bands get wider as you back off, and that is the whole character.**
-Because the slider loads the tuned circuit, the M-108's Q moves with it: a
-band is narrow only near the ends of its travel and, a couple of dB in, has
-"degraded into something nearer to a 10-band octave equalizer" (Bohn, JAES
-34(9)). This class does the same thing arithmetically -- `Q` is computed from
-each band's gain on every macro move, holding a 1 dB skirt still while the
-peak grows. At `Band Q` 2.0 the 1 kHz band is 1.8 octaves wide at +3 dB and
-0.71 at +12. Turn `Constant Q` on and every band keeps one width at every
-setting, which is the other half of Bohn's paper and sounds like a studio
-graphic rather than a pedal.
-
-**Bands overlap and add.** Three adjacent sliders at +6 dB do not give you
-+6 dB: measured, they give **+8.78 dB across 2.6 octaves**. That is what a
-musician hears when they draw a curve on this pedal, and it is why the two
-level sliders exist. All ten at +6 dB reach **+8.70 dB on average from 60 Hz
-to 8 kHz, with 2.35 dB of ripple** between the centres -- the bank is hot and
-not quite flat, and the dossier records both as measured rather than as
-intended.
-
-**The 16k slider is a shelf, and its corner sits below its label.** A shelf's
-named frequency is where it has reached *half* its gain, so a corner on
-16 kHz would move 16 kHz by 6 dB of a 12 dB request and put the rest above
-hearing. Half an octave down puts **+10.91 dB at 16 kHz** and +11.94 at
-20 kHz, and lifts the 8 kHz slider's own centre by less than 2 dB.
-
-**Those treble figures need headroom, and the panel can take it away.** Every
-section writes int16 between stages, so a +12 dB request stops being +12 dB
-well below full scale. The shelf holds its full lift to a source peaking
-about **13 000 LSB (-8.1 dBFS)** -- +9.15 dB at 16 kHz and +9.51 at 20 kHz --
-and at **14 000** it is down to +8.78 / +8.90. `Gain` reaches the same place
-on a quiet source: with the input at 6 000, `Gain` +9 dB against `Volume`
--9 dB reads **+7.40 dB at 20 kHz**, and +12 against -12 reads +4.64. The
-16 kHz slider is worth its label on a source with room above it; on a hot one
-it is worth less, and the way to get it back is to pull `Gain` down rather
-than push it up (evidence pack T1, disconfirmed above that level).
-
-**And a patch's `Volume` trim comes off the treble reading too.** Push the
-16k slider to +12 on top of a recalled patch and it measures, against the
-dry source, **+6.12 dB at 20 kHz on `Scooped Mids`, +7.54 on `Pushed Mids`
-and +4.61 on `Full Boost`** -- because those three trim `Volume` by 5.95,
-4.44 and 7.46 dB so that they are a curve and not a volume. Add the trim
-back and the shelf's own lift is **+11.98 to +12.08 dB at all six patches**:
-the slider still does what it says, and the bank is quieter. `Rolled Top` is
-the one that is not a trim -- its 8 kHz cut pulls 16 kHz **1.57 dB** below
-20 kHz, past the 1.5 dB the trait allows -- so the shelf's shape does depend
-on the slider under it.
-
-**A band at its detent is a wire, byte for byte.** `mix` goes to zero on any
-band inside 0.1 dB of centre -- one macro step at +/-12 dB is 0.189 dB, so
-codes 63 and 64 are the detent and nothing else is. This matters more than it
-sounds: a *flat* biquad section at 31.25 Hz is not bit-transparent in float32
-(Direct Form I, poles that close to z = 1, up to 5 LSB over 24 000 frames),
-so a band left "at zero" with `mix = 1` would quietly rewrite the bottom
-octave.
-
-**Latency: zero, at every setting and every rate.** Twelve biquads, nothing
-that looks ahead. No option on this class adds any -- there is no lookahead,
-no partition and no window to add, so the table of latency-adding options is
-empty on purpose.
-
-**Tail: the build's own.** `tail_samples` bounds the ring-down of the
-sections in circuit at the settings in force, from whatever state they hold,
-so it also covers a move made as the input stops. A flat curve is a wire with
-no tail; the 31.25 Hz band at full boost rings for about half a second.
-
-**It is loud, and it clips where the pedal clips.** `Gain` sits before the
-bank and `Volume` after, as the panel reads; each node writes int16 between
-sections and saturates at full scale, so +12 dB of Gain into a hot source
-clips at the first section -- an M-108's op-amps do too. Pull `Volume` down
-when you push `Gain` up, or push the bank instead.
-
-**`audiodsp` tier: it needs `audiobiquad`.** The ported `synthio.Biquad` holds
-DC after silence at exactly this bank's bottom two bands -- +7 LSB at 31.25 Hz
-and +5 LSB with all ten engaged, for ever (audiodsp#23). Those are the numbers
-that made the DC-clean node (audiodsp#39); on it every one of them is exact
-zero.
-
-**Cost.** Twelve biquad sections run at every setting -- a flat band is muted,
-not skipped -- which is about two thirds of an ESP32-S3's stereo block and
-under two fifths of an ESP32-P4's. There is no lean patch, because a patch
-cannot change the node count.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# The M-108 is not ten filters in parallel. It is one op-amp stage whose gain
+# is varied across a tuned circuit, nine gyrator bells at 31.25 Hz doubling to
+# 8 kHz and a shelf at 16 kHz, with a mechanical centre detent at which each
+# band is out of the circuit. Two more sliders, GAIN and VOLUME, sit around the
+# bank.
+#
+# The bands get wider as you back off, and that is the whole character.
+# Because the slider loads the tuned circuit, the M-108's Q moves with it: a
+# band is narrow only near the ends of its travel and, a couple of dB in, has
+# "degraded into something nearer to a 10-band octave equalizer" (Bohn, JAES
+# 34(9)). This class does the same thing arithmetically -- `Q` is computed from
+# each band's gain on every macro move, holding a 1 dB skirt still while the
+# peak grows. At `Band Q` 2.0 the 1 kHz band is 1.8 octaves wide at +3 dB and
+# 0.71 at +12. Turn `Constant Q` on and every band keeps one width at every
+# setting, which is the other half of Bohn's paper and sounds like a studio
+# graphic rather than a pedal.
+#
+# Bands overlap and add. Three adjacent sliders at +6 dB do not give you
+# +6 dB: measured, they give +8.78 dB across 2.6 octaves. That is what a
+# musician hears when they draw a curve on this pedal, and it is why the two
+# level sliders exist. All ten at +6 dB reach +8.70 dB on average from 60 Hz
+# to 8 kHz, with 2.35 dB of ripple between the centres -- the bank is hot and
+# not quite flat, and the dossier records both as measured rather than as
+# intended.
+#
+# The 16k slider is a shelf, and its corner sits below its label. A shelf's
+# named frequency is where it has reached *half* its gain, so a corner on
+# 16 kHz would move 16 kHz by 6 dB of a 12 dB request and put the rest above
+# hearing. Half an octave down puts +10.91 dB at 16 kHz and +11.94 at
+# 20 kHz, and lifts the 8 kHz slider's own centre by less than 2 dB.
+#
+# Those treble figures need headroom, and the panel can take it away. Every
+# section writes int16 between stages, so a +12 dB request stops being +12 dB
+# well below full scale. The shelf holds its full lift to a source peaking
+# about 13 000 LSB (-8.1 dBFS) -- +9.15 dB at 16 kHz and +9.51 at 20 kHz --
+# and at 14 000 it is down to +8.78 / +8.90. `Gain` reaches the same place
+# on a quiet source: with the input at 6 000, `Gain` +9 dB against `Volume`
+# -9 dB reads +7.40 dB at 20 kHz, and +12 against -12 reads +4.64. The
+# 16 kHz slider is worth its label on a source with room above it; on a hot one
+# it is worth less, and the way to get it back is to pull `Gain` down rather
+# than push it up (evidence pack T1, disconfirmed above that level).
+#
+# And a patch's `Volume` trim comes off the treble reading too. Push the
+# 16k slider to +12 on top of a recalled patch and it measures, against the
+# dry source, +6.12 dB at 20 kHz on `Scooped Mids`, +7.54 on `Pushed Mids`
+# and +4.61 on `Full Boost` -- because those three trim `Volume` by 5.95,
+# 4.44 and 7.46 dB so that they are a curve and not a volume. Add the trim
+# back and the shelf's own lift is +11.98 to +12.08 dB at all six patches:
+# the slider still does what it says, and the bank is quieter. `Rolled Top` is
+# the one that is not a trim -- its 8 kHz cut pulls 16 kHz 1.57 dB below
+# 20 kHz, past the 1.5 dB the trait allows -- so the shelf's shape does depend
+# on the slider under it.
+#
+# A band at its detent is a wire, byte for byte. `mix` goes to zero on any
+# band inside 0.1 dB of centre -- one macro step at +/-12 dB is 0.189 dB, so
+# codes 63 and 64 are the detent and nothing else is. This matters more than it
+# sounds: a *flat* biquad section at 31.25 Hz is not bit-transparent in float32
+# (Direct Form I, poles that close to z = 1, up to 5 LSB over 24 000 frames),
+# so a band left "at zero" with `mix = 1` would quietly rewrite the bottom
+# octave.
+#
+# Latency: zero, at every setting and every rate. Twelve biquads, nothing
+# that looks ahead. No option on this class adds any -- there is no lookahead,
+# no partition and no window to add, so the table of latency-adding options is
+# empty on purpose.
+#
+# Tail: the build's own. `tail_samples` bounds the ring-down of the
+# sections in circuit at the settings in force, from whatever state they hold,
+# so it also covers a move made as the input stops. A flat curve is a wire with
+# no tail; the 31.25 Hz band at full boost rings for about half a second.
+#
+# It is loud, and it clips where the pedal clips. `Gain` sits before the
+# bank and `Volume` after, as the panel reads; each node writes int16 between
+# sections and saturates at full scale, so +12 dB of Gain into a hot source
+# clips at the first section -- an M-108's op-amps do too. Pull `Volume` down
+# when you push `Gain` up, or push the bank instead.
+#
+# `audiodsp` tier: it needs `audiobiquad`. The ported `synthio.Biquad` holds
+# DC after silence at exactly this bank's bottom two bands -- +7 LSB at 31.25 Hz
+# and +5 LSB with all ten engaged, for ever (audiodsp#23). Those are the numbers
+# that made the DC-clean node (audiodsp#39); on it every one of them is exact
+# zero.
+#
+# Cost. Twelve biquad sections run at every setting -- a flat band is muted,
+# not skipped -- which is about two thirds of an ESP32-S3's stereo block and
+# under two fifths of an ESP32-P4's. There is no lean patch, because a patch
+# cannot change the node count.
+#
+# The class docstring before the player's text, kept for its figures.
+#
+# A ten-band octave graphic EQ with proportional Q, after the MXR M-108.
+#
+# `audiodsp` tier: it needs `audiobiquad`, whose float state is what lets a
+# 31.25 Hz band reach exact zero after silence.
+#
+# Twelve `audiobiquad.Biquad` nodes in series -- `Gain`, nine bells, the
+# 16 kHz shelf, `Volume`. A band inside the detent is crossfaded out
+# (`mix = 0`), so it is a wire byte for byte while its knob still turns.
 
 VENDOR = "PyDevices"
 
@@ -179,14 +196,45 @@ def band_q(gain_db, anchor):
 
 
 class GraphicEQ(_component.Component):
-    """A ten-band octave graphic EQ with proportional Q, after the MXR M-108.
+    """A ten-band octave graphic EQ after the MXR M-108: nine bells and a
+    top shelf, between a Gain and a Volume slider.
 
-    `audiodsp` tier: it needs `audiobiquad`, whose float state is what lets a
-    31.25 Hz band reach exact zero after silence.
+    **Bands.** The bands sit an octave apart from 31.25 Hz to 8 kHz, and
+    the top one is a shelf at 16 kHz; each spans -12 dB to +12 dB. At its
+    centre detent a band is out of the circuit, so a flat bank is the
+    source byte for byte. A band brought back from the detent starts from
+    nothing. `centres=` retunes the bank to ten ascending frequencies, and
+    the shelf stays the top band.
 
-    Twelve `audiobiquad.Biquad` nodes in series -- `Gain`, nine bells, the
-    16 kHz shelf, `Volume`. A band inside the detent is crossfaded out
-    (`mix = 0`), so it is a wire byte for byte while its knob still turns.
+    **Band Q and Constant Q.** As on the pedal, a band narrows as its
+    slider travels. Band Q, from 0.7 to 2.5, is its width at full travel,
+    and it is wider than that a few dB in. Constant Q holds every band at
+    Band Q at every setting.
+
+    **Gain and Volume.** Gain sits before the bank and Volume after it.
+    Each spans -12 dB to +12 dB and moves every frequency alike, within
+    0.15 dB.
+
+    **Level.** Bands overlap and add: three adjacent sliders at +6 dB lift
+    the middle one's frequency by more than 7 dB. Every section hands the
+    next an int16, so leave headroom, and pull Volume down when you push
+    Gain up.
+
+    **Patches.** There are six: Flat; Scooped Mids; Pushed Mids; Trimmed
+    Bottom; Rolled Top; and Full Boost. Scooped Mids, Pushed Mids and Full
+    Boost pull Volume down, so stepping through them you hear the curve
+    rather than the level. A patch change starts the bank clean and doesn't
+    overshoot; a knob move rides through.
+
+    **Sample rate.** At 48 kHz and 44.1 kHz every band is where its label
+    says. At 22.05 kHz the 16 kHz shelf is past Nyquist, so it is built
+    just under it and `clamped` says so.
+
+    **Latency and tail.** It adds no latency at any setting. Silence in is
+    exact zero out, and `tail_samples` bounds the ring for the settings in
+    force, after a knob move too. A mono source gets the same curve.
+
+    It needs `audiobiquad`, so a stock CircuitPython board can't run it.
     """
 
     NAME = 'GraphicEQ'
