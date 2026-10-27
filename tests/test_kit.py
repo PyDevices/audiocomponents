@@ -451,6 +451,78 @@ class TestCeiling(unittest.TestCase):
         self.assertEqual(kit_ceiling.wrap_at(wrapped, [0] * 6, 1, 0),
                          (3, 0))
 
+    def test_a_ring_at_nyquist_is_not_a_wrap(self):
+        # A boosted filter's ring after a click, clipped at the rails: it
+        # leaps into each jump and out of it, where an overflow creeps up.
+        ring = [0, 32767, -32768, 32767, -32768, 32767, 0, 0]
+        self.assertIsNone(kit_ceiling.wrap_at(ring, [0] * 8, 1, 0))
+
+    def test_an_edge_a_hold_moved_is_not_a_wrap(self):
+        # A full-scale square's edge at input frame 2, played at frame 3
+        # by a hold that reports a latency of 3, with dither on it.
+        values = [32767] * 2 + [-32767] * 6
+        out = [32700, 32740, 32767, -32767, -32700, -32740, -32767, -32700]
+        self.assertIsNone(kit_ceiling.wrap_at(out, values, 1, 3))
+        # The same jump with no edge in the input is a wrap...
+        self.assertEqual(kit_ceiling.wrap_at(out, [0] * 8, 1, 3), (3, 0))
+        # ...and so is one the input's edge cannot explain: the other way.
+        flipped = [-v for v in values]
+        self.assertEqual(kit_ceiling.wrap_at(out, flipped, 1, 3), (3, 0))
+
+    def test_an_edge_a_filter_and_a_hold_moved_past_the_latency(self):
+        # Bitcrusher's patch 3: the band limit's rise and the hold put a
+        # square's edge 12 frames late against a reported latency of 8.
+        values = [-32767] * 4 + [32767] * 16
+        out = [-25600] * 15 + [-26112, 29952, 29696, 29440, 29440]
+        self.assertIsNone(kit_ceiling.wrap_at(out, values, 1, 8))
+        # A class that reports no latency gets no such span...
+        self.assertEqual(kit_ceiling.wrap_at(out, values, 1, 0), (16, 0))
+        # ...and an edge the other way does not explain it.
+        flipped = [-v for v in values]
+        self.assertEqual(kit_ceiling.wrap_at(out, flipped, 1, 8), (16, 0))
+
+    def test_a_held_rail_is_read_over_the_hold(self):
+        # The input sits on the rail from frame 0; a hold reporting 20
+        # frames of latency plays it from frame 0 too.
+        values = [32767] * 40
+        out = [32767] * 40
+        self.assertEqual(kc.rail_run(out, values, 1, 20), (20, 0))
+        self.assertEqual(kc.rail_run(out, values, 1, 20,
+                                     kit_ceiling.HOLD)[0], 0)
+        self.assertEqual(kc.rail_run(out, [0] * 40, 1, 20,
+                                     kit_ceiling.HOLD)[0], 40)
+
+    def test_the_surface_and_the_defaults_take_their_own_levels(self):
+        class Both:
+            INPUT_CEILING_DBFS = -1.0
+            SURFACE_CEILING_DBFS = -6.0
+
+        class Cabinet:
+            SURFACE_CEILING_DBFS = -14.0
+            DEFAULT_CEILING_DBFS = -6.0
+
+        level = kit_ceiling.stated_dbfs
+        self.assertEqual(level(Both), -1.0)
+        self.assertEqual(level(Both, 3), -1.0)
+        self.assertEqual(level(Both, None, [(0, 127)]), -6.0)
+        self.assertEqual(level(Both, 3, [(0, 127)]), -6.0)
+        self.assertEqual(level(Cabinet), -6.0)
+        self.assertEqual(level(Cabinet, 3), -14.0)
+        self.assertEqual(level(Cabinet, None, [(0, 0)]), -14.0)
+        self.assertEqual(level(kp.WrapKitQuiet, None, [(0, 0)]), -7)
+        self.assertEqual(level(kp.KitPlain, 0, [(0, 0)]), 0)
+
+    def test_an_output_level_at_zero_may_be_silent(self):
+        class Labelled:
+            MACRO_LABELS = ("Drive", "Level", "Volume", "Gain", "Mix")
+        down = kit_ceiling.turned_down
+        self.assertTrue(down(Labelled, [(1, 0)]))
+        self.assertTrue(down(Labelled, [(4, 127), (2, 0)]))
+        self.assertFalse(down(Labelled, [(1, 64)]))
+        self.assertFalse(down(Labelled, [(3, 0)]))
+        self.assertFalse(down(Labelled, [(4, 0)]))
+        self.assertFalse(down(Labelled, None))
+
     def test_a_rail_is_red(self):
         self.assertTrue(self.v(kp.ClipKit).startswith("RED(rail"))
         # A square at full scale sits on the rail because the input does.
