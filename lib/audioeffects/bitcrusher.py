@@ -1375,8 +1375,9 @@ class Bitcrusher(_component.Component):
 
     **Mix and Output.** Mix 0 is a wire at the source's own level. Output
     trims the whole blend: -6 dB is 6 dB down within 0.1 dB, at Mix 1 and
-    at a blend. The Effect controls page lists what the knobs span and the
-    patches.
+    at a blend. Keep the input under -3 dBFS and the defaults and patches
+    stay off the rails. The Effect controls page lists what the knobs span
+    and the patches.
 
 
 
@@ -1399,6 +1400,11 @@ class Bitcrusher(_component.Component):
     CAPABILITIES = ()
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = 0
+
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at full scale, patch 1 rails on
+    #: a 50 Hz sine.
+    INPUT_CEILING_DBFS = -3
 
     MACRO_LABELS = ("Bits", "Rate", "Dither", "Band Limit", "Mix", "Output")
     MACRO_MODES = {

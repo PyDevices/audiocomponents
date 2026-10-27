@@ -135,6 +135,8 @@ class SlapbackDelay(_component.Component):
     Up to Level 1 the dry passes untouched until the repeat arrives, however
     hard Saturation drives the repeat.
     A hot input can reach the rail, since the repeat adds to a dry at unity.
+    Keep the input under -6 dBFS and the defaults and patches stay off the
+    rails.
     At Repeats 0 there is one repeat and no second.
     Repeats above 0 sends the repeat round for more.
     Wow swings the repeat's pitch by the cents the knob reads, at a slow
@@ -186,6 +188,11 @@ class SlapbackDelay(_component.Component):
     CAPABILITIES = ()
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
+
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -3 dBFS, patch 2 rails on
+    #: a 100 Hz square.
+    INPUT_CEILING_DBFS = -6
 
     MACRO_LABELS = ("Time", "Level", "Saturation", "Tone", "Wow", "Repeats")
     MACRO_MODES = {

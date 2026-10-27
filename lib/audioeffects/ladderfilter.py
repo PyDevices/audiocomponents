@@ -79,9 +79,9 @@ class LadderFilter(_component.Component):
     no tail bound, and `reset()` stops it at any setting.
 
     **Levels.** The resonance peak and the drive both add gain, so no input
-    level is clean on every setting. A plucked phrase stays off the rails on
-    every patch to -10 dBFS; at -3 dBFS Growl With Drive rails. Turn Drive,
-    Resonance or your input down.
+    level is clean on every setting. Keep the input under -15 dBFS and the
+    defaults and patches stay off the rails. Drive at its top can still push
+    the output onto the rails. Turn Drive, Resonance or your input down.
 
     **On a board.** The class needs audiodsp's `audioladder`, and on a board
     without it construction raises `ImportError`.
@@ -106,6 +106,13 @@ class LadderFilter(_component.Component):
     #: Not finitely bounded. Below k = 4 no source reached in the dossier
     #: bounds the decay; at and above it the filter sustains by design.
     TAIL_SAMPLES = None
+
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -12 dBFS, patch 4 rails on
+    #: a 100 Hz square.
+    INPUT_CEILING_DBFS = -15
+    #: Settings that clip by design: the rail check skips them.
+    CLIPS_AT_TOP = (2,)
 
     MACRO_LABELS = ("Cutoff", "Resonance", "Drive", "Passband Comp",
                     "Poles", "Oversample", "Mix")

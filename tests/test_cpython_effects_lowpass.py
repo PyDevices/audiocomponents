@@ -28,6 +28,7 @@ import audiocore
 import audioeffects
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+import kit_ceiling                                          # noqa: E402
 from effects_measure import SAMPLE_RATE, source        # noqa: E402
 import kit_faults as faults                            # noqa: E402
 
@@ -669,6 +670,15 @@ class TheFaultsAreOutOfThePlayersReach(unittest.TestCase):
             faults.fault_reachability(
                 lowpass.LowPass, 0.0,
                 lambda effect: float(effect._pole_two.mix), build_twelve)
+
+
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # sine is where it rails first: p5 at 0 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(lowpass.LowPass, "sine"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            lowpass.LowPass, "sine", db=0, keys=("p5",)))
 
 
 if __name__ == "__main__":

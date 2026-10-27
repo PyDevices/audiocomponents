@@ -60,6 +60,7 @@ import audiofilters                                         # noqa: E402
 import audiomixer                                           # noqa: E402
 import audioroute                                           # noqa: E402
 import synthio                                              # noqa: E402
+import kit_ceiling                                          # noqa: E402
 import kit_faults                                           # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 import audioeffects                                         # noqa: E402
@@ -2953,6 +2954,15 @@ class ReauditRoundTwo(unittest.TestCase):
             self.assertGreater(planted, short, (rate, channels))
 
 
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # square is where it rails first: d at -3 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(mtd.MultiTapDelay, "square"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            mtd.MultiTapDelay, "square", db=-3, keys=("d",)))
+
+
 # --------------------------------------------------------------------------
 # The docstring's claims, each tied to the test that asserts it
 
@@ -2961,6 +2971,9 @@ class ReauditRoundTwo(unittest.TestCase):
 #: claim is here; one that could not be tied to a test was struck (the
 #: trial fixer's dated note in the dossier lists them).
 CLAIMS = (
+    ("Keep the input under -6 dBFS and the defaults and patches stay "
+     "off the rails.",
+     ("test_clean_at_the_stated_input_level",)),
     ("Measured at v0.6.3, patch 4 costs 5.567 ms a block on the "
      "ESP32-S3, where a block lasts 5.333 ms, so it needs a P4-class "
      "board: the ESP32-P4 runs it in 3.865 ms.",

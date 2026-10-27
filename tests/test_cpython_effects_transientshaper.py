@@ -31,6 +31,7 @@ from audioeffects import transientshaper          # noqa: E402
 #: These tests still import the home module so a planted-fault subclass is
 #: measured against this file, not only `create()`.
 import effect_measurements as kit                         # noqa: E402
+from support import kit_ceiling                             # noqa: E402
 from support import kit_probes as probes                  # noqa: E402
 
 VENDOR = "PyDevices"
@@ -219,21 +220,6 @@ class TraitTests(unittest.TestCase):
         self.assertGreater(steady["peak"], 1.5)
 
 
-class TheInputCeiling(unittest.TestCase):
-    """audiocomponents#192: the kit's plucked phrase is clean on every
-    patch at -10 dBFS, and rails at -3 dBFS on Snap and Kick Punch."""
-
-    def test_a_plucked_phrase_is_clean_to_minus_10_dbfs(self):
-        import kit_levels
-        self.assertEqual(kit_levels.red_patches(
-            transientshaper.TransientShaper, -10), [])
-
-    def test_at_minus_3_dbfs_snap_and_kick_punch_rail(self):
-        import kit_levels
-        cls = transientshaper.TransientShaper
-        self.assertEqual(kit_levels.red_patches(cls, -3), [1, 5])
-        self.assertEqual([cls.PATCHES[k][0] for k in (1, 5)],
-                         ["Snap", "Kick Punch"])
 
 
 def attack(db):
@@ -321,7 +307,19 @@ class TheClaims(unittest.TestCase):
             sys.modules["audiodynamics"] = saved
 
 
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # square is where it rails first: p1 at -9 dBFS.
+        cls = transientshaper.TransientShaper
+        self.assertEqual(kit_ceiling.stated_level_reds(cls, "square"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            cls, "square", db=-9, keys=("p1",)))
+
+
 CLAIMS = (
+    ("Keep the input under -12 dBFS and the defaults and patches stay "
+     "off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
     ("There is no threshold and no ratio: the gain follows the difference "
      "between two envelopes of your own signal, so between -20 and -40 dBFS "
      "a quiet hit is shaped as hard as a loud one, to within 0.5 dB.",
@@ -344,10 +342,6 @@ CLAIMS = (
     ("On a slow decay Sustain runs out before its end: on a note fading at "
      "3 dB a second, Sustain -24 reaches about -16 dB.",
      ("TheClaims.test_sustain_runs_out_on_a_slow_decay",)),
-    ("A plucked phrase stays off the rails on every patch to -10 dBFS; at "
-     "-3 dBFS Snap and Kick Punch rail.",
-     ("TheInputCeiling.test_a_plucked_phrase_is_clean_to_minus_10_dbfs",
-      "TheInputCeiling.test_at_minus_3_dbfs_snap_and_kick_punch_rail")),
     ("Latency is zero at every setting, and so is the tail: silence in is "
      "silence out in the same frame.",
      ("TheClaims.test_latency_is_zero",

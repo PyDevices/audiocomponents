@@ -27,6 +27,7 @@ import audiocore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 import effects_measure                                # noqa: E402
+import kit_ceiling                                          # noqa: E402
 from effects_measure import SAMPLE_RATE, source        # noqa: E402
 
 from audioeffects import _component                    # noqa: E402
@@ -454,6 +455,15 @@ class _Wrap:
 
     def __init__(self, sample):
         self.output = sample
+
+
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # dc is where it rails first: p3 at -9 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(parametriceq.ParametricEQ, "dc"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            parametriceq.ParametricEQ, "dc", db=-9, keys=("p3",)))
 
 
 if __name__ == "__main__":

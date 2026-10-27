@@ -27,6 +27,7 @@ import unittest
 import audiocore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+import kit_ceiling                                          # noqa: E402
 import kit_faults as faults                          # noqa: E402
 from effects_measure import SAMPLE_RATE                # noqa: E402
 
@@ -1190,23 +1191,6 @@ class MonoIsTheSameComb(unittest.TestCase):
         self.assertLess(abs(cents(centroid(y, ideal), ideal)), 5.0)
 
 
-class TheInputCeiling(unittest.TestCase):
-    """audiocomponents#192: the kit's plucked phrase is clean on every
-    patch at -9 dBFS, and rails at -3 dBFS on the four patches the
-    docstring names."""
-
-    def test_a_plucked_phrase_is_clean_to_minus_9_dbfs(self):
-        import kit_levels
-        self.assertEqual(kit_levels.red_patches(combfilter.CombFilter, -9),
-                         [])
-
-    def test_at_minus_3_dbfs_four_patches_rail(self):
-        import kit_levels
-        self.assertEqual(kit_levels.red_patches(combfilter.CombFilter, -3),
-                         [1, 3, 4, 5])
-        names = [combfilter.CombFilter.PATCHES[k][0] for k in (1, 3, 4, 5)]
-        self.assertEqual(names, ["Ringing Pitch", "Dark Resonator",
-                                 "Single Slap", "Filter Only"])
 
 
 class TheClaims(unittest.TestCase):
@@ -1235,7 +1219,19 @@ class TheClaims(unittest.TestCase):
                     sys.modules[name] = saved
 
 
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # dc is where it rails first: p1 at -18 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(combfilter.CombFilter, "dc"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            combfilter.CombFilter, "dc", db=-18, keys=("p1",)))
+
+
 CLAIMS = (
+    ("Keep the input under -24 dBFS and the defaults and patches stay "
+     "off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
     ("A tuned comb: a delay line short enough to be a pitch, fed back on "
      "itself, so noise turns into a note and a chord turns metallic.",
      ("TheCombTunesFractionally.test_every_request_lands_within_five_cents",
@@ -1286,11 +1282,7 @@ CLAIMS = (
      ("TheTuningKnobIsClickFree.test_the_boundary_is_not_findable",
       "TheTuningKnobIsClickFree.test_a_jumped_read_head_is_red")),
     ("A comb gains, so a loud input can reach the rail by design.",
-     ("TheInputCeiling.test_at_minus_3_dbfs_four_patches_rail",)),
-    ("A plucked phrase is clean on every patch up to -9 dBFS; at -3 dBFS "
-     "Ringing Pitch, Dark Resonator, Single Slap and Filter Only rail.",
-     ("TheInputCeiling.test_a_plucked_phrase_is_clean_to_minus_9_dbfs",
-      "TheInputCeiling.test_at_minus_3_dbfs_four_patches_rail")),
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
     ("`reset()` empties the line.",
      ("ResetEmptiesTheLine.test_reset_leaves_the_line_silent_and_the_"
       "source_rendering",)),
@@ -1344,7 +1336,7 @@ class Claims(unittest.TestCase):
         # docstring does not carry, a test that does not exist.
         self.assertTrue(claim_problems(doc + " It reads 12 ms."))
         self.assertTrue(claim_problems(_flat(doc).replace(
-            "up to -9 dBFS", "up to -6 dBFS")))
+            "under -24 dBFS", "under -18 dBFS")))
         self.assertTrue(claim_problems(
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 

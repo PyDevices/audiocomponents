@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import audiocore                                            # noqa: E402
+import kit_ceiling                                          # noqa: E402
 import kit_faults                                          # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 from audioeffects import _component                         # noqa: E402
@@ -2427,12 +2428,24 @@ class TrialClaims(unittest.TestCase):
                 sys.modules["audioecho"] = saved
 
 
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # dc is where it rails first: p3 at -3 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(PingPongDelay, "dc"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            PingPongDelay, "dc", db=-3, keys=("p3",)))
+
+
 # --------------------------------------------------------------------------
 # The docstring's claims
 
 #: Every claim the class docstring makes, word for word, and the tests that
 #: assert it ("Class.test_name", in this file).
 CLAIMS = (
+    ("Keep the input under -6 dBFS and the defaults and patches stay "
+     "off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
     ("Two delay lines crossed into each other: the repeats bounce between "
      "the speakers.",
      ("T1RepeatsAlternate.test_the_three_feedbacks_at_three_rates",)),

@@ -35,7 +35,8 @@ them: a new balance takes the wobble out and brings it back in the new
 shape. The darkening follows
 the tape's loss law only up to a band top that rises with the tape's speed.
 Record Level has no memory: tape hysteresis is not modelled. The RE-201's
-Bass and Treble are not here.
+Bass and Treble are not here. Keep the input under -6 dBFS and the defaults
+and patches stay off the rails.
 
 **Limits shared by the family.** A control that jumps makes the output step:
 move it in small steps from the host if you need it smooth. When your source
@@ -348,6 +349,11 @@ class TapeDelay(_component.Component):
     _SYNC_MACRO = SYNC_I
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
+
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -3 dBFS, the defaults rail on
+    #: a 100 Hz square.
+    INPUT_CEILING_DBFS = -6
 
     MACRO_LABELS = ("Time", "Feedback", "Mix", "Glide", "Wow", "Flutter",
                     "Record Level", "Spacing", "Spread", "Sync", "Division")

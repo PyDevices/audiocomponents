@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import audiocore                                            # noqa: E402
+import kit_ceiling                                          # noqa: E402
 import kit_faults                                           # noqa: E402
 import kit_probes as probes                                 # noqa: E402
 from audioeffects import _component                         # noqa: E402
@@ -1804,14 +1805,6 @@ RAIL_UNCLAIMED = (("Bright Chamber", 44100),)
 
 
 class InputCeiling(unittest.TestCase):
-    def test_a_plucked_phrase_is_clean_to_minus_4_dbfs(self):
-        """audiocomponents#192: the kit's phrase is clean on every patch
-        at -4 dBFS, and rails at -3 dBFS on Slow Bloom alone."""
-        import kit_levels
-        self.assertEqual(kit_levels.red_patches(Reverb, -4), [])
-        self.assertEqual(kit_levels.red_patches(Reverb, -3), [9])
-        self.assertEqual(Reverb.PATCHES[9][0], "Slow Bloom")
-
     def test_no_patch_reaches_the_rail_at_4000_lsb_rms(self):
         # on eight noise seeds, at three rates, each patch's peak stays
         # under the rail by more than the spread of its peaks
@@ -1838,12 +1831,24 @@ class InputCeiling(unittest.TestCase):
         self.assertLess(g8 - g4, -1.0, (g4, g8))
 
 
+class TheInputCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # sq220 is where it rails first: p9 at -9 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(Reverb, "sq220"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            Reverb, "sq220", db=-9, keys=("p9",)))
+
+
 # -- the claims ---------------------------------------------------------------
 
 #: Every sentence of the docstrings that makes a claim, word for word, and
 #: the tests that assert it (the trial brief). A sentence that is not here
 #: may hold no number.
 CLAIMS = (
+    ("Keep the input under -12 dBFS and the defaults and patches stay "
+     "off the rails.",
+     ("TheInputCeiling.test_clean_at_the_stated_input_level",)),
     ("Your dry signal passes untouched and a reverb tail rises behind it.",
      ("T7LowCut.test_the_dry_is_flat",)),
     ("Character picks the machine: `plate` is dense from the first "
@@ -1909,9 +1914,6 @@ CLAIMS = (
      "reaches the rail at 48, 44.1 or 22.05 kHz; Bright Chamber at 44.1 kHz "
      "is not claimed.",
      ("InputCeiling.test_no_patch_reaches_the_rail_at_4000_lsb_rms",)),
-    ("A plucked phrase stays off the rails on every patch to -4 dBFS; at "
-     "-3 dBFS Slow Bloom rails.",
-     ("InputCeiling.test_a_plucked_phrase_is_clean_to_minus_4_dbfs",)),
     ("`tail_samples` bounds the frames until the output is exactly zero "
      "once your input stops: 222 868 frames at the defaults at 48 kHz.",
      ("Tier1.test_the_tail_reaches_exact_zero_inside_tail_samples",

@@ -260,9 +260,11 @@ class MultibandCompressor(_component.Component):
 
     **Mix.** Mix crossfades the input with the summed bands, so between its
     stops it is parallel compression. Mix 0 is the source byte for byte, at
-    22.05 kHz, 44.1 kHz and 48 kHz, mono and stereo, and moving off it does
-    not click. Brought back up from 0, it starts as it was built rather
-    than playing what the bands held.
+    22.05 kHz, 44.1 kHz and 48 kHz, mono and stereo, and moving off it does not
+    click. Brought back up from 0, it starts as it was built rather than
+    playing what the bands held. Keep the input under -9 dBFS and the defaults
+    and patches stay off the rails. A band's Gain at its top can still push the
+    output onto the rails.
 
     **Latency and tail.** It adds no latency at any setting. The tail
     reaches exact zero, and `tail_samples` says when.
@@ -303,6 +305,13 @@ class MultibandCompressor(_component.Component):
     #: blocks, which `tail_samples` does not bound. See "Detector and
     #: coupling state" in docs/reference/component-api.md.
     TAIL_SAMPLES = 0
+
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -6 dBFS, patch 3 rails on
+    #: a 147 Hz square.
+    INPUT_CEILING_DBFS = -9
+    #: Settings that clip by design: the rail check skips them.
+    CLIPS_AT_TOP = (8, 9, 10)
 
     MACRO_LABELS = (
         "Crossover Low", "Crossover High",

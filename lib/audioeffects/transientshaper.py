@@ -130,10 +130,10 @@ class TransientShaper(_component.Component):
     3 dB a second, Sustain -24 reaches about -16 dB.
 
     **Levels.** At its defaults the class is a wire. Attack and Sustain add
-    gain where they are turned up, so a hit that is already loud reaches
-    the rails. A plucked phrase stays off the rails on every patch to
-    -10 dBFS; at -3 dBFS Snap and Kick Punch rail. Turn Output down, or
-    your input.
+    gain where they are turned up, so a hit that is already loud reaches the
+    rails. Keep the input under -12 dBFS and the defaults and patches stay off
+    the rails. Attack at its top can still push the output onto the rails. Turn
+    Output down, or your input.
 
     **Timing.** Latency is zero at every setting, and so is the tail:
     silence in is silence out in the same frame.
@@ -154,6 +154,13 @@ class TransientShaper(_component.Component):
     CAPABILITIES = ()
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = 0
+
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -9 dBFS, patch 1 rails on
+    #: a 100 Hz square.
+    INPUT_CEILING_DBFS = -12
+    #: Settings that clip by design: the rail check skips them.
+    CLIPS_AT_TOP = (0,)
 
     MACRO_LABELS = ("Attack", "Sustain", "Output", "Attack Speed",
                     "Sustain Hold")

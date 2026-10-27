@@ -133,6 +133,8 @@ class PingPongDelay(_component.Component):
     input that peaks at or below floor(32767 (1 - Mix)) - 1 cannot reach the
     rail, at any Time, Feedback or Spread. Repeat Cut's high-pass
     overshoots, so with it in leave more room.
+    Keep the input under -6 dBFS and the defaults and patches stay off the
+    rails.
 
     **Limits shared by the family.** A control that jumps makes the output
     step: move it in small steps from the host if you need it smooth. When
@@ -167,6 +169,11 @@ class PingPongDelay(_component.Component):
     _SYNC_MACRO = SYNC_I
     LATENCY_SAMPLES = 0
     TAIL_SAMPLES = None
+
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -3 dBFS, patch 3 rails on
+    #: a DC step.
+    INPUT_CEILING_DBFS = -6
 
     MACRO_LABELS = ("Time", "Feedback", "Mix", "Spread", "First Side",
                     "Sync", "Division", "Repeat Tone", "Repeat Cut")

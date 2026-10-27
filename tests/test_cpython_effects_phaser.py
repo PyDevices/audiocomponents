@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from audioeffects import _component                            # noqa: E402
 from audioeffects import phaser as phaser_module               # noqa: E402
 from tools import effect_measurements as kit                   # noqa: E402
+import kit_ceiling                                          # noqa: E402
 import kit_faults as faults                                    # noqa: E402
 
 VENDOR = "PyDevices"
@@ -911,7 +912,19 @@ class TheClaims(unittest.TestCase):
                     sys.modules[name] = saved
 
 
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # sq147 is where it rails first: p1 at -6 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(Phaser, "sq147"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            Phaser, "sq147", db=-6, keys=("p1",)))
+
+
 CLAIMS = (
+    ("Keep the input under -9 dBFS and the defaults and patches stay "
+     "off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
     ("`Phaser` - four first-order all-pass stages swept the way a Phase 90 "
      "is.",
      ("TestPhaserTraits.test_p1_two_notches_at_defaults_six_stages_is_"

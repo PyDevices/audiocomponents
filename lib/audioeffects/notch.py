@@ -4,16 +4,17 @@ Rebuilt from scratch for the effects program's Phase 2 against
 its dossier. The old `eq.py:Notch` is not consulted except for
 the seven defects the dossier's section 7 names.
 
-**What it sounds like.** One knob says where, one says how wide, and what
-comes out is the input with a slice taken out of it and nothing else
-touched - a whistle, a feedback tone or a mains hum goes and the rest of the
-mix does not move, because a notch is exactly unity at DC and at Nyquist by
-construction. Width is a bandwidth, not a depth: at Q 0.7 the notch is
-wider than the note it sits on and reads as a scoop; at Q 30 it is a few
-hertz across and you hear the tone leave without hearing the music change.
-Harmonics adds a second notch an octave up, half as wide in hertz, because
-mains hum is a series and one notch at 50 or 60 Hz leaves the buzz. Depth is
-a blend, not a filter control - at 0 the class is a wire.
+**What it sounds like.** One knob says where, one says how wide, and what comes
+out is the input with a slice taken out of it and nothing else touched - a
+whistle, a feedback tone or a mains hum goes and the rest of the mix does not
+move, because a notch is exactly unity at DC and at Nyquist by construction.
+Width is a bandwidth, not a depth: at Q 0.7 the notch is wider than the note it
+sits on and reads as a scoop; at Q 30 it is a few hertz across and you hear the
+tone leave without hearing the music change. Harmonics adds a second notch an
+octave up, half as wide in hertz, because mains hum is a series and one notch
+at 50 or 60 Hz leaves the buzz. Depth is a blend, not a filter control - at 0
+the class is a wire. Keep the input under -6 dBFS and the defaults and patches
+stay off the rails. Trim at its top can still push the output onto the rails.
 
 **Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`). All three
 sections are `audiobiquad.Biquad`: float state, and a tail that reaches
@@ -133,6 +134,13 @@ class Notch(_component.Component):
     #: measured 143 360, which a move from a high centre to a low one as the
     #: input stopped outlived by up to twice.
     TAIL_SAMPLES = 965439
+
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -3 dBFS, patch 1 rails on
+    #: a 100 Hz square.
+    INPUT_CEILING_DBFS = -6
+    #: Settings that clip by design: the rail check skips them.
+    CLIPS_AT_TOP = (4,)
 
     MACRO_LABELS = ("Frequency", "Width", "Harmonics", "Depth", "Trim")
     MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "TOGGLE",

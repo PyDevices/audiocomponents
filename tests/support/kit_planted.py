@@ -151,6 +151,25 @@ class ClipKit(KitPlain):
     CURVE = staticmethod(_clip2)
 
 
+class ClipAtTop(ClipKit):
+    """Ceiling: ClipKit saying its Gain at the top clips by design, so
+    only a cell with Gain at 127 is excused the rail."""
+    NAME = "ClipAtTop"
+    CLIPS_AT_TOP = (1,)
+
+
+class ClipsAlways(ClipKit):
+    """Ceiling: ClipKit saying it clips by design everywhere."""
+    NAME = "ClipsAlways"
+    CLIPS_BY_DESIGN = True
+
+
+class WrapsAlways(WrapKit):
+    """Ceiling: a wrap is never by design, even in a class that clips."""
+    NAME = "WrapsAlways"
+    CLIPS_BY_DESIGN = True
+
+
 class DeadStop(KitPlain):
     """Ceiling: Gain's bottom stop is silence, as a level that went NaN on
     a board would be."""
@@ -713,6 +732,7 @@ class MoveLeak(FreshKit):
 
 PLANTS = {}
 for _cls in (KitPlain, Silent, LeakBand, WrapKit, WrapKitQuiet, ClipKit, DeadStop,
+             ClipAtTop, ClipsAlways, WrapsAlways,
              CondKit, MidWrap, ComboWrap, AllWrap, LowWrap, ImplKit, EchoTail, ShortTail, EventTail, NoneSilent, NoneDC,
              ReadbackOff, StopRaises, NanLevel, PatchStale, CtorNan,
              ClearsFirst, ClearsMacro, FlushKit, FlushOnly, DoubleReset,
