@@ -100,17 +100,15 @@ class Harmonizer(_component.Component):
     keyboard, so one singer is three-part harmony.
 
     **The controls.** Voice 1 to Voice 3 set each voice's interval in whole
-    semitones, an octave either way, and Pitch moves all three together, so
-    a voice reaches two octaves either way.
-    Level 1 to Level 3 run from -40 to 0 dB, and the bottom step turns the
-    voice off.
-    Detune pulls voice 1 down and voice 2 up, by up to 25 cents.
-    Spread pans voice 1 left and voice 2 right; the dry and voice 3 stay
-    in the centre.
-    Mix holds the dry at unity up to 1 while the voices rise to their
-    Levels; from 1 to 2 the dry fades, and at 2 the voices play alone.
-    Constructor values land on the nearest of each knob's 128 steps;
-    `window_ms`, 5 to 60 ms (21.33 by default), is fixed for good.
+    semitones, and Pitch moves all three together. Level 1 to Level 3 set
+    each voice's level, and the bottom step turns the voice off. Detune
+    pulls voice 1 down and voice 2 up. Spread pans voice 1 left and voice 2
+    right; the dry and voice 3 stay in the centre. Mix holds the dry at
+    unity up to 1 while the voices rise to their Levels; from 1 to 2 the
+    dry fades, and at 2 the voices play alone. Constructor values land on
+    the nearest of each knob's 128 steps; `window_ms`, 5 to 60 ms (21.33 by
+    default), is fixed for good. The Effect controls page lists what the
+    knobs span.
 
     **What you hear.** Each voice is its own machine: turning one on or
     off never changes the dry or the other voices.
