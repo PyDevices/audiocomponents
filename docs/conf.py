@@ -24,9 +24,6 @@ settings = configure(
     version_file="../VERSION",
 )
 
-# docs/dev is not part of the site.
-settings["exclude_patterns"].append("dev")
-
 # Many docstrings in lib/ were written as Markdown, not reStructuredText, and
 # docutils warns about the blocks it cannot parse. Fixing them is a change to
 # the library's docstrings; until then the build tolerates them.
