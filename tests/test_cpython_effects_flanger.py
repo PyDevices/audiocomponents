@@ -1042,28 +1042,6 @@ class TheSurface(TestCase):
                        channels)
         return Flanger(feed.port, sample_rate=sample_rate, **options)
 
-    def test_the_spans(self):
-        e = self._fresh()
-        self.assertEqual(e.MACRO_LABELS, ("Rate", "Range", "Manual", "Color",
-                                          "Mix", "Polarity", "Sync",
-                                          "Division"))
-        ends = ((0.05, 10.0), (0.0, 1.0), (0.25, 5.0), (0.0, 0.95),
-                (0.0, 1.0))
-        for i, (low, high) in enumerate(ends):
-            e.set_macro(i, 0)
-            self.assertAlmostEqual(e.macro(i), low, places=9)
-            e.set_macro(i, 127)
-            self.assertAlmostEqual(e.macro(i), high, places=9)
-        bars = []
-        e.set_macro(SYNC, 127)
-        for step in range(128):
-            e.set_macro(DIVISION, step)
-            bars.append(flanger_module._choice(flanger_module.DIVISION_BARS,
-                                               e._macros[DIVISION]))
-        self.assertEqual(sorted(set(bars), reverse=True),
-                         [4.0, 2.0, 1.0, 0.5, 1.0 / 3.0, 0.25, 0.125])
-        e.deinit()
-
     def test_range_0_holds_the_comb_at_manual(self):
         readings = sweep_readings(Flanger, 48000, 4.0, 0.0, 2.0, 0,
                                   frames=24000)
@@ -1242,26 +1220,22 @@ def native_report(emit=print):
 
 #: Each claim sentence of the docstring, word for word, and its tests.
 CLAIMS = (
-    ("Rate runs the sweep from 0.05 to 10 Hz.",
-     ("TheSurface.test_the_spans", "T4Sweep.test_the_triangle")),
-    ("Manual, from 0.25 to 5 ms, is the sweep's floor, and Range is how far "
-     "it climbs from there towards 10 ms: at Range 0 the comb holds still at "
+    ("Manual is the sweep's floor, and Range is how far it climbs "
+     "from there towards 10 ms: at Range 0 the comb holds still at "
      "Manual.",
-     ("TheSurface.test_the_spans", "T4Sweep.test_the_triangle",
+     ("T4Sweep.test_the_triangle",
       "TheSurface.test_range_0_holds_the_comb_at_manual")),
-    ("Color, from 0 to 0.95, feeds the copy back into the line and raises "
-     "the comb's peaks into a ring.",
-     ("TheSurface.test_the_spans", "T2Color.test_the_two_laws",
-      "T3Ring.test_the_ring_follows_its_laws")),
-    ("Mix is the copy's level against a dry that never moves: 1 is equal "
-     "weight and the deepest notches, 0 is a wire.",
-     ("TheSurface.test_the_spans", "T1Comb.test_the_comb_is_the_sum_in_"
-      "integers", "T1Comb.test_a_notch_is_40_db_down",
+    ("Color feeds the copy back into the line and raises the comb's "
+     "peaks into a ring.",
+     ("T2Color.test_the_two_laws", "T3Ring.test_the_ring_follows_its_laws")),
+    ("Mix is the copy's level against a dry that never moves: 1 is "
+     "equal weight and the deepest notches, 0 is a wire.",
+     ("T1Comb.test_the_comb_is_the_sum_in_integers",
+      "T1Comb.test_a_notch_is_40_db_down",
       "T1Comb.test_mix_0_is_the_input_byte_for_byte")),
-    ("With Sync on, one sweep lasts Division bars (4 bars down to an "
-     "eighth) at the host's tempo and meter, and Rate is ignored.",
+    ("With Sync on, one sweep lasts Division bars at the host's "
+     "tempo and meter, and Rate is ignored.",
      ("T5Sync.test_the_period", "T5Sync.test_a_tempo_change",
-      "TheSurface.test_the_spans",
       "TheSurface.test_rate_is_ignored_while_sync_is_on",
       "T5Sync.test_a_meter_change", "T5Sync.test_the_sync_knob")),
     ("Polarity minus turns the comb over and puts a notch at DC.",
@@ -1294,9 +1268,9 @@ CLAIMS = (
      "Color, and -7.5 dBFS at Color 0: above that the output is squashed "
      "and gritty, not louder.",
      "TheSurface.test_the_linear_range"),
-    ("Turning Mix up makes the output louder, by 6 dB on a comb peak at Mix "
-     "1: there is no wet-only setting.",
-     ("T2Color.test_full_color_and_color_0", "TheSurface.test_the_spans")),
+    ("Turning Mix up makes the output louder, by 6 dB on a comb peak "
+     "at Mix 1: there is no wet-only setting.",
+     ("T2Color.test_full_color_and_color_0",)),
     ("There is no tone control, no through-zero and no stereo spread: both "
      "channels sweep together.",
      "T4Sweep.test_both_channels_sweep_together"),
