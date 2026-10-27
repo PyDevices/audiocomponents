@@ -35,7 +35,8 @@ them: a new balance takes the wobble out and brings it back in the new
 shape. The darkening follows
 the tape's loss law only up to a band top that rises with the tape's speed.
 Record Level has no memory: tape hysteresis is not modelled. The RE-201's
-Bass and Treble are not here.
+Bass and Treble are not here. Keep the input under -6 dBFS and the defaults
+and patches stay off the rails.
 
 **Limits shared by the family.** A control that jumps makes the output step:
 move it in small steps from the host if you need it smooth. When your source
