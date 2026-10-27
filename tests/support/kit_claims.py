@@ -244,12 +244,17 @@ def check(name, doc, module, path, emit=print, execute=True):
     return cells.summary()
 
 
+#: Classes whose test file is not named after the class.
+_TEST_MODULES = {"MultibandCompressor": "test_cpython_effects_multiband"}
+
+
 def module_for(cls, name=None):
     """(imported test module or None, its path). With no `name`, the
     class's own `test_<name>.py` is read when there is no
     `test_cpython_effects_<name>.py`, as `NoiseGate`'s is."""
     if name is None:
-        name = "test_cpython_effects_%s" % cls.NAME.lower()
+        name = _TEST_MODULES.get(
+            cls.NAME, "test_cpython_effects_%s" % cls.NAME.lower())
         short = "test_%s" % cls.NAME.lower()
         if (not os.path.isfile(os.path.join(TESTS, name + ".py"))
                 and os.path.isfile(os.path.join(TESTS, short + ".py"))):
