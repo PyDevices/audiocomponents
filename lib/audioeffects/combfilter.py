@@ -262,6 +262,8 @@ class CombFilter(_component.Component):
     **Level.** A comb gains, so a loud input can reach the rail by design.
     A plucked phrase is clean on every patch up to -9 dBFS; at -3 dBFS
     Ringing Pitch, Dark Resonator, Single Slap and Filter Only rail.
+    Keep the input under -24 dBFS and the defaults and patches stay off the
+    rails.
     `reset()` empties the line.
 
     **Latency and tail.** It adds no latency at any setting. The tail

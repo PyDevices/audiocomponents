@@ -27,6 +27,7 @@ import unittest
 import audiocore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+import kit_ceiling                                          # noqa: E402
 import kit_faults as faults                          # noqa: E402
 from effects_measure import SAMPLE_RATE                # noqa: E402
 
@@ -1235,7 +1236,19 @@ class TheClaims(unittest.TestCase):
                     sys.modules[name] = saved
 
 
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # dc is where it rails first: p1 at -18 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(combfilter.CombFilter, "dc"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            combfilter.CombFilter, "dc", db=-18, keys=("p1",)))
+
+
 CLAIMS = (
+    ("Keep the input under -24 dBFS and the defaults and patches stay "
+     "off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
     ("A tuned comb: a delay line short enough to be a pitch, fed back on "
      "itself, so noise turns into a note and a chord turns metallic.",
      ("TheCombTunesFractionally.test_every_request_lands_within_five_cents",
