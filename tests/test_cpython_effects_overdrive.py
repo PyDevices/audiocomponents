@@ -1267,5 +1267,45 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
             1000)
 
 
+
+class DoubleChargeOverdrive(rebuilt.Overdrive):
+    """The rejoin before audiocomponents#142 closed: the refresh that
+    brought Mix back charged the output capacitor a second time after
+    `_rearm` had charged it."""
+    NAME = "Overdrive"
+
+    def _rearm(self, level):
+        super()._rearm(level)
+        self._dc_key = None
+
+
+class TheRejoinIsAFreshInstance(unittest.TestCase):
+    """Back off Mix 0, the class renders what a fresh instance built at
+    the same patch renders, byte for byte (audiocomponents#142). At patch
+    6, Symmetry off centre, the output capacitor is charged once, as
+    `_build` charges it: charged twice it ran two blocks further and stayed
+    1 LSB off at 22.05 kHz."""
+
+    def cells(self, cls):
+        import lifecycle
+        out = []
+        for rate in (22050, 48000):
+            for channels in (2, 1):
+                for ev in lifecycle.events(cls, 6, quick=True):
+                    if ev.name in ("E5-mix0", "E10-mix0"):
+                        out.append((rate, channels, ev.name, lifecycle.pr(
+                            cls, ev, rate, channels, 6, {})))
+        return out
+
+    def test_mix_back_at_patch_6_is_a_fresh_build(self):
+        for cell in self.cells(rebuilt.Overdrive):
+            self.assertEqual(cell[3], "ok", cell)
+
+    def test_a_second_charge_is_red(self):
+        reds = [c for c in self.cells(DoubleChargeOverdrive)
+                if c[3].startswith("RED")]
+        self.assertTrue(any(c[0] == 22050 for c in reds), reds)
+
+
 if __name__ == "__main__":
     unittest.main()

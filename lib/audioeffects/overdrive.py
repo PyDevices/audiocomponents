@@ -793,11 +793,16 @@ class Overdrive(_component.Component):
         # so Mix and Ceiling move it as well as Symmetry. Re-settle when
         # any of the three changes and there is - or was - an offset:
         # otherwise a `program_change` onto silence is a thump.
-        key = (self._clip_bias, mix, ceiling)
+        key = self._dc_state()
         if key != self._dc_key:
             self._dc_key = key
             if getattr(self, "_ready", False):
                 self._settle_dc()
+
+    def _dc_state(self):
+        """The settings the output capacitor is charged for: the offset
+        moves with Symmetry, Mix and Ceiling."""
+        return (self._clip_bias, self._value(3), self._value(5))
 
     def reset(self):
         """Clear every node and restore patch 0, then arm the graph as
@@ -874,4 +879,10 @@ class Overdrive(_component.Component):
         if self._clip_bias:
             self._shaper.set(post_gain=self._post_gain)
         self._settle_dc()
+        # Charged for the settings it comes back at, once, as `_build`
+        # charges it: the refresh that called this must not charge it
+        # again. A second charge ran the pole two blocks further than a
+        # fresh instance's and left 1 LSB that never settled
+        # (audiocomponents#142).
+        self._dc_key = self._dc_state()
         self._output = self._out
