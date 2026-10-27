@@ -5,6 +5,12 @@ input was not on, and never goes silent while the input plays.
 **The stated level.** A class states it as `INPUT_CEILING_DBFS`, a class
 attribute in dBFS (0 or below). A class that states none is held to 0 dBFS,
 full scale. The material's peak is round(32767 x 10^(dBFS/20)).
+A class whose ceiling depends on where the knobs are states two more:
+`SURFACE_CEILING_DBFS`, the level it is clean at anywhere on the surface,
+and `DEFAULT_CEILING_DBFS`, the level at the constructor's defaults. A cell
+that moves a macro is played at the surface's level; a patch alone at the
+input ceiling, or the surface's when only that is stated; the defaults at
+their own, else the input ceiling, else the surface's.
 
 **The material**, 2 s at the rate (longer for a class with a long tail, see
 **The window**): a 100 Hz square, a 50 Hz sine, one
@@ -35,15 +41,30 @@ settings are in (`tail_samples`), rounded up to whole seconds, never under
 - `wrap`: two neighbouring samples of opposite sign more than 32768 apart,
   where the second, moved by 65536, lands within a quarter of the jump of
   the first, and the signal runs the same way on both sides of the jump
-  (into it before, out of it after): an int16 sum that overflowed, and
-  the input, `latency_samples` earlier, made no such jump. A square's edge
-  is flat on both sides and a click's return lands far from its peak, so
-  neither is one. Not judged on the noise, whose jumps run every way. A
-  flat signal that wraps (a square at twice full scale) is not caught.
+  (into it before, out of it after, each step under 32768): an int16 sum
+  that overflowed, and the input made no such jump `latency_samples`
+  earlier (half that, when it went the same way: a click's return and
+  the undershoot of a filter it rang), nor, when the class reports any
+  latency, the same way in the
+  last `HOLD` frames up to the jump's own. A square's edge is flat on
+  both sides, a click's return lands far from its peak, and a clipped
+  ring at Nyquist leaps into the jump and out of it, so none is one. A
+  sample-and-hold moves a square's edge by up to its hold, and a filter
+  ahead of it by its rise time on top (Bitcrusher's patch 3 lands an edge
+  5 to 14 frames late against a reported 8), so the edge lands in that
+  span. An overshoot that overflows jumps the other way from the input's
+  edge, so it is still read. Not judged on the noise, whose jumps run
+  every way. A flat signal that wraps (a square at twice full scale) is
+  not caught, nor a ring at Nyquist that wraps rather than clips.
 - `rail`: more than 8 frames in a row on a rail (|y| >= 32767) where the
-  input, `latency_samples` earlier, was not.
+  input was on neither `latency_samples` earlier nor in the last
+  min(`latency_samples`, `HOLD`) frames: a hold that latched a rail
+  plays it for the length of the hold.
 - `silent`: the last second exactly zero while the input played through
-  it. Not judged on the DC step, which a high-pass rightly takes to zero.
+  it. Not judged on the DC step, which a high-pass rightly takes to zero,
+  nor where a macro whose label holds Level or Volume is at 0: an output
+  level turned all the way down is silence by design. A Gain at 0 is
+  still judged, since a gain stage's bottom stop is rarely off.
 
     python tests/support/kit_ceiling.py DigitalDelay [--quick]
 """
@@ -76,13 +97,43 @@ PATCH_COMBO_MATERIALS = ("sine", "square") + tuple(
 #: A macro label holding one of these is level-like.
 LEVEL_WORDS = ("Level", "Mix", "Octave", "Direct", "Voice", "Gain",
                "Volume")
+#: A macro label holding one of these is an output level, whose 0 is
+#: silence.
+SILENT_AT_ZERO_WORDS = ("Level", "Volume")
 WRAP_JUMP = 32768
+
+#: A full-scale click falls 32767 on its return, one short of WRAP_JUMP,
+#: and a filter that rings below zero falls with it on the same frame.
+#: An output jump the same way as an input jump this big, on the frame
+#: the input made it, follows the input and is not a wrap.
+CLICK_JUMP = 16384
+#: The furthest a class that reports latency may move an edge, in frames:
+#: Bitcrusher's lowest Rate holds 47 frames at 48 kHz. A wrap the same way
+#: as an input edge this far back, or a rail the input was on, is that
+#: edge or that rail moved.
+HOLD = 64
 
 _MAT = {}
 
 
-def peak(cls):
-    db = getattr(cls, "INPUT_CEILING_DBFS", 0)
+def stated_dbfs(cls, patch=None, knobs=None):
+    """The level a cell is played at: see **The stated level**."""
+    surface = getattr(cls, "SURFACE_CEILING_DBFS", None)
+    stated = getattr(cls, "INPUT_CEILING_DBFS", None)
+    if knobs:
+        order = (surface, stated)
+    elif patch is not None:
+        order = (stated, surface)
+    else:
+        order = (getattr(cls, "DEFAULT_CEILING_DBFS", None), stated, surface)
+    for db in order:
+        if db is not None:
+            return db
+    return 0
+
+
+def peak(cls, patch=None, knobs=None):
+    db = stated_dbfs(cls, patch, knobs)
     if db >= 0:
         return kc.RAIL
     return int(32767 * 10.0 ** (db / 20.0) + 0.5)
@@ -144,26 +195,53 @@ def wrap_at(out, values, channels, lat):
                 continue
             if jump > 0 and not (before < 0 and after < 0):
                 continue
-            g = f - lat
-            if 1 <= g < nin:
-                x = values[g * channels + ch] - values[(g - 1) * channels + ch]
-                if x >= WRAP_JUMP or -x >= WRAP_JUMP:
-                    continue
+            if before >= WRAP_JUMP or -before >= WRAP_JUMP or \
+                    after >= WRAP_JUMP or -after >= WRAP_JUMP:
+                continue
+            if _input_jumped(values, channels, ch, nin, 0, [f - lat]) or \
+                    _input_jumped(values, channels, ch, nin, jump, [f - lat],
+                                  CLICK_JUMP) or \
+                    (lat and _input_jumped(values, channels, ch, nin, jump,
+                                           range(f - HOLD, f + 1))):
+                continue
             return f, ch
     return None
 
 
-def judge(data, values, channels, rate, lat, which, seconds=SECONDS):
+def _input_jumped(values, channels, ch, nin, jump, frames,
+                  size=WRAP_JUMP):
+    """Whether the input made a jump of `size` or more at one of `frames`:
+    the same way as `jump`, or either way when `jump` is 0."""
+    for g in frames:
+        if 1 <= g < nin:
+            x = values[g * channels + ch] - values[(g - 1) * channels + ch]
+            if (x >= size and jump >= 0) or (-x >= size and jump <= 0):
+                return True
+    return False
+
+
+def turned_down(cls, knobs):
+    """Whether `knobs` put an output level (SILENT_AT_ZERO_WORDS) at 0."""
+    for index, value in knobs or ():
+        if value == 0:
+            for word in SILENT_AT_ZERO_WORDS:
+                if word in cls.MACRO_LABELS[index]:
+                    return True
+    return False
+
+
+def judge(data, values, channels, rate, lat, which, seconds=SECONDS,
+          silent_ok=False):
     out = kc.samples(data)
     reds = []
     if which != "noise":
         hit = wrap_at(out, values, channels, lat)
         if hit is not None:
             reds.append("wrap at %d ch %d" % hit)
-    run, where = kc.rail_run(out, values, channels, lat)
+    run, where = kc.rail_run(out, values, channels, lat, HOLD)
     if run > kc.RAIL_RUN:
         reds.append("rail %d frames from %d" % (run, where))
-    if which != "dc":
+    if which != "dc" and not silent_ok:
         lo = (seconds - 1) * rate * channels
         if lifecycle._is_zero(data[2 * lo:]):
             quiet = True
@@ -220,7 +298,7 @@ def configs(cls):
 
 
 def measure(cls, rate, channels, which, patch, knobs, options=None):
-    amp = peak(cls)
+    amp = peak(cls, patch, knobs)
     # The window is read off the instance, so the material is made after it.
     probe = kc.feed(kc.square(1024, channels, amp, 100), rate, channels)
     e = kc.build(cls, probe.port, rate, patch, options)
@@ -238,7 +316,7 @@ def measure(cls, rate, channels, which, patch, knobs, options=None):
             e.set_macro(index, value)
         data = kc.render(e, seconds * rate)
         reds = judge(data, values, channels, rate, e.latency_samples, which,
-                     seconds)
+                     seconds, turned_down(cls, knobs))
     finally:
         e.deinit()
     verdict = "RED(%s)" % "; ".join(reds) if reds else "ok"

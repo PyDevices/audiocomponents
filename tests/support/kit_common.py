@@ -227,6 +227,29 @@ for _material in ("square", "sine", "dc", "sq41", "sq55", "sq82", "sq110",
                     " Delay 0 and Mix 2 (test_feedback_near_its_top_stacks_"
                     "level_far_past_the_input)")
 
+# A 50 Hz sine deep in a filter's stop band is silence by design: HighPass
+# and BandPass with Frequency at its top leave the sine so far down that
+# their float state, which writes a word below 1e-20 as exact zero, settles
+# to zero. The docstrings say what passes: HighPass "decides where the
+# bottom stops", and for BandPass "narrowing the band changes what gets
+# through". These are the cells the ceiling check found silent at 48 kHz
+# stereo, at every rate and channel count; every other cell stays live.
+_STOP_BANDS = {
+    "HighPass": ("m0=127", "all=127", "lv=127+m0=127") + tuple(
+        "p%d+lv=127+m0=127" % _p for _p in range(6)),
+    "BandPass": ("all=127", "p5+lv=127+m0=127"),
+}
+for _name, _cells in _STOP_BANDS.items():
+    for _rate in RATES:
+        for _channels in CHANNELS:
+            for _cell in _cells:
+                DECLARED[(_name, "ceiling", "sine/%d/%d/%s" % (
+                    _rate, _channels, _cell))] = (
+                    "the 50 Hz sine sits deep in the stop band, where the"
+                    " docstring says the filter passes nothing, and its"
+                    " float state settles to exact zero: silence by"
+                    " design, not a fault")
+
 CPYTHON = sys.implementation.name == "cpython"
 
 
@@ -599,21 +622,30 @@ def parse(lines):
 RAIL_RUN = 8
 
 
-def rail_run(out, values, channels, lat=0):
+def rail_run(out, values, channels, lat=0, hold=0):
     """(longest run of output frames on a rail where the input was not,
-    the frame it starts at), over every channel."""
+    the frame it starts at), over every channel. The input is read
+    `lat` frames earlier and, with `hold`, anywhere in the last
+    min(lat, hold) frames up to the output's own, where a sample-and-hold
+    that reports its whole hold as latency plays an input frame."""
     best = 0
     where = -1
     n = len(out) // channels
     nin = len(values) // channels
+    span = min(lat, hold)
     for ch in range(channels):
         run = 0
         for f in range(n):
             y = out[f * channels + ch]
             if y >= RAIL or y <= -RAIL:
-                g = f - lat
-                x = values[g * channels + ch] if 0 <= g < nin else 0
-                if x >= RAIL or x <= -RAIL:
+                railed = False
+                for g in [f - lat] + (list(range(f - span, f + 1))
+                                      if span else []):
+                    x = values[g * channels + ch] if 0 <= g < nin else 0
+                    if x >= RAIL or x <= -RAIL:
+                        railed = True
+                        break
+                if railed:
                     run = 0
                     continue
                 run += 1
