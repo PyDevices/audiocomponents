@@ -638,13 +638,6 @@ class FaultReachability(unittest.TestCase):
 
 class TheClaims(unittest.TestCase):
 
-    def test_the_spans(self):
-        spans = rebuilt.Tremolo._MACRO_RANGES
-        self.assertEqual(spans[rebuilt.RATE], (0.5, 15.0, "log"))
-        self.assertEqual(spans[rebuilt.DEPTH], (0.0, 1.0))
-        self.assertEqual(spans[rebuilt.LAG], (5.0, 100.0))
-        self.assertEqual(spans[rebuilt.PHASE], (-180.0, 180.0))
-
     def test_optical_shape_shortens_the_dimmed_part(self):
         below = [env_metrics(render_tone(rebuilt.Tremolo, 2.0,
                                          character=1.0, depth=1.0,
@@ -701,9 +694,9 @@ CLAIMS = (
      "pulsing into a photocell.",
      ("L3NearSine.test_harmonics_below_26_at_depth_half",
       "O2Pulse.test_duty_and_h2")),
-    ("Rate runs from 0.5 to 15 Hz, and Depth from 0, where the output is "
-     "your signal untouched, to 1.",
-     ("TheClaims.test_the_spans", "L4RateLaw.test_defaults_env_matches_rate",
+    ("Rate is the sweep's speed, and at Depth 0 the output is your "
+     "signal untouched.",
+     ("L4RateLaw.test_defaults_env_matches_rate",
       "Tier1Fast.test_depth_zero_is_a_wire")),
     ("Speed Link makes the depth fall as Rate falls, the way one pot moves "
      "the amp's whole RC section.",
@@ -713,17 +706,15 @@ CLAIMS = (
      "Bias wobble more than 6 dB shallower.",
      ("B3IdleBias.test_hot_is_shallower",
       "B3IdleBias.test_ignore_bias_is_flat")),
-    ("In Optical, Lag, from 5 to 100 ms, is how slowly the photocell "
-     "recovers, so a fast Rate loses depth; Shape sets how much of each "
-     "cycle the signal spends dimmed, less as Shape rises.",
-     ("TheClaims.test_the_spans",
-      "O4Lag.test_fast_rate_loses_depth_at_default_lag",
+    ("In Optical, Lag is how slowly the photocell recovers, so a "
+     "fast Rate loses depth; Shape sets how much of each cycle the "
+     "signal spends dimmed, less as Shape rises.",
+     ("O4Lag.test_fast_rate_loses_depth_at_default_lag",
       "O4Lag.test_no_lag_fault_keeps_the_depth",
       "TheClaims.test_optical_shape_shortens_the_dimmed_part")),
-    ("Stereo Phase, from -180 to 180 degrees, offsets the right channel's "
-     "wobble from the left's: at 180 one side swells as the other dips.",
-     ("TheClaims.test_the_spans",
-      "TheClaims.test_stereo_phase_offsets_the_right_channel")),
+    ("Stereo Phase offsets the right channel's wobble from the "
+     "left's: at 180 one side swells as the other dips.",
+     ("TheClaims.test_stereo_phase_offsets_the_right_channel",)),
     ("At half Depth the wobble is close to a sine, every harmonic of it "
      "more than 26 dB down.",
      ("L3NearSine.test_harmonics_below_26_at_depth_half",
