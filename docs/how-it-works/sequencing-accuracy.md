@@ -5,35 +5,36 @@ What [sequencing a part on the audio's clock](../guides/sequence-a-part.md) buys
 ## Timing
 
 Play the TR-808's own bar with a Karplus line over it twice on the unix build:
-once through the queue, once from a wall-clock Python loop, with about 190
-garbage collections over a 40 MB live heap running beside it and a worst tick
-of 33 to 50 ms.
+once through the queue, once from a wall-clock Python loop, with 185 to 260
+garbage collections over a live heap of about 40 MB running beside it and a
+worst tick of 27 to 47 ms.
 
 | | worst spread within one drum | render |
 |---|---|---|
 | **scheduled** | **0 frames**, every run | one digest, six runs out of six |
-| Python-timed | 768-1280 frames (16-27 ms) | a different render every run |
+| Python-timed | 256-1231 frames (5.3-25.7 ms) | a different render every run |
 
 Not "within a block": every hit of a given drum lands at exactly the same
 offset into its block. That also makes a sequenced render diffable, and so
 testable.
 
 Four bars of a real pattern through `Sequencer`, with the app thrashing
-between every tick: 187 events, 0 refused, 0 late, 0 dropped, worst apply
-7 µs.
+between every tick: 192 events, 0 refused, 0 late, 0 dropped, worst apply
+6 µs.
 
 ### On a board
 
 On an ESP32-P4 panel the drum machine ran its full pattern at 200 BPM with the
 screen redrawing: 0 late, 0 dropped, 0 refused, with the worst gap between two
-`Sequencer.tick()` calls at 54 ms against a 300 ms look-ahead. The same bar
-driven from a Python timer had a worst step error of 37 ms on a 75 ms step.
+`Sequencer.tick()` calls at 54 to 60 ms against a 300 ms look-ahead. The same
+bar driven from a Python timer had a worst step error of 42 to 179 ms on a
+75 ms step, different on every run.
 
 A bar of sixteenths on a grid, as error against the frame each hit asked for:
 
 | board | scheduled | the same bar, Python-timed |
 |---|---|---|
-| ESP32-P4 | 16 of 16 hits, **4.4 ms mean / 11.6 ms worst** | 15 of 16, one hit lost; 15.4 / 49.4 ms |
+| ESP32-P4 | 16 of 16 hits, **4.4 ms mean / 11.6 ms worst** | 12 to 15 of 16 over four runs; 15.5-23.9 ms mean, 28.9-60.7 ms worst |
 | ESP32-S3 | 16 of 16, **2.6 ms mean / 5.0 ms worst**, the same with the screen busy and idle | 8 of 16, 22 ms mean |
 
 The re-entrancy guard described under "A tick can land inside your own bar" in
