@@ -550,6 +550,19 @@ class TestClaims(unittest.TestCase):
     DOC = ("A plain wire. **Controls.** Gain sets the level. The output is "
            "the input at Gain 1.")
 
+
+    def test_a_short_test_file_name_is_found(self):
+        class Gate:
+            NAME = "NoiseGate"
+
+        class Nobody:
+            NAME = "NoSuchEffect"
+
+        _, path = kit_claims.module_for(Gate)
+        self.assertEqual(os.path.basename(path), "test_noisegate.py")
+        _, path = kit_claims.module_for(Gate, "test_cpython_effects_x")
+        self.assertIsNone(path)
+        self.assertEqual(kit_claims.module_for(Nobody), (None, None))
     def run_claims(self, claims, doc=None):
         with tempfile.TemporaryDirectory() as scratch:
             name = "kitfixture_%d" % abs(hash((repr(claims), doc)))
