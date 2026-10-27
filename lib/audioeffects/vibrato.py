@@ -112,7 +112,7 @@ _RANGES = (
     (1.0, 12.0),                # 4  Delay, mean ms
     (2000.0, 18000.0, "log"),   # 5  Tone, wet −3 dB Hz
     (20.0, 200.0, "log"),       # 6  Body, wet high-pass Hz
-    (-12.0, 6.0),               # 7  Level, dB
+    (-12.0, 0.0),               # 7  Level, dB
 )
 
 
@@ -262,8 +262,8 @@ class Vibrato(_component.Component):
     the line's average length, from 1 to 12 ms. Tone is the wet voice's
     low-pass, from 2 to 18 kHz, and Body its high-pass, from 20 to 200 Hz;
     at the defaults the band is 3 dB down at 40 Hz and at 17 kHz. Level
-    cuts the output by up to 12 dB; above 0 dB it holds the output at the
-    input's level.
+    cuts the output by up to 12 dB; at the top of its travel the output is
+    at the input's level.
 
     **The sound.** With no dry path there is no comb: from 200 Hz to 2 kHz
     the level stays within 1 dB at any Depth up to 60 cents. At the
@@ -397,7 +397,8 @@ class Vibrato(_component.Component):
         """Constructor and every shipped patch sit on the 0 dB Level cell."""
         if len(self._macros) < 8:
             return True
-        return abs(self._value(7)) < 0.1
+        # One grid step below the top is 0.09 dB, so only the top cell counts.
+        return abs(self._value(7)) < 0.01
 
     def _route_output(self):
         if self._level_is_unity():
