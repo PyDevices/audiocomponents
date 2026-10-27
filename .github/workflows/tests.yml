@@ -148,8 +148,32 @@ jobs:
           print('classes:', ' '.join(classes()) or 'none');
           print('nodes:', ' '.join(names()) or 'none')"
 
+      # A pull request runs only the tests its change can move: the test
+      # files it edits, the tests of each effect class whose module it edits,
+      # and the kit, the contract and the two lifecycle matrices, which
+      # every pull request runs. A change to shared code (the kit, the base
+      # class, tests/support, the probes, the pin, this workflow) or to a
+      # file with no tests of its own runs the whole suite. So do pushes to
+      # main and manual runs, on every Python. tools/scoped_tests.py --ci
+      # holds the mapping and prints why it chose what it chose.
+      - name: Choose the tests
+        id: scope
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == pull_request ]]; then
+            files=$(python tools/scoped_tests.py --ci "origin/${{ github.base_ref }}")
+          else
+            files=full
+          fi
+          if [[ "$files" == full ]]; then
+            files=tests
+          fi
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+          echo "running: $files"
+
       # The same tests `python -m unittest discover -s tests -p "test_*.py"`
-      # finds, spread across every core the runner has: serially the suite
+      # finds (or the pull request's share of them, above), spread across
+      # every core the runner has: serially the suite
       # takes over an hour. A test that writes a file writes it into its own
       # temporary directory, so no two workers collide. loadscope keeps each
       # class on one worker, in unittest's order, with one setUpClass;
@@ -157,7 +181,7 @@ jobs:
       # the slowest tests, which bound how fast this step can get.
       # One BLAS thread per process: every core already runs a test process,
       # and numpy would otherwise start a BLAS thread per core in each one.
-      - run: python -m pytest tests -n auto --dist loadscope -p no:cacheprovider --durations=25
+      - run: python -m pytest ${{ steps.scope.outputs.files }} -n auto --dist loadscope -p no:cacheprovider --durations=25
         env:
           OMP_NUM_THREADS: "1"
           OPENBLAS_NUM_THREADS: "1"
