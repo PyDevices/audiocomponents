@@ -54,18 +54,19 @@ class LadderFilter(_component.Component):
     """A Moog transistor ladder: four filter stages round one feedback loop,
     with a saturator inside the loop.
 
-    **Controls.** Cutoff runs from 20 Hz to 18 kHz, held just under half the
-    sample rate. Resonance is the loop's feedback, from 0 to 4.2. As it
-    rises the cutoff sharpens and the whole passband sinks, about 14 dB by a
-    Resonance of 4: that droop is the circuit's sound, not a fault. From 4
-    up, the filter sings a sine of its own at the cutoff, and once it has
-    heard anything it keeps singing after your signal stops. Drive, from 0
-    to 24 dB, is how hard the saturator is hit, so the growl follows your
-    input level the way it does in the hardware. Passband Comp puts the sunk
-    passband back: at 1 the passband holds its level at any Resonance. Poles
-    picks the output from one to four poles. Oversample runs the loop at
-    twice the rate; it is on by default, and the Ladder - lean patch is
-    Wide Open with it off, for slower boards. Mix at 0 is your dry signal.
+    **Controls.** Cutoff is the filter's corner, held just under half the
+    sample rate. Resonance is the loop's feedback. As it rises the cutoff
+    sharpens and the whole passband sinks, about 14 dB by a Resonance of 4:
+    that droop is the circuit's sound, not a fault. From 4 up, the filter
+    sings a sine of its own at the cutoff, and once it has heard anything
+    it keeps singing after your signal stops. Drive is how hard the
+    saturator is hit, so the growl follows your input level the way it does
+    in the hardware. Passband Comp puts the sunk passband back: at 1 the
+    passband holds its level at any Resonance. Poles picks the output from
+    one to four poles. Oversample runs the loop at twice the rate; it is on
+    by default, and the Ladder - lean patch is Wide Open with it off, for
+    slower boards. Mix at 0 is your dry signal. The Effect controls page
+    lists what the knobs span.
 
     **Response.** At 48 kHz the four-pole output is 12 dB down at the cutoff
     and about 50 dB down two octaves above it, and each pole fewer takes
