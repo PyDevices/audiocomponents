@@ -552,6 +552,15 @@ class TestCeiling(unittest.TestCase):
         # A wrap is still judged.
         self.assertTrue(self.v(kp.WrapsAlways).startswith("RED(wrap"))
 
+    def test_a_stated_level_holds_and_the_level_above_does_not(self):
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(kp.WrapKitQuiet, "sine"), [])
+        reds = kit_ceiling.stated_level_reds(kp.WrapKitQuiet, "sine", db=0)
+        self.assertEqual(len(reds), 3)          # the defaults, two patches
+        self.assertIn("RED(wrap", reds[0])
+        self.assertEqual(len(kit_ceiling.stated_level_reds(
+            kp.WrapKitQuiet, "sine", db=0, keys=("p1",))), 1)
+
     def test_silence_at_a_stop_is_red(self):
         self.assertTrue(self.v(kp.DeadStop, knob=(1, 0)).startswith(
             "RED(silent"))

@@ -369,6 +369,23 @@ def run(cls, emit=print, quick=False, rates=None, channels=None,
     return cells.summary()
 
 
+def stated_level_reds(cls, material, db=None, keys=None):
+    """The red cells on `material`, 48 kHz stereo, for the defaults and
+    every patch (or just `keys`), played at the class's stated level, or at
+    `db` to show the level above it is not clean. An effect's own test
+    holds its stated level with this: clean there, red a step up."""
+    if db is not None:
+        cls = type(cls.__name__, (cls,), {"INPUT_CEILING_DBFS": db,
+                                          "__module__": cls.__module__})
+    if keys is None:
+        keys = ["d"] + ["p%d" % p for p in sorted(cls.PATCHES)]
+    lines = []
+    run(cls, emit=lines.append, quick=True, materials=(material,),
+        only=keys)
+    return [line for line in lines
+            if "|V:RED" in line and not line.startswith("SUMMARY")]
+
+
 if __name__ == "__main__":
     import kit
     kit.main(sys.argv[1:], only=(CHECK,))
