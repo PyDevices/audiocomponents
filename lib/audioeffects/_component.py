@@ -1004,6 +1004,25 @@ class Component:
         self._clear_nodes(keep)
         return True
 
+    #: Whether the source frames the graph's head took before it last
+    #: stopped being pulled are ones the host has since read past. True
+    #: everywhere but inside `_reset_rearmed` of a graph that was playing
+    #: when the reset came: there they are the frames that come next.
+    _source_read_past = True
+
+    def _let_go_of_source(self, head, source, consumers=()):
+        """`let_go_of_source`, when the frames `head` holds are old audio.
+
+        Coming back off a Mix 0 bypass they are: the host read the source
+        itself meanwhile. A reset of a graph that was playing is the other
+        case. Nothing has read past them, and dropping them ran the class
+        ahead of its source for good: the part of a 100-frame source buffer
+        the head had taken, 28 frames after twelve 256-frame pulls
+        (audiocomponents#157). Returns whether it let go."""
+        if not self._source_read_past:
+            return False
+        return let_go_of_source(head, source, consumers)
+
     def _pcm(self, buffer_size=2048):
         """The keyword bundle an audiodsp node wants, at this instance's
         format. There is no module state behind it."""
@@ -1484,6 +1503,10 @@ class Component:
         own `reset()`.
         """
         self._check_live()
+        # The frames the graph's head has taken are old audio only if a
+        # bypass left the graph un-pulled before the reset
+        # (`_let_go_of_source`).
+        read_past = self._stranded
         self._clear_nodes()
         for node in self._nodes:
             voices = getattr(node, "voice", None)
@@ -1518,10 +1541,12 @@ class Component:
         # its scratch mixer).
         pull = getattr(audiocore, "get_buffer", None)
         self._arming_lazily = PORT is not None
+        self._source_read_past = read_past
         try:
             rearm()
         finally:
             self._arming_lazily = False
+            self._source_read_past = True
         # Settings that route around the graph leave it as `_build` leaves
         # a graph it routes around: cleared and not played since, so not
         # stranded. A later Mix move then arms it as a fresh instance's

@@ -805,12 +805,8 @@ class Overdrive(_component.Component):
         through the chain before it was cleared plays after it)."""
         # The nodes' taken frames are old audio only if Mix 0 left the
         # graph un-pulled before the reset; otherwise they are the next
-        # frames, and `_rearm` keeps them.
-        self._stale = self._stranded
-        try:
-            self._reset_rearmed(self._prime_if_wet, ("_primed",))
-        finally:
-            self._stale = True
+        # frames, and `_rearm` keeps them (`_source_read_past`).
+        self._reset_rearmed(self._prime_if_wet, ("_primed",))
 
     def _prime_if_wet(self):
         mix = self._value(3)
@@ -854,7 +850,7 @@ class Overdrive(_component.Component):
         # A reset of a graph that was playing keeps them: they are the
         # frames that come next, and dropping them ran the class ahead of
         # the source for good.
-        if getattr(self, "_stale", True):
+        if self._source_read_past:
             self._adapter.play(self._source)
             self._hp.play(self._tap1)
             self._c4.play(self._hp)
