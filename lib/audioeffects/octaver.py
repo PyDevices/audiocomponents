@@ -140,18 +140,16 @@ class Octaver(_component.Component):
     every other cycle of what you play upside down, so the octave keeps
     your attack, your decay and your tone.
 
-    **The controls.** Direct, Octave 1 and Octave 2 are the three levels,
-    each from 0 to 1.
-    Tracking, from 40 to 400 Hz, moves the range of notes the divider
-    follows.
-    Tone 1 (100 to 2000 Hz) and Tone 2 (40 to 800 Hz) are two-pole
-    low-passes at the hertz they show, on the first and second octave.
-    Sensitivity, from -90 to -40 dBFS, is the level your note must keep
-    after Tracking's low-pass for the octaves to play, not the level you
-    play at. The higher the note, the more that low-pass takes, so a quiet
-    high note stops before a quiet low one: at patch 0 a sine at -60 dBFS
-    still has its octave on E2 and none on E4.
-    Constructor values land on the nearest of each knob's 128 steps.
+    **The controls.** Direct is your own note's level, and the Octave knobs
+    set the octaves'. Tracking moves the range of notes the divider
+    follows. Tone 1 and Tone 2 are two-pole low-passes at the hertz they
+    show, on the first and second octave. Sensitivity is the level your
+    note must keep after Tracking's low-pass for the octaves to play, not
+    the level you play at. The higher the note, the more that low-pass
+    takes, so a quiet high note stops before a quiet low one: at patch 0 a
+    sine at -60 dBFS still has its octave on E2 and none on E4. Constructor
+    values land on the nearest of each knob's 128 steps. The Effect
+    controls page lists what the knobs span.
 
     **What you hear.** The octave is exactly half your note and sounds
     within 2 ms of it.

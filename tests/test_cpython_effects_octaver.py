@@ -1186,20 +1186,6 @@ class TheSurface(TestCase):
         feed = kc.feed(array("h", bytes(4 * channels)), rate, channels)
         return Octaver(feed.port, sample_rate=rate, **options)
 
-    def test_the_spans(self):
-        e = self._fresh()
-        self.assertEqual(e.MACRO_LABELS, ("Direct", "Octave 1", "Octave 2",
-                                          "Tracking", "Tone 1", "Tone 2",
-                                          "Sensitivity"))
-        ends = ((0.0, 1.0), (0.0, 1.0), (0.0, 1.0), (40.0, 400.0),
-                (100.0, 2000.0), (40.0, 800.0), (-90.0, -40.0))
-        for i, (low, high) in enumerate(ends):
-            e.set_macro(i, 0)
-            self.assertAlmostEqual(e.macro(i), low, places=9)
-            e.set_macro(i, 127)
-            self.assertAlmostEqual(e.macro(i), high, places=9)
-        e.deinit()
-
     def test_constructor_values_land_on_the_grid(self):
         e = self._fresh(tracking_hz=100.0, tone1_hz=500.0, octave1=0.33,
                         sensitivity_db=-61.0)
@@ -1571,26 +1557,21 @@ CLAIMS = (
       "T1Divider.test_the_onset_is_within_2_ms",
       "T2Multiplication.test_mono_every_window",
       "T3Dynamics.test_the_octave_follows_the_decay")),
-    ("Direct, Octave 1 and Octave 2 are the three levels, each from 0 to 1.",
-     "TheSurface.test_the_spans"),
-    ("Tracking, from 40 to 400 Hz, moves the range of notes the divider "
-     "follows.",
-     ("TheSurface.test_the_spans", "T5Range.test_the_windows_mono")),
-    ("Tone 1 (100 to 2000 Hz) and Tone 2 (40 to 800 Hz) are two-pole "
-     "low-passes at the hertz they show, on the first and second octave.",
-     ("TheSurface.test_the_spans",
-      "T6Tone.test_tone_1_is_a_two_pole_low_pass",
+    ("Tracking moves the range of notes the divider follows.",
+     ("T5Range.test_the_windows_mono",)),
+    ("Tone 1 and Tone 2 are two-pole low-passes at the hertz they "
+     "show, on the first and second octave.",
+     ("T6Tone.test_tone_1_is_a_two_pole_low_pass",
       "T6Tone.test_tone_2_is_a_two_pole_low_pass")),
-    ("Sensitivity, from -90 to -40 dBFS, is the level your note must keep "
-     "after Tracking's low-pass for the octaves to play, not the level you "
-     "play at.",
-     ("TheSurface.test_the_spans",
-      "T3Dynamics.test_silent_below_sensitivity")),
+    ("Sensitivity is the level your note must keep after Tracking's "
+     "low-pass for the octaves to play, not the level you play at.",
+     ("T3Dynamics.test_silent_below_sensitivity",)),
     ("The higher the note, the more that low-pass takes, so a quiet high "
      "note stops before a quiet low one: at patch 0 a sine at -60 dBFS "
      "still has its octave on E2 and none on E4.",
      "T3Dynamics.test_a_quiet_high_note_stops_first"),
-    ("Constructor values land on the nearest of each knob's 128 steps.",
+    ("Constructor values land on the nearest of each knob's 128 "
+     "steps. The Effect controls page lists what the knobs span.",
      ("TheSurface.test_constructor_values_land_on_the_grid",
       "TheSurface.test_a_fresh_instance_reads_patch_0")),
     ("The octave is exactly half your note and sounds within 2 ms of it.",
