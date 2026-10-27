@@ -433,11 +433,8 @@ class TheDetectorBoundsTheLaw(unittest.TestCase):
 class TheClaims(unittest.TestCase):
     """The class docstring's figures that the rows above do not reach."""
 
-    def test_the_spans(self):
-        self.assertEqual(Expander._MACRO_RANGES[:7],
-                         ((-80.0, 0.0), (1.0, 8.0, "log"), (0.0, -80.0),
-                          (0.01, 1000.0, "log"), (2.0, 4000.0, "log"),
-                          (25.0, 4000.0, "log"), (250.0, 35000.0, "log")))
+    def test_there_is_no_hold_and_the_detector_defaults_to_rms(self):
+        self.assertNotIn("Hold", Expander.MACRO_LABELS)
         effect = build_for_check(Expander)
         try:
             self.assertEqual(effect.get_macro(DETECTOR), 127)
@@ -529,43 +526,36 @@ CLAIMS = (
       "ratio_span", "TheClaims.test_depth_is_the_floor")),
     ("Above the threshold it is a wire.",
      ("TheClaims.test_above_the_threshold_it_is_a_wire",)),
-    ("Threshold runs from -80 to 0 dBFS.",
-     ("TheClaims.test_the_spans",)),
-    ("Ratio, from 1 to 8, is how many dB the output falls for every dB the "
-     "input falls below the threshold; with the RMS detector the slope stays "
-     "within 5 % of it even at 8.",
-     ("TheClaims.test_the_spans",
-      "TheDetectorBoundsTheLaw.test_rms_holds_the_law_at_the_top_of_the_"
-      "ratio_span")),
-    ("Depth, from 0 to -80 dB, is the floor: a quiet passage falls no "
-     "further than that, to within 0.5 dB.",
-     ("TheClaims.test_the_spans", "TheClaims.test_depth_is_the_floor")),
+    ("Ratio is how many dB the output falls for every dB the input "
+     "falls below the threshold; with the RMS detector the slope "
+     "stays within 5 % of it even at 8.",
+     ("TheDetectorBoundsTheLaw.test_rms_holds_the_law_at_the_top_of_the_ratio_span",)),
+    ("Depth is the floor: a quiet passage falls no further than "
+     "that, to within 0.5 dB.",
+     ("TheClaims.test_depth_is_the_floor",)),
     ("Ratio 1 and Depth 0 are each a wire, byte for byte.",
      ("TheClaims.test_ratio_one_and_depth_zero_are_wires",)),
-    ("Attack, from 0.01 ms to 1 s, and Release, from 2 ms to 4 s, set how "
-     "fast the detector follows the level.",
-     ("TheClaims.test_the_spans",)),
-    ("Key Low, from 25 Hz to 4 kHz, and Key High, from 250 Hz to just under "
-     "Nyquist, narrow the band the detector hears, at 12 dB/octave at each "
-     "end, so a loud tone outside the band can still open it.",
-     ("TheClaims.test_the_spans",
-      "TheClaims.test_a_loud_tone_outside_the_key_band_opens_it")),
+    ("Key Low and Key High, the top just under Nyquist, narrow the "
+     "band the detector hears, at 12 dB/octave at each end, so a "
+     "loud tone outside the band can still open it.",
+     ("TheClaims.test_a_loud_tone_outside_the_key_band_opens_it",)),
     ("Pass `key=` another stream and the detector reads that instead of "
      "your signal, the DS201's external key.",
      ("TheClaims.test_an_external_key_drives_the_detector",)),
-    ("RMS, the default, gives a sine and a square of equal RMS the same "
-     "gain, to within 0.1 dB at Ratio 2 with the band wide open.",
-     ("TheClaims.test_the_spans",
-      "TheClaims.test_sine_and_square_of_equal_rms_match")),
+    ("RMS, the default, gives a sine and a square of equal RMS the "
+     "same gain, to within 0.1 dB at Ratio 2 with the band wide "
+     "open.",
+     ("TheClaims.test_sine_and_square_of_equal_rms_match",
+      "TheClaims.test_there_is_no_hold_and_the_detector_defaults_to_rms")),
     ("Peak rides each cycle of the waveform, so the slope falls short of the "
      "ratio and the expander turns into a soft, slightly gritty gate; the "
      "Hard Downward patch is built on it.",
      ("TheDetectorBoundsTheLaw.test_peak_does_not",
       "TheDetectorBoundsTheLaw.test_patch_five_keeps_the_peak_position_and_"
       "its_own_number")),
-    ("There is no Hold and no one-shot envelope: the expander follows the "
-     "level continuously.",
-     ("TheClaims.test_the_spans",)),
+    ("There is no Hold and no one-shot envelope: the expander "
+     "follows the level continuously.",
+     ("TheClaims.test_there_is_no_hold_and_the_detector_defaults_to_rms",)),
     ("Latency is zero at every setting.",
      ("TheClaims.test_latency_is_zero",)),
     ("So is the tail, except with Key Listen on, when the key filters ring "
