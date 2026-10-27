@@ -297,6 +297,8 @@ class Phaser(_component.Component):
     there the Feedback hump stays under 5 dB. Turn Drive to 0 and Feedback
     lifts it more than 5 dB. The Phaser - lean patch is the default with
     Drive at 0.
+    Keep the input under -9 dBFS and the defaults and patches stay off the
+    rails.
 
     **Sync.** With Sync on, the sweep locks to the host: Division picks the
     length of a sweep in bars, a bar is read from the host's time
