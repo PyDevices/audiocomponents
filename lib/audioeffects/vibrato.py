@@ -253,17 +253,16 @@ class Vibrato(_component.Component):
     short bucket-brigade line whose clock a sine sweeps, so the pitch
     wobbles and none of the dry is left to comb against it.
 
-    **Controls.** Rate runs the sweep from 2 to 15 Hz. Depth is the peak
-    pitch swing, from 0 to 60 cents, and stays that size wherever Rate
-    and Delay sit. Engage turns the vibrato on and off without switching
-    the audio: Rise, from 0.15 to 5 s, is how long the depth takes to go
-    from 10 % to 90 % of the way, in a straight line. Any other knob that
-    moves the depth glides there over 20 ms rather than stepping. Delay is
-    the line's average length, from 1 to 12 ms. Tone is the wet voice's
-    low-pass, from 2 to 18 kHz, and Body its high-pass, from 20 to 200 Hz;
-    at the defaults the band is 3 dB down at 40 Hz and at 17 kHz. Level
-    cuts the output by up to 12 dB; at the top of its travel the output is
-    at the input's level.
+    **Controls.** Rate is the sweep's speed. Depth is the peak pitch swing,
+    and stays that size wherever Rate and Delay sit. Engage turns the
+    vibrato on and off without switching the audio: Rise is how long the
+    depth takes to go from 10 % to 90 % of the way, in a straight line. Any
+    other knob that moves the depth glides there over 20 ms rather than
+    stepping. Delay is the line's average length. Tone is the wet voice's
+    low-pass, and Body its high-pass; at the defaults the band is 3 dB down
+    at 40 Hz and at 17 kHz. Level cuts the output by up to 12 dB; at the
+    top of its travel the output is at the input's level. The Effect
+    controls page lists what the knobs span.
 
     **The sound.** With no dry path there is no comb: from 200 Hz to 2 kHz
     the level stays within 1 dB at any Depth up to 60 cents. At the

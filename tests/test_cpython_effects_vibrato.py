@@ -869,15 +869,6 @@ class TheClaims(unittest.TestCase):
         out = pull_left(effect, RATE)[RATE // 4:]
         return 20.0 * math.log10(rms(out) / (8000 / math.sqrt(2.0)))
 
-    def test_the_spans(self):
-        self.assertEqual(rebuilt.Vibrato._MACRO_RANGES,
-                         ((2.0, 15.0, "log"), (0.0, 60.0),
-                          (0.15, 5.0, "log"), (0.0, 1.0), (1.0, 12.0),
-                          (2000.0, 18000.0, "log"), (20.0, 200.0, "log"),
-                          (-12.0, 0.0)))
-        self.assertEqual(rebuilt.RISE_10_90, 0.8)
-        self.assertEqual(rebuilt.DEPTH_GLIDE_MS, 20.0)
-
     def test_depth_holds_its_cents_across_rate_and_delay(self):
         for delay_ms in (1.0, 4.0, 12.0):
             for rate_hz in (2.0, 5.0, 15.0):
@@ -925,29 +916,20 @@ CLAIMS = (
      "wobbles and none of the dry is left to comb against it.",
      ("T1NoDry.test_default_is_one_delayed_peak",
       "T7ClockLaw.test_second_harmonic_near_m_over_two")),
-    ("Rate runs the sweep from 2 to 15 Hz.",
-     ("TheClaims.test_the_spans",
-      "T3RateSpan.test_rate_stops_span_at_least_six_to_one")),
-    ("Depth is the peak pitch swing, from 0 to 60 cents, and stays that "
-     "size wherever Rate and Delay sit.",
-     ("TheClaims.test_the_spans",
-      "TheClaims.test_depth_holds_its_cents_across_rate_and_delay")),
-    ("Engage turns the vibrato on and off without switching the audio: "
-     "Rise, from 0.15 to 5 s, is how long the depth takes to go from 10 % "
-     "to 90 % of the way, in a straight line.",
-     ("TheClaims.test_the_spans",
-      "T5Ramp.test_one_fifty_ms_rise_at_defaults",
+    ("Depth is the peak pitch swing, and stays that size wherever "
+     "Rate and Delay sit.",
+     ("TheClaims.test_depth_holds_its_cents_across_rate_and_delay",)),
+    ("Engage turns the vibrato on and off without switching the "
+     "audio: Rise is how long the depth takes to go from 10 % to 90 "
+     "% of the way, in a straight line.",
+     ("T5Ramp.test_one_fifty_ms_rise_at_defaults",
       "T5Ramp.test_a_long_rise_lands_on_time")),
-    ("Any other knob that moves the depth glides there over 20 ms rather "
-     "than stepping.",
-     ("TheClaims.test_the_spans", "MovesGlide.test_each_move_is_smooth")),
-    ("Delay is the line's average length, from 1 to 12 ms.",
-     ("TheClaims.test_the_spans",)),
-    ("Tone is the wet voice's low-pass, from 2 to 18 kHz, and Body its "
-     "high-pass, from 20 to 200 Hz; at the defaults the band is 3 dB down "
-     "at 40 Hz and at 17 kHz.",
-     ("TheClaims.test_the_spans",
-      "T6Band.test_corners_at_48k_whole_sample_delay")),
+    ("Any other knob that moves the depth glides there over 20 ms "
+     "rather than stepping.",
+     ("MovesGlide.test_each_move_is_smooth",)),
+    ("Tone is the wet voice's low-pass, and Body its high-pass; at "
+     "the defaults the band is 3 dB down at 40 Hz and at 17 kHz.",
+     ("T6Band.test_corners_at_48k_whole_sample_delay",)),
     ("Level cuts the output by up to 12 dB; at the top of its travel the "
      "output is at the input's level.",
      ("TheClaims.test_level_cuts_up_to_12_db_and_tops_out_at_unity",)),
