@@ -31,6 +31,7 @@ import audiofilters
 import synthio
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
+import kit_ceiling                                          # noqa: E402
 from effects_measure import SAMPLE_RATE, source        # noqa: E402
 
 from audioeffects import _component                    # noqa: E402
@@ -600,6 +601,15 @@ class ResetAndDeinitWalkEveryNode(unittest.TestCase):
             self.assertTrue(node._deinited)
         with self.assertRaises(RuntimeError):
             built.output
+
+
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # square is where it rails first: p1 at -6 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(highpass.HighPass, "square"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            highpass.HighPass, "square", db=-6, keys=("p1",)))
 
 
 if __name__ == "__main__":

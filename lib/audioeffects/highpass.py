@@ -13,7 +13,8 @@ cut is as gentle as a cut gets, at 2 it is 6 dB up and you can hear where you
 put it, at 16 it is 24 dB up and the filter whistles at its own corner. The
 Slope switch is a desk's: 12 dB/oct for a low-cut you do not want to notice,
 24 dB/oct when the rumble has to actually leave. There is no drive and no
-growl anywhere in it - a high-pass is linear.
+growl anywhere in it - a high-pass is linear. Keep the input under -9 dBFS
+and the defaults and patches stay off the rails.
 
 **Three things the knobs do not do exactly, found by the Phase 2 gate audit
 and its patch sweep, and
