@@ -207,6 +207,7 @@ class HighPass(_component.Component):
         (0.0, 1.0),                     # 3  Mix, 0 is a wire
         (-12.0, 12.0),                  # 4  Trim, dB
     )
+    _MACRO_UNITS = {0: "Hz", 4: "dB"}
     #: Named for settings, never for products, and every value is
     #: `macro_of()` of the setting in the comment beside it.
     PATCHES = {

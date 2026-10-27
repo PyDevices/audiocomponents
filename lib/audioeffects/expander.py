@@ -206,6 +206,7 @@ class Expander(_component.Component):
         (0.0, 1.0),                   # Key Listen
         (0.0, 1.0),                   # Detector: 0 peak, 1 RMS
     )
+    _MACRO_UNITS = {0: "dBFS", 2: "dB", 3: "ms", 4: "ms", 5: "Hz", 6: "Hz"}
 
     #: Patch 0 is the constructor's own defaults on the 0-127 grid.
     PATCHES = {

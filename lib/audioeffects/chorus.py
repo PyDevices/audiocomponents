@@ -209,6 +209,7 @@ class Chorus(_component.Component):
         (3.0, 20.0),            # 3  Delay, mean ms
         (1000.0, 12000.0, "log"),  # 4  Tone, wet −3 dB Hz
     )
+    _MACRO_UNITS = {0: "Hz", 3: "ms", 4: "Hz"}
     PATCHES = {
         0: ("Near-equal blend", (36, 127, 104, 43, 56)),
         1: ("Long line, deep", (19, 127, 104, 76, 56)),

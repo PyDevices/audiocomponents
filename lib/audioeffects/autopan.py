@@ -116,6 +116,7 @@ class AutoPan(_component.Component):
         (-180.0, 180.0),
         (0.0, 1.0),
     )
+    _MACRO_UNITS = {0: "Hz", 3: "dB", 5: "degrees"}
     PATCHES = {
         0: ("Slow Sweep", (0, 127, 127, 0, 64, 64, 0)),
         1: ("Quarter Note", (0, 102, 0, 0, 64, 64, 127)),

@@ -126,6 +126,7 @@ class LadderFilter(_component.Component):
         (0.0, 1.0),               # 5 Oversample, off / 2x
         (0.0, 1.0),               # 6 Mix, 0 is a wire
     )
+    _MACRO_UNITS = {0: "Hz", 2: "dB"}
 
     #: The 0-127 grid, computed with `_component.macro_of()` from the
     #: settings the dossier's section 6 names. Patch 0 is the constructor's

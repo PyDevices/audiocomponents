@@ -168,6 +168,7 @@ class StereoWidener(_component.Component):
         (DELAY_MIN_MS, DELAY_MAX_MS, "log"),      # 1  Delay, ms
         (0.0, 1.0),                               # 2  Character
     )
+    _MACRO_UNITS = {1: "ms"}
 
     #: `_component.macro_of` of the card's patch settings.
     PATCHES = {

@@ -377,6 +377,7 @@ class TapeDelay(_component.Component):
         (0.0, 1.0),                             # 9  Sync
         (0.0, 15.0),                            # 10 Division index
     )
+    _MACRO_UNITS = {0: "ms", 3: "ms", 4: "cents", 5: "cents", 7: "um"}
 
     #: `_component.macro_of` of the dossier's section 6 settings; patch 0 is
     #: the constructor's defaults on the grid. Patch 8 is patch 0 with Record

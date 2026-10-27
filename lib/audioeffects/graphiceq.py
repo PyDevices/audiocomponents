@@ -260,6 +260,10 @@ class GraphicEQ(_component.Component):
                    12: "UNIPOLAR", 13: "TOGGLE"}
     _MACRO_RANGES = (((-_BAND_DB, _BAND_DB),) * 12
                      + ((0.7, 2.5), (0.0, 1.0)))
+    _MACRO_UNITS = {
+        0: "dB", 1: "dB", 2: "dB", 3: "dB", 4: "dB", 5: "dB", 6: "dB", 7: "dB",
+        8: "dB", 9: "dB", 10: "dB", 11: "dB",
+    }
 
     #: Every band macro at 64 is the detent, so patch 0 is a wire.
     #:

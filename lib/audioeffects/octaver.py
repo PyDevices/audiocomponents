@@ -238,6 +238,7 @@ class Octaver(_component.Component):
         (40.0, 800.0, "log"),           # 5  Tone 2, Hz
         (-90.0, -40.0),                 # 6  Sensitivity, dBFS
     )
+    _MACRO_UNITS = {3: "Hz", 4: "Hz", 5: "Hz", 6: "dBFS"}
 
     #: `_component.macro_of` of the card's settings: 0.7 is 89, 0.8 is 102,
     #: 0.6 is 76; Tracking 90/50/200 Hz is 45/12/89; Tone 1 324/250/700 Hz

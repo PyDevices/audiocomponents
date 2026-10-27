@@ -189,6 +189,7 @@ class Flanger(_component.Component):
                    3: "UNIPOLAR", 4: "UNIPOLAR", 5: "TOGGLE", 6: "TOGGLE",
                    7: "UNIPOLAR"}
     _MACRO_RANGES = _RANGES
+    _MACRO_UNITS = {0: "Hz", 2: "ms"}
 
     PATCHES = {
         0: ("Slow jet", PATCH_0),

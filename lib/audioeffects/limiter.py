@@ -259,6 +259,7 @@ class Limiter(_component.Component):
     #: here - it leaves 1.07 dB above the ceiling where the trait allows 0.5.
     _MACRO_RANGES = ((-24.0, 0.0), (0.0, 24.0), (0.0, 10.0),
                      (5.0, 2000.0, "log"), (0.0, 1.0), (0.0, 12.0))
+    _MACRO_UNITS = {0: "dBFS", 1: "dB", 2: "ms", 3: "ms", 5: "dB"}
     PATCHES = {
         0: ("Safety Ceiling", (122, 0, 0, 72, 0, 0)),
         1: ("Catch The Peaks", (122, 0, 19, 53, 127, 0)),

@@ -192,6 +192,7 @@ class PingPongDelay(_component.Component):
         (TONE_MIN_HZ, TONE_MAX_HZ, "log"),  # 7  Repeat Tone, Hz; top = out
         (CUT_MIN_HZ, CUT_MAX_HZ, "log"),    # 8  Repeat Cut, Hz; bottom = out
     )
+    _MACRO_UNITS = {0: "ms", 7: "Hz", 8: "Hz"}
 
     #: `_component.macro_of` of the dossier's section 6 settings; patch 0 is
     #: the constructor's defaults on the grid.

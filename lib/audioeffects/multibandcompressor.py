@@ -328,6 +328,10 @@ class MultibandCompressor(_component.Component):
         (0.1, 100.0, "log"), (5.0, 1000.0, "log"),
         (0.0, 1.0),
     )
+    _MACRO_UNITS = {
+        0: "Hz", 1: "Hz", 2: "dBFS", 3: "dBFS", 4: "dBFS", 8: "dB", 9: "dB",
+        10: "dB", 11: "ms", 12: "ms",
+    }
     #: Patch 0 is the constructor's defaults on the 0-127 grid, to the
     #: nearest grid point. A BIPOLAR gain of exactly 0 dB is MIDI 64 exactly
     #: since audiocomponents#87 -- it used to sit at 63.5, unreachable, and

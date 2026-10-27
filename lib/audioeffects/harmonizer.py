@@ -194,6 +194,10 @@ class Harmonizer(_component.Component):
         (0.0, 1.0),                         # 8  Spread
         (0.0, 2.0),                         # 9  Mix; dry at unity to 1
     )
+    _MACRO_UNITS = {
+        0: "semitones", 1: "semitones", 2: "semitones", 3: "semitones",
+        4: "dB", 5: "dB", 6: "dB", 7: "cents",
+    }
 
     #: `_component.macro_of` of the card's settings: +3/+4/+5/+7/+12 are
     #: 80/85/90/101/127 and -12 is 0; -3/-6/-9/-12 dB are 118/108/99/89 and

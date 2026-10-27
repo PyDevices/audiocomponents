@@ -346,6 +346,7 @@ class DigitalDelay(_component.Component):
         (800.0, 16000.0, "log"),            # 6  Repeat Tone, Hz; top = out
         (20.0, 400.0, "log"),               # 7  Repeat Cut, Hz; bottom = out
     )
+    _MACRO_UNITS = {0: "ms", 3: "ms", 6: "Hz", 7: "Hz"}
 
     #: `_component.macro_of` of the dossier's section 6 settings; patch 0 is
     #: the constructor's defaults on the grid.

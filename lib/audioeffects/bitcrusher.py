@@ -1415,6 +1415,7 @@ class Bitcrusher(_component.Component):
         (0.0, 1.0),
         (-24.0, 0.0),
     )
+    _MACRO_UNITS = {1: "Hz", 5: "dB"}
     PATCHES = {
         0: ("Twelve Bit, Twenty-Six", (127, 107, 0, 0, 127, 127)),
         1: ("Eight Bit Voice", (76, 101, 0, 0, 127, 127)),

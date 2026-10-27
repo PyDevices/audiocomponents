@@ -284,6 +284,7 @@ class Tremolo(_component.Component):
         (-180.0, 180.0),         # 7 Stereo Phase, deg
         (0.0, 1.0),              # 8 Sync
     )
+    _MACRO_UNITS = {1: "Hz", 4: "ms", 7: "degrees"}
     PATCHES = {
         0: ("Bias Wobble", (0, 86, 64, 64, 40, 64, 127, 64, 0)),
         1: ("Bias Deep Slow", (0, 73, 114, 64, 40, 0, 127, 64, 0)),

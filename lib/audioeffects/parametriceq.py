@@ -250,6 +250,10 @@ class ParametricEQ(_component.Component):
         (0.0, 1.0),                         # 14 Q Law, 0 prop / 1 constant
         (-12.0, 12.0),                      # 15 Output, dB
     )
+    _MACRO_UNITS = {
+        0: "Hz", 3: "Hz", 4: "dB", 5: "Hz", 6: "dB", 7: "Hz", 8: "dB",
+        10: "Hz", 12: "Hz", 15: "dB",
+    }
     PATCHES = {
         0: ("Flat",
             (61, 0, 0, 46, 64, 72, 64, 97, 64, 64, 91, 0, 64, 0, 0, 64)),

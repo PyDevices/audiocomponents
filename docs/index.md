@@ -20,6 +20,7 @@ MicroPython-compatible boards, CircuitPython-compatible boards and a desktop.
 
 - [Audio component runtime API](reference/component-api.md)
 - [Audio component metadata manifest](reference/metadata.md)
+- [Effect controls](reference/effect-controls.md): every knob's span and every patch
 - [Instruments](https://github.com/PyDevices/audiocomponents/blob/main/lib/audioinstruments/README.md)
 - [Effects](https://github.com/PyDevices/audiocomponents/blob/main/lib/audioeffects/README.md)
 

@@ -317,6 +317,7 @@ class ConvolutionReverb(_component.Component):
         (1.0, float(ROOMS)),                      # 4  Room, seed 1..64
         (0.0, 2.0),                               # 5  Mix; dry unity to 1
     )
+    _MACRO_UNITS = {1: "Hz"}
 
     #: `_component.macro_of` of the dossier's section 6 settings; patch 0 is
     #: the constructor's defaults on the grid.

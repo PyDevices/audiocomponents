@@ -29,6 +29,7 @@ reference/component-api
 reference/metadata
 reference/instruments
 reference/effects
+reference/effect-controls
 ```
 
 ```{toctree}

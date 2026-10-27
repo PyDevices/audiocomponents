@@ -189,6 +189,7 @@ class PitchShifter(_component.Component):
         (0.0, DELAY_MAX_MS),            # 3  Delay, ms
         (0.0, FEEDBACK_MAX),            # 4  Feedback
     )
+    _MACRO_UNITS = {0: "semitones", 1: "cents", 3: "ms"}
 
     #: `_component.macro_of` of the card's patch settings.
     PATCHES = {

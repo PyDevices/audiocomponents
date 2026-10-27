@@ -268,6 +268,7 @@ class ShimmerHall(_component.Component):
         (500.0, 16000.0, "log"),        # 7 Damping, Hz
         (0.0, 2.0),                     # 8 Mix; dry at unity to 1
     )
+    _MACRO_UNITS = {3: "ms", 5: "s", 7: "Hz"}
 
     #: `_component.macro_of` of the card's settings.
     PATCHES = {
