@@ -2,9 +2,9 @@
 claim is tied to a test, and that test exists and passes.
 
 **The convention.** The class's test module (by default
-`tests/test_cpython_effects_<name>.py`) holds a module-level `CLAIMS`
-table. Each row is `(sentence, test)`: the docstring sentence word for
-word (whitespace aside), and the test that asserts it. `test` is a test
+`tests/test_cpython_effects_<name>.py`, else `tests/test_<name>.py`) holds a
+module-level `CLAIMS` table. Each row is `(sentence, test)`: the docstring
+sentence word for word (whitespace aside), and the test that asserts it. `test` is a test
 method's name (`"test_x"`, any TestCase in the module that defines it), a
 `"Class.test_x"`, a tuple of those, or `"DECLARED:<NAME>,<event
 prefix>,<property>[,<scope>...]"`, naming a row of the lifecycle matrix's
@@ -245,8 +245,15 @@ def check(name, doc, module, path, emit=print, execute=True):
 
 
 def module_for(cls, name=None):
-    """(imported test module or None, its path)."""
-    name = name or "test_cpython_effects_%s" % cls.NAME.lower()
+    """(imported test module or None, its path). With no `name`, the
+    class's own `test_<name>.py` is read when there is no
+    `test_cpython_effects_<name>.py`, as `NoiseGate`'s is."""
+    if name is None:
+        name = "test_cpython_effects_%s" % cls.NAME.lower()
+        short = "test_%s" % cls.NAME.lower()
+        if (not os.path.isfile(os.path.join(TESTS, name + ".py"))
+                and os.path.isfile(os.path.join(TESTS, short + ".py"))):
+            name = short
     path = os.path.join(TESTS, name + ".py")
     if TESTS not in sys.path:
         sys.path.insert(0, TESTS)

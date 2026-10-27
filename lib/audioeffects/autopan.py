@@ -1,40 +1,34 @@
-"""`AutoPan` - a pan law under an LFO, not a Mixer panning input.
+"""`AutoPan` - an auto-panner: a pan law under an LFO.
 
-Traits frozen
-2026-09-08 at Station A **before this file existed**; Rate span re-frozen
-2026-09-08 in the fix round (vision §7.2). Grade *design*: the three published
-centre-attenuation conventions (3.01 / 4.5 / 6.02 dB), a per-sample oscillator,
-and a mono wire.
-
-**One processing node:** `source -> audiomath.Multiply`. The modulator is a
-`synthio.Synthesizer` with two `Note`s (left / right gain) whose waveform is
-one 256-frame period of the pan law. Rate is the notes' frequency, so the
-pull is one block of oscillator, not a whole-period `RawSample`. Depth 0 is
-`mix = 0`, the bit-exact wire (`audiodsp_multiply.c` wet/dry pair). A mono
-source gets **no node** - `output` is the borrowed source.
-
-The Mixer + `synthio.LFO` route the old class used is rejected: it is not a
-published pan law, it is block-rate, and on CPython it does not move at all.
-
-**Latency is zero at every setting.** No option adds delay. `tail_samples`
-is 0. `capabilities` is `("tempo_sync",)`: Sync on reads `self._transport()`
-and snaps Rate to tempo divisions; with no host transport Rate stays free.
-
-**Portability: audiodsp.** Needs `audiomath`. A stock CircuitPython board
-raises `ImportError` at construction.
-
-**What the default surrenders:** Rate starts at 2 Hz, not a slow 0.05 Hz
-wander — a 256-frame hold at 0.05 Hz reads under −80 dB, so A3's plant cannot
-fire on the old floor. The oscillator is two `synthio.Note`s, which top out
-at half scale (P12): hard-over is −6 dB vs the source. A mono source is a
-wire.
-
-**Cost:** one Multiply plus a 1500-point synthio pair. Palette: Multiply
-**0.028 / 0.047** + extra synthio 1500 **0.263 / 0.472** + glue **0.0** →
-**0.291 / 0.519 ms → P4 ≤ 6 %, S3 ≤ 10 %**. The old **1 % / 1 %** bar
-counted Multiply only: the palette could not price a `synthio` source.
-Quoted class ROW **2.5 % / 4.5 %**. No `" - lean"` patch.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes. Traits frozen 2026-09-08 at Station A before this file
+# existed; Rate span re-frozen 2026-09-08 in the fix round (vision 7.2).
+# Grade design: the three published centre-attenuation conventions (3.01 /
+# 4.5 / 6.02 dB), a per-sample oscillator, and a mono wire.
+#
+# One processing node: source -> audiomath.Multiply. The modulator is a
+# synthio.Synthesizer with two Notes (left / right gain) whose waveform is
+# one period of the pan law. Rate is the notes' frequency, so the pull is
+# one block of oscillator, not a whole-period RawSample. Depth 0 is
+# mix = 0, the bit-exact wire (audiodsp_multiply.c wet/dry pair). A mono
+# source gets no node: `output` is the borrowed source.
+#
+# The Mixer + synthio.LFO route the old class used is rejected: it is not a
+# published pan law, it is block-rate, and on CPython it does not move.
+#
+# What the default surrenders: Rate starts at 2 Hz, not a slow 0.05 Hz
+# wander - a 256-frame hold at 0.05 Hz reads under -80 dB, so A3's plant
+# cannot fire on the old floor. The oscillator is two synthio Notes, which
+# top out at half scale (P12): hard-over is -6 dB against the source.
+#
+# Cost: one Multiply plus a 1500-point synthio pair. Palette: Multiply
+# 0.028 / 0.047 + extra synthio 1500 0.263 / 0.472 + glue 0.0 -> 0.291 /
+# 0.519 ms -> P4 <= 6 %, S3 <= 10 %. The old 1 % / 1 % bar counted Multiply
+# only: the palette could not price a synthio source. Quoted class ROW
+# 2.5 % / 4.5 %. No " - lean" patch.
 
 VENDOR = "PyDevices"
 
@@ -52,18 +46,28 @@ import synthio
 
 
 class AutoPan(_component.Component):
-    """Auto-panner: constant-power / 4.5 dB / 6 dB pan laws under a
-    per-sample LFO. `audiodsp` tier (`audiomath.Multiply`).
+    """An auto-panner: an LFO sweeps your signal between the speakers, with
+    a new pan position on every sample, under a pan law.
 
-    Macros: Rate (2-20 Hz), Depth (0 is a wire), Shape (triangle to sine),
-    Law (3.01-6.02 dB centre attenuation), Centre, Phase, Sync. Latency is
-    **0 ms** at every setting; nothing here looks ahead.
+    **The controls.** Rate runs the sweep from 2 to 20 Hz. Depth is how far
+    it swings: at Depth 1 it reaches each side, where the far speaker is
+    silent, and at Depth 0 the output is the input. Shape runs the sweep
+    from a triangle at 0 to a sine at 1. Law is how far the centre dips,
+    from 3.01 dB, where the power holds steady across the sweep, to 6.02
+    dB. Centre moves the middle of the sweep towards one side. Phase moves
+    where the sweep starts: at 0 it starts on the left. With Sync on, Rate
+    snaps to the nearest of one, two, four or eight sweeps a beat of the
+    host's tempo; with no host tempo, Rate stays where the knob is.
 
-    What the default surrenders: Rate starts at 2 Hz, not a slow 0.05 Hz
-    wander — a 256-frame hold at 0.05 Hz reads under −80 dB, so A3's plant
-    cannot fire on the old floor. The oscillator is two `synthio.Note`s,
-    which top out at half scale (P12): hard-over is −6 dB vs the source. A
-    mono source is a wire.
+    **Levels.** The sweep sits 6 dB under your source: hard over, the near
+    speaker plays it at half level. A mono source passes untouched, and
+    silence in is silence out.
+
+    **Timing.** Latency is zero at every setting, and so is the tail:
+    nothing looks ahead and nothing rings on.
+
+    **On a board.** The class needs audiodsp's `audiomath`, and on a board
+    without it construction raises `ImportError`.
     """
 
     NAME = 'AutoPan'

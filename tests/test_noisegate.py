@@ -28,6 +28,7 @@ each recorded in the evidence pack's "what the kit got wrong":
 
 import math
 import os
+import re
 import sys
 import unittest
 from array import array
@@ -888,6 +889,205 @@ class KeyListenTail(unittest.TestCase):
         gate.set_macro(7, 0)
         self.assertEqual(gate.tail_samples, 0)
         gate.deinit()
+
+
+class TheClaims(unittest.TestCase):
+    """The class docstring's figures and options that the traits above do
+    not already pin."""
+
+    def test_the_spans(self):
+        self.assertEqual(SPAN[THRESHOLD], (-80.0, 0.0))
+        self.assertEqual(SPAN[ATTACK], (0.01, 1000.0, "log"))
+        self.assertEqual(SPAN[HOLD], (2.0, 2000.0, "log"))
+        self.assertEqual(SPAN[RELEASE], (2.0, 4000.0, "log"))
+        self.assertEqual(SPAN[RANGE], (0.0, -80.0))
+        self.assertEqual(SPAN[KEY_LOW], (25.0, 4000.0, "log"))
+        self.assertEqual(SPAN[KEY_HIGH][0], 250.0)
+
+    def test_an_external_key_opens_and_closes_the_gate(self):
+        loud = probes.sine(1000.0, 0.3, -6.0)
+        quiet = probes.sine(1000.0, 0.3, -50.0)
+        frames = len(loud) // 2
+
+        def gated(data, key_data):
+            key = probes.ArraySource(key_data, rate=RATE)
+            wet = render(data, frames, settings(threshold_db=-30.0),
+                         key=key)
+            return int(abs(wet.data[frames // 2:]).max())
+
+        # A loud source keyed by a quiet one stays shut; a quiet source
+        # keyed by a loud one opens.
+        self.assertLess(gated(loud, quiet), 10)
+        self.assertGreater(gated(quiet, loud),
+                           int(abs(dry(quiet, frames).data).max()) - 2)
+
+    def test_the_look_ahead_stops_at_fifty_ms(self):
+        self.assertEqual(NoiseGate.MAX_LOOKAHEAD_MS, 50.0)
+        source = probes.ArraySource(probes.sine(1000.0, 0.05, -6.0),
+                                    rate=RATE)
+        effect = NoiseGate.create(source, RATE, lookahead_ms=100.0)
+        self.assertEqual(effect.latency_samples, int(0.050 * RATE))
+        effect.deinit()
+
+    def test_a_duck_past_forty_db_falls_short(self):
+        loud = probes.sine(1000.0, 0.6, -6.0)
+        got = settled_gr(loud, settings(threshold_db=-40.0, range_db=-80.0),
+                         duck=True)
+        self.assertAlmostEqual(got, -77.0, delta=0.5)
+
+    def test_construction_needs_three_audiodsp_modules(self):
+        source = probes.ArraySource(probes.sine(1000.0, 0.05, -6.0),
+                                    rate=RATE)
+        for name in NoiseGate.REQUIRES:
+            with self.subTest(module=name):
+                saved = sys.modules[name]
+                sys.modules[name] = None
+                try:
+                    with self.assertRaises(ImportError):
+                        NoiseGate.create(source, RATE)
+                finally:
+                    sys.modules[name] = saved
+        self.assertEqual(NoiseGate.REQUIRES,
+                         ("audiodynamics", "audioroute", "audiomath"))
+
+
+CLAIMS = (
+    ("`NoiseGate` - a noise gate after the Drawmer DS201.",
+     ("Tier2Traits.test_g4_the_closed_state_is_range_not_zero",)),
+    ("The player's text is the class docstring; the `CLAIMS` table in the "
+     "class's test file ties its claim sentences to tests.",
+     ("Claims.test_every_claim_is_in_the_docstring_and_tested",)),
+    ("A noise gate after the Drawmer DS201: below the Threshold your signal "
+     "is held down, and above it the gate opens and lets it through.",
+     ("Tier2Traits.test_g4_the_closed_state_is_range_not_zero",
+      "Tier1Invariants.test_the_open_gate_is_level_honest")),
+    ("Threshold runs from -80 to 0 dBFS.", ("TheClaims.test_the_spans",)),
+    ("Range is how far the closed gate holds the signal down, from 0 dB, "
+     "where the output is the input, to -80 dB; it is a fixed depth, "
+     "however far under the Threshold the signal falls.",
+     ("TheClaims.test_the_spans",
+      "Tier1Invariants.test_range_zero_is_a_wire",
+      "Tier2Traits.test_g4_the_closed_state_is_range_not_zero",
+      "Tier2Traits.test_g4_the_law_is_a_depth_not_a_slope",
+      "Tier2Traits.test_planted_fault_g4_the_memoryless_slope")),
+    ("A crossing opens the gate over the Attack, from 0.01 ms to 1 s, holds "
+     "it open for the Hold, from 2 ms to 2 s, and only then lets it fall "
+     "over the Release, from 2 ms to 4 s.",
+     ("TheClaims.test_the_spans",
+      "Tier2Traits.test_g2_hold_is_a_real_stage",
+      "Tier2Traits.test_g5_attack_and_decay_time_constants",
+      "Tier2Traits.test_g5_the_fastest_attack_opens_inside_a_fifth_of_a_"
+      "millisecond",
+      "Tier1Invariants.test_the_hold_floor_keeps_the_gate_machine_on_at_"
+      "every_rate")),
+    ("A long Hold with a short Release chops a reverb's tail off square: "
+     "that is the gated-reverb snare.",
+     ("Tier2Traits.test_g2_hold_is_a_real_stage",)),
+    ("Once a crossing opens the gate, the gate runs through its Attack, "
+     "Hold and Release even if the signal drops away at once.",
+     ("Tier2Traits.test_g1_the_envelope_is_one_shot",)),
+    ("The gate listens through its own band, with Key Low from 25 Hz to "
+     "4 kHz and Key High from 250 Hz up to just under half the sample "
+     "rate, so a gate on a tom can ignore the hi-hat above it and the kick "
+     "below it.",
+     ("TheClaims.test_the_spans", "Tier2Traits.test_g3_the_key_path_is_a_band",
+      "Tier1Invariants.test_hz_spans_clamp_below_nyquist_rather_than_"
+      "refusing")),
+    ("Key Listen puts that band on the output in place of the audio, so you "
+     "can hear what you are tuning.",
+     ("Tier2Traits.test_g3_key_listen_puts_the_band_on_the_output",)),
+    ("Give the class `key=` another stream and that stream opens and closes "
+     "the gate, which is how one sound gates another.",
+     ("TheClaims.test_an_external_key_opens_and_closes_the_gate",)),
+    ("`lookahead_ms` lets the gate read ahead of the audio, up to 50 ms, so "
+     "it is already open when a transient arrives; each millisecond of "
+     "look-ahead is a millisecond of latency.",
+     ("TheClaims.test_the_look_ahead_stops_at_fifty_ms",
+      "Tier1Invariants.test_a_lookahead_build_reports_the_latency_it_has",
+      "Tier1Invariants.test_planted_fault_a_lookahead_build_reporting_"
+      "zero")),
+    ("`duck=True` turns the gate inside out, for voice-overs: below the "
+     "Threshold your signal passes untouched, and above it Range pushes it "
+     "down.",
+     ("Tier2Traits.test_g7_duck_inverts_the_sense",
+      "Tier2Traits.test_planted_fault_g7_a_duck_that_adds",
+      "Tier2Traits.test_g7_the_duck_runs_on_the_same_hold")),
+    ("A duck's depth is honest to about -40 dB, and past that it falls "
+     "short: Range -80 measures about -77 dB.",
+     ("Tier2Traits.test_g7_duck_inverts_the_sense",
+      "TheClaims.test_a_duck_past_forty_db_falls_short")),
+    ("With the gate open, the output is your signal at its own level.",
+     ("Tier1Invariants.test_the_open_gate_is_level_honest",)),
+    ("Silence in is silence out, and a mono source gets the same gate as "
+     "stereo.",
+     ("Tier1Invariants.test_silence_in_silence_out_and_the_tail_reaches_"
+      "zero",
+      "Tier1Invariants.test_mono_gets_the_same_gate_as_stereo")),
+    ("The first opening after construction or `reset()` fades in from "
+     "silence over the Attack, even at Range 0 dB.",
+     ("Tier1Invariants.test_the_first_opening_ramps_from_the_nodes_cold_"
+      "zero",
+      "Tier1Invariants.test_reset_returns_the_gate_machine_to_closed")),
+    ("Latency is zero unless you set `lookahead_ms`.",
+     ("Tier1Invariants.test_reported_latency_is_zero_and_measured_zero",
+      "Tier1Invariants.test_a_lookahead_build_reports_the_latency_it_has")),
+    ("The tail is zero, except while Key Listen is on, when it covers the "
+     "key band's ring; with `key=` the key decides, and the tail is "
+     "`None`.",
+     ("Tier1Invariants.test_silence_in_silence_out_and_the_tail_reaches_"
+      "zero",
+      "KeyListenTail.test_the_ring_ends_inside_the_bound",
+      "KeyListenTail.test_the_look_ahead_alone_is_red",
+      "KeyListenTail.test_an_external_key_has_no_bound")),
+    ("A sine opens the gate at a Threshold about 3 dB higher than a square "
+     "of the same loudness, because its peaks are higher.",
+     ("Tier2Traits.test_g6_the_detector_is_peak_not_rms",)),
+    ("A square of the same peak as a sine opens it about 0.63 dB higher "
+     "than the sine, because the key band rings on the square's edges.",
+     ("Tier2Traits.test_g6_equal_peak_material_is_disconfirmed_and_stays_"
+      "measured",)),
+    ("The class needs audiodsp's `audiodynamics`, `audioroute` and "
+     "`audiomath`, and on a board without any of them construction raises "
+     "`ImportError`.",
+     ("TheClaims.test_construction_needs_three_audiodsp_modules",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = noisegate_module.__doc__ + " " + NoiseGate.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(doc.replace("fixed depth",
+                                                   "fixed slope")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Silence in is silence out",
+                            ("TheClaims.test_nothing_here",)),)))
 
 
 if __name__ == "__main__":
