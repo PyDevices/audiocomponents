@@ -2999,9 +2999,9 @@ CLAIMS = (
      "ones.", "test_tilt_law"),
     ("Up to Mix 1 the dry passes at unity, and at Mix 2 the echoes play "
      "alone.", "test_the_mix_stops"),
-    ("On CircuitPython alone, a stereo dry's right lane reads one LSB hot "
-     "on source values within 32 LSB of the rails.",
-     "test_the_right_lane_is_hot_only_on_circuitpython"),
+    ("At unity the dry is exact to the sample, mono and stereo, right up "
+     "to the rails, on every interpreter.",
+     "test_the_dry_is_exact_to_the_rails_everywhere"),
     ("Mix 0 is a wire.", "test_mix_zero_is_a_wire"),
     ("Sync locks Time to Division of the host's beat, clamped to Time's "
      "span.", "test_sync_is_division_clamped_to_the_span"),
@@ -3161,23 +3161,17 @@ class TheClaims(unittest.TestCase):
         self.assertEqual(MultiTapDelay.PATCHES[3][0],
                          "Four Heads, Far Loudest")
 
-    def test_the_right_lane_is_hot_only_on_circuitpython(self):
-        # The stock audiomixer's pan law: 32768 / 32767 on the right lane,
-        # which moves the 63 values from 32 736 up (and down from -32 736,
-        # the rail itself clipping) one LSB out. Mono and the left lane are
-        # exact, and every other interpreter is exact.
+    def test_the_dry_is_exact_to_the_rails_everywhere(self):
+        # Every source value through the dry at unity, mono and stereo: no
+        # lane is one LSB out anywhere, the values nearest the rails
+        # included. CircuitPython 11.0.0-alpha.1's stock audiomixer put the
+        # stereo right lane's top 63 values one LSB hot; a CircuitPython at
+        # AUDIODSP_PIN does not (audiocomponents#212).
         exact = {2: (0, 0, 0, 99999), 1: (0, 0, 0, 99999)}
         self.assertEqual(run_hot(sys.executable), exact)
         found, missing = natives_at_the_pin(self)
         for family, binary in sorted(found.items()):
-            got = run_hot(binary)
-            if family == "circuitpython":
-                self.assertEqual(got[1], exact[1])
-                left, right, worst, least = got[2]
-                self.assertEqual((left, worst, least), (0, 1, 32736))
-                self.assertEqual(right, 63)
-            else:
-                self.assertEqual(got, exact, family)
+            self.assertEqual(run_hot(binary), exact, family)
         skip_the_missing(self, missing)
 
     def test_the_knob_spans(self):
