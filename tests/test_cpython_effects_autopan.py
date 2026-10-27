@@ -7,6 +7,7 @@ evidence pack; this file asserts at 48 kHz unless the test is about rate.
 
 import math
 import os
+import re
 import sys
 import unittest
 from array import array
@@ -495,6 +496,196 @@ class Construction(unittest.TestCase):
             self.assertEqual(effect.macro(DEPTH_I), 1.0)
         finally:
             effect.deinit()
+
+
+def _made(**options):
+    source = probes.ArraySource(probes.silence(2048, 2), rate=RATE,
+                                channels=2, block=256)
+    return AutoPan.create(source, RATE, **options)
+
+
+def pan_of(left, right):
+    """The pan position a pair of Q15 gains says, -1 left to +1 right, at
+    the constant-power law."""
+    return math.atan2(right, left) / (math.pi * 0.25) - 1.0
+
+
+class TheClaims(unittest.TestCase):
+    """The class docstring's claims that the tiers above do not already
+    hold."""
+
+    def test_the_spans(self):
+        effect = _made()
+        try:
+            for index, low, high in ((RATE_I, 2.0, 20.0),
+                                     (LAW_I, 3.0103, 6.0206),
+                                     (CENTRE_I, -1.0, 1.0)):
+                effect.set_macro(index, 0)
+                self.assertAlmostEqual(effect.macro(index), low, places=3)
+                effect.set_macro(index, 127)
+                self.assertAlmostEqual(effect.macro(index), high, places=3)
+        finally:
+            effect.deinit()
+
+    def test_shape_runs_from_a_triangle_to_a_sine(self):
+        effect = _made()
+        try:
+            frames = 16
+            for shape, law in ((0.0, lambda ph: 1.0 - 4.0 * abs(ph - 0.5)),
+                               (1.0, lambda ph: -math.cos(2 * math.pi * ph))):
+                wave_l, wave_r, _ = effect._bake_period(
+                    frames, 0.9, shape, AutoPan.LAW_POWER_DB, 0.0, 0.0)
+                for i in range(frames):
+                    want = 0.9 * law(i / float(frames))
+                    self.assertAlmostEqual(pan_of(wave_l[i], wave_r[i]), want,
+                                           delta=2e-4)
+        finally:
+            effect.deinit()
+
+    def test_phase_moves_where_the_sweep_starts(self):
+        data = sine(1000.0, 0.1, -6.0)
+        for phase, louder in ((0.0, 0), (180.0, 1)):
+            wet, _dry, _ = render_through(data, rate=2.0, depth=1.0,
+                                          phase=phase)
+            rms = np.sqrt((wet.float[:960] ** 2).mean(axis=0))
+            self.assertGreater(rms[louder], 10.0 * rms[1 - louder], phase)
+
+    def test_sync_snaps_to_the_beat_and_stays_without_a_tempo(self):
+        source = probes.ArraySource(probes.silence(2048, 2), rate=RATE,
+                                    channels=2, block=256)
+        effect = AutoPan(source, sample_rate=RATE, rate=5.0, sync=1.0,
+                         transport=lambda: (True, 0.0, 120.0, 4, 4))
+        try:
+            # 120 bpm: one, two, four or eight sweeps a beat is 2, 4, 8 or
+            # 16 Hz, and 5 Hz is nearest 4.
+            self.assertEqual(AutoPan.SYNC_BEATS, (1.0, 0.5, 0.25, 0.125))
+            self.assertEqual(effect._macro_engineering()[0], 4.0)
+        finally:
+            effect.deinit()
+        effect = _made(rate=5.0, sync=1.0)
+        try:
+            self.assertAlmostEqual(effect._macro_engineering()[0], 5.0,
+                                   places=9)
+        finally:
+            effect.deinit()
+
+    def test_the_sweep_sits_six_db_under_the_source(self):
+        data = sine(1000.0, 0.3, -6.0)
+        peak = int(np.abs(np.array(data)).max())
+        for centre, near in ((-1.0, 0), (1.0, 1)):
+            wet, _dry, _ = render_through(data, rate=2.0, depth=1e-4,
+                                          centre=centre)
+            got = wet.data[4096:]
+            self.assertLessEqual(abs(int(got[:, near].max()) - peak // 2), 2)
+            # A hair off the rail (depth 1e-4), the far side leaks an LSB.
+            self.assertLessEqual(int(np.abs(got[:, 1 - near]).max()), 1)
+
+    def test_construction_needs_audiomath(self):
+        saved = sys.modules.get("audiomath", False)
+        sys.modules["audiomath"] = None
+        try:
+            with self.assertRaises(ImportError):
+                _made()
+        finally:
+            if saved is False:
+                del sys.modules["audiomath"]
+            else:
+                sys.modules["audiomath"] = saved
+        _made().deinit()
+
+
+#: Each claim sentence of the player text (module and class docstrings),
+#: and the tests that hold it.
+CLAIMS = (
+    ("`AutoPan` - an auto-panner: a pan law under an LFO.",
+     ("TierTwo.test_a1_constant_power_at_defaults_rate",
+      "TierTwo.test_a3_per_sample_at_floor_five_and_twenty")),
+    ("The player's text is the class docstring; the `CLAIMS` table in the "
+     "class's test file ties its claim sentences to tests.",
+     ("Claims.test_every_claim_is_in_the_docstring_and_tested",)),
+    ("An auto-panner: an LFO sweeps your signal between the speakers, with "
+     "a new pan position on every sample, under a pan law.",
+     ("TierTwo.test_a3_per_sample_at_floor_five_and_twenty",
+      "TierTwo.test_a3_block_held_is_red_at_defaults",
+      "TierTwo.test_a1_constant_power_at_defaults_rate")),
+    ("Rate runs the sweep from 2 to 20 Hz.",
+     ("TheClaims.test_the_spans",
+      "TierTwo.test_a3_per_sample_at_floor_five_and_twenty")),
+    ("Depth is how far it swings: at Depth 1 it reaches each side, where "
+     "the far speaker is silent, and at Depth 0 the output is the input.",
+     ("TierTwo.test_a6_hard_over_and_shallow_fault",
+      "TierOne.test_depth_zero_is_a_wire",
+      "TierTwo.test_a6_depth_zero_wire")),
+    ("Shape runs the sweep from a triangle at 0 to a sine at 1.",
+     ("TheClaims.test_shape_runs_from_a_triangle_to_a_sine",)),
+    ("Law is how far the centre dips, from 3.01 dB, where the power holds "
+     "steady across the sweep, to 6.02 dB.",
+     ("TheClaims.test_the_spans", "TierTwo.test_a2_three_laws",
+      "TierTwo.test_a1_constant_power_at_defaults_rate",
+      "TierTwo.test_a4_complement_and_mixer_fault")),
+    ("Centre moves the middle of the sweep towards one side.",
+     ("TierTwo.test_centre_left_sounds_left_and_right_sounds_right",
+      "TierTwo.test_swapped_sides_are_red")),
+    ("Phase moves where the sweep starts: at 0 it starts on the left.",
+     ("TheClaims.test_phase_moves_where_the_sweep_starts",)),
+    ("With Sync on, Rate snaps to the nearest of one, two, four or eight "
+     "sweeps a beat of the host's tempo; with no host tempo, Rate stays "
+     "where the knob is.",
+     ("TheClaims.test_sync_snaps_to_the_beat_and_stays_without_a_tempo",
+      "TierOne.test_capabilities_declare_tempo_sync_and_the_class_reads_"
+      "transport")),
+    ("The sweep sits 6 dB under your source: hard over, the near speaker "
+     "plays it at half level.",
+     ("TheClaims.test_the_sweep_sits_six_db_under_the_source",)),
+    ("A mono source passes untouched, and silence in is silence out.",
+     ("TierOne.test_mono_is_a_wire", "TierTwo.test_a5_mono_wire_and_fault",
+      "TierOne.test_silence_in_is_silence_out")),
+    ("Latency is zero at every setting, and so is the tail: nothing looks "
+     "ahead and nothing rings on.",
+     ("TierOne.test_latency_and_tail_are_zero",
+      "TierOne.test_click_agrees_at_48k",
+      "TierOne.test_reported_latency_short_goes_red")),
+    ("The class needs audiodsp's `audiomath`, and on a board without it "
+     "construction raises `ImportError`.",
+     ("TheClaims.test_construction_needs_audiomath",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = autopan.__doc__ + " " + AutoPan.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(doc.replace("nothing looks ahead",
+                                                   "nothing looks back")))
+        self.assertTrue(claim_problems(doc, CLAIMS + (
+            ("A mono source passes untouched, and silence in is silence "
+             "out.", ("TierOne.test_nothing_here",)),)))
 
 
 if __name__ == "__main__":
