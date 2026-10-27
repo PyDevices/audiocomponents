@@ -101,19 +101,17 @@ class PitchShifter(_component.Component):
     """Play your part again a fixed interval up or down, a little behind
     you, the way the first harmonizer boxes did.
 
-    **The controls.** Pitch is the interval in whole semitones, from an
-    octave down to an octave up.
-    Fine detunes it by up to 50 cents either way.
-    The shifter reads in steps of 1/256 of the speed, so Fine moves in steps
-    of about 7 cents near unity and 13.5 near the octave down, and the
-    interval is within 0.5 % of the one Pitch and Fine name.
-    Mix keeps your dry signal at unity up to its centre, 1, with the shifted
-    voice coming up to unity beside it; at 2 you hear the shifted voice
-    alone, and at 0 the output is your input.
-    Delay holds the shifted voice back by up to 112.5 ms.
-    Feedback, up to 0.95, sends the shifted voice round again, and every
+    **The controls.** Pitch is the interval in whole semitones. Fine
+    detunes it. The shifter reads in steps of 1/256 of the speed, so Fine
+    moves in steps of about 7 cents near unity and 13.5 near the octave
+    down, and the interval is within 0.5 % of the one Pitch and Fine name.
+    Mix keeps your dry signal at unity up to its centre, 1, with the
+    shifted voice coming up to unity beside it; at 2 you hear the shifted
+    voice alone, and at 0 the output is your input. Delay holds the shifted
+    voice back. Feedback sends the shifted voice round again, and every
     repeat is shifted once more: at a fifth up the repeats climb a fifth,
-    then a ninth, then a thirteenth.
+    then a ninth, then a thirteenth. The Effect controls page lists what
+    the knobs span.
 
     **The splice.** The shifter keeps a short memory of what you play, the
     window, and reads it at the new speed, splicing back to the other end
