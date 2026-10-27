@@ -223,8 +223,8 @@ class MultiTapDelay(_component.Component):
     lap, never once per head.
     Tilt leans the pattern's levels towards the near heads or the far ones.
     Up to Mix 1 the dry passes at unity, and at Mix 2 the echoes play alone.
-    On CircuitPython alone, a stereo dry's right lane reads one LSB hot on
-    source values within 32 LSB of the rails.
+    At unity the dry is exact to the sample, mono and stereo, right up to
+    the rails, on every interpreter.
     Mix 0 is a wire.
     Sync locks Time to Division of the host's beat, clamped to Time's span.
     With no host tempo, Time stays on the knob.
@@ -635,8 +635,8 @@ class MultiTapDelay(_component.Component):
         of 1.0 into 32768 / 32767 and puts the samples nearest the rails
         one LSB hot, while 32767 / 32767 is 1. Two channels cannot do that
         (the stock Mixer's pan law hands the left lane 32767 x level >> 15,
-        so 1 - 2^-15 is one LSB cold there), so they keep 1.0, and on
-        CircuitPython alone their right lane is the hot one."""
+        so 1 - 2^-15 is one LSB cold there), so they keep 1.0, which every
+        interpreter at AUDIODSP_PIN passes through exactly on both lanes."""
         level = min(1.0, 2.0 - mix)
         if level >= 1.0 and self._channel_count == 1:
             return 1.0 - 2.0 ** -15
