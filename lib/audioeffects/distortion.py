@@ -930,8 +930,8 @@ class Distortion(_component.Component):
             # The adapter drops the source frames it took before the bypass,
             # which the host has since read past, and the Splitter behind it
             # what it held of them.
-            _component.let_go_of_source(self._head, self._source)
-            _component.let_go_of_source(self._head_split, self._head)
+            self._let_go_of_source(self._head, self._source)
+            self._let_go_of_source(self._head_split, self._head)
         # The dry leg is not delayed and the wet leg is, so the class's own
         # onset is the DRY one at every Mix that lets any dry through: a
         # click at Mix 64 arrives at sample 0, not at sample 2. Reporting

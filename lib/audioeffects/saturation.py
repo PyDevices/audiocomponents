@@ -1298,7 +1298,7 @@ class Saturation(_component.Component):
             if self._rejoin(keep=(self._mix,)):
                 # The Splitter drops the source frames it took before the
                 # bypass, which the host has since read past.
-                _component.let_go_of_source(self._split, self._source)
+                self._let_go_of_source(self._split, self._source)
                 self._rearm()
             self._attach()
             self._output = self._mix

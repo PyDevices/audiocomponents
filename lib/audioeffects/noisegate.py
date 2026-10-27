@@ -1,63 +1,40 @@
-"""A noise gate after the Drawmer DS201, the box the trade calls the standard.
+"""`NoiseGate` - a noise gate after the Drawmer DS201.
 
-**What it sounds like.** Below the Threshold the signal is held down by the
-*Range* you set - all the way out at -80 dB, or only 15 dB down, which is
-what the DS201's own manual recommends: a gate that closes completely makes
-the noise floor's coming and going more obvious than the noise ever was. A
-crossing opens it over the *Attack*, holds it wide open for the *Hold*, and
-only then lets it fall over the *Release*. That Hold is what makes the
-gated-reverb snare: a long hold and a fast decay chop the tail off square.
-
-**The key never touches the sound.** The detector listens through its own
-band - *Key Low* and *Key High* - so a gate on a tom can be told to ignore
-the hi-hat above it and the kick below it, and *Key Listen* puts that band on
-the output so you can hear what you are tuning. Key Listen replaces the
-audio; it is a listening position, not a mix. Give the class ``key=`` and
-another stream drives the detector entirely, which is how one sound gates
-another. The key band's filters ring after the input stops, so while Key
-Listen is on `tail_samples` covers that ring; with ``key=`` the band
-follows the key and `tail_samples` is ``None``.
-
-**Portability tier: audiodsp.** Built on ``audiodynamics.Dynamics``, which is
-audiodsp's own module and not a CircuitPython port, so a stock CircuitPython
-board raises ``ImportError`` at construction and says so. The default build
-is **one node**: a per-sample peak detector, two key filters, a four-stage
-envelope and a VCA, all in C, with Python computing coefficients only at
-construction and on a macro move. There is no lean patch because there is
-nothing to make lean.
-
-**Latency is zero unless you ask for it.** ``lookahead_ms`` defaults to
-``0.0`` and the class then reports ``latency_samples = 0``. Set it and the
-detector reads ahead of the audio, so the gain is already up when the
-transient arrives instead of a fraction of a millisecond after it -
-**1.0 ms of look-ahead is 1.0 ms of latency**, 48 samples at 48 kHz, and the
-cap is 50 ms. The knob buys low-frequency fidelity, not CPU: RaneNote 155
-puts the smallest useful value at 16 samples (333 us at 48 kHz, enough for
-750 Hz and above) and the live-sound limit "somewhere around" 2 ms.
-
-**``duck=True`` inverts the whole sense**, for voice-overs: below threshold
-the signal passes untouched, above it the signal is pushed down by Range.
-It costs three more nodes - a ``Splitter``, a ``Multiply`` and a ``Mixer`` -
-and with them a 32 KB splitter ring and a **source-block ceiling of 8192
-frames**, so it is a construction option rather than a knob and a plain gate
-pays none of it. Its depth is honest to about -40 dB; below that the
-subtraction runs into int16's own floor (dossier G7).
-
-**One thing the dossier asked for and this class does not do.** Its detector
-is a peak detector, but the key band sits in front of it and never comes out
-- the DS201's L.F. control bottoms at 25 Hz, it does not switch off - and a
-one-pole high-pass overshoots a square wave's edges. So a square and a sine
-of *equal peak* open the gate about 0.63 dB apart where the trait asks for
-0.5, while the bare node with no key filters opens both at exactly the same
-threshold. In practice: percussive, edgy material triggers this gate very
-slightly earlier than a smooth tone of the same peak (measured, trait G6).
-
-**And one setting that does less than the knob says.** In `duck=True` the
-depth is honest to about -40 dB; past that the graph is subtracting two
-nearly equal 16-bit streams and runs into their own quantisation - Range
--60 measures -59.5 dB and -80 measures -77.2. Plain gating has no such
-limit: its depth is the node's own float.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes.
+#
+# Range follows the DS201's own manual: a gate that closes completely makes
+# the noise floor's coming and going more obvious than the noise ever was,
+# so a 15 dB Range is often the better setting than -80.
+#
+# Portability tier: audiodsp. Built on `audiodynamics.Dynamics`, which is
+# audiodsp's own module and not a CircuitPython port. The default build is
+# one node: a per-sample peak detector, two key filters, a four-stage
+# envelope and a VCA, all in C, with Python computing coefficients only at
+# construction and on a macro move. There is no lean patch because there is
+# nothing to make lean.
+#
+# Look-ahead buys low-frequency fidelity, not CPU: RaneNote 155 puts the
+# smallest useful value at 16 samples (333 us at 48 kHz, enough for 750 Hz
+# and above) and the live-sound limit "somewhere around" 2 ms.
+#
+# `duck=True` costs three more nodes - a `Splitter`, a `Multiply` and a
+# `Mixer` - and with them a 32 KB splitter ring and a source-block ceiling
+# of 8192 frames, so it is a construction option rather than a knob and a
+# plain gate pays none of it. Past about -40 dB the graph subtracts two
+# nearly equal 16-bit streams and runs into their own quantisation (dossier
+# G7); plain gating has no such limit, its depth is the node's own float.
+#
+# One thing the dossier asked for and this class does not do: the key band
+# sits in front of the peak detector and never comes out - the DS201's L.F.
+# control bottoms at 25 Hz, it does not switch off - and a one-pole
+# high-pass overshoots a square wave's edges. So a square and a sine of
+# equal peak open the gate about 0.63 dB apart where trait G6 asks for 0.5,
+# while the bare node with no key filters opens both at exactly the same
+# threshold.
 
 import math
 
@@ -119,8 +96,52 @@ def _key_pole_ring(hz, sample_rate):
 
 
 class NoiseGate(_component.Component):
-    """Downward gate with Range, Hold and a two-ended key band (Drawmer
-    DS201). See the module docstring."""
+    """A noise gate after the Drawmer DS201: below the Threshold your signal
+    is held down, and above it the gate opens and lets it through.
+
+    **Controls.** Threshold runs from -80 to 0 dBFS. Range is how far the
+    closed gate holds the signal down, from 0 dB, where the output is the
+    input, to -80 dB; it is a fixed depth, however far under the Threshold
+    the signal falls. A crossing opens the gate over the Attack, from
+    0.01 ms to 1 s, holds it open for the Hold, from 2 ms to 2 s, and only
+    then lets it fall over the Release, from 2 ms to 4 s. A long Hold with a
+    short Release chops a reverb's tail off square: that is the gated-reverb
+    snare. Once a crossing opens the gate, the gate runs through its Attack,
+    Hold and Release even if the signal drops away at once.
+
+    **The key never touches the sound.** The gate listens through its own
+    band, with Key Low from 25 Hz to 4 kHz and Key High from 250 Hz up to
+    just under half the sample rate, so a gate on a tom can ignore the
+    hi-hat above it and the kick below it. Key Listen puts that band on the
+    output in place of the audio, so you can hear what you are tuning.
+
+    **Options.** Give the class `key=` another stream and that stream opens
+    and closes the gate, which is how one sound gates another.
+    `lookahead_ms` lets the gate read ahead of the audio, up to 50 ms, so it
+    is already open when a transient arrives; each millisecond of look-ahead
+    is a millisecond of latency. `duck=True` turns the gate inside out, for
+    voice-overs: below the Threshold your signal passes untouched, and above
+    it Range pushes it down. A duck's depth is honest to about -40 dB, and
+    past that it falls short: Range -80 measures about -77 dB.
+
+    **Levels.** With the gate open, the output is your signal at its own
+    level. Silence in is silence out, and a mono source gets the same gate
+    as stereo. The first opening after construction or `reset()` fades in
+    from silence over the Attack, even at Range 0 dB.
+
+    **Timing.** Latency is zero unless you set `lookahead_ms`. The tail is
+    zero, except while Key Listen is on, when it covers the key band's ring;
+    with `key=` the key decides, and the tail is `None`.
+
+    **The detector reads peaks.** A sine opens the gate at a Threshold
+    about 3 dB higher than a square of the same loudness, because its peaks
+    are higher. A square of the same peak as a sine opens it about 0.63 dB
+    higher than the sine, because the key band rings on the square's edges.
+
+    **On a board.** The class needs audiodsp's `audiodynamics`,
+    `audioroute` and `audiomath`, and on a board without any of them
+    construction raises `ImportError`.
+    """
 
     NAME = 'NoiseGate'
     DISPLAY_NAME = 'Noise Gate'

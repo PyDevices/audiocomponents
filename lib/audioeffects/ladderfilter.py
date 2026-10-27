@@ -1,66 +1,44 @@
 """`LadderFilter` - the Moog transistor ladder, rebuilt on `audioladder`.
 
-Four one-pole stages round one feedback loop, with a saturator *inside* the
-loop. Turn `Resonance` up and the whole passband sinks while the cutoff
-sharpens - that droop is the circuit's signature, not a bug, and it reaches
-about 14 dB at the top. Push `Resonance` to the end stop and the filter sings
-a sine of its own at the cutoff, out of silence, for as long as audio keeps
-arriving; what stops that tone growing without bound is the saturator, which
-is also where the growl comes from. `Drive` is the only warmth control the
-circuit has: it is how hard that saturator is hit, so the character follows
-the input level the way it does in the hardware.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audioladder",)`). The linear
-half of this filter *is* reachable on stock CircuitPython biquads - two of
-them track the analytic ladder to 0.05 dB at every resonance short of
-oscillation - but a biquad cascade is linear, so from silence it stays
-silent however far the resonance is pushed, and it makes no harmonics for
-the growl to live in. That gap is not a matter of degree, which is why
-`audioladder.Ladder` exists and why this class needs audiodsp's build.
-
-**Latency: 0 samples - 0.000 ms - at every setting, and there is no
-latency-adding option on this class.** `Oversample` runs the loop at twice
-the rate so the saturator's harmonics fold back less; its resampler is a
-linear interpolation up and a two-tap average down, half a sample of group
-delay for the pair, which the node reports as none
-(`audiodsp/src/shared/audiodsp_ladder.c:302-311`). It defaults **on** because
-half the cost is the wrong saving on the one node whose job is to distort;
-patch 6, `Ladder - lean`, is patch 0 with it off for the S3.
-
-**Cost:** budgeted at 14 % of one stereo block on a 240 MHz ESP32-S3 and 8 %
-on a 400 MHz ESP32-P4 with `Oversample` on, 7 % on the S3 with the lean
-patch (dossier section 3, Tier 3). Measured 2026-09-07: 16.3 % of a block
-on the ESP32-P4 and 26.9 % on the ESP32-S3, over budget on both.
-
-**One invariant this class does not hold, on purpose.** A self-oscillating
-filter does not return to silence. At `Resonance` at or above k = 4 - macro
-position 0.952 and up - the class holds its self-oscillation trait *instead
-of* the silence-in-silence-out invariant. Everywhere below that the
-invariant holds exactly, and `reset()` stops the tone at any setting.
-Measured, at 48 kHz: a 0.29 ms tail at patch 0 and a **284.6 ms** tail at
-patch 4 (k 3.9), both reaching **exact zero**; at patch 2 (k 4.2) it never
-does.
-
-**Two traits this class does not hold as written.** T5's "a 20 dB input
-rise moves the resonant peak >= 3 dB" is **disconfirmed** on five of the
-six 20 dB windows the surface offers: only -20 -> 0 dBFS clears the bar
-(-3.857 dB, and the peak falls, it does not rise). T1's stopband-slope
-clause (-23...-27 dB/octave over 4->8 kHz) is **disconfirmed at 22.05 kHz**
-(-29.73 dB/oct at -1 dBFS) because the bilinear map steepens toward
-Nyquist; the -12.0 dB-at-cutoff and 435 Hz -3 dB clauses hold. Both stay
-in the evidence pack as disconfirmed, with cause.
-
-**Measured**: -12.055 dB at the
-cutoff and -24.10 dB/octave at 48 kHz; the passband 0.00 -> -13.90 dB
-across k = 0...4; self-oscillation at 999.82 Hz holding to +0.01 dB over
-two seconds, 0.068 % THD, every even harmonic below -131 dB re the first.
-
-**Input ceiling.** The resonance peak and the drive both gain, and the
-top of the Resonance travel sings at any level, so no one input level is
-clean on every setting. A plucked phrase stays off the rails on every patch
-to -10 dBFS; at -3 dBFS Growl With Drive rails. Turn Drive or Resonance
-down, or the input.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes.
+#
+# Portability tier: audiodsp (`REQUIRES = ("audioladder",)`). The linear
+# half of this filter is reachable on stock CircuitPython biquads - two of
+# them track the analytic ladder to 0.05 dB at every resonance short of
+# oscillation - but a biquad cascade is linear, so it can never sustain a
+# tone of its own however far the resonance is pushed, and it makes no
+# harmonics for the growl to live in. That gap is not a matter of degree,
+# which is why `audioladder.Ladder` exists.
+#
+# Oversample's resampler is a linear interpolation up and a two-tap average
+# down, half a sample of group delay for the pair, which the node reports as
+# none (`audiodsp/src/shared/audiodsp_ladder.c:302-311`). What it buys is
+# small: a 5 kHz sine at 24 dB of Drive measured its non-harmonic energy
+# 0.4 dB lower with it on (2026-10-27). It defaults on because half the cost
+# is the wrong saving on the one node whose job is to distort.
+#
+# Cost: budgeted at 14 % of one stereo block on a 240 MHz ESP32-S3 and 8 %
+# on a 400 MHz ESP32-P4 with Oversample on, 7 % on the S3 with the lean
+# patch (dossier section 3, Tier 3). Measured 2026-09-07: 16.3 % of a block
+# on the ESP32-P4 and 26.9 % on the ESP32-S3, over budget on both.
+#
+# The node starts from a zero state, so exact digital silence into a fresh
+# instance stays silent even at k = 4.2; the sustained tone needs something,
+# however small, to have arrived first.
+#
+# Two dossier traits are disconfirmed, with cause, in the evidence pack. T5's
+# "a 20 dB input rise moves the resonant peak >= 3 dB" holds on one of the
+# six 20 dB windows the surface offers (-20 -> 0 dBFS, -3.857 dB, and the
+# peak falls). T1's stopband slope (-23...-27 dB/octave over 4->8 kHz) is
+# -29.73 dB/oct at 22.05 kHz, because the bilinear map steepens toward
+# Nyquist. Measured at 48 kHz: -12.055 dB at the cutoff, the passband
+# 0.00 -> -13.90 dB across k = 0...4, self-oscillation at 999.82 Hz holding
+# to +0.01 dB over two seconds, 0.068 % THD, every even harmonic below
+# -131 dB re the first.
 
 VENDOR = "PyDevices"
 
@@ -73,9 +51,40 @@ except ImportError:      # a stock CircuitPython board, or an older audiodsp
 
 
 class LadderFilter(_component.Component):
-    """A Moog transistor ladder: four poles, a resonance that droops the
-    passband as it peaks, self-oscillation at the top of its travel, and a
-    drive that is the only warmth control the circuit has."""
+    """A Moog transistor ladder: four filter stages round one feedback loop,
+    with a saturator inside the loop.
+
+    **Controls.** Cutoff runs from 20 Hz to 18 kHz, held just under half the
+    sample rate. Resonance is the loop's feedback, from 0 to 4.2. As it
+    rises the cutoff sharpens and the whole passband sinks, about 14 dB by a
+    Resonance of 4: that droop is the circuit's sound, not a fault. From 4
+    up, the filter sings a sine of its own at the cutoff, and once it has
+    heard anything it keeps singing after your signal stops. Drive, from 0
+    to 24 dB, is how hard the saturator is hit, so the growl follows your
+    input level the way it does in the hardware. Passband Comp puts the sunk
+    passband back: at 1 the passband holds its level at any Resonance. Poles
+    picks the output from one to four poles. Oversample runs the loop at
+    twice the rate; it is on by default, and the Ladder - lean patch is
+    Wide Open with it off, for slower boards. Mix at 0 is your dry signal.
+
+    **Response.** At 48 kHz the four-pole output is 12 dB down at the cutoff
+    and about 50 dB down two octaves above it, and each pole fewer takes
+    about 12 dB off that.
+
+    **Timing.** Latency is zero at every setting, Oversample included. Below
+    a Resonance of 4, silence in is silence out once the filter rings down:
+    Wide Open's tail is under a millisecond and Growl With Drive's about
+    285 ms. From 4 up the tone does not stop by itself, so the class reports
+    no tail bound, and `reset()` stops it at any setting.
+
+    **Levels.** The resonance peak and the drive both add gain, so no input
+    level is clean on every setting. A plucked phrase stays off the rails on
+    every patch to -10 dBFS; at -3 dBFS Growl With Drive rails. Turn Drive,
+    Resonance or your input down.
+
+    **On a board.** The class needs audiodsp's `audioladder`, and on a board
+    without it construction raises `ImportError`.
+    """
 
     NAME = 'LadderFilter'
     DISPLAY_NAME = 'Ladder Filter'
@@ -89,7 +98,7 @@ class LadderFilter(_component.Component):
     #: is never read (dossier App. I, D10).
     CAPABILITIES = ()
 
-    #: Zero at every setting; see the module docstring. The 2x path's half a
+    #: Zero at every setting; see the design notes. The 2x path's half a
     #: sample of group delay is what this rounds.
     LATENCY_SAMPLES = 0
 

@@ -547,7 +547,17 @@ class Exciter(_component.Component):
             raise ValueError("oversample must be 1, 2, 4 or 8")
         self._oversample = factor
 
-        splitter = audioroute.Splitter(self._source, taps=2)
+        # A width-1 `MidSide` ahead of the Splitter re-blocks the source to
+        # 256 frames, byte for byte, so the taps hand whole blocks and the
+        # dry voice holds no part of a source buffer across a reset. On
+        # 100-frame source buffers a reset used to drop what it held: the
+        # dry leg then ran 28 frames ahead of the source (audiocomponents
+        # #157).
+        head = audioroute.MidSide(width=1.0, sample_rate=rate,
+                                  channel_count=channels)
+        head.play(self._source)
+        self._head = head
+        splitter = audioroute.Splitter(head, taps=2)
         dry = splitter.tap(0)
         wet_in = splitter.tap(1)
 
@@ -601,6 +611,7 @@ class Exciter(_component.Component):
         self._own(dry, reset=False)
         self._own(wet_in, reset=False)
         self._own(splitter, reset=False)
+        self._own(head, reset=False)
         self._own(self._silence, reset=False)
 
         self._output = blend
@@ -703,10 +714,11 @@ class Exciter(_component.Component):
             self._output = self._blend
             return
         if self._rejoin():
-            # The Splitter drops the source frames it took before the
-            # bypass, which the host has since read past.
-            _component.let_go_of_source(self._splitter, self._source,
-                                        ((self._hp, self._wet_in),))
+            # The adapter and the Splitter drop the source frames they took
+            # before the bypass, which the host has since read past.
+            self._let_go_of_source(self._head, self._source)
+            self._let_go_of_source(self._splitter, self._head,
+                                   ((self._hp, self._wet_in),))
             # Back off the bypass: the nodes are cleared, and the voices
             # still hold the blocks they had queued when the bypass began.
             # Re-armed as `_build` arms them - levels, gates, voices - and
