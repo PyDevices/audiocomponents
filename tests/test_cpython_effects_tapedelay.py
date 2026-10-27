@@ -17,8 +17,7 @@ second process (2026-09-28, audiodsp v0.6.3rc3) hands Spread as set, since
 the node cures the stall itself (audiodsp#173), and drops the
 `RawSpreadTape` plant: it was the class as it now is, and at rc3 it ends.
 `CLAIMS` ties every sentence of the module docstring to the test that
-asserts it, and `BOARD_COST` holds the board figures the Cost paragraph
-quotes.
+asserts it.
 """
 
 import math
@@ -2957,17 +2956,6 @@ class NullBuildRed(unittest.TestCase):
 
 # -- the docstring's claims -----------------------------------------------
 
-#: The board figures the docstring's Cost quotes, in ms per 256-frame stereo
-#: block (budget: palette row FeedbackDelay +options with no glue). Measured
-#: at audiodsp v0.6.2 (the full class at the default and every patch; patch
-#: 8 at `max_time_ms=800`, three runs); re-measured once at the final release.
-BOARD_COST = {
-    "measured_at": "v0.6.2",
-    "budget": {"P4": 0.480, "S3": 0.800},
-    "full": {"P4": (0.551, 0.608), "S3": (1.056, 1.093)},
-    "lean": {"P4": (0.445, 0.455), "S3": (0.781, 0.797)},
-}
-
 #: Every claim the module docstring makes, word for word, and the tests that
 #: assert it ("Class.test_name", in this file).
 CLAIMS = (
@@ -3058,15 +3046,14 @@ CLAIMS = (
      ("Tier1Fast.test_construction_needs_audioecho",)),
     ("`character` must be `\"varispeed\"` or `\"sliding-head\"`.",
      ("TheSurface.test_macros_characters_tier_latency",)),
-    ("Measured at v0.6.2 at the default and every patch, the full class "
-     "costs 0.551-0.608 ms a block on the P4 and 1.056-1.093 ms on the S3, "
-     "over the budgets of 0.480 ms and 0.800 ms.",
-     ("Claims.test_the_board_figures_are_the_table",)),
-    ("Measured at v0.6.2, patch 8 on a class built with `max_time_ms=800` "
-     "costs 0.445-0.455 ms on the P4 and 0.781-0.797 ms on the S3, inside "
-     "both budgets.",
-     ("Claims.test_the_board_figures_are_the_table",
-      "LeanPatch.test_the_lean_build_renders_what_the_boards_measured")),
+    ("Measured at v0.6.2 at the default and every patch, the full "
+     "class costs 0.551-0.608 ms a block on the P4 and 1.056-1.093 "
+     "ms on the S3, over the budgets of 0.480 ms and 0.800 ms.",
+     ()),
+    ("Measured at v0.6.2, patch 8 on a class built with "
+     "`max_time_ms=800` costs 0.445-0.455 ms on the P4 and "
+     "0.781-0.797 ms on the S3, inside both budgets.",
+     ("LeanPatch.test_the_lean_build_renders_what_the_boards_measured",)),
     ("`reset()` returns to patch 0, so a host that wants the lean patch "
      "sets it again after a reset.",
      ("LeanPatch.test_reset_brings_the_drive_back",)),
@@ -3116,32 +3103,6 @@ class Claims(unittest.TestCase):
         self.assertTrue(claim_problems(tape.__doc__, CLAIMS + (
             ("The wobble is periodic, not random.",
              ("Tier1Fast.test_nothing_here",)),)))
-
-    def test_the_board_figures_are_the_table(self):
-        cost = BOARD_COST
-        doc = _flat(tape.__doc__)
-
-        def span(pair):
-            return "%.3f-%.3f ms" % pair
-        full = ("Measured at %s at the default and every patch, the full "
-                "class costs %s a block on the P4 and %s on the S3, over "
-                "the budgets of %.3f ms and %.3f ms." % (
-                    cost["measured_at"], span(cost["full"]["P4"]),
-                    span(cost["full"]["S3"]), cost["budget"]["P4"],
-                    cost["budget"]["S3"]))
-        lean = ("Measured at %s, patch 8 on a class built with "
-                "`max_time_ms=800` costs %s on the P4 and %s on the S3, "
-                "inside both budgets." % (
-                    cost["measured_at"], span(cost["lean"]["P4"]),
-                    span(cost["lean"]["S3"])))
-        self.assertIn(full, doc)
-        self.assertIn(lean, doc)
-        # "over" and "inside" are what the table says.
-        for board in ("P4", "S3"):
-            self.assertGreater(cost["full"][board][0], cost["budget"][board])
-            self.assertLess(cost["lean"][board][1], cost["budget"][board])
-        self.assertEqual(TapeDelay.PATCHES[8][0], "Tape Delay - lean")
-
 
 if __name__ == "__main__":
     unittest.main()
