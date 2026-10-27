@@ -1342,19 +1342,18 @@ def _rect_table(frames, channels, seed):
 class Bitcrusher(_component.Component):
     """12-bit linear hold: Bits and Rate, informed by the SP-1200.
 
-    **Bits.** Bits spans 2 to 12 and defaults to 12, the SP-1200's own word
-    length. Every depth rounds to the nearest step rather than down, and
-    none is a wire. Each step is rounded over a short ramp, so at 12 bits
-    the error is half a hard converter's, and it follows that law within
-    10 %.
+    **Bits.** Bits is the word length, and 12 is the SP-1200's own. Every
+    depth rounds to the nearest step rather than down, and none is a wire.
+    Each step is rounded over a short ramp, so at 12 bits the error is half
+    a hard converter's, and it follows that law within 10 %.
 
-    **Rate.** Rate spans 1 kHz to 48 kHz and defaults to 26.04 kHz. The hold
-    lands on the whole hertz you ask for and never drifts. At the default,
-    at least 99 % of its runs are one or two samples long. Its images stand
-    within 3 dB of their own level, which is the sound of the knob; above
-    the hold's own Nyquist they read between 3 dB and 8 dB down. A
-    single-sample event can fall between two held samples and vanish:
-    about 46 % of them do at the default at 48 kHz.
+    **Rate.** Rate is how fast the hold samples. The hold lands on the
+    whole hertz you ask for and never drifts. At the default, at least 99 %
+    of its runs are one or two samples long. Its images stand within 3 dB
+    of their own level, which is the sound of the knob; above the hold's
+    own Nyquist they read between 3 dB and 8 dB down. A single-sample event
+    can fall between two held samples and vanish: about 46 % of them do at
+    the default at 48 kHz.
 
     **The running rate.** Asking for the running rate is a pass-through, and
     the latency is then 0. Above it Rate clamps, and `hold_rate_hz` says what
@@ -1368,19 +1367,18 @@ class Bitcrusher(_component.Component):
     down, without muting what is under it, and the tail becomes 640
     samples.
 
-    **Dither.** Dither spans 0 to 2 and is off by default. It is gated on the
-    input, so silence in is silence out at every patch, and at its top it
-    fades inside the declared tail. At a deep crush with Dither at its top
-    the dither holds its own gate open: it plays on silence, and the class
+    **Dither.** Dither is off by default. It is gated on the input, so
+    silence in is silence out at every patch, and at its top it fades
+    inside the declared tail. At a deep crush with Dither at its top the
+    dither holds its own gate open: it plays on silence, and the class
     declares no tail.
 
-    **Mix and Output.** Mix spans 0 to 1, and Mix 0 is a wire at the source's
-    own level. Output spans -24 dB to 0 dB and trims the whole blend: -6 dB
-    is 6 dB down within 0.1 dB, at Mix 1 and at a blend.
+    **Mix and Output.** Mix 0 is a wire at the source's own level. Output
+    trims the whole blend: -6 dB is 6 dB down within 0.1 dB, at Mix 1 and
+    at a blend. The Effect controls page lists what the knobs span and the
+    patches.
 
-    **Patches.** There are seven: Twelve Bit, Twenty-Six; Eight Bit Voice;
-    Six Bit Drum; Telephone Grid; Grit Under The Note; Dithered Twelve; and
-    Broken Converter.
+
 
     It needs `audioshaper`, `audiobiquad`, `audioroute` and `audiodynamics`,
     so a stock CircuitPython board can't run it.

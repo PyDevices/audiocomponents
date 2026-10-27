@@ -1240,25 +1240,6 @@ class TheBandLimitAndTheDitherComeBackClean(unittest.TestCase):
 class TheClaims(unittest.TestCase):
     """The docstring's claims that no older test holds on its own."""
 
-    def test_the_spans(self):
-        R = Bitcrusher._MACRO_RANGES
-        self.assertEqual(Bitcrusher.MACRO_LABELS,
-                         ("Bits", "Rate", "Dither", "Band Limit", "Mix",
-                          "Output"))
-        self.assertEqual(R[0], (2.0, 12.0))
-        self.assertEqual(R[1], (1000.0, 48000.0, "log"))
-        self.assertEqual(R[2], (0.0, 2.0))
-        self.assertEqual(R[3], (0.0, 1.0))
-        self.assertEqual(Bitcrusher.MACRO_MODES[3], "TOGGLE")
-        self.assertEqual(R[4], (0.0, 1.0))
-        self.assertEqual(R[5], (-24.0, 0.0))
-        self.assertEqual(
-            [Bitcrusher.PATCHES[i][0] for i in sorted(Bitcrusher.PATCHES)],
-            ["Twelve Bit, Twenty-Six", "Eight Bit Voice", "Six Bit Drum",
-             "Telephone Grid", "Grit Under The Note", "Dithered Twelve",
-             "Broken Converter"])
-        self.assertAlmostEqual(law_ratio(12), 0.5)
-
     def test_construction_needs_its_four_modules(self):
         for name in Bitcrusher.REQUIRES:
             with self.subTest(module=name):
@@ -1272,26 +1253,22 @@ class TheClaims(unittest.TestCase):
 
 
 CLAIMS = (
-    ("`Bitcrusher` — a linear hold, the SP-1200's two numbers as knobs.",
-     ("TheClaims.test_the_spans",)),
+    ("`Bitcrusher` — a linear hold, the SP-1200's two numbers as "
+     "knobs.",
+     ("TheSurface.test_six_macros_and_seven_patches",)),
     ("12-bit linear hold: Bits and Rate, informed by the SP-1200.",
-     ("TheClaims.test_the_spans",
-      "TheSurface.test_six_macros_and_seven_patches")),
-    ("Bits spans 2 to 12 and defaults to 12, the SP-1200's own word length.",
-     ("TheClaims.test_the_spans",
-      "TheSurface.test_six_macros_and_seven_patches")),
+     ("TheSurface.test_six_macros_and_seven_patches",)),
+    ("Bits is the word length, and 12 is the SP-1200's own.",
+     ("TheSurface.test_six_macros_and_seven_patches",)),
     ("Every depth rounds to the nearest step rather than down, and none is "
      "a wire.",
      ("TheQuantizerRounds.test_every_depth_in_the_span_rounds",
       "TheQuantizerRounds.test_no_depth_in_the_span_is_a_wire")),
-    ("Each step is rounded over a short ramp, so at 12 bits the error is "
-     "half a hard converter's, and it follows that law within 10 %.",
-     ("TheClaims.test_the_spans",
-      "ErrorPower.test_the_default_follows_the_law",
+    ("Each step is rounded over a short ramp, so at 12 bits the "
+     "error is half a hard converter's, and it follows that law "
+     "within 10 %.",
+     ("ErrorPower.test_the_default_follows_the_law",
       "ErrorPower.test_the_span_follows_the_law")),
-    ("Rate spans 1 kHz to 48 kHz and defaults to 26.04 kHz.",
-     ("TheClaims.test_the_spans",
-      "TheSurface.test_six_macros_and_seven_patches")),
     ("The hold lands on the whole hertz you ask for and never drifts.",
      ("TheRateKnob.test_the_hold_lands_on_the_whole_hertz",)),
     ("At the default, at least 99 % of its runs are one or two samples "
@@ -1319,17 +1296,15 @@ CLAIMS = (
      ("TheSurface.test_six_macros_and_seven_patches",
       "TheClickAtEveryRate.test_the_click_matches_at_every_rate")),
     ("Band Limit is a switch, off by default.",
-     ("TheClaims.test_the_spans",
-      "TheAliasFilter.test_default_band_limit_is_not_in_the_path")),
+     ("TheAliasFilter.test_default_band_limit_is_not_in_the_path",)),
     ("On, it puts a low-pass in front of the hold that takes the images more "
      "than 20 dB down, without muting what is under it, and the tail "
      "becomes 640 samples.",
      ("TheAliasFilter.test_band_limit_removes_the_image",
       "TheAliasFilter.test_band_limit_is_a_filter_and_not_a_mute",
       "TheSurface.test_band_limit_reports_a_tail")),
-    ("Dither spans 0 to 2 and is off by default.",
-     ("TheClaims.test_the_spans",
-      "TheSurface.test_six_macros_and_seven_patches")),
+    ("Dither is off by default.",
+     ("TheSurface.test_six_macros_and_seven_patches",)),
     ("It is gated on the input, so silence in is silence out at every patch, "
      "and at its top it fades inside the declared tail.",
      ("TheTierOneRowsAtEveryShippedPatch.test_silence_in_is_silence_out_at_"
@@ -1338,19 +1313,13 @@ CLAIMS = (
     ("At a deep crush with Dither at its top the dither holds its own gate "
      "open: it plays on silence, and the class declares no tail.",
      ("TheDitherTail.test_past_the_gate_there_is_no_bound_and_no_silence",)),
-    ("Mix spans 0 to 1, and Mix 0 is a wire at the source's own level.",
-     ("TheClaims.test_the_spans",
-      "TheInvariants.test_mix_zero_is_a_wire",
+    ("Mix 0 is a wire at the source's own level.",
+     ("TheInvariants.test_mix_zero_is_a_wire",
       "TheInvariants.test_mix_zero_is_level_honest")),
-    ("Output spans -24 dB to 0 dB and trims the whole blend: -6 dB is 6 dB "
-     "down within 0.1 dB, at Mix 1 and at a blend.",
-     ("TheClaims.test_the_spans",
-      "TheOutputTrim.test_output_moves_the_level_at_mix_one",
+    ("Output trims the whole blend: -6 dB is 6 dB down within 0.1 "
+     "dB, at Mix 1 and at a blend.",
+     ("TheOutputTrim.test_output_moves_the_level_at_mix_one",
       "TheOutputTrim.test_output_moves_the_level_at_a_blend")),
-    ("There are seven: Twelve Bit, Twenty-Six; Eight Bit Voice; Six Bit "
-     "Drum; Telephone Grid; Grit Under The Note; Dithered Twelve; and Broken "
-     "Converter.",
-     ("TheClaims.test_the_spans",)),
     ("It needs `audioshaper`, `audiobiquad`, `audioroute` and "
      "`audiodynamics`, so a stock CircuitPython board can't run it.",
      ("TheClaims.test_construction_needs_its_four_modules",)),
