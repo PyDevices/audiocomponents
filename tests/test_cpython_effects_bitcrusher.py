@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import audiocore                                                # noqa: E402
+import kit_ceiling                                          # noqa: E402
 import kit_faults                                               # noqa: E402
 import kit_probes as probes                                     # noqa: E402
 from audioeffects import bitcrusher as rebuilt                  # noqa: E402
@@ -1252,7 +1253,19 @@ class TheClaims(unittest.TestCase):
                     sys.modules[name] = saved
 
 
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # sine is where it rails first: p1 at 0 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(rebuilt.Bitcrusher, "sine"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            rebuilt.Bitcrusher, "sine", db=0, keys=("p1",)))
+
+
 CLAIMS = (
+    ("Keep the input under -3 dBFS and the defaults and patches stay "
+     "off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
     ("`Bitcrusher` — a linear hold, the SP-1200's two numbers as "
      "knobs.",
      ("TheSurface.test_six_macros_and_seven_patches",)),

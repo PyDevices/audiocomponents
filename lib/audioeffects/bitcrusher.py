@@ -1375,8 +1375,9 @@ class Bitcrusher(_component.Component):
 
     **Mix and Output.** Mix 0 is a wire at the source's own level. Output
     trims the whole blend: -6 dB is 6 dB down within 0.1 dB, at Mix 1 and
-    at a blend. The Effect controls page lists what the knobs span and the
-    patches.
+    at a blend. Keep the input under -3 dBFS and the defaults and patches
+    stay off the rails. The Effect controls page lists what the knobs span
+    and the patches.
 
 
 
