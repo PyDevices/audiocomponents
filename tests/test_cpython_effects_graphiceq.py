@@ -13,6 +13,7 @@ centres, all three of which the dossier's section 7 names as defects.
 
 import math
 import os
+import re
 import sys
 import unittest
 from array import array
@@ -1023,6 +1024,167 @@ class TheLevelMacros(unittest.TestCase):
         wet = run(data, 24000, macros=((5, 127),), channels=1)
         self.assertEqual(wet.channels, 1)
         self.assertGreater(rms_db(wet) - rms_db(dry), 10.0)
+
+
+class TheClaims(unittest.TestCase):
+    """The docstring's claims that no older test holds on its own."""
+
+    def test_the_spans(self):
+        cls = graphiceq.GraphicEQ
+        self.assertEqual(graphiceq.DEFAULT_CENTRES,
+                         (31.25, 62.5, 125.0, 250.0, 500.0, 1000.0, 2000.0,
+                          4000.0, 8000.0, 16000.0))
+        self.assertEqual(cls._MACRO_RANGES,
+                         ((-12.0, 12.0),) * 12 + ((0.7, 2.5), (0.0, 1.0)))
+        self.assertEqual(cls.MACRO_LABELS[10:],
+                         ("Gain", "Volume", "Band Q", "Constant Q"))
+        self.assertEqual([cls.PATCHES[i][0] for i in sorted(cls.PATCHES)],
+                         ["Flat", "Scooped Mids", "Pushed Mids",
+                          "Trimmed Bottom", "Rolled Top", "Full Boost"])
+        trimmed = [cls.PATCHES[i][0] for i in sorted(cls.PATCHES)
+                   if cls.PATCHES[i][1][11] < DETENT]
+        self.assertEqual(trimmed, ["Scooped Mids", "Pushed Mids",
+                                   "Full Boost"])
+        effect, _ = build(noise(1024))
+        try:
+            self.assertEqual(effect._sections[9].mode,
+                             audiobiquad.HIGH_SHELF)
+            self.assertTrue(all(effect._sections[i].mode
+                                == audiobiquad.PEAKING_EQ
+                                for i in range(BANDS - 1)))
+        finally:
+            effect.deinit()
+
+    def test_construction_needs_audiobiquad(self):
+        saved = sys.modules.get("audiobiquad")
+        sys.modules["audiobiquad"] = None
+        try:
+            with self.assertRaises(ImportError):
+                build(noise(256))
+        finally:
+            sys.modules["audiobiquad"] = saved
+
+    def test_three_bands_at_six_add_up_past_seven(self):
+        data = tone(1000.0, 24000, peak=2000)
+        dry = render(ArraySource(data), 24000)
+        one = run(data, 24000, macros=((5, 95),))
+        three = run(data, 24000, macros=((4, 95), (5, 95), (6, 95)))
+        self.assertAlmostEqual(rms_db(one) - rms_db(dry), 6.0, delta=0.3)
+        self.assertGreater(rms_db(three) - rms_db(dry), 7.0)
+
+
+CLAIMS = (
+    ("`GraphicEQ` - ten octave bands and two level sliders, after the MXR "
+     "M-108 Ten Band.",
+     ("TheClaims.test_the_spans",)),
+    ("A ten-band octave graphic EQ after the MXR M-108: nine bells and a "
+     "top shelf, between a Gain and a Volume slider.",
+     ("TheClaims.test_the_spans",
+      "TheSurface.test_fourteen_macros_and_six_patches")),
+    ("The bands sit an octave apart from 31.25 Hz to 8 kHz, and the top one "
+     "is a shelf at 16 kHz; each spans -12 dB to +12 dB.",
+     ("TheClaims.test_the_spans",)),
+    ("At its centre detent a band is out of the circuit, so a flat bank is "
+     "the source byte for byte.",
+     ("TheDetentIsAWire.test_patch_zero_is_byte_identical_to_the_source",
+      "TheDetentIsAWire.test_a_band_at_the_detent_is_the_chain_built_"
+      "without_it")),
+    ("A band brought back from the detent starts from nothing.",
+     ("TheDetentIsAWire.test_a_band_returning_from_the_detent_starts_from_"
+      "nothing",)),
+    ("`centres=` retunes the bank to ten ascending frequencies, and the "
+     "shelf stays the top band.",
+     ("TheSurface.test_centres_must_be_ten_and_ascending",
+      "TheSurface.test_the_shelf_is_always_the_top_of_a_retuned_bank")),
+    ("As on the pedal, a band narrows as its slider travels.",
+     ("TheQLaw.test_q_narrows_as_the_slider_travels",
+      "TheQLaw.test_clean_class_stays_green_on_the_same_measurement")),
+    ("Band Q, from 0.7 to 2.5, is its width at full travel, and it is wider "
+     "than that a few dB in.",
+     ("TheClaims.test_the_spans",
+      "TheQLaw.test_q_narrows_as_the_slider_travels",
+      "TheQLaw.test_the_band_q_macro_moves_every_bell_at_once")),
+    ("Constant Q holds every band at Band Q at every setting.",
+     ("TheQLaw.test_constant_q_pins_every_band_to_the_anchor",)),
+    ("Gain sits before the bank and Volume after it.",
+     ("TheLevelMacros.test_gain_and_volume_are_flat_broadband_trims",)),
+    ("Each spans -12 dB to +12 dB and moves every frequency alike, within "
+     "0.15 dB.",
+     ("TheClaims.test_the_spans",
+      "TheLevelMacros.test_gain_and_volume_are_flat_broadband_trims")),
+    ("Bands overlap and add: three adjacent sliders at +6 dB lift the middle "
+     "one's frequency by more than 7 dB.",
+     ("TheClaims.test_three_bands_at_six_add_up_past_seven",)),
+    ("Every section hands the next an int16, so leave headroom, and pull "
+     "Volume down when you push Gain up.",
+     ("TheLevelMacros.test_gain_and_volume_are_flat_broadband_trims",)),
+    ("There are six: Flat; Scooped Mids; Pushed Mids; Trimmed Bottom; "
+     "Rolled Top; and Full Boost.",
+     ("TheClaims.test_the_spans",)),
+    ("Scooped Mids, Pushed Mids and Full Boost pull Volume down, so "
+     "stepping through them you hear the curve rather than the level.",
+     ("TheClaims.test_the_spans",)),
+    ("A patch change starts the bank clean and doesn't overshoot; a knob "
+     "move rides through.",
+     ("TheJumpDoesNotSlam.test_a_patch_change_does_not_overshoot_its_own_"
+      "steady_level",
+      "TheJumpDoesNotSlam.test_a_knob_move_is_not_cleared")),
+    ("At 48 kHz and 44.1 kHz every band is where its label says.",
+     ("TheClampIsReported.test_at_48_and_44_kHz_nothing_clamps",)),
+    ("At 22.05 kHz the 16 kHz shelf is past Nyquist, so it is built just "
+     "under it and `clamped` says so.",
+     ("TheClampIsReported.test_at_22_kHz_the_top_band_clamps_and_says_so",
+      "TheClampIsReported.test_the_clamped_bank_passes_signal_rather_than_"
+      "railing")),
+    ("It adds no latency at any setting.",
+     ("TheSurface.test_latency_is_zero_and_no_option_adds_any",)),
+    ("Silence in is exact zero out, and `tail_samples` bounds the ring for "
+     "the settings in force, after a knob move too.",
+     ("TheTailReachesZero.test_silence_in_gives_exact_zero_out",
+      "TheTailReachesZero.test_the_declared_tail_bounds_the_measured_one",
+      "TheTailAfterAMove.test_the_ring_ends_inside_the_bound_and_the_old_"
+      "one_now_holds")),
+    ("A mono source gets the same curve.",
+     ("TheLevelMacros.test_mono_gets_the_same_curve_on_one_channel",)),
+    ("It needs `audiobiquad`, so a stock CircuitPython board can't run it.",
+     ("TheClaims.test_construction_needs_audiobiquad",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = graphiceq.__doc__ + " " + graphiceq.GraphicEQ.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(_flat(doc).replace(
+            "within 0.15 dB", "within 0.1 dB")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
 if __name__ == "__main__":

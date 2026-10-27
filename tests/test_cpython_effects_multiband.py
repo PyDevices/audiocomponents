@@ -16,6 +16,7 @@ never a change to a library file.
 """
 
 import os
+import re
 import sys
 import unittest
 
@@ -945,6 +946,204 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
         self.assertGreater(stale.first_blip(
             stale.planted(self.CLS, stale.EagerClearOnlyRejoin), self.MIX),
             1000)
+
+
+BOARD_COST = {"P4": 54, "S3": 107, "P4_two_bands": 34, "S3_two_bands": 71}
+
+
+class TheClaims(unittest.TestCase):
+    """The docstring's claims that no older test holds on its own."""
+
+    def test_the_spans(self):
+        R = CLASS._MACRO_RANGES
+        self.assertEqual(R[XLOW], (40.0, 800.0, "log"))
+        self.assertEqual(R[XHIGH], (800.0, 8000.0, "log"))
+        for index in (LOW_T, MID_T, HIGH_T):
+            self.assertEqual(R[index], (-60.0, 0.0))
+        for index in (LOW_R, MID_R, HIGH_R):
+            self.assertEqual(R[index], (1.0, 20.0, "log"))
+        for index in (LOW_G, MID_G, HIGH_G):
+            self.assertEqual(R[index], (-12.0, 12.0))
+        self.assertEqual(R[ATTACK], (0.1, 100.0, "log"))
+        self.assertEqual(R[RELEASE], (5.0, 1000.0, "log"))
+        self.assertEqual(R[MIX], (0.0, 1.0))
+        self.assertEqual(multibandcompressor.MIN_CROSSOVER_RATIO, 8.0)
+        self.assertEqual(CLASS.LATENCY_SAMPLES, 0)
+        self.assertEqual(
+            [CLASS.PATCHES[i][0] for i in sorted(CLASS.PATCHES)],
+            ["Master Glue", "Bass Control", "Vocal Bus", "De-Boom",
+             "Loudness"])
+        effect = build()
+        try:
+            for index in range(14):
+                effect.set_macro(index, 127)
+            self.assertEqual(effect.latency_samples, 0)
+        finally:
+            effect.deinit()
+
+    def test_a_band_compresses_less_towards_its_corners(self):
+        # The mid band, driven as M3 drives the low one, read in its middle
+        # and near its lower corner.
+        level_db = -12.0 - 3.0103
+        ratio = 4.0
+        settings = dict(UNITY)
+        settings.update(crossover_low_hz=200.0, crossover_high_hz=2000.0)
+        driving = dict(settings)
+        driving.update(mid_threshold_db=level_db - 12.0 / (1.0 - 1.0 / ratio),
+                       mid_ratio=ratio)
+        moved = {}
+        for hz in (632.0, 283.0):
+            idle = build(probe=tone(hz, 0.35), **settings)
+            driven = build(probe=tone(hz, 0.35), **driving)
+            try:
+                for effect in (idle, driven):
+                    for voice in range(4):
+                        effect._mixer.voice[voice].level = (
+                            1.0 if voice == 2 else 0.0)
+                moved[hz] = tone_db(driven, hz) - tone_db(idle, hz)
+            finally:
+                idle.deinit()
+                driven.deinit()
+        self.assertLess(moved[632.0], moved[283.0] - 0.5)
+
+    def test_the_board_figures_are_the_table(self):
+        doc = _flat(CLASS.__doc__)
+        self.assertIn("At three bands its costliest patch was measured at "
+                      "%d %% of a block on an ESP32-P4 and %d %% on an "
+                      "ESP32-S3" % (BOARD_COST["P4"], BOARD_COST["S3"]), doc)
+        self.assertGreater(BOARD_COST["S3"], 100)
+        self.assertIn("Built with `bands=2` it was %d %% and %d %%"
+                      % (BOARD_COST["P4_two_bands"],
+                         BOARD_COST["S3_two_bands"]), doc)
+        self.assertLess(BOARD_COST["S3_two_bands"], 100)
+
+    def test_construction_needs_its_three_modules(self):
+        self.assertEqual(CLASS.REQUIRES,
+                         ("audiobiquad", "audiodynamics", "audioroute"))
+        for name in CLASS.REQUIRES:
+            with self.subTest(module=name):
+                saved = sys.modules.get(name)
+                sys.modules[name] = None
+                try:
+                    with self.assertRaises(ImportError):
+                        build()
+                finally:
+                    sys.modules[name] = saved
+
+
+CLAIMS = (
+    ("Split-band compression: the mix split into two or three bands, each "
+     "with its own compressor, then summed back flat.",
+     ("Traits.test_m1_the_bands_sum_flat_at_three_bands",
+      "Traits.test_m1_the_bands_sum_flat_at_two_bands")),
+    ("Use it when one compressor on the whole mix lets the bass pump "
+     "everything else.",
+     ("Traits.test_m3_a_driven_band_moves_and_the_others_do_not",)),
+    ("`MultibandCompressor` - split-band compression, two or three bands.",
+     ("Surface.test_bands_is_two_or_three_and_nothing_else",
+      "Traits.test_m3_a_driven_band_moves_and_the_others_do_not")),
+    ("Build it with `bands=2` or `bands=3`; nothing else is accepted.",
+     ("Surface.test_bands_is_two_or_three_and_nothing_else",)),
+    ("At three bands the splits are Crossover Low, 40 Hz to 800 Hz, and "
+     "Crossover High, 800 Hz to 8 kHz.",
+     ("TheClaims.test_the_spans",)),
+    ("Crossover High is held at least eight times Crossover Low: ask for "
+     "less and it moves up rather than refusing, and `crossover_high_hz` "
+     "reports where it landed.",
+     ("TheClaims.test_the_spans",
+      "Surface.test_the_clamp_pushes_the_upper_corner_up_and_never_refuses")),
+    ("At two bands the split is at Crossover Low, the upper band uses the "
+     "High macros, and Crossover High and the three Mid macros do nothing, "
+     "which `macro_is_live()` reports.",
+     ("Surface.test_the_mid_macros_and_the_upper_corner_are_dead_at_two_"
+      "bands",
+      "Traits.test_m1_the_bands_sum_flat_at_two_bands")),
+    ("With every Ratio at 1 the bands sum to within 0.25 dB of the input "
+     "from 30 Hz to 16 kHz, at two bands and at three.",
+     ("Traits.test_m1_the_bands_sum_flat_at_three_bands",
+      "Traits.test_m1_the_bands_sum_flat_at_two_bands")),
+    ("Each band alone is 6 dB down at its corner, within 0.5 dB.",
+     ("Traits.test_m2_each_corner_is_six_db_down_on_the_summed_halves",)),
+    ("Each band has a Threshold, -60 dB to 0 dB, a Ratio, 1 to 20, and a "
+     "Gain, -12 dB to +12 dB.",
+     ("TheClaims.test_the_spans",)),
+    ("Attack spans 0.1 ms to 100 ms and Release 5 ms to 1000 ms, shared by "
+     "every band.",
+     ("TheClaims.test_the_spans",)),
+    ("Driving one band to 12 dB of reduction moves the middle of that band "
+     "by 12 dB, within 0.5 dB, and the other bands by under 0.5 dB.",
+     ("Traits.test_m3_a_driven_band_moves_and_the_others_do_not",)),
+    ("Towards its own corners a band compresses less than you dialled, so "
+     "dial the number you want for the middle of the band.",
+     ("TheClaims.test_a_band_compresses_less_towards_its_corners",)),
+    ("Mix spans 0 to 1 and crossfades the input with the summed bands, so "
+     "between its stops it is parallel compression.",
+     ("TheClaims.test_the_spans",
+      "TierOne.test_the_dry_voice_at_unity_is_a_wire_since_audiodsp_v0_6_1")),
+    ("Mix 0 is the source byte for byte, at 22.05 kHz, 44.1 kHz and 48 kHz, "
+     "mono and stereo, and moving off it does not click.",
+     ("TierOne.test_mix_zero_is_a_wire_at_every_rate_and_channel_count",
+      "TierOne.test_a_mix_move_off_zero_does_not_click")),
+    ("Brought back up from 0, it starts as it was built rather than playing "
+     "what the bands held.",
+     ("TheBypassComesBackAsBuilt.test_mix_back_after_silence_plays_nothing",
+      "TheBypassComesBackAsBuilt.test_at_every_patch")),
+    ("It adds no latency at any setting.",
+     ("TheClaims.test_the_spans",
+      "Traits.test_m4_latency_is_zero_and_the_click_agrees")),
+    ("The tail reaches exact zero, and `tail_samples` says when.",
+     ("TierOne.test_the_tail_reaches_exact_zero",)),
+    ("There are five: Master Glue; Bass Control; Vocal Bus; De-Boom; and "
+     "Loudness.",
+     ("TheClaims.test_the_spans",)),
+    ("Master Glue is the constructor's defaults.",
+     ("Surface.test_patch_zero_is_the_constructor_defaults_on_the_grid",)),
+    ("At three bands its costliest patch was measured at 54 % of a block on "
+     "an ESP32-P4 and 107 % on an ESP32-S3, so the S3 can't keep up.",
+     ("TheClaims.test_the_board_figures_are_the_table",)),
+    ("Built with `bands=2` it was 34 % and 71 %, so on an S3 build it that "
+     "way.",
+     ("TheClaims.test_the_board_figures_are_the_table",)),
+    ("It needs `audiobiquad`, `audiodynamics` and `audioroute`, so a stock "
+     "CircuitPython board can't run it.",
+     ("TheClaims.test_construction_needs_its_three_modules",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = multibandcompressor.__doc__ + " " + CLASS.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(_flat(doc).replace(
+            "within 0.25 dB", "within 0.1 dB")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
 if __name__ == "__main__":

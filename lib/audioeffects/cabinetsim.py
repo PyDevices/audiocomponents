@@ -1,153 +1,176 @@
 """`CabinetSim` - a designed guitar-cabinet response, two characters.
 
-Rebuilt from scratch at Phase 4 against its dossier, traits frozen
-2026-09-17 at Station A, re-cut 2026-09-17 in the first fix round (T3,
-below), disclosures added 2026-09-18 in the second.
-The old class in `drive.py` is consulted only for the defects that dossier
-§7 names: paying 5.3 ms to convolve a filter, reporting latency 0, a top
-that falls forever, a hot low end, one presence bell, and macro ranges
-untied to the published curves.
-
-**What it is.** A guitar cabinet is a transfer function: driver, box, and
-where the microphone sits. The default is a **synthetic designed cascade**,
-not a third-party impulse (decided 2026-09-08). Character `4x12 stack` follows
-the Vintage 30 on-baffle shape inside a sealed close-miked box; `1x12 combo`
-follows a G12M-class driver in an open back - a lower box corner it does not
-have, a hotter low mid, and a designed 100-300 Hz cancellation notch. Mix 0
-is the Tier 1 wire.
-
-**Portability: audiodsp.** Eight `audiobiquad.Biquad`. Tone at 20-230 Hz is
-below the ~300 Hz floor where Q15 `synthio.Biquad` is honest (audiodsp#77),
-so this is not stock. The clipper nodes are unused.
-
-**Cost.** Palette sum at patch 0, eight live sections, Mix 1: 0.800 / 1.352 ms
--> **15 % / 26 %** of a 5.333 ms stereo block (dossier §3). No lean patch.
-No extra source-pull. The boards measured **17.1 % / 27.7 %** on 2026-09-17:
-the palette's `audiobiquad.Biquad` row prices ONE node whose upstream is the
-measuring harness, and the eighth node of a serial chain costs more than the
-first (0.1138 / 0.1848 ms per section here). That gap is the row, not this
-graph - there is no Splitter, no Mixer, no second source and no per-block
-Python to find in it.
-
-**Latency: zero samples** at the synthetic default. Constructor `impulse`
-defaults off; when a user points the class at an IR they obtained, the
-convolver partition is **256 samples / 5.333 ms at 48 kHz**. Named here
-because it is the only latency-adding option. Room-scale IRs do not fit
-the boards (48000 taps: 18.0 / 31.1 ms). `tail_samples` is **6144 at the synthetic
-default** and **6144 + the impulse's own length** when one is loaded: the
-class returned the constant whatever `impulse=` held, and an 8 192-tap
-impulse measures **8 447** samples of tail while a 48 000-tap room
-measures **48 255** - a host that trusted 6 144 truncated the tail it
-handed in (audit 3 (p)1, G2). The synthetic figure is
-measured burst-to-exact-zero over the whole shipped surface - 1850 samples
-at the default, 4421 at shipped patch 1, **5565** at the worst corner
-(combo, Low Cut 55, Body +6, a 0 dBFS burst at the bell's own 115 Hz).
-The longest ring is the **combo's bell**, not the lowest Low Cut: Low Cut
-90 with Body +6 (5493) rings longer than Low Cut 55 with Body 0 (2924).
-
-**Level: this cabinet clips above -13 dBFS, and at the constructor
-default above -6 dBFS** - and it has stated no-railed-sample ceilings of
-**-14 and -6 dBFS** (`SURFACE_CEILING_DBFS`, `DEFAULT_CEILING_DBFS`). The
--11 and -5 this paragraph used to carry were taken through a
-`macro_surface()` that moves **one macro at a time**, so Low Cut 55 with
-Body +6 - shipped patch 6's own settings - was never swept: read in
-combination, `fix2.analytic_db` at `peak_hz` returns **+13.148 dB** there
-against a published +10.91, and the ceiling is -13 dBFS by the pack's own
-1 % THD rule and -14 by the first railed sample. The default's own peak is
-at **3164 Hz**, a frequency the THD table below never reads. The numbers
-were wrong **in the safe direction**, which is what makes them a park: a
-user told -11 who plays at -11 clips (audit 3 (p)2 and (p)3). Every one of the eight sections hands the next an
-int16 and audiodsp's converter saturates at the rail, and the designed
-response is a **boost**: +5.3 dB at the default (its 3.2 kHz break-up
-peak) and +10.9 dB at the hottest corner of the surface (combo, Body +6,
-118 Hz). There is no output trim and no headroom. Measured at 48 kHz on
-exactly periodic windows, THD above 1 %:
-
-* **shipped patch 6** is the worst cell - 150 Hz clips above **-11 dBFS**
-  (8.28 % at -9, 27.69 % at -3), 115 Hz above -9;
-* **shipped patch 1**, the combo, 115 Hz: **2.01 % at -9 dBFS**, 15.13 %
-  at -6, 31.11 % at 0;
-* **the constructor default**, 2112 Hz: clips above **-5 dBFS** (4.16 %
-  at -3); 150 Hz above -4.
-
-Below that the class is linear and the pack owes no alias row; above it,
-one is owed. The non-harmonic floor at 3700 Hz is -90 dB at -20 dBFS and
-**-42.0 dB at 0 dBFS** (patch 0, 48 kHz), **-25.7 dB at 0 dBFS** at
-22.05 kHz. A 1 kHz guard cannot see any of this, because 1 kHz is the one
-frequency the class does not boost.
-
-**Not the same cabinet at 22.05 kHz.** 48 and 44.1 kHz agree within
-0.3 dB at every frequency read; 22.05 kHz does not. At the default, re
-1 kHz, **5 kHz is +4.34 dB** higher there than at 48 kHz and **7 kHz is
-4.37 dB** lower; the worst cell over the seven patches is **4.95 dB**
-(patch 3, 8 kHz), and T5a's upper -3 dB point moves **4551 -> 5050 Hz**.
-The cause is the bilinear warping of the two top shelves as their corners
-approach Nyquist: one design reinterpreted at each rate, not one response.
-T2 is not applicable at 22.05 kHz for the same reason.
-
-**The macro surface is the 128 MIDI positions.** `set_macro` snaps a float
-position to the nearest integer - see its docstring and
-audiocomponents#75.
-
-**Headline traits are the constructor default** - which, since the macro
-snap above, *is* patch 0 to the last decibel rather than nearly it. The
-four give-ups below join the three above (level, rate, surface); all seven
-are in the same words in the pack, the dossier's App. M and N, and the
-catalogue row:
-
-* **Every Tier 2 trait is a Mix 1 claim.** Mix is a continuous blend on
-  every section at once, so a part-wet cabinet has neither the cliff nor
-  the low-end control: **T1 holds down to Mix MIDI 112** and reads 14.6 dB
-  at MIDI 96, under its 15 dB bar; **T4 holds down to Mix MIDI 48** and
-  reads -8.6 dB at MIDI 32, over its -12. Between those and Mix 0 neither
-  is claimed. Mix 0 is the Tier 1 wire.
-* **T2 is not claimed above Top 5.6 kHz at every Air, nor above Top
-  6.3 kHz at any.** The two shelves separate as Top rises: at the default
-  Air the 8-16 kHz fall is 3.8 dB at Top 5.6 kHz, 10.3 at 6.3, **14.0 at
-  6.6** and **17.4 at the 7 kHz stop**; at Air -30 it is already 16.2 at
-  Top 6.3 kHz. T1 goes with it - **14.6 dB at the 7 kHz stop**, under its
-  own bar, which is why T1's span excludes the Top and Air stops. T2 is
-  **not applicable at 22.05 kHz**.
-* **T3 is not claimed below the default Bite.** At Bite 0 the two break-up
-  sections are switched off entirely (`FLAT_DB`), so Bite 0 is not a small
-  peak but no peak; shipped patch 2 ships Bite +1 and misses T3's 3 dB bar.
-* **T4 is a 40.00 Hz row and the pack read 41.0156 Hz.** The tone snapped
-  to the render's own bin grid, which is **1.28 dB** up a six-pole
-  rolloff: at an exact 40.00 Hz on a whole-period window the default reads
-  **-42.443 / -42.441 / -42.483 dB** at 48 / 44.1 / 22.05 kHz against a
-  published -41.16 / -41.96 / -42.01, and shipped patch 6 reads
-  **-19.009** against -17.94. The trait stands; the number was the grid's
-  (audit 3 (p)5).
-* **Three Tier 2 readings go red above the ceiling, and each row takes its
-  level span.** T3 at 0 dBFS, T5a's 200 Hz clause at +1.21 dB, and T5b's
-  level clause at -6 dBFS with Low Cut 55 and Body +6 - which is shipped
-  patch 6's own settings - are all above `SURFACE_CEILING_DBFS`, where
-  this class is clipping and no trait is claimed. The seven give-ups named
-  none of them (audit 3 (p)4).
-* **T5a's 115-230 Hz plateau is disconfirmed** and stays so: the three
-  high-pass poles at Low Cut put 115 Hz **4.02 dB** under the low-frequency
-  maximum, outside the 3 dB the trait asks for (4.14 at Body -6, 5.12 at
-  Body +6). Its 60 Hz clause holds over the whole Body travel and all
-  three rates, worst **-20.81 dB** at 22.05 kHz with Body +6; the lower
-  -3 dB point lands at **121 Hz**, inside the trait's own 100-130. Its
-  **200 Hz-1 kHz clause holds at Body 0 only** - +3.26 dB there, but Body
-  -6 is **-1.31** (a rise, not a fall) and Body +6 is **+7.48**, over the
-  6 dB the trait allows - and the row is quantified over Body -6 / 0 / +6,
-  so that clause is claimed at the headline Body and nowhere else.
-* **T5b is a claim about the character**, read at identical macros, not
-  about the patch pair.
-
-**Single precision.** Every hertz and decibel the class hands a section is
-quantised onto a coarse grid, and every ratio below is an exact binary
-fraction, so an ESP32's single-precision Python and a desktop's double
-produce the **same float32** (audiocomponents#75). Ungridded, 216 of the
-896 reachable macro positions hand the two a different filter. The value
-grid alone did not close it - a **float** macro position could still land
-where the two precisions straddle a grid tie (`set_macro(3, 76.28125)`
-was 2729.0 Hz in double and 2730.0 in single, 2 of 8129 positions on a
-1/64-MIDI host grid) - so `set_macro` now snaps the position to the MIDI
-integer grid, which is the set the 896-position proof covers.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# Rebuilt from scratch at Phase 4 against its dossier, traits frozen
+# 2026-09-17 at Station A, re-cut 2026-09-17 in the first fix round (T3,
+# below), disclosures added 2026-09-18 in the second.
+# The old class in `drive.py` is consulted only for the defects that dossier
+# §7 names: paying 5.3 ms to convolve a filter, reporting latency 0, a top
+# that falls forever, a hot low end, one presence bell, and macro ranges
+# untied to the published curves.
+#
+# What it is. A guitar cabinet is a transfer function: driver, box, and
+# where the microphone sits. The default is a synthetic designed cascade,
+# not a third-party impulse (decided 2026-09-08). Character `4x12 stack` follows
+# the Vintage 30 on-baffle shape inside a sealed close-miked box; `1x12 combo`
+# follows a G12M-class driver in an open back - a lower box corner it does not
+# have, a hotter low mid, and a designed 100-300 Hz cancellation notch. Mix 0
+# is the Tier 1 wire.
+#
+# Portability: audiodsp. Eight `audiobiquad.Biquad`. Tone at 20-230 Hz is
+# below the ~300 Hz floor where Q15 `synthio.Biquad` is honest (audiodsp#77),
+# so this is not stock. The clipper nodes are unused.
+#
+# Cost. Palette sum at patch 0, eight live sections, Mix 1: 0.800 / 1.352 ms
+# -> 15 % / 26 % of a 5.333 ms stereo block (dossier §3). No lean patch.
+# No extra source-pull. The boards measured 17.1 % / 27.7 % on 2026-09-17:
+# the palette's `audiobiquad.Biquad` row prices ONE node whose upstream is the
+# measuring harness, and the eighth node of a serial chain costs more than the
+# first (0.1138 / 0.1848 ms per section here). That gap is the row, not this
+# graph - there is no Splitter, no Mixer, no second source and no per-block
+# Python to find in it.
+#
+# Latency: zero samples at the synthetic default. Constructor `impulse`
+# defaults off; when a user points the class at an IR they obtained, the
+# convolver partition is 256 samples / 5.333 ms at 48 kHz. Named here
+# because it is the only latency-adding option. Room-scale IRs do not fit
+# the boards (48000 taps: 18.0 / 31.1 ms). `tail_samples` is 6144 at the synthetic
+# default and 6144 + the impulse's own length when one is loaded: the
+# class returned the constant whatever `impulse=` held, and an 8 192-tap
+# impulse measures 8 447 samples of tail while a 48 000-tap room
+# measures 48 255 - a host that trusted 6 144 truncated the tail it
+# handed in (audit 3 (p)1, G2). The synthetic figure is
+# measured burst-to-exact-zero over the whole shipped surface - 1850 samples
+# at the default, 4421 at shipped patch 1, 5565 at the worst corner
+# (combo, Low Cut 55, Body +6, a 0 dBFS burst at the bell's own 115 Hz).
+# The longest ring is the combo's bell, not the lowest Low Cut: Low Cut
+# 90 with Body +6 (5493) rings longer than Low Cut 55 with Body 0 (2924).
+#
+# Level: this cabinet clips above -13 dBFS, and at the constructor
+# default above -6 dBFS - and it has stated no-railed-sample ceilings of
+# -14 and -6 dBFS (`SURFACE_CEILING_DBFS`, `DEFAULT_CEILING_DBFS`). The
+# -11 and -5 this paragraph used to carry were taken through a
+# `macro_surface()` that moves one macro at a time, so Low Cut 55 with
+# Body +6 - shipped patch 6's own settings - was never swept: read in
+# combination, `fix2.analytic_db` at `peak_hz` returns +13.148 dB there
+# against a published +10.91, and the ceiling is -13 dBFS by the pack's own
+# 1 % THD rule and -14 by the first railed sample. The default's own peak is
+# at 3164 Hz, a frequency the THD table below never reads. The numbers
+# were wrong in the safe direction, which is what makes them a park: a
+# user told -11 who plays at -11 clips (audit 3 (p)2 and (p)3). Every one of the eight sections hands the next an
+# int16 and audiodsp's converter saturates at the rail, and the designed
+# response is a boost: +5.3 dB at the default (its 3.2 kHz break-up
+# peak) and +10.9 dB at the hottest corner of the surface (combo, Body +6,
+# 118 Hz). There is no output trim and no headroom. Measured at 48 kHz on
+# exactly periodic windows, THD above 1 %:
+#
+# * shipped patch 6 is the worst cell - 150 Hz clips above -11 dBFS
+#   (8.28 % at -9, 27.69 % at -3), 115 Hz above -9;
+# * shipped patch 1, the combo, 115 Hz: 2.01 % at -9 dBFS, 15.13 %
+#   at -6, 31.11 % at 0;
+# * the constructor default, 2112 Hz: clips above -5 dBFS (4.16 %
+#   at -3); 150 Hz above -4.
+#
+# Below that the class is linear and the pack owes no alias row; above it,
+# one is owed. The non-harmonic floor at 3700 Hz is -90 dB at -20 dBFS and
+# -42.0 dB at 0 dBFS (patch 0, 48 kHz), -25.7 dB at 0 dBFS at
+# 22.05 kHz. A 1 kHz guard cannot see any of this, because 1 kHz is the one
+# frequency the class does not boost.
+#
+# Not the same cabinet at 22.05 kHz. 48 and 44.1 kHz agree within
+# 0.3 dB at every frequency read; 22.05 kHz does not. At the default, re
+# 1 kHz, 5 kHz is +4.34 dB higher there than at 48 kHz and 7 kHz is
+# 4.37 dB lower; the worst cell over the seven patches is 4.95 dB
+# (patch 3, 8 kHz), and T5a's upper -3 dB point moves 4551 -> 5050 Hz.
+# The cause is the bilinear warping of the two top shelves as their corners
+# approach Nyquist: one design reinterpreted at each rate, not one response.
+# T2 is not applicable at 22.05 kHz for the same reason.
+#
+# The macro surface is the 128 MIDI positions. `set_macro` snaps a float
+# position to the nearest integer - see its docstring and
+# audiocomponents#75.
+#
+# Headline traits are the constructor default - which, since the macro
+# snap above, *is* patch 0 to the last decibel rather than nearly it. The
+# four give-ups below join the three above (level, rate, surface); all seven
+# are in the same words in the pack, the dossier's App. M and N, and the
+# catalogue row:
+#
+# * Every Tier 2 trait is a Mix 1 claim. Mix is a continuous blend on
+#   every section at once, so a part-wet cabinet has neither the cliff nor
+#   the low-end control: T1 holds down to Mix MIDI 112 and reads 14.6 dB
+#   at MIDI 96, under its 15 dB bar; T4 holds down to Mix MIDI 48 and
+#   reads -8.6 dB at MIDI 32, over its -12. Between those and Mix 0 neither
+#   is claimed. Mix 0 is the Tier 1 wire.
+# * T2 is not claimed above Top 5.6 kHz at every Air, nor above Top
+#   6.3 kHz at any. The two shelves separate as Top rises: at the default
+#   Air the 8-16 kHz fall is 3.8 dB at Top 5.6 kHz, 10.3 at 6.3, 14.0 at
+#   6.6 and 17.4 at the 7 kHz stop; at Air -30 it is already 16.2 at
+#   Top 6.3 kHz. T1 goes with it - 14.6 dB at the 7 kHz stop, under its
+#   own bar, which is why T1's span excludes the Top and Air stops. T2 is
+#   not applicable at 22.05 kHz.
+# * T3 is not claimed below the default Bite. At Bite 0 the two break-up
+#   sections are switched off entirely (`FLAT_DB`), so Bite 0 is not a small
+#   peak but no peak; shipped patch 2 ships Bite +1 and misses T3's 3 dB bar.
+# * T4 is a 40.00 Hz row and the pack read 41.0156 Hz. The tone snapped
+#   to the render's own bin grid, which is 1.28 dB up a six-pole
+#   rolloff: at an exact 40.00 Hz on a whole-period window the default reads
+#   -42.443 / -42.441 / -42.483 dB at 48 / 44.1 / 22.05 kHz against a
+#   published -41.16 / -41.96 / -42.01, and shipped patch 6 reads
+#   -19.009 against -17.94. The trait stands; the number was the grid's
+#   (audit 3 (p)5).
+# * Three Tier 2 readings go red above the ceiling, and each row takes its
+#   level span. T3 at 0 dBFS, T5a's 200 Hz clause at +1.21 dB, and T5b's
+#   level clause at -6 dBFS with Low Cut 55 and Body +6 - which is shipped
+#   patch 6's own settings - are all above `SURFACE_CEILING_DBFS`, where
+#   this class is clipping and no trait is claimed. The seven give-ups named
+#   none of them (audit 3 (p)4).
+# * T5a's 115-230 Hz plateau is disconfirmed and stays so: the three
+#   high-pass poles at Low Cut put 115 Hz 4.02 dB under the low-frequency
+#   maximum, outside the 3 dB the trait asks for (4.14 at Body -6, 5.12 at
+#   Body +6). Its 60 Hz clause holds over the whole Body travel and all
+#   three rates, worst -20.81 dB at 22.05 kHz with Body +6; the lower
+#   -3 dB point lands at 121 Hz, inside the trait's own 100-130. Its
+#   200 Hz-1 kHz clause holds at Body 0 only - +3.26 dB there, but Body
+#   -6 is -1.31 (a rise, not a fall) and Body +6 is +7.48, over the
+#   6 dB the trait allows - and the row is quantified over Body -6 / 0 / +6,
+#   so that clause is claimed at the headline Body and nowhere else.
+# * T5b is a claim about the character, read at identical macros, not
+#   about the patch pair.
+#
+# Single precision. Every hertz and decibel the class hands a section is
+# quantised onto a coarse grid, and every ratio below is an exact binary
+# fraction, so an ESP32's single-precision Python and a desktop's double
+# produce the same float32 (audiocomponents#75). Ungridded, 216 of the
+# 896 reachable macro positions hand the two a different filter. The value
+# grid alone did not close it - a float macro position could still land
+# where the two precisions straddle a grid tie (`set_macro(3, 76.28125)`
+# was 2729.0 Hz in double and 2730.0 in single, 2 of 8129 positions on a
+# 1/64-MIDI host grid) - so `set_macro` now snaps the position to the MIDI
+# integer grid, which is the set the 896-position proof covers.
+#
+#
+# The class docstring before the player's text, kept for its figures.
+# Its -11 and -5 dBFS are the pack's, which the ceilings below replace.
+#
+# A designed 4x12 / 1x12 cabinet. Eight `audiobiquad` sections;
+# audiodsp tier; zero latency unless a user impulse is loaded.
+#
+# This cabinet clips above -11 dBFS, and at the constructor default
+# above -5 dBFS: the response is a boost (+10.9 dB at the hottest
+# corner, +5.3 dB at the default) on a path where every section hands
+# the next an int16. Feed it lower, or expect the rail. It is not the
+# same cabinet at 22.05 kHz - 5 kHz sits 4.34 dB higher re 1 kHz there
+# than at 48 kHz, worst cell 4.95 dB. The macro surface is the 128 MIDI
+# positions; a float snaps. Every Tier 2 trait is a Mix 1 claim; T5a's
+# 115-230 Hz plateau is disconfirmed; T2 is not claimed above Top
+# 6.3 kHz.
+
 
 VENDOR = "PyDevices"
 
@@ -230,18 +253,65 @@ def _grid(value, step):
 
 
 class CabinetSim(_component.Component):
-    """A designed 4x12 / 1x12 cabinet. Eight `audiobiquad` sections;
-    audiodsp tier; zero latency unless a user impulse is loaded.
+    """A designed 4x12 stack or 1x12 combo cabinet, built from filters
+    rather than a recorded impulse.
 
-    **This cabinet clips above -11 dBFS, and at the constructor default
-    above -5 dBFS**: the response is a boost (+10.9 dB at the hottest
-    corner, +5.3 dB at the default) on a path where every section hands
-    the next an int16. Feed it lower, or expect the rail. **It is not the
-    same cabinet at 22.05 kHz** - 5 kHz sits 4.34 dB higher re 1 kHz there
-    than at 48 kHz, worst cell 4.95 dB. The macro surface is the 128 MIDI
-    positions; a float snaps. Every Tier 2 trait is a Mix 1 claim; T5a's
-    115-230 Hz plateau is disconfirmed; T2 is not claimed above Top
-    6.3 kHz."""
+    **Character.** `4x12 stack` is a sealed, close-miked box. `1x12 combo`
+    is an open back: at the same settings it has at least 3 dB more at
+    100 Hz than the stack, and a notch between 100 Hz and 300 Hz that
+    stays at every Low Cut.
+
+    **Low Cut and Body.** Low Cut spans 55 Hz to 140 Hz and Body -6 dB to
+    +6 dB. 40 Hz sits at least 12 dB under 1 kHz at every patch, and 20 Hz
+    at least 20 dB under at the default. 60 Hz stays at least 20 dB under
+    over the whole Body travel, at 48 kHz, 44.1 kHz and 22.05 kHz.
+
+    **Break-up and Bite.** Break-up spans 1.8 kHz to 3.6 kHz and moves the
+    speaker's two break-up peaks; over its whole travel each stands at least
+    3 dB over 1 kHz with a dip of at least 2 dB between them. Bite spans
+    0 dB to 8 dB and sets how tall they are. At Bite 0 they are switched
+    off, so there is no break-up at all.
+
+    **Top and Air.** Top spans 4.5 kHz to 7 kHz and Air -30 dB to -12 dB.
+    Between 5 kHz and 8 kHz the response falls by at least 15 dB at every
+    patch. Between 8 kHz and 16 kHz it falls by no more than 12 dB at the
+    default, and by more once Top is at its 7 kHz stop.
+
+    **Mix.** Mix spans 0 to 1 and blends every section at once, and Mix 0
+    is a wire. The top-end fall holds down to Mix MIDI 120 and is gone by
+    96; the low cut holds down to Mix MIDI 96 and is gone by 32.
+
+    **Level.** The response is a boost and there is no output trim, so
+    leave headroom. At the hottest setting, combo with Low Cut 55 Hz and
+    Body +6 dB, nothing reaches the rail below -14 dBFS; at the default,
+    nothing does below -6 dBFS. Over the whole surface 1 kHz stays within
+    1 dB of the input. Below the ceiling the cabinet is linear. Well above
+    it, it clips, and 1 kHz is where you won't hear it.
+
+    **Sample rate.** At 48 kHz and 44.1 kHz it is the same cabinet within
+    0.5 dB. At 22.05 kHz the top changes: against 1 kHz, 5 kHz sits more
+    than 3.5 dB higher and 7 kHz more than 3.5 dB lower than at 48 kHz,
+    and the worst patch moves by between 4 dB and 6 dB.
+
+    **Latency and tail.** It adds no latency. The tail is 6144 samples at
+    every shipped patch. The longest ring is the combo's body bell, not
+    the lowest Low Cut.
+
+    **Your own impulse.** Pass `impulse=` some int16 frames and it convolves
+    that instead, which needs `audioconvolve`. The tail then grows by the
+    impulse's length.
+
+    **Macros.** Each macro takes the 128 MIDI positions, and a fractional
+    position snaps to the nearest, so a board and a desktop build the same
+    filters.
+
+    **Patches.** There are seven: Sealed Four By Twelve; Open-Backed
+    Twelve; Off-Axis Close Mic; Cone Centre; Dark Practice Box; Bright
+    Small Box; and Bass-Heavy Room. Alone on an ESP32-S3 the default was
+    measured at 28 % of a block.
+
+    It needs `audiobiquad`, so a stock CircuitPython board can't run it.
+    """
 
     NAME = 'CabinetSim'
     DISPLAY_NAME = 'Cabinet Sim'

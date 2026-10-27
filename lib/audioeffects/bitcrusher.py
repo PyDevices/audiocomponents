@@ -1,166 +1,171 @@
-"""`Bitcrusher` — 12-bit linear hold, the SP-1200's two numbers as knobs.
+"""`Bitcrusher` — a linear hold, the SP-1200's two numbers as knobs.
 
-Rebuilt from scratch at Phase 4 against its dossier, traits frozen
-2026-09-17 at Station A and re-frozen the same day at the fix round's two
-§7.2 revisions (T2's material, T6's alphabet). The old class in `drive.py`
-is consulted only for the defects that dossier §7 names: no macros, a floor
-quantizer with a hidden −½ LSB DC, no rate reduction, and a docstring that
-claimed the palette had no sample-and-hold.
-
-**What it is.** Word length and hold rate. The standout digitised through a
-12-bit linear DAC and played back with a phase accumulator that repeats a
-sample when the carry is 0. Bits and Rate turn those two architectural
-facts into knobs. Dither (TPDF, default off) and Band Limit (default off)
-are the measurements' controls, not the machine's. Mix 0 is the Tier 1
-wire.
-
-**What a switch leaves behind is cleared when it comes back**
-(audiocomponents#113). Mix 0 leaves the whole crusher un-pulled, Band
-Limit off leaves its low-pass, Dither off its gate; each used to keep what
-it held and play it when the switch came back - the hold's last sample and
-queued blocks (up to 16 896 LSB out of silence), the low-pass's memory
-(16 384), the gate open on the dither (32). Each is now cleared first, and
-Mix re-arms the voices the way the constructor does.
-
-**Bits stops at 12, and that is the converter, not a shortcut.** A
-`Waveshaper` reads its curve by linear interpolation, so a table whose
-spacing in input codes reaches the step it is meant to describe hands the
-identity back. This one spans 65535 codes at 8.0 codes per point, so 16 —
-twelve bits — is the finest step it can hold. Before 2026-09-17 the span
-ran to 16 and **13, 15 and 16 were a wire** (audiocomponents#71). Twelve is
-the SP-1200's own word length, so the span and the standout now agree.
-
-**Output is a trim, −24…0 dB, and it scales the whole blend.** It used to
-scale the wet against a mixer voice that clamps at 1.0, which made it a
-no-op at the shipped Mix.
-
-**Portability: audiodsp, and nothing of CircuitPython's.**
-`audioshaper.Waveshaper` ×1 holds the round-to-nearest staircase
-(`audiofilters.Distortion` is 19.6 ms/block and does not fit).
-`audioshaper.SampleHold` is the hold. `audiobiquad` is the optional band
-limit. Every node is audiodsp's own and is in `REQUIRES`; until 2026-09-17
-Rate was a pair of `audiospeed.SpeedChanger` nodes, and that module is a
-CircuitPython port whose Q16 rate grid this class could not land on
-exactly — see **the hold** below.
-
-**Cost.** Palette sum at patch 0, Mix 1, ×1: Splitter 2 taps 0.165/0.395 +
-`SampleHold` **(no palette row yet — the board runner owes one)** +
-Waveshaper ×1 0.223/0.410 + Mixer 0.036/0.018 + glue 0.0 = **0.424/0.823 ms
-priced, 8 % P4 / 15 % S3** of a 5.333 ms stereo block, plus one
-`SampleHold`. The pair of `SpeedChanger` nodes it replaces cost
-0.039/0.230, so the old 0.463/1.053 (9 %/20 %) is the ceiling this sits
-under. On the desktop the whole class is **0.025 ms/block marginal**
-(`tools/measure_effect_cost.py effect:Bitcrusher`, rt 17.83). Band Limit's
-biquads are **not** in the sum: the knob re-sources the hold, so the
-filtered path is not pulled when it is off. Turning it on adds
-**0.200/0.338 ms** — two sections, not four — which is 4 and 6 points. No
-lean patch.
-
-**The hold is exact.** `num`/`den` is the running rate over the asked rate
-rounded to the whole hertz, reduced by the node (26 040 at 48 kHz is
-400/217), and an integer accumulator cannot drift. The two `SpeedChanger`
-legs this replaced could not be made reciprocal at Q16: the pair multiplied
-out to 0.9999947 at 48 kHz — one sample late per 189 339 frames — and
-1.0000108 at 44.1 kHz, one sample *early* per 92 708, which put 10.74 dB of
-slow flange on a 12 kHz tone at a setting nobody was touching (audiodsp#97).
-
-**Latency: the hold's displacement, plus the band limit's.**
-`latency_samples` reports `ceil(num/den) − 1` off the node's own reduced
-pair — 1 sample at the default at 48 and 44.1 kHz, 0 at 22.05 kHz where
-Rate clamps to the running rate, and 0 at Mix 0 — **plus
-`BAND_LATENCY_SAMPLES` when Band Limit is in circuit.** Saying the band
-limit was "an IIR and not in `latency_samples`" was the defect: its two
-sections are minimum phase and their group delay lands on top of the
-hold's displacement, so shipped patch 3 measured **2 to 8 samples over 120
-offsets at 48 kHz against a declared 6** (audit 3 (p)5, G7). Patch 3
-declares **8** now and no patch exceeds its bound at any rate.
-`SampleHold.latency` is still 0 at every ratio — there is no lookahead and
-nothing buffered.
-
-**The dither is gated on the input.** Two rectangular tables loop for ever,
-so with nothing at the input shipped patch 5 put ±16 counts out **to the
-last frame** — 8 345 of 16 384 frames nonzero, at every rate (audit 3
-(p)1, ruling (n)). A converter that dithers is never digitally silent and
-this library's Tier 1 says a class is, so the sum that reaches the
-quantiser goes through `DITHER_GATE_DB`, a gate 6 dB above the dither's own
-level: the input going away is the only thing that closes it. Silence in is
-silence out at **every shipped patch, peak 0**. It costs a tail — the gate
-holds 20 ms and releases over 50 ms, so the dither fades to its last
-nonzero code **7 248 frames** after a burst at 48 kHz, 9 030 at maximum
-Dither — and `DITHER_TAIL_SAMPLES` declares 9 728 for it. `tail_samples` is
-0 with Band Limit and dither off, **640** with the band limit on, and
-**9 728** wherever the dither is, up to a dither of ±32 counts. Past that
-the dither alone holds the gate open, it plays on silence for good, and
-`tail_samples` is None: maximum Dither at 12 bits is the edge, and any
-deeper crush with Dither up is past it.
-
-**What the default surrenders.** Patch 0 is 12 bits at 26.04 kHz, dither
-off, band limit off, Output 0 dB.
-
-0. **T1, T2 and T6 hold where the probe spans at least 16 steps of the
-   depth in force**, which is the precondition the old T2 row carried and
-   the rebuild dropped (audit 3 (p)2 and (p)3). It is a statement about
-   steps rather than about dBFS, so it scales with the depth: at 12 bits a
-   step is 16 codes and 16 steps is **−48 dBFS**, at 8 bits it is
-   −24 dBFS. Below it the material stops exercising the converter and the
-   law drifts — a ramp spanning 7.3 steps reads **+0.25703 LSB against a
-   +0.25000 law**, which is the −55 dBFS reading the audit found, and T6
-   reads 97.26 % at −50 dBFS for the same reason. Every shipped patch is
-   read far above it.
-1. The **hold**, not the quantizer, is what you hear there: T1/T2 are
-   quantities about the staircase and are read either at Rate = the running
-   rate or on material the hold passes. On a sine through patch 0 the
-   residual is a thousand times the quantizer's.
-2. **This is a soft quantizer, and at 12 bits it is soft by half.** The
-   `Waveshaper` reads its table by linear interpolation, so every riser is
-   one table point — `CURVE_STEP`, 8 input codes — wide. The error is
-   therefore `(Δ − 8)/Δ` of a hard converter's: **half** at 12 bits, 0.75 at
-   11, 0.97 at 8, and within 0.2 % of a true staircase below 7. Reaching
-   0.94 at 12 bits would take a 65537-point table, 128 KB against this
-   one's 16, and it still would not reach Δ/√12. The same riser rounds a
-   code up 4 codes early, so the mean error is **+0.25 LSB at 12 bits**
-   (and +0.016 at 8): a rounding asymmetry, not an offset — f(0) is exactly
-   0 and silence in is silence out.
-3. The hold's **images stand at their own level**, which is the point of
-   the Rate knob and not a fault — a 1 kHz image under a 7 kHz tone held at
-   8 kHz reads −0.22 dB against the input. Band Limit puts **27.5 dB**
-   under it (two sections, 24 dB/octave). Above the hold's own Nyquist a
-   non-integer ratio spreads the image over the hold's period and it reads
-   **4.6 to 6.4 dB** down, which is outside the ±3 dB the row claims: that
-   half of the row is **disconfirmed**, not quietly widened. **One stop
-   inside the claimed half is excluded, with its cause**: at 48 kHz,
-   Rate MIDI 80, the reading is **1.495 dB** out of the ±3 dB band because
-   the hold's 5th image lands 1.25 Hz from the tone and the transform
-   cannot separate them. It is one cell of 45, it is level-independent,
-   and a silent miss in a row of 45 is a row nobody can check (audit 3
-   (p)7).
-4. Its **run alphabet is 99.98 % of 1s and 2s** at 12 bits, not 100 %,
-   because two adjacent held samples that land in the same code read as one
-   run. It tracks Bits and falls below 99 % under 8: **99.41 % at 8, 97.59
-   at 6, 90.52 at 4, 66.76 at 2**, so patches 2 *Six Bit Drum* and 6
-   *Broken Converter* are outside that clause.
-5. An event can be **dropped**, and not only a single-sample one: a hold
-   keeps `den` of every `num` frames, so **45 % of one-sample events
-   vanish at 48 kHz** and 40 % at 44.1, measured over forty consecutive
-   offsets at the default's Rate. **A FOUR-sample event goes the same way
-   where the hold is slow enough**: at shipped patch 6 *Broken Converter*
-   (Rate MIDI 59, about 1.9 kHz) **60 of 120 offsets vanish at 48 kHz** and
-   55 of 120 at 44.1 - the surrender counted one-sample events at patch 0's
-   Rate only (audit 3 (p)8). Every other shipped patch passes all 120 at
-   four samples. At 22.05 kHz the default clamps and none vanish.
-6. **At 22.05 kHz the default does not reduce the rate at all.** 26.04 kHz
-   is above the running rate, so it clamps to it and the hold is an
-   identity; the top **four of the Rate knob's seventeen MIDI stops** —
-   104, 112, 120, 127 — are the same identity there. `hold_rate_hz` says
-   what you got where `macro(1)` says what you asked.
-7. **Dither is two loops, not noise.** It is a real TPDF (two rectangular
-   draws summed) from tables of 1021 and 1024 frames, so it repeats only
-   every 21.8 s at 48 kHz rather than the 42.7 ms of the single table it
-   replaced. Each half still repeats at its own length: the autocorrelation
-   is **0.47 at lag 1021 and 0.43 at 1024**, against 1.000000 at lag 2048
-   before. Patch 5 *Dithered Twelve* ships 1.01 LSB of it.
-8. A **mono** source is the same graph, not a downmix.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# Rebuilt from scratch at Phase 4 against its dossier, traits frozen
+# 2026-09-17 at Station A and re-frozen the same day at the fix round's two
+# §7.2 revisions (T2's material, T6's alphabet). The old class in `drive.py`
+# is consulted only for the defects that dossier §7 names: no macros, a floor
+# quantizer with a hidden −½ LSB DC, no rate reduction, and a docstring that
+# claimed the palette had no sample-and-hold.
+#
+# What it is. Word length and hold rate. The standout digitised through a
+# 12-bit linear DAC and played back with a phase accumulator that repeats a
+# sample when the carry is 0. Bits and Rate turn those two architectural
+# facts into knobs. Dither (TPDF, default off) and Band Limit (default off)
+# are the measurements' controls, not the machine's. Mix 0 is the Tier 1
+# wire.
+#
+# What a switch leaves behind is cleared when it comes back
+# (audiocomponents#113). Mix 0 leaves the whole crusher un-pulled, Band
+# Limit off leaves its low-pass, Dither off its gate; each used to keep what
+# it held and play it when the switch came back - the hold's last sample and
+# queued blocks (up to 16 896 LSB out of silence), the low-pass's memory
+# (16 384), the gate open on the dither (32). Each is now cleared first, and
+# Mix re-arms the voices the way the constructor does.
+#
+# Bits stops at 12, and that is the converter, not a shortcut. A
+# `Waveshaper` reads its curve by linear interpolation, so a table whose
+# spacing in input codes reaches the step it is meant to describe hands the
+# identity back. This one spans 65535 codes at 8.0 codes per point, so 16 —
+# twelve bits — is the finest step it can hold. Before 2026-09-17 the span
+# ran to 16 and 13, 15 and 16 were a wire (audiocomponents#71). Twelve is
+# the SP-1200's own word length, so the span and the standout now agree.
+#
+# Output is a trim, −24…0 dB, and it scales the whole blend. It used to
+# scale the wet against a mixer voice that clamps at 1.0, which made it a
+# no-op at the shipped Mix.
+#
+# Portability: audiodsp, and nothing of CircuitPython's.
+# `audioshaper.Waveshaper` ×1 holds the round-to-nearest staircase
+# (`audiofilters.Distortion` is 19.6 ms/block and does not fit).
+# `audioshaper.SampleHold` is the hold. `audiobiquad` is the optional band
+# limit. Every node is audiodsp's own and is in `REQUIRES`; until 2026-09-17
+# Rate was a pair of `audiospeed.SpeedChanger` nodes, and that module is a
+# CircuitPython port whose Q16 rate grid this class could not land on
+# exactly — see the hold below.
+#
+# Cost. Palette sum at patch 0, Mix 1, ×1: Splitter 2 taps 0.165/0.395 +
+# `SampleHold` (no palette row yet — the board runner owes one) +
+# Waveshaper ×1 0.223/0.410 + Mixer 0.036/0.018 + glue 0.0 = 0.424/0.823 ms
+# priced, 8 % P4 / 15 % S3 of a 5.333 ms stereo block, plus one
+# `SampleHold`. The pair of `SpeedChanger` nodes it replaces cost
+# 0.039/0.230, so the old 0.463/1.053 (9 %/20 %) is the ceiling this sits
+# under. On the desktop the whole class is 0.025 ms/block marginal
+# (`tools/measure_effect_cost.py effect:Bitcrusher`, rt 17.83). Band Limit's
+# biquads are not in the sum: the knob re-sources the hold, so the
+# filtered path is not pulled when it is off. Turning it on adds
+# 0.200/0.338 ms — two sections, not four — which is 4 and 6 points. No
+# lean patch.
+#
+# The hold is exact. `num`/`den` is the running rate over the asked rate
+# rounded to the whole hertz, reduced by the node (26 040 at 48 kHz is
+# 400/217), and an integer accumulator cannot drift. The two `SpeedChanger`
+# legs this replaced could not be made reciprocal at Q16: the pair multiplied
+# out to 0.9999947 at 48 kHz — one sample late per 189 339 frames — and
+# 1.0000108 at 44.1 kHz, one sample *early* per 92 708, which put 10.74 dB of
+# slow flange on a 12 kHz tone at a setting nobody was touching (audiodsp#97).
+#
+# Latency: the hold's displacement, plus the band limit's.
+# `latency_samples` reports `ceil(num/den) − 1` off the node's own reduced
+# pair — 1 sample at the default at 48 and 44.1 kHz, 0 at 22.05 kHz where
+# Rate clamps to the running rate, and 0 at Mix 0 — plus
+# `BAND_LATENCY_SAMPLES` when Band Limit is in circuit. Saying the band
+# limit was "an IIR and not in `latency_samples`" was the defect: its two
+# sections are minimum phase and their group delay lands on top of the
+# hold's displacement, so shipped patch 3 measured 2 to 8 samples over 120
+# offsets at 48 kHz against a declared 6 (audit 3 (p)5, G7). Patch 3
+# declares 8 now and no patch exceeds its bound at any rate.
+# `SampleHold.latency` is still 0 at every ratio — there is no lookahead and
+# nothing buffered.
+#
+# The dither is gated on the input. Two rectangular tables loop for ever,
+# so with nothing at the input shipped patch 5 put ±16 counts out to the
+# last frame — 8 345 of 16 384 frames nonzero, at every rate (audit 3
+# (p)1, ruling (n)). A converter that dithers is never digitally silent and
+# this library's Tier 1 says a class is, so the sum that reaches the
+# quantiser goes through `DITHER_GATE_DB`, a gate 6 dB above the dither's own
+# level: the input going away is the only thing that closes it. Silence in is
+# silence out at every shipped patch, peak 0. It costs a tail — the gate
+# holds 20 ms and releases over 50 ms, so the dither fades to its last
+# nonzero code 7 248 frames after a burst at 48 kHz, 9 030 at maximum
+# Dither — and `DITHER_TAIL_SAMPLES` declares 9 728 for it. `tail_samples` is
+# 0 with Band Limit and dither off, 640 with the band limit on, and
+# 9 728 wherever the dither is, up to a dither of ±32 counts. Past that
+# the dither alone holds the gate open, it plays on silence for good, and
+# `tail_samples` is None: maximum Dither at 12 bits is the edge, and any
+# deeper crush with Dither up is past it.
+#
+# What the default surrenders. Patch 0 is 12 bits at 26.04 kHz, dither
+# off, band limit off, Output 0 dB.
+#
+# 0. T1, T2 and T6 hold where the probe spans at least 16 steps of the
+#    depth in force, which is the precondition the old T2 row carried and
+#    the rebuild dropped (audit 3 (p)2 and (p)3). It is a statement about
+#    steps rather than about dBFS, so it scales with the depth: at 12 bits a
+#    step is 16 codes and 16 steps is −48 dBFS, at 8 bits it is
+#    −24 dBFS. Below it the material stops exercising the converter and the
+#    law drifts — a ramp spanning 7.3 steps reads +0.25703 LSB against a
+#    +0.25000 law, which is the −55 dBFS reading the audit found, and T6
+#    reads 97.26 % at −50 dBFS for the same reason. Every shipped patch is
+#    read far above it.
+# 1. The hold, not the quantizer, is what you hear there: T1/T2 are
+#    quantities about the staircase and are read either at Rate = the running
+#    rate or on material the hold passes. On a sine through patch 0 the
+#    residual is a thousand times the quantizer's.
+# 2. This is a soft quantizer, and at 12 bits it is soft by half. The
+#    `Waveshaper` reads its table by linear interpolation, so every riser is
+#    one table point — `CURVE_STEP`, 8 input codes — wide. The error is
+#    therefore `(Δ − 8)/Δ` of a hard converter's: half at 12 bits, 0.75 at
+#    11, 0.97 at 8, and within 0.2 % of a true staircase below 7. Reaching
+#    0.94 at 12 bits would take a 65537-point table, 128 KB against this
+#    one's 16, and it still would not reach Δ/√12. The same riser rounds a
+#    code up 4 codes early, so the mean error is +0.25 LSB at 12 bits
+#    (and +0.016 at 8): a rounding asymmetry, not an offset — f(0) is exactly
+#    0 and silence in is silence out.
+# 3. The hold's images stand at their own level, which is the point of
+#    the Rate knob and not a fault — a 1 kHz image under a 7 kHz tone held at
+#    8 kHz reads −0.22 dB against the input. Band Limit puts 27.5 dB
+#    under it (two sections, 24 dB/octave). Above the hold's own Nyquist a
+#    non-integer ratio spreads the image over the hold's period and it reads
+#    4.6 to 6.4 dB down, which is outside the ±3 dB the row claims: that
+#    half of the row is disconfirmed, not quietly widened. One stop
+#    inside the claimed half is excluded, with its cause: at 48 kHz,
+#    Rate MIDI 80, the reading is 1.495 dB out of the ±3 dB band because
+#    the hold's 5th image lands 1.25 Hz from the tone and the transform
+#    cannot separate them. It is one cell of 45, it is level-independent,
+#    and a silent miss in a row of 45 is a row nobody can check (audit 3
+#    (p)7).
+# 4. Its run alphabet is 99.98 % of 1s and 2s at 12 bits, not 100 %,
+#    because two adjacent held samples that land in the same code read as one
+#    run. It tracks Bits and falls below 99 % under 8: 99.41 % at 8, 97.59
+#    at 6, 90.52 at 4, 66.76 at 2, so patches 2 *Six Bit Drum* and 6
+#    *Broken Converter* are outside that clause.
+# 5. An event can be dropped, and not only a single-sample one: a hold
+#    keeps `den` of every `num` frames, so 45 % of one-sample events
+#    vanish at 48 kHz and 40 % at 44.1, measured over forty consecutive
+#    offsets at the default's Rate. A FOUR-sample event goes the same way
+#    where the hold is slow enough: at shipped patch 6 *Broken Converter*
+#    (Rate MIDI 59, about 1.9 kHz) 60 of 120 offsets vanish at 48 kHz and
+#    55 of 120 at 44.1 - the surrender counted one-sample events at patch 0's
+#    Rate only (audit 3 (p)8). Every other shipped patch passes all 120 at
+#    four samples. At 22.05 kHz the default clamps and none vanish.
+# 6. At 22.05 kHz the default does not reduce the rate at all. 26.04 kHz
+#    is above the running rate, so it clamps to it and the hold is an
+#    identity; the top four of the Rate knob's seventeen MIDI stops —
+#    104, 112, 120, 127 — are the same identity there. `hold_rate_hz` says
+#    what you got where `macro(1)` says what you asked.
+# 7. Dither is two loops, not noise. It is a real TPDF (two rectangular
+#    draws summed) from tables of 1021 and 1024 frames, so it repeats only
+#    every 21.8 s at 48 kHz rather than the 42.7 ms of the single table it
+#    replaced. Each half still repeats at its own length: the autocorrelation
+#    is 0.47 at lag 1021 and 0.43 at 1024, against 1.000000 at lag 2048
+#    before. Patch 5 *Dithered Twelve* ships 1.01 LSB of it.
+# 8. A mono source is the same graph, not a downmix.
 
 VENDOR = "PyDevices"
 
@@ -1335,7 +1340,51 @@ def _rect_table(frames, channels, seed):
 
 
 class Bitcrusher(_component.Component):
-    """12-bit linear hold: Bits and Rate, informed by the SP-1200."""
+    """12-bit linear hold: Bits and Rate, informed by the SP-1200.
+
+    **Bits.** Bits spans 2 to 12 and defaults to 12, the SP-1200's own word
+    length. Every depth rounds to the nearest step rather than down, and
+    none is a wire. Each step is rounded over a short ramp, so at 12 bits
+    the error is half a hard converter's, and it follows that law within
+    10 %.
+
+    **Rate.** Rate spans 1 kHz to 48 kHz and defaults to 26.04 kHz. The hold
+    lands on the whole hertz you ask for and never drifts. At the default,
+    at least 99 % of its runs are one or two samples long. Its images stand
+    within 3 dB of their own level, which is the sound of the knob; above
+    the hold's own Nyquist they read between 3 dB and 8 dB down. A
+    single-sample event can fall between two held samples and vanish:
+    about 46 % of them do at the default at 48 kHz.
+
+    **The running rate.** Asking for the running rate is a pass-through, and
+    the latency is then 0. Above it Rate clamps, and `hold_rate_hz` says what
+    you got where the macro says what you asked: at 22.05 kHz the default
+    clamps, and the top of the knob is the same pass-through. Otherwise the
+    latency is the hold's displacement, 1 sample at the default at 48 kHz,
+    plus the band limit's when it is on, and the host is told.
+
+    **Band Limit.** Band Limit is a switch, off by default. On, it puts a
+    low-pass in front of the hold that takes the images more than 20 dB
+    down, without muting what is under it, and the tail becomes 640
+    samples.
+
+    **Dither.** Dither spans 0 to 2 and is off by default. It is gated on the
+    input, so silence in is silence out at every patch, and at its top it
+    fades inside the declared tail. At a deep crush with Dither at its top
+    the dither holds its own gate open: it plays on silence, and the class
+    declares no tail.
+
+    **Mix and Output.** Mix spans 0 to 1, and Mix 0 is a wire at the source's
+    own level. Output spans -24 dB to 0 dB and trims the whole blend: -6 dB
+    is 6 dB down within 0.1 dB, at Mix 1 and at a blend.
+
+    **Patches.** There are seven: Twelve Bit, Twenty-Six; Eight Bit Voice;
+    Six Bit Drum; Telephone Grid; Grit Under The Note; Dithered Twelve; and
+    Broken Converter.
+
+    It needs `audioshaper`, `audiobiquad`, `audioroute` and `audiodynamics`,
+    so a stock CircuitPython board can't run it.
+    """
 
     #: Construction arms the voices on silence (`Component._play_voice`),
     #: so a Mix 0 set before the first pull hands out the source whole.

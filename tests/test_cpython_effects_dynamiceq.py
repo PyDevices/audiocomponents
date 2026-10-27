@@ -15,6 +15,7 @@ different class fails.
 
 import array
 import math
+import re
 import unittest
 
 import audiocore
@@ -1105,3 +1106,151 @@ class TheTailAfterAMove(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TheClaims(unittest.TestCase):
+    """The docstring's claims that no older test holds on its own."""
+
+    def test_the_spans(self):
+        cls = module.DynamicEQ
+        self.assertEqual(cls.MACRO_LABELS,
+                         ("Frequency", "Width", "Threshold", "Ratio",
+                          "Attack", "Release", "Mix", "Listen"))
+        self.assertEqual(cls._MACRO_RANGES,
+                         ((30.0, 16000.0, "log"), (0.5, 12.0, "log"),
+                          (-60.0, 0.0), (1.0, 20.0, "log"),
+                          (0.1, 100.0, "log"), (5.0, 1000.0, "log"),
+                          (0.0, 1.0), (0.0, 1.0)))
+        self.assertEqual([cls.PATCHES[i][0] for i in sorted(cls.PATCHES)],
+                         ["Wide Band", "Boxiness Control", "Harshness Control",
+                          "Low End Tamer", "Sibilance", "Half Measure"])
+        self.assertEqual(cls.LATENCY_SAMPLES, 0)
+        self.assertEqual(T1_SWEEP[0], 100.0)
+        self.assertEqual(T1_SWEEP[-1], 12000.0)
+
+    def test_mix_one_has_no_range_limit(self):
+        effect, _ = build(sine(1000.0, amp(-6.0), 2400), mix=1.0)
+        self.assertEqual(effect.range_db, float("inf"))
+
+    def test_construction_needs_its_three_modules(self):
+        import sys
+        for name in module.DynamicEQ.REQUIRES:
+            with self.subTest(module=name):
+                saved = sys.modules.get(name)
+                sys.modules[name] = None
+                try:
+                    with self.assertRaises(ImportError):
+                        build(sine(1000.0, amp(-6.0), 2400))
+                finally:
+                    sys.modules[name] = saved
+
+
+CLAIMS = (
+    ("`DynamicEQ` - one equaliser band that only moves when there is "
+     "something in it.",
+     ("Tier1.test_level_is_honest_below_threshold",
+      "Tier2.test_t2_and_t3_the_gain_law")),
+    ("One EQ band that only moves when there is something in it.",
+     ("Tier1.test_level_is_honest_below_threshold",
+      "Tier2.test_t2_and_t3_the_gain_law")),
+    ("You dial in a bell the ordinary way, with Frequency and Width.",
+     ("TheClaims.test_the_spans",)),
+    ("It does nothing until the sound in that band crosses Threshold, and "
+     "then it cuts the band as far as Ratio says.",
+     ("Tier1.test_level_is_honest_below_threshold",
+      "Tier2.test_t2_and_t3_the_gain_law")),
+    ("Everything outside the band is left as it was.",
+     ("Tier2.test_t4_out_of_band_is_untouched",)),
+    ("Below the threshold the band and its complement add back to the input "
+     "within 0.05 dB from 100 Hz to 12 kHz, and an impulse comes out at its "
+     "own height.",
+     ("TheClaims.test_the_spans",
+      "Tier2.test_t1_the_split_is_exact")),
+    ("Frequency spans 30 Hz to 16 kHz, Width is a Q from 0.5 to 12, "
+     "Threshold runs from -60 dBFS to 0 dBFS, Ratio from 1 to 20, Attack "
+     "from 0.1 ms to 100 ms and Release from 5 ms to 1000 ms.",
+     ("TheClaims.test_the_spans",)),
+    ("At the default, a 3 kHz tone follows the compressor law within 1 dB, "
+     "and across the bell the cut follows the closed form within 0.5 dB.",
+     ("Tier2.test_t2_and_t3_the_gain_law",
+      "Tier2.test_t5_the_bell_is_the_closed_form")),
+    ("Two octaves down nothing moves by as much as 0.2 dB, idle or working.",
+     ("Tier2.test_t4_out_of_band_is_untouched",)),
+    ("Mix spans 0 to 1 and also caps the deepest cut: at 0.75 the band can "
+     "move by at most 12 dB, and at 1 there is no limit.",
+     ("TheClaims.test_the_spans",
+      "Tier2.test_t6_mix_is_the_range_control",
+      "TheClaims.test_mix_one_has_no_range_limit")),
+    ("Across Mix the cut follows that blend within 0.2 dB, and out of band "
+     "nothing moves.",
+     ("Tier2.test_t6_mix_is_the_range_control",)),
+    ("Mix 0 is the source byte for byte, at full scale and at 48 kHz, "
+     "44.1 kHz and 22.05 kHz.",
+     ("Tier1.test_wire_at_mix_zero_is_byte_identical",
+      "Tier1.test_wire_at_mix_zero_holds_at_full_scale")),
+    ("Bringing Mix back after silence plays nothing.",
+     ("TheBypassComesBackAsBuilt.test_mix_back_after_silence_plays_nothing",
+      "TheBypassComesBackAsBuilt.test_at_every_patch")),
+    ("Listen solos the band being processed.",
+     ("Surface.test_listen_solos_the_processed_band",)),
+    ("Build it with `expand=True` and it cuts the band when the band is "
+     "quiet instead: over the threshold it is a wire within 0.1 dB, and "
+     "16 dB under it the band drops by more than 20 dB.",
+     ("Tier2.test_expand_cuts_the_band_when_the_band_is_quiet",)),
+    ("The law holds within 0.35 dB at 48 kHz, 44.1 kHz and 22.05 kHz, and "
+     "in mono.",
+     ("Tier1.test_rate_honesty_at_44k1_and_22k05",
+      "Tier1.test_mono_is_the_same_processing")),
+    ("A Frequency above 0.4 of the running rate is built there, and "
+     "`frequency_hz` says what you got.",
+     ("Tier1.test_rate_honesty_at_44k1_and_22k05",)),
+    ("It adds no latency at any setting.",
+     ("TheClaims.test_the_spans",
+      "Tier1.test_latency_is_zero_at_48k_and_44k1")),
+    ("The tail reaches exact zero inside `tail_samples`, after a knob move "
+     "too.",
+     ("Tier1.test_tail_reaches_exact_zero_at_every_band",
+      "TheTailAfterAMove.test_the_ring_ends_inside_the_bound")),
+    ("There are six: Wide Band; Boxiness Control; Harshness Control; Low End "
+     "Tamer; Sibilance; and Half Measure.",
+     ("TheClaims.test_the_spans",)),
+    ("It needs `audiobiquad`, `audiodynamics` and `audioroute`, so a stock "
+     "CircuitPython board can't run it.",
+     ("TheClaims.test_construction_needs_its_three_modules",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = module.__doc__ + " " + module.DynamicEQ.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(_flat(doc).replace(
+            "within 0.35 dB", "within 0.3 dB")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))

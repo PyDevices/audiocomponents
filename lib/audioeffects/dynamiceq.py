@@ -1,104 +1,110 @@
-"""One equaliser band that only moves when there is something in it.
+"""`DynamicEQ` - one equaliser band that only moves when there is
+something in it.
 
-**What it is, in a musician's terms.** A bell you dial in the ordinary way -
-frequency, width - which does nothing at all until the sound *in that band*
-crosses the threshold, and then cuts by however far the compressor law says.
-It is the tool for a singer who is fine until she pushes and then goes hard
-at 3 kHz, for a bass that booms only on the low F, for a cymbal whose edge is
-right except on the loud hits. A plain EQ cut fixes the loud moment and
-hollows out everything else; this one leaves everything else exactly as it
-was, because when the detector is idle **it is a wire and not an
-approximation of one**.
-
-**Two branches, and their sum is the input.** The band is split with an RBJ
-notch and an RBJ band-pass at the same frequency and the same Q, whose
-numerators `(1, -2cos w0, 1)` and `(alpha, 0, -alpha)` add up to their shared
-denominator, so `H_notch + H_bandpass` is exactly 1 at every frequency. The
-band-pass branch goes through the gain cell and both are summed back. Idle,
-that sum measures **0.0000 dB from unity** at 100 Hz through 12 kHz - not
-0.015 dB, which is what the same topology gives on the Q12 ported biquad, and
-the difference is why this class is built on `audiobiquad`.
-
-**Mix is also the Range control, and that is arithmetic rather than a
-saving.** Writing `B` for the band-pass's response and `g` for the gain
-cell's gain, the whole class is `1 + m*B*(g - 1)` at blend `m`. A blend
-against the dry input and a "how far may this band ever move" limit on the
-band branch are therefore the *same number*, and shipping both would be two
-knobs for one thing. So `Mix` at `m` caps the deepest cut at
-`-20*log10(1 - m)` dB: **6.0 dB at 0.5, 12.0 at 0.75, 20.0 at 0.9, and no
-limit at 1**, which is where it ships. `Mix` 0 is a real bypass, and it is
-byte-identical to the source rather than merely flat: there is **no mixer in
-the path** at all there, because a mixer voice at level 1.0 is not unity -
-upstream's Q15 level is `1.0 * 32768` and the kernel divides by 32767, so
-the dry tap at unity came out one LSB high at every sample from 32736 up
-(audiodsp#95, three of 16384 on a full-scale ramp). The mixer's voices take
-their sources whenever Mix leaves 0, with their level gates opened on one
-block of silence first, and the filters, cell and tail are cleared before
-they do: they used to keep what they held when Mix went to 0 and play it
-when it came back, up to 7 769 LSB out of silence (audiocomponents#113).
-
-**`expand=True` is a build, not a knob.** `audiodynamics.Dynamics` fixes its
-mode at construction, and a class that carried both a compressor and an
-expander would pay for both every block whichever one was selected - so the
-direction S6 calls "compression/expansion" is a constructor argument.
-`expand=False` (the default) cuts the band when the band goes **over** the
-threshold; `expand=True` cuts it when the band falls **under**, which is a
-per-band gate for hiss, rumble and room tone. Neither one boosts: a bell that
-*lifts* when the band arrives needs a target gain that would fight the
-threshold-and-ratio law this class is held to, and the palette route for it
-(`makeup_db` against `depth_db`) is recorded in the dossier rather than
-half-built here.
-
-**Portability tier: audiodsp.** `audiobiquad` for a split whose two branches
-sum to unity and whose tail reaches exact zero; `audiodynamics` for the gain
-cell and its detector; `audioroute` for the fan-out. It will not import on a
-stock CircuitPython board - the module loads, and construction raises.
-
-**Latency: zero, at every setting, and nothing here can add any.** Both
-branches are IIR - they rotate phase, they do not delay onset - and
-`audiodynamics`' `lookahead_ms` is deliberately not exposed, because a
-dynamic EQ that ducked before the note arrived would be a different
-instrument. There is therefore **no latency-adding option to name in
-milliseconds**: `latency_samples` is 0 for the life of the instance.
-
-**Cost, and it went up.** Two biquads, one detector-and-gain-cell, a
-three-tap splitter ring, a three-voice mixer, a block-sized guard and an
-identity `MidSide`, on a graph that runs in 256-frame blocks throughout -
-mono included since 2026-09-28, when the mixer's fixed 2048-byte buffer
-(two blocks mono) became `1024 * channels`; stereo is the same bytes.
-Measured on the desktop against the class this replaces, five interleaved
-repeats of each: **1.46-1.56 ms per 256-frame stereo block against
-1.10-1.15**, about **45 % more**. Three of those nodes are new - the guard,
-the dry tap and the tail. Two of them still earn it: `Mix` 0 is not a real
-bypass without the dry tap, and CircuitPython renders silence without the
-tail. The guard's reason has expired - it was there because a long source
-vanished into the Splitter's ring, and audiodsp#87 removed that ring limit,
-so at `977ef26` the graph renders the same bytes without it. It is a node
-this class could drop, once a board is free to re-take the row. The single
-256-frame block size keeps every
-node doing the same work per pull; it is not a saving, and the first
-measurement in this session said it was only because the machine was loaded.
-Neither figure is a board figure.
-
-**One thing measured here that the dossier had wrong.** With a tone sitting
-on the band centre, the composite reads about **0.42 dB above** the gain
-computer's law. The seed put that down to the notch branch passing a little
-of the tone; the notch branch at `f0` measures **exactly zero** (RMS 0.00 of
-a 10360 LSB source), and the real cause is the detector: a one-pole peak
-follower with a 2 ms attack never quite reaches the peak of a 3 kHz sine, so
-`env_db` reads about 0.6 dB low and the cell cuts that much less. It moves
-with the attack time (0.23 dB short at 0.1 ms, 1.18 dB at 10 ms) and with
-frequency (0.49 dB at 200 Hz, 1.23 dB at 8 kHz), which is what a lagging
-follower does and what notch leakage would not.
-
-**Two bounds, measured.** The composite law (T2, and T5 which is built on
-it) holds inside 1 dB only at short attack: patch 3 "Low End Tamer" (20 ms)
-reads **+1.439 dB** and the macro's 100 ms end reads **+4.269 dB** at ratio
-20. The two-octave isolation bar (T4, 0.2 dB) and T6's out-of-band clause
-hold at Q 2 and miss below it: patch 5 "Half Measure" at shipped Q 1.01
-reads **0.271 dB**. Those traits stay disconfirmed at those settings; they
-are not dropped.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# What it is, in a musician's terms. A bell you dial in the ordinary way -
+# frequency, width - which does nothing at all until the sound *in that band*
+# crosses the threshold, and then cuts by however far the compressor law says.
+# It is the tool for a singer who is fine until she pushes and then goes hard
+# at 3 kHz, for a bass that booms only on the low F, for a cymbal whose edge is
+# right except on the loud hits. A plain EQ cut fixes the loud moment and
+# hollows out everything else; this one leaves everything else exactly as it
+# was, because when the detector is idle it is a wire and not an
+# approximation of one.
+#
+# Two branches, and their sum is the input. The band is split with an RBJ
+# notch and an RBJ band-pass at the same frequency and the same Q, whose
+# numerators `(1, -2cos w0, 1)` and `(alpha, 0, -alpha)` add up to their shared
+# denominator, so `H_notch + H_bandpass` is exactly 1 at every frequency. The
+# band-pass branch goes through the gain cell and both are summed back. Idle,
+# that sum measures 0.0000 dB from unity at 100 Hz through 12 kHz - not
+# 0.015 dB, which is what the same topology gives on the Q12 ported biquad, and
+# the difference is why this class is built on `audiobiquad`.
+#
+# Mix is also the Range control, and that is arithmetic rather than a
+# saving. Writing `B` for the band-pass's response and `g` for the gain
+# cell's gain, the whole class is `1 + m*B*(g - 1)` at blend `m`. A blend
+# against the dry input and a "how far may this band ever move" limit on the
+# band branch are therefore the *same number*, and shipping both would be two
+# knobs for one thing. So `Mix` at `m` caps the deepest cut at
+# `-20*log10(1 - m)` dB: 6.0 dB at 0.5, 12.0 at 0.75, 20.0 at 0.9, and no
+# limit at 1, which is where it ships. `Mix` 0 is a real bypass, and it is
+# byte-identical to the source rather than merely flat: there is no mixer in
+# the path at all there, because a mixer voice at level 1.0 is not unity -
+# upstream's Q15 level is `1.0 * 32768` and the kernel divides by 32767, so
+# the dry tap at unity came out one LSB high at every sample from 32736 up
+# (audiodsp#95, three of 16384 on a full-scale ramp). The mixer's voices take
+# their sources whenever Mix leaves 0, with their level gates opened on one
+# block of silence first, and the filters, cell and tail are cleared before
+# they do: they used to keep what they held when Mix went to 0 and play it
+# when it came back, up to 7 769 LSB out of silence (audiocomponents#113).
+#
+# `expand=True` is a build, not a knob. `audiodynamics.Dynamics` fixes its
+# mode at construction, and a class that carried both a compressor and an
+# expander would pay for both every block whichever one was selected - so the
+# direction S6 calls "compression/expansion" is a constructor argument.
+# `expand=False` (the default) cuts the band when the band goes over the
+# threshold; `expand=True` cuts it when the band falls under, which is a
+# per-band gate for hiss, rumble and room tone. Neither one boosts: a bell that
+# *lifts* when the band arrives needs a target gain that would fight the
+# threshold-and-ratio law this class is held to, and the palette route for it
+# (`makeup_db` against `depth_db`) is recorded in the dossier rather than
+# half-built here.
+#
+# Portability tier: audiodsp. `audiobiquad` for a split whose two branches
+# sum to unity and whose tail reaches exact zero; `audiodynamics` for the gain
+# cell and its detector; `audioroute` for the fan-out. It will not import on a
+# stock CircuitPython board - the module loads, and construction raises.
+#
+# Latency: zero, at every setting, and nothing here can add any. Both
+# branches are IIR - they rotate phase, they do not delay onset - and
+# `audiodynamics`' `lookahead_ms` is deliberately not exposed, because a
+# dynamic EQ that ducked before the note arrived would be a different
+# instrument. There is therefore no latency-adding option to name in
+# milliseconds: `latency_samples` is 0 for the life of the instance.
+#
+# Cost, and it went up. Two biquads, one detector-and-gain-cell, a
+# three-tap splitter ring, a three-voice mixer, a block-sized guard and an
+# identity `MidSide`, on a graph that runs in 256-frame blocks throughout -
+# mono included since 2026-09-28, when the mixer's fixed 2048-byte buffer
+# (two blocks mono) became `1024 * channels`; stereo is the same bytes.
+# Measured on the desktop against the class this replaces, five interleaved
+# repeats of each: 1.46-1.56 ms per 256-frame stereo block against
+# 1.10-1.15, about 45 % more. Three of those nodes are new - the guard,
+# the dry tap and the tail. Two of them still earn it: `Mix` 0 is not a real
+# bypass without the dry tap, and CircuitPython renders silence without the
+# tail. The guard's reason has expired - it was there because a long source
+# vanished into the Splitter's ring, and audiodsp#87 removed that ring limit,
+# so at `977ef26` the graph renders the same bytes without it. It is a node
+# this class could drop, once a board is free to re-take the row. The single
+# 256-frame block size keeps every
+# node doing the same work per pull; it is not a saving, and the first
+# measurement in this session said it was only because the machine was loaded.
+# Neither figure is a board figure.
+#
+# One thing measured here that the dossier had wrong. With a tone sitting
+# on the band centre, the composite reads about 0.42 dB above the gain
+# computer's law. The seed put that down to the notch branch passing a little
+# of the tone; the notch branch at `f0` measures exactly zero (RMS 0.00 of
+# a 10360 LSB source), and the real cause is the detector: a one-pole peak
+# follower with a 2 ms attack never quite reaches the peak of a 3 kHz sine, so
+# `env_db` reads about 0.6 dB low and the cell cuts that much less. It moves
+# with the attack time (0.23 dB short at 0.1 ms, 1.18 dB at 10 ms) and with
+# frequency (0.49 dB at 200 Hz, 1.23 dB at 8 kHz), which is what a lagging
+# follower does and what notch leakage would not.
+#
+# Two bounds, measured. The composite law (T2, and T5 which is built on
+# it) holds inside 1 dB only at short attack: patch 3 "Low End Tamer" (20 ms)
+# reads +1.439 dB and the macro's 100 ms end reads +4.269 dB at ratio
+# 20. The two-octave isolation bar (T4, 0.2 dB) and T6's out-of-band clause
+# hold at Q 2 and miss below it: patch 5 "Half Measure" at shipped Q 1.01
+# reads 0.271 dB. Those traits stay disconfirmed at those settings; they
+# are not dropped.
 
 VENDOR = "PyDevices"
 
@@ -141,10 +147,51 @@ _GUARD_FRAMES = 256
 _MAX_CORNER = 0.4
 
 class DynamicEQ(_component.Component):
-    """A bell that only appears when the band it sits on crosses a threshold.
+    """One EQ band that only moves when there is something in it.
 
-    `audiodsp` tier: `audiobiquad` for the complementary split, `audiodynamics`
-    for the gain cell, `audioroute` for the fan-out.
+    **What it does.** You dial in a bell the ordinary way, with Frequency
+    and Width. It does nothing until the sound in that band crosses
+    Threshold, and then it cuts the band as far as Ratio says. Everything
+    outside the band is left as it was.
+
+    **Idle, it is a wire.** Below the threshold the band and its complement
+    add back to the input within 0.05 dB from 100 Hz to 12 kHz, and an
+    impulse comes out at its own height.
+
+    **The controls.** Frequency spans 30 Hz to 16 kHz, Width is a Q from
+    0.5 to 12, Threshold runs from -60 dBFS to 0 dBFS, Ratio from 1 to 20,
+    Attack from 0.1 ms to 100 ms and Release from 5 ms to 1000 ms.
+
+    **The law.** At the default, a 3 kHz tone follows the compressor law
+    within 1 dB, and across the bell the cut follows the closed form within
+    0.5 dB. Two octaves down nothing moves by as much as 0.2 dB, idle or
+    working.
+
+    **Mix is the Range.** Mix spans 0 to 1 and also caps the deepest cut:
+    at 0.75 the band can move by at most 12 dB, and at 1 there is no limit.
+    Across Mix the cut follows that blend within 0.2 dB, and out of band
+    nothing moves. Mix 0 is the source byte for byte, at full scale and at
+    48 kHz, 44.1 kHz and 22.05 kHz. Bringing Mix back after silence plays
+    nothing.
+
+    **Listen.** Listen solos the band being processed.
+
+    **Expand.** Build it with `expand=True` and it cuts the band when the
+    band is quiet instead: over the threshold it is a wire within 0.1 dB,
+    and 16 dB under it the band drops by more than 20 dB.
+
+    **Sample rate and mono.** The law holds within 0.35 dB at 48 kHz,
+    44.1 kHz and 22.05 kHz, and in mono. A Frequency above 0.4 of the
+    running rate is built there, and `frequency_hz` says what you got.
+
+    **Latency and tail.** It adds no latency at any setting. The tail
+    reaches exact zero inside `tail_samples`, after a knob move too.
+
+    **Patches.** There are six: Wide Band; Boxiness Control; Harshness
+    Control; Low End Tamer; Sibilance; and Half Measure.
+
+    It needs `audiobiquad`, `audiodynamics` and `audioroute`, so a stock
+    CircuitPython board can't run it.
     """
 
     #: Construction arms the voices on silence (`Component._play_voice`),

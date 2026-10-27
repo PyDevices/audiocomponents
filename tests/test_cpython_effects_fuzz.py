@@ -7,6 +7,7 @@ file asserts at 48 kHz unless the test is about latency.
 
 import math
 import os
+import re
 import sys
 import unittest
 from array import array
@@ -2384,6 +2385,200 @@ class TheResetLeavesOnlyFilterResidue(unittest.TestCase):
         residue = int(np.max(np.abs(a[2 * bound:] - b[2 * bound:])))
         self.assertGreater(residue, 0)
         self.assertLess(residue, 1024)
+
+#: The ESP32-S3 figures the docstring gives, from the second board pass:
+#: share of a 5.333 ms block at 48 kHz, rounded to the whole percent.
+BOARD_COST = {"S3_default": 77, "S3_costliest": 78, "S3_lean": 33}
+
+
+class TheClaims(unittest.TestCase):
+    """The docstring's claims that no older test holds on its own."""
+
+    def test_the_spans(self):
+        R = Fuzz._MACRO_RANGES
+        self.assertEqual(Fuzz.MACRO_LABELS,
+                         ("Fuzz", "Level", "Tone", "Bias", "Load", "Mix",
+                          "Output Tilt"))
+        self.assertEqual(R[0], (18.0, 54.0))
+        for index in (1, 2, 4, 5):
+            self.assertEqual(R[index], (0.0, 1.0))
+        self.assertEqual(R[3], (-1.0, 1.0))
+        self.assertEqual(R[6], (-6.0, 6.0))
+        effect = build()
+        self.assertEqual(effect._character, "germanium")
+        self.assertAlmostEqual(effect.macro(0), 36.0, places=6)
+        effect.deinit()
+        self.assertEqual(
+            [Fuzz.PATCHES[i][0] for i in sorted(Fuzz.PATCHES)],
+            ["Bias centred, fuzz half", "Full fuzz, volume back",
+             "Starved bias, gated", "Cleaned up, load engaged",
+             "Cascade scoop centred", "Cascade sustain maximum",
+             "Cascade treble end", "Full fuzz, mix back", "Fuzz - lean"])
+
+    def test_the_board_figures_are_the_table(self):
+        doc = _flat(Fuzz.__doc__)
+        self.assertIn("the germanium default was measured at %d %% of a "
+                      "block and the costliest patch at %d %%"
+                      % (BOARD_COST["S3_default"],
+                         BOARD_COST["S3_costliest"]), doc)
+        self.assertIn("was measured at %d %%, so play it"
+                      % BOARD_COST["S3_lean"], doc)
+        self.assertLess(BOARD_COST["S3_lean"], BOARD_COST["S3_default"])
+
+    def test_construction_needs_its_three_modules(self):
+        for name in Fuzz.REQUIRES:
+            with self.subTest(module=name):
+                saved = sys.modules.get(name)
+                sys.modules[name] = None
+                try:
+                    with self.assertRaises(ImportError):
+                        build(frames=1024)
+                finally:
+                    sys.modules[name] = saved
+
+
+CLAIMS = (
+    ("Fuzz Face germanium, or a Ram's Head 1973 Big Muff as `cascade`.",
+     ("TheClaims.test_the_spans",
+      "G1Asymmetry.test_default_is_asymmetric",
+      "CascadeC3.test_centred_tone_has_a_mid_scoop")),
+    ("On `germanium` the transistor sits off centre, so the fuzz leans even: "
+     "at the default the second harmonic of a -20 dBFS 1 kHz tone is no "
+     "more than 30 dB under it, and the even harmonics together no more "
+     "than 26 dB.",
+     ("G1Asymmetry.test_default_is_asymmetric",
+      "G1Asymmetry.test_symmetric_table_is_red")),
+    ("Turned up to 48 dB of Fuzz and past, both halves go square and the "
+     "lean is gone.",
+     ("G1Asymmetry.test_g1_reads_green_at_four_patches_and_is_claimed_at_"
+      "three",)),
+    ("There is no tone stack on `germanium`: the band stays flat within "
+     "1 dB, and 40 Hz within 3 dB of 1 kHz.",
+     ("G4NoToneStack.test_in_band_spread_under_one_db_at_default",
+      "G4FortyHz.test_forty_hz_within_three_db_of_1k_at_default")),
+    ("`cascade` is two silicon pairs with a mid scoop between them.",
+     ("CascadeC1.test_sustain_max_is_odd_and_peak_limited",
+      "CascadeC3.test_centred_tone_has_a_mid_scoop")),
+    ("With Tone and Bias centred the scoop is more than 3 dB deep.",
+     ("CascadeC3.test_centred_tone_has_a_mid_scoop",)),
+    ("From Fuzz 18 dB to 32 dB, Tone moves the scoop's centre over more than "
+     "half an octave; from 34 dB up the clipper fills the scoop in.",
+     ("CascadeC4.test_the_row_holds_everywhere_it_is_claimed",
+      "CascadeC4.test_it_is_disconfirmed_above_the_span_including_at_the_"
+      "default")),
+    ("Fuzz spans 18 dB to 54 dB and defaults to 36 dB.",
+     ("TheClaims.test_the_spans",)),
+    ("Bias spans -1 to +1.",
+     ("TheClaims.test_the_spans",)),
+    ("On `cascade` any Bias off centre is a gate on the level: it rails both "
+     "pairs and the output falls away, while the scoop stays more than 3 dB "
+     "deep.",
+     ("CascadeC3.test_bias_on_cascade_gates_the_level_not_the_scoop",)),
+    ("With Bias off centre the output settles near zero rather than on it, "
+     "so the class declares no tail there.",
+     ("TheOutputStage.test_bias_off_centre_declares_no_bound",
+      "TheOutputStage.test_bias_off_centre_never_reaches_digital_zero_and_"
+      "says_so")),
+    ("Level, Load and Mix each span 0 to 1.",
+     ("TheClaims.test_the_spans",)),
+    ("Level 0 is digital silence at every Mix above 0, and halving Level "
+     "takes 6.02 dB off at every Mix.",
+     ("TheOutputStage.test_level_zero_is_silence_at_every_mix_above_zero",
+      "TheOutputStage.test_halving_level_is_six_db_at_every_mix")),
+    ("Load 1 takes 6.02 dB off at every Mix.",
+     ("TheOutputStage.test_load_is_six_db_at_every_mix",)),
+    ("At Mix 0 the output is the source itself, at its own level, and the "
+     "latency is 0.",
+     ("WireAndClick.test_mix_zero_is_a_wire",
+      "TheGraph.test_mix_zero_is_the_borrowed_source_itself",
+      "TheOutputStage.test_mix_zero_is_the_wire_and_level_does_not_reach_"
+      "it",
+      "Construction.test_mix_zero_reports_zero_latency")),
+    ("Output Tilt spans -6 dB to +6 dB across 1 kHz and is measured from its "
+     "loudest end.",
+     ("TheClaims.test_the_spans",)),
+    ("Nothing on the surface reaches the rail from 100 Hz to 3700 Hz, even "
+     "at 0 dBFS in.",
+     ("TheOutputStage.test_nothing_on_the_surface_reaches_the_rail",)),
+    ("At 48 kHz and 44.1 kHz, at the default, the aliasing is at least 50 dB "
+     "under a 1010 Hz tone and 35 dB under a 3700 Hz one.",
+     ("A4AliasFloor.test_the_clauses_hold",)),
+    ("Nowhere else on the surface, Fuzz - lean aside, does it come closer "
+     "than 35 dB and 28 dB.",
+     ("A4AliasFloor.test_the_surface_clause_over_every_patch_but_the_lean_"
+      "one",
+      "TestFuzzA4AtItsWorstCell.test_the_worst_joint_cell_is_where_the_row_"
+      "says")),
+    ("At 22.05 kHz that does not hold, because the fuzz's own harmonics fold "
+     "back at the output rate.",
+     ("A4AliasFloor.test_at_2205_the_row_is_disconfirmed_and_the_cause_is_"
+      "the_rate",)),
+    ("`germanium` shapes at x8 and reports 4 samples of latency; `cascade` "
+     "shapes at x2 and reports 2, and so does Fuzz - lean.",
+     ("TheShippedFactorIsPerCharacter.test_each_character_builds_at_its_own_"
+      "factor",
+      "TheShippedFactorIsPerCharacter.test_cascade_reports_the_factors_"
+      "latency",
+      "TheLeanPatch.test_patch_eight_is_named_and_shaped_at_two",
+      "WireAndClick.test_click_matches_reported_latency")),
+    ("With Bias centred the tail is 24576 samples.",
+     ("Construction.test_defaults_and_capabilities",
+      "TheOutputStage.test_the_tail_is_the_one_declared",
+      "TestFuzzTheTailBelowTheBurst.test_the_declaration_covers_the_low_"
+      "notes_too")),
+    ("There are nine: Bias centred, fuzz half; Full fuzz, volume back; "
+     "Starved bias, gated; Cleaned up, load engaged; Cascade scoop centred; "
+     "Cascade sustain maximum; Cascade treble end; Full fuzz, mix back; and "
+     "Fuzz - lean.",
+     ("TheClaims.test_the_spans",)),
+    ("Alone on an ESP32-S3 the germanium default was measured at 77 % of a "
+     "block and the costliest patch at 78 %.",
+     ("TheClaims.test_the_board_figures_are_the_table",)),
+    ("Fuzz - lean shapes at x2 and was measured at 33 %, so play it when you "
+     "stack effects.",
+     ("TheLeanPatch.test_patch_eight_is_named_and_shaped_at_two",
+      "TheClaims.test_the_board_figures_are_the_table")),
+    ("It needs `audioshaper`, `audiobiquad` and `audioroute`, so a stock "
+     "CircuitPython board can't run it.",
+     ("TheClaims.test_construction_needs_its_three_modules",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = rebuilt.__doc__ + " " + Fuzz.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(_flat(doc).replace(
+            "within 3 dB of 1 kHz", "within 6 dB of 1 kHz")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
+
 
 if __name__ == "__main__":
     unittest.main()

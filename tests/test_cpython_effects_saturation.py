@@ -7,6 +7,7 @@ file asserts at 48 kHz unless the test is about latency.
 
 import math
 import os
+import re
 import sys
 import unittest
 from array import array
@@ -2061,6 +2062,240 @@ class TestResetIsFresh(unittest.TestCase):
         effect.program_change(rebuilt.LEAN_PATCH)
         effect.reset()
         self.assertEqual(effect.latency_samples, fresh)
+
+
+#: The ESP32-S3 figures the docstring gives, from the second board pass:
+#: share of a 5.333 ms block at 48 kHz, rounded to the whole percent.
+BOARD_COST = {"S3_default": 55, "S3_costliest": 56, "S3_lean": 40}
+
+
+class TheClaims(unittest.TestCase):
+    """The docstring's claims that no older test holds on its own."""
+
+    def test_the_spans(self):
+        R = Saturation._MACRO_RANGES
+        self.assertEqual(Saturation.MACRO_LABELS,
+                         ("Drive", "Output", "Mix", "Headroom", "Bias",
+                          "Speed", "Tilt", "Hysteresis"))
+        self.assertEqual(R[0], (-12.0, 15.0))
+        self.assertEqual(R[1], (-24.0, 12.0))
+        self.assertEqual(R[2], (0.0, 1.0))
+        self.assertEqual(R[3], (-12.0, 12.0))
+        self.assertEqual(R[4], (-1.0, 1.0))
+        self.assertEqual(R[5], (3.75, 30.0, "log"))
+        self.assertEqual(R[6], (-6.0, 6.0))
+        self.assertEqual(R[7], (0.0, 1.0))
+        self.assertEqual(rebuilt.TILT_HZ, 1000.0)
+        self.assertEqual(rebuilt.CHARACTERS, ("tube", "tape", "console"))
+        effect = build()
+        self.assertEqual(effect._character, "tube")
+        self.assertEqual(effect.macro(7), 0.0)
+        effect.deinit()
+        self.assertEqual(
+            [Saturation.PATCHES[i][0] for i in sorted(Saturation.PATCHES)],
+            ["Gentle thickening", "Hot into the curve", "Tape at fifteen",
+             "Tape at seven and a half", "Under-biased and bright",
+             "Iron, low end working", "Offset, even harmonics", "Mix back",
+             "Saturation - lean"])
+        self.assertEqual([rebuilt.shipped_oversample(rate)
+                          for rate in (48000, 44100, 22050)], [4, 4, 2])
+        self.assertEqual([rebuilt.CLICK_ONSET_SAMPLES[(character, 4)]
+                          for character in rebuilt.CHARACTERS], [1, 2, 4])
+
+    def test_the_default_takes_level_away(self):
+        probe = sine(1000, 48000, -12.0)
+        for character, loss in (("tube", 8.0), ("tape", 13.0),
+                                ("console", 33.0)):
+            effect = build(probe=probe, character=character)
+            wet = render(effect, 48000).float[24000:, 0]
+            effect.deinit()
+            peak = math.sqrt(2.0 * float(np.mean(wet * wet)))
+            down = -12.0 - 20.0 * math.log10(peak)
+            self.assertAlmostEqual(down, loss, delta=1.0,
+                                   msg="%s: %.2f dB down" % (character, down))
+
+    def test_every_macro_at_its_top_clips_a_full_scale_input(self):
+        probe = sine(1000, 8192, 0.0)
+        effect = build(probe=probe, frames=8192)
+        for index in range(len(Saturation.MACRO_LABELS)):
+            effect.set_macro(index, 127)
+        wet = render(effect, 8192)
+        effect.deinit()
+        self.assertGreater(int(np.abs(wet.data[4096:]).max()), 32766)
+
+    def test_speed_changes_nothing_on_tube(self):
+        probe = sine(1000, 8192, -12.0)
+        renders = []
+        for speed in (3.75, 15.0, 30.0):
+            effect = build(probe=probe, frames=8192, speed_ips=speed)
+            renders.append(render(effect, 8192).pcm)
+            effect.deinit()
+        self.assertEqual(renders[0], renders[1])
+        self.assertEqual(renders[1], renders[2])
+        tape = []
+        for speed in (3.75, 30.0):
+            effect = build(probe=probe, frames=8192, character="tape",
+                           speed_ips=speed)
+            tape.append(render(effect, 8192).pcm)
+            effect.deinit()
+        self.assertNotEqual(tape[0], tape[1])
+
+    def test_the_board_figures_are_the_table(self):
+        doc = _flat(Saturation.__doc__)
+        self.assertIn("was measured at %d %% of a block at its default "
+                      "patch and %d %% at its costliest"
+                      % (BOARD_COST["S3_default"],
+                         BOARD_COST["S3_costliest"]), doc)
+        self.assertIn("was measured at %d %%, so play it"
+                      % BOARD_COST["S3_lean"], doc)
+        self.assertLess(BOARD_COST["S3_lean"], BOARD_COST["S3_default"])
+
+    def test_construction_needs_its_four_modules(self):
+        for name in Saturation.REQUIRES:
+            with self.subTest(module=name):
+                saved = sys.modules.get(name)
+                sys.modules[name] = None
+                try:
+                    with self.assertRaises(ImportError):
+                        build(frames=1024)
+                finally:
+                    sys.modules[name] = saved
+
+
+CLAIMS = (
+    ("A 12AX7 stage, a tape machine, or transformer iron.",
+     ("TheClaims.test_the_spans",
+      "TU1EvenLead.test_default_is_the_headline")),
+    ("On `tube` the second harmonic leads the third by more than 15 dB from "
+     "-26 dBFS to -6 dBFS, and by more than 20 dB at -6 dBFS.",
+     ("TU1EvenLead.test_default_is_the_headline",)),
+    ("On `tape` the curve is odd: at the default the second harmonic of a "
+     "-12 dBFS tone stays 40 dB under it.",
+     ("TP2OddAtBiasZero.test_tape_default_h2_below_minus_40",)),
+    ("Drive spans -12 dB to +15 dB and Headroom -12 dB to +12 dB.",
+     ("TheClaims.test_the_spans",
+      "DriveCeilingAndLean.test_drive_tops_out_where_the_alias_floor_"
+      "holds")),
+    ("Headroom is Drive spent the other way round, and the two share one "
+     "ceiling: Drive less Headroom stops at +15 dB however you reach it.",
+     ("DriveAndHeadroomShareTheCeiling.test_the_pair_stops_where_drive_"
+      "stops",
+      "DriveAndHeadroomShareTheCeiling.test_headroom_still_does_something_"
+      "under_the_cap")),
+    ("At 48 kHz on `tube` the aliasing stays more than 60 dB under a 1010 Hz "
+     "or a 3700 Hz tone, at the default and at full Drive, and at every "
+     "Headroom down to -12 dB.",
+     ("A4AliasFloor.test_default_is_the_headline",
+      "A4AliasFloor.test_max_drive_clears_the_bar_at_both_probes",
+      "DriveAndHeadroomShareTheCeiling.test_the_alias_floor_holds_over_the_"
+      "plane")),
+    ("That is a ratio, so wherever the output is quiet it reads worse, one "
+     "dB for one, and `console` at Drive 0 dB does not reach it.",
+     ("A4AliasFloor.test_where_the_clean_class_does_not_hold_the_row",)),
+    ("Output spans -24 dB to +12 dB, and +3, +6, +9 and +12 dB come out "
+     "within 0.25 dB of what they say.",
+     ("TheClaims.test_the_spans",
+      "TheNodeIsNeverAskedPastItsRail.test_the_split_keeps_the_level_law")),
+    ("At the default the stage takes level away: a -12 dBFS 1 kHz tone comes "
+     "out about 8 dB down on `tube`, 13 dB on `tape` and 33 dB on "
+     "`console`, and Output is what puts it back.",
+     ("TheClaims.test_the_default_takes_level_away",)),
+    ("With every macro at its top a full-scale input can clip.",
+     ("TheClaims.test_every_macro_at_its_top_clips_a_full_scale_input",)),
+    ("Mix runs from the dry signal at 0 to the stage at 1, and it is a "
+     "blend: the level never rises on the way and there is no notch.",
+     ("TheClaims.test_the_spans",
+      "TheThirdFixRoundsRows.test_mix_is_a_blend_and_not_a_notch")),
+    ("At Mix 0 the output is the source itself and the latency is 0.",
+     ("WireAndClick.test_mix_zero_is_a_wire",
+      "DriveCeilingAndLean.test_mix_zero_is_the_borrowed_source_itself",
+      "Construction.test_mix_zero_reports_zero_latency")),
+    ("Bias spans -1 to +1 and moves the stage's operating point.",
+     ("TheClaims.test_the_spans",)),
+    ("Every position sounds: none takes more than 12 dB off the level at "
+     "Bias 0, and none wanders more than 1 dB once it has settled.",
+     ("BiasStaysAudible.test_every_position_sounds_and_holds",
+      "BiasStaysAudible.test_a_move_mid_stream_sounds_and_holds",
+      "BiasStaysAudible.test_tape_and_console_keep_their_whole_span")),
+    ("Silence in is silence out at every Bias and every patch.",
+     ("TheTierOneRowsAtEveryShippedPatch.test_only_an_offset_patch_uses_any_"
+      "of_the_stated_residual",
+      "SilenceAnswersSilenceOffCentre.test_silence_is_silence_from_frame_"
+      "zero",
+      "TheOperatingPointComesBackClean.test_bias_moves_play_nothing")),
+    ("Speed is the tape's, from 3.75 to 30 inches a second, and slides its "
+     "playback loss; on `tube` it changes nothing.",
+     ("TheClaims.test_the_spans",
+      "TheClaims.test_speed_changes_nothing_on_tube",
+      "TP1SpeedSlide.test_fixed_loss_fault_is_not_a_knob")),
+    ("Tilt spans -6 dB to +6 dB about 1 kHz.",
+     ("TheClaims.test_the_spans",)),
+    ("Hysteresis spans 0 to 1 and is off by default.",
+     ("TheClaims.test_the_spans",)),
+    ("The rate picks the oversampling: x4 at 48 kHz and 44.1 kHz, x2 at "
+     "22.05 kHz.",
+     ("TheClaims.test_the_spans",)),
+    ("At x4 the latency is 1 sample on `tube`, 2 on `tape` and 4 on "
+     "`console`, and the host is told.",
+     ("TheClaims.test_the_spans",
+      "TheThirdFixRoundsRows.test_the_onset_is_what_every_build_and_rate_"
+      "reads")),
+    ("After a burst every patch is back to silence within the declared tail "
+     "of 65536 samples.",
+     ("Construction.test_defaults_and_capabilities",
+      "TheTierOneRowsAtEveryShippedPatch.test_the_declared_tail_holds_at_"
+      "every_shipped_patch")),
+    ("There are nine: Gentle thickening; Hot into the curve; Tape at "
+     "fifteen; Tape at seven and a half; Under-biased and bright; Iron, low "
+     "end working; Offset, even harmonics; Mix back; and Saturation - lean.",
+     ("TheClaims.test_the_spans",)),
+    ("Alone on an ESP32-S3 the class was measured at 55 % of a block at its "
+     "default patch and 56 % at its costliest.",
+     ("TheClaims.test_the_board_figures_are_the_table",)),
+    ("Saturation - lean runs one oversampling factor lower and was measured "
+     "at 40 %, so play it when you stack effects.",
+     ("DriveCeilingAndLean.test_lean_patch_is_one_factor_down",
+      "TheClaims.test_the_board_figures_are_the_table")),
+    ("It needs `audioshaper`, `audiobiquad`, `audioroute` and `audioecho`, "
+     "so a stock CircuitPython board can't run it.",
+     ("TheClaims.test_construction_needs_its_four_modules",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = rebuilt.__doc__ + " " + Saturation.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(_flat(doc).replace(
+            "within 0.25 dB", "within 0.5 dB")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
 if __name__ == "__main__":

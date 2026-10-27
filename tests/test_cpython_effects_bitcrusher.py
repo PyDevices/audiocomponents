@@ -5,6 +5,7 @@ Exhaustive rate coverage lives in the evidence pack, not here.
 
 import math
 import os
+import re
 import sys
 import unittest
 from array import array
@@ -1234,3 +1235,159 @@ class TheBandLimitAndTheDitherComeBackClean(unittest.TestCase):
         self.assertGreater(stale.blip(NoBranchClear, 3, 127, 0)[1], 5000)
         self.assertGreater(stale.blip(NoBranchClear, 2, 127, 0)[1], 0)
         self.assertGreater(stale.blip(FirstSectionClear, 3, 127, 0)[1], 100)
+
+
+class TheClaims(unittest.TestCase):
+    """The docstring's claims that no older test holds on its own."""
+
+    def test_the_spans(self):
+        R = Bitcrusher._MACRO_RANGES
+        self.assertEqual(Bitcrusher.MACRO_LABELS,
+                         ("Bits", "Rate", "Dither", "Band Limit", "Mix",
+                          "Output"))
+        self.assertEqual(R[0], (2.0, 12.0))
+        self.assertEqual(R[1], (1000.0, 48000.0, "log"))
+        self.assertEqual(R[2], (0.0, 2.0))
+        self.assertEqual(R[3], (0.0, 1.0))
+        self.assertEqual(Bitcrusher.MACRO_MODES[3], "TOGGLE")
+        self.assertEqual(R[4], (0.0, 1.0))
+        self.assertEqual(R[5], (-24.0, 0.0))
+        self.assertEqual(
+            [Bitcrusher.PATCHES[i][0] for i in sorted(Bitcrusher.PATCHES)],
+            ["Twelve Bit, Twenty-Six", "Eight Bit Voice", "Six Bit Drum",
+             "Telephone Grid", "Grit Under The Note", "Dithered Twelve",
+             "Broken Converter"])
+        self.assertAlmostEqual(law_ratio(12), 0.5)
+
+    def test_construction_needs_its_four_modules(self):
+        for name in Bitcrusher.REQUIRES:
+            with self.subTest(module=name):
+                saved = sys.modules.get(name)
+                sys.modules[name] = None
+                try:
+                    with self.assertRaises(ImportError):
+                        Bitcrusher.create(source(), RATE)
+                finally:
+                    sys.modules[name] = saved
+
+
+CLAIMS = (
+    ("`Bitcrusher` — a linear hold, the SP-1200's two numbers as knobs.",
+     ("TheClaims.test_the_spans",)),
+    ("12-bit linear hold: Bits and Rate, informed by the SP-1200.",
+     ("TheClaims.test_the_spans",
+      "TheSurface.test_six_macros_and_seven_patches")),
+    ("Bits spans 2 to 12 and defaults to 12, the SP-1200's own word length.",
+     ("TheClaims.test_the_spans",
+      "TheSurface.test_six_macros_and_seven_patches")),
+    ("Every depth rounds to the nearest step rather than down, and none is "
+     "a wire.",
+     ("TheQuantizerRounds.test_every_depth_in_the_span_rounds",
+      "TheQuantizerRounds.test_no_depth_in_the_span_is_a_wire")),
+    ("Each step is rounded over a short ramp, so at 12 bits the error is "
+     "half a hard converter's, and it follows that law within 10 %.",
+     ("TheClaims.test_the_spans",
+      "ErrorPower.test_the_default_follows_the_law",
+      "ErrorPower.test_the_span_follows_the_law")),
+    ("Rate spans 1 kHz to 48 kHz and defaults to 26.04 kHz.",
+     ("TheClaims.test_the_spans",
+      "TheSurface.test_six_macros_and_seven_patches")),
+    ("The hold lands on the whole hertz you ask for and never drifts.",
+     ("TheRateKnob.test_the_hold_lands_on_the_whole_hertz",)),
+    ("At the default, at least 99 % of its runs are one or two samples "
+     "long.",
+     ("TheHold.test_the_standout_ratio_is_ones_and_twos",)),
+    ("Its images stand within 3 dB of their own level, which is the sound "
+     "of the knob; above the hold's own Nyquist they read between 3 dB and "
+     "8 dB down.",
+     ("TheAliasFilter.test_the_image_stands_at_its_own_level",
+      "TheAliasFilter.test_above_the_default_nyquist_the_image_is_down")),
+    ("A single-sample event can fall between two held samples and vanish: "
+     "about 46 % of them do at the default at 48 kHz.",
+     ("TheClickAtEveryRate.test_a_single_sample_event_can_be_dropped",)),
+    ("Asking for the running rate is a pass-through, and the latency is "
+     "then 0.",
+     ("TheRateKnob.test_asking_for_the_running_rate_is_identity",)),
+    ("Above it Rate clamps, and `hold_rate_hz` says what you got where the "
+     "macro says what you asked: at 22.05 kHz the default clamps, and the "
+     "top of the knob is the same pass-through.",
+     ("TheInvariants.test_rate_clamps_to_the_running_rate",
+      "TheRateKnob.test_asking_for_a_rate_it_cannot_reach_is_disclosed")),
+    ("Otherwise the latency is the hold's displacement, 1 sample at the "
+     "default at 48 kHz, plus the band limit's when it is on, and the host "
+     "is told.",
+     ("TheSurface.test_six_macros_and_seven_patches",
+      "TheClickAtEveryRate.test_the_click_matches_at_every_rate")),
+    ("Band Limit is a switch, off by default.",
+     ("TheClaims.test_the_spans",
+      "TheAliasFilter.test_default_band_limit_is_not_in_the_path")),
+    ("On, it puts a low-pass in front of the hold that takes the images more "
+     "than 20 dB down, without muting what is under it, and the tail "
+     "becomes 640 samples.",
+     ("TheAliasFilter.test_band_limit_removes_the_image",
+      "TheAliasFilter.test_band_limit_is_a_filter_and_not_a_mute",
+      "TheSurface.test_band_limit_reports_a_tail")),
+    ("Dither spans 0 to 2 and is off by default.",
+     ("TheClaims.test_the_spans",
+      "TheSurface.test_six_macros_and_seven_patches")),
+    ("It is gated on the input, so silence in is silence out at every patch, "
+     "and at its top it fades inside the declared tail.",
+     ("TheTierOneRowsAtEveryShippedPatch.test_silence_in_is_silence_out_at_"
+      "every_shipped_patch",
+      "TheDitherTail.test_maximum_dither_rings_inside_the_bound")),
+    ("At a deep crush with Dither at its top the dither holds its own gate "
+     "open: it plays on silence, and the class declares no tail.",
+     ("TheDitherTail.test_past_the_gate_there_is_no_bound_and_no_silence",)),
+    ("Mix spans 0 to 1, and Mix 0 is a wire at the source's own level.",
+     ("TheClaims.test_the_spans",
+      "TheInvariants.test_mix_zero_is_a_wire",
+      "TheInvariants.test_mix_zero_is_level_honest")),
+    ("Output spans -24 dB to 0 dB and trims the whole blend: -6 dB is 6 dB "
+     "down within 0.1 dB, at Mix 1 and at a blend.",
+     ("TheClaims.test_the_spans",
+      "TheOutputTrim.test_output_moves_the_level_at_mix_one",
+      "TheOutputTrim.test_output_moves_the_level_at_a_blend")),
+    ("There are seven: Twelve Bit, Twenty-Six; Eight Bit Voice; Six Bit "
+     "Drum; Telephone Grid; Grit Under The Note; Dithered Twelve; and Broken "
+     "Converter.",
+     ("TheClaims.test_the_spans",)),
+    ("It needs `audioshaper`, `audiobiquad`, `audioroute` and "
+     "`audiodynamics`, so a stock CircuitPython board can't run it.",
+     ("TheClaims.test_construction_needs_its_four_modules",)),
+)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def claim_problems(doc, claims=CLAIMS):
+    """What is wrong between a docstring and `claims`: a sentence missing, a
+    named test that does not exist, a figure outside every claim."""
+    doc = _flat(doc)
+    problems = []
+    rest = doc
+    for sentence, tests in claims:
+        if sentence not in doc:
+            problems.append("missing: %s" % sentence)
+        rest = rest.replace(sentence, " ")
+        for name in tests:
+            owner, _, test = name.partition(".")
+            if not hasattr(globals().get(owner), test):
+                problems.append("no test %s" % name)
+    for match in re.finditer(r"\S*\d\S*", rest):
+        problems.append("figure outside a claim: %s" % match.group())
+    return problems
+
+
+class Claims(unittest.TestCase):
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        doc = rebuilt.__doc__ + " " + Bitcrusher.__doc__
+        self.assertEqual(claim_problems(doc), [])
+        # The checker can fail: a figure outside a claim, a claim the
+        # docstring does not carry, a test that does not exist.
+        self.assertTrue(claim_problems(doc + " It reads 12 ms."))
+        self.assertTrue(claim_problems(_flat(doc).replace(
+            "within 0.1 dB", "within 1 dB")))
+        self.assertTrue(claim_problems(
+            doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))

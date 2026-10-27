@@ -1,110 +1,188 @@
-"""Split-band compression: a crossover, one compressor per band, one sum.
+"""`MultibandCompressor` - split-band compression, two or three bands.
 
-There is no unit behind this class. Split-band compression is a *topology* -
-RaneNote 155 draws it as a general variation on the compressor (Fig. 7),
-"divides the incoming signal into two or more frequency bands ... After
-dynamics processing, the individual bands are re-combined into one signal" -
-and the crossover it needs is a published alignment, Linkwitz-Riley, whose two
-properties are "in-phase outputs (0 degrees between outputs) at all
-frequencies" and "the outputs sum to unity at all frequencies" (RaneNote 160).
-
-**The topology, at three bands.**
-
-    source -> guard -> Splitter(taps=4)
-                         tap 0  ------------------------------> dry  voice 0
-                         tap 1  LP LP ---------------> Dynamics low  voice 1
-                         tap 2  HP HP LP LP ---------> Dynamics mid  voice 2
-                         tap 3  HP HP ---------------> Dynamics high voice 3
-                                                              Mixer -> output
-
-Every crossover is **LR4** - two cascaded Butterworth sections a side, Q =
-0.7071 - which is why no band is polarity-inverted: RaneNote 160's rule is
-that LR-2 and LR-6 need an inversion and LR-4 and LR-8 do not.
-
-**Three things this class had to measure rather than reason about.**
-
-* **The bands are `audiobiquad`, not `audiofilters`.** A `synthio.Biquad`
-  cascade inside `audiofilters.Filter` keeps its state in Q12 sample units
-  and rounds to nearest with no dither, so the recursion has fixed points:
-  measured here, a 256-frame DC burst through a LOW_PASS pair holds **2 LSB
-  for ever at 100 Hz and 8 LSB at 40 Hz**, while the same pair on
-  `audiobiquad.Biquad` reaches exact zero at frame 1895 and 3987. That is
-  audiodsp#23, and it is the Tier 1 invariant this family is held to first.
-  The dossier's section 4 mapped the ported node; the palette has had the
-  float one since Phase 1.
-
-* **The sum is flat but it is not a wire.** A Linkwitz-Riley network
-  "behaves like an all-pass": unity magnitude, rotating phase. So `Mix` at
-  zero is a **real bypass** and not "the bands, summed, which ought to be
-  the same thing". It is not the same thing, and the byte compare would say
-  so. Nor is the dry tap at unity enough: a mixer voice at level 1.0 scales
-  by 32768/32767 on every target (audiodsp#95), so `_refresh_output` hands
-  back the borrowed source itself and puts no node of this class's in the
-  path at all. Mix back up from 0 comes back as the class was built: the
-  crossover and detectors cleared, the voices re-armed. It used to play what
-  the bands held when Mix went to 0, up to 22 264 LSB out of silence
-  (audiocomponents#113).
-
-* **How close the two crossovers may get.** The three-way parallel split has
-  a floor that is a function of the crossover *ratio*, not of the
-  frequencies: measured on these nodes, the sum deviates by 0.19 dB at 8:1,
-  0.99 dB at 4:1 and **7.96 dB at 2:1**. The upper crossover is therefore
-  clamped to at least eight times the lower one. It is a clamp and never a
-  refusal, in the shape the rate-honesty invariant asks for, and
-  `crossover_high_hz` reports what was actually applied.
-
-**Latency: zero, at every setting, and nothing here can add any.** The
-crossover is IIR and the detectors do not look ahead. `audiodynamics` offers
-a lookahead of up to 50 ms; this class does not expose it, because a
-multiband's job is the balance between bands and the ceiling belongs to
-`Limiter`, which is built on that lookahead and reports it.
-
-**One thing the dossier asked for that this class does not deliver, and it
-is arithmetic rather than a bug.** M3 asks that driving one band to 12 dB of
-reduction move that band's whole passband by 12 dB within half a decibel.
-**No band does it, and no crossover-plus-compressor can.** A band's own
-skirt takes it below unity towards its corners, and a fixed threshold then
-buys `(1 - 1/ratio)` of that shortfall less reduction there. Measured at
-200/2000 Hz, ratio 4, soloed, each band read across **its own passband, out
-to its own -6 dB corners**:
-
-    band   window        per-tone reduction        mean      tilt
-    low    30..141 Hz    -12.51 .. -10.69 dB      -11.91    1.82 dB
-    mid    283..1414     -11.89 .. -10.58         -11.27    1.31 dB
-    high   2828..16000   -12.01 .. -10.58         -11.64    1.42 dB
-
-against a 0.5 dB bar on both the depth and the tilt. The arithmetic is exact
-for the mid band: its window edges sit **1.75 dB** below its own peak, and
-`(1 - 1/4) x 1.75 = 1.31`. At the -6 dB corner itself the band is 6 dB down
-and the shortfall is 4.5 dB.
-
-The low band carries a second effect on top of that one. Below about 50 Hz
-the RMS detector's 10 ms window is shorter than one period of the tone, so
-its envelope ripples and the gain follows it: lengthening the window to
-30 ms takes the low band's tilt from **1.82 to 1.58 dB**, which is the
-control that separates the two causes.
-
-An earlier window sat an octave inside each corner - 400 to 1000 Hz of the
-mid band's 200 to 2000, 1.3 of its 3.3 octaves - and reported 0.73 / 0.27 /
-0.37 dB. That is where the "within 0.25 dB" this docstring used to claim
-came from. The window was chosen after the trait was frozen; the table above
-is the trait's own words, and M3's depth and evenness clauses are
-**disconfirmed** in the evidence pack, with this cause.
-
-What *does* hold is the clause the name is about: driving any band moves no
-other band - **0.00 dB** on a soloed read, **0.30 dB** worst on the harder
-read, the summed output with nothing muted. In practice a band compresses to
-the number you dial in the middle of its range and about a decibel less than
-that at its edges.
-
-**Two bands or three is a constructor option, not a knob.** `bands=2` builds
-one crossover, four biquads and two detectors; `bands=3` builds two, eight and
-three. A knob that muted the middle band would still pay for it every block -
-the Mixer pulls a voice at level 0 exactly as hard as one at unity - so the
-cheap build has to be a different build. At two bands the split is at
-**Crossover Low**, the upper band is the High macros, and Crossover High and
-the three Mid macros are inert; the class says so in `macro_is_live()`.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# Split-band compression: a crossover, one compressor per band, one sum.
+#
+# There is no unit behind this class. Split-band compression is a *topology* -
+# RaneNote 155 draws it as a general variation on the compressor (Fig. 7),
+# "divides the incoming signal into two or more frequency bands ... After
+# dynamics processing, the individual bands are re-combined into one signal" -
+# and the crossover it needs is a published alignment, Linkwitz-Riley, whose two
+# properties are "in-phase outputs (0 degrees between outputs) at all
+# frequencies" and "the outputs sum to unity at all frequencies" (RaneNote 160).
+#
+# The topology, at three bands.
+#
+#     source -> guard -> Splitter(taps=4)
+#                          tap 0  ------------------------------> dry  voice 0
+#                          tap 1  LP LP ---------------> Dynamics low  voice 1
+#                          tap 2  HP HP LP LP ---------> Dynamics mid  voice 2
+#                          tap 3  HP HP ---------------> Dynamics high voice 3
+#                                                               Mixer -> output
+#
+# Every crossover is LR4 - two cascaded Butterworth sections a side, Q =
+# 0.7071 - which is why no band is polarity-inverted: RaneNote 160's rule is
+# that LR-2 and LR-6 need an inversion and LR-4 and LR-8 do not.
+#
+# Three things this class had to measure rather than reason about.
+#
+# * The bands are `audiobiquad`, not `audiofilters`. A `synthio.Biquad`
+#   cascade inside `audiofilters.Filter` keeps its state in Q12 sample units
+#   and rounds to nearest with no dither, so the recursion has fixed points:
+#   measured here, a 256-frame DC burst through a LOW_PASS pair holds 2 LSB
+#   for ever at 100 Hz and 8 LSB at 40 Hz, while the same pair on
+#   `audiobiquad.Biquad` reaches exact zero at frame 1895 and 3987. That is
+#   audiodsp#23, and it is the Tier 1 invariant this family is held to first.
+#   The dossier's section 4 mapped the ported node; the palette has had the
+#   float one since Phase 1.
+#
+# * The sum is flat but it is not a wire. A Linkwitz-Riley network
+#   "behaves like an all-pass": unity magnitude, rotating phase. So `Mix` at
+#   zero is a real bypass and not "the bands, summed, which ought to be
+#   the same thing". It is not the same thing, and the byte compare would say
+#   so. Nor is the dry tap at unity enough: a mixer voice at level 1.0 scales
+#   by 32768/32767 on every target (audiodsp#95), so `_refresh_output` hands
+#   back the borrowed source itself and puts no node of this class's in the
+#   path at all. Mix back up from 0 comes back as the class was built: the
+#   crossover and detectors cleared, the voices re-armed. It used to play what
+#   the bands held when Mix went to 0, up to 22 264 LSB out of silence
+#   (audiocomponents#113).
+#
+# * How close the two crossovers may get. The three-way parallel split has
+#   a floor that is a function of the crossover *ratio*, not of the
+#   frequencies: measured on these nodes, the sum deviates by 0.19 dB at 8:1,
+#   0.99 dB at 4:1 and 7.96 dB at 2:1. The upper crossover is therefore
+#   clamped to at least eight times the lower one. It is a clamp and never a
+#   refusal, in the shape the rate-honesty invariant asks for, and
+#   `crossover_high_hz` reports what was actually applied.
+#
+# Latency: zero, at every setting, and nothing here can add any. The
+# crossover is IIR and the detectors do not look ahead. `audiodynamics` offers
+# a lookahead of up to 50 ms; this class does not expose it, because a
+# multiband's job is the balance between bands and the ceiling belongs to
+# `Limiter`, which is built on that lookahead and reports it.
+#
+# One thing the dossier asked for that this class does not deliver, and it
+# is arithmetic rather than a bug. M3 asks that driving one band to 12 dB of
+# reduction move that band's whole passband by 12 dB within half a decibel.
+# No band does it, and no crossover-plus-compressor can. A band's own
+# skirt takes it below unity towards its corners, and a fixed threshold then
+# buys `(1 - 1/ratio)` of that shortfall less reduction there. Measured at
+# 200/2000 Hz, ratio 4, soloed, each band read across its own passband, out
+# to its own -6 dB corners:
+#
+#     band   window        per-tone reduction        mean      tilt
+#     low    30..141 Hz    -12.51 .. -10.69 dB      -11.91    1.82 dB
+#     mid    283..1414     -11.89 .. -10.58         -11.27    1.31 dB
+#     high   2828..16000   -12.01 .. -10.58         -11.64    1.42 dB
+#
+# against a 0.5 dB bar on both the depth and the tilt. The arithmetic is exact
+# for the mid band: its window edges sit 1.75 dB below its own peak, and
+# `(1 - 1/4) x 1.75 = 1.31`. At the -6 dB corner itself the band is 6 dB down
+# and the shortfall is 4.5 dB.
+#
+# The low band carries a second effect on top of that one. Below about 50 Hz
+# the RMS detector's 10 ms window is shorter than one period of the tone, so
+# its envelope ripples and the gain follows it: lengthening the window to
+# 30 ms takes the low band's tilt from 1.82 to 1.58 dB, which is the
+# control that separates the two causes.
+#
+# An earlier window sat an octave inside each corner - 400 to 1000 Hz of the
+# mid band's 200 to 2000, 1.3 of its 3.3 octaves - and reported 0.73 / 0.27 /
+# 0.37 dB. That is where the "within 0.25 dB" this docstring used to claim
+# came from. The window was chosen after the trait was frozen; the table above
+# is the trait's own words, and M3's depth and evenness clauses are
+# disconfirmed in the evidence pack, with this cause.
+#
+# What *does* hold is the clause the name is about: driving any band moves no
+# other band - 0.00 dB on a soloed read, 0.30 dB worst on the harder
+# read, the summed output with nothing muted. In practice a band compresses to
+# the number you dial in the middle of its range and about a decibel less than
+# that at its edges.
+#
+# Two bands or three is a constructor option, not a knob. `bands=2` builds
+# one crossover, four biquads and two detectors; `bands=3` builds two, eight and
+# three. A knob that muted the middle band would still pay for it every block -
+# the Mixer pulls a voice at level 0 exactly as hard as one at unity - so the
+# cheap build has to be a different build. At two bands the split is at
+# Crossover Low, the upper band is the High macros, and Crossover High and
+# the three Mid macros are inert; the class says so in `macro_is_live()`.
+#
+# The class docstring before the player's text, kept for its figures. Its
+# node and pull counts count the graph differently from `_nodes`.
+#
+# Two or three bands, each with its own compressor, summed back flat.
+#
+# `audiodsp` tier: `audiobiquad` for a crossover whose tail reaches exact
+# zero, `audiodynamics` for the per-band detectors, `audioroute` for the
+# fan-out.
+#
+# What it is for. One compressor on a full mix is a compressor the bass
+# drives: every kick pumps the vocal. Splitting the band first gives the
+# low end its own threshold and leaves the rest of the mix where it was.
+# Patch 1 ("Bass Control") is that, at its plainest - the low band working
+# and the others idle.
+#
+# Flat at rest, to a fraction of a decibel, and measured. Every band at
+# unity, 30 Hz to 20 kHz: +0.001 / -0.119 dB at the 200/2000 Hz split
+# and +0.000 / -0.000 dB at two bands. The three-band floor is the
+# topology's own - the low band never passes through the upper crossover's
+# all-pass - and it is why the two crossovers are held eight to one apart.
+#
+# Bands do not bleed into each other: driving any one band to 12 dB of
+# reduction moves the others by 0.00 dB soloed and at worst 0.30 dB on
+# the summed output. The driven band does not move evenly, and no
+# band does: across its own passband, out to its own -6 dB corners, the
+# reduction tilts 1.82 dB (low), 1.31 dB (mid) and 1.42 dB
+# (high) against a 0.5 dB bar, and the mean lands 0.09 / 0.73 / 0.36 dB
+# short of the 12 asked for. That is the band's own skirt against a fixed
+# threshold - `(1 - 1/ratio)` of the shortfall at each tone - and the
+# module docstring has the arithmetic. Dial the number you want in the
+# middle of a band and expect about a decibel less at its edges.
+#
+# `Mix` at zero is a true bypass, byte-identical to the source,
+# because a Linkwitz-Riley network at unity is an all-pass and not a wire.
+# There is no mixer in the path there - `output` is the class's input
+# node, a `Filter` with no filter, which is a copy - because a mixer voice
+# at level 1.0 is not unity on any target: upstream's Q15 level is
+# `1.0 * 32768` and the kernel then divides by 32767, so every sample at
+# or above 32736 comes out one LSB larger (audiodsp#95). Through the dry
+# voice this class's Mix 0 differed from its source on 15 of 32768 samples
+# of a full-scale ramp; it is now exact at 22.05, 44.1 and 48 kHz, mono
+# and stereo, on all three interpreters. In between, Mix is parallel
+# compression: the dry tap and the summed bands, crossfaded.
+#
+# Latency 0 at every setting, and no option here can add any. The
+# crossover is IIR; the detectors do not look ahead.
+#
+# On an ESP32-S3, build it with `bands=2`. At three bands no patch
+# keeps up there and the sound breaks up; at two bands it does, with the
+# split at Crossover Low and the Mid macros idle. No patch can stand in
+# for this: every macro position builds the same graph.
+#
+# Cost. This is the most expensive class in the Dynamics family.
+# Measured in October 2026, its costliest patch (Loudness; all five sit
+# within 0.2 ms of each other) takes 54.0 % of a 256-frame stereo block
+# on an ESP32-P4 and 107.0 % on an ESP32-S3, so the S3 cannot run it in
+# real time; built with `bands=2` it is 34.2 % and 71.1 %. At three
+# bands it owns 18 nodes, eight of them biquads,
+# and pulls 72 of them per eight blocks; `bands=2` is the cheaper build
+# at 12 nodes and 48 pulls - four biquads, two detectors, three mixer
+# voices - and on the desktop it measured between 75 % and 79 % of the
+# three-band cost over three runs on a loaded host.
+#
+# There is no lean patch and there cannot be one. Every macro
+# position and every shipped patch was walked - 243 of them - and the
+# graph is the same 18 nodes and 72 pulls at all of them, because the
+# Mixer pulls a voice at level 0 exactly as hard as one at unity. The one
+# position that is not is Mix 0, where `output` is the source and
+# nothing this class owns is pulled at all; no shipped patch sits there.
+# Only the constructor can make a *working* instance cheaper.
 
 VENDOR = "PyDevices"
 
@@ -156,73 +234,48 @@ _GUARD_FRAMES = 256
 
 
 class MultibandCompressor(_component.Component):
-    """Two or three bands, each with its own compressor, summed back flat.
+    """Split-band compression: the mix split into two or three bands, each
+    with its own compressor, then summed back flat. Use it when one
+    compressor on the whole mix lets the bass pump everything else.
 
-    `audiodsp` tier: `audiobiquad` for a crossover whose tail reaches exact
-    zero, `audiodynamics` for the per-band detectors, `audioroute` for the
-    fan-out.
+    **Bands.** Build it with `bands=2` or `bands=3`; nothing else is
+    accepted. At three bands the splits are Crossover Low, 40 Hz to 800 Hz,
+    and Crossover High, 800 Hz to 8 kHz. Crossover High is held at least
+    eight times Crossover Low: ask for less and it moves up rather than
+    refusing, and `crossover_high_hz` reports where it landed. At two bands
+    the split is at Crossover Low, the upper band uses the High macros, and
+    Crossover High and the three Mid macros do nothing, which
+    `macro_is_live()` reports.
 
-    **What it is for.** One compressor on a full mix is a compressor the bass
-    drives: every kick pumps the vocal. Splitting the band first gives the
-    low end its own threshold and leaves the rest of the mix where it was.
-    Patch 1 ("Bass Control") is that, at its plainest - the low band working
-    and the others idle.
+    **Flat at rest.** With every Ratio at 1 the bands sum to within 0.25 dB
+    of the input from 30 Hz to 16 kHz, at two bands and at three. Each
+    band alone is 6 dB down at its corner, within 0.5 dB.
 
-    **Flat at rest, to a fraction of a decibel, and measured.** Every band at
-    unity, 30 Hz to 20 kHz: **+0.001 / -0.119 dB** at the 200/2000 Hz split
-    and **+0.000 / -0.000 dB** at two bands. The three-band floor is the
-    topology's own - the low band never passes through the upper crossover's
-    all-pass - and it is why the two crossovers are held eight to one apart.
+    **Each band.** Each band has a Threshold, -60 dB to 0 dB, a Ratio, 1 to
+    20, and a Gain, -12 dB to +12 dB. Attack spans 0.1 ms to 100 ms and
+    Release 5 ms to 1000 ms, shared by every band. Driving one band to
+    12 dB of reduction moves the middle of that band by 12 dB, within
+    0.5 dB, and the other bands by under 0.5 dB. Towards its own corners a
+    band compresses less than you dialled, so dial the number you want for
+    the middle of the band.
 
-    **Bands do not bleed into each other**: driving any one band to 12 dB of
-    reduction moves the others by **0.00 dB** soloed and at worst 0.30 dB on
-    the summed output. **The driven band does not move evenly**, and no
-    band does: across its own passband, out to its own -6 dB corners, the
-    reduction tilts **1.82 dB** (low), **1.31 dB** (mid) and **1.42 dB**
-    (high) against a 0.5 dB bar, and the mean lands 0.09 / 0.73 / 0.36 dB
-    short of the 12 asked for. That is the band's own skirt against a fixed
-    threshold - `(1 - 1/ratio)` of the shortfall at each tone - and the
-    module docstring has the arithmetic. Dial the number you want in the
-    middle of a band and expect about a decibel less at its edges.
+    **Mix.** Mix spans 0 to 1 and crossfades the input with the summed
+    bands, so between its stops it is parallel compression. Mix 0 is the
+    source byte for byte, at 22.05 kHz, 44.1 kHz and 48 kHz, mono and
+    stereo, and moving off it does not click. Brought back up from 0, it
+    starts as it was built rather than playing what the bands held.
 
-    **`Mix` at zero is a true bypass**, byte-identical to the source,
-    because a Linkwitz-Riley network at unity is an all-pass and not a wire.
-    There is **no mixer in the path** there - `output` is the class's input
-    node, a `Filter` with no filter, which is a copy - because a mixer voice
-    at level 1.0 is not unity on any target: upstream's Q15 level is
-    `1.0 * 32768` and the kernel then divides by 32767, so every sample at
-    or above 32736 comes out one LSB larger (audiodsp#95). Through the dry
-    voice this class's Mix 0 differed from its source on 15 of 32768 samples
-    of a full-scale ramp; it is now exact at 22.05, 44.1 and 48 kHz, mono
-    and stereo, on all three interpreters. In between, Mix is parallel
-    compression: the dry tap and the summed bands, crossfaded.
+    **Latency and tail.** It adds no latency at any setting. The tail
+    reaches exact zero, and `tail_samples` says when.
 
-    **Latency 0 at every setting**, and no option here can add any. The
-    crossover is IIR; the detectors do not look ahead.
+    **Patches.** There are five: Master Glue; Bass Control; Vocal Bus;
+    De-Boom; and Loudness. Master Glue is the constructor's defaults.
 
-    **On an ESP32-S3, build it with `bands=2`.** At three bands no patch
-    keeps up there and the sound breaks up; at two bands it does, with the
-    split at Crossover Low and the Mid macros idle. No patch can stand in
-    for this: every macro position builds the same graph.
-
-    **Cost.** This is the most expensive class in the Dynamics family.
-    Measured in October 2026, its costliest patch (Loudness; all five sit
-    within 0.2 ms of each other) takes **54.0 % of a 256-frame stereo block
-    on an ESP32-P4 and 107.0 % on an ESP32-S3**, so the S3 cannot run it in
-    real time; built with `bands=2` it is **34.2 % and 71.1 %**. At three
-    bands it owns **18 nodes**, eight of them biquads,
-    and pulls 72 of them per eight blocks; `bands=2` is the cheaper build
-    at **12 nodes and 48 pulls** - four biquads, two detectors, three mixer
-    voices - and on the desktop it measured between 75 % and 79 % of the
-    three-band cost over three runs on a loaded host.
-
-    **There is no lean patch and there cannot be one.** Every macro
-    position and every shipped patch was walked - 243 of them - and the
-    graph is the same 18 nodes and 72 pulls at all of them, because the
-    Mixer pulls a voice at level 0 exactly as hard as one at unity. The one
-    position that is not is **Mix 0**, where `output` is the source and
-    nothing this class owns is pulled at all; no shipped patch sits there.
-    Only the constructor can make a *working* instance cheaper.
+    **Boards.** At three bands its costliest patch was measured at 54 % of a
+    block on an ESP32-P4 and 107 % on an ESP32-S3, so the S3 can't keep up.
+    Built with `bands=2` it was 34 % and 71 %, so on an S3 build it that
+    way. It needs `audiobiquad`, `audiodynamics` and `audioroute`, so a
+    stock CircuitPython board can't run it.
     """
 
     #: Construction arms the voices on silence (`Component._play_voice`),

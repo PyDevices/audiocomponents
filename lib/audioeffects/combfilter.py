@@ -1,146 +1,153 @@
 """`CombFilter` - a delay line short enough to be a pitch, fed back on
-itself: the naked resonator every flanger, every Karplus-Strong string and
-every reverb tank is built out of.
+itself.
 
-Rebuilt from scratch for the effects program's Phase 2 against a dossier
-whose trait table and surface were frozen at Station A before this file
-existed. The old `eq.py:CombFilter` is not
-consulted except for the seven defects the dossier's section 7 names.
-
-**What it sounds like.** Tune it and the signal grows a set of resonances on
-the harmonic series of that note - 220, 440, 660, 880 - so noise turns into a
-pitch and a chord turns metallic. Feedback is how hard those resonances
-stand: at 0.3 it is a ripple, at 0.7 it is the sound of a comb, at 0.95 a
-click rings for seconds on the note you tuned it to. Mix runs from a wire
-through dry-plus-comb to the filter on its own. Tone darkens each pass the
-way a real resonator's losses do, so the ring goes dull as it dies rather
-than staying bright to the end. Glide is the tuning knob's own portamento:
-turn Frequency with Glide up and the comb *bends* to the new note.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audioecho", "audiobiquad")`).
-`audiodelays.Echo` - the only stock delay - quantises its line to whole
-samples and floors it at its own buffer length, so on the library's standard
-buffer every frequency from 47 to 880 Hz comes out as the same 46.88 Hz comb
-(dossier A2, A12). That is not a tuning error, it is the absence of tuning,
-and there is no honest stock fallback: even a 512-byte buffer only reaches
-187.5 Hz. On a stock CircuitPython board this module imports cleanly and
-construction raises a clear `ImportError`, so the rest of `eq.py` stays
-reachable.
-
-**Cost: two nodes.** One `audiobiquad.Biquad` high shelf at a subsonic
-corner is the Trim, and it sits **in front**; one `audioecho.FeedbackDelay`
-behind it carries the line, the feedback, the blend, the in-loop damping and
-the glide. A shelf is the only route to a broadband gain on this palette
-(`MixerVoice.level` clamps to 0..1 and `audiomath.Multiply` only attenuates).
-Desktop anchor, net of the source pump: 98.8 ns per stereo frame, 0.47 % of
-the 20 833 ns one has at 48 kHz. The dossier budgets 2 % of that deadline on
-the ESP32-P4 and 7 % on the S3; the board run in the evidence pack settles it.
-
-**Trim is headroom, and it is taken before the gain.** A comb's peak gain is
-`1/(1-Feedback)`: +10 dB at 0.7, +22 dB at 0.92, +26 dB at 0.95. Feed a
-loud note at the tuned pitch into that and the node's output saturates
-(`audiodsp_feedback_delay.c:308-316`). Measured, a 220 Hz sine at -9.5 dBFS
-through Feedback 0.92: with the trim **behind** the comb, -9 dB of it leaves
-a peak of 12 083 - which is the rail, attenuated, i.e. distortion made quiet;
-with the trim **in front**, -18 dB leaves 15 392 and the comb never reaches
-the rail at all. So Trim runs to -18 dB rather than the -12 a make-up would
-need, and turning it down is how you make room for the resonance.
-
-**Input ceiling.** The comb adds its line to the dry, up to twice the input
-at Feedback 0 and Mix 1, and gains `1/(1-Feedback)` at its peaks, so a loud
-input rails by design, and no one level is clean on every setting. A plucked
-phrase stays off the rails on every patch to -9 dBFS; at -3 dBFS Ringing
-Pitch, Dark Resonator, Single Slap and Filter Only rail. Turn Trim down
-before you turn the input down.
-
-**One transient this class cannot argue away.** A program change into a comb
-whose line is already ringing sums the new dry signal against the old line,
-and at Mix 1 that can reach the rail. Measured on the library smoke's own
-sequence - six patches, one instance, no reset between them - patches 1, 3
-and 4 peak at 32 768; every one of those same patches on a fresh instance
-peaks between 8 210 and 18 925 on the same probe. It is what a feedback line
-is, not what these patches are. `reset()` empties it.
-
-**Latency: zero samples, at every setting and every rate.** The node writes
-`dry*source + wet*loop` in the frame the input arrives, so an impulse comes
-out where it went in, at full amplitude. **No option on this class adds
-latency**, so there is none to default off and none to name in milliseconds.
-The one number worth stating: at Mix 2 there is no dry path at all, and the
-first sound then arrives one line-length late - 0.25 ms at 4 kHz, 50 ms at
-20 Hz. That is the comb, not latency; it is the delay you asked for by
-tuning it.
-
-**The tail reaches exact zero at every Feedback and every tuning.** Up to
-audiodsp v0.6.1 it could not above Feedback 0.5: the node's int16 line
-rounded the feedback write to nearest, so every `|c| <= 0.5/(1-g)` was a
-fixed point of the loop, and at a tuning whose read lands near a whole
-sample the tail parked on a few LSB for as long as the graph ran (10 LSB at
-1000 Hz / Feedback 0.95), ringing at the nearest whole-sample period
-(+17.4 cents at 1760 Hz / Feedback 0.8). audiodsp v0.6.2 (#154) truncates
-the fed-back term toward zero exactly where rounding would hand it back
-unchanged, so the line empties: from full scale its loudest sample falls by
-the geometric law until it is within `floor(0.5/(1-g))` LSB, then by at
-least one LSB a lap. Measured at v0.6.2, 48 kHz, Tone off and Trim flat,
-after an impulse: 1760 Hz / 0.8 is silent after 928 frames, 1000 Hz / 0.95
-after 7 488, and 20 Hz / 0.95, the slowest corner of the surface, after
-374 400 (7.8 s), each inside that lap bound times the line (511 413 frames,
-10.7 s, at 20 Hz / 0.95). While it rings, it rings at the fractional delay
-it was asked for: 1760 Hz / 0.8 at 27.262 frames against the asked 27.273,
-0.7 cents, through its tenth repeat, and the first-repeat tap lands within
-0.01 cents. This class is a tuned resonator: Frequency is a pitch, and the
-first-repeat tap is the note it plays.
-
-**`tail_samples` is finite at every setting** (declared 2026-09-28): an
-upper bound, for the settings as they stand, on how long the output takes
-to reach exact zero after your input stops. It is the lap law above, each
-lap one frame longer than the longest line the read head may still be at
-(after a rising Frequency move with Glide on, the line it is walking down
-from, until a Glide-0 move or a reset lands it), plus the Tone low-pass's
-memory with Tone in, plus 1.5 s while the Trim is in circuit, because the
-fixed-point shelf in front lets its last LSB out for up to 0.834 s after a
-full-scale input (measured, not derived). At the defaults it is 3 219
-frames at 48 kHz; at 20 Hz / Feedback 0.95 with Tone off and the Trim flat,
-398 566 (8.3 s; it counts laps with `DigitalDelay`'s `laps_to_zero`, which
-is tighter than the 511 413 above and still covers the 374 400 measured).
-Over every macro's stops and three interior points, every patch,
-the long corners and the stall centres, at three rates, stereo and mono,
-on full-scale DC, noise and a 2 LSB DC, 900 renders end inside it; the
-tightest, 20 Hz at Feedback 0.7 on full-scale DC, ends 29 frames short of
-69 629.
-
-**With Tone in, the Feedback you set is the one the node plays.** Wherever
-0.5 / (1 - Feedback) is within a hair of a whole number k (0.5, 0.75, and
-the knob's top, 0.95, among them), the loop low-pass can rest a hair above
-k LSB and hand it back. Up to audiodsp v0.6.2 it did so for ever (1 LSB at
-Feedback 0.5 and 2 at 0.75 with Tone at 2 kHz, on a 2 LSB DC), and this
-class handed the node a Feedback just clear of each window. Since
-v0.6.3rc1 the node sets a stalled low-pass onto its input (audiodsp#157),
-nothing is moved, and the bound counts one more lap there.
-
-**Tone off is off, after Tone has been in too.** Bring Tone back after the
-ring has died and nothing plays: 0 LSB at 48, 44.1 and 22.05 kHz, stereo
-and mono, after a 300 Hz tone at 30 000 LSB, Feedback 0, Mix 2. The off
-stop hands the node exactly 0, and since audiodsp v0.6.3rc1 the node keeps
-an off low-pass's state on the signal (audiodsp#158). Up to v0.6.2 it froze
-that state and played it back here (15 070 LSB at 48 kHz); this class
-cured it with a tracking off stop on 2026-09-28, and the cure came out
-when the node was fixed.
-
-**Two traits this class does not have.** The *negative* comb, whose peaks sit
-on the odd half-multiples and which sounds hollow rather than pitched, is
-**not built**: it composes exactly out of nodes that exist, but only at seven
-nodes, three delay lines and a tuning-dependent pre-delay of twice the line,
-which is about four times this class's whole cost budget (dossier section 4).
-And the textbook peak height holds to 0.2 dB only at and below 2 kHz: above
-that the line's fractional tap is itself a one-zero low-pass inside the loop
-and the peak sags - measured -0.07 dB at 880 Hz, -0.23 at 1760, -1.02 at
-3520, and **exactly 0.00 wherever the sample rate divides by the frequency
-into a whole number**, which at 48 kHz includes 1000, 2000, 3000 and 4000 Hz.
-
-`capabilities = ()`: a comb's delay is a *pitch*, not a rhythm - 1/f seconds,
-where f is the note you hear - so syncing it to a tempo would be meaningless,
-and this class never reads `self._transport()`.
+The player's text is the class docstring; the `CLAIMS` table in the class's
+test file ties its claim sentences to tests.
 """
+
+# Design notes, from the rebuild.
+#
+# The naked resonator every flanger, every Karplus-Strong string and every
+# reverb tank is built out of.
+#
+# Rebuilt from scratch for the effects program's Phase 2 against a dossier
+# whose trait table and surface were frozen at Station A before this file
+# existed. The old `eq.py:CombFilter` is not
+# consulted except for the seven defects the dossier's section 7 names.
+#
+# What it sounds like. Tune it and the signal grows a set of resonances on
+# the harmonic series of that note - 220, 440, 660, 880 - so noise turns into a
+# pitch and a chord turns metallic. Feedback is how hard those resonances
+# stand: at 0.3 it is a ripple, at 0.7 it is the sound of a comb, at 0.95 a
+# click rings for seconds on the note you tuned it to. Mix runs from a wire
+# through dry-plus-comb to the filter on its own. Tone darkens each pass the
+# way a real resonator's losses do, so the ring goes dull as it dies rather
+# than staying bright to the end. Glide is the tuning knob's own portamento:
+# turn Frequency with Glide up and the comb *bends* to the new note.
+#
+# Portability tier: audiodsp (`REQUIRES = ("audioecho", "audiobiquad")`).
+# `audiodelays.Echo` - the only stock delay - quantises its line to whole
+# samples and floors it at its own buffer length, so on the library's standard
+# buffer every frequency from 47 to 880 Hz comes out as the same 46.88 Hz comb
+# (dossier A2, A12). That is not a tuning error, it is the absence of tuning,
+# and there is no honest stock fallback: even a 512-byte buffer only reaches
+# 187.5 Hz. On a stock CircuitPython board this module imports cleanly and
+# construction raises a clear `ImportError`, so the rest of `eq.py` stays
+# reachable.
+#
+# Cost: two nodes. One `audiobiquad.Biquad` high shelf at a subsonic
+# corner is the Trim, and it sits in front; one `audioecho.FeedbackDelay`
+# behind it carries the line, the feedback, the blend, the in-loop damping and
+# the glide. A shelf is the only route to a broadband gain on this palette
+# (`MixerVoice.level` clamps to 0..1 and `audiomath.Multiply` only attenuates).
+# Desktop anchor, net of the source pump: 98.8 ns per stereo frame, 0.47 % of
+# the 20 833 ns one has at 48 kHz. The dossier budgets 2 % of that deadline on
+# the ESP32-P4 and 7 % on the S3; the board run in the evidence pack settles it.
+#
+# Trim is headroom, and it is taken before the gain. A comb's peak gain is
+# `1/(1-Feedback)`: +10 dB at 0.7, +22 dB at 0.92, +26 dB at 0.95. Feed a
+# loud note at the tuned pitch into that and the node's output saturates
+# (`audiodsp_feedback_delay.c:308-316`). Measured, a 220 Hz sine at -9.5 dBFS
+# through Feedback 0.92: with the trim behind the comb, -9 dB of it leaves
+# a peak of 12 083 - which is the rail, attenuated, i.e. distortion made quiet;
+# with the trim in front, -18 dB leaves 15 392 and the comb never reaches
+# the rail at all. So Trim runs to -18 dB rather than the -12 a make-up would
+# need, and turning it down is how you make room for the resonance.
+#
+# Input ceiling. The comb adds its line to the dry, up to twice the input
+# at Feedback 0 and Mix 1, and gains `1/(1-Feedback)` at its peaks, so a loud
+# input rails by design, and no one level is clean on every setting. A plucked
+# phrase stays off the rails on every patch to -9 dBFS; at -3 dBFS Ringing
+# Pitch, Dark Resonator, Single Slap and Filter Only rail. Turn Trim down
+# before you turn the input down.
+#
+# One transient this class cannot argue away. A program change into a comb
+# whose line is already ringing sums the new dry signal against the old line,
+# and at Mix 1 that can reach the rail. Measured on the library smoke's own
+# sequence - six patches, one instance, no reset between them - patches 1, 3
+# and 4 peak at 32 768; every one of those same patches on a fresh instance
+# peaks between 8 210 and 18 925 on the same probe. It is what a feedback line
+# is, not what these patches are. `reset()` empties it.
+#
+# Latency: zero samples, at every setting and every rate. The node writes
+# `dry*source + wet*loop` in the frame the input arrives, so an impulse comes
+# out where it went in, at full amplitude. No option on this class adds
+# latency, so there is none to default off and none to name in milliseconds.
+# The one number worth stating: at Mix 2 there is no dry path at all, and the
+# first sound then arrives one line-length late - 0.25 ms at 4 kHz, 50 ms at
+# 20 Hz. That is the comb, not latency; it is the delay you asked for by
+# tuning it.
+#
+# The tail reaches exact zero at every Feedback and every tuning. Up to
+# audiodsp v0.6.1 it could not above Feedback 0.5: the node's int16 line
+# rounded the feedback write to nearest, so every `|c| <= 0.5/(1-g)` was a
+# fixed point of the loop, and at a tuning whose read lands near a whole
+# sample the tail parked on a few LSB for as long as the graph ran (10 LSB at
+# 1000 Hz / Feedback 0.95), ringing at the nearest whole-sample period
+# (+17.4 cents at 1760 Hz / Feedback 0.8). audiodsp v0.6.2 (#154) truncates
+# the fed-back term toward zero exactly where rounding would hand it back
+# unchanged, so the line empties: from full scale its loudest sample falls by
+# the geometric law until it is within `floor(0.5/(1-g))` LSB, then by at
+# least one LSB a lap. Measured at v0.6.2, 48 kHz, Tone off and Trim flat,
+# after an impulse: 1760 Hz / 0.8 is silent after 928 frames, 1000 Hz / 0.95
+# after 7 488, and 20 Hz / 0.95, the slowest corner of the surface, after
+# 374 400 (7.8 s), each inside that lap bound times the line (511 413 frames,
+# 10.7 s, at 20 Hz / 0.95). While it rings, it rings at the fractional delay
+# it was asked for: 1760 Hz / 0.8 at 27.262 frames against the asked 27.273,
+# 0.7 cents, through its tenth repeat, and the first-repeat tap lands within
+# 0.01 cents. This class is a tuned resonator: Frequency is a pitch, and the
+# first-repeat tap is the note it plays.
+#
+# `tail_samples` is finite at every setting (declared 2026-09-28): an
+# upper bound, for the settings as they stand, on how long the output takes
+# to reach exact zero after your input stops. It is the lap law above, each
+# lap one frame longer than the longest line the read head may still be at
+# (after a rising Frequency move with Glide on, the line it is walking down
+# from, until a Glide-0 move or a reset lands it), plus the Tone low-pass's
+# memory with Tone in, plus 1.5 s while the Trim is in circuit, because the
+# fixed-point shelf in front lets its last LSB out for up to 0.834 s after a
+# full-scale input (measured, not derived). At the defaults it is 3 219
+# frames at 48 kHz; at 20 Hz / Feedback 0.95 with Tone off and the Trim flat,
+# 398 566 (8.3 s; it counts laps with `DigitalDelay`'s `laps_to_zero`, which
+# is tighter than the 511 413 above and still covers the 374 400 measured).
+# Over every macro's stops and three interior points, every patch,
+# the long corners and the stall centres, at three rates, stereo and mono,
+# on full-scale DC, noise and a 2 LSB DC, 900 renders end inside it; the
+# tightest, 20 Hz at Feedback 0.7 on full-scale DC, ends 29 frames short of
+# 69 629.
+#
+# With Tone in, the Feedback you set is the one the node plays. Wherever
+# 0.5 / (1 - Feedback) is within a hair of a whole number k (0.5, 0.75, and
+# the knob's top, 0.95, among them), the loop low-pass can rest a hair above
+# k LSB and hand it back. Up to audiodsp v0.6.2 it did so for ever (1 LSB at
+# Feedback 0.5 and 2 at 0.75 with Tone at 2 kHz, on a 2 LSB DC), and this
+# class handed the node a Feedback just clear of each window. Since
+# v0.6.3rc1 the node sets a stalled low-pass onto its input (audiodsp#157),
+# nothing is moved, and the bound counts one more lap there.
+#
+# Tone off is off, after Tone has been in too. Bring Tone back after the
+# ring has died and nothing plays: 0 LSB at 48, 44.1 and 22.05 kHz, stereo
+# and mono, after a 300 Hz tone at 30 000 LSB, Feedback 0, Mix 2. The off
+# stop hands the node exactly 0, and since audiodsp v0.6.3rc1 the node keeps
+# an off low-pass's state on the signal (audiodsp#158). Up to v0.6.2 it froze
+# that state and played it back here (15 070 LSB at 48 kHz); this class
+# cured it with a tracking off stop on 2026-09-28, and the cure came out
+# when the node was fixed.
+#
+# Two traits this class does not have. The *negative* comb, whose peaks sit
+# on the odd half-multiples and which sounds hollow rather than pitched, is
+# not built: it composes exactly out of nodes that exist, but only at seven
+# nodes, three delay lines and a tuning-dependent pre-delay of twice the line,
+# which is about four times this class's whole cost budget (dossier section 4).
+# And the textbook peak height holds to 0.2 dB only at and below 2 kHz: above
+# that the line's fractional tap is itself a one-zero low-pass inside the loop
+# and the peak sags - measured -0.07 dB at 880 Hz, -0.23 at 1760, -1.02 at
+# 3520, and exactly 0.00 wherever the sample rate divides by the frequency
+# into a whole number, which at 48 kHz includes 1000, 2000, 3000 and 4000 Hz.
+#
+# `capabilities = ()`: a comb's delay is a *pitch*, not a rhythm - 1/f seconds,
+# where f is the note you hear - so syncing it to a tempo would be meaningless,
+# and this class never reads `self._transport()`.
 
 VENDOR = "PyDevices"
 
@@ -225,9 +232,51 @@ def _tone_excess(damping_hz, sample_rate):
 
 
 class CombFilter(_component.Component):
-    """A tuned feedback comb: one delay line of 1/f seconds fed back on
-    itself, with an in-loop tone control, a make-up trim and a glide on the
-    tuning knob. Two nodes; audiodsp tier; zero latency."""
+    """A tuned comb: a delay line short enough to be a pitch, fed back on
+    itself, so noise turns into a note and a chord turns metallic.
+
+    **Frequency.** Frequency spans 20 Hz to 4 kHz and is the note the comb
+    rings at, tuned between samples. From 55 Hz to 3.52 kHz the first
+    repeat lands within 5 cents of the note you asked for, and at 880 Hz it
+    does at 48 kHz, 44.1 kHz and 22.05 kHz, and in mono. While it rings, it
+    rings on that pitch, and then it stops.
+
+    **Feedback.** Feedback spans 0 to 0.95 and sets how tall the resonances
+    stand: at 200 Hz the peak is 1/(1-Feedback) and the null 1/(1+Feedback),
+    within 0.2 dB. At Feedback 0 it is the feedforward comb, with nulls more
+    than 60 dB down and peaks 6 dB up, within 0.1 dB.
+
+    **Mix.** Mix spans 0 to 2: 0 is a wire, 1 is dry plus comb, and 2 is
+    the comb alone. Mix 0 is the source sample for sample, whatever Trim is
+    set to.
+
+    **Tone.** Tone spans 500 Hz to 24 kHz and is a low-pass inside the
+    loop, darkening each pass. Its top stop is off, and turning it off
+    after it has been in leaves nothing behind.
+
+    **Trim.** Trim spans -18 dB to +18 dB and sits in front of the comb,
+    so turning it down makes room for the resonance before the gain rather
+    than after.
+
+    **Glide.** Glide spans 0 to 1 and slides the tuning, so turning
+    Frequency bends the note rather than clicking.
+
+    **Level.** A comb gains, so a loud input can reach the rail by design.
+    A plucked phrase is clean on every patch up to -9 dBFS; at -3 dBFS
+    Ringing Pitch, Dark Resonator, Single Slap and Filter Only rail.
+    `reset()` empties the line.
+
+    **Latency and tail.** It adds no latency at any setting. The tail
+    always reaches exact zero, and `tail_samples` says when, for the
+    settings as they stand: 3219 frames at the defaults at 48 kHz.
+
+    **Patches.** There are six: Metallic; Ringing Pitch; Soft Ripple; Dark
+    Resonator; Single Slap; and Filter Only. Each tunes the comb to a
+    different note.
+
+    It needs `audioecho` and `audiobiquad`, so a stock CircuitPython board
+    can't run it.
+    """
 
     NAME = 'CombFilter'
     DISPLAY_NAME = 'Comb Filter'
