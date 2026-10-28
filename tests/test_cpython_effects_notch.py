@@ -32,6 +32,7 @@ import synthio
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 import kit_ceiling                                          # noqa: E402
+import kit_player                                           # noqa: E402
 import kit_faults as faults                            # noqa: E402
 from effects_measure import SAMPLE_RATE                # noqa: E402
 
@@ -581,6 +582,67 @@ class TheCeiling(unittest.TestCase):
             kit_ceiling.stated_level_reds(notch_module.Notch, "square"), [])
         self.assertTrue(kit_ceiling.stated_level_reds(
             notch_module.Notch, "square", db=-3, keys=("p1",)))
+
+
+class ThePlayersText(unittest.TestCase):
+    def depth(self, f0, q):
+        effect = built(f0=f0, q=q)
+        try:
+            return response_db(effect, f0)
+        finally:
+            effect.deinit()
+
+    def test_a_low_centre_is_shallower(self):
+        # A true null in the musical range, a hum reducer at the bottom.
+        self.assertLess(self.depth(1000.0, 12.0), -70.0)
+        low = self.depth(60.0, 12.0)
+        self.assertGreater(low, -50.0)
+        self.assertLess(low, -30.0)
+        # The checker can fail: the low centre misses the musical bar.
+        self.assertFalse(low < -70.0)
+
+    def test_latency_is_zero_on_every_patch(self):
+        self.assertEqual(kit_player.latency_problems(
+            notch_module.Notch, SAMPLE_RATE), [])
+        self.assertTrue(kit_player.latency_problems(
+            notch_module.Notch, SAMPLE_RATE, delayed=True))
+
+    def test_construction_needs_audiobiquad(self):
+        self.assertEqual(notch_module.Notch.REQUIRES, ("audiobiquad",))
+        self.assertEqual(kit_player.missing_module_problems(
+            notch_module.Notch, SAMPLE_RATE), [])
+
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        kit_player.check_claims(
+            self, notch_module.__doc__ + " " + notch_module.Notch.__doc__,
+            CLAIMS, globals(),
+            "Depth is a blend, and at 0 the class is a wire.")
+
+
+CLAIMS = (
+    ("`Notch` - the two-pole band-stop: everything except one band, "
+     "tuned.",
+     ("TheWidthIsTheBandwidth.test_the_predicted_edges_read_three_"
+      "decibels_down",
+      "TheClassIsUnityOutsideItsBand.test_dc_and_nyquist_pass_untouched")),
+    ("A notch: one band taken out, and the rest of the signal left alone.",
+     ("TheClassIsUnityOutsideItsBand.test_dc_and_nyquist_pass_untouched",
+      "TheSurface.test_every_patch_notches_where_its_comment_says")),
+    ("Depth is a blend, and at 0 the class is a wire.",
+     ("TheBypassIsAWire.test_depth_zero_is_byte_identical_to_the_source",
+      "TheBypassIsAWire.test_one_lsb_on_the_dry_path_is_red")),
+    ("**Response.** DC and the top of the band pass untouched.",
+     ("TheClassIsUnityOutsideItsBand.test_dc_and_nyquist_pass_untouched",
+      "TheClassIsUnityOutsideItsBand.test_a_band_pass_numerator_is_red")),
+    ("At low centres the notch is shallower: there it reduces a hum rather "
+     "than removing it.",
+     ("ThePlayersText.test_a_low_centre_is_shallower",)),
+    ("**Timing.** Latency is zero at every setting.",
+     ("ThePlayersText.test_latency_is_zero_on_every_patch",)),
+    ("**Levels.** Keep the input under -6 dBFS and the defaults and "
+     "patches stay off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
+)
 
 
 if __name__ == "__main__":
