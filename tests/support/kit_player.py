@@ -39,6 +39,8 @@ def claim_problems(doc, claims, owners):
 def check_claims(case, doc, claims, owners, sentence):
     """The table holds, and the checker can fail: a figure outside a claim,
     `sentence` dropped from the docstring, a row naming a missing test."""
+    doc = _flat(doc)
+    case.assertIn(sentence, doc)
     case.assertEqual(claim_problems(doc, claims, owners), [])
     case.assertTrue(claim_problems(doc + " It reads 12 ms.", claims, owners))
     case.assertTrue(claim_problems(doc.replace(sentence, ""), claims, owners))
