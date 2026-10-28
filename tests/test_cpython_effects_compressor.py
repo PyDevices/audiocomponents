@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
 
 import audiocore                                               # noqa: E402
 import kit_faults as faults                                    # noqa: E402
+import kit_player                                              # noqa: E402
 import kit_probes as probes                                    # noqa: E402
 import compressor_evidence as ev                               # noqa: E402
 from tools import effect_measurements as kit                   # noqa: E402
@@ -397,3 +398,80 @@ class TheCeiling(unittest.TestCase):
             kit_ceiling.stated_level_reds(compressor.Compressor, "square"), [])
         self.assertTrue(kit_ceiling.stated_level_reds(
             compressor.Compressor, "square", db=-3, keys=("p3",)))
+
+
+def _burst_then_silence(rate=RATE, frames=4096):
+    """A loud burst into exact zeros, interleaved stereo."""
+    values = array("h", bytes(2 * 2 * frames))
+    for frame in range(frames // 2):
+        value = 20000 if (frame // 24) % 2 else -20000
+        values[2 * frame] = values[2 * frame + 1] = value
+    return values
+
+
+class ThePlayersText(unittest.TestCase):
+    def silent_frames_that_sound(self, patch, shift=0):
+        """Samples where the input is zero and the output is not; `shift`
+        reads the input that many frames ahead, the planted fault."""
+        values = _burst_then_silence()
+        effect = compressor.Compressor.create(
+            audiocore.RawSample(values, sample_rate=RATE, channel_count=2),
+            RATE, patch=patch)
+        try:
+            out = array("h")
+            while len(out) < len(values):
+                data = audiocore.get_buffer(effect.output)[1]
+                data = memoryview(bytes(data)).cast("h")
+                if not len(data):
+                    break
+                out.extend(data)
+        finally:
+            effect.deinit()
+        bad = 0
+        for i in range(min(len(values), len(out)) - 2 * shift):
+            if values[i + 2 * shift] == 0 and out[i] != 0:
+                bad += 1
+        return bad
+
+    def test_silence_in_is_silence_out_on_the_same_sample(self):
+        for patch in sorted(compressor.Compressor.PATCHES):
+            with self.subTest(patch=patch):
+                self.assertEqual(self.silent_frames_that_sound(patch), 0)
+        # Read the input a frame ahead and the burst's last frame sounds
+        # against a zero.
+        self.assertGreater(self.silent_frames_that_sound(0, shift=1), 0)
+
+    def test_latency_is_zero_on_every_patch(self):
+        self.assertEqual(kit_player.latency_problems(
+            compressor.Compressor, RATE), [])
+        self.assertTrue(kit_player.latency_problems(
+            compressor.Compressor, RATE, delayed=True))
+
+    def test_construction_needs_audiodynamics_and_audioroute(self):
+        self.assertEqual(compressor.Compressor.REQUIRES,
+                         ("audiodynamics", "audioroute"))
+        self.assertEqual(kit_player.missing_module_problems(
+            compressor.Compressor, RATE), [])
+
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        kit_player.check_claims(
+            self, compressor.__doc__ + " " + compressor.Compressor.__doc__,
+            CLAIMS, globals(), "Mix at 0 is your dry signal.")
+
+
+CLAIMS = (
+    ("`Compressor` - compressor characters on a shared palette.",
+     ("TheLeanRouteFollowsTheMacros.test_macros_back_to_patch_0_leave_the_"
+      "lean_route",)),
+    ("Mix at 0 is your dry signal.",
+     ("MixZeroIsAWireTest.test_mix_zero_is_a_wire_at_both_channel_counts",
+      "MixZeroIsAWireTest.test_the_wire_goes_red_on_a_one_lsb_dry_path")),
+    ("**Timing.** Latency is zero at every setting.",
+     ("ThePlayersText.test_latency_is_zero_on_every_patch",)),
+    ("The gain multiplies the audio, so silence in is silence out on the "
+     "same sample.",
+     ("ThePlayersText.test_silence_in_is_silence_out_on_the_same_sample",)),
+    ("**Levels.** Keep the input under -6 dBFS and the defaults and "
+     "patches stay off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
+)
