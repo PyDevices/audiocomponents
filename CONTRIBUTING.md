@@ -78,9 +78,8 @@ repository's git history at a fixed revision so the oracle cannot drift:
 python3 tests/parity/run_instruments_parity.py --verify --batch all
 ```
 
-It needs a MicroPython binary with audiodsp built in at `../bin/micropython`
-(or pass `--micropython`) and an `mpvst` checkout beside this one (or
-`--old-root`), so CI does not run it. Comparison is always within one
+It needs a MicroPython binary with audiodsp built in (`--micropython`) and a
+checkout of micropython-vst3 (`--old-root`), so CI does not run it. Comparison is always within one
 interpreter, because `ulab`'s vectorized sine and libm's are different
 functions: two interpreters agreeing is an observation, never a gate.
 
