@@ -1,122 +1,127 @@
 """`BandPass` - the two-pole resonant band-pass, rebuilt on `audiobiquad`.
 
-The middle output of every state-variable filter ever built: a wah pedal, a
-telephone, and the mid leg of a multiband crossover are all this one circuit.
-Two knobs and no nonlinearity - a **centre frequency** and a **width** - in
-RBJ's *constant 0 dB peak gain* form, whose numerator `(alpha, 0, -alpha)`
-has zeros at both `z = 1` and `z = -1`. So it is exactly zero at DC and at
-Nyquist, and its peak is 0 dB **at every width**: narrowing the band changes
-what gets through, never how loud it is. That is the property that makes the
-width knob musical rather than a gain staircase.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`), and the reason
-is a defect, not a preference. On the ported `synthio.Biquad` the recursion
-keeps its output memory in Q12 sample units with no dither and no leak, so it
-lands on states that reproduce themselves: `BandPass(80 Hz, q=4)` there holds
--1 LSB of DC for ever after the music stops (audiodsp#23; the dossier's A3).
-`audiobiquad.Biquad` is the float-state answer Phase 1 landed for exactly
-that, and on it every setting this class offers settles to bit-exact zero
-(the dossier's A14). A stock CircuitPython board does not have the module and
-this class says so on construction rather than sounding different there.
-
-**Cost**, in a musician's terms: two float biquad sections and no tables, no
-lookahead and no buffers - the cheapest thing in the effects library after a
-gain stage. Both sections are always built, so the cost is the same whichever
-way `Slope` sits, and it is the same at every patch: 91.2 ns per stereo frame
-at patch 0 and 95.5 at patch 1 on the desktop, against 20 833 ns of real time.
-**Measured on both boards** 2026-09-07: 3.8 % of one 256-frame stereo block at
-48 kHz on the ESP32-P4 and 6.2 % on the ESP32-S3, against the dossier's budget
-of P4 <= 4 % and S3 <= 13 %. Inside both. There is no `" - lean"` patch and
-none is owed: no reachable setting costs less than patch 0 does.
-
-**Latency: zero, at every rate and every setting.** No option this class
-offers adds any - there is nothing here that looks ahead, so no option needs
-a millisecond figure in this docstring.
-
-Two things about the surface that the algebra, not the taste, decided:
-
-* **`Mix` rides on both sections.** `mix = 0` is a byte-exact wire in both
-  slope settings, which is what Tier 1 asks of it. With `Slope` off the blend
-  is the plain linear dry/wet `(1-m)*x + m*H(x)`. With `Slope` on it is that
-  mixed section run twice, `((1-m)I + mH)^2 x`, and **not** a linear blend
-  between the dry signal and the two-section output: per-section crossfades
-  cannot cancel their own cross terms, and no arrangement of this palette's
-  nodes gets a linear one without a splitter and a mixer.
-* **`Slope` on divides the working Q by 1.5538** - it multiplies by
-  `sqrt(sqrt(2) - 1)` - so that two cascaded sections keep the -3 dB width
-  the `Width` knob asks for. Without it the cascade's width would be 41 % of
-  the number on the panel.
-
-**Five of the dossier's rows are disconfirmed, and they are two different
-things.** One belongs to this build and bounds what the class promises; four
-belong to RBJ's prototype, which this class tracks to nine thousandths of a
-decibel wherever it was checked.
-
-**The build's one - the 0 dB peak is not held at one low, narrow cell.** T1
-says the gain at f0 is 0.00 dB +- 0.05 at every width. Measured 2026-09-17 at
-the audiodsp cebb7ca floor over the whole `Frequency` x `Width` grid at four
-probe levels, it holds in fifty-five of fifty-six cells, both knob stops
-included, and misses in one: **-0.091 dB at f0 31.5 Hz with Q 32**. What it
-sounds like: nothing anyone will hear - a tenth of a decibel on the narrowest
-sub-bass band the knobs reach.
-
-It used to be eleven cells, all f0 <= 63 Hz with Q >= 4, worst -0.50 dB at
-the `Frequency` knob's bottom stop against the `Width` knob's top, with an
-error that changed sign with the signal level. The history of why follows.
-
-The cause is not this class and not the prototype. RBJ's closed form at that
-cell is `+0.00000 dB`, and `audiobiquad`'s own five coefficients, read off the
-node and run through a `float64` recursion, give `-0.003 dB`. Run through the
-kernel's `float32` one they give `-0.480`, which is the class to a ten
-thousandth of a decibel. `audiodsp_filter_f32.c:220-238` is a direct-form I
-biquad with float state, and at `w0 = 0.0026 rad` its two feedback
-coefficients cancel to seven parts in a million, so the increment single
-precision has to carry is 2e-5 of the numbers being differenced. Filed as
-audiodsp#64 with the fix (a transposed direct form II costs nothing at run
-time), and the fix landed; the one cell left is what it did not reach
-(audiocomponents#66).
-
-**The prototype's four**, each measured against RBJ's closed form at the
-running rate and each tracking it to <= 0.009 dB, so none of them is a defect
-of this build - what fails is the tolerance the dossier wrote around a warped
-axis:
-
-* **T4's `|H(f0/100)| = -37.0 +- 0.1 dB` clause, above about 2.5 kHz.**
-  Measured `-36.994` at f0 500 Hz, `-37.001` at 1 kHz, `-37.037` at 2 kHz,
-  then `-37.279` at 4.8 kHz, `-37.837` at 8 kHz and `-41.350` at 16 kHz,
-  against a closed form of `-36.991 / -37.001 / -37.038 / -37.281 / -37.837
-  / -41.359`.
-* **T2's `-3 dB` edges, above about 2 kHz.** At f0 4 kHz - patch 3 `Presence
-  Window` sits at 4 072 Hz - the predicted edges read `-3.209 / -3.222` at
-  Q 16 and `-3.130 / -3.803` at Q 0.5, against a `-3.0 +- 0.15` bar; the
-  closed form reads the same four numbers.
-* **T4's low skirt, at Q >= 8.** `+6.435 dB/oct` at f0 500 Hz Q 8 against a
-  `+(5.7...6.3)` band - and `+6.435` from the closed form. Patch 4 `Narrow
-  Probe` is Q 23.8, so it is a shipped setting, not a corner.
-* **T4's high skirt, at Q >= 8.** `-6.586 dB/oct` at f0 500 Hz Q 8 inside the
-  clause's own `f0 <= 600 Hz` condition; closed form `-6.585`.
-
-Read together they say one thing: the +-6 dB/oct and -3 dB clauses are Q 0.707
-statements below about 2 kHz, and the dossier did not write the conditions
-down. The same warp is the defect the trait-critic pass fixed for T4's high
-skirt and left standing in the rest.
-
-**One thing to know before automating it.** The biquad's coefficients step
-at the block boundary - they are deliberately not interpolated, because
-sliding between two high-Q sections can pass through an unstable pair
-(`audiodsp/docs/upstream-diff.md:1953`). So a *hard jump* in `Frequency` or
-`Width` - a program change from a high centre to a low one, say - rings the
-energy stored at the old centre out through the new filter, and that is
-audible as a click: measured 11 964 peak from a 2 637 peak steady state on a
-1 421 Hz -> 203 Hz jump, against 9 442 for the same jump on the stock palette,
-so it is the shape of the circuit and not of this rebuild. Automate the knob
-in steps and it is a sweep; jump it and it is a click.
-
-`capabilities = ()`: nothing in a band-pass is measured in beats, and the
-class never reads `self._transport()`.
-
-Traits frozen 2026-09-07.
+The player's text is the class docstring; the `CLAIMS` table in the
+class's test file ties its claim sentences to tests.
 """
+
+# Design notes, moved from the module docstring.
+#
+# The middle output of every state-variable filter ever built: a wah pedal, a
+# telephone, and the mid leg of a multiband crossover are all this one circuit.
+# Two knobs and no nonlinearity - a **centre frequency** and a **width** - in
+# RBJ's *constant 0 dB peak gain* form, whose numerator `(alpha, 0, -alpha)`
+# has zeros at both `z = 1` and `z = -1`. So it is exactly zero at DC and at
+# Nyquist, and its peak is 0 dB **at every width**: narrowing the band changes
+# what gets through, never how loud it is. That is the property that makes the
+# width knob musical rather than a gain staircase.
+#
+# **Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`), and the reason
+# is a defect, not a preference. On the ported `synthio.Biquad` the recursion
+# keeps its output memory in Q12 sample units with no dither and no leak, so it
+# lands on states that reproduce themselves: `BandPass(80 Hz, q=4)` there holds
+# -1 LSB of DC for ever after the music stops (audiodsp#23; the dossier's A3).
+# `audiobiquad.Biquad` is the float-state answer Phase 1 landed for exactly
+# that, and on it every setting this class offers settles to bit-exact zero
+# (the dossier's A14). A stock CircuitPython board does not have the module and
+# this class says so on construction rather than sounding different there.
+#
+# **Cost**, in a musician's terms: two float biquad sections and no tables, no
+# lookahead and no buffers - the cheapest thing in the effects library after a
+# gain stage. Both sections are always built, so the cost is the same whichever
+# way `Slope` sits, and it is the same at every patch: 91.2 ns per stereo frame
+# at patch 0 and 95.5 at patch 1 on the desktop, against 20 833 ns of real time.
+# **Measured on both boards** 2026-09-07: 3.8 % of one 256-frame stereo block at
+# 48 kHz on the ESP32-P4 and 6.2 % on the ESP32-S3, against the dossier's budget
+# of P4 <= 4 % and S3 <= 13 %. Inside both. There is no `" - lean"` patch and
+# none is owed: no reachable setting costs less than patch 0 does.
+#
+# **Latency: zero, at every rate and every setting.** No option this class
+# offers adds any - there is nothing here that looks ahead, so no option needs
+# a millisecond figure in this docstring.
+#
+# Two things about the surface that the algebra, not the taste, decided:
+#
+# * **`Mix` rides on both sections.** `mix = 0` is a byte-exact wire in both
+#   slope settings, which is what Tier 1 asks of it. With `Slope` off the blend
+#   is the plain linear dry/wet `(1-m)*x + m*H(x)`. With `Slope` on it is that
+#   mixed section run twice, `((1-m)I + mH)^2 x`, and **not** a linear blend
+#   between the dry signal and the two-section output: per-section crossfades
+#   cannot cancel their own cross terms, and no arrangement of this palette's
+#   nodes gets a linear one without a splitter and a mixer.
+# * **`Slope` on divides the working Q by 1.5538** - it multiplies by
+#   `sqrt(sqrt(2) - 1)` - so that two cascaded sections keep the -3 dB width
+#   the `Width` knob asks for. Without it the cascade's width would be 41 % of
+#   the number on the panel.
+#
+# **Five of the dossier's rows are disconfirmed, and they are two different
+# things.** One belongs to this build and bounds what the class promises; four
+# belong to RBJ's prototype, which this class tracks to nine thousandths of a
+# decibel wherever it was checked.
+#
+# **The build's one - the 0 dB peak is not held at one low, narrow cell.** T1
+# says the gain at f0 is 0.00 dB +- 0.05 at every width. Measured 2026-09-17 at
+# the audiodsp cebb7ca floor over the whole `Frequency` x `Width` grid at four
+# probe levels, it holds in fifty-five of fifty-six cells, both knob stops
+# included, and misses in one: **-0.091 dB at f0 31.5 Hz with Q 32**. What it
+# sounds like: nothing anyone will hear - a tenth of a decibel on the narrowest
+# sub-bass band the knobs reach.
+#
+# It used to be eleven cells, all f0 <= 63 Hz with Q >= 4, worst -0.50 dB at
+# the `Frequency` knob's bottom stop against the `Width` knob's top, with an
+# error that changed sign with the signal level. The history of why follows.
+#
+# The cause is not this class and not the prototype. RBJ's closed form at that
+# cell is `+0.00000 dB`, and `audiobiquad`'s own five coefficients, read off the
+# node and run through a `float64` recursion, give `-0.003 dB`. Run through the
+# kernel's `float32` one they give `-0.480`, which is the class to a ten
+# thousandth of a decibel. `audiodsp_filter_f32.c:220-238` is a direct-form I
+# biquad with float state, and at `w0 = 0.0026 rad` its two feedback
+# coefficients cancel to seven parts in a million, so the increment single
+# precision has to carry is 2e-5 of the numbers being differenced. Filed as
+# audiodsp#64 with the fix (a transposed direct form II costs nothing at run
+# time), and the fix landed; the one cell left is what it did not reach
+# (audiocomponents#66).
+#
+# **The prototype's four**, each measured against RBJ's closed form at the
+# running rate and each tracking it to <= 0.009 dB, so none of them is a defect
+# of this build - what fails is the tolerance the dossier wrote around a warped
+# axis:
+#
+# * **T4's `|H(f0/100)| = -37.0 +- 0.1 dB` clause, above about 2.5 kHz.**
+#   Measured `-36.994` at f0 500 Hz, `-37.001` at 1 kHz, `-37.037` at 2 kHz,
+#   then `-37.279` at 4.8 kHz, `-37.837` at 8 kHz and `-41.350` at 16 kHz,
+#   against a closed form of `-36.991 / -37.001 / -37.038 / -37.281 / -37.837
+#   / -41.359`.
+# * **T2's `-3 dB` edges, above about 2 kHz.** At f0 4 kHz - patch 3 `Presence
+#   Window` sits at 4 072 Hz - the predicted edges read `-3.209 / -3.222` at
+#   Q 16 and `-3.130 / -3.803` at Q 0.5, against a `-3.0 +- 0.15` bar; the
+#   closed form reads the same four numbers.
+# * **T4's low skirt, at Q >= 8.** `+6.435 dB/oct` at f0 500 Hz Q 8 against a
+#   `+(5.7...6.3)` band - and `+6.435` from the closed form. Patch 4 `Narrow
+#   Probe` is Q 23.8, so it is a shipped setting, not a corner.
+# * **T4's high skirt, at Q >= 8.** `-6.586 dB/oct` at f0 500 Hz Q 8 inside the
+#   clause's own `f0 <= 600 Hz` condition; closed form `-6.585`.
+#
+# Read together they say one thing: the +-6 dB/oct and -3 dB clauses are Q 0.707
+# statements below about 2 kHz, and the dossier did not write the conditions
+# down. The same warp is the defect the trait-critic pass fixed for T4's high
+# skirt and left standing in the rest.
+#
+# **One thing to know before automating it.** The biquad's coefficients step
+# at the block boundary - they are deliberately not interpolated, because
+# sliding between two high-Q sections can pass through an unstable pair
+# (`audiodsp/docs/upstream-diff.md:1953`). So a *hard jump* in `Frequency` or
+# `Width` - a program change from a high centre to a low one, say - rings the
+# energy stored at the old centre out through the new filter, and that is
+# audible as a click: measured 11 964 peak from a 2 637 peak steady state on a
+# 1 421 Hz -> 203 Hz jump, against 9 442 for the same jump on the stock palette,
+# so it is the shape of the circuit and not of this rebuild. Automate the knob
+# in steps and it is a sweep; jump it and it is a click.
+#
+# `capabilities = ()`: nothing in a band-pass is measured in beats, and the
+# class never reads `self._transport()`.
+#
+# Traits frozen 2026-09-07.
 
 VENDOR = "PyDevices"
 
@@ -126,10 +131,26 @@ from . import _component
 
 
 class BandPass(_component.Component):
-    """A resonant band-pass: 0 dB at the centre at every width, exact zeros
-    at DC and Nyquist, +-6 dB/octave skirts (+-12 with `Slope` on). The one
-    exception is a tenth of a decibel at f0 31.5 Hz with Q 32 - module
-    docstring."""
+    """A resonant band-pass: the band around the centre comes through and
+    the rest falls away.
+
+    **Controls.** Frequency is the centre. Width is how wide the band is,
+    and narrowing it changes what gets through, never how loud the centre
+    is. Slope on puts a second section behind the first, for steeper skirts
+    at the same width. Mix at 0 is your dry signal. The Effect controls page
+    lists what the knobs span.
+
+    **Response.** The centre stands at 0 dB at every width, except a tenth
+    of a decibel low at 31.5 Hz with the band at its narrowest. DC and the
+    top of the band are cut to exact zero.
+
+    **Timing.** Latency is zero at every setting. Silence in settles to
+    exact silence out. A hard jump in Frequency or Width rings out as a
+    click; move the knob in steps and it sweeps.
+
+    **On a board.** The class needs audiodsp's `audiobiquad`, and on a board
+    without it construction raises `ImportError`.
+    """
 
     NAME = 'BandPass'
     DISPLAY_NAME = 'Band Pass'

@@ -37,6 +37,7 @@ from audioeffects import bandpass                        # noqa: E402
 #: tests still import the home module so a planted-fault subclass is
 #: measured against this file, not only `create()`.
 import kit_faults as faults                                     # noqa: E402
+import kit_player                                               # noqa: E402
 import kit_probes as probes                                     # noqa: E402
 from tools import effect_measurements as kit                    # noqa: E402
 
@@ -1001,3 +1002,46 @@ class TheTailAfterAMove(unittest.TestCase):
                 "BandPass", rate, channels, patch, start=((0, high),),
                 moves=((0, low),), cls=OldRing)
             self.assertLessEqual(got, bound, (rate, channels, patch))
+
+
+class ThePlayersText(unittest.TestCase):
+    def test_construction_needs_audiobiquad(self):
+        self.assertEqual(bandpass.BandPass.REQUIRES, ("audiobiquad",))
+        self.assertEqual(kit_player.missing_module_problems(
+            bandpass.BandPass, 48000), [])
+
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        kit_player.check_claims(
+            self, bandpass.__doc__ + " " + bandpass.BandPass.__doc__,
+            CLAIMS, globals(), "Mix at 0 is your dry signal.")
+
+
+CLAIMS = (
+    ("`BandPass` - the two-pole resonant band-pass, rebuilt on "
+     "`audiobiquad`.",
+     ("TierTwo.test_t6_matches_the_closed_form_at_the_running_rate",
+      "ThePlayersText.test_construction_needs_audiobiquad")),
+    ("Width is how wide the band is, and narrowing it changes what gets "
+     "through, never how loud the centre is.",
+     ("TierTwo.test_t2_minus_three_db_edges_are_the_closed_form",
+      "TierTwo.test_t1_zero_db_peak_where_the_bound_says_it_holds")),
+    ("Slope on puts a second section behind the first, for steeper skirts "
+     "at the same width.",
+     ("TierTwo.test_t2_holds_across_the_cascade_with_the_compensation",
+      "TierTwo.test_planted_fault_t2_the_cascade_without_its_"
+      "compensation")),
+    ("Mix at 0 is your dry signal.",
+     ("TierOne.test_wire_mix_zero_is_byte_identical_at_every_rate",
+      "TierOne.test_planted_fault_one_lsb_on_the_dry_path")),
+    ("**Response.** The centre stands at 0 dB at every width, except a "
+     "tenth of a decibel low at 31.5 Hz with the band at its narrowest.",
+     ("TierTwo.test_t1_zero_db_peak_where_the_bound_says_it_holds",
+      "TierTwo.test_t1_holds_at_the_two_macro_stops",
+      "TierTwo.test_t1_is_still_disconfirmed_at_31_5_hz_and_q_32")),
+    ("DC and the top of the band are cut to exact zero.",
+     ("TierTwo.test_t3_nyquist_alternation_settles_to_zero",
+      "TierTwo.test_t3_a_held_dc_offset_settles_to_zero_at_every_centre")),
+    ("**Timing.** Latency is zero at every setting.",
+     ("TierOne.test_click_matches_the_reported_latency",
+      "TierOne.test_planted_fault_latency_reported_256_short")),
+)
