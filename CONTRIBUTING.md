@@ -88,6 +88,33 @@ Re-capturing a golden is a maintainer's decision, not a routine step. A failure
 here during a deliberate rebuild is expected; it stops being a gate the moment
 a golden is re-captured casually.
 
+`--capture-old` can't absorb a deliberate change: it re-reads the original at the
+fixed revision (`ac87f13`), so re-running it rewrites the same hashes, and an
+instrument whose sound was changed on purpose never matches that oracle again.
+
+To change an instrument's sound on purpose, tune it by ear: change the voice,
+play it, keep it or don't. When a change is kept, the same commit names the
+instrument in `REBUILT` in `tests/parity/run_instruments_parity.py`, with the
+date, and `--verify` reports it as `rebuilt` instead of failing. No separate
+ruling or re-capture is needed. Everything not named there is still held to the
+old oracle, because the gate's job is to catch sound that changes by accident:
+a refactor, a moved node, an audiodsp bump. `--include-rebuilt` compares the
+rebuilt ones anyway. What stays mechanical for a kept change is breakage: the
+instrument still plays, isn't silent, doesn't clip, and still runs in real time
+on a board.
+
+A second heavy gate asks what the real pump plays, not which events the
+scheduling seam writes (`tests/test_scheduling_seam.py` does that against a
+Python stand-in, and runs anywhere):
+
+```bash
+MICROPYPATH=$PWD:$PWD/lib micropython tests/parity/scheduling_seam_live.py
+```
+
+It needs a MicroPython build with audiodsp as a usermod, because `audiopump`
+exists only where the pump does. It has four cases, each with a planted fault
+that must make it exit non-zero: `--fault early|flat|held|armed`.
+
 ## Build the docs
 
 ```bash
