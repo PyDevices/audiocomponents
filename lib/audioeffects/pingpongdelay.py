@@ -12,8 +12,8 @@ from .chorus import nominal_damping_hz
 
 # DigitalDelay's arithmetic, reused rather than copied: the same node rounds
 # the same way in both classes; the same for SlapbackDelay's `tone_excess`.
-from .digitaldelay import (DIVISION_BEATS, laps_to_zero, nominal_cut_hz,
-                           whole_frames)
+from .digitaldelay import (CUT_LAP_FACTOR, DIVISION_BEATS, laps_to_zero,
+                           nominal_cut_hz, whole_frames)
 from .slapbackdelay import tone_excess
 
 try:
@@ -144,8 +144,9 @@ class PingPongDelay(_component.Component):
     in: there is no latency. `tail_samples` is an upper bound on how many
     frames the output takes to reach exact zero, counted from when your
     input stops or from when you read it if that is later, for the settings
-    as they stand when you read it. With Repeat Cut in circuit
-    `tail_samples` is `None`: the class gives no bound there. Pass a lower
+    as they stand when you read it. With Repeat Cut in circuit the bound
+    is twice as many repeats as with it out, a margin measured rather than
+    derived. Pass a lower
     `max_time_ms` for a shorter line: Time then stops at that ceiling, and
     `get_macro(0)` shows where it stopped. A constructor value outside a
     knob's span clamps to the nearer stop, a `tone_hz` or `cut_hz` of 0 or
@@ -449,7 +450,7 @@ class PingPongDelay(_component.Component):
     @property
     def tail_samples(self):
         """Frames until the output is exactly zero once the input stops, as
-        an upper bound, or `None` with Repeat Cut in circuit.
+        an upper bound.
 
         `laps_to_zero(f, excess)` laps, each at most one frame longer than
         the longest delay the read head may be at (the read interpolates
@@ -457,7 +458,10 @@ class PingPongDelay(_component.Component):
         While a walk falls, that is the Time it is walking from, until a
         reset lands the head. The cross-feed hands each lane a convex mix
         of the two lanes' loop values (`audiodsp_feedback_delay.c:581-589`),
-        so the per-lap argument holds at every Spread."""
+        so the per-lap argument holds at every Spread. With Repeat Cut in,
+        the laps are counted `CUT_LAP_FACTOR` times, as `DigitalDelay`
+        counts them: the high-pass can lift a lap's peak above the last
+        one's, and that margin is measured, not derived."""
         self._check_live()
         return self._tail_bound()
 
@@ -465,8 +469,8 @@ class PingPongDelay(_component.Component):
         """`tail_samples` without the liveness check: a plain method, so a
         subclass can reach it on MicroPython, whose `property` has no
         `fget`."""
-        if self._cut > 0.0:
-            return None
         memory, excess = tone_excess(self._damping, self._sample_rate)
         laps = laps_to_zero(self._feedback, excess)
+        if self._cut > 0.0:
+            laps *= CUT_LAP_FACTOR
         return int(laps * (self._reach + 1 + memory))

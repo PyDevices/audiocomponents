@@ -100,6 +100,10 @@ from tools import effect_measurements as kit                # noqa: E402
 VENDOR = "PyDevices"
 
 RATE = 48000
+#: Repeat Cut's planted cell: Feedback 0.5, Cut 20.3 Hz, noise seed 0, where
+#: the tail (10 436 frames) outlives the count without `CUT_LAP_FACTOR`
+#: (9 616).
+PLANT_FEEDBACK, PLANT_SEED = 0.5, 0
 BLOCK = 256
 TIME_I, FEEDBACK_I, MIX_I, GLIDE_I, SYNC_I, DIVISION_I, TONE_I, CUT_I = \
     range(8)
@@ -495,6 +499,20 @@ class LapShortTailDelay(DigitalDelay):
         if declared is None:
             return None
         return declared - (self._reach + 1)
+
+
+class UndoubledCutDelay(DigitalDelay):
+    """Repeat Cut's bound without `CUT_LAP_FACTOR`: the laps counted as if
+    the high-pass were out. The high-pass lifts some laps' peaks above the
+    last one's, so noise outlives it."""
+
+    NAME = 'DigitalDelay'
+
+    @property
+    def tail_samples(self):
+        memory, excess = self._tone_excess()
+        return int(dd.laps_to_zero(self._feedback, excess)
+                   * (self._reach + 1 + memory))
 
 
 class OneLapToneDelay(DigitalDelay):
@@ -1316,13 +1334,15 @@ def t5_compound(cls, rate=RATE, level=8192, settings=None, **options):
 
 
 def tail_measure(cls, feedback, material, rate=RATE, channels=2,
-                 time_ms=12.5, budget=None, **options):
+                 time_ms=12.5, budget=None, seed=0, **options):
     """The frames from the input's end to the output's last non-zero frame,
     against the `tail_samples` the class declares once the input has
     stopped. `floor` is gate audit round 1's cell (997 Hz at 12 000 LSB for
     2 048 frames, the material that held 1 LSB for ever at v0.6.1);
     `fullscale` is four laps of +32 767, which leaves every line sample at
-    the rail and so meets the lap count exactly. Mix 2, wet only."""
+    the rail and so meets the lap count exactly; `noise` is four laps of
+    full-scale uniform noise from `seed`, the material that lets Repeat
+    Cut's high-pass lift a lap above the last. Mix 2, wet only."""
     probe = DigitalDelay(silence_src(64, channels, rate), sample_rate=rate,
                          time_ms=time_ms, feedback=feedback, mix=2.0,
                          **options)
@@ -1333,6 +1353,10 @@ def tail_measure(cls, feedback, material, rate=RATE, channels=2,
         values = [0] * 256 + sine_values(997.0, 2048, rate, 12000)
     elif material == "dc2":
         values = [2] * (rate // 2)
+    elif material == "noise":
+        noise = np.random.default_rng(seed).integers(-32767, 32768,
+                                                    4 * lap)
+        values = [int(v) for v in noise]
     else:
         values = [32767] * (4 * lap)
     input_end = len(values)
@@ -1633,7 +1657,7 @@ class TheSurface(unittest.TestCase):
         self.assertEqual(dd.laps_to_zero(0.7, 1e-5), 29)
         effect.set_macro(FEEDBACK_I, 0)
         effect.set_macro(CUT_I, 1)
-        self.assertIsNone(effect.tail_samples)
+        self.assertEqual(effect.tail_samples, 2 * 601)
         effect.reset()
         self.assertEqual(effect.tail_samples, 11 * 16936)
 
@@ -2771,21 +2795,38 @@ class TrialClaims(unittest.TestCase):
         self.assertEqual(float(np.max(np.abs(out[:4810]))), 0.0)
         self.assertEqual(float(out[4810]), 30000.0)
 
-    def test_repeat_cut_in_has_no_tail_bound(self):
+    def test_repeat_cut_in_keeps_a_measured_bound(self):
         # Repeat Cut's high-pass can take a lap's peak above the last one,
-        # so the per-lap count does not hold: `None` at patch 5 and at any
-        # Cut position above the out stop; an int with Cut out.
+        # so the per-lap count alone does not hold; with Cut in the class
+        # counts `CUT_LAP_FACTOR` (2) times the laps, at patch 5 and at any
+        # Cut position above the out stop.
         effect = DigitalDelay(silence_src(512), sample_rate=RATE, patch=5)
         self.assertGreater(effect.get_macro(CUT_I), 0.0)
-        self.assertIsNone(effect.tail_samples)
+        with_cut = effect.tail_samples
+        effect.set_macro(CUT_I, 0)
+        self.assertEqual(with_cut, dd.CUT_LAP_FACTOR * effect.tail_samples)
         for position in (1, 64, 127):
             effect.set_macro(CUT_I, position)
-            self.assertIsNone(effect.tail_samples, position)
-        effect.set_macro(CUT_I, 0)
-        self.assertIsInstance(effect.tail_samples, int)
-        for patch in (0, 1, 2, 3, 4):
-            effect.program_change(patch)
-            self.assertIsInstance(effect.tail_samples, int, patch)
+            self.assertEqual(effect.tail_samples, with_cut, position)
+        effect.deinit()
+        # The worst cells measured: Cut just above its out stop, full-scale
+        # noise, the Feedback where the high-pass adds most against the
+        # count (0.5) and the top (0.99), at both rates. Each reaches exact
+        # zero inside the bound.
+        for rate in (RATE, 22050):
+            for feedback in (0.5, 0.99):
+                for seed in range(3 if feedback < 0.9 else 1):
+                    result = tail_measure(DigitalDelay, feedback, "noise",
+                                          rate=rate, seed=seed, cut_hz=20.3)
+                    self.assertTrue(result["passed"],
+                                    (rate, feedback, seed, result))
+                    self.assertEqual(result["held"], 0,
+                                     (rate, feedback, seed, result))
+        # Planted: the count without the factor, which noise outlives.
+        result = tail_measure(UndoubledCutDelay, PLANT_FEEDBACK, "noise",
+                              seed=PLANT_SEED, cut_hz=20.3)
+        self.assertFalse(result["passed"], result)
+        self.assertGreater(result["tail"], result["declared"], result)
 
     def test_patch_5_is_the_pedal_corners(self):
         # Patch 5's Repeat Tone and Repeat Cut positions are the 7 kHz and
@@ -2996,16 +3037,16 @@ CLAIMS = (
      ("Tier1Fast.test_click_delay_is_zero",
       "TheSurface.test_macros_patches_tier_latency")),
     ("`tail_samples` is an upper bound on how long the output takes to "
-     "reach exact zero once your input stops, at every Feedback, with "
-     "Repeat Tone in or out.",
+     "reach exact zero once your input stops, at every Feedback and every "
+     "setting of Repeat Tone and Repeat Cut.",
      ("Tier1Fast.test_the_tail_reaches_exact_zero_inside_tail_samples",
       "Tier1Fast.test_the_tail_is_bounded_at_every_feedback",
       "Tier1Fast.test_repeat_tone_stall_cells_reach_zero_at_the_feedback_set",
       "Tier1Fast.test_every_window_centre_reaches_zero",
       "Tier1Fast.test_a_falling_walk_keeps_the_old_time_in_the_tail")),
-    ("With Repeat Cut in circuit, as at patch 5, `tail_samples` is `None`: "
-     "the class gives no bound there.",
-     ("TrialClaims.test_repeat_cut_in_has_no_tail_bound",)),
+    ("With Repeat Cut in circuit, as at patch 5, the bound is twice as many "
+     "repeats as with it out, a margin measured rather than derived.",
+     ("TrialClaims.test_repeat_cut_in_keeps_a_measured_bound",)),
     ("Pass a lower `max_time_ms` for a shorter line: Time then stops at "
      "that ceiling, and `get_macro(0)` shows where it stopped.",
      ("T4TimeLaw.test_a_lowered_ceiling_clamps_visibly",)),

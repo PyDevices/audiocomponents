@@ -44,6 +44,9 @@ from tools.effect_measurements import instantaneous_hz      # noqa: E402
 VENDOR = "PyDevices"
 
 RATE = 48000
+#: Repeat Cut's planted cell (Feedback, Spread, noise seed): the tail
+#: (19 979 frames) outlives the count without `CUT_LAP_FACTOR` (15 376).
+PP_PLANT = (0.5, 0.0, 0)
 BLOCK = 256
 RATES = (48000, 44100, 22050)
 (TIME_I, FEEDBACK_I, MIX_I, SPREAD_I, SIDE_I, SYNC_I, DIVISION_I, TONE_I,
@@ -295,10 +298,22 @@ class TrackingPingPong(SteppedPingPong):
         self._tone_was_in = False
 
 
+class UndoubledCutPingPong(PingPongDelay):
+    """Repeat Cut's bound without `CUT_LAP_FACTOR`: the laps counted as if
+    the high-pass were out, which noise outlives."""
+
+    NAME = 'PingPongDelay'
+
+    def _tail_bound(self):
+        memory, excess = pp.tone_excess(self._damping, self._sample_rate)
+        laps = pp.laps_to_zero(self._feedback, excess)
+        return int(laps * (self._reach + 1 + memory))
+
+
 class HeldCutPingPong(PingPongDelay):
     """The class before audiodsp v0.6.3rc1: once Repeat Cut has been in,
     its bottom stop stays in circuit at the 20 Hz corner, and
-    `tail_samples` is `None` while it lasts."""
+    `tail_samples` keeps Repeat Cut's doubled count while it lasts."""
 
     NAME = 'PingPongDelay'
 
@@ -1082,14 +1097,15 @@ class TheSurface(unittest.TestCase):
             # hand exactly 0 whatever came before, and the bound is finite.
             effect.set_macro(TONE_I, 127)
             self.assertEqual(handed(effect, "damping_hz"), 0.0)
+            out = effect.tail_samples
             effect.set_macro(CUT_I, 1)
             self.assertGreater(handed(effect, "cut_hz"), 0.0)
-            self.assertIsNone(effect.tail_samples)
+            self.assertEqual(effect.tail_samples, 2 * out)
             effect.set_macro(CUT_I, 0)
             self.assertEqual(handed(effect, "cut_hz"), 0.0)
-            self.assertIsNotNone(effect.tail_samples)
+            self.assertEqual(effect.tail_samples, out)
             # Planted: the retired cures (Tone tracking at 32 x the rate,
-            # Cut held in at the 20 Hz corner with no bound).
+            # Cut held in at the 20 Hz corner).
             for cls, name, want in (
                     (TrackingPingPong, "damping_hz", 32.0 * rate),
                     (HeldCutPingPong, "cut_hz",
@@ -1146,7 +1162,7 @@ class TheSurface(unittest.TestCase):
                          685 * 48001)
         for patch in (3, 4, 6):
             self.assertEqual(spied(patch=patch).tail_samples, 190064)
-        self.assertIsNone(spied(cut_hz=40.0).tail_samples)
+        self.assertEqual(spied(cut_hz=40.0).tail_samples, 2 * 14 * 13441)
         # Cut in, then out: since audiodsp v0.6.3rc1 the out stop is out
         # (the node holds an out high-pass at zero, #159), so the bound is
         # the one Cut never in has. Planted: the retired held 20 Hz corner.
@@ -1157,7 +1173,7 @@ class TheSurface(unittest.TestCase):
         held = HeldCutPingPong(silence_src(64), sample_rate=RATE,
                                cut_hz=40.0)
         held.set_macro(CUT_I, 0)
-        self.assertIsNone(held.tail_samples)
+        self.assertEqual(held.tail_samples, 2 * 14 * 13441)
 
     def test_the_feedback_is_handed_as_set(self):
         # Up to audiodsp v0.6.2 the class stepped the Feedback clear of the
@@ -1822,8 +1838,8 @@ class Tier1Fast(unittest.TestCase):
         # Since audiodsp v0.6.3rc1 the bound is finite once Cut is out,
         # whatever came before. Full-scale noise with Cut in (400 Hz and
         # MIDI 1), Cut out as it stops: the tail ends inside the bound read
-        # after the move. Planted: the retired held Cut (no bound) and the
-        # bound one lap short.
+        # after the move. Planted: the retired held Cut (the doubled count
+        # Cut in keeps) and the bound one lap short.
 
         class OneLapShort(PingPongDelay):
             NAME = 'PingPongDelay'
@@ -1865,7 +1881,8 @@ class Tier1Fast(unittest.TestCase):
                     self.assertLessEqual(tail, declared,
                                          (cut_midi, feedback, spread))
                     self.assertGreater(tail, declared // 2)
-        self.assertIsNone(cell(HeldCutPingPong, 127, 0.45, 1.0)[0])
+        self.assertEqual(cell(HeldCutPingPong, 127, 0.45, 1.0)[0],
+                         2 * cell(PingPongDelay, 127, 0.45, 1.0)[0])
         declared, tail = cell(OneLapShort, 127, 0.45, 1.0)
         self.assertGreater(tail, declared)
 
@@ -1886,6 +1903,44 @@ class Tier1Fast(unittest.TestCase):
             last = int(nonzero[-1]) - on + 1 if len(nonzero) else 0
             self.assertLessEqual(last, bound, options)
             self.assertGreater(last, bound // 2, options)
+
+    def test_repeat_cut_in_reaches_zero_inside_the_bound(self):
+        # With Repeat Cut in the class counts twice the laps
+        # (`CUT_LAP_FACTOR`), a margin measured, not derived. The worst
+        # cells: Cut just above its out stop, four laps of full-scale
+        # noise, Feedback 0.5 (where the high-pass adds most against the
+        # count) and 0.99, Spread at both ends, both rates. Planted: the
+        # count without the factor, which the noise outlives.
+        def cell(cls, rate, feedback, spread, seed):
+            options = dict(time_ms=20.0, feedback=feedback, spread=spread,
+                           cut_hz=20.3, mix=2.0)
+            probe = PingPongDelay(silence_src(64, rate=rate),
+                                  sample_rate=rate, **options)
+            bound = PingPongDelay._tail_bound(probe)
+            probe.deinit()
+            fill = 4 * law_frames(20.0, rate)
+            x = np.zeros(fill + bound + fill)
+            x[:fill] = np.random.default_rng(seed).integers(-32767, 32768,
+                                                            fill)
+            effect = cls(to_source(x, 2, rate)[0], sample_rate=rate,
+                         **options)
+            declared = effect.tail_samples
+            y = pull(effect, len(x), 2)
+            effect.deinit()
+            nonzero = np.flatnonzero(y[fill:].any(axis=1))
+            return declared, int(nonzero[-1]) + 1 if len(nonzero) else 0
+
+        for rate in (RATE, 22050):
+            for feedback in (0.5, 0.99):
+                for spread in (0.0, 1.0):
+                    for seed in range(2 if feedback < 0.9 else 1):
+                        declared, tail = cell(PingPongDelay, rate, feedback,
+                                              spread, seed)
+                        self.assertLessEqual(
+                            tail, declared, (rate, feedback, spread, seed))
+        declared, tail = cell(UndoubledCutPingPong, RATE, PP_PLANT[0],
+                              PP_PLANT[1], PP_PLANT[2])
+        self.assertGreater(tail, declared, PP_PLANT)
 
     def test_a_full_scale_fill_at_every_spread(self):
         T = law_frames(20.0, RATE)
@@ -2541,10 +2596,11 @@ CLAIMS = (
       "Tier1Fast.test_the_stall_cell_reaches_zero_at_the_feedback_set",
       "Tier1Fast.test_the_tail_after_cut_in_then_out_is_inside_the_bound",
       "Tier1Fast.test_a_falling_walk_keeps_the_old_time_in_the_tail")),
-    ("With Repeat Cut in circuit `tail_samples` is `None`: the class gives "
-     "no bound there.",
+    ("With Repeat Cut in circuit the bound is twice as many repeats as with "
+     "it out, a margin measured rather than derived.",
      ("TheSurface.test_tail_samples_follows_time_feedback_and_tone",
-      "TheSurface.test_the_filter_stops")),
+      "TheSurface.test_the_filter_stops",
+      "Tier1Fast.test_repeat_cut_in_reaches_zero_inside_the_bound")),
     ("Pass a lower `max_time_ms` for a shorter line: Time then stops at "
      "that ceiling, and `get_macro(0)` shows where it stopped.",
      ("TheSurface.test_a_lowered_ceiling_clamps_visibly",)),
