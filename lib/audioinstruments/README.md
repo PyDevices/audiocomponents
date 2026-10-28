@@ -15,6 +15,8 @@ audio_out.play(inst.output)
 ```
 
 
+For a complete program to start from, see [audioinstruments_simpletest.py](https://github.com/PyDevices/audiocomponents/blob/main/examples/audioinstruments_simpletest.py).
+
 ## Sound stability
 
 The API is our contract with you: class names, signatures, metadata, and
