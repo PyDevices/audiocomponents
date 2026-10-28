@@ -58,3 +58,10 @@ frames of 16-bit stereo, so 100 of them make 25,600 frames.
 Put more effects in the chain with [Chain effects](../guides/chain-effects.md),
 or play a part in time with
 [Sequence a part](../guides/sequence-a-part.md).
+
+To hear something right away, run one of the two complete examples. Each
+writes a WAV file you can open in any audio player:
+[audioinstruments_simpletest.py](https://github.com/PyDevices/audiocomponents/blob/main/examples/audioinstruments_simpletest.py)
+plays a tune on a Juno-106, and
+[audioeffects_simpletest.py](https://github.com/PyDevices/audiocomponents/blob/main/examples/audioeffects_simpletest.py)
+runs plucked notes through a tape echo and a hall.
