@@ -723,10 +723,12 @@ def t3(cls, rate, channels):
         rack.deinit()
         release(made)
     rack = cls.create(Source(material(1, channels, 4096), rate, channels),
-                      rate, chain=(("LowPass", {}), ("LadderFilter", {})))
+                      rate, chain=(("LowPass", {}),
+                                   ("LadderFilter", {"resonance": 4.2})))
     try:
         if rack.tail_samples is not None:
-            wrong.append("LowPass into LadderFilter reports tail %r"
+            wrong.append("LowPass into a self-oscillating LadderFilter "
+                         "reports tail %r"
                          % rack.tail_samples)
     finally:
         rack.deinit()
