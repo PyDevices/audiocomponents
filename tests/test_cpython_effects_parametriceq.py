@@ -28,6 +28,7 @@ import audiocore
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 import effects_measure                                # noqa: E402
 import kit_ceiling                                          # noqa: E402
+import kit_player                                           # noqa: E402
 from effects_measure import SAMPLE_RATE, source        # noqa: E402
 
 from audioeffects import _component                    # noqa: E402
@@ -464,6 +465,67 @@ class TheCeiling(unittest.TestCase):
             kit_ceiling.stated_level_reds(parametriceq.ParametricEQ, "dc"), [])
         self.assertTrue(kit_ceiling.stated_level_reds(
             parametriceq.ParametricEQ, "dc", db=-9, keys=("p3",)))
+
+
+class ThePlayersText(unittest.TestCase):
+    def test_latency_is_zero_on_every_patch(self):
+        self.assertEqual(kit_player.latency_problems(
+            parametriceq.ParametricEQ, SAMPLE_RATE), [])
+        self.assertTrue(kit_player.latency_problems(
+            parametriceq.ParametricEQ, SAMPLE_RATE, delayed=True))
+
+    def test_construction_needs_audiobiquad(self):
+        self.assertEqual(parametriceq.ParametricEQ.REQUIRES, ("audiobiquad",))
+        self.assertEqual(kit_player.missing_module_problems(
+            parametriceq.ParametricEQ, SAMPLE_RATE), [])
+
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        kit_player.check_claims(
+            self, parametriceq.__doc__ + " "
+            + parametriceq.ParametricEQ.__doc__, CLAIMS, globals(),
+            "With every gain at 0 the class is a wire.")
+
+
+CLAIMS = (
+    ("`ParametricEQ` - the Pultec EQP-1A's two low networks and its "
+     "resonant top, with three API 550A proportional-Q bells in the "
+     "middle.",
+     ("LowNetworksTest.test_boost_and_atten_together_lift_the_bottom_and_"
+      "scoop_above_it",
+      "BellLawTest.test_the_skirt_stays_put_while_the_curve_narrows")),
+    ("A Pultec at the ends and an API in the middle: the EQP-1A's two low "
+     "networks and its resonant top, with three proportional-Q bells "
+     "between.",
+     ("LowNetworksTest.test_boost_and_atten_together_lift_the_bottom_and_"
+      "scoop_above_it",
+      "BellLawTest.test_the_skirt_stays_put_while_the_curve_narrows")),
+    ("Low Boost and Low Atten work at once: turn both up and you get the "
+     "record trick, a lift at the bottom with a scoop just above it.",
+     ("LowNetworksTest.test_boost_and_atten_together_lift_the_bottom_and_"
+      "scoop_above_it",
+      "LowNetworksTest.test_planted_fault_one_shared_corner_cancels")),
+    ("Each bell has a Freq and a Gain; turn one up and its skirt stays "
+     "where it is while the curve narrows, and its cut is the exact mirror "
+     "of its boost.",
+     ("BellLawTest.test_the_skirt_stays_put_while_the_curve_narrows",
+      "BellLawTest.test_planted_fault_constant_q_moves_the_skirt",
+      "BellLawTest.test_cut_is_the_exact_reciprocal_of_boost")),
+    ("**Response.** With every gain at 0 the class is a wire.",
+     ("WireTest.test_patch_zero_is_byte_identical_to_the_source",
+      "WireTest.test_an_exactly_zero_db_section_is_a_wire_at_unity_mix_"
+      "too")),
+    ("A boost is delivered whole only while the signal has room for it; a "
+     "cut always is.",
+     ("HeadroomTest.test_the_boost_arrives_whole_at_the_level_the_traits_"
+      "were_measured",
+      "HeadroomTest.test_a_hot_probe_clips_the_boost_away_and_leaves_the_"
+      "cut_alone")),
+    ("**Timing.** Latency is zero at every setting.",
+     ("ThePlayersText.test_latency_is_zero_on_every_patch",)),
+    ("**Levels.** Keep the input under -12 dBFS and the defaults and "
+     "patches stay off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
+)
 
 
 if __name__ == "__main__":

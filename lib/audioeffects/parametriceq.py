@@ -1,81 +1,74 @@
 """`ParametricEQ` - the Pultec EQP-1A's two low networks and its resonant
 top, with three API 550A proportional-Q bells in the middle.
 
-Rebuilt from scratch for the effects program's Phase 2 against
-its dossier. The old `eq.py:ParametricEQ` is not
-consulted except for the six defects the dossier's section 7 names.
-
-**What it sounds like.** The bottom is a Pultec: boost and attenuate at once
-and you do not get silence, you get the record trick - a lift under 60 Hz
-with a scoop just above it, because the two networks sit on different
-corners. The top is a Pultec too: the HF boost is a *resonant bell* whose
-`Bandwidth` control makes it both narrower and louder as it sharpens - up to
-9 dB louder at the same boost setting - while the HF attenuator is a
-separate shelf on its own frequency selector. The three bells in between are
-an API 550A: turn one up and the skirt stays where it is while the curve
-narrows, and its cut is the exact mirror of its boost.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`). Every section
-is an `audiobiquad.Biquad` - float state, and a tail that reaches exact
-zero. The ported `synthio.Biquad` cannot: a 20 Hz low shelf at +10 dB parks
-on 32 LSB of DC and holds it for ever (audiodsp#23, dossier appendix B), and
-this class's own useful settings sit right in that band.
-
-**Headroom, and what it costs the traits.** Every section writes int16 and
-clips there (`audiodsp_filter_f32.c:43-51`), so a boost is delivered whole
-only while the signal has room for it. Measured at 1 kHz through the middle
-bell at +16 dB, RMS of the rendered tone: **+16.00 dB at -20 dBFS, +13.77 dB
-at -12 dBFS, +8.37 dB at -6 dBFS**, while the matching -16 dB cut reads
--15.99 dB at every one of them.
-
-Four of the dossier's five traits are bounded by that, and the evidence pack
-carries the level each stops at (its section 1d, twelve stops from -40 to
--6 dBFS):
-
-* **T5**, cut is the exact reciprocal of boost - at G = 16 it holds to
-  **-16 dBFS** (0.0005 dB) and misses from -15 (0.3734 dB against a 0.1 dB
-  bar); at G = 12 it holds to -12 dBFS and first misses at -10 (0.9960); at
-  G = 6 it holds at every level run, down to -6.
-* **T3**, bandwidth changes peak gain - holds to **-14 dBFS** (+6.43 dB),
-  misses from -13 (+5.58 against a 6-12 dB band).
-* **T4**, the bells' proportional-Q bandwidth ratio - holds to **-10 dBFS**
-  (3.074x), misses at -6 (2.231x against a floor of 3x).
-* **T2**, the resonant top - its first two clauses hold at every level; the
-  clause that the cut selector does not move the boost's peak has no reading
-  at -6 dBFS, because the bell is gone from the full-cut build.
-* **T1**, the Pultec low pair, is the one row with no level bound: its three
-  figures move by 0.003 dB from -40 to -6 dBFS.
-
-All of it is the clip, not the filter: the coefficients are reciprocal and
-proportional at every level, which is what
-`tests/test_cpython_effects_parametriceq.py` reads. Drive this EQ from a signal
-with headroom for the boost you dial, or trim into it, and the curves are the
-ones the traits describe. Keep the input under -12 dBFS and the defaults and
-patches stay off the rails. A boost or Output at its top can still push the
-output onto the rails.
-
-**Cost.** Eight sections, always built, and no patch changes that. Measured
-2026-09-07 on both boards at construction defaults - where patch 0 is a wire,
-so it is a graph idling: **15.2 % of a 256-frame stereo block on the ESP32-P4
-and 25.3 % on the ESP32-S3**, inside the dossier's 26 % and 43 %. At patch 3,
-where five sections are live, the desktop digest moves off the bare probe's
-(`395946e53d4bca94` against `4169efd90ecf44dd`) and the board figure at that
-patch is still owed.
-
-**Latency: zero samples, at every setting and every rate.** Every section is
-a recursive biquad reading no sample it has not been given, and no option on
-this class adds a lookahead, a partition or a window, so there is no
-latency-adding option to default off.
-
-`capabilities = ()`: an equaliser has no tempo-dependent behaviour and this
-class never reads `self._transport()`.
-
-The macro units are the panel's own. The EQP-1A's four gain pots and its
-bandwidth pot are dials marked 0-10, so that is what macros 1, 2, 9, 11 and
-13 read; the API 550A's band gains are switch positions marked in dB, so
-macros 4, 6 and 8 read dB. `Low Freq`, `Bell n Freq`, `High Freq` and
-`Atten Freq` read hertz.
+The player's text is the class docstring; the `CLAIMS` table in the
+class's test file ties its claim sentences to tests.
 """
+
+# Design notes, moved from the module docstring.
+#
+# Rebuilt from scratch for the effects program's Phase 2 against
+# its dossier. The old `eq.py:ParametricEQ` is not
+# consulted except for the six defects the dossier's section 7 names.
+#
+# **Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`). Every section
+# is an `audiobiquad.Biquad` - float state, and a tail that reaches exact
+# zero. The ported `synthio.Biquad` cannot: a 20 Hz low shelf at +10 dB parks
+# on 32 LSB of DC and holds it for ever (audiodsp#23, dossier appendix B), and
+# this class's own useful settings sit right in that band.
+#
+# **Headroom, and what it costs the traits.** Every section writes int16 and
+# clips there (`audiodsp_filter_f32.c:43-51`), so a boost is delivered whole
+# only while the signal has room for it. Measured at 1 kHz through the middle
+# bell at +16 dB, RMS of the rendered tone: **+16.00 dB at -20 dBFS, +13.77 dB
+# at -12 dBFS, +8.37 dB at -6 dBFS**, while the matching -16 dB cut reads
+# -15.99 dB at every one of them.
+#
+# Four of the dossier's five traits are bounded by that, and the evidence pack
+# carries the level each stops at (its section 1d, twelve stops from -40 to
+# -6 dBFS):
+#
+# * **T5**, cut is the exact reciprocal of boost - at G = 16 it holds to
+#   **-16 dBFS** (0.0005 dB) and misses from -15 (0.3734 dB against a 0.1 dB
+#   bar); at G = 12 it holds to -12 dBFS and first misses at -10 (0.9960); at
+#   G = 6 it holds at every level run, down to -6.
+# * **T3**, bandwidth changes peak gain - holds to **-14 dBFS** (+6.43 dB),
+#   misses from -13 (+5.58 against a 6-12 dB band).
+# * **T4**, the bells' proportional-Q bandwidth ratio - holds to **-10 dBFS**
+#   (3.074x), misses at -6 (2.231x against a floor of 3x).
+# * **T2**, the resonant top - its first two clauses hold at every level; the
+#   clause that the cut selector does not move the boost's peak has no reading
+#   at -6 dBFS, because the bell is gone from the full-cut build.
+# * **T1**, the Pultec low pair, is the one row with no level bound: its three
+#   figures move by 0.003 dB from -40 to -6 dBFS.
+#
+# All of it is the clip, not the filter: the coefficients are reciprocal and
+# proportional at every level, which is what
+# `tests/test_cpython_effects_parametriceq.py` reads. Drive this EQ from a signal
+# with headroom for the boost you dial, or trim into it, and the curves are the
+# ones the traits describe.
+#
+# **Cost.** Eight sections, always built, and no patch changes that. Measured
+# 2026-09-07 on both boards at construction defaults - where patch 0 is a wire,
+# so it is a graph idling: **15.2 % of a 256-frame stereo block on the ESP32-P4
+# and 25.3 % on the ESP32-S3**, inside the dossier's 26 % and 43 %. At patch 3,
+# where five sections are live, the desktop digest moves off the bare probe's
+# (`395946e53d4bca94` against `4169efd90ecf44dd`) and the board figure at that
+# patch is still owed.
+#
+# **Latency: zero samples, at every setting and every rate.** Every section is
+# a recursive biquad reading no sample it has not been given, and no option on
+# this class adds a lookahead, a partition or a window, so there is no
+# latency-adding option to default off.
+#
+# `capabilities = ()`: an equaliser has no tempo-dependent behaviour and this
+# class never reads `self._transport()`.
+#
+# The macro units are the panel's own. The EQP-1A's four gain pots and its
+# bandwidth pot are dials marked 0-10, so that is what macros 1, 2, 9, 11 and
+# 13 read; the API 550A's band gains are switch positions marked in dB, so
+# macros 4, 6 and 8 read dB. `Low Freq`, `Bell n Freq`, `High Freq` and
+# `Atten Freq` read hertz.
 
 VENDOR = "PyDevices"
 
@@ -197,9 +190,32 @@ def _nearest(value, steps):
 
 
 class ParametricEQ(_component.Component):
-    """Pultec EQP-1A shelves and a resonant top, API 550A proportional-Q
-    bells in between. Eight `audiobiquad` sections; audiodsp tier; zero
-    latency."""
+    """A Pultec at the ends and an API in the middle: the EQP-1A's two low
+    networks and its resonant top, with three proportional-Q bells between.
+
+    **Controls.** Low Freq is the corner for both low networks. Low Boost
+    and Low Atten work at once: turn both up and you get the record trick,
+    a lift at the bottom with a scoop just above it. Each bell has a Freq
+    and a Gain; turn one up and its skirt stays where it is while the curve
+    narrows, and its cut is the exact mirror of its boost. High Boost is a
+    resonant bell at High Freq, and Bandwidth sets how sharp it is. High
+    Atten is a separate shelf at Atten Freq. Q Law switches the bells from
+    proportional to constant Q. Output is a gain after everything. The
+    Effect controls page lists what the knobs span.
+
+    **Response.** With every gain at 0 the class is a wire. A boost is
+    delivered whole only while the signal has room for it; a cut always is.
+
+    **Timing.** Latency is zero at every setting. Silence in settles to
+    exact silence out.
+
+    **Levels.** Keep the input under -12 dBFS and the defaults and patches
+    stay off the rails. A boost or Output at its top can still push the
+    output onto the rails.
+
+    **On a board.** The class needs audiodsp's `audiobiquad`, and on a board
+    without it construction raises `ImportError`.
+    """
 
     NAME = 'ParametricEQ'
     DISPLAY_NAME = 'Parametric EQ'
