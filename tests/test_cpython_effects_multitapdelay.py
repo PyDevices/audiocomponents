@@ -3317,5 +3317,27 @@ class TestResetIsFresh(unittest.TestCase):
                         (patch, ch, k))
 
 
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `PrimingReset`, `StaleReset`,
+#: `LateReset`, `MixerTail`, `PrimingPlug`, `PullingResync`, `NoRateFloor`,
+#: `NoClear`, `SteppedLaps`, `BareAdapter`; they change only a reported tail
+#: or latency: `NoTapLap`; they render what a knob or a patch renders, so
+#: the kit cannot tell them from a setting: `RotatedTable`.
+KIT_PLANTS = {
+    "LateHeads": LateHeads,
+    "LongLap": LongLap,
+    "ShortTapLap": ShortTapLap,
+    "NarrowTime": (NarrowTime, 0),
+    "FilteredHead": FilteredHead,
+    "FrontFilter": FrontFilter,
+    "PrimedWire": (PrimedWire, 0),
+    "PannedLaps": PannedLaps,
+    "CrossedLaps": CrossedLaps,
+    "LapMixOne": LapMixOne,
+    "ToneHalf": ToneHalf,
+    "Head2OwnLoop": Head2OwnLoop,
+}
+
+
 if __name__ == "__main__":
     unittest.main()

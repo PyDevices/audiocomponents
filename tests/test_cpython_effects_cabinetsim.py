@@ -1671,5 +1671,16 @@ class Claims(unittest.TestCase):
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
+KIT_PLANTS = {
+    "ShallowCliffCabinet": ShallowCliffCabinet,
+    "LowPassCabinet": LowPassCabinet,
+    "SinglePeakCabinet": SinglePeakCabinet,
+    "OpenBassCabinet": OpenBassCabinet,
+    "FlatCharacterCabinet": FlatCharacterCabinet,
+    "BellOnlyFlatCabinet": (BellOnlyFlatCabinet, 1),
+    "NoNotchCabinet": (NoNotchCabinet, 1),
+}
+
+
 if __name__ == "__main__":
     unittest.main()

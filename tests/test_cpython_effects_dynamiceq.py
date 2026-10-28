@@ -1223,5 +1223,12 @@ class Claims(unittest.TestCase):
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
+#: Not here, because they change only a reported tail or latency:
+#: `OldPeriodsTail`.
+KIT_PLANTS = {
+    "ThroughTheDryVoice": (ThroughTheDryVoice, 0),
+}
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -2723,5 +2723,22 @@ class NullBuildRed(unittest.TestCase):
                 self.assertTrue(result["control"]["passed"], name)
 
 
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `DoubleLineN6144`,
+#: `JumpAnalogDelay`, `ConstantGlideWalk`, `UnflooredWalk`, `PlainHandOff`,
+#: `SpreadInMono`, `TargetOnlyTail`, `NoSwingTail`, `SteppedAnalog`,
+#: `PerMacroPatch`; they change only a reported tail or latency: `HalfTail`,
+#: `OneLapTail`.
+KIT_PLANTS = {
+    "CornerN6144": CornerN6144,
+    "MidWalkReadStep": (MidWalkReadStep, 0),
+    "RightReadStep": (RightReadStep, 0),
+    "EarlyStepWalk": (EarlyStepWalk, 0),
+    "LandingBlip": (LandingBlip, 0),
+    "DryGainDelay": DryGainDelay,
+    "JumpModAnalog": (JumpModAnalog, 3),
+}
+
+
 if __name__ == "__main__":
     unittest.main()

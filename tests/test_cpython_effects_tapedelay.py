@@ -3117,5 +3117,26 @@ class Claims(unittest.TestCase):
             ("The wobble is periodic, not random.",
              ("Tier1Fast.test_nothing_here",)),)))
 
+
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `DoubleWalkTape`,
+#: `GlideScaledVarispeed`, `WalkAtZeroTape`, `FastWalkAtZeroTape`,
+#: `HalfFollowTape`, `StaircaseTape`, `PerBlockSlidingTape`, `SteppedTape`,
+#: `NoneAtZeroTape`, `LeanResetTape`; they render what a knob or a patch
+#: renders, so the kit cannot tell them from a setting: `NoFlutterLineTape`,
+#: `DialableTape`, `LeanDriveOnTape`, `DriveOffTape`.
+KIT_PLANTS = {
+    "LoopShiftTape": LoopShiftTape,
+    "DoubleCornerTape": DoubleCornerTape,
+    "PostLossTape": PostLossTape,
+    "SquareLawTape": (SquareLawTape, 0),
+    "FlutterOnWowLineTape": FlutterOnWowLineTape,
+    "Harmonic504Tape": Harmonic504Tape,
+    "NoDriftTape": NoDriftTape,
+    "LeanMovesMoreTape": (LeanMovesMoreTape, 8),
+    "JumpWowTape": JumpWowTape,
+}
+
+
 if __name__ == "__main__":
     unittest.main()

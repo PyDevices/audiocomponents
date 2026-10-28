@@ -1200,5 +1200,15 @@ class TheTailAfterAMove(unittest.TestCase):
             self.assertLessEqual(got, int(22050 * 0.47), index)
 
 
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `NoWakeGraphicEQ`,
+#: `AlreadyMutedGraphicEQ`; they change only a reported tail or latency:
+#: `NoDetentGraphicEQ`; they render what a knob or a patch renders, so the
+#: kit cannot tell them from a setting: `RailedBandGraphicEQ`.
+KIT_PLANTS = {
+    "InvertedQGraphicEQ": (InvertedQGraphicEQ, 1),
+}
+
+
 if __name__ == "__main__":
     unittest.main()

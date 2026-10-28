@@ -1343,3 +1343,19 @@ class Claims(unittest.TestCase):
 
 if __name__ == "__main__":                              # pragma: no cover
     unittest.main()
+
+
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `NoGlideCombFilter`,
+#: `UnresetCombFilter`, `TrackingCombFilter`, `LeakyTrackCombFilter`,
+#: `NoTrimTermCombFilter`, `SteppedCombFilter`; they change only a reported
+#: tail or latency: `ShortLatencyCombFilter`, `LapShortCombFilter`.
+KIT_PLANTS = {
+    "WholeSampleCombFilter": WholeSampleCombFilter,
+    "SixCentSharpCombFilter": SixCentSharpCombFilter,
+    "SquaredFeedbackCombFilter": SquaredFeedbackCombFilter,
+    "NoUnitySnapCombFilter": (NoUnitySnapCombFilter, 0),
+    "LeakyWireCombFilter": LeakyWireCombFilter,
+    "TwoSampleShortCombFilter": TwoSampleShortCombFilter,
+    "FrozenToneCombFilter": FrozenToneCombFilter,
+}

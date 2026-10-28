@@ -2254,5 +2254,18 @@ class Claims(unittest.TestCase):
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `FixedLoss`; they change only a
+#: reported tail or latency: `ShortLatency`.
+KIT_PLANTS = {
+    "OddTube": OddTube,
+    "HardClip": HardClip,
+    "RoughCurve": RoughCurve,
+    "NoOversample": NoOversample,
+    "NodeBiasSaturation": (NodeBiasSaturation, 4),
+    "LevellingSaturation": (LevellingSaturation, 7),
+}
+
+
 if __name__ == "__main__":
     unittest.main()

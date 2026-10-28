@@ -982,3 +982,17 @@ class Claims(unittest.TestCase):
                                                    "within 3 dB")))
         self.assertTrue(claim_problems(
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
+
+
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `StepEngageVibrato`,
+#: `JumpingVibrato`; they change only a reported tail or latency: `OldTail`.
+KIT_PLANTS = {
+    "DryWetVibrato": DryWetVibrato,
+    "WrongLatencyVibrato": WrongLatencyVibrato,
+    "HalfRateVibrato": HalfRateVibrato,
+    "TriangleVibrato": TriangleVibrato,
+    "OpenBodyVibrato": OpenBodyVibrato,
+    "HalfSampleVibrato": HalfSampleVibrato,
+    "SineWowVibrato": SineWowVibrato,
+}

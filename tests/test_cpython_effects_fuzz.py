@@ -2529,5 +2529,21 @@ class Claims(unittest.TestCase):
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `NoOutputPole`; they change only
+#: a reported tail or latency: `ShortLatencyFuzz`; they do not build on
+#: their own: `DryTapRebalance`.
+KIT_PLANTS = {
+    "SymmetricFuzz": SymmetricFuzz,
+    "NoOversampleFuzz": NoOversampleFuzz,
+    "AlwaysTiltFuzz": AlwaysTiltFuzz,
+    "HighHpFuzz": HighHpFuzz,
+    "GermaniumCascade": GermaniumCascade,
+    "NoScoopFuzz": NoScoopFuzz,
+    "FrozenToneFuzz": FrozenToneFuzz,
+    "NoOutputCharge": (NoOutputCharge, 2),
+}
+
+
 if __name__ == "__main__":
     unittest.main()

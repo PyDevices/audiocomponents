@@ -2350,5 +2350,28 @@ class TestAFreshInstanceIsPatch0(unittest.TestCase):
             fresh.deinit()
 
 
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `SteppedSlapback`,
+#: `TrackingSlapback`, `TargetOnlyTailSlapback`, `EchoForgetsTimeSlapback`,
+#: `JumpTimeSlapback`; they change only a reported tail or latency:
+#: `NoWowTailSlapback`; they render what a knob or a patch renders, so the
+#: kit cannot tell them from a setting: `FrozenToneSlapback`,
+#: `NoWowSlapback`.
+KIT_PLANTS = {
+    "Frames441Slapback": Frames441Slapback,
+    "ShortHalfFrameSlapback": ShortHalfFrameSlapback,
+    "FloorSlapback": FloorSlapback,
+    "HalfFrameSlapback": HalfFrameSlapback,
+    "SecondRepeatSlapback": SecondRepeatSlapback,
+    "SplitSlapback": SplitSlapback,
+    "PannedSlapback": PannedSlapback,
+    "OpenTopSlapback": OpenTopSlapback,
+    "RawTopSlapback": RawTopSlapback,
+    "RawToneSlapback": (RawToneSlapback, 5),
+    "NoTwoPiSlapback": NoTwoPiSlapback,
+    "JumpWowSlapback": JumpWowSlapback,
+}
+
+
 if __name__ == "__main__":
     unittest.main()
