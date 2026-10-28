@@ -37,9 +37,10 @@ ends, the tail rings out as it would on silence.
 
 **Latency, tail, portability.** Latency is zero samples: nothing looks
 ahead. `tail_samples` is an upper bound on how long the output takes to
-reach exact zero once your input stops, at every Feedback, with Repeat Tone
-in or out. With Repeat Cut in circuit, as at patch 5, `tail_samples` is
-`None`: the class gives no bound there. Pass a lower `max_time_ms` for a
+reach exact zero once your input stops, at every Feedback and every
+setting of Repeat Tone and Repeat Cut. With Repeat Cut in circuit, as at
+patch 5, the bound is twice as many repeats as with it out, a margin
+measured rather than derived. Pass a lower `max_time_ms` for a
 shorter line: Time then stops at that ceiling, and `get_macro(0)` shows
 where it stopped. A constructor Time of 0 is the bottom of its span, and a
 Repeat Tone or Repeat Cut of 0 is that filter out. `reset()` empties the
@@ -115,6 +116,21 @@ STALL_CLEARANCE = 2.0 ** -20
 #: moved too. Four times under `STALL_CLEARANCE`, so a moved value is
 #: never itself on the widened edge.
 STALL_FUZZ = 2.0 ** -22
+
+#: With Repeat Cut in circuit `tail_samples` counts this many times
+#: `laps_to_zero`'s laps. The high-pass sends a lap's value less the mean
+#: the loop has been carrying, which can be larger than any value on the
+#: line, so the per-lap argument (each lap's peak below the last) does not
+#: hold, and no count of its own is derived here. The factor is
+#: measured. On full-scale noise, at every Feedback from 0.40 to 0.99 in
+#: steps of 0.01, Repeat Cut from 20.3 to 400 Hz, 48 and 22.05 kHz, ten
+#: noises each, and again on random full-scale signs and sparse clicks,
+#: mono and stereo, Repeat Tone out and at 800 Hz, and on `PingPongDelay`
+#: at both ends of Spread, the longest tail took 1.35 times the count with
+#: the filter out (`PingPongDelay`, Feedback 0.5, Spread 1, Cut 20.3 Hz),
+#: and at Feedback 0.99 1.06 (721 laps against 685). Twice the count
+#: leaves nearly half again over the worst.
+CUT_LAP_FACTOR = 2
 
 #: Division's sixteen note values, in quarter-note beats, rising: 1/32,
 #: 1/16T, 1/32., 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/2T, 1/4., 1/2,
@@ -608,7 +624,7 @@ class DigitalDelay(_component.Component):
     @property
     def tail_samples(self):
         """Frames until the output is exactly zero once the input stops, as
-        an upper bound, or `None` where no bound is derived.
+        an upper bound.
 
         `laps_to_zero(f)` laps, each at most one frame longer than the
         longest delay the read head may be at (the read interpolates
@@ -617,12 +633,13 @@ class DigitalDelay(_component.Component):
         a Glide-0 move or a reset lands the head, because the class cannot
         see how far the walk has got.
 
-        Finite at every Feedback with Repeat Cut out. With Repeat Tone in,
-        each lap is `memory` frames longer, the time the low-pass takes to
-        forget the lap before, and near the Feedback values where the node
-        once held a small value for ever the count takes one more lap
-        (`laps_to_zero`). `None` with Repeat Cut in circuit: this class
-        derives no bound there.
+        Finite at every Feedback. With Repeat Tone in, each lap is
+        `memory` frames longer, the time the low-pass takes to forget the
+        lap before, and near the Feedback values where the node once held a
+        small value for ever the count takes one more lap (`laps_to_zero`).
+        With Repeat Cut in, the laps are counted `CUT_LAP_FACTOR` times:
+        the high-pass can lift a lap's peak above the last one's, so that
+        margin is measured, not derived (`CUT_LAP_FACTOR`).
         """
         self._check_live()
         return self._tail_bound()
@@ -631,10 +648,10 @@ class DigitalDelay(_component.Component):
         """`tail_samples` without the liveness check: a plain method, so a
         subclass can reach it on MicroPython, whose `property` has no
         `fget` and whose `super()` hands back the property itself."""
-        if self._macros[CUT_I] > 0.0:
-            return None
         memory, excess = self._tone_excess()
         laps = laps_to_zero(self._feedback, excess)
+        if self._macros[CUT_I] > 0.0:
+            laps *= CUT_LAP_FACTOR
         return int(laps * (self._reach + 1 + memory))
 
     def _tone_excess(self):
