@@ -3155,5 +3155,29 @@ class TestAFreshInstanceIsPatch0(unittest.TestCase):
             fresh.deinit()
 
 
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `HalfGlideMsDelay`,
+#: `ZeroBpmDelay`, `JumpSeedGlideDelay`, `NearZeroSeedGlideDelay`,
+#: `NanBpmDelay`, `FloorEraTailDelay`, `UndoubledCutDelay`,
+#: `OneLapToneDelay`, `SteppedToneDelay`, `WindowNoneToneDelay`,
+#: `TrackingToneDelay`, `LeakyTrackDelay`, `SlowSeedGlideDelay`,
+#: `TargetOnlyTailDelay`, `PerMacroPatchDelay`; they change only a reported
+#: tail: `SixtyDbTailDelay`, `LapShortTailDelay`; Tone at 0 renders it:
+#: `FrozenToneDelay`.
+KIT_PLANTS = {
+    "DryScaledDelay": DryScaledDelay,
+    "DryGainDelay": DryGainDelay,
+    "StaircaseDelay": (StaircaseDelay, 3),
+    "HalfFrameDelay": HalfFrameDelay,
+    "LinearMapDelay": LinearMapDelay,
+    "OpenTopToneDelay": OpenTopToneDelay,
+    "RawTopToneDelay": RawTopToneDelay,
+    "CornerShiftDelay": (CornerShiftDelay, 5),
+    "PostCutDelay": (PostCutDelay, 5),
+    "PostToneDelay": (PostToneDelay, 5),
+    "FrozenCutDelay": FrozenCutDelay,
+}
+
+
 if __name__ == "__main__":
     unittest.main()

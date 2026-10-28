@@ -2664,5 +2664,22 @@ class Claims(unittest.TestCase):
              "latency.", ("Tier1Fast.test_nothing_here",)),)))
 
 
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `NoSlewPingPong`,
+#: `FrozenFilterPingPong`, `SteppedPingPong`, `TrackingPingPong`,
+#: `UndoubledCutPingPong`, `HeldCutPingPong`; patch 0 renders it:
+#: `MonoStereoSettingsPingPong`.
+KIT_PLANTS = {
+    "LossyCrossPingPong": LossyCrossPingPong,
+    "LateReadPingPong": LateReadPingPong,
+    "ScaledFeedbackPingPong": ScaledFeedbackPingPong,
+    "PanlessPingPong": PanlessPingPong,
+    "DryGainPingPong": DryGainPingPong,
+    "MonoInPingPong": MonoInPingPong,
+    "SwapInPingPong": SwapInPingPong,
+    "HeldFloorPingPong": HeldFloorPingPong,
+}
+
+
 if __name__ == "__main__":
     unittest.main()
