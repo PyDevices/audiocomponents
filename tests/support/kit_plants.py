@@ -6,8 +6,8 @@ A plant that renders what the clean class renders proves nothing, and a
 plant some knob reaches is a setting, not a fault: a test that goes red on
 it would go red on a user turning that knob.
 
-**Declaring plants.** A class's test module (by default
-`tests/test_cpython_effects_<name>.py`, name in lower case) declares
+**Declaring plants.** A class's test module (the one its `CLAIMS` table is
+read from, usually `tests/test_cpython_effects_<name>.py`) declares
 `KIT_PLANTS = {"T1": PlantedSubclass, ...}`: a label (the trait or test
 the plant serves) to a subclass of the class. A value may instead be
 `(PlantedSubclass, patch)`: the plant is then judged against the clean
@@ -36,6 +36,7 @@ if __name__ == "__main__":
     sys.path.insert(0, "lib")
     sys.path.insert(0, "tests/support")
 
+import kit_claims
 import kit_common as kc
 import lifecycle
 
@@ -53,17 +54,20 @@ def probe(channels):
     return _PROBE[channels]
 
 
-def module_name(cls):
-    return "test_cpython_effects_%s" % cls.NAME.lower()
-
-
 def load_plants(cls, module=None):
-    """(KIT_PLANTS dict or None, why not)."""
-    name = module or module_name(cls)
+    """(KIT_PLANTS dict or None, why not). With no `module`, the class's
+    test module is the one its CLAIMS table is read from."""
+    name = module or "test module for %s" % cls.NAME
     try:
-        mod = __import__(name)
+        if module:
+            mod = __import__(module)
+        else:
+            mod, _ = kit_claims.module_for(cls)
     except Exception as exc:                              # noqa: BLE001
         return None, "%s does not import: %s" % (name, type(exc).__name__)
+    if mod is None:
+        return None, "%s has no test module" % cls.NAME
+    name = mod.__name__
     plants = getattr(mod, "KIT_PLANTS", None)
     if plants is None:
         return None, "%s has no KIT_PLANTS" % name
