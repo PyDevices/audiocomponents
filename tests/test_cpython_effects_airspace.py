@@ -28,6 +28,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 import audiocore                                            # noqa: E402
 import airspace_plants as plants                            # noqa: E402
 import audioeffects                                         # noqa: E402
+from audioeffects.digitaldelay import laps_to_zero          # noqa: E402
+from audioeffects.tapedelay import tone_excess              # noqa: E402
 
 VENDOR = "PyDevices"
 
@@ -1289,6 +1291,109 @@ class WithoutGetBuffer(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------
+# The tail bound against Loop Bass (LOOP_BASS_LAP_FACTOR)
+
+
+class TapeOut(AirSpace):
+    """A measuring tap, not a fault: the wet voice plays the tape itself,
+    past the Top Cut and the chamber, so at Mix 2 the output is the tape's
+    own repeats, which `_repeats_bound` bounds."""
+
+    def _wet_source(self):
+        return self._fd
+
+
+class SingleLapCount(TapeOut):
+    """The repeats' bound before `LOOP_BASS_LAP_FACTOR`: `laps_to_zero`'s
+    laps once, as if Loop Bass's high-pass could not lift a lap's peak
+    above the last one's."""
+
+    def _repeats_bound(self):
+        rate = self._sample_rate
+        top_memory, excess = tone_excess(self._handed["damping_hz"], rate)
+        bass_memory, _bass = tone_excess(self._handed["cut_hz"], rate)
+        laps = laps_to_zero(self._handed["feedback"], excess)
+        return laps * (self._reach + 1 + top_memory + bass_memory)
+
+
+def full_scale_signs(frames, channels, seed):
+    """+32 767 or -32 767 per sample, at random from `seed`."""
+    state = (seed * 7919 + 17) & 0x7FFFFFFF
+    out = array("h", bytes(2 * frames * channels))
+    for i in range(frames * channels):
+        state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+        out[i] = 32767 if state & 0x40000000 else -32767
+    return out
+
+
+def tape_tail(cls, rate, feedback, loop_bass_hz, time_ms=500.0, seed=0,
+              rack=False):
+    """(tail, bound): the frames from the input's end to the tape's last
+    non-zero frame, and the bound for it read once the input has stopped,
+    `_repeats_bound` on the tape alone or `tail_samples` on the whole rack
+    (`rack`). Four laps of full-scale random signs, Loop Top 16 kHz (the
+    least memory per lap), the chamber at its shortest Decay, Mix 2. The
+    render runs a lap past the bound, so a tail that outlives the bound is
+    seen."""
+    channels = 2
+    lap = law_frames(time_ms, rate)
+    frames = 4 * lap
+    data = full_scale_signs(frames, channels, seed)
+    effect = build(cls, data, rate, channels, time_ms=time_ms,
+                   feedback=feedback, loop_bass_hz=loop_bass_hz,
+                   loop_top_hz=16000.0, decay=0.3, mix=2.0)
+    bound = None
+    last = -1
+    at = 0
+    while bound is None or at < frames + bound + lap:
+        _, block = audiocore.get_buffer(effect.output)
+        samples = array("h", bytes(block))
+        if any(samples):
+            i = len(samples) - 1
+            while not samples[i]:
+                i -= 1
+            last = at + i // channels
+        at += len(samples) // channels
+        if bound is None and at >= frames:
+            bound = effect.tail_samples if rack else effect._repeats_bound()
+    effect.deinit()
+    return last + 1 - frames, bound
+
+
+class TheTailBound(unittest.TestCase):
+    """Loop Bass's high-pass can lift a lap's peak above the last one's, so
+    the repeats are counted `LOOP_BASS_LAP_FACTOR` times. The worst cells
+    measured sit just under a step of `laps_to_zero`'s count, at long
+    Times, where each lap's filter memory adds least."""
+
+    #: (rate, Feedback, Loop Bass Hz): the tape's longest tails against the
+    #: single count, 1.49 times it at Feedback 0.0039 (three laps against
+    #: two) and 1.11 at 0.4999 (17 against 15).
+    WORST = ((48000, 0.0039, 1000.0), (22050, 0.0039, 1000.0),
+             (48000, 0.4999, 300.0), (48000, 0.3291, 300.0))
+
+    def test_the_tape_reaches_exact_zero_inside_its_bound(self):
+        for rate, feedback, bass in self.WORST:
+            tail, bound = tape_tail(TapeOut, rate, feedback, bass)
+            self.assertGreater(tail, 0, (rate, feedback, bass))
+            self.assertLessEqual(tail, bound, (rate, feedback, bass, tail))
+
+    def test_the_rack_reaches_exact_zero_inside_tail_samples(self):
+        for rate, feedback, bass in self.WORST[:3]:
+            tail, bound = tape_tail(AirSpace, rate, feedback, bass,
+                                    rack=True)
+            self.assertGreater(tail, 0, (rate, feedback, bass))
+            self.assertLessEqual(tail, bound, (rate, feedback, bass, tail))
+
+    def test_red_on_the_single_count(self):
+        # Planted: the laps counted once. The tape outlives that bound at
+        # every worst cell.
+        for rate, feedback, bass in self.WORST:
+            tail, bound = tape_tail(SingleLapCount, rate, feedback, bass)
+            self.assertGreater(tail, bound, (rate, feedback, bass))
+
+
+# --------------------------------------------------------------------------
 # The docstring's claims, sentence by sentence (KIT.md, claims)
 
 
@@ -1394,7 +1499,8 @@ class TestResetIsFresh(unittest.TestCase):
     def test_the_tail_after_a_reset_from_a_longer_time(self):
         # The reset emptied the tape with the outgoing patch's Time as the
         # head's reach, then patch 0's shorter Time kept it: from patch 2
-        # the tail read 361 384 frames where a fresh instance reads 251 836.
+        # the tail read 361 384 frames where a fresh instance read 251 836
+        # (both before the repeats were counted `LOOP_BASS_LAP_FACTOR` times).
         sys.path.insert(0, os.path.join(os.path.dirname(__file__),
                                         "support"))
         import kit_fresh

@@ -62,7 +62,7 @@ import audiocore
 
 from . import _component
 
-from .digitaldelay import laps_to_zero, whole_frames
+from .digitaldelay import CUT_LAP_FACTOR, laps_to_zero, whole_frames
 from .tapedelay import tone_excess
 # The module, not the class, so this module holds one Component class.
 from . import reverb as _reverb
@@ -100,6 +100,23 @@ LINE_MS = 505.0
 FULL_RANGE_MS = TIME_MAX_MS - TIME_MIN_MS
 
 FEEDBACK_MAX = 0.85
+
+#: `tail_samples` counts this many times `laps_to_zero`'s laps, as
+#: `DigitalDelay` does with Repeat Cut in (`CUT_LAP_FACTOR`). Loop Bass is a
+#: high-pass in the loop, always in circuit: it sends a lap's value less the
+#: mean the loop has been carrying, which can be larger than any value on the
+#: line, so the per-lap argument (each lap's peak below the last) does not
+#: hold, and the factor is measured. On the tape's own output, at Feedback
+#: just under each step of `laps_to_zero`'s count from 0.004 to 0.85 and in
+#: steps of 0.01 from 0.40, Loop Bass 20 to 1000 Hz, Time 20 to 500 ms, 48
+#: and 22.05 kHz, on full-scale noise, random full-scale signs and clicks,
+#: the longest tail took 1.49 times the count with each lap lengthened by
+#: both one-poles' memory (Feedback 0.0039, Loop Bass 1 kHz, Loop Top
+#: 16 kHz, Time 500 ms: three laps against two), 1.11 at Feedback 0.4999
+#: (17 laps against 15) and 1.02 at 0.5312; the more laps the count
+#: holds, the less the high-pass adds. Mono, Drive and a lower Loop Top
+#: measured no longer. Twice the count leaves a third again over the worst.
+LOOP_BASS_LAP_FACTOR = CUT_LAP_FACTOR
 
 (TIME_I, FEEDBACK_I, GLIDE_I, DRIVE_I, LOOP_TOP_I, LOOP_BASS_I, TOP_CUT_I,
  LOW_CUT_I, DECAY_I, DAMPING_I, MIX_I) = range(11)
@@ -579,7 +596,8 @@ class AirSpace(_component.Component):
     def tail_samples(self):
         """Frames until the output is exactly zero once the input stops, as
         an upper bound: the tape's repeats, the Top Cut's ring and the
-        chamber's own tail, end to end."""
+        chamber's own tail, end to end. The repeats are counted twice over
+        (`LOOP_BASS_LAP_FACTOR`), a margin measured rather than derived."""
         self._check_live()
         return self._tail_bound()
 
@@ -588,17 +606,23 @@ class AirSpace(_component.Component):
         subclass can reach it on MicroPython, whose `property` has no
         `fget`.
 
-        `laps_to_zero` laps at the Feedback in force, each as long as the
-        longest delay the read head may be at plus one frame for the
-        interpolated read plus the memory of the loop's two one-poles;
-        then `_component.biquad_ring` of the Top Cut; then the chamber's
-        `tail_samples`. 0 at Mix 0, where the output is the input."""
+        The repeats (`_repeats_bound`); then `_component.biquad_ring` of
+        the Top Cut; then the chamber's `tail_samples`. 0 at Mix 0, where
+        the output is the input."""
         if self._value(MIX_I) <= 0.0:
             return 0
+        ring = _component.biquad_ring(self._lp) or 0
+        return int(self._repeats_bound() + ring + self._chamber.tail_samples)
+
+    def _repeats_bound(self):
+        """Frames until the tape's own output is exactly zero once the input
+        stops: `LOOP_BASS_LAP_FACTOR` times `laps_to_zero`'s laps at the
+        Feedback in force, each as long as the longest delay the read head
+        may be at plus one frame for the interpolated read plus the memory
+        of the loop's two one-poles."""
         rate = self._sample_rate
         top_memory, excess = tone_excess(self._handed["damping_hz"], rate)
         bass_memory, _bass = tone_excess(self._handed["cut_hz"], rate)
-        laps = laps_to_zero(self._handed["feedback"], excess)
-        repeats = laps * (self._reach + 1 + top_memory + bass_memory)
-        ring = _component.biquad_ring(self._lp) or 0
-        return int(repeats + ring + self._chamber.tail_samples)
+        laps = LOOP_BASS_LAP_FACTOR * laps_to_zero(self._handed["feedback"],
+                                                   excess)
+        return laps * (self._reach + 1 + top_memory + bass_memory)
