@@ -1104,5 +1104,17 @@ class Claims(unittest.TestCase):
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `NoGuard`, `ThroughTheDryVoice`,
+#: `MixerResetTailFirst`.
+KIT_PLANTS = {
+    "NoLevelGates": (NoLevelGates, 0),
+    "LinkwitzRiley2": LinkwitzRiley2,
+    "NoRatioClamp": (NoRatioClamp, 0),
+    "PlayBeforeMacros": PlayBeforeMacros,
+    "PortedBiquads": PortedBiquads,
+}
+
+
 if __name__ == "__main__":
     unittest.main()

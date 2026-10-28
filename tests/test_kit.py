@@ -146,6 +146,15 @@ class TestPlants(unittest.TestCase):
         self.assertTrue(verdict(cells, "KitPlain", "plants", "-")
                         .startswith("na(kit_common has no KIT_PLANTS"))
 
+    def test_plants_are_read_from_the_claims_module(self):
+        # Two classes whose test file is not named after them.
+        import audioeffects
+        for cls in (audioeffects.NoiseGate,
+                    audioeffects.MultibandCompressor):
+            plants, why = kit_plants.load_plants(cls)
+            self.assertIsNone(why, cls.NAME)
+            self.assertTrue(plants, cls.NAME)
+
 
 class TestArgs(unittest.TestCase):
 

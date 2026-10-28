@@ -603,5 +603,14 @@ class Claims(unittest.TestCase):
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `ZeroTailKeyListenExpander`; they
+#: render what a knob or a patch renders, so the kit cannot tell them from a
+#: setting: `DepthSignFlippedExpander`, `DepthPinnedAtZeroExpander`.
+KIT_PLANTS = {
+    "RatioPinnedExpander": RatioPinnedExpander,
+}
+
+
 if __name__ == "__main__":
     unittest.main()

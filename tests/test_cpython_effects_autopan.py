@@ -672,5 +672,17 @@ class Claims(unittest.TestCase):
              "out.", ("TierOne.test_nothing_here",)),)))
 
 
+#: Not here, because they change only a reported tail or latency:
+#: `ShortLatency`.
+KIT_PLANTS = {
+    "MixerLaw": MixerLaw,
+    "HalfExponent": HalfExponent,
+    "BlockHeld": BlockHeld,
+    "ShallowHardOver": ShallowHardOver,
+    "SwappedSides": (SwappedSides, 5),
+    "MonoStillPans": (MonoStillPans, None, {"channels": 1}),
+}
+
+
 if __name__ == "__main__":
     unittest.main()

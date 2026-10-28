@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import kit_faults                                               # noqa: E402
+import kit_player                                               # noqa: E402
 import kit_probes as probes                                     # noqa: E402
 from audioeffects import overdrive as rebuilt                   # noqa: E402
 from tools import effect_measurements as kit                    # noqa: E402
@@ -1305,6 +1306,78 @@ class TheRejoinIsAFreshInstance(unittest.TestCase):
         reds = [c for c in self.cells(DoubleChargeOverdrive)
                 if c[3].startswith("RED")]
         self.assertTrue(any(c[0] == 22050 for c in reds), reds)
+
+
+#: `DoubleChargeOverdrive` is not here: it differs only on a rejoin, and the
+#: kit renders fresh builds.
+KIT_PLANTS = {
+    "BiasedOverdrive": BiasedOverdrive,
+    "BaseRateOverdrive": BaseRateOverdrive,
+    "RawClipOverdrive": RawClipOverdrive,
+    "NoOutputPole": NoOutputPole,
+    "WetOnlyOverdrive": WetOnlyOverdrive,
+    "NoClipAdd": NoClipAdd,
+    "NoHighPass": NoHighPass,
+}
+
+
+class ThePlayersText(unittest.TestCase):
+    def test_construction_needs_its_three_modules(self):
+        self.assertEqual(rebuilt.Overdrive.REQUIRES,
+                         ("audioshaper", "audiobiquad", "audioroute"))
+        self.assertEqual(kit_player.missing_module_problems(
+            rebuilt.Overdrive, 48000), [])
+
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        kit_player.check_claims(
+            self, rebuilt.__doc__ + " " + rebuilt.Overdrive.__doc__,
+            CLAIMS, globals(),
+            "Silence in is silence out at every shipped patch.")
+
+
+CLAIMS = (
+    ("**Switching.** Mix at 0 takes the pedal out of circuit and hands back "
+     "your signal byte for byte.",
+     ("TestOverdrive.test_mix_zero_is_wire",
+      "TestOverdrive.test_level_honest_on_mix_zero")),
+    ("Leaving 0 switches the pedal on fresh, rather than replaying what it "
+     "held when it went off.",
+     ("TheBypassComesBackAsBuilt.test_mix_back_after_silence_plays_nothing",
+      "TheBypassComesBackAsBuilt.test_the_old_rejoin_and_a_clear_without_"
+      "rearming_are_red",
+      "TheRejoinIsAFreshInstance.test_mix_back_at_patch_6_is_a_fresh_"
+      "build")),
+    ("At Mix 1 with Level at 0 the pedal is silent.",
+     ("TestOverdriveDisclosure.test_level_zero_at_mix_one_is_silence",)),
+    ("**Sound.** At the defaults, bass comes through cleaner than the mids, "
+     "as the high-pass in front of the clip makes it; at the bottom of "
+     "Body, or on a square, that reverses.",
+     ("TestOverdriveT1Span.test_pair_holds_at_the_default_at_every_rate",
+      "TestOverdriveT1Span.test_pair_reverses_at_the_bottom_of_the_body_"
+      "travel",
+      "TestOverdriveT1Span.test_pair_reverses_on_a_square_at_the_default",
+      "TestOverdriveT1Fault.test_hp_off_raises_100hz_thd_at_default")),
+    ("The clip runs oversampled, so aliasing stays at least 40 dB under the "
+     "note anywhere on the panel, up to a full-scale input.",
+     ("TestOverdrive.test_t7_alias_at_the_worst_macro_corner",
+      "TestOverdrive.test_t7_at_the_worst_corner_up_to_full_scale",
+      "TestOverdriveRatePolicy.test_t7_at_drive_max_at_every_rate",
+      "TestOverdrive.test_t7_null_build_red")),
+    ("**Timing.** Latency is zero at every setting.",
+     ("TestOverdrive.test_latency_zero_click",)),
+    ("Silence in is silence out at every shipped patch.",
+     ("TheTierOneRowsAtEveryShippedPatch.test_silence_in_is_silence_out_at_"
+      "every_shipped_patch",
+      "TestOverdriveTheOutputPole.test_the_planted_class_stands_dc_where_"
+      "this_one_does_not")),
+    ("**Levels.** Keep the input under -1 dBFS and the shipped patches stay "
+     "off the rails; anywhere on the panel, keep it under -6 dBFS.",
+     ("TestOverdriveTheInputCeiling.test_no_shipped_patch_rails_at_the_"
+      "stated_ceiling",
+      "TestOverdriveTheInputCeiling.test_the_ceiling_is_where_it_says_it_is",
+      "TestOverdriveTheInputCeiling.test_the_surface_ceiling_holds_at_the_"
+      "hot_corner")),
+)
 
 
 if __name__ == "__main__":

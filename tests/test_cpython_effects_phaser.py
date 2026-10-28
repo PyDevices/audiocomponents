@@ -1016,3 +1016,16 @@ class Claims(unittest.TestCase):
                                                    "shallower than")))
         self.assertTrue(claim_problems(
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
+
+
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `MeterDeaf`; they change only a
+#: reported tail or latency: `ShortLatency`; they render what a knob or a
+#: patch renders, so the kit cannot tell them from a setting:
+#: `MixOneCascade`, `NoDriveLaw`, `FeedbackStuck`.
+KIT_PLANTS = {
+    "SixStagesAlways": SixStagesAlways,
+    "OldDriveTable": OldDriveTable,
+    "NoPostGain": NoPostGain,
+    "ReplaysTheSource": ReplaysTheSource,
+}

@@ -3545,5 +3545,28 @@ class TheClaims(unittest.TestCase):
                     self.assertEqual(digest(out), digest(want), label)
 
 
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `TrimLate`, `TrimRounded`,
+#: `NoChecks`, `HotterCeiling`, `ResetOnMove`, `AllocatedSeconds`,
+#: `DecayKeptSquared`, `DecayMidiSquared`, `PredelayKeptSquared`,
+#: `PredelayMidiSquared`, `NanIsSpanBottom`, `NoReset`,
+#: `OneSynthesisPerBlock`, `PatchPerKnob`, `RetryOnEmpty`, `RetryOnShort`,
+#: `KeepShortReads`, `ResetSilentOnEmpty`, `MixOnePullLate`,
+#: `ReplugOnReset`; they change only a reported tail or latency:
+#: `ZeroLatency`, `TailTwoShort`.
+KIT_PLANTS = {
+    "ExtraPartition": ExtraPartition,
+    "OneLsbAfter": OneLsbAfter,
+    "StuckDcAfter": StuckDcAfter,
+    "UnnormalisedAfter": UnnormalisedAfter,
+    "HotRoom": HotRoom,
+    "SideTilt": SideTilt,
+    "SideNudge": SideNudge,
+    "Untrimmed": Untrimmed,
+    "OldTrims": OldTrims,
+    "LongDecay": LongDecay,
+}
+
+
 if __name__ == "__main__":
     unittest.main()

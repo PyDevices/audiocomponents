@@ -692,10 +692,6 @@ class TheCeiling(unittest.TestCase):
             lowpass.LowPass, "sine", db=0, keys=("p5",)))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ThePlayersText(unittest.TestCase):
     def test_latency_is_zero_on_every_patch(self):
         # Patches 4 and 5 sit too low for an impulse's first sample to
@@ -801,3 +797,14 @@ class TheTailAfterAMove(unittest.TestCase):
                 "LowPass", rate, channels, patch, start=((0, high),),
                 moves=((0, low),), cls=OldConstantTail)
             self.assertLessEqual(got, bound, (rate, channels, patch))
+
+
+#: `OldConstantTail` differs only in the tail the class reports, so it is
+#: not here.
+KIT_PLANTS = {
+    "MostlyDryLowPass": MostlyDryLowPass,
+}
+
+
+if __name__ == "__main__":
+    unittest.main()

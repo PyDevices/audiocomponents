@@ -2013,5 +2013,21 @@ FAMILY = (
 )
 
 
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `RebuildOnMove`,
+#: `ResetDropsHeldFrames`, `ResetClearsNothing`, `NoCeiling`.
+KIT_PLANTS = {
+    "DattorroDiffuserPlate": DattorroDiffuserPlate,
+    "InvertedCut": InvertedCut,
+    "FlatDamper": FlatDamper,
+    "LowCutRadians": LowCutRadians,
+    "PlateDiffuserRooms": (PlateDiffuserRooms, 4),
+    "HallOnRoomLines": (HallOnRoomLines, 6),
+    "RateReciprocal": RateReciprocal,
+    "DepthMirrored": DepthMirrored,
+    "OneMultiply": OneMultiply,
+}
+
+
 if __name__ == "__main__":
     unittest.main()

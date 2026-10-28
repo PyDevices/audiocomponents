@@ -1373,3 +1373,16 @@ class Claims(unittest.TestCase):
             "within 0.1 dB", "within 1 dB")))
         self.assertTrue(claim_problems(
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
+
+
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `NoBranchClear`,
+#: `FirstSectionClear`; they change only a reported tail or latency:
+#: `LateClick`.
+KIT_PLANTS = {
+    "FloorQuantize": FloorQuantize,
+    "WrongStep": WrongStep,
+    "ForcedBandLimit": ForcedBandLimit,
+    "SnapRate": SnapRate,
+    "SkewedHold": SkewedHold,
+}

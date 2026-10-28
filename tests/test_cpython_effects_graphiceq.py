@@ -1180,10 +1180,6 @@ class Claims(unittest.TestCase):
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TheTailAfterAMove(unittest.TestCase):
     """A Gain or Volume move from the top to the bottom as the input stops
     rings out inside the bound read after the move (audiocomponents#114).
@@ -1202,3 +1198,17 @@ class TheTailAfterAMove(unittest.TestCase):
             self.assertLessEqual(got, bound, index)
             # Red up to audiodsp rc8, where the move rang past it.
             self.assertLessEqual(got, int(22050 * 0.47), index)
+
+
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `NoWakeGraphicEQ`,
+#: `AlreadyMutedGraphicEQ`; they change only a reported tail or latency:
+#: `NoDetentGraphicEQ`; they render what a knob or a patch renders, so the
+#: kit cannot tell them from a setting: `RailedBandGraphicEQ`.
+KIT_PLANTS = {
+    "InvertedQGraphicEQ": (InvertedQGraphicEQ, 1),
+}
+
+
+if __name__ == "__main__":
+    unittest.main()
