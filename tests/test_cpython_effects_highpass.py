@@ -32,6 +32,7 @@ import synthio
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 import kit_ceiling                                          # noqa: E402
+import kit_player                                           # noqa: E402
 from effects_measure import SAMPLE_RATE, source        # noqa: E402
 
 from audioeffects import _component                    # noqa: E402
@@ -268,6 +269,18 @@ class CornerTest(unittest.TestCase):
                     self.assertAlmostEqual(
                         self.corner_db(1000.0, 4.0, slope, rate),
                         20.0 * math.log10(4.0), delta=0.05)
+
+    def test_the_corner_reads_q_from_forty_hertz_up_and_not_at_ten(self):
+        for q in (0.5, FLAT_Q, 2.0, 8.0, 16.0):
+            for slope in (12, 24):
+                with self.subTest(q=q, slope=slope):
+                    self.assertAlmostEqual(
+                        self.corner_db(40.0, q, slope),
+                        20.0 * math.log10(q), delta=0.05)
+        # Below the bound the knob is a direction: 10 Hz at Resonance 8 on
+        # the steep slope stands about 0.6 dB shy.
+        self.assertGreater(abs(self.corner_db(10.0, 8.0, 24)
+                               - 20.0 * math.log10(8.0)), 0.3)
 
     def test_scaling_both_butterworth_qs_is_red(self):
         # The fault of the same kind: put the resonance on both sections of
@@ -610,6 +623,71 @@ class TheCeiling(unittest.TestCase):
             kit_ceiling.stated_level_reds(highpass.HighPass, "square"), [])
         self.assertTrue(kit_ceiling.stated_level_reds(
             highpass.HighPass, "square", db=-6, keys=("p1",)))
+
+
+class ThePlayersText(unittest.TestCase):
+    def test_latency_is_zero_on_every_patch(self):
+        self.assertEqual(
+            kit_player.latency_problems(highpass.HighPass, SAMPLE_RATE), [])
+        self.assertTrue(kit_player.latency_problems(
+            highpass.HighPass, SAMPLE_RATE, delayed=True))
+
+    def test_construction_needs_audiobiquad(self):
+        self.assertEqual(highpass.HighPass.REQUIRES, ("audiobiquad",))
+        self.assertEqual(kit_player.missing_module_problems(
+            highpass.HighPass, SAMPLE_RATE), [])
+
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        kit_player.check_claims(
+            self, highpass.__doc__ + " " + highpass.HighPass.__doc__,
+            CLAIMS, globals(), "Slope is 12 or 24 dB an octave.")
+
+
+CLAIMS = (
+    ("`HighPass` - the low-cut: a two-pole analog high-pass whose "
+     "transmission zero at DC is exact, not nearly.",
+     ("TheZeroAtDCIsExact.test_the_settled_output_is_bit_exactly_zero",
+      "TheSkirtIsTwelveDecibelsAnOctave.test_twelve_and_twenty_four_"
+      "decibels_an_octave")),
+    ("A low-cut: under the corner the signal goes, and above it nothing is "
+     "touched.",
+     ("TheSkirtIsTwelveDecibelsAnOctave.test_nyquist_passes_at_unity",
+      "TheShapeIsOneCurve.test_the_warped_curve_is_the_same_at_every_"
+      "corner")),
+    ("Resonance is how loud the corner itself stands: at 0.707 it is 3 dB "
+     "down and the cut is as gentle as a cut gets, and turned up it stands "
+     "above the passband and the filter whistles at its own corner.",
+     ("CornerTest.test_the_corner_sits_at_minus_three_across_the_whole_span",
+      "CornerTest.test_the_corner_gain_reads_q_at_both_slopes")),
+    ("Slope is 12 or 24 dB an octave.",
+     ("TheSkirtIsTwelveDecibelsAnOctave.test_twelve_and_twenty_four_"
+      "decibels_an_octave",)),
+    ("Mix at 0 is your dry signal.",
+     ("TheBypassIsAWire.test_mix_zero_is_byte_identical_to_the_source",
+      "TheBypassIsAWire.test_mix_zero_with_a_trim_asked_for_is_still_a_"
+      "wire")),
+    ("**Response.** DC is removed exactly: a held offset settles to zero, "
+     "not nearly zero.",
+     ("TheZeroAtDCIsExact.test_the_settled_output_is_bit_exactly_zero",
+      "TheZeroAtDCIsExact.test_the_cascades_gain_at_dc_is_zero_at_every_"
+      "setting")),
+    ("Below the corner the cut falls 12 or 24 dB an octave, and the top of "
+     "the band passes at unity.",
+     ("TheSkirtIsTwelveDecibelsAnOctave.test_twelve_and_twenty_four_"
+      "decibels_an_octave",
+      "TheSkirtIsTwelveDecibelsAnOctave.test_nyquist_passes_at_unity")),
+    ("From 40 Hz up at 48 kHz the corner stands as loud as Resonance says "
+     "at either slope; below that the knob is a direction rather than a "
+     "number.",
+     ("CornerTest.test_the_corner_reads_q_from_forty_hertz_up_and_not_at_"
+      "ten",
+      "CornerTest.test_the_corner_gain_is_q_at_every_rate")),
+    ("**Timing.** Latency is zero at every setting.",
+     ("ThePlayersText.test_latency_is_zero_on_every_patch",)),
+    ("**Levels.** Keep the input under -9 dBFS and the defaults and "
+     "patches stay off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
+)
 
 
 if __name__ == "__main__":
