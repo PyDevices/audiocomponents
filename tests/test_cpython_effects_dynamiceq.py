@@ -1104,10 +1104,6 @@ class TheTailAfterAMove(unittest.TestCase):
             self.assertLessEqual(got, bound, (rate, channels, patch))
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class TheClaims(unittest.TestCase):
     """The docstring's claims that no older test holds on its own."""
 
@@ -1225,3 +1221,7 @@ class Claims(unittest.TestCase):
             "within 0.35 dB", "within 0.3 dB")))
         self.assertTrue(claim_problems(
             doc, CLAIMS + (("Latency", ("TheClaims.test_nothing_here",)),)))
+
+
+if __name__ == '__main__':
+    unittest.main()

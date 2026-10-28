@@ -645,10 +645,6 @@ CLAIMS = (
 )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class OldConstantTail(Notch):
     """The bound before audiocomponents#114: one measured class constant,
     143 360 samples, from a burst at fixed settings."""
@@ -691,3 +687,19 @@ class TheTailAfterAMove(unittest.TestCase):
                 "Notch", rate, channels, patch, start=((0, high),),
                 moves=((0, low),), cls=OldConstantTail)
             self.assertLessEqual(got, bound, (rate, channels, patch))
+
+
+#: `ShortTail` and `OldConstantTail` differ only in the tail the class
+#: reports, which is bookkeeping, so they are not here. The harmonic notch
+#: is on at patch 1, so `SharedHarmonicQ` is judged there. `RateBlind` is the
+#: shipped class at 48 kHz, so it is judged at 22.05 kHz.
+KIT_PLANTS = {
+    "WidenedQ": WidenedQ,
+    "BandPassNumerator": BandPassNumerator,
+    "SharedHarmonicQ": (SharedHarmonicQ, 1),
+    "RateBlind": (RateBlind, None, {"rate": 22050}),
+}
+
+
+if __name__ == "__main__":
+    unittest.main()

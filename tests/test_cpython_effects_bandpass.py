@@ -1045,3 +1045,13 @@ CLAIMS = (
      ("TierOne.test_click_matches_the_reported_latency",
       "TierOne.test_planted_fault_latency_reported_256_short")),
 )
+
+
+#: The state faults differ only after a reset or a deinit, and `OldRing`
+#: only in the tail the class reports, so none of them is here. The
+#: cascade switches in at patch 1, so its fault is judged there.
+KIT_PLANTS = {
+    "PeakingNumerator": PeakingNumerator,
+    "WrongWidth": WrongWidth,
+    "UncompensatedCascade": (UncompensatedCascade, 1),
+}

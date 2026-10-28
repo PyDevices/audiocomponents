@@ -384,10 +384,6 @@ class TheLeanRouteFollowsTheMacros(unittest.TestCase):
                          bytes(cout[tail:400 * 1024]))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 import kit_ceiling                                               # noqa: E402
 
 
@@ -475,3 +471,7 @@ CLAIMS = (
      "patches stay off the rails.",
      ("TheCeiling.test_clean_at_the_stated_input_level",)),
 )
+
+
+if __name__ == "__main__":
+    unittest.main()
