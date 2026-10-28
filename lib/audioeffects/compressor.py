@@ -1,105 +1,107 @@
-"""`Compressor` - four compressor characters over one palette.
+"""`Compressor` - compressor characters on a shared palette.
 
-Rebuilt from scratch at Phase 2 against a dossier whose
-trait table was frozen at Station A on 2026-09-07. The four characters are
-the dossier's four standouts, and they differ in **detector law, release law,
-ratio law and side-chain weighting** - not in three time constants, which is
-all the class this replaces had (dossier §7.2).
-
-Mix back up from 0 comes back as the class was built: the two stages
-cleared and the voices primed afresh. An instance built wet and moved to 0
-before it played used to keep the block its construction primed and play it
-256 frames after the input stopped (audiocomponents#113).
-
-* **`fet`** - the 1176. Peak detector, both time knobs live and *faster
-  clockwise* across 800 to 20 microseconds and 1.1 seconds to 50
-  milliseconds, threshold rising with ratio. Turn everything up and it
-  distorts, which is the sound the panel's all-buttons-in trick is famous for.
-* **`optical`** - the LA-2A, and the default. **Attack, Release, Release Slow
-  and Memory do nothing here**, because the T4 cell sets both times and the
-  unit has no time knobs: ten milliseconds of attack, half the recovery in the
-  first sixty milliseconds and the rest over a couple of seconds, slower after
-  a long or a deep passage. That inertness is trait O3 and is measured, not
-  asserted.
-* **`vca`** - the dbx 160. A true-RMS detector, so a square and a sine of the
-  same RMS get the same gain where a peak detector is 3 dB apart on them, and
-  a release that is a straight line in decibels rather than an exponential.
-* **`varimu`** - the Fairchild 670. No ratio to speak of: the slope climbs
-  with level, from gentle on small peaks to a hard limit on loud ones, and
-  the six factory time-constant positions are patches 8 through 13.
-
-**Two `Dynamics` in series**, fast then slow. The slow one is the *second
-release stage*: its own attack runs in seconds, so its envelope is still
-climbing after a short burst and settled after a long one, which is a memory
-of how long the passage was without a new state variable. At `Memory` 0 it is
-set to `ratio=1`, which is byte-identical to a wire, so a single-stage patch
-pays the node and none of its sound.
-
-**Latency is zero at every setting**, both rates, every patch: this class
-builds no latency-adding option at all. `lookahead_ms` stays at its default 0
-and is not on the surface - lookahead belongs to `Limiter`, where the latency
-buys a brickwall. `tail_samples` is 0 for the same reason a compressor has no
-tail: the gain multiplies the audio, so silence in is silence out on the same
-sample.
-
-**Levels.** Keep the input under -6 dBFS and the defaults and patches stay
-off the rails.
-
-**Two traits this palette cannot carry, recorded rather than hidden**
-(dossier App. J.3, J.4):
-
-* The side chain is **feed-forward on all four characters**. The node does
-  have a `feedback_detector`, and the 1176, the LA-2A and the 670 are all
-  feedback designs - but on this gain computer a feedback detector settles at
-  half the overshoot, 2:1 effective, at *every* ratio setting, so a character
-  that also has to make 4:1 through 20:1 cannot use it.
-* On the `vca` character the RMS averaging window trait V3 needs floors the
-  attack above the 3 ms trait V2 asks for at 30 dB over threshold. The
-  shipped patch takes the RMS detector, which is the dbx's headline; V2's
-  level-dependent attack law is demonstrated on the peak detector instead.
-
-**What it does not do, and where.** Three of the dossier's claims did not
-survive the Phase 2 refutation pass and its gate audit, and the class was
-not edited to save them: the numbers below are this class's own behaviour
-at settings a player dials, measured over the span each row quantifies
-over rather than at one point.
-
-* **It is not clean on bass material with a fast release.** At 10 dB of
-  gain reduction on a 50 Hz tone, patch 1 reads **0.021 %** THD at the
-  Release knob's slow end and **3.89 %** at its fast end, against the
-  dossier's 0.5 % bar, and **three of the four `fet` patches are over that
-  bar at 50 Hz** (1.13 / 0.94 / 1.09 %) - the fourth is All-Button, which
-  is meant to be dirty. Patch 0 `Level Ride`, the constructor's own
-  defaults, reads 0.83 % on the same probe, on a character whose rows state
-  no cleanliness bar at all. The bar holds under 0.5 % for a release slower
-  than about 300 ms at 50 Hz, about 80 ms at 200 Hz, and at every Release
-  position at 1 kHz (0.24 % at the fast end). That is the envelope
-  following the waveform, which is what a fast peak compressor does to a
-  bass note - the 1176 does it too - but traits F5 and V6 said "clean
-  everywhere except All-Button", so they are **disconfirmed** and bounded
-  here.
-* **The true-RMS detector stops being level-honest below about 65 Hz.**
-  Trait V3 is the dbx's: a square and a sine of the same RMS get the same
-  gain where a peak detector is 3 dB apart on them. Measured on patch 3,
-  they are 0.079 dB apart at 400 Hz, 0.322 at 100 Hz, **0.509 at 63 Hz and
-  0.769 at 40 Hz** against a 0.5 dB bar, because the shipped 10 ms window
-  cannot average a 50 Hz square. The fix is on the surface: at the `RMS
-  Window` macro's 100 ms end the same reading is **0.086 dB** at 50 Hz.
-* **The FET threshold tilt holds at Threshold −8 dB and below, not
-  below −4.2 dB.** F2's rise is 6 dB per decade of ratio above 4:1 —
-  4.18 dB at 20:1. The independent refutation of 2026-09-07 (commit
-  `17a4cc9`) attacked inside the old bound: at Threshold −7 dB the
-  fitted knee is 12.0 / 8.5 / 6.5 / 10.5 (20:1 widens), and at −6 dB
-  and −5 dB both columns fail. At −12 / −10 / −8 and at the row's own
-  −36 dB the threshold still rises and the knee still narrows. The
-  0 dBFS curve window cannot finish a narrowing knee once the 20:1
-  tilt has pushed the threshold near the ceiling; the 0 dB clamp then
-  wrecks the 20:1 point from about −5.5 dB up. F2 is demonstrated at
-  Threshold −8 dB and below.
-
-`capabilities` is `()`: a compressor's timing is program-dependent, not
-tempo-dependent, and nothing here reads the transport.
+The player's text is the class docstring; the `CLAIMS` table in the
+class's test file ties its claim sentences to tests.
 """
+
+# Design notes, moved from the module docstring.
+#
+# Rebuilt from scratch at Phase 2 against a dossier whose
+# trait table was frozen at Station A on 2026-09-07. The four characters are
+# the dossier's four standouts, and they differ in **detector law, release law,
+# ratio law and side-chain weighting** - not in three time constants, which is
+# all the class this replaces had (dossier §7.2).
+#
+# Mix back up from 0 comes back as the class was built: the two stages
+# cleared and the voices primed afresh. An instance built wet and moved to 0
+# before it played used to keep the block its construction primed and play it
+# 256 frames after the input stopped (audiocomponents#113).
+#
+# * **`fet`** - the 1176. Peak detector, both time knobs live and *faster
+#   clockwise* across 800 to 20 microseconds and 1.1 seconds to 50
+#   milliseconds, threshold rising with ratio. Turn everything up and it
+#   distorts, which is the sound the panel's all-buttons-in trick is famous for.
+# * **`optical`** - the LA-2A, and the default. **Attack, Release, Release Slow
+#   and Memory do nothing here**, because the T4 cell sets both times and the
+#   unit has no time knobs: ten milliseconds of attack, half the recovery in the
+#   first sixty milliseconds and the rest over a couple of seconds, slower after
+#   a long or a deep passage. That inertness is trait O3 and is measured, not
+#   asserted.
+# * **`vca`** - the dbx 160. A true-RMS detector, so a square and a sine of the
+#   same RMS get the same gain where a peak detector is 3 dB apart on them, and
+#   a release that is a straight line in decibels rather than an exponential.
+# * **`varimu`** - the Fairchild 670. No ratio to speak of: the slope climbs
+#   with level, from gentle on small peaks to a hard limit on loud ones, and
+#   the six factory time-constant positions are patches 8 through 13.
+#
+# **Two `Dynamics` in series**, fast then slow. The slow one is the *second
+# release stage*: its own attack runs in seconds, so its envelope is still
+# climbing after a short burst and settled after a long one, which is a memory
+# of how long the passage was without a new state variable. At `Memory` 0 it is
+# set to `ratio=1`, which is byte-identical to a wire, so a single-stage patch
+# pays the node and none of its sound.
+#
+# **Latency is zero at every setting**, both rates, every patch: this class
+# builds no latency-adding option at all. `lookahead_ms` stays at its default 0
+# and is not on the surface - lookahead belongs to `Limiter`, where the latency
+# buys a brickwall. `tail_samples` is 0 for the same reason a compressor has no
+# tail: the gain multiplies the audio, so silence in is silence out on the same
+# sample.
+#
+# **Two traits this palette cannot carry, recorded rather than hidden**
+# (dossier App. J.3, J.4):
+#
+# * The side chain is **feed-forward on all four characters**. The node does
+#   have a `feedback_detector`, and the 1176, the LA-2A and the 670 are all
+#   feedback designs - but on this gain computer a feedback detector settles at
+#   half the overshoot, 2:1 effective, at *every* ratio setting, so a character
+#   that also has to make 4:1 through 20:1 cannot use it.
+# * On the `vca` character the RMS averaging window trait V3 needs floors the
+#   attack above the 3 ms trait V2 asks for at 30 dB over threshold. The
+#   shipped patch takes the RMS detector, which is the dbx's headline; V2's
+#   level-dependent attack law is demonstrated on the peak detector instead.
+#
+# **What it does not do, and where.** Three of the dossier's claims did not
+# survive the Phase 2 refutation pass and its gate audit, and the class was
+# not edited to save them: the numbers below are this class's own behaviour
+# at settings a player dials, measured over the span each row quantifies
+# over rather than at one point.
+#
+# * **It is not clean on bass material with a fast release.** At 10 dB of
+#   gain reduction on a 50 Hz tone, patch 1 reads **0.021 %** THD at the
+#   Release knob's slow end and **3.89 %** at its fast end, against the
+#   dossier's 0.5 % bar, and **three of the four `fet` patches are over that
+#   bar at 50 Hz** (1.13 / 0.94 / 1.09 %) - the fourth is All-Button, which
+#   is meant to be dirty. Patch 0 `Level Ride`, the constructor's own
+#   defaults, reads 0.83 % on the same probe, on a character whose rows state
+#   no cleanliness bar at all. The bar holds under 0.5 % for a release slower
+#   than about 300 ms at 50 Hz, about 80 ms at 200 Hz, and at every Release
+#   position at 1 kHz (0.24 % at the fast end). That is the envelope
+#   following the waveform, which is what a fast peak compressor does to a
+#   bass note - the 1176 does it too - but traits F5 and V6 said "clean
+#   everywhere except All-Button", so they are **disconfirmed** and bounded
+#   here.
+# * **The true-RMS detector stops being level-honest below about 65 Hz.**
+#   Trait V3 is the dbx's: a square and a sine of the same RMS get the same
+#   gain where a peak detector is 3 dB apart on them. Measured on patch 3,
+#   they are 0.079 dB apart at 400 Hz, 0.322 at 100 Hz, **0.509 at 63 Hz and
+#   0.769 at 40 Hz** against a 0.5 dB bar, because the shipped 10 ms window
+#   cannot average a 50 Hz square. The fix is on the surface: at the `RMS
+#   Window` macro's 100 ms end the same reading is **0.086 dB** at 50 Hz.
+# * **The FET threshold tilt holds at Threshold −8 dB and below, not
+#   below −4.2 dB.** F2's rise is 6 dB per decade of ratio above 4:1 —
+#   4.18 dB at 20:1. The independent refutation of 2026-09-07 (commit
+#   `17a4cc9`) attacked inside the old bound: at Threshold −7 dB the
+#   fitted knee is 12.0 / 8.5 / 6.5 / 10.5 (20:1 widens), and at −6 dB
+#   and −5 dB both columns fail. At −12 / −10 / −8 and at the row's own
+#   −36 dB the threshold still rises and the knee still narrows. The
+#   0 dBFS curve window cannot finish a narrowing knee once the 20:1
+#   tilt has pushed the threshold near the ceiling; the 0 dB clamp then
+#   wrecks the 20:1 point from about −5.5 dB up. F2 is demonstrated at
+#   Threshold −8 dB and below.
+#
+# `capabilities` is `()`: a compressor's timing is program-dependent, not
+# tempo-dependent, and nothing here reads the transport.
 
 VENDOR = "PyDevices"
 
@@ -182,7 +184,41 @@ _DEFAULTS = {
 
 
 class Compressor(_component.Component):
-    """Four compressor characters on two `audiodynamics.Dynamics` nodes."""
+    """Compressor characters after classic studio units, on a shared panel.
+
+    **Characters.** Character picks the unit. On `fet`, after the Urei
+    compressor, the time knobs get faster as you turn them up, and with
+    everything up it distorts, which is the sound its buttons-in trick is
+    famous for. On `optical`, after the Teletronix and the default, a light
+    cell sets the times, so the time knobs and Memory are idle; recovery is
+    quick at first and slow after, and slower again after a long or deep
+    passage. On `vca`, after the dbx, the detector reads true RMS and the
+    release falls in a straight line in decibels. On `varimu`, after the
+    Fairchild, the slope climbs with level, gentle on small peaks and hard
+    on loud ones, and the Vari-Mu patches are its time-constant positions.
+
+    **Controls.** Threshold, Ratio, Knee and Makeup set the curve. Release
+    Slow and Memory run a second, slower stage that remembers how long the
+    passage was. Detector switches between peak and RMS, and RMS Window sets
+    how long the RMS average is. Emphasis and Emphasis Freq tilt the side
+    chain toward a band. Mix at 0 is your dry signal. The Effect controls
+    page lists what the knobs span.
+
+    **Timing.** Latency is zero at every setting. The gain multiplies the
+    audio, so silence in is silence out on the same sample.
+
+    **Where it is not clean.** On bass with a fast release the gain follows
+    the waveform and the output thickens, as it does on the hardware; a
+    slower release cleans it up. The RMS detector reads a deep square and
+    sine differently at its default window; a wider RMS Window fixes it.
+
+    **Levels.** Keep the input under -6 dBFS and the defaults and patches
+    stay off the rails.
+
+    **On a board.** The class needs audiodsp's `audiodynamics` and
+    `audioroute`, and on a board without them construction raises
+    `ImportError`.
+    """
 
     #: Construction arms the voices on silence (`Component._play_voice`),
     #: so a Mix 0 set before the first pull hands out the source whole.
