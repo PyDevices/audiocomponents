@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Brad Barnett
 #
 # SPDX-License-Identifier: MIT
-"""Play a short tune on a classic synthesizer and save it as a WAV file.
+"""Play a short tune on a classic electric piano and save it as a WAV file.
 
-The program builds one instrument by name, turns its filter cutoff knob,
-plays four notes and writes what comes out to a WAV file you can open in
-any audio player. Change INSTRUMENT to hear another of the fifty-five.
+The program builds one instrument by name, plays four notes and writes
+what comes out to a WAV file you can open in any audio player. Then it
+lists the instrument's knobs, which inst.set_macro() turns. Change
+INSTRUMENT to hear another of the fifty-five.
 
 Needs: audioinstruments and audiodsp. Both are built into the PyDevices
 MicroPython firmware; on CPython, pip install pydevices-audioinstruments.
@@ -23,16 +24,13 @@ import audioinstruments
 
 # Change these to match your setup.
 FILENAME = "tune.wav"
-INSTRUMENT = "juno106"  # try "minimoog", "dx7", "rhodes" or "tr808"
+INSTRUMENT = "rhodes"  # try "juno106", "minimoog", "dx7" or "tr808"
 NOTES = (60, 64, 67, 72)  # MIDI note numbers: C, E, G and the C above
 NOTE_SECONDS = 0.4
 SAMPLE_RATE = 22050
-CUTOFF = 70  # 0-127; lower it for a darker sound
 
-# Build the instrument, mono, and set its filter cutoff by the knob's name.
+# Build the instrument, in mono, on its default patch.
 inst = audioinstruments.create(INSTRUMENT, SAMPLE_RATE, channel_count=1)
-if "Cutoff" in inst.macro_labels:
-    inst.set_macro(inst.macro_labels.index("Cutoff"), CUTOFF)
 
 # Write the WAV header now; the data size is filled in at the end.
 out = open(FILENAME, "wb")
@@ -65,3 +63,7 @@ out.seek(40)
 out.write(struct.pack("<I", size))
 out.close()
 print("Wrote", FILENAME)
+
+# Each knob is a macro, set from 0 to 127 by its place in this list:
+# inst.set_macro(inst.macro_labels.index("Tone"), 90), for example.
+print("Knobs:", ", ".join(inst.macro_labels))

@@ -62,6 +62,6 @@ or play a part in time with
 To hear something right away, run one of the two complete examples. Each
 writes a WAV file you can open in any audio player:
 [audioinstruments_simpletest.py](https://github.com/PyDevices/audiocomponents/blob/main/examples/audioinstruments_simpletest.py)
-plays a tune on a Juno-106, and
+plays a tune on a Rhodes electric piano, and
 [audioeffects_simpletest.py](https://github.com/PyDevices/audiocomponents/blob/main/examples/audioeffects_simpletest.py)
 runs plucked notes through a tape echo and a hall.
