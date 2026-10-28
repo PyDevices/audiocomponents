@@ -1568,5 +1568,17 @@ CLAIMS = (
 )
 
 
+#: Faults built on the whole class. The `WetExciter` plants are measured on
+#: a wet-only harness that no knob reaches, so the kit would be judging the
+#: harness rather than the fault; `IdentityCurve` and `WireShaper` are
+#: controls.
+KIT_PLANTS = {
+    "DryHalf": DryHalf,
+    "WetOverDry": WetOverDry,
+    "NoOutputPole": NoOutputPole,
+    "ClassicLocked": (ClassicLocked, 1),
+}
+
+
 if __name__ == "__main__":
     unittest.main()
