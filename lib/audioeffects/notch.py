@@ -1,67 +1,60 @@
 """`Notch` - the two-pole band-stop: everything except one band, tuned.
 
-Rebuilt from scratch for the effects program's Phase 2 against
-its dossier. The old `eq.py:Notch` is not consulted except for
-the seven defects the dossier's section 7 names.
-
-**What it sounds like.** One knob says where, one says how wide, and what comes
-out is the input with a slice taken out of it and nothing else touched - a
-whistle, a feedback tone or a mains hum goes and the rest of the mix does not
-move, because a notch is exactly unity at DC and at Nyquist by construction.
-Width is a bandwidth, not a depth: at Q 0.7 the notch is wider than the note it
-sits on and reads as a scoop; at Q 30 it is a few hertz across and you hear the
-tone leave without hearing the music change. Harmonics adds a second notch an
-octave up, half as wide in hertz, because mains hum is a series and one notch
-at 50 or 60 Hz leaves the buzz. Depth is a blend, not a filter control - at 0
-the class is a wire. Keep the input under -6 dBFS and the defaults and patches
-stay off the rails. Trim at its top can still push the output onto the rails.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`). All three
-sections are `audiobiquad.Biquad`: float state, and a tail that reaches
-exact zero. The ported `synthio.Biquad` cannot - the mains-hum setting
-`Notch(60 Hz, q=8)` parks on 2 LSB of DC and `Notch(20 Hz, q=32)` on 18, and
-they hold it for ever (audiodsp#23, dossier A3 and A16), which is Tier 1's
-first invariant failing at exactly the settings this class is for.
-
-**What that costs, said here because a caller has to know it.** A `float`
-coefficient set cannot put the notch's zeros exactly on the unit circle:
-`b0` and `b1` are rounded independently, so the rejection at the centre is
-`|2*b0*cos(w0) + b1| * (1+alpha) / (2*alpha*sin(w0))` rather than nothing at
-all. Measured (dossier A16, 48 kHz): under one LSB - a true null - from
-500 Hz up at Q <= 12, **-35.65 dB at 60 Hz Q 12**, and **-11.21 dB at
-20 Hz Q 32**. So this class is a clean utility notch across the musical range and
-a 35 dB hum *reducer* at the bottom, not a hum eliminator. The dossier's T1
-is recorded disconfirmed below about 250 Hz for that reason, and its section
-5 carries the one node ask that would recover 17-36 dB of it. The ported
-kernel is deeper there and cannot hold the Tier 1 invariant; that trade is
-dossier section 8, D1 and D2.
-
-**And one more measured edge.** T2 asks for unity within 0.1 dB at 0.48*Fs
-at every setting. It holds everywhere except the top of the Frequency span
-at the bottom of the Width span, where the notch's *own band* reaches that
-far: at 16 kHz and Q 0.5 the band is 32 kHz wide and 0.48*Fs reads
--0.21 dB. That is the probe sitting inside the band, not the filter
-leaking, and it is why Frequency clamps at 0.4*Fs rather than at Nyquist.
-
-**Cost.** Three sections, always built, two of them wires at patch 0 - and
-a wire costs what a notch costs, because the kernel runs each recursion
-before it blends and there is no branch on `mix`
-(`audiodsp/src/shared/audiodsp_filter_f32.c:216-241`). So Harmonics buys back
-no CPU: the class costs three sections at every setting. The dossier budgets
-1.5 % of one stereo block's real-time deadline on the ESP32-P4 and 5 % on
-the S3 with one notch and 2.5 % / 9 % with two, and since the two are the
-same figure it is the higher pair that governs; the board run in the
-evidence pack is what settles it.
-
-**Latency: zero samples, at every setting and every rate.** Every section is
-a recursive biquad reading no sample it has not been given. No option on
-this class adds a lookahead, a partition or a window, so there is no
-latency-adding option to default off and none to name in milliseconds.
-
-`capabilities = ()`: nothing in a notch is measured in beats - its controls
-are hertz and a dimensionless Q - and this class never reads
-`self._transport()`.
+The player's text is the class docstring; the `CLAIMS` table in the
+class's test file ties its claim sentences to tests.
 """
+
+# Design notes, moved from the module docstring.
+#
+# Rebuilt from scratch for the effects program's Phase 2 against
+# its dossier. The old `eq.py:Notch` is not consulted except for
+# the seven defects the dossier's section 7 names.
+#
+# **Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`). All three
+# sections are `audiobiquad.Biquad`: float state, and a tail that reaches
+# exact zero. The ported `synthio.Biquad` cannot - the mains-hum setting
+# `Notch(60 Hz, q=8)` parks on 2 LSB of DC and `Notch(20 Hz, q=32)` on 18, and
+# they hold it for ever (audiodsp#23, dossier A3 and A16), which is Tier 1's
+# first invariant failing at exactly the settings this class is for.
+#
+# **What that costs, said here because a caller has to know it.** A `float`
+# coefficient set cannot put the notch's zeros exactly on the unit circle:
+# `b0` and `b1` are rounded independently, so the rejection at the centre is
+# `|2*b0*cos(w0) + b1| * (1+alpha) / (2*alpha*sin(w0))` rather than nothing at
+# all. Measured (dossier A16, 48 kHz): under one LSB - a true null - from
+# 500 Hz up at Q <= 12, **-35.65 dB at 60 Hz Q 12**, and **-11.21 dB at
+# 20 Hz Q 32**. So this class is a clean utility notch across the musical range and
+# a 35 dB hum *reducer* at the bottom, not a hum eliminator. The dossier's T1
+# is recorded disconfirmed below about 250 Hz for that reason, and its section
+# 5 carries the one node ask that would recover 17-36 dB of it. The ported
+# kernel is deeper there and cannot hold the Tier 1 invariant; that trade is
+# dossier section 8, D1 and D2.
+#
+# **And one more measured edge.** T2 asks for unity within 0.1 dB at 0.48*Fs
+# at every setting. It holds everywhere except the top of the Frequency span
+# at the bottom of the Width span, where the notch's *own band* reaches that
+# far: at 16 kHz and Q 0.5 the band is 32 kHz wide and 0.48*Fs reads
+# -0.21 dB. That is the probe sitting inside the band, not the filter
+# leaking, and it is why Frequency clamps at 0.4*Fs rather than at Nyquist.
+#
+# **Cost.** Three sections, always built, two of them wires at patch 0 - and
+# a wire costs what a notch costs, because the kernel runs each recursion
+# before it blends and there is no branch on `mix`
+# (`audiodsp/src/shared/audiodsp_filter_f32.c:216-241`). So Harmonics buys back
+# no CPU: the class costs three sections at every setting. The dossier budgets
+# 1.5 % of one stereo block's real-time deadline on the ESP32-P4 and 5 % on
+# the S3 with one notch and 2.5 % / 9 % with two, and since the two are the
+# same figure it is the higher pair that governs; the board run in the
+# evidence pack is what settles it.
+#
+# **Latency: zero samples, at every setting and every rate.** Every section is
+# a recursive biquad reading no sample it has not been given. No option on
+# this class adds a lookahead, a partition or a window, so there is no
+# latency-adding option to default off and none to name in milliseconds.
+#
+# `capabilities = ()`: nothing in a notch is measured in beats - its controls
+# are hertz and a dimensionless Q - and this class never reads
+# `self._transport()`.
 
 VENDOR = "PyDevices"
 
@@ -112,9 +105,29 @@ FLAT_DB = 0.2
 
 
 class Notch(_component.Component):
-    """A tuned band-stop with a bandwidth knob, an octave-up harmonic notch
-    and a make-up trim. Three `audiobiquad` sections; audiodsp tier; zero
-    latency."""
+    """A notch: one band taken out, and the rest of the signal left alone.
+
+    **Controls.** Frequency is where the notch sits. Width is its
+    bandwidth: low, the notch is a wide scoop; high, it is a few hertz
+    across and you hear a tone leave without hearing the music change.
+    Harmonics adds a second notch an octave up, as narrow in hertz as the
+    first, for hum that comes as a series. Depth is a blend, and at 0 the
+    class is a wire. Trim is a flat gain. The Effect controls page lists
+    what the knobs span.
+
+    **Response.** DC and the top of the band pass untouched. At low centres
+    the notch is shallower: there it reduces a hum rather than removing it.
+
+    **Timing.** Latency is zero at every setting. Silence in settles to
+    exact silence out.
+
+    **Levels.** Keep the input under -6 dBFS and the defaults and patches
+    stay off the rails. Trim at its top can still push the output onto the
+    rails.
+
+    **On a board.** The class needs audiodsp's `audiobiquad`, and on a board
+    without it construction raises `ImportError`.
+    """
 
     NAME = 'Notch'
     DISPLAY_NAME = 'Notch'
