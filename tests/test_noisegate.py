@@ -1074,5 +1074,17 @@ class Claims(unittest.TestCase):
                             ("TheClaims.test_nothing_here",)),)))
 
 
+#: Not here, because they show only when a knob moves, on a reset or a
+#: rejoin, or not at all on a fresh build: `OpenKeyBand`,
+#: `UnderReportedLatency`, `UnclearedGate`, `OldTail`; they render what a
+#: knob or a patch renders, so the kit cannot tell them from a setting:
+#: `NoHoldGate`.
+KIT_PLANTS = {
+    "HalvedTimes": HalvedTimes,
+    "RmsDetector": (RmsDetector, 1),
+    "AddingDuck": AddingDuck,
+}
+
+
 if __name__ == "__main__":
     unittest.main()
