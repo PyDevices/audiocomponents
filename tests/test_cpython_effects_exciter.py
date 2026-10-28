@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import kit_faults                                               # noqa: E402
+import kit_player                                               # noqa: E402
 import kit_probes as probes                                     # noqa: E402
 from audioeffects import exciter as rebuilt                    # noqa: E402
 from tools import effect_measurements as kit                    # noqa: E402
@@ -1050,7 +1051,7 @@ class TheThirdFixRoundsRows(unittest.TestCase):
         """And not above it. The row is a -6 dBFS reading and the class
         rails at -2, so its level clause ends where the ceiling does."""
         for dbfs in (-6.0, -3.0):
-            worst, _tune = self.t7_at(RATE, 127)
+            worst, _tune = self.t7_at(RATE, 127, dbfs=dbfs)
             self.assertLess(worst, -60.0, dbfs)
         for dbfs in (-1.0, 0.0):
             worst, _tune = self.t7_at(RATE, 127, dbfs=dbfs)
@@ -1482,6 +1483,89 @@ class TheBypassComesBackAsBuilt(unittest.TestCase):
         self.assertGreater(stale.first_blip(
             stale.planted(self.CLS, stale.EagerClearOnlyRejoin), self.MIX),
             1000)
+
+
+class ThePlayersText(unittest.TestCase):
+    def test_latency_is_zero_at_every_patch(self):
+        self.assertEqual(kit_player.latency_problems(Exciter, RATE), [])
+        self.assertTrue(kit_player.latency_problems(Exciter, RATE,
+                                                    delayed=True))
+
+    def test_construction_needs_its_four_modules(self):
+        self.assertEqual(Exciter.REQUIRES, ("audioshaper", "audiobiquad",
+                                            "audioroute", "audiodynamics"))
+        self.assertEqual(kit_player.missing_module_problems(Exciter, RATE),
+                         [])
+
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        kit_player.check_claims(
+            self, rebuilt.__doc__ + " " + Exciter.__doc__, CLAIMS, globals(),
+            "At full Mix the copy stays under the note.")
+
+
+CLAIMS = (
+    ("Harmonics drives the copy into the clip, from 0 to +14 dB.",
+     ("TestExciter.test_harmonics_span_is_fourteen_db",)),
+    ("Character picks `classic`, a fixed clip, or `transient`, which drives "
+     "the copy 6 dB harder for the first 8 ms of each onset.",
+     ("TestExciter.test_transient_onset_gain_is_short_and_declared",
+      "TestExciter.test_t5_classic_default_has_no_onset_emphasis",
+      "TestExciter.test_classic_does_not_build_a_dynamics_node")),
+    ("Output trims the whole effect, the note and the copy together, so the "
+     "balance between them does not move with it, and it only turns down.",
+     ("TestExciter.test_output_attenuates_the_whole_effect",
+      "TestExciter.test_t4_wet_dry_does_not_move_with_output",
+      "TestExciter.test_output_span_has_no_makeup_above_unity")),
+    ("**Switching.** Mix at 0, with Output at 0 dB, hands back your signal "
+     "untouched.",
+     ("TestExciter.test_mix_zero_is_wire",)),
+    ("Bringing Mix back up switches the copy on fresh, rather than replaying "
+     "what it held when it went off.",
+     ("TheBypassComesBackAsBuilt.test_mix_back_after_silence_plays_nothing",
+      "TheBypassComesBackAsBuilt.test_at_every_patch",
+      "TheBypassComesBackAsBuilt.test_the_old_rejoin_and_a_clear_without_"
+      "rearming_are_red")),
+    ("**Sound.** The copy's high-pass is second order at every rate, because "
+     "Tune is held under a seventh of the sample rate: at 22.05 kHz it tops "
+     "out at 3150 Hz.",
+     ("TestExciter.test_t1_second_order_at_default_tune",
+      "TestExciter.test_t1_fault_first_order_at_default",
+      "TestExciter.test_t1_holds_at_every_rate_because_tune_is_clamped")),
+    ("The clip is one-sided, so the copy carries more second harmonic than "
+     "third, and its second harmonic rises with level.",
+     ("TestExciter.test_t2_asymmetry_is_h2_over_h3_at_default",
+      "TestExciter.test_t2_fault_odd_curve_kills_h2_at_default",
+      "TestExciter.test_t3_h2_rises_with_level")),
+    ("At full Mix the copy stays under the note.",
+     ("TestExciter.test_t4_mix_max_under_dry",
+      "TestExciter.test_t4_fault_wet_over_dry_fires_at_every_output",
+      "TestExciter.test_t4_holds_on_transient_once_the_onset_has_passed")),
+    ("The clip runs oversampled, so at 48 kHz aliasing stays 60 dB under the "
+     "copy at the defaults and with Harmonics at the top, up to the input "
+     "ceiling.",
+     ("TestExciter.test_t7_alias_at_default_and_full_drive",
+      "TestExciter.test_t7_fault_oversample_1_at_default",
+      "TheThirdFixRoundsRows.test_t7_holds_up_to_the_stated_input_ceiling")),
+    ("**Timing.** Latency is zero at every setting.",
+     ("TestExciter.test_latency_zero_click",
+      "ThePlayersText.test_latency_is_zero_at_every_patch")),
+    ("Silence in is silence out at every shipped patch, and the tail falls to "
+     "zero within 4096 frames.",
+     ("TheTierOneRowsAtEveryShippedPatch.test_silence_in_is_silence_out_at_"
+      "every_shipped_patch",
+      "TheTierOneRowsAtEveryShippedPatch.test_the_declared_tail_holds_at_"
+      "every_shipped_patch",
+      "TestExciter.test_tail_returns_to_zero_at_default",
+      "TestExciter.test_tail_fault_held_dc_at_default")),
+    ("**Levels.** Keep the input under -3 dBFS and nothing rails, on any "
+     "shipped patch or with Harmonics and Mix at the top; at -2 dBFS it can.",
+     ("TheThirdFixRoundsRows.test_nothing_rails_at_the_stated_ceiling",
+      "TheThirdFixRoundsRows.test_above_the_ceiling_the_rail_is_reachable")),
+    ("No shipped patch leaves a DC offset on its output while it plays.",
+     ("TheThirdFixRoundsRows.test_no_shipped_patch_stands_dc_on_its_own_tone",
+      "TheThirdFixRoundsRows.test_the_hot_corner_does_not_either",
+      "TheThirdFixRoundsRows.test_the_planted_class_is_the_one_that_does")),
+)
 
 
 if __name__ == "__main__":
