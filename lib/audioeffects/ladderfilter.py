@@ -42,12 +42,105 @@ test file ties its claim sentences to tests.
 
 VENDOR = "PyDevices"
 
+import math
+
 from . import _component
 
 try:
     import audioladder
 except ImportError:      # a stock CircuitPython board, or an older audiodsp
     audioladder = None
+
+
+#: The Resonance at which the loop sustains, and from which `tail_samples`
+#: is `None`.
+SELF_OSCILLATION = 4.0
+
+#: `ring_frames`' envelope: the free response of the linear ladder, seen at
+#: the output tap, is at most `RING_CONSTANT` times the largest integrator
+#: state times rho^(`RING_RATE` n) after n frames, rho being the slowest
+#: pole's radius per frame (or 1/2, `RING_FLOOR`, whichever is larger).
+#: The rate is under 1 because near Resonance 0 the four poles nearly
+#: coincide and the response is a cubic times rho^n, which no constant
+#: covers at the full rate. The largest constant this needs, worked out
+#: over cutoffs from 20 Hz to the clamp at 22.05, 44.1 and 48 kHz, every
+#: Resonance from 0 to 3.969, every tap and both Oversample settings, is
+#: 131 (Resonance 0, 20 Hz, four poles), and from 3.975 to 3.997 under 3;
+#: 256 is the margin. Rendered, the longest ring at Resonance 0 comes to
+#: 0.96 of the count, and near 4 to about half.
+RING_CONSTANT = 256.0
+RING_RATE = 0.875
+RING_FLOOR = 0.5
+
+#: The slowest decay per (oversampled) step for which `ring_frames` gives a
+#: count, 2^-20, about eight single-precision rounding steps: the kernel
+#: runs in single precision, and nearer Resonance 4 its rounding is as
+#: large as the decay it would have to show. At a 20 Hz cutoff, 48 kHz,
+#: Oversample on, that is Resonance 3.9884 and up.
+RING_SLOWEST = 2.0 ** -20
+
+#: 1/sqrt(2): the analog ladder's poles sit at -1 + k^(1/4) e^(+-j pi/4)
+#: and -1 + k^(1/4) e^(+-j 3 pi/4), in units of the cutoff.
+_HALF_ROOT_TWO = 0.7071067811865476
+
+
+def ring_frames(sample_rate, cutoff_hz, resonance, drive, poles=4,
+                oversample=2, output_gain=1.0, mix=1.0):
+    """Frames from the input's end until the ladder's output is exactly
+    zero, as an upper bound, or `None` from Resonance 4 up and in the
+    narrow band just below it where the slowest decay per step is under
+    `RING_SLOWEST`. At Mix 0 the output is the input, so the count is 0 at
+    any Resonance.
+
+    Each stage is a bilinear one-pole, so the zero-delay loop's poles are
+    the analog ladder's, mapped by z = (1 + t p) / (1 - t p), t being the
+    prewarped tan(pi fc / rate). For a pole p, 1 - |z|^2 is
+    -4 t Re(p) / |1 - t p|^2, and half of that is a per-step decay rate no
+    faster than the true one. The slow pair's -Re(p) = 1 - k^(1/4)/sqrt(2)
+    is worked out as (4 - k) / 4 over (1 + q/sqrt(2))(1 + q^2/2), q being
+    k^(1/4), so it keeps its digits near 4 in single precision too.
+
+    No integrator holds more than `drive` plus 2/3 of the Resonance (the
+    saturator's ceiling) times max(1, t) times max(1, 2g)^3, and the output
+    rounds to exact zero under 0.5 / (32768 gain mix). The envelope
+    (`RING_CONSTANT`) then gives the count. This is the linear ladder's
+    decay; the saturator only lowers the loop's gain, and that it does not
+    slow the ring is measured, not derived."""
+    scale = output_gain * mix
+    if not scale > 0.0:
+        return 0
+    resonance = float(resonance)
+    if not resonance < SELF_OSCILLATION:
+        return None
+    if resonance < 0.0:
+        resonance = 0.0
+    rate = float(sample_rate) * oversample
+    cutoff = float(cutoff_hz)
+    if cutoff > rate * 0.49:
+        cutoff = rate * 0.49
+    if cutoff < 1.0:
+        cutoff = 1.0
+    t = math.tan(math.pi * cutoff / rate)
+    g = t / (1.0 + t)
+    q = math.sqrt(math.sqrt(resonance))
+    slow = ((SELF_OSCILLATION - resonance) / 4.0
+            / ((1.0 + q * _HALF_ROOT_TWO) * (1.0 + 0.5 * q * q)))
+    imag = q * _HALF_ROOT_TWO
+    step = None
+    for real in (-slow, -1.0 - imag):
+        shrink = -4.0 * t * real / ((1.0 - t * real) ** 2 + (t * imag) ** 2)
+        if step is None or shrink < step:
+            step = shrink
+    if not 0.5 * step >= RING_SLOWEST:
+        return None
+    per_frame = 0.5 * step * oversample
+    if per_frame > math.log(1.0 / RING_FLOOR):
+        per_frame = math.log(1.0 / RING_FLOOR)
+    state = ((drive + resonance * (2.0 / 3.0)) * max(1.0, t)
+             * max(1.0, 2.0 * g) ** 3)
+    floor = 0.5 / (32768.0 * scale)
+    return int(math.ceil(math.log(RING_CONSTANT * state / floor)
+                         / (RING_RATE * per_frame))) + 1
 
 
 class LadderFilter(_component.Component):
@@ -75,8 +168,12 @@ class LadderFilter(_component.Component):
     **Timing.** Latency is zero at every setting, Oversample included. Below
     a Resonance of 4, silence in is silence out once the filter rings down:
     Wide Open's tail is under a millisecond and Growl With Drive's about
-    285 ms. From 4 up the tone does not stop by itself, so the class reports
-    no tail bound, and `reset()` stops it at any setting.
+    285 ms. `tail_samples` is an upper bound on that ring for the settings
+    as they stand; at the slowest settings it is about twice the ring
+    measured. From 4 up the tone does not stop by itself, so the class
+    reports no tail bound, and none either in the hair below 4 where the
+    ring outlasts what single precision can count (from Resonance 3.988 at
+    a 20 Hz cutoff, nearer 4 above it). `reset()` stops it at any setting.
 
     **Levels.** The resonance peak and the drive both add gain, so no input
     level is clean on every setting. Keep the input under -15 dBFS and the
@@ -103,8 +200,8 @@ class LadderFilter(_component.Component):
     #: sample of group delay is what this rounds.
     LATENCY_SAMPLES = 0
 
-    #: Not finitely bounded. Below k = 4 no source reached in the dossier
-    #: bounds the decay; at and above it the filter sustains by design.
+    #: The class attribute is the self-oscillating case; below k = 4
+    #: `tail_samples` is `ring_frames` for the settings in force.
     TAIL_SAMPLES = None
 
     #: The defaults and every patch play the ceiling kit's materials
@@ -198,3 +295,26 @@ class LadderFilter(_component.Component):
             self._node.set(oversample=2 if position >= 0.5 else 1)
         else:
             self._node.set(mix=value)
+
+    @property
+    def tail_samples(self):
+        """Frames until the output is exactly zero once the input stops, as
+        an upper bound for the settings as they stand, or `None` from a
+        Resonance of 4 up, where the filter sustains, and just below it
+        where single precision cannot show the decay (`ring_frames`)."""
+        self._check_live()
+        return self._tail_bound()
+
+    def _tail_bound(self):
+        """`tail_samples` without the liveness check: a plain method, so a
+        subclass can reach it on MicroPython, whose `property` has no
+        `fget`."""
+        def value(index):
+            return _component.macro_value(self._MACRO_RANGES[index],
+                                          self._macros[index])
+        resonance = value(1)
+        return ring_frames(
+            self._sample_rate, self._hz(value(0)), resonance,
+            _component.db_to_gain(value(2)), int(round(value(4))),
+            2 if self._macros[5] >= 0.5 else 1,
+            1.0 + value(3) * resonance, value(6))
