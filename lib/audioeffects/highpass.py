@@ -1,114 +1,107 @@
 """`HighPass` - the low-cut: a two-pole analog high-pass whose transmission
 zero at DC is exact, not nearly.
 
-Rebuilt from scratch for the effects program's Phase 2 against
-its dossier. The old `eq.py:HighPass` is not consulted except
-for the eight defects the dossier's section 7 names.
-
-**What it sounds like.** One knob decides where the bottom stops, and above
-that corner nothing is touched: rumble, handling noise, a subsonic DC offset
-and the mud under a vocal go, and the voice does not. The second knob is how
-loud the corner itself stands - at Resonance 0.707 it is 3 dB down and the cut
-is as gentle as a cut gets, at 2 it is 6 dB up and you can hear where you put
-it, at 16 it is 24 dB up and the filter whistles at its own corner. The Slope
-switch is a desk's: 12 dB/oct for a low-cut you do not want to notice, 24
-dB/oct when the rumble has to actually leave. There is no drive and no growl
-anywhere in it - a high-pass is linear. Keep the input under -9 dBFS and the
-defaults and patches stay off the rails. Trim at its top can still push the
-output onto the rails.
-
-**Three things the knobs do not do exactly, found by the Phase 2 gate audit
-and its patch sweep, and
-bounded here rather than hidden.**
-
-*The corner gain reads Q down to about 40 Hz, and drifts below that.* Set
-Resonance to 8 with the corner at 10 Hz and the steep slope - which is one
-knob turn from patch 0's own default corner - and the peak stands
-**+17.46 dB where the knob says +18.06**, 0.6 dB shy; at 44.1 kHz with
-Resonance 16 it is 2.68 dB shy. The cause is under this class and it is
-arithmetic, not a bug in the cut: `audiobiquad` derives its coefficients in
-double and stores the five it uses as `float`
-(`audiodsp/src/shared/audiodsp_filter_f32.h:103`), and a resonant pole pair's
-corner gain is set by `1 + a1 + a2`, which at a 10 Hz corner is 1.7e-6 -
-smaller than the rounding of `a1 ~ -2` into single precision. Evaluating the
-class's own cascade with the coefficients rounded that way predicts every
-rendered figure to within 0.005 dB. **The bound: at f0 with `2*pi*f0/F_s >= 5.2e-3` - 40 Hz at
-48 kHz, 18 Hz at 22.05 kHz - the corner reads Q to within 0.05 dB at every Q
-and both slopes, measured. Below it the knob is a direction, not a number.**
-
-*And below that same corner it is not quite one curve either.* The shape is
-`f0`-independent on the bilinear-warped axis to 0.0125 dB from 31.5 Hz up,
-which is what the class is for; at a **10 Hz** corner - patch 0's own - it
-is **0.21 dB** off that curve at f0/4, against the same 0.05 dB bar, and the
-figure jumps about with tiny changes of Q because the rounding does. One
-cause, one bound, three traits: above 40 Hz at 48 kHz the corner gain, the
-curve and the rate-honesty all hold; below it the low-cut still cuts and
-still removes DC exactly, and the two numbers on the panel stop being exact.
-The skirt (12 and 24 dB/oct) and the transmission zero at DC hold at every
-setting, including there.
-
-*The corner rings 1.85 times longer at 24 dB/oct than the knob says.* Q is
-also a decay time - a released tone at the corner falls to e^-pi of its
-level in about Q periods - and it does, at 12 dB/oct. At 24 dB/oct the
-resonance rides the steeper Butterworth section alone so that the *gain*
-reads the same at both slopes (see `BUTTERWORTH_HIGH` below), and the price
-is exactly that ratio: `1.3066 / 0.7071 = 1.848`. Measured 1.91 / 1.86 /
-1.85 Q at Resonance 2 / 8 / 16. Musically it is a longer, more obvious
-whistle at the same loudness, which is what the steep slope is for.
-
-**The one thing a high-pass does that a low-pass cannot.** The numerator
-`(1+cos w0)/2, -(1+cos w0), (1+cos w0)/2` sums to exactly zero at `z = 1`
-(RBJ, the dossier's S1), so DC is not attenuated, it is *removed*: a step
-settles to exact zero and a held offset decays away. That is the class's
-whole musical job, and it is why this class is `audiobiquad` and not
-`synthio.Biquad`.
-
-**Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`). Both filter
-sections and the trim are `audiobiquad.Biquad` - float state, and a state
-word below 1e-20 written as exact zero. The ported `synthio.Biquad` cannot
-do the paragraph above: its Q12 integer memory has fixed points, and a
-`HighPass` parks on **-71 LSB of DC at a 10 Hz corner, -18 at 20 Hz and -8
-at 30 Hz, and holds them for ever** (audiodsp#23; dossier A3 and A15). A
-stock CircuitPython board therefore cannot construct this class. That is the
-dossier's section 8 question 1, settled there as D1, and the cost is real:
-the old class ran on a stock board and quietly failed the invariant.
-
-**Cost, measured.** Three sections, always built. On the ESP32-P4 this
-class costs **5.7 %** of one stereo block's real-time deadline and on the
-ESP32-S3 **9.6 %** (2026-09-07, 256-frame stereo blocks at 48 kHz, marginal
-over the probe source alone), against dossier budgets of 1.5 % and 5 %:
-**over on both**, and it stays parked on that gate item. There is no lean
-patch to offer, and the reason is worth knowing before optimising anything
-here - `mix` 0 takes a section out of the *sound*, not out of the *work*
-(`audiodsp/src/shared/audiodsp_filter_f32.c:216-241` computes and stores the
-recursion for every sample and only the output line reads `mix`), so patch
-0's two wired-out sections cost what live ones cost. What would fit the
-budget is a construction option that builds one section instead of three,
-at the cost of Slope no longer being a live macro; it is not taken here.
-Both boards render this class byte for byte identically.
-
-**Latency: zero samples, at every setting and every rate.** Every section is
-a recursive biquad reading no sample it has not been given. No option on
-this class adds a lookahead, a partition or a window, so there is no
-latency-adding option to default off and none to name in milliseconds.
-
-`capabilities = ()`: nothing in a high-pass is measured in beats - its two
-controls are hertz and a dimensionless Q - and this class never reads
-`self._transport()`.
-
-**Mix, and what it means at 24 dB/oct.** Mix is the section-level crossfade
-`audiobiquad` already has, set on every section in use at once. At 0 every
-section writes its input sample back unchanged, so the whole class is a
-byte-exact wire. At 1 it is the full cascade, and T1's exact zero at DC is a
-statement about *that* setting: between the two the dry path carries DC
-through in proportion, because that is what a blend is. At 12 dB/oct the
-blend reads exactly as a dry/wet control; at 24 dB/oct it is that blend
-applied to each of the two poles in turn, which is a smooth walk from wire
-to cascade but is not one half of the fourth-order response. The
-alternative - a splitter and a mixer around the pair - costs two more nodes
-and would put an int16 sum on the dry path, so it is not taken and this
-sentence is here instead.
+The player's text is the class docstring; the `CLAIMS` table in the
+class's test file ties its claim sentences to tests.
 """
+
+# Design notes, moved from the module docstring.
+#
+# Rebuilt from scratch for the effects program's Phase 2 against
+# its dossier. The old `eq.py:HighPass` is not consulted except
+# for the eight defects the dossier's section 7 names.
+#
+# **Three things the knobs do not do exactly, found by the Phase 2 gate audit
+# and its patch sweep, and
+# bounded here rather than hidden.**
+#
+# *The corner gain reads Q down to about 40 Hz, and drifts below that.* Set
+# Resonance to 8 with the corner at 10 Hz and the steep slope - which is one
+# knob turn from patch 0's own default corner - and the peak stands
+# **+17.46 dB where the knob says +18.06**, 0.6 dB shy; at 44.1 kHz with
+# Resonance 16 it is 2.68 dB shy. The cause is under this class and it is
+# arithmetic, not a bug in the cut: `audiobiquad` derives its coefficients in
+# double and stores the five it uses as `float`
+# (`audiodsp/src/shared/audiodsp_filter_f32.h:103`), and a resonant pole pair's
+# corner gain is set by `1 + a1 + a2`, which at a 10 Hz corner is 1.7e-6 -
+# smaller than the rounding of `a1 ~ -2` into single precision. Evaluating the
+# class's own cascade with the coefficients rounded that way predicts every
+# rendered figure to within 0.005 dB. **The bound: at f0 with `2*pi*f0/F_s >= 5.2e-3` - 40 Hz at
+# 48 kHz, 18 Hz at 22.05 kHz - the corner reads Q to within 0.05 dB at every Q
+# and both slopes, measured. Below it the knob is a direction, not a number.**
+#
+# *And below that same corner it is not quite one curve either.* The shape is
+# `f0`-independent on the bilinear-warped axis to 0.0125 dB from 31.5 Hz up,
+# which is what the class is for; at a **10 Hz** corner - patch 0's own - it
+# is **0.21 dB** off that curve at f0/4, against the same 0.05 dB bar, and the
+# figure jumps about with tiny changes of Q because the rounding does. One
+# cause, one bound, three traits: above 40 Hz at 48 kHz the corner gain, the
+# curve and the rate-honesty all hold; below it the low-cut still cuts and
+# still removes DC exactly, and the two numbers on the panel stop being exact.
+# The skirt (12 and 24 dB/oct) and the transmission zero at DC hold at every
+# setting, including there.
+#
+# *The corner rings 1.85 times longer at 24 dB/oct than the knob says.* Q is
+# also a decay time - a released tone at the corner falls to e^-pi of its
+# level in about Q periods - and it does, at 12 dB/oct. At 24 dB/oct the
+# resonance rides the steeper Butterworth section alone so that the *gain*
+# reads the same at both slopes (see `BUTTERWORTH_HIGH` below), and the price
+# is exactly that ratio: `1.3066 / 0.7071 = 1.848`. Measured 1.91 / 1.86 /
+# 1.85 Q at Resonance 2 / 8 / 16. Musically it is a longer, more obvious
+# whistle at the same loudness, which is what the steep slope is for.
+#
+# **The one thing a high-pass does that a low-pass cannot.** The numerator
+# `(1+cos w0)/2, -(1+cos w0), (1+cos w0)/2` sums to exactly zero at `z = 1`
+# (RBJ, the dossier's S1), so DC is not attenuated, it is *removed*: a step
+# settles to exact zero and a held offset decays away. That is the class's
+# whole musical job, and it is why this class is `audiobiquad` and not
+# `synthio.Biquad`.
+#
+# **Portability tier: audiodsp** (`REQUIRES = ("audiobiquad",)`). Both filter
+# sections and the trim are `audiobiquad.Biquad` - float state, and a state
+# word below 1e-20 written as exact zero. The ported `synthio.Biquad` cannot
+# do the paragraph above: its Q12 integer memory has fixed points, and a
+# `HighPass` parks on **-71 LSB of DC at a 10 Hz corner, -18 at 20 Hz and -8
+# at 30 Hz, and holds them for ever** (audiodsp#23; dossier A3 and A15). A
+# stock CircuitPython board therefore cannot construct this class. That is the
+# dossier's section 8 question 1, settled there as D1, and the cost is real:
+# the old class ran on a stock board and quietly failed the invariant.
+#
+# **Cost, measured.** Three sections, always built. On the ESP32-P4 this
+# class costs **5.7 %** of one stereo block's real-time deadline and on the
+# ESP32-S3 **9.6 %** (2026-09-07, 256-frame stereo blocks at 48 kHz, marginal
+# over the probe source alone), against dossier budgets of 1.5 % and 5 %:
+# **over on both**, and it stays parked on that gate item. There is no lean
+# patch to offer, and the reason is worth knowing before optimising anything
+# here - `mix` 0 takes a section out of the *sound*, not out of the *work*
+# (`audiodsp/src/shared/audiodsp_filter_f32.c:216-241` computes and stores the
+# recursion for every sample and only the output line reads `mix`), so patch
+# 0's two wired-out sections cost what live ones cost. What would fit the
+# budget is a construction option that builds one section instead of three,
+# at the cost of Slope no longer being a live macro; it is not taken here.
+# Both boards render this class byte for byte identically.
+#
+# **Latency: zero samples, at every setting and every rate.** Every section is
+# a recursive biquad reading no sample it has not been given. No option on
+# this class adds a lookahead, a partition or a window, so there is no
+# latency-adding option to default off and none to name in milliseconds.
+#
+# `capabilities = ()`: nothing in a high-pass is measured in beats - its two
+# controls are hertz and a dimensionless Q - and this class never reads
+# `self._transport()`.
+#
+# **Mix, and what it means at 24 dB/oct.** Mix is the section-level crossfade
+# `audiobiquad` already has, set on every section in use at once. At 0 every
+# section writes its input sample back unchanged, so the whole class is a
+# byte-exact wire. At 1 it is the full cascade, and T1's exact zero at DC is a
+# statement about *that* setting: between the two the dry path carries DC
+# through in proportion, because that is what a blend is. At 12 dB/oct the
+# blend reads exactly as a dry/wet control; at 24 dB/oct it is that blend
+# applied to each of the two poles in turn, which is a smooth walk from wire
+# to cascade but is not one half of the fourth-order response. The
+# alternative - a splitter and a mixer around the pair - costs two more nodes
+# and would put an int16 sum on the dry path, so it is not taken and this
+# sentence is here instead.
 
 VENDOR = "PyDevices"
 
@@ -164,9 +157,32 @@ FLAT_DB = 0.2
 
 
 class HighPass(_component.Component):
-    """A two-pole high-pass with a resonant corner, a 12/24 dB/oct slope
-    switch and a make-up trim. Three `audiobiquad` sections; audiodsp tier;
-    zero latency; DC removed exactly rather than nearly."""
+    """A low-cut: under the corner the signal goes.
+
+    **Controls.** Frequency is the corner. Resonance is how loud the corner
+    itself stands: at 0.707 it is 3 dB down and the cut is as gentle as a cut
+    gets, and turned up it stands above the passband and the filter whistles
+    at its own corner. Slope is 12 or 24 dB an octave. Trim is a flat gain
+    across the band. Mix at 0 is your dry signal. The Effect controls page
+    lists what the knobs span.
+
+    **Response.** DC is removed exactly: a held offset settles to zero, not
+    nearly zero. Below the corner the cut falls 12 or 24 dB an octave, and
+    the top of the band passes at unity. From 40 Hz up at 48 kHz the corner
+    stands as loud as Resonance says at either slope; below that the knob is
+    a direction rather than a number.
+
+    **Timing.** Latency is zero at every setting. Silence in is silence out
+    once the filter rings down, and the class reports a tail that covers its
+    lowest corner and highest Resonance.
+
+    **Levels.** Keep the input under -9 dBFS and the defaults and patches
+    stay off the rails. Trim at its top can still push the output onto the
+    rails.
+
+    **On a board.** The class needs audiodsp's `audiobiquad`, and on a board
+    without it construction raises `ImportError`.
+    """
 
     NAME = 'HighPass'
     DISPLAY_NAME = 'High Pass'

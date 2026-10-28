@@ -29,6 +29,7 @@ import audioeffects
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "support"))
 import kit_ceiling                                          # noqa: E402
+import kit_player                                           # noqa: E402
 from effects_measure import SAMPLE_RATE, source        # noqa: E402
 import kit_faults as faults                            # noqa: E402
 
@@ -169,6 +170,16 @@ class TheCornerIsTheResonance(unittest.TestCase):
                 with self.subTest(slope=slope, q=q):
                     self.assertAlmostEqual(self.corner_gain(slope, q),
                                            20.0 * math.log10(q), delta=0.05)
+
+    def test_the_corner_reads_q_from_forty_hertz_up(self):
+        for slope in (12, 24):
+            for q in self.QS:
+                with self.subTest(slope=slope, q=q):
+                    self.assertAlmostEqual(self.corner_gain(slope, q, 40.0),
+                                           20.0 * math.log10(q), delta=0.05)
+        # At the bottom of the knob, top Resonance, steep slope: low.
+        self.assertLess(self.corner_gain(24, 16.0, 20.0),
+                        20.0 * math.log10(16.0) - 0.2)
 
     def test_scaling_both_butterworth_qs_is_red(self):
         """The fault of the same kind: the design decision A15 records.
@@ -683,6 +694,69 @@ class TheCeiling(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ThePlayersText(unittest.TestCase):
+    def test_latency_is_zero_on_every_patch(self):
+        # Patches 4 and 5 sit too low for an impulse's first sample to
+        # clear one LSB through the steep pair; they are the same sections.
+        self.assertEqual(kit_player.latency_problems(
+            lowpass.LowPass, SAMPLE_RATE, patches=(0, 1, 2, 3)), [])
+        self.assertTrue(kit_player.latency_problems(
+            lowpass.LowPass, SAMPLE_RATE, delayed=True, patches=(0,)))
+
+    def test_construction_needs_audiobiquad(self):
+        self.assertEqual(lowpass.LowPass.REQUIRES, ("audiobiquad",))
+        self.assertEqual(kit_player.missing_module_problems(
+            lowpass.LowPass, SAMPLE_RATE), [])
+
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        kit_player.check_claims(
+            self, lowpass.__doc__ + " " + lowpass.LowPass.__doc__,
+            CLAIMS, globals(), "Slope is 12 or 24 dB an octave.")
+
+
+CLAIMS = (
+    ("`LowPass` - the two-pole analog prototype every synth and console "
+     "low-pass is a version of, digitised without losing its tail.",
+     ("TheTailReachesExactZero.test_the_rebuilt_class_settles_on_exact_zero",
+      "TheSlopeIsTwelveDecibelsAnOctave.test_twelve_and_twenty_four_"
+      "decibels_an_octave")),
+    ("A low-pass: above the corner the signal rolls away.",
+     ("TheSlopeIsTwelveDecibelsAnOctave.test_twelve_and_twenty_four_"
+      "decibels_an_octave",)),
+    ("Resonance is how loud the corner itself stands: at 0.707 it is 3 dB "
+     "down and the roll-off is as gentle as it gets, and turned up it "
+     "stands above the passband and a click at the input rings where you "
+     "put it.",
+     ("TheCornerIsTheResonance.test_the_corner_gain_reads_q_at_both_slopes",
+      "TheDeclaredTailIsTheMeasuredOne.test_the_tail_is_longer_at_a_lower_"
+      "corner")),
+    ("Slope is 12 or 24 dB an octave.",
+     ("TheSlopeIsTwelveDecibelsAnOctave.test_twelve_and_twenty_four_"
+      "decibels_an_octave",)),
+    ("Mix at 0 is your dry signal.",
+     ("TheBypassIsAWire.test_mix_zero_is_byte_identical_to_the_source",
+      "TheBypassIsAWire.test_mix_zero_with_a_trim_asked_for_is_still_a_"
+      "wire")),
+    ("**Response.** Above the corner the roll-off is 12 or 24 dB an "
+     "octave.",
+     ("TheSlopeIsTwelveDecibelsAnOctave.test_twelve_and_twenty_four_"
+      "decibels_an_octave",)),
+    ("The curve keeps one shape at every corner from 31.5 Hz up.",
+     ("TheShapeIsOneCurve.test_the_warped_curve_is_the_same_at_every_"
+      "corner",)),
+    ("From 40 Hz up at 48 kHz the corner stands as loud as Resonance says "
+     "at either slope; at the bottom of the Frequency knob with Resonance "
+     "high on the steep slope it stands a little low.",
+     ("TheCornerIsTheResonance.test_the_corner_reads_q_from_forty_hertz_up",
+      "TheClassIsRateHonest.test_the_corner_gain_is_q_at_every_rate")),
+    ("**Timing.** Latency is zero at every setting.",
+     ("ThePlayersText.test_latency_is_zero_on_every_patch",)),
+    ("**Levels.** Keep the input under -3 dBFS and the defaults and "
+     "patches stay off the rails.",
+     ("TheCeiling.test_clean_at_the_stated_input_level",)),
+)
 
 
 class OldConstantTail(lowpass.LowPass):
