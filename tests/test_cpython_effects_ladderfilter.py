@@ -18,7 +18,7 @@ import audiocore                                          # noqa: E402
 import kit_ceiling                                          # noqa: E402
 import kit_probes as probes                               # noqa: E402
 import numpy as np                                        # noqa: E402
-from audioeffects import ladderfilter                     # noqa: E402
+from audioeffects import _component, ladderfilter         # noqa: E402
 from audioeffects.ladderfilter import LadderFilter        # noqa: E402
 
 #: `_component` reads VENDOR off the module a class is defined in.
@@ -27,23 +27,51 @@ VENDOR = "PyDevices"
 RATE = 48000
 
 
-def run(data, frames, **options):
+def run(data, frames, cls=LadderFilter, **options):
     """`data` through a fresh filter, as float frames."""
-    effect = LadderFilter.create(probes.ArraySource(data, rate=RATE), RATE,
-                                 **options)
+    effect = cls.create(probes.ArraySource(data, rate=RATE), RATE, **options)
     out = probes.render(effect.output, frames, rate=RATE,
                         class_name="LadderFilter")
     effect.deinit()
     return out.data.astype(float)
 
 
-def gain_db(hz, **options):
+def gain_db(hz, cls=LadderFilter, **options):
     """A -20 dBFS sine's settled level through the filter, in dB."""
     data = probes.sine(hz, 0.5, -20.0)
-    wet = run(data, len(data) // 2, **options)[12000:, 0]
+    wet = run(data, len(data) // 2, cls, **options)[12000:, 0]
     dry = np.array(data, float).reshape(-1, 2)[12000:, 0]
     return 20.0 * np.log10(np.sqrt((wet ** 2).mean())
                            / np.sqrt((dry ** 2).mean()))
+
+
+class UnclampedCutoffLadder(LadderFilter):
+    """Cutoff handed to the node as set, past the running rate's band."""
+
+    def _hz(self, frequency):
+        return float(frequency)
+
+
+class KnobResonanceLadder(LadderFilter):
+    """Resonance sent as a 0..1 knob rather than the circuit's k."""
+
+    def _apply_macro(self, index, position):
+        LadderFilter._apply_macro(self, index, position)
+        if index == 1:
+            self._node.set(resonance=_component.macro_value(
+                self._MACRO_RANGES[1], position) / 4.2)
+
+
+class HalfDriveLadder(LadderFilter):
+    """Drive's decibels converted as a power ratio's half: 24 dB on the
+    panel is 12 dB into the loop."""
+
+    def _apply_macro(self, index, position):
+        LadderFilter._apply_macro(self, index, position)
+        if index == 2:
+            self._node.set(drive=_component.db_to_gain(
+                0.5 * _component.macro_value(self._MACRO_RANGES[2],
+                                             position)))
 
 
 class ResonanceBlindLadder(LadderFilter):
@@ -128,11 +156,12 @@ def burst_then_silence(seconds=2.0):
 class TheClaims(unittest.TestCase):
 
     def test_cutoff_is_held_under_half_the_sample_rate(self):
-        effect = LadderFilter.create(
-            probes.ArraySource(probes.sine(1000.0, 0.05, -6.0), rate=22050),
-            22050)
-        self.assertLess(effect._hz(18000.0), 22050 / 2.0)
-        effect.deinit()
+        for cls, held in ((LadderFilter, True),
+                          (UnclampedCutoffLadder, False)):     # planted
+            effect = cls.create(probes.ArraySource(
+                probes.sine(1000.0, 0.05, -6.0), rate=22050), 22050)
+            self.assertEqual(effect._hz(18000.0) < 22050 / 2.0, held)
+            effect.deinit()
 
     def test_resonance_sinks_the_passband_and_comp_puts_it_back(self):
         flat = gain_db(100.0, cutoff_hz=2000.0, resonance=0.0)
@@ -143,6 +172,9 @@ class TheClaims(unittest.TestCase):
             self.assertAlmostEqual(
                 gain_db(100.0, cutoff_hz=2000.0, resonance=k,
                         passband_comp=1.0), 0.0, delta=0.1)
+        # Planted: k read as a 0..1 knob barely sinks it.
+        self.assertGreater(gain_db(100.0, KnobResonanceLadder,
+                                   cutoff_hz=2000.0, resonance=4.0), -10.0)
 
     def test_from_four_up_it_sings_at_the_cutoff_after_the_input_stops(self):
         data = burst_then_silence()
@@ -156,9 +188,10 @@ class TheClaims(unittest.TestCase):
         self.assertEqual(np.abs(quiet[-RATE // 2:]).max(), 0)
 
     def test_drive_makes_the_growl(self):
-        def third(drive_db):
+        def third(drive_db, cls=LadderFilter):
             data = probes.sine(200.0, 0.5, -10.0)
-            wet = run(data, len(data) // 2, cutoff_hz=8000.0, resonance=0.0,
+            wet = run(data, len(data) // 2, cls, cutoff_hz=8000.0,
+                      resonance=0.0,
                       drive_db=drive_db)[RATE // 4:RATE // 2, 0]
             spectrum = np.abs(np.fft.rfft(wet * np.hanning(len(wet))))
             bin_of = len(wet) / RATE
@@ -166,6 +199,8 @@ class TheClaims(unittest.TestCase):
                                    / spectrum[int(200 * bin_of)])
         self.assertLess(third(0.0), -80.0)
         self.assertGreater(third(24.0), -20.0)
+        # Planted: half the decibels into the loop falls short.
+        self.assertLess(third(24.0, HalfDriveLadder), -20.0)
 
     def test_oversample_defaults_on_and_lean_is_wide_open_without_it(self):
         effect = LadderFilter.create(
@@ -410,6 +445,16 @@ class Claims(unittest.TestCase):
                                                    "about 9 dB")))
         self.assertTrue(claim_problems(
             doc, CLAIMS + (("Mix at 0", ("TheClaims.test_nothing_here",)),)))
+
+
+#: Not here, because they change only a reported tail:
+#: `ResonanceBlindLadder`, `HalvedTailLadder`.
+KIT_PLANTS = {
+    "UnclampedCutoffLadder": (UnclampedCutoffLadder, None,
+                              {"rate": 22050}),
+    "KnobResonanceLadder": KnobResonanceLadder,
+    "HalfDriveLadder": (HalfDriveLadder, 4),
+}
 
 
 if __name__ == "__main__":
