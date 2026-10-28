@@ -25,6 +25,8 @@ from audioeffects import distortion as rebuilt              # noqa: E402
 from tools import effect_measurements as kit                   # noqa: E402
 import kit_faults as faults                                    # noqa: E402
 import kit_probes                                              # noqa: E402
+import kit_ceiling                                             # noqa: E402
+import kit_player                                              # noqa: E402
 
 VENDOR = "PyDevices"
 
@@ -1662,6 +1664,114 @@ class TheResetResidue(unittest.TestCase):
         for channels in (1, 2):
             self.assertGreater(self.residue(DriveLeftUpAfterReset, channels),
                                self.BOUND, channels)
+
+
+class ThePlayersText(unittest.TestCase):
+    def test_construction_needs_its_three_modules(self):
+        self.assertEqual(Distortion.REQUIRES,
+                         ("audioshaper", "audiobiquad", "audioroute"))
+        self.assertEqual(
+            kit_player.missing_module_problems(Distortion, RATE), [])
+
+    def test_a_full_scale_input_does_not_wrap(self):
+        # The class states no ceiling, so the kit plays full scale. There is
+        # no step above it to show red; the clip's own headroom is planted
+        # in `test_the_clipper_output_stays_inside_the_node`.
+        for material in ("square", "sine"):
+            self.assertEqual(
+                kit_ceiling.stated_level_reds(Distortion, material), [])
+
+    def test_every_claim_is_in_the_docstring_and_tested(self):
+        kit_player.check_claims(
+            self, rebuilt.__doc__ + " " + Distortion.__doc__, CLAIMS,
+            globals(), "Latency is 2 samples at Mix 1 and zero at any Mix "
+            "below it.")
+
+
+CLAIMS = (
+    ("Boost is a booster in front of the clip, and `scoop` starts with it at "
+     "35 dB because the Boss has one in its circuit.",
+     ("TestDistortionInvariants.test_scoop_starts_with_its_booster_in_"
+      "circuit",
+      "TestDistortionTraits.test_sc3_never_clean_on_scoop_and_null_build")),
+    ("**Switching.** Mix at 0 hands back your signal untouched.",
+     ("TestDistortionInvariants.test_mix_zero_is_a_wire",)),
+    ("Leaving 0 switches the pedal on fresh, rather than replaying what it "
+     "held when it went off.",
+     ("TheBypassComesBackAsBuilt.test_mix_back_after_silence_plays_nothing",
+      "TheBypassComesBackAsBuilt.test_at_every_patch",
+      "TheBypassComesBackAsBuilt.test_the_old_rejoin_and_a_clear_without_"
+      "rearming_are_red")),
+    ("**Sound.** At Distortion 0 the Rat is nearly clean and the Boss never "
+     "is.",
+     ("TestDistortionTraits.test_f4_distortion_is_the_only_drive_and_null_"
+      "build",
+      "TestDistortionTraits.test_sc3_never_clean_on_scoop_and_null_build")),
+    ("On `scoop` every Filter position is its own, and Filter at 0 is the "
+     "stock Boss.",
+     ("TestDistortionTheScoopFilterMacro.test_every_position_is_its_own_"
+      "section",
+      "TestDistortionTheScoopFilterMacro.test_filter_zero_is_the_stock_ds1_"
+      "corner")),
+    ("At the defaults, aliasing on a 1010 Hz tone between -22 and -16 dBFS "
+     "stays 60 dB under the note; louder than that it does not.",
+     ("TestDistortionTraits.test_a1_alias_floor_at_the_shipped_default",
+      "TestDistortionA1AcrossItsLevelSpan.test_a1_holds_across_the_span_it_"
+      "names",
+      "TestDistortionA1AcrossItsLevelSpan.test_a1_does_not_hold_outside_it_"
+      "and_the_row_says_so")),
+    ("**Timing.** Latency is 2 samples at Mix 1 and zero at any Mix below "
+     "it.",
+     ("TestDistortionInvariants.test_latency_matches_click_at_48k_and_44k1",
+      "TestDistortionInvariants.test_latency_is_true_at_every_mix",
+      "TestDistortionInvariants.test_click_is_green_on_every_patch_now")),
+    ("Silence in is silence out at every shipped patch, and the tail settles "
+     "inside what the class reports.",
+     ("TheTierOneRowsAtEveryShippedPatch.test_silence_in_is_silence_out_at_"
+      "every_shipped_patch",
+      "TheTierOneRowsAtEveryShippedPatch.test_the_declared_tail_holds_at_"
+      "every_shipped_patch",
+      "TestDistortionInvariants.test_silence_tail_reaches_zero")),
+    ("**Levels.** A full-scale input plays without wrapping at every shipped "
+     "patch.",
+     ("ThePlayersText.test_a_full_scale_input_does_not_wrap",)),
+    ("The clip keeps its output inside its own headroom at any Ceiling, so "
+     "Ceiling stops raising the level before the top of its travel, and "
+     "with Ceiling high, Volume and Mix stop moving the output above a knee "
+     "that `wet_ceiling()` reports.",
+     ("TestDistortionTraits.test_the_clipper_output_stays_inside_the_node",
+      "TestDistortionVolumeAndMixTravel.test_volume_is_monotone_below_the_"
+      "knee",
+      "TestDistortionVolumeAndMixTravel.test_above_the_knee_volume_is_"
+      "declared_inoperative_and_is",
+      "TestDistortionVolumeAndMixTravel.test_the_shipped_ceiling_has_no_knee",
+      "TestDistortionVolumeAndMixTravel.test_mix_is_a_crossfade_below_the_"
+      "knee")),
+    ("No shipped patch sits on a DC offset, and the first note does not "
+     "arrive on one.",
+     ("TestDistortionInvariants.test_scoop_patches_do_not_sit_on_dc",
+      "TestDistortionTheCouplingCapacitorUnderMaterial.test_the_first_note_"
+      "does_not_arrive_on_an_offset",
+      "TestDistortionTheCouplingCapacitorUnderMaterial.test_the_bias_model_"
+      "is_what_fails_it")),
+)
+
+
+#: `DriveLeftUpAfterReset` is not here: it differs only after a reset, and
+#: the kit renders fresh builds, so it reads the same as the clean class.
+KIT_PLANTS = {
+    "SwapLegs": SwapLegs,
+    "NoGBW": NoGBW,
+    "LinearClipper": LinearClipper,
+    "NoDrive": NoDrive,
+    "AlwaysDriven": AlwaysDriven,
+    "SecondOrderFilter": SecondOrderFilter,
+    "BaseRateShaper": BaseRateShaper,
+    "NoOutputCap": (NoOutputCap, 6),
+    "BiasedScoop": (BiasedScoop, 6),
+    "BiasedScoopWithCap": (BiasedScoopWithCap, 6),
+    "NoBoost": (NoBoost, 6),
+}
 
 
 if __name__ == "__main__":

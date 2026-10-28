@@ -1,146 +1,151 @@
-"""ProCo Rat distortion, with the Boss DS-1 as a second character.
+"""`Distortion` - the ProCo Rat, with a Boss pedal as a second character.
 
-**What it is.** A hard clip to ground after a gain stage, not a diode pair
-in the feedback loop (that is `Overdrive`). Character `filter` is the Rat:
-two feedback legs that brighten into the clipper, the op-amp's own bandwidth
-folding that rise into a mid hump at high Distortion, then a first-order
-Filter that runs backwards (clockwise darker). Character `scoop` is the
-DS-1: a 35 dB booster, a second gain stage, the same kind of clipper under
-a 7.2 kHz cap, and a passive V-shaped tone. Mix 0 is the wire; Distortion
-0 is not -- the Rat is nearly clean there (F4) and the DS-1 never is (SC3).
-The DS-1's booster is in the circuit, not on the panel, so `scoop` starts
-with Boost at 35 dB; the Rat has no booster and starts at 0.
-
-**Mix back up from 0 plays nothing from before.** At Mix 0 nothing behind
-the source is pulled, so the circuit used to keep what it held and play it
-when Mix came back - 24 589 LSB out of silence at shipped patch 1. It now
-comes back as it was built: cleared, the output capacitor charged on the
-bias at the scoop patches, the voices re-armed (audiocomponents#113).
-
-**Portability tier: audiodsp** (`REQUIRES = ("audioshaper", "audiobiquad",
-"audioroute")`). The clipper is `audioshaper.Waveshaper` with a table
-derived from the 1N4148 pair (tools/curves/distortion_curve.py). Tone and
-the Rat's legs are `audiobiquad` so a 60 Hz pole still decays to exact
-zero; `synthio.Biquad` / `audiofilters.Filter` would not (audiodsp#77).
-`scoop` also carries the DS-1's **output coupling capacitor** at 20 Hz.
-It is no longer load-bearing: **Asymmetry is a second table now, not a
-bias.** `STOCK_ASYMMETRY * macro` was a 3.5 V offset into diodes that clip
-at 0.62 V, which parked the operating point at 0.97 of full scale and
-answered a silent input with up to **-6.8 dBFS of DC**; the capacitor held
-that back to the biquad's dead band and left the *step* - 0.45 of full
-scale, 86 ms, every time the input went from silence to a note (audit 3
-(p)4). The DS-1's asymmetric clipping section is one 1N4148 one way and
-two in series the other, so Asymmetry blends `_CURVE_DS1_DIODE` into
-`_CURVE_DS1_ASYM` and **both answer zero with zero**: silence in is
-silence out at every shipped patch, the tail settles inside its
-declaration, and a click reads its own latency on all eleven patches
-where four of them used to be unmeasurable. It costs 1.8 to 2.3 dB of
-level at the four scoop patches, because the asymmetric table's full
-scale stands for the *quieter* side's 1.220 V against the pair's 0.622.
-
-**Each character's table is a normalised shape, not volts.** Both fill Q15
-to the rails, and `_CURVE_RAT_DIODE_VOLTS` / `_CURVE_DS1_DIODE_VOLTS` are
-what their full scale stands for; `_push` multiplies the live one into the
-shaper's `post_gain` beside Ceiling. Level and curve are exactly what they
-were, and the tables keep all the resolution they have - they used to
-reach 66 % and 62 % of int16 (audiocomponents#77).
-
-**Cost, reference patch 0 (filter, Mix 1, Distortion mid, 48 kHz).**
-MidSide + Splitter x2 (2-tap) + Biquad x4 + Mixer x2 + Waveshaper x4. The
-Rat's gain stage is 1 + a*HP(60 Hz) + b*HP(1539 Hz), normalised by its own
-treble gain so the two mixer levels sum to 1; the +1 is voice 0's dry
-side, through `Biquad.mix`, and costs no node. Priced sum 1.849 / 3.323 ms
-+ glue 0.0 -> **P4 <= 35 %, S3 <= 63 %**, re-derived 2026-09-17 from a
-graph three nodes smaller than the 2.245 / 4.128 (43 % / 78 %) one the
-board ran. At 22.05 kHz the same graph runs the shaper at x8 and the block
-is 11.61 ms, so it is 2.868 / 5.126 ms -> **25 % / 45 %**: fewer node
-sums per second than 48 kHz, not more. Constructor `oversample=2` is
-26 % / 47 %; it is not a patch.
-
-**Latency.** `latency_samples` is **2 at Mix 1 and 0 at every Mix below
-it**. The x4 half-band is the only pure delay in the graph, and 2 is the
-click's integer onset at full wet - the same at 48, 44.1 and 22.05 kHz, in
-mono and in stereo, on both characters (x1 reports 0, x2 1, x8 2). But the
-dry leg is not delayed, so as soon as any dry is in the mix the class's
-own onset is the dry one: a click at Mix 126 arrives at sample 0, and
-reporting 2 there was true of one point on the axis and wrong at the other
-126. The sub-sample click reads 15.2 / 14.3 / 8.7 samples at the three
-rates on `filter` and 4.0 / 4.0 / 3.7 on `scoop`; that is the
-minimum-phase group delay of the biquads, which `effect_measurements.
-click` says is a property of the class and not the latency this reports.
-Oversampling is not a macro; it is the construction default, named here
-because it is the latency-adding option and it is on. `oversample=1` is 0
-samples of half-band delay and misses A1 by 25 dB.
-
-**What the default surrenders.** Patch 0 is Distortion 64, Filter 64, Mix
-127, silicon Ceiling.
-
-* F1's 11-18 dB 100 Hz->1 kHz tilt is a *low Distortion* claim, read at
-  Distortion 2 % and 10 % with under 0.30 V on the clipper. At the shipped
-  Distortion 64 the tilt is **+1.1 dB**, because F2's mid hump is already
-  on. The tilt also moves with level - -12.2 dB at Distortion 10 % with
-  0.21 V of pre-clip drive, -7.0 dB at 0.53 V - and the row's own 0.30 V
-  line is what bounds it.
-* F2 is read by Appendix G's equal-drive contour at maximum Distortion:
-  the peak is at 800 Hz and 10 kHz is 15.5 dB below it at 48 kHz, 14.2 at
-  44.1 kHz. At **22.05 kHz the row cannot be read at all** - 10 kHz is
-  above this class's Nyquist margin.
-* F5's 5 kHz clause is **false at 22.05 kHz**. The default 1 kHz->5 kHz
-  fall is -11.7 dB at 48 and 44.1 kHz and **-13.7 dB** at 22.05 kHz, and
-  the closed Filter reads -23.2 dB at 5 kHz against the dossier's
-  -20.48 +/-1.5, because `_fo_lp` parks its second pole at
-  min(40 kHz, 0.45*rate) and that is 9.9 kHz at 22.05 kHz. The 1 kHz and
-  2 kHz clauses hold at all three rates.
-* **Volume and Mix stop moving the output above a knee, and the class
-  says where it is.** `wet_ceiling()` returns the largest wet level the
-  headroom split can deliver at the Ceiling and Asymmetry in force: at the
-  shipped Ceiling MIDI 42 it is **1.0 - the whole travel works** - and at
-  Ceiling MIDI 108 it is **0.6317, which is Volume MIDI 80**, above which
-  84, 96, 112 and 127 all read -6.622 dBFS. That is 43 positions and
-  3.6 dB of label travel delivering 0.00 dB at shipped patch 3, and it was
-  undisclosed until the third fix round (audit 3 ruling (o)).
-  `TestDistortionVolumeAndMixTravel` walks both knobs end to end at three
-  Ceilings and holds the class to its own knee.
-* **The Filter macro works over its whole travel on `scoop` now.** It read
-  the Rat's series resistance and then took `max(fc, CLIP_LP_HZ)`, which
-  pinned MIDI 8 to 127 on one section - 120 positions that did nothing -
-  and made MIDI 1 to 6 *brighter* than MIDI 0. `FILTER_R0_SCOOP` puts the
-  pot's own top on the DS-1's 7230 Hz corner instead, so Filter 0 is the
-  stock pedal byte for byte and 10 kHz falls monotonically from +1.26 dB
-  to -16.59 dB across the travel.
-* **Ceiling stops raising the level before its travel ends.** It is
-  output gain, and the clipper's output is held at or below 0.74 of full
-  scale (`CLIPPER_CEILING`), so the knob goes quiet at about **MIDI 53 at
-  Volume maximum** and **MIDI 78 at the shipped Volume 100**. The top of
-  the travel is 2.5 dB below where the saturating build sat and 18 dB
-  cleaner, because past that the node clipped its own output at the base
-  rate and the alias floor fell to -44 dB.
-* **A1 is a -20 dBFS number, and the row says so now.** The bar is
-  **-60 dB at 1010 Hz over -22 to -16 dBFS**, graded at both ends and the
-  middle: -62.43 / -63.33 / -60.56 at -22, -62.44 / -60.55 / -60.66 at
-  -19, -68.37 / -66.97 / -65.06 at -16, at 48 / 44.1 / 22.05 kHz. Outside
-  that window it does not hold: **-55.7 / -52.3 / -52.5 at -12 dBFS**, and
-  at playing level **-46.5 / -44.7 / -45.0 at -6 dBFS** and -43.8 at -0.9
-  (audit 3 ruling (m)). Below the window the reading stops being the
-  class's - the pack's instrument reads -58.6 at -24 dBFS and the suite's
-  -63.1 at the same cell, which is the int16 floor of a quiet render and
-  not a number either of them should be graded on. It is a claim about
-  1010 Hz too: at **7010 Hz** the same default reads -42.2 / -34.3 /
-  -30.1 at -20 dBFS. **And "it is not aliasing" is a x4 sentence**: the
-  ladder at -20 dBFS, 48 kHz is x1 -36.14, x2 -56.44, x4 -61.66, x8
-  -62.63, so what the shipped factor buys is 25 dB and what it leaves is
-  the quantisation the redefinition names. It holds at the shipped default
-  in that window and stays under -50 dB
-  anywhere on `filter` with Boost at the 0 the Rat ships with. Raise
-  Boost, or switch to `scoop`, whose DS-1 booster is 35 dB in circuit, and
-  the floor follows the boost: **-40.4 dB at patch 6** and -39.0 dB at the
-  worst scoop cell measured (patch 6 at Ceiling 96, 44.1 kHz) - both about
-  3 and 15 dB better than the bias model read, because the asymmetric
-  table does not park the clipper against its own rail. Redefined under
-  vision 7.2 on 2026-09-17; the dossier's revision carries the old target
-  and the measurements that replaced it.
-* Scoop traits are not the shipped character.
+The player's text is the class docstring; the `CLAIMS` table in the
+class's test file ties its claim sentences to tests.
 """
+
+# Design notes, moved from the module docstring.
+#
+# **What it is.** A hard clip to ground after a gain stage, not a diode pair
+# in the feedback loop (that is `Overdrive`). Character `filter` is the Rat:
+# two feedback legs that brighten into the clipper, the op-amp's own bandwidth
+# folding that rise into a mid hump at high Distortion, then a first-order
+# Filter that runs backwards (clockwise darker). Character `scoop` is the
+# DS-1: a 35 dB booster, a second gain stage, the same kind of clipper under
+# a 7.2 kHz cap, and a passive V-shaped tone. Mix 0 is the wire; Distortion
+# 0 is not -- the Rat is nearly clean there (F4) and the DS-1 never is (SC3).
+# The DS-1's booster is in the circuit, not on the panel, so `scoop` starts
+# with Boost at 35 dB; the Rat has no booster and starts at 0.
+#
+# **Mix back up from 0 plays nothing from before.** At Mix 0 nothing behind
+# the source is pulled, so the circuit used to keep what it held and play it
+# when Mix came back - 24 589 LSB out of silence at shipped patch 1. It now
+# comes back as it was built: cleared, the output capacitor charged on the
+# bias at the scoop patches, the voices re-armed (audiocomponents#113).
+#
+# **Portability tier: audiodsp** (`REQUIRES = ("audioshaper", "audiobiquad",
+# "audioroute")`). The clipper is `audioshaper.Waveshaper` with a table
+# derived from the 1N4148 pair (tools/curves/distortion_curve.py). Tone and
+# the Rat's legs are `audiobiquad` so a 60 Hz pole still decays to exact
+# zero; `synthio.Biquad` / `audiofilters.Filter` would not (audiodsp#77).
+# `scoop` also carries the DS-1's **output coupling capacitor** at 20 Hz.
+# It is no longer load-bearing: **Asymmetry is a second table now, not a
+# bias.** `STOCK_ASYMMETRY * macro` was a 3.5 V offset into diodes that clip
+# at 0.62 V, which parked the operating point at 0.97 of full scale and
+# answered a silent input with up to **-6.8 dBFS of DC**; the capacitor held
+# that back to the biquad's dead band and left the *step* - 0.45 of full
+# scale, 86 ms, every time the input went from silence to a note (audit 3
+# (p)4). The DS-1's asymmetric clipping section is one 1N4148 one way and
+# two in series the other, so Asymmetry blends `_CURVE_DS1_DIODE` into
+# `_CURVE_DS1_ASYM` and **both answer zero with zero**: silence in is
+# silence out at every shipped patch, the tail settles inside its
+# declaration, and a click reads its own latency on all eleven patches
+# where four of them used to be unmeasurable. It costs 1.8 to 2.3 dB of
+# level at the four scoop patches, because the asymmetric table's full
+# scale stands for the *quieter* side's 1.220 V against the pair's 0.622.
+#
+# **Each character's table is a normalised shape, not volts.** Both fill Q15
+# to the rails, and `_CURVE_RAT_DIODE_VOLTS` / `_CURVE_DS1_DIODE_VOLTS` are
+# what their full scale stands for; `_push` multiplies the live one into the
+# shaper's `post_gain` beside Ceiling. Level and curve are exactly what they
+# were, and the tables keep all the resolution they have - they used to
+# reach 66 % and 62 % of int16 (audiocomponents#77).
+#
+# **Cost, reference patch 0 (filter, Mix 1, Distortion mid, 48 kHz).**
+# MidSide + Splitter x2 (2-tap) + Biquad x4 + Mixer x2 + Waveshaper x4. The
+# Rat's gain stage is 1 + a*HP(60 Hz) + b*HP(1539 Hz), normalised by its own
+# treble gain so the two mixer levels sum to 1; the +1 is voice 0's dry
+# side, through `Biquad.mix`, and costs no node. Priced sum 1.849 / 3.323 ms
+# + glue 0.0 -> **P4 <= 35 %, S3 <= 63 %**, re-derived 2026-09-17 from a
+# graph three nodes smaller than the 2.245 / 4.128 (43 % / 78 %) one the
+# board ran. At 22.05 kHz the same graph runs the shaper at x8 and the block
+# is 11.61 ms, so it is 2.868 / 5.126 ms -> **25 % / 45 %**: fewer node
+# sums per second than 48 kHz, not more. Constructor `oversample=2` is
+# 26 % / 47 %; it is not a patch.
+#
+# **Latency.** `latency_samples` is **2 at Mix 1 and 0 at every Mix below
+# it**. The x4 half-band is the only pure delay in the graph, and 2 is the
+# click's integer onset at full wet - the same at 48, 44.1 and 22.05 kHz, in
+# mono and in stereo, on both characters (x1 reports 0, x2 1, x8 2). But the
+# dry leg is not delayed, so as soon as any dry is in the mix the class's
+# own onset is the dry one: a click at Mix 126 arrives at sample 0, and
+# reporting 2 there was true of one point on the axis and wrong at the other
+# 126. The sub-sample click reads 15.2 / 14.3 / 8.7 samples at the three
+# rates on `filter` and 4.0 / 4.0 / 3.7 on `scoop`; that is the
+# minimum-phase group delay of the biquads, which `effect_measurements.
+# click` says is a property of the class and not the latency this reports.
+# Oversampling is not a macro; it is the construction default, named here
+# because it is the latency-adding option and it is on. `oversample=1` is 0
+# samples of half-band delay and misses A1 by 25 dB.
+#
+# **What the default surrenders.** Patch 0 is Distortion 64, Filter 64, Mix
+# 127, silicon Ceiling.
+#
+# * F1's 11-18 dB 100 Hz->1 kHz tilt is a *low Distortion* claim, read at
+#   Distortion 2 % and 10 % with under 0.30 V on the clipper. At the shipped
+#   Distortion 64 the tilt is **+1.1 dB**, because F2's mid hump is already
+#   on. The tilt also moves with level - -12.2 dB at Distortion 10 % with
+#   0.21 V of pre-clip drive, -7.0 dB at 0.53 V - and the row's own 0.30 V
+#   line is what bounds it.
+# * F2 is read by Appendix G's equal-drive contour at maximum Distortion:
+#   the peak is at 800 Hz and 10 kHz is 15.5 dB below it at 48 kHz, 14.2 at
+#   44.1 kHz. At **22.05 kHz the row cannot be read at all** - 10 kHz is
+#   above this class's Nyquist margin.
+# * F5's 5 kHz clause is **false at 22.05 kHz**. The default 1 kHz->5 kHz
+#   fall is -11.7 dB at 48 and 44.1 kHz and **-13.7 dB** at 22.05 kHz, and
+#   the closed Filter reads -23.2 dB at 5 kHz against the dossier's
+#   -20.48 +/-1.5, because `_fo_lp` parks its second pole at
+#   min(40 kHz, 0.45*rate) and that is 9.9 kHz at 22.05 kHz. The 1 kHz and
+#   2 kHz clauses hold at all three rates.
+# * **Volume and Mix stop moving the output above a knee, and the class
+#   says where it is.** `wet_ceiling()` returns the largest wet level the
+#   headroom split can deliver at the Ceiling and Asymmetry in force: at the
+#   shipped Ceiling MIDI 42 it is **1.0 - the whole travel works** - and at
+#   Ceiling MIDI 108 it is **0.6317, which is Volume MIDI 80**, above which
+#   84, 96, 112 and 127 all read -6.622 dBFS. That is 43 positions and
+#   3.6 dB of label travel delivering 0.00 dB at shipped patch 3, and it was
+#   undisclosed until the third fix round (audit 3 ruling (o)).
+#   `TestDistortionVolumeAndMixTravel` walks both knobs end to end at three
+#   Ceilings and holds the class to its own knee.
+# * **The Filter macro works over its whole travel on `scoop` now.** It read
+#   the Rat's series resistance and then took `max(fc, CLIP_LP_HZ)`, which
+#   pinned MIDI 8 to 127 on one section - 120 positions that did nothing -
+#   and made MIDI 1 to 6 *brighter* than MIDI 0. `FILTER_R0_SCOOP` puts the
+#   pot's own top on the DS-1's 7230 Hz corner instead, so Filter 0 is the
+#   stock pedal byte for byte and 10 kHz falls monotonically from +1.26 dB
+#   to -16.59 dB across the travel.
+# * **Ceiling stops raising the level before its travel ends.** It is
+#   output gain, and the clipper's output is held at or below 0.74 of full
+#   scale (`CLIPPER_CEILING`), so the knob goes quiet at about **MIDI 53 at
+#   Volume maximum** and **MIDI 78 at the shipped Volume 100**. The top of
+#   the travel is 2.5 dB below where the saturating build sat and 18 dB
+#   cleaner, because past that the node clipped its own output at the base
+#   rate and the alias floor fell to -44 dB.
+# * **A1 is a -20 dBFS number, and the row says so now.** The bar is
+#   **-60 dB at 1010 Hz over -22 to -16 dBFS**, graded at both ends and the
+#   middle: -62.43 / -63.33 / -60.56 at -22, -62.44 / -60.55 / -60.66 at
+#   -19, -68.37 / -66.97 / -65.06 at -16, at 48 / 44.1 / 22.05 kHz. Outside
+#   that window it does not hold: **-55.7 / -52.3 / -52.5 at -12 dBFS**, and
+#   at playing level **-46.5 / -44.7 / -45.0 at -6 dBFS** and -43.8 at -0.9
+#   (audit 3 ruling (m)). Below the window the reading stops being the
+#   class's - the pack's instrument reads -58.6 at -24 dBFS and the suite's
+#   -63.1 at the same cell, which is the int16 floor of a quiet render and
+#   not a number either of them should be graded on. It is a claim about
+#   1010 Hz too: at **7010 Hz** the same default reads -42.2 / -34.3 /
+#   -30.1 at -20 dBFS. **And "it is not aliasing" is a x4 sentence**: the
+#   ladder at -20 dBFS, 48 kHz is x1 -36.14, x2 -56.44, x4 -61.66, x8
+#   -62.63, so what the shipped factor buys is 25 dB and what it leaves is
+#   the quantisation the redefinition names. It holds at the shipped default
+#   in that window and stays under -50 dB
+#   anywhere on `filter` with Boost at the 0 the Rat ships with. Raise
+#   Boost, or switch to `scoop`, whose DS-1 booster is 35 dB in circuit, and
+#   the floor follows the boost: **-40.4 dB at patch 6** and -39.0 dB at the
+#   worst scoop cell measured (patch 6 at Ceiling 96, 44.1 kHz) - both about
+#   3 and 15 dB better than the bias model read, because the asymmetric
+#   table does not park the clipper against its own rail. Redefined under
+#   vision 7.2 on 2026-09-17; the dossier's revision carries the old target
+#   and the measurements that replaced it.
+# * Scoop traits are not the shipped character.
 
 VENDOR = "PyDevices"
 
@@ -492,10 +497,44 @@ def _fo_hp(frequency, rate):
 
 
 class Distortion(_component.Component):
-    """Hard clipping after a shaped gain stage. `audiodsp` tier.
+    """A hard-clipping distortion with a pair of pedals inside it: the ProCo
+    Rat (`filter`, the default) and Boss's orange distortion (`scoop`).
 
-    Character `filter` (default) follows the ProCo Rat; `scoop` follows the
-    Boss DS-1. Mix 0 is the wire. Distortion 0 is clean only in `filter`.
+    **Controls.** Distortion is the gain in front of the clip. Filter is the
+    tone control after it, and on the Rat it runs backwards: clockwise is
+    darker. Tone is the Boss's scooped bass-to-treble balance. Volume is the
+    output level and Mix how much of the clipped signal replaces your note.
+    Character picks the pedal. Ceiling is how tall the clipped signal
+    stands. Boost is a booster in front of the clip, and `scoop` starts
+    with it at 35 dB because the Boss has one in its circuit. Asymmetry
+    clips the Boss's sides unevenly, which brings in even harmonics.
+    Body moves the Rat's treble leg between the stock pedal and a common
+    modification. The Effect controls page lists what the knobs span.
+
+    **Switching.** Mix at 0 hands back your signal untouched. Leaving 0
+    switches the pedal on fresh, rather than replaying what it held when it
+    went off.
+
+    **Sound.** At Distortion 0 the Rat is nearly clean and the Boss never
+    is. Turned up, the Rat's brightness folds into a mid hump. On `scoop`
+    every Filter position is its own, and Filter at 0 is the stock Boss.
+    At the defaults, aliasing on a 1010 Hz tone between -22 and -16 dBFS
+    stays 60 dB under the note; louder than that it does not.
+
+    **Timing.** Latency is 2 samples at Mix 1 and zero at any Mix below it.
+    Silence in is silence out at every shipped patch, and the tail settles
+    inside what the class reports.
+
+    **Levels.** A full-scale input plays without wrapping at every shipped
+    patch. The clip keeps its output inside its own headroom at any Ceiling,
+    so Ceiling stops raising the level before the top of its travel, and
+    with Ceiling high, Volume and Mix stop moving the output above a knee
+    that `wet_ceiling()` reports. No shipped patch sits on a DC offset, and
+    the first note does not arrive on one.
+
+    **On a board.** The class needs audiodsp's `audioshaper`, `audiobiquad`
+    and `audioroute`, and on a board without them construction raises
+    `ImportError`.
     """
 
     #: Construction arms the voices on silence (`Component._play_voice`),
