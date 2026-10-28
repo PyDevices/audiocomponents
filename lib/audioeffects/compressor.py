@@ -42,6 +42,9 @@ buys a brickwall. `tail_samples` is 0 for the same reason a compressor has no
 tail: the gain multiplies the audio, so silence in is silence out on the same
 sample.
 
+**Levels.** Keep the input under -6 dBFS and the defaults and patches stay
+off the rails.
+
 **Two traits this palette cannot carry, recorded rather than hidden**
 (dossier App. J.3, J.4):
 
@@ -203,6 +206,11 @@ class Compressor(_component.Component):
     #: blocks: a re-attack, which `tail_samples` does not bound. See
     #: "Detector and coupling state" in docs/reference/component-api.md.
     TAIL_SAMPLES = 0
+
+    #: The defaults and every patch play the ceiling kit's materials
+    #: clean at this level; at -3 dBFS, patch 3 rails on
+    #: a 100 Hz square.
+    INPUT_CEILING_DBFS = -6
 
     MACRO_LABELS = ("Character", "Threshold", "Ratio", "Attack", "Release",
                     "Release Slow", "Memory", "Knee", "Detector",

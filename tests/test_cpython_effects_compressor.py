@@ -385,3 +385,15 @@ class TheLeanRouteFollowsTheMacros(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+import kit_ceiling                                               # noqa: E402
+
+
+class TheCeiling(unittest.TestCase):
+    def test_clean_at_the_stated_input_level(self):
+        # square is where it rails first: p3 at -3 dBFS.
+        self.assertEqual(
+            kit_ceiling.stated_level_reds(compressor.Compressor, "square"), [])
+        self.assertTrue(kit_ceiling.stated_level_reds(
+            compressor.Compressor, "square", db=-3, keys=("p3",)))
