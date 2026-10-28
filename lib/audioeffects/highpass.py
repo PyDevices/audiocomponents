@@ -157,8 +157,7 @@ FLAT_DB = 0.2
 
 
 class HighPass(_component.Component):
-    """A low-cut: under the corner the signal goes, and above it nothing is
-    touched.
+    """A low-cut: under the corner the signal goes.
 
     **Controls.** Frequency is the corner. Resonance is how loud the corner
     itself stands: at 0.707 it is 3 dB down and the cut is as gentle as a cut

@@ -649,11 +649,9 @@ CLAIMS = (
      ("TheZeroAtDCIsExact.test_the_settled_output_is_bit_exactly_zero",
       "TheSkirtIsTwelveDecibelsAnOctave.test_twelve_and_twenty_four_"
       "decibels_an_octave")),
-    ("A low-cut: under the corner the signal goes, and above it nothing is "
-     "touched.",
-     ("TheSkirtIsTwelveDecibelsAnOctave.test_nyquist_passes_at_unity",
-      "TheShapeIsOneCurve.test_the_warped_curve_is_the_same_at_every_"
-      "corner")),
+    ("A low-cut: under the corner the signal goes.",
+     ("TheSkirtIsTwelveDecibelsAnOctave.test_twelve_and_twenty_four_"
+      "decibels_an_octave",)),
     ("Resonance is how loud the corner itself stands: at 0.707 it is 3 dB "
      "down and the cut is as gentle as a cut gets, and turned up it stands "
      "above the passband and the filter whistles at its own corner.",

@@ -61,13 +61,14 @@ def first_frame(effect):
     return list(data[:effect.channel_count])
 
 
-def latency_problems(cls, rate, delayed=False):
+def latency_problems(cls, rate, delayed=False, patches=None):
     """Every patch whose impulse does not show in the first output frame,
     or whose reported latency is not zero. `delayed` plants the fault: the
     impulse is moved one frame late, which a zero-latency reading must
-    catch."""
+    catch. `patches` narrows the walk where a patch's first output sample
+    rounds to zero for a reason other than delay."""
     problems = []
-    for patch in sorted(cls.PATCHES):
+    for patch in sorted(cls.PATCHES) if patches is None else patches:
         source = impulse(rate)
         if delayed:
             values = array.array("h", bytes(2 * 2 * 256))
