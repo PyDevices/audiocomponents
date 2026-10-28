@@ -1308,8 +1308,17 @@ class TheRejoinIsAFreshInstance(unittest.TestCase):
         self.assertTrue(any(c[0] == 22050 for c in reds), reds)
 
 
-if __name__ == "__main__":
-    unittest.main()
+#: `DoubleChargeOverdrive` is not here: it differs only on a rejoin, and the
+#: kit renders fresh builds.
+KIT_PLANTS = {
+    "BiasedOverdrive": BiasedOverdrive,
+    "BaseRateOverdrive": BaseRateOverdrive,
+    "RawClipOverdrive": RawClipOverdrive,
+    "NoOutputPole": NoOutputPole,
+    "WetOnlyOverdrive": WetOnlyOverdrive,
+    "NoClipAdd": NoClipAdd,
+    "NoHighPass": NoHighPass,
+}
 
 
 class ThePlayersText(unittest.TestCase):
@@ -1369,3 +1378,7 @@ CLAIMS = (
       "TestOverdriveTheInputCeiling.test_the_surface_ceiling_holds_at_the_"
       "hot_corner")),
 )
+
+
+if __name__ == "__main__":
+    unittest.main()

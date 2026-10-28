@@ -1774,10 +1774,6 @@ KIT_PLANTS = {
 }
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class _NoHiding:
     def __enter__(self):
         return self
@@ -1935,3 +1931,7 @@ class TestDistortionPatchBeforeTheFirstPull(unittest.TestCase):
                     with self.subTest(rate=rate, channels=channels,
                                       patch=patch):
                         self.assertEqual(got, want)
+
+
+if __name__ == "__main__":
+    unittest.main()
