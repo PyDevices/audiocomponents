@@ -1,190 +1,195 @@
 """`Overdrive` - a Tube Screamer-shaped boost: dry plus a clipped shelf.
 
-Rebuilt from scratch at Phase 4 against its dossier, traits frozen
-2026-09-17 at Station A. The old class in `drive.py` is consulted only for
-the defects that dossier section 7 names: no macros, an asymmetric
-OVERDRIVE curve, a hidden -3 dB trim, and a 4.5 kHz low-pass after mix.
-
-**What it is.** The note always passes at unity. A high-passed copy is
-gained, diode-limited, and added on top, then a movable low-pass. Drive is
-never clean (dossier T6): even at the knob's floor a -14 dBFS 1 kHz tone is
-already a double-digit THD. Mix 0 is the Tier 1 wire; Drive 0 is still that
-12x stage.
-
-**Mix is how much clipped voltage is added, not a crossfade to bypass.**
-At Mix 0 the class hands back the source byte for byte - the pedal is out
-of circuit, the way a true-bypass footswitch takes it out. One step above
-zero the tone stack is in circuit on the dry note as well, so the step off
-Mix 0 is a tone change, and that is the pedal switching on rather than a
-fade. It switches on as it was built, not as it was left: the circuit is
-cleared and armed again - the output capacitor charged on the offset -
-before it is heard, where it used to play what it held when Mix went to 0,
-up to 11 640 LSB out of silence (audiocomponents#113).
-
-**The clip table is a normalised shape, not volts.** `CURVE` fills Q15 to
-both rails and `CURVE_VOLTS` is what its full scale stands for; the class
-multiplies that into the shaper's `post_gain`. Level and curve are exactly
-what they were, and the table keeps all the resolution it has - it used to
-reach only 35 % of int16 (audiocomponents#77).
-
-**Portability: audiodsp.** `audioshaper.Waveshaper`, `audiobiquad` for the
-100 Hz tone points Q15 cannot carry, `audioroute` for the dry split. It
-will not import on a stock CircuitPython board.
-
-**Cost.** Palette sum at patch 0, x4, Mix 1: **1.684 / 2.928 ms -> 32 % /
-55 %** of a 5.333 ms stereo block (dossier section 3). It was 1.584 / 2.759
-ms until the third fix round added the output pole, which is one more
-`audiobiquad` section on the clip branch - 0.100 ms on the P4 and 0.169 on
-the S3, from the palette table. **No board has measured the graph with the
-pole in it.** Lean patch: none.
-The lean position is the constructor option `oversample=2`, which is
-cheaper on the S3 and **surrenders T7** - at x2 the wet floor reads
--64.5 dB at the constructor default against a -70 dB bar, and -35.8 dB
-at the worst macro corner against -40 dB.
-
-**There is an output capacitor now.** A Tube Screamer is DC-coupled
-inside and AC-coupled at the jack; this class had the first half only, so
-Symmetry's operating-point offset walked out of the shaper and stood on
-the output for ever - **+4461 LSB at shipped patch 6**, into digital
-silence, at every rate (audit 3 ruling (n)). `DC_BLOCK_HZ` is a 30 Hz
-pole on the clip branch behind the shaper, charged before the first block
-and again whenever Symmetry, Mix or Ceiling moves the offset. Silence in
-is now silence out at **every shipped patch at 48, 44.1 and 22.05 kHz -
-peak 0, not merely zero by the last frame** - and a `program_change` onto
-digital silence stays at 0. It costs two things, both measured: the clip
-branch carries one more int16 node, which is worth **3.4 dB of alias
-floor at the constructor default at 48 kHz** (-81.291 -> -77.939, 1.8 dB
-at 44.1, 0.3 dB at 22.05), and a live macro move that changes the offset
-re-charges the pole, which costs **one block of input** (5.3 ms at
-48 kHz). A CircuitPython board build, which has no
-`audiocore.get_buffer`, charges it too, and renders byte for byte what a
-desktop does.
-
-**Latency: zero samples** at every macro setting. The dry tap is a copy.
-`oversample` puts group delay on the *clip branch only*: 3.3 samples at
-x4, 3.9 at x8, which is **0.069 ms** at 48 kHz x4, **0.081 ms** at 48 kHz
-x8 and **0.088 ms** at the 44.1 kHz x8 this class ships. x1 is 0. It is
-not on the sixteen-macro surface. Measured integer onset is **0 at every
-rate, both channel counts, on all three interpreters**. `tail_samples` is
-**4096**, over a worst measured ring of **2692 frames** (48 kHz, patch 6,
-a 0 dBFS 1 kHz burst) - the 30 Hz pole is what made it long; it was 512
-over a 222-frame ring before. The declaration is **level-free**: the ring
-is 2639 to 2692 frames over 100 Hz and 1 kHz bursts at 0 dBFS and shorter
-at every quieter input, because what rings is the pole and not the
-signal. No delay line.
-
-**The input ceiling is -1 dBFS at the shipped patches and -6 dBFS
-anywhere on the surface** (`INPUT_CEILING_DBFS`, `SURFACE_CEILING_DBFS`).
-The class adds a clipped shelf to a dry note at unity, so it runs out of
-int16 somewhere, and until the third fix round it said nowhere.
-
-**The oversampling factor follows the rate: x8 below 48 kHz, x4 at
-48 kHz and above.** Every doubling is worth 11-16 dB of alias floor, and
-x8 is where the node stops. 48 kHz keeps x4 because x8 there costs
-+0.799 ms a block on the P4 and **+1.408 ms on the S3**, which projects
-the S3 to a real-time factor of about 1.00 - the deadline itself. 44.1
-and 22.05 kHz pay x8 against blocks 1.09x and 2.18x as long, so it is
-free where the deadline is longer. **Every rate under 24 kHz leaves the
-internal rate under the 192 kHz floor** and takes x8 because x8 is all
-there is: 22.05 kHz runs 176.4 kHz, 16 kHz runs 128 kHz. **No board has
-measured 44.1 or 22.05 kHz**, and the 48 kHz board figures are the only
-ones this class has.
-
-**Alias floors are stated on the wet branch, with the dry copy muted.**
-The dry note is summed on the *circuit* mixer, one stage before the
-output, so a mixed reading flatters every floor by **5.6 to 6.6 dB**.
-`tools/effect_measurements.mute_dry` reaches the inner mixer; every
-number below is that reading (audiocomponents#68, #81).
-
-**Traits that are weaker at the shipped default than at a convenient
-setting, named here.** Patch 0 is mid Drive (plateau ~36), Level 100/127,
-Tone centre. Headline numbers are those defaults (CPython 48 kHz, 1 kHz
-sine unless named):
-
-- T1 at the default, **at -14 dBFS**: 100 Hz THD 1.883 % < 1 kHz
-  12.549 %, and that holds at 44.1 (1.873 / 12.245) and 22.05 kHz (1.853
-  / 11.080). **It is a claim about a sine at Body 720 Hz.** The
-  pair reverses at Drive max (20.3 % vs 16.1 %), at the **bottom of the
-  Body travel** - Body 360 crosses at all three rates, by less than 0.1
-  percentage points - and on a square wave at the default (58.7 % vs
-  20.0 %), whose own harmonics swamp the 100 Hz leg. **It reverses on a
-  sawtooth too**, at all three rates and by a wide margin (86.2 % vs
-  70.5 % at 48 kHz) - and a saw is closer to a pickup than either. Shipped
-  patches **2** (Drive max) and **4** (Body 12) reverse it for the first
-  two reasons. Small-signal gains are not SPICE's 23.3 / 38.8 / 37.7 dB;
-  the fitted -3 dB pole at Drive max is **854 Hz**, outside 720 +/- 110.
-- T2 even lines, **at -14 dBFS**: the trait names h2 **and h4**. At the
-  constructor default h2 is -106.608 dB and h4 does not read at all;
-  **patch 0 read back is h2 -119.206 dB** - it was -64.5 dB until
-  audiocomponents#87 gave a bipolar macro an exact centre at MIDI 64. h3 at Drive max is -16.6 dB, outside
-  SPICE -12.6 +/- 2. Shipped patch 6 (Asymmetric) is h2 -25.8 dB with
-  **h4 -31.8 dB** beside it - the same character, one more line.
-- T3 Delta-peak at the default is 0.160 / 0.174 / 0.109 V at -26 / -14 /
-  -6 dBFS, below the 0.30-0.55 V band; at Drive max it is 0.291 / 0.311 /
-  0.284 V. **Those are the readings behind the output pole**, which takes
-  the clip branch's own offset off the peak; they were 0.297 / 0.326 /
-  0.299 at Drive max without it. THD still falls -14 -> -6 dBFS at the default. **Outside that
-  stated pair the level law is not monotone**: THD *rises* -20 -> -14
-  dBFS at 48 and 44.1 kHz, turns back up at -1 dBFS at 22.05 kHz, and
-  rises with level at 100 Hz. No output rail is hit at any of those
-  levels, so the turn is the shaper and not the mixer.
-- T4 is **disconfirmed**: the tone stack is a moving first-order low-pass,
-  not the TS wiper network, and the brightest setting is up at 5 kHz where
-  SPICE is 3.5 dB down.
-- T5 THD at **-26 dBFS** rises with Drive - 2.346 / 9.631 / 14.630 % at
-  Drive MIDI 0 / 64 / 127 - **and that is a claim at Symmetry centred**.
-  Off centre the law turns over: at Symmetry MIDI 0, 32, 96 and 127 the
-  THD peaks at Drive MIDI 64 and *falls* above it (at Symmetry 0: 8.601 /
-  19.875 / 24.900 / 20.291 / 17.660 % over Drive 0 / 32 / 64 / 96 / 127),
-  at all three rates. Symmetry is a bias into the shaper, so it decides
-  which part of the curve the drive is pushing into, and the trait row
-  never said so. End-to-end plateau gain is **not** 10-15 / 90-130 (Drive
-  min/max at -72 dBFS is about x4 / x34).
-- T6 at Drive *minimum* is 8.305 % THD at -14 dBFS, **under** the 10-40 %
-  bar; at the default the class is dirtier (12.549 %).
-- T7's bar was **restated on 2026-09-17** under vision section 7.2 and
-  narrowed again by the third fix round, which found the redefinition was
-  claiming more rates than it had earned. It is now four bars **and a
-  rate rule**, all on the wet branch at 1010 Hz, **-6 dBFS unless the row
-  says otherwise**:
-  **-70 dB at the constructor default** (measured -77.939 / -78.698 /
-  -75.565 at 48 / 44.1 / 22.05 kHz), **-50 dB at every shipped patch as
-  shipped** (worst patch 3, -56.078 / -71.365 / -54.443), **-40 dB
-  anywhere on the macro surface** (worst -47.642 / -61.049 / -46.608, at
-  Drive max with Body at the bottom of its travel and Tone open), and
-  **-40 dB at that corner at every input level up to full scale** (worst
-  -41.956 / -52.157 / **-41.328**, all three at 0 dBFS). A fifth, T7e,
-  says what the oversampling is worth: `ALIAS_OVERSAMPLE_COST_DB`.
-- **Where the old -60 dB target still stands: 44.1 kHz.** The
-  redefinition's first condition is that the old target is unreachable,
-  and that is true at two of this class's three rates, not three. At
-  **44.1 kHz** the shipped x8 build meets -60 dB on the wet branch
-  everywhere - default -78.698, worst shipped patch -71.365, **worst
-  surface cell -61.049** - so the old bar is kept there and tested there,
-  and the redefinition is not invoked. At **48 kHz** x4 reads -47.642 at
-  that corner and x8 would read **-63.870**; the class declines x8 on
-  cost (+0.799 ms a block on the P4, +1.408 on the S3, which projects the
-  S3 to rt 1.00) and that projection **has no board behind it** - a board
-  run at x8 is what would settle it. At **22.05 kHz** x8 reads -46.608
-  and x16 does not exist: `AUDIODSP_SHAPER_MAX_OVERSAMPLE` is 8
-  (`audiodsp/src/shared/audiodsp_shaper.h:72`), which vision section 6
-  routes to a node ask, and it is filed as **audiodsp#104**.
-- T7's **3700 Hz** diagnostic at full Drive does **not** hold, and the
-  figure the pack published for it was a **mixed** reading. On the wet
-  branch, with the dry voice muted and a whole number of periods in the
-  transform, it is **-33.898 dB** at 48 kHz on T7's held line (Drive max)
-  and **-32.065** at the worst macro corner; mixed, the same cell reads
-  -37.804, which is where the old -37.7 came from. **5000 Hz is worse and
-  was named nowhere**: -27.750 held and -30.726 at the corner at 48 kHz,
-  -35.247 / -37.421 at 44.1 kHz, and **-24.117 / -29.684 at 22.05 kHz**,
-  which is the worst inharmonic cell this class has anywhere. The tone
-  stack and the high-pass sit in front of the clip, so the class is worse
-  than the bare node up there. T7's own bars are 1010 Hz numbers and the
-  class does not claim them at 3700 or 5000 Hz.
-- **Level is the output stage and Mix does not attenuate the dry.** At
-  Mix 1, Level MIDI 0 is silence, not a wire: the one mixer leg carrying
-  the whole graph is at zero.
+The player's text is the class docstring; the `CLAIMS` table in the
+class's test file ties its claim sentences to tests.
 """
+
+# Design notes, moved from the module docstring.
+#
+# Rebuilt from scratch at Phase 4 against its dossier, traits frozen
+# 2026-09-17 at Station A. The old class in `drive.py` is consulted only for
+# the defects that dossier section 7 names: no macros, an asymmetric
+# OVERDRIVE curve, a hidden -3 dB trim, and a 4.5 kHz low-pass after mix.
+#
+# **What it is.** The note always passes at unity. A high-passed copy is
+# gained, diode-limited, and added on top, then a movable low-pass. Drive is
+# never clean (dossier T6): even at the knob's floor a -14 dBFS 1 kHz tone is
+# already a double-digit THD. Mix 0 is the Tier 1 wire; Drive 0 is still that
+# 12x stage.
+#
+# **Mix is how much clipped voltage is added, not a crossfade to bypass.**
+# At Mix 0 the class hands back the source byte for byte - the pedal is out
+# of circuit, the way a true-bypass footswitch takes it out. One step above
+# zero the tone stack is in circuit on the dry note as well, so the step off
+# Mix 0 is a tone change, and that is the pedal switching on rather than a
+# fade. It switches on as it was built, not as it was left: the circuit is
+# cleared and armed again - the output capacitor charged on the offset -
+# before it is heard, where it used to play what it held when Mix went to 0,
+# up to 11 640 LSB out of silence (audiocomponents#113).
+#
+# **The clip table is a normalised shape, not volts.** `CURVE` fills Q15 to
+# both rails and `CURVE_VOLTS` is what its full scale stands for; the class
+# multiplies that into the shaper's `post_gain`. Level and curve are exactly
+# what they were, and the table keeps all the resolution it has - it used to
+# reach only 35 % of int16 (audiocomponents#77).
+#
+# **Portability: audiodsp.** `audioshaper.Waveshaper`, `audiobiquad` for the
+# 100 Hz tone points Q15 cannot carry, `audioroute` for the dry split. It
+# will not import on a stock CircuitPython board.
+#
+# **Cost.** Palette sum at patch 0, x4, Mix 1: **1.684 / 2.928 ms -> 32 % /
+# 55 %** of a 5.333 ms stereo block (dossier section 3). It was 1.584 / 2.759
+# ms until the third fix round added the output pole, which is one more
+# `audiobiquad` section on the clip branch - 0.100 ms on the P4 and 0.169 on
+# the S3, from the palette table. **No board has measured the graph with the
+# pole in it.** Lean patch: none.
+# The lean position is the constructor option `oversample=2`, which is
+# cheaper on the S3 and **surrenders T7** - at x2 the wet floor reads
+# -64.5 dB at the constructor default against a -70 dB bar, and -35.8 dB
+# at the worst macro corner against -40 dB.
+#
+# **There is an output capacitor now.** A Tube Screamer is DC-coupled
+# inside and AC-coupled at the jack; this class had the first half only, so
+# Symmetry's operating-point offset walked out of the shaper and stood on
+# the output for ever - **+4461 LSB at shipped patch 6**, into digital
+# silence, at every rate (audit 3 ruling (n)). `DC_BLOCK_HZ` is a 30 Hz
+# pole on the clip branch behind the shaper, charged before the first block
+# and again whenever Symmetry, Mix or Ceiling moves the offset. Silence in
+# is now silence out at **every shipped patch at 48, 44.1 and 22.05 kHz -
+# peak 0, not merely zero by the last frame** - and a `program_change` onto
+# digital silence stays at 0. It costs two things, both measured: the clip
+# branch carries one more int16 node, which is worth **3.4 dB of alias
+# floor at the constructor default at 48 kHz** (-81.291 -> -77.939, 1.8 dB
+# at 44.1, 0.3 dB at 22.05), and a live macro move that changes the offset
+# re-charges the pole, which costs **one block of input** (5.3 ms at
+# 48 kHz). A CircuitPython board build, which has no
+# `audiocore.get_buffer`, charges it too, and renders byte for byte what a
+# desktop does.
+#
+# **Latency: zero samples** at every macro setting. The dry tap is a copy.
+# `oversample` puts group delay on the *clip branch only*: 3.3 samples at
+# x4, 3.9 at x8, which is **0.069 ms** at 48 kHz x4, **0.081 ms** at 48 kHz
+# x8 and **0.088 ms** at the 44.1 kHz x8 this class ships. x1 is 0. It is
+# not on the sixteen-macro surface. Measured integer onset is **0 at every
+# rate, both channel counts, on all three interpreters**. `tail_samples` is
+# **4096**, over a worst measured ring of **2692 frames** (48 kHz, patch 6,
+# a 0 dBFS 1 kHz burst) - the 30 Hz pole is what made it long; it was 512
+# over a 222-frame ring before. The declaration is **level-free**: the ring
+# is 2639 to 2692 frames over 100 Hz and 1 kHz bursts at 0 dBFS and shorter
+# at every quieter input, because what rings is the pole and not the
+# signal. No delay line.
+#
+# **The input ceiling is -1 dBFS at the shipped patches and -6 dBFS
+# anywhere on the surface** (`INPUT_CEILING_DBFS`, `SURFACE_CEILING_DBFS`).
+# The class adds a clipped shelf to a dry note at unity, so it runs out of
+# int16 somewhere, and until the third fix round it said nowhere.
+#
+# **The oversampling factor follows the rate: x8 below 48 kHz, x4 at
+# 48 kHz and above.** Every doubling is worth 11-16 dB of alias floor, and
+# x8 is where the node stops. 48 kHz keeps x4 because x8 there costs
+# +0.799 ms a block on the P4 and **+1.408 ms on the S3**, which projects
+# the S3 to a real-time factor of about 1.00 - the deadline itself. 44.1
+# and 22.05 kHz pay x8 against blocks 1.09x and 2.18x as long, so it is
+# free where the deadline is longer. **Every rate under 24 kHz leaves the
+# internal rate under the 192 kHz floor** and takes x8 because x8 is all
+# there is: 22.05 kHz runs 176.4 kHz, 16 kHz runs 128 kHz. **No board has
+# measured 44.1 or 22.05 kHz**, and the 48 kHz board figures are the only
+# ones this class has.
+#
+# **Alias floors are stated on the wet branch, with the dry copy muted.**
+# The dry note is summed on the *circuit* mixer, one stage before the
+# output, so a mixed reading flatters every floor by **5.6 to 6.6 dB**.
+# `tools/effect_measurements.mute_dry` reaches the inner mixer; every
+# number below is that reading (audiocomponents#68, #81).
+#
+# **Traits that are weaker at the shipped default than at a convenient
+# setting, named here.** Patch 0 is mid Drive (plateau ~36), Level 100/127,
+# Tone centre. Headline numbers are those defaults (CPython 48 kHz, 1 kHz
+# sine unless named):
+#
+# - T1 at the default, **at -14 dBFS**: 100 Hz THD 1.883 % < 1 kHz
+#   12.549 %, and that holds at 44.1 (1.873 / 12.245) and 22.05 kHz (1.853
+#   / 11.080). **It is a claim about a sine at Body 720 Hz.** The
+#   pair reverses at Drive max (20.3 % vs 16.1 %), at the **bottom of the
+#   Body travel** - Body 360 crosses at all three rates, by less than 0.1
+#   percentage points - and on a square wave at the default (58.7 % vs
+#   20.0 %), whose own harmonics swamp the 100 Hz leg. **It reverses on a
+#   sawtooth too**, at all three rates and by a wide margin (86.2 % vs
+#   70.5 % at 48 kHz) - and a saw is closer to a pickup than either. Shipped
+#   patches **2** (Drive max) and **4** (Body 12) reverse it for the first
+#   two reasons. Small-signal gains are not SPICE's 23.3 / 38.8 / 37.7 dB;
+#   the fitted -3 dB pole at Drive max is **854 Hz**, outside 720 +/- 110.
+# - T2 even lines, **at -14 dBFS**: the trait names h2 **and h4**. At the
+#   constructor default h2 is -106.608 dB and h4 does not read at all;
+#   **patch 0 read back is h2 -119.206 dB** - it was -64.5 dB until
+#   audiocomponents#87 gave a bipolar macro an exact centre at MIDI 64. h3 at Drive max is -16.6 dB, outside
+#   SPICE -12.6 +/- 2. Shipped patch 6 (Asymmetric) is h2 -25.8 dB with
+#   **h4 -31.8 dB** beside it - the same character, one more line.
+# - T3 Delta-peak at the default is 0.160 / 0.174 / 0.109 V at -26 / -14 /
+#   -6 dBFS, below the 0.30-0.55 V band; at Drive max it is 0.291 / 0.311 /
+#   0.284 V. **Those are the readings behind the output pole**, which takes
+#   the clip branch's own offset off the peak; they were 0.297 / 0.326 /
+#   0.299 at Drive max without it. THD still falls -14 -> -6 dBFS at the default. **Outside that
+#   stated pair the level law is not monotone**: THD *rises* -20 -> -14
+#   dBFS at 48 and 44.1 kHz, turns back up at -1 dBFS at 22.05 kHz, and
+#   rises with level at 100 Hz. No output rail is hit at any of those
+#   levels, so the turn is the shaper and not the mixer.
+# - T4 is **disconfirmed**: the tone stack is a moving first-order low-pass,
+#   not the TS wiper network, and the brightest setting is up at 5 kHz where
+#   SPICE is 3.5 dB down.
+# - T5 THD at **-26 dBFS** rises with Drive - 2.346 / 9.631 / 14.630 % at
+#   Drive MIDI 0 / 64 / 127 - **and that is a claim at Symmetry centred**.
+#   Off centre the law turns over: at Symmetry MIDI 0, 32, 96 and 127 the
+#   THD peaks at Drive MIDI 64 and *falls* above it (at Symmetry 0: 8.601 /
+#   19.875 / 24.900 / 20.291 / 17.660 % over Drive 0 / 32 / 64 / 96 / 127),
+#   at all three rates. Symmetry is a bias into the shaper, so it decides
+#   which part of the curve the drive is pushing into, and the trait row
+#   never said so. End-to-end plateau gain is **not** 10-15 / 90-130 (Drive
+#   min/max at -72 dBFS is about x4 / x34).
+# - T6 at Drive *minimum* is 8.305 % THD at -14 dBFS, **under** the 10-40 %
+#   bar; at the default the class is dirtier (12.549 %).
+# - T7's bar was **restated on 2026-09-17** under vision section 7.2 and
+#   narrowed again by the third fix round, which found the redefinition was
+#   claiming more rates than it had earned. It is now four bars **and a
+#   rate rule**, all on the wet branch at 1010 Hz, **-6 dBFS unless the row
+#   says otherwise**:
+#   **-70 dB at the constructor default** (measured -77.939 / -78.698 /
+#   -75.565 at 48 / 44.1 / 22.05 kHz), **-50 dB at every shipped patch as
+#   shipped** (worst patch 3, -56.078 / -71.365 / -54.443), **-40 dB
+#   anywhere on the macro surface** (worst -47.642 / -61.049 / -46.608, at
+#   Drive max with Body at the bottom of its travel and Tone open), and
+#   **-40 dB at that corner at every input level up to full scale** (worst
+#   -41.956 / -52.157 / **-41.328**, all three at 0 dBFS). A fifth, T7e,
+#   says what the oversampling is worth: `ALIAS_OVERSAMPLE_COST_DB`.
+# - **Where the old -60 dB target still stands: 44.1 kHz.** The
+#   redefinition's first condition is that the old target is unreachable,
+#   and that is true at two of this class's three rates, not three. At
+#   **44.1 kHz** the shipped x8 build meets -60 dB on the wet branch
+#   everywhere - default -78.698, worst shipped patch -71.365, **worst
+#   surface cell -61.049** - so the old bar is kept there and tested there,
+#   and the redefinition is not invoked. At **48 kHz** x4 reads -47.642 at
+#   that corner and x8 would read **-63.870**; the class declines x8 on
+#   cost (+0.799 ms a block on the P4, +1.408 on the S3, which projects the
+#   S3 to rt 1.00) and that projection **has no board behind it** - a board
+#   run at x8 is what would settle it. At **22.05 kHz** x8 reads -46.608
+#   and x16 does not exist: `AUDIODSP_SHAPER_MAX_OVERSAMPLE` is 8
+#   (`audiodsp/src/shared/audiodsp_shaper.h:72`), which vision section 6
+#   routes to a node ask, and it is filed as **audiodsp#104**.
+# - T7's **3700 Hz** diagnostic at full Drive does **not** hold, and the
+#   figure the pack published for it was a **mixed** reading. On the wet
+#   branch, with the dry voice muted and a whole number of periods in the
+#   transform, it is **-33.898 dB** at 48 kHz on T7's held line (Drive max)
+#   and **-32.065** at the worst macro corner; mixed, the same cell reads
+#   -37.804, which is where the old -37.7 came from. **5000 Hz is worse and
+#   was named nowhere**: -27.750 held and -30.726 at the corner at 48 kHz,
+#   -35.247 / -37.421 at 44.1 kHz, and **-24.117 / -29.684 at 22.05 kHz**,
+#   which is the worst inharmonic cell this class has anywhere. The tone
+#   stack and the high-pass sit in front of the clip, so the class is worse
+#   than the bare node up there. T7's own bars are 1010 Hz numbers and the
+#   class does not claim them at 3700 or 5000 Hz.
+# - **Level is the output stage and Mix does not attenuate the dry.** At
+#   Mix 1, Level MIDI 0 is silence, not a wire: the one mixer leg carrying
+#   the whole graph is at zero.
 
 VENDOR = "PyDevices"
 
@@ -488,7 +493,40 @@ def _one_pole(freq, park):
 
 
 class Overdrive(_component.Component):
-    """Dry plus a diode-limited high-pass; Tube Screamer structure."""
+    """A Tube Screamer-shaped overdrive: your note at unity, with a
+    high-passed, clipped copy added on top.
+
+    **Controls.** Drive is how hard the copy is clipped, and even at its
+    floor the pedal is not clean. Tone is a low-pass after the clip. Body is
+    the corner of the high-pass in front of the clip, so it sets how much
+    bass reaches it. Ceiling is how tall the clipped copy stands. Symmetry
+    biases the clip off centre and brings in even harmonics. Level is the
+    output stage. Mix is how much clipped signal is added to your note; it
+    does not turn the note down. The Effect controls page lists what the
+    knobs span.
+
+    **Switching.** Mix at 0 takes the pedal out of circuit and hands back
+    your signal byte for byte. Leaving 0 switches the pedal on fresh,
+    rather than replaying what it held when it went off. At Mix 1 with Level
+    at 0 the pedal is silent.
+
+    **Sound.** At the defaults, bass comes through cleaner than the mids, as
+    the high-pass in front of the clip makes it; at the bottom of Body, or
+    on a square, that reverses. With Symmetry centred the
+    dirt rises with Drive; off centre it peaks partway up the knob. The clip
+    runs oversampled, so aliasing stays at least 40 dB under the note
+    anywhere on the panel, up to a full-scale input.
+
+    **Timing.** Latency is zero at every setting. Silence in is silence out
+    at every shipped patch.
+
+    **Levels.** Keep the input under -1 dBFS and the shipped patches stay
+    off the rails; anywhere on the panel, keep it under -6 dBFS.
+
+    **On a board.** The class needs audiodsp's `audioshaper`, `audiobiquad`
+    and `audioroute`, and on a board without them construction raises
+    `ImportError`.
+    """
 
     #: Construction arms the voices on silence (`Component._play_voice`),
     #: so a Mix 0 set before the first pull hands out the source whole.
