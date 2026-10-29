@@ -229,6 +229,43 @@ class SoundFontTest(unittest.TestCase):
             self.assertAlmostEqual(bank.regions(128, 0, 38, 100)[0].attenuation,
                                    1.0)
 
+    def test_defaults_leave_a_region_plain(self):
+        # Nothing in the tiny bank uses the rest of a voice: no filter, a
+        # flat modulation envelope, no LFO depth.
+        r = self.one(0, 0, 40)
+        self.assertEqual(r.filter_cutoff, 13500)
+        self.assertEqual(r.resonance, 0.0)
+        self.assertEqual((r.mod_to_pitch, r.mod_to_cutoff), (0, 0))
+        self.assertEqual((r.vibrato_to_pitch, r.lfo_to_pitch,
+                          r.lfo_to_cutoff, r.lfo_to_volume), (0, 0, 0, 0.0))
+        self.assertAlmostEqual(r.mod_sustain, 1.0)
+        self.assertAlmostEqual(r.mod_attack, 0.001, places=4)
+        self.assertAlmostEqual(r.vibrato_rate, 8.176, places=3)
+        self.assertAlmostEqual(r.lfo_delay, 0.001, places=4)
+
+    def test_filter_modulation_envelope_and_lfos(self):
+        path = os.path.join(self.tmp, "filter.sf2")
+        sf2_builder.filter_bank().write(path)
+        with sf2.SoundFont(path) as bank:
+            r = bank.regions(0, 1, 60, 100)[0]
+            self.assertEqual((r.filter_cutoff, r.filter_q), (9023, 60))
+            self.assertAlmostEqual(r.filter_hz, 1500, delta=2)
+            self.assertAlmostEqual(r.resonance, 6.0)
+            r = bank.regions(0, 2, 60, 100)[0]
+            self.assertEqual((r.mod_to_cutoff, r.mod_to_pitch), (3600, 100))
+            self.assertAlmostEqual(r.mod_attack, 0.010, places=4)
+            self.assertAlmostEqual(r.mod_hold, 0.100, places=4)
+            self.assertAlmostEqual(r.mod_decay, 0.5, places=4)
+            self.assertAlmostEqual(r.mod_release, 1.0, places=4)
+            self.assertAlmostEqual(r.mod_sustain, 0.0)
+            r = bank.regions(0, 3, 60, 100)[0]
+            self.assertEqual(r.vibrato_to_pitch, 30)
+            self.assertAlmostEqual(r.vibrato_rate, 5.0, delta=0.01)
+            self.assertAlmostEqual(r.vibrato_delay, 0.25, places=4)
+            self.assertAlmostEqual(r.lfo_rate, 2.0, delta=0.01)
+            self.assertEqual((r.lfo_to_pitch, r.lfo_to_cutoff), (-20, 1200))
+            self.assertAlmostEqual(r.lfo_to_volume, -6.0)
+
     def test_not_a_soundfont(self):
         path = os.path.join(self.tmp, "junk.sf2")
         with open(path, "wb") as f:

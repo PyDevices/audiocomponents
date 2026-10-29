@@ -220,7 +220,10 @@ class SoundFontInstrumentTest(unittest.TestCase):
         self.assertAlmostEqual(voice.pitch, ratio * 2 ** (2 / 12.0),
                                places=4)
         level = player.slots[slot][4]
-        self.assertAlmostEqual(voice.level, level * 100 / 127.0, places=5)
+        # Volume at 100 and Control Change 7 at its default 100.
+        self.assertAlmostEqual(voice.level,
+                               level * 100 / 127.0 * (100 / 127.0) ** 2,
+                               places=5)
         self.inst.set_macro(0, 0)
         self.assertEqual(voice.level, 0.0)
         self.inst.set_macro(1, 127)

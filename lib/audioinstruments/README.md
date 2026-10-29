@@ -269,7 +269,12 @@ the error names all three. Patch n is Program Change n in bank 0, named
 from the bank, and Bank Select (CC 0 and 32) reaches the other melodic
 banks on the next program change. Four macros: Volume, Attack, Release
 (each scaling the bank's own envelope) and Tune (a semitone either way).
-The module docstring says how attenuation is scaled and why.
+Each note plays its region's low-pass filter, modulation envelope and two
+LFOs, with the SoundFont 2.04 default modulators over them: velocity
+darkens a filtered region, the mod wheel and channel pressure add vibrato,
+and Control Change 7 and 11 set the level. A bank's own modulators are not
+applied. The module docstring has the details, and how attenuation is
+scaled and why.
 
 Each instrument has 32 voices of its own (`voices=` to `create()` asks for
 another number, and `inst.voices` says how many it has). For a General MIDI

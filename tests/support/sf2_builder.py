@@ -215,3 +215,49 @@ def tiny_bank(modulators=()):
         [(G.GEN_SAMPLE_MODES, 0), (G.GEN_INSTRUMENT, pad)],
     ])
     return b
+
+
+# The filter bank's one sample: a sawtooth with an 84-frame period (262.5 Hz
+# at 22050 Hz, near C4), every harmonic present for a low-pass to take.
+SAW_PERIOD = 84
+
+
+def _saw(periods):
+    return [int((i % SAW_PERIOD) * 600 - 25000)
+            for i in range(SAW_PERIOD * periods)]
+
+
+def filter_bank():
+    """A bank whose regions use the rest of a voice: one looped sawtooth,
+    played open, through a resonant low-pass, through one a modulation
+    envelope sweeps, and with a vibrato LFO. See
+    `tests/test_cpython_soundfont_modulation.py`."""
+    b = Bank("Filter Test Bank")
+    G = sf2
+    saw = b.sample("saw", _saw(40), 0, SAW_PERIOD * 40, pitch=60)
+    loop = (G.GEN_SAMPLE_MODES, 1)
+    open_ = b.instrument("Open", [[loop, (G.GEN_SAMPLE_ID, saw)]])
+    # 9023 absolute cents is 1500 Hz; 60 centibels is 6 dB of resonance.
+    shut = b.instrument("Filtered", [
+        [(G.GEN_FILTER_FC, 9023), (G.GEN_FILTER_Q, 60), loop,
+         (G.GEN_SAMPLE_ID, saw)]])
+    # Closed at 600 Hz, opened three octaves by an envelope that decays to
+    # nothing over about half a second; a little pitch on the same envelope.
+    swept = b.instrument("Swept", [
+        [(G.GEN_FILTER_FC, 7437), (G.GEN_MOD_ENV_TO_FILTER_FC, 3600),
+         (G.GEN_MOD_ENV_TO_PITCH, 100), (G.GEN_DECAY_MOD_ENV, -1200),
+         (G.GEN_SUSTAIN_MOD_ENV, 1000), (G.GEN_RELEASE_MOD_ENV, 0),
+         (G.GEN_ATTACK_MOD_ENV, -7973), (G.GEN_HOLD_MOD_ENV, -3986),
+         loop, (G.GEN_SAMPLE_ID, saw)]])
+    # A 5 Hz vibrato of 30 cents after a quarter second, and a modulation
+    # LFO at 2 Hz on pitch, cutoff and volume.
+    lfo = b.instrument("LFOs", [
+        [(G.GEN_VIB_LFO_TO_PITCH, 30), (G.GEN_FREQ_VIB_LFO, -851),
+         (G.GEN_DELAY_VIB_LFO, -2400), (G.GEN_MOD_LFO_TO_PITCH, -20),
+         (G.GEN_MOD_LFO_TO_FILTER_FC, 1200), (G.GEN_MOD_LFO_TO_VOLUME, -60),
+         (G.GEN_FREQ_MOD_LFO, -2438), loop, (G.GEN_SAMPLE_ID, saw)]])
+    b.preset("Open", 0, 0, [[(G.GEN_INSTRUMENT, open_)]])
+    b.preset("Filtered", 0, 1, [[(G.GEN_INSTRUMENT, shut)]])
+    b.preset("Swept", 0, 2, [[(G.GEN_INSTRUMENT, swept)]])
+    b.preset("LFOs", 0, 3, [[(G.GEN_INSTRUMENT, lfo)]])
+    return b

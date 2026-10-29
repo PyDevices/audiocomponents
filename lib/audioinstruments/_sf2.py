@@ -22,8 +22,19 @@ does the same for the preset's local zones; and preset-level generators are
 *added* to the instrument's values, except key and velocity ranges, which
 intersect, and the generators the specification forbids at preset level
 (sample addresses, sampleModes, exclusiveClass, overridingRootKey, keynum,
-velocity), which are ignored there. Modulators are not implemented; the
-reader only records whether a bank carries any (`has_modulators`).
+velocity), which are ignored there. A bank's own modulators are not read;
+the reader only records whether a bank carries any (`has_modulators`). The
+specification's default modulators belong to whoever plays the region:
+`audioinstruments.soundfont` applies them.
+
+Besides the volume envelope, a region carries the rest of what a bank says
+about a note: the low-pass (`filter_cutoff` in absolute cents and
+`filter_q` in centibels, as written, and `filter_hz` and `resonance` in Hz
+and dB), the modulation envelope (`mod_delay` ... `mod_release` in seconds
+and `mod_sustain` as a level, with `mod_to_pitch` and `mod_to_cutoff` in
+cents), the vibrato LFO (`vibrato_delay`, `vibrato_rate` in Hz,
+`vibrato_to_pitch` in cents) and the modulation LFO (`lfo_delay`,
+`lfo_rate`, `lfo_to_pitch`, `lfo_to_cutoff`, and `lfo_to_volume` in dB).
 
 Samples stay on disk. The reader keeps the `smpl` chunk's offset and
 `read_sample()` reads a region's frames when asked, which is what a board
@@ -48,10 +59,28 @@ GEN_END_OFFSET = 1
 GEN_STARTLOOP_OFFSET = 2
 GEN_ENDLOOP_OFFSET = 3
 GEN_START_COARSE = 4
+GEN_MOD_LFO_TO_PITCH = 5
+GEN_VIB_LFO_TO_PITCH = 6
+GEN_MOD_ENV_TO_PITCH = 7
 GEN_FILTER_FC = 8
 GEN_FILTER_Q = 9
+GEN_MOD_LFO_TO_FILTER_FC = 10
+GEN_MOD_ENV_TO_FILTER_FC = 11
 GEN_END_COARSE = 12
+GEN_MOD_LFO_TO_VOLUME = 13
 GEN_PAN = 17
+GEN_DELAY_MOD_LFO = 21
+GEN_FREQ_MOD_LFO = 22
+GEN_DELAY_VIB_LFO = 23
+GEN_FREQ_VIB_LFO = 24
+GEN_DELAY_MOD_ENV = 25
+GEN_ATTACK_MOD_ENV = 26
+GEN_HOLD_MOD_ENV = 27
+GEN_DECAY_MOD_ENV = 28
+GEN_SUSTAIN_MOD_ENV = 29
+GEN_RELEASE_MOD_ENV = 30
+GEN_KEYNUM_TO_MOD_ENV_HOLD = 31
+GEN_KEYNUM_TO_MOD_ENV_DECAY = 32
 GEN_DELAY_VOL_ENV = 33
 GEN_ATTACK_VOL_ENV = 34
 GEN_HOLD_VOL_ENV = 35
@@ -87,6 +116,13 @@ SAMPLE_ROM = 0x8000
 # 8.1.3). Everything absent here defaults to zero.
 _DEFAULTS = {
     GEN_FILTER_FC: 13500,
+    GEN_DELAY_MOD_LFO: -12000,
+    GEN_DELAY_VIB_LFO: -12000,
+    GEN_DELAY_MOD_ENV: -12000,
+    GEN_ATTACK_MOD_ENV: -12000,
+    GEN_HOLD_MOD_ENV: -12000,
+    GEN_DECAY_MOD_ENV: -12000,
+    GEN_RELEASE_MOD_ENV: -12000,
     GEN_DELAY_VOL_ENV: -12000,
     GEN_ATTACK_VOL_ENV: -12000,
     GEN_HOLD_VOL_ENV: -12000,
@@ -226,6 +262,23 @@ class Region(object):
         self.filter_cutoff = 13500
         self.filter_q = 0
         self.filter_hz = 0.0
+        self.resonance = 0.0
+        self.mod_delay = 0.0
+        self.mod_attack = 0.0
+        self.mod_hold = 0.0
+        self.mod_decay = 0.0
+        self.mod_sustain = 1.0
+        self.mod_release = 0.0
+        self.mod_to_pitch = 0
+        self.mod_to_cutoff = 0
+        self.vibrato_delay = 0.0
+        self.vibrato_rate = 8.176
+        self.vibrato_to_pitch = 0
+        self.lfo_delay = 0.0
+        self.lfo_rate = 8.176
+        self.lfo_to_pitch = 0
+        self.lfo_to_cutoff = 0
+        self.lfo_to_volume = 0.0
         self.generators = None
 
     def __repr__(self):
@@ -663,4 +716,30 @@ class SoundFont(object):
         r.filter_cutoff = gen(GEN_FILTER_FC)
         r.filter_q = gen(GEN_FILTER_Q)
         r.filter_hz = cents_to_hz(r.filter_cutoff)
+        r.resonance = max(0, r.filter_q) / 10.0
+
+        # The modulation envelope: the volume envelope's timing, its sustain
+        # in tenths of a percent below full scale (section 8.1.3, #29).
+        r.mod_delay = timecents_to_seconds(gen(GEN_DELAY_MOD_ENV))
+        r.mod_attack = timecents_to_seconds(gen(GEN_ATTACK_MOD_ENV))
+        r.mod_hold = timecents_to_seconds(
+            gen(GEN_HOLD_MOD_ENV)
+            + (60 - played) * gen(GEN_KEYNUM_TO_MOD_ENV_HOLD))
+        r.mod_decay = timecents_to_seconds(
+            gen(GEN_DECAY_MOD_ENV)
+            + (60 - played) * gen(GEN_KEYNUM_TO_MOD_ENV_DECAY))
+        sustain = gen(GEN_SUSTAIN_MOD_ENV)
+        r.mod_sustain = 1.0 - min(1000, max(0, sustain)) / 1000.0
+        r.mod_release = timecents_to_seconds(gen(GEN_RELEASE_MOD_ENV))
+        r.mod_to_pitch = gen(GEN_MOD_ENV_TO_PITCH)
+        r.mod_to_cutoff = gen(GEN_MOD_ENV_TO_FILTER_FC)
+
+        r.vibrato_delay = timecents_to_seconds(gen(GEN_DELAY_VIB_LFO))
+        r.vibrato_rate = cents_to_hz(gen(GEN_FREQ_VIB_LFO))
+        r.vibrato_to_pitch = gen(GEN_VIB_LFO_TO_PITCH)
+        r.lfo_delay = timecents_to_seconds(gen(GEN_DELAY_MOD_LFO))
+        r.lfo_rate = cents_to_hz(gen(GEN_FREQ_MOD_LFO))
+        r.lfo_to_pitch = gen(GEN_MOD_LFO_TO_PITCH)
+        r.lfo_to_cutoff = gen(GEN_MOD_LFO_TO_FILTER_FC)
+        r.lfo_to_volume = gen(GEN_MOD_LFO_TO_VOLUME) / 10.0
         return r
