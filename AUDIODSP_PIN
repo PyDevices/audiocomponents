@@ -446,5 +446,20 @@
 # component builds on renders differently. The pyproject floors rise to
 # >=0.6.9.
 #
+# Moved to 9f078c4 on 2026-10-29, for the sampler's filter, modulation
+# envelope and LFOs (audiodsp#337), which `soundfont` now hands every
+# region's own to. CI installs audiodsp from this pin and nothing else, so
+# without it play() refuses the new keywords. Named by commit; no release
+# carries it yet. What else moved beneath the components, by `git log
+# v0.6.9..9f078c4 -- src`: audiofeatures is new; audiograph becomes an
+# audio sample the pump pulls, gains a clipping two-pole filter, an
+# overdrive, an exponential VCA curve and a TANH node, and pages its tables;
+# audiobiquad takes buffer_size; and the CircuitPython modules are resynced
+# with 11.0.0-alpha.2. No node a component builds on renders differently,
+# and a sampler voice that sets none of the new keywords renders the bytes
+# it did. Re-run here at the pin: the SoundFont tests (sf2, soundfont,
+# soundfont_modulation, and the General MIDI gate on FluidR3_GM),
+# validate_api 55 instruments and 45 effects, flake8.
+#
 # <ref> <commit>   -- ref is what CI installs (git+https://...@<ref>)
-v0.6.9 4de7609268d0ade9aaf652e232a0ffb1bae9e8ec
+9f078c4d37a7909e8a37d1a07ae9ad674e5ec4fb 9f078c4d37a7909e8a37d1a07ae9ad674e5ec4fb
