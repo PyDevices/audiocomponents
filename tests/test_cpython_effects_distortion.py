@@ -915,12 +915,18 @@ class TestDistortionGuardsAreNotOnTheSurface(unittest.TestCase):
     GRID = (0, 16, 32, 48, 64, 80, 96, 112, 127)
 
     def _sweep(self, criterion, faulted, held=(), patches=None,
-               scoop=False):
+               scoop=False, rat_only=False):
         """Walk every macro the row does not hold, plus the patches.
 
         Returns `(restored, checked, claimed)`: positions where the fault
         passes the row **and** the clean class passes it, how many were
         visited, and how many of those the clean class holds.
+
+        `rat_only` leaves out the Character positions that build the DS-1
+        graph instead (64 and up), for a fault planted in the Rat's
+        `_push_filter`, which that graph never calls: there the faulted
+        build is the clean one, and it can only pass where the clean one
+        does.
         """
         restored, checked, claimed = [], 0, 0
         options = {"character": 1.0} if scoop else {}
@@ -928,6 +934,8 @@ class TestDistortionGuardsAreNotOnTheSurface(unittest.TestCase):
             if index in held:
                 continue
             for position in self.GRID:
+                if rat_only and index == CHAR and position >= 64:
+                    continue
                 checked += 1
                 clean = _reading(criterion, Distortion,
                                  macros={index: position}, **options)
@@ -977,14 +985,23 @@ class TestDistortionGuardsAreNotOnTheSurface(unittest.TestCase):
         `pre_gain` at 8.0, which Body 64 and shipped patch 5 reach from the
         panel - so the default clause cannot tell them apart there - but
         the row also says Distortion 0 is clean, and a forced drive is not
-        clean at Distortion 0 anywhere."""
-        restored, checked, claimed = self._sweep(_f4_at, AlwaysDriven)
-        self.assertEqual(checked, 101)
+        clean at Distortion 0 anywhere.
+
+        Character 64 and up is the DS-1 graph, which the fault does not
+        touch. The clean class failed F4 there until the integer mixer:
+        Distortion 0 read -60.8 dB THD on the float mixer, whose truncation
+        toward zero added the distortion, and reads -70.8 dB now, inside
+        the row. So those five positions are left out, not counted green.
+        """
+        restored, checked, claimed = self._sweep(_f4_at, AlwaysDriven,
+                                                 rat_only=True)
+        self.assertEqual(checked, 96)
         self.assertGreater(claimed, 40)
         self.assertEqual(restored, [])
 
     def test_no_drive_is_red_everywhere_f4_is_claimed(self):
-        restored, _checked, claimed = self._sweep(_f4_at, NoDrive)
+        restored, _checked, claimed = self._sweep(_f4_at, NoDrive,
+                                                  rat_only=True)
         self.assertGreater(claimed, 40)
         self.assertEqual(restored, [])
 
