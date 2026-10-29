@@ -757,10 +757,17 @@ def _audiodsp_pin():
 
 def _audiodsp_installed():
     try:
-        from importlib.metadata import version
-        return version("pydevices-audiodsp")
-    except Exception:
+        from importlib.metadata import PackageNotFoundError, version
+    except ImportError:
         return "not found"
+    # audiodsp was published as pydevices-audiodsp until it was renamed
+    # omnipython-audiodsp; a pin may name either side of the rename.
+    for dist in ("omnipython-audiodsp", "pydevices-audiodsp"):
+        try:
+            return version(dist)
+        except PackageNotFoundError:
+            pass
+    return "not found"
 
 
 def _instrument_advice(name):
@@ -769,8 +776,7 @@ def _instrument_advice(name):
             " probes.json records them at the audiodsp release AUDIODSP_PIN"
             " names: install audiodsp at %s (this interpreter has %s), for"
             " example"
-            ' pip install "pydevices-audiodsp @'
-            ' git+https://github.com/PyDevices/audiodsp@%s".'
+            ' pip install "git+https://github.com/PyDevices/audiodsp@%s".'
             % (pin, _audiodsp_installed(), pin))
 
 

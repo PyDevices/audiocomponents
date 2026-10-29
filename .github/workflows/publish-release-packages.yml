@@ -46,10 +46,13 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "audiodsp pinned at $tag"
 
+      # No distribution name in the requirement: the pinned commit's own
+      # pyproject.toml names it (pydevices-audiodsp before the rename,
+      # omnipython-audiodsp after), as in tests.yml.
       - name: Install audiodsp at the pin
         run: >-
           python -m pip install
-          "pydevices-audiodsp @ git+https://github.com/PyDevices/audiodsp@${{ steps.pin.outputs.tag }}"
+          "git+https://github.com/PyDevices/audiodsp@${{ steps.pin.outputs.tag }}"
 
       # numpy: two tests need it (test_cpython_asym_table through the ulab
       # bridge, test_rig_comparator directly); the packages themselves do not.
@@ -57,7 +60,7 @@ jobs:
       - run: python -m pip install numpy pytest pytest-xdist
 
       # --no-deps is load-bearing: without it a floor raised above the pinned
-      # release re-resolves pydevices-audiodsp from the index and every
+      # release re-resolves audiodsp from the index and every
       # measurement is taken against a core AUDIODSP_PIN does not name -- the
       # failure the pin exists to prevent, arriving through packaging. Do not
       # drop the flag.

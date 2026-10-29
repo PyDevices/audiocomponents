@@ -145,7 +145,7 @@ def main():
         help="pip requirement for audiodsp (default: the AUDIODSP_PIN commit)")
     args = parser.parse_args()
     audiodsp = args.audiodsp or (
-        "pydevices-audiodsp @ git+https://github.com/PyDevices/audiodsp@"
+        "git+https://github.com/PyDevices/audiodsp@"
         + audiodsp_pin())
 
     failures = []

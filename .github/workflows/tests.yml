@@ -107,15 +107,19 @@ jobs:
           path: .audiodsp-wheel
           key: audiodsp-wheel-v1-${{ steps.pin.outputs.tag }}-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python }}
 
+      # The requirement carries no distribution name: audiodsp was renamed
+      # from pydevices-audiodsp to omnipython-audiodsp, and the name pip
+      # checks must be the one the pinned commit declares. Without a name,
+      # pip reads it from that commit's pyproject.toml.
       - name: Build the audiodsp wheel at the pin
         if: steps.audiodsp-wheel.outputs.cache-hit != 'true'
         run: >-
           python -m pip wheel --no-deps --wheel-dir .audiodsp-wheel
-          "pydevices-audiodsp @ git+https://github.com/PyDevices/audiodsp@${{ steps.pin.outputs.tag }}"
+          "git+https://github.com/PyDevices/audiodsp@${{ steps.pin.outputs.tag }}"
 
       - name: Install audiodsp at the pin
         shell: bash
-        run: python -m pip install .audiodsp-wheel/pydevices_audiodsp-*.whl
+        run: python -m pip install .audiodsp-wheel/*audiodsp-*.whl
 
       # Editable, so the tests exercise lib/ directly rather than a copy, and
       # so each package's own pyproject.toml is exercised too.
@@ -126,7 +130,7 @@ jobs:
       - run: python -m pip install numpy pytest pytest-xdist
 
       # --no-deps is load-bearing: without it a floor raised above the pinned
-      # release re-resolves pydevices-audiodsp from the index and every
+      # release re-resolves audiodsp from the index and every
       # measurement is taken against a core AUDIODSP_PIN does not name -- the
       # failure the pin exists to prevent, arriving through packaging. Do not
       # drop the flag.

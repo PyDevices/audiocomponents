@@ -32,7 +32,7 @@ the pin: `AUDIODSP_PIN` may name a commit ahead of it, and the gates use the pin
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install "pydevices-audiodsp @ git+https://github.com/PyDevices/audiodsp@v0.6.9"
+.venv/bin/pip install "git+https://github.com/PyDevices/audiodsp@v0.6.9"
 .venv/bin/pip install -e lib/audioinstruments -e lib/audioeffects
 ```
 
