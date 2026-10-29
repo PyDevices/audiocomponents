@@ -172,11 +172,16 @@ def render(cls, values, rate, channels=2, frames=None, moves=None,
 
 
 class CopyFromMid(StereoWidener):
-    """H1: the copy is built from the mid (`input_pan=+1`), not the right."""
+    """H1: the copy is built from the mid (`input_pan=+1`), not the right:
+    the line is fed both channels, and folds them into its right."""
 
     def _build_graph(self):
         StereoWidener._build_graph(self)
         self._line.set(input_pan=1.0)
+
+    def _wire(self):
+        StereoWidener._wire(self)
+        self._feed.voice[0].panning = 0.0
 
 
 class BackwardsPan(StereoWidener):

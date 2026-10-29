@@ -16,10 +16,11 @@ from .digitaldelay import whole_frames
 
 try:
     import audioecho
+    import audiomath
     import audiomixer
     import audioroute
 except ImportError:                     # pragma: no cover - a stock board
-    audioecho = audiomixer = audioroute = None
+    audioecho = audiomath = audiomixer = audioroute = None
 
 
 #: The Delay span, in ms, swept by ratio.
@@ -33,9 +34,22 @@ LINE_MS = DELAY_MAX_MS + 1.0
 #: 3/16, exact in every float format, a pitch bend of x1.1875 while it moves.
 SLEW = 0.1875
 
-#: The hardest a Mixer voice pans: the right (or left) scale is then exactly
-#: 0, where a panning of -1 or +1 leaves one LSB of it.
+#: The hardest a Mixer voice pans. The integer mixer clamps any panning to
+#: this, and its far channel keeps a scale of 1/32768: a voice at level 1
+#: then hands that channel `x >> 15`, which is -1 for every negative sample
+#: and 0 otherwise. `SIGN` and `NEGATE` build the +1 that cancels it.
 HARD = 32767.0 / 32768.0
+
+#: The two modulators the cancelling branch multiplies by, in
+#: `audiomath.Multiply`'s Q15: 1 turns a sample into the far channel's
+#: `x >> 15` (-1 below zero, else 0), and -32768 turns that into +1 or 0,
+#: exactly.
+SIGN = 1
+NEGATE = -32768
+
+#: Frames in each modulator table: more than one, so the native mixer and
+#: Multiply never take a table shorter than the word they consume.
+TABLE_FRAMES = 16
 
 #: The frames a mixer pull hands out, and so the frames each voice and each
 #: Splitter tap take per pull.
@@ -143,7 +157,7 @@ class StereoWidener(_component.Component):
     VERSION = '0.1.0'
 
     TIER = _component.AUDIODSP
-    REQUIRES = ("audioecho", "audioroute")
+    REQUIRES = ("audioecho", "audiomath", "audioroute")
 
     CAPABILITIES = ()
     LATENCY_SAMPLES = 0
@@ -235,17 +249,41 @@ class StereoWidener(_component.Component):
         self._hush = self._own(audioroute.MidSide(
             width=1.0, sample_rate=rate, channel_count=2), reset=False)
         self._in = self._own(audioroute.Port(self._hush), reset=False)
-        self._split = self._own(audioroute.Splitter(self._in, taps=2),
+        # Tap 0 is the lead, tap 1 what the line delays, tap 2 the
+        # cancelling branch.
+        self._split = self._own(audioroute.Splitter(self._in, taps=3),
                                 reset=False)
+        # The cancelling branch: +1 on each channel whose sample is below
+        # zero, else 0. A hard-panned voice at level 1 leaves -1 in its far
+        # channel on exactly those samples (`HARD`), and this puts it back.
+        self._sign = self._own(audiomath.Multiply(
+            self._split.tap(2), self._table(SIGN), mix=1.0,
+            sample_rate=rate, channel_count=2), reset=False)
+        self._negate = self._own(audiomath.Multiply(
+            self._sign, self._table(NEGATE), mix=1.0,
+            sample_rate=rate, channel_count=2), reset=False)
+        self._fix = self._own(audioroute.Splitter(self._negate, taps=2),
+                              reset=False)
+        # What the line delays: the right channel, and an exact zero in the
+        # left, so the copy's hard pan has nothing negative to leave there.
+        self._feed = self._own(audiomixer.Mixer(
+            voice_count=2, buffer_size=BLOCK * 2 * 4, channel_count=2,
+            bits_per_sample=16, samples_signed=True, sample_rate=rate),
+            reset=False)
+        # The Mixer's own reset never reaches it, for the reason `_tail`
+        # gives.
+        self._fed = self._own(audioroute.MidSide(
+            self._feed, width=1.0, sample_rate=rate, channel_count=2),
+            reset=False)
         self._line = self._own(audioecho.FeedbackDelay(
             sample_rate=rate, channel_count=2, max_delay_ms=LINE_MS,
             delay_frames=1, feedback=0.0, mix=2.0, damping_hz=0.0,
             cut_hz=0.0, delay_slew=SLEW), reset=self._clear)
-        self._line.play(self._split.tap(1))
+        self._line.play(self._fed)
         # Not reset by the walk: neither voice holds a block between two
         # pulls (`_wire`), so there is nothing of its own to clear.
         self._mixer = self._own(audiomixer.Mixer(
-            voice_count=2, buffer_size=BLOCK * 2 * 4, channel_count=2,
+            voice_count=3, buffer_size=BLOCK * 2 * 4, channel_count=2,
             bits_per_sample=16, samples_signed=True, sample_rate=rate),
             reset=False)
         # The Haas output: a width-1 MidSide, byte for byte, whose reset
@@ -264,6 +302,14 @@ class StereoWidener(_component.Component):
         self._puller = None
         self._output = self._ms
 
+    def _table(self, value):
+        """A looping stereo modulator that is `value` in both channels."""
+        table = audiocore.RawSample(
+            array("h", [value] * (2 * TABLE_FRAMES)),
+            sample_rate=self._sample_rate, channel_count=2)
+        self._tables = getattr(self, "_tables", ()) + (table,)
+        return table
+
     def _wire(self):
         """Play the voices, the first time the output reaches the mixer.
 
@@ -277,12 +323,20 @@ class StereoWidener(_component.Component):
         block read at a Delay the line has since left. The level gates are
         opened first, as `_component.open_level_gates` opens them."""
         voices = self._mixer.voice
+        feeds = self._feed.voice
         self._levels()
-        for voice in voices:
+        # The line's voices: the source panned hard right, and the
+        # cancelling branch's left, which together leave the left at 0.
+        feeds[0].level, feeds[0].panning = 1.0, HARD
+        feeds[1].level, feeds[1].panning = 1.0, -HARD
+        for voice in voices + feeds:
             voice.play(self._silence, loop=True)
         self._pull()
+        feeds[0].play(self._split.tap(1))
+        feeds[1].play(self._fix.tap(0))
         voices[0].play(self._split.tap(0))
         voices[1].play(self._line)
+        voices[2].play(self._fix.tap(1))
         self._pull()
         self._in.play(self._ms)
         self._clear()
@@ -350,6 +404,11 @@ class StereoWidener(_component.Component):
         voices = self._mixer.voice
         voices[0].level, voices[0].panning = lead
         voices[1].level, voices[1].panning = copy
+        # The lead at unity panned hard left leaves -1 in the right on
+        # every negative sample; the cancelling branch, panned hard right,
+        # adds it back. Anywhere else the lead's right is a real level.
+        voices[2].level = 1.0 if lead == (1.0, -HARD) else 0.0
+        voices[2].panning = HARD
 
     # -- applying ------------------------------------------------------
 
