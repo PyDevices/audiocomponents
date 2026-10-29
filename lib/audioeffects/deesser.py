@@ -41,14 +41,15 @@ test file ties its claim sentences to tests.
 #   902's claim, and this class's, is that the same setting works on a
 #   whisper and a belt. Measured over the Sensitivity macro's whole travel on
 #   one spectral balance at four absolute levels, the reductions agree within
-#   0.316 dB across -6, -20 and -40 dBFS - well inside the trait's 1 dB -
-#   and within 0.366 dB at both HF-only patches. Add a -55 dBFS take and
-#   the spread reaches 2.643 dB, because at that level the `1 - Range`
-#   dry voice is a handful of LSB and the 16-bit mixer truncates it: the same
-#   blend with the gain cell muted already spreads 0.643 to 1.253 dB with no
-#   detector in the sum. So dossier D1 is demonstrated to -40 dBFS and
+#   0.213 dB across -6, -20 and -40 dBFS - well inside the trait's 1 dB -
+#   and within 0.090 dB at both HF-only patches. Add a -55 dBFS take and
+#   the spread reaches 1.176 dB at Sensitivity 45 dB, because at that level
+#   the `1 - Range` dry voice is a handful of LSB and the 16-bit mixer
+#   rounds it. With the -55 take, patch 3 holds D1 (0.583 dB) and patch 4
+#   misses it (1.321 dB). So dossier D1 is demonstrated to -40 dBFS and
 #   disconfirmed at -55; the cause is the palette's int16 path, not the
-#   relative threshold.
+#   relative threshold. (CircuitPython 10's float mixer, which truncated
+#   toward zero, spread 2.643 dB and missed at both HF-only patches.)
 # * The 902's release is a constant 925 dB/sec - a straight *line* in
 #   dB. `audiodynamics` releases with a one-pole in linear gain, so the rate
 #   can be tuned to the 902's and the shape cannot. `Release` is therefore in

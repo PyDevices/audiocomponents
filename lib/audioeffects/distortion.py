@@ -58,7 +58,10 @@ class's test file ties its claim sentences to tests.
 # side, through `Biquad.mix`, and costs no node. Priced sum 1.849 / 3.323 ms
 # + glue 0.0 -> **P4 <= 35 %, S3 <= 63 %**, re-derived 2026-09-17 from a
 # graph three nodes smaller than the 2.245 / 4.128 (43 % / 78 %) one the
-# board ran. At 22.05 kHz the same graph runs the shaper at x8 and the block
+# board ran. Since the integer mixer the two levels are set on two x1
+# `Waveshaper` level nodes, which round, with the mixer voices at an exact 1
+# (`LEVEL_LINE`); those two nodes are not in the priced sum, and no board
+# has timed them. At 22.05 kHz the same graph runs the shaper at x8 and the block
 # is 11.61 ms, so it is 2.868 / 5.126 ms -> **25 % / 45 %**: fewer node
 # sums per second than 48 kHz, not more. Constructor `oversample=2` is
 # 26 % / 47 %; it is not a patch.
@@ -401,6 +404,16 @@ _CURVE_DS1_ASYM = bytes.fromhex(
 )
 # END CURVE DS1_ASYM
 V_SCALE = 10.0
+
+#: The Rat's leg levels are set in float, not in the leg mixer. They are
+#: below unity and sit ahead of up to 67 dB of gain, and an integer mixer
+#: voice floors `x * level`, which is half an LSB of DC on every sample that
+#: is not a multiple of the step: at Distortion max a 4 LSB input stood at
+#: -0.070 of the output's full scale. A `Waveshaper` at x1 on this two-point
+#: straight line, at a `post_gain` of `level * LEVEL_GAIN`, rounds to the
+#: nearest LSB instead, so it adds no bias; at a level of 1 it is exact.
+LEVEL_LINE = array("h", (-32767, 32767))
+LEVEL_GAIN = 32768.0 / 32767.0
 GBW_HZ = 320000.0
 R_GAIN = 100000.0
 R_BODY_STOCK = 47.0
@@ -709,6 +722,14 @@ class Distortion(_component.Component):
             channel_count=self._channel_count)
         return self._own(node)
 
+    def _level_node(self, level):
+        node = audioshaper.Waveshaper(
+            sample_rate=self._sample_rate,
+            channel_count=self._channel_count,
+            curve=LEVEL_LINE, oversample=1, pre_gain=1.0,
+            post_gain=_f32(level * LEVEL_GAIN), mix=1.0, bias=0.0)
+        return self._own(node)
+
     def _wire(self, voice, source):
         """Remember what a mixer voice will play. Nothing is attached until
         `_connect`, because `Mixer.play` pulls a chunk there and then: a
@@ -790,11 +811,15 @@ class Distortion(_component.Component):
             self._leg_treble = self._hp(1539.0)
             self._leg_bass.play(legs.tap(0))
             self._leg_treble.play(legs.tap(1))
+            self._bass_level = self._level_node(1.0)
+            self._treble_level = self._level_node(0.0)
+            self._bass_level.play(self._leg_bass)
+            self._treble_level.play(self._leg_treble)
             self._leg_mix = self._mixer_node(2)
             self._leg_mix.voice[0].level = 1.0
-            self._leg_mix.voice[1].level = 0.0
-            self._wire(self._leg_mix.voice[0], self._leg_bass)
-            self._wire(self._leg_mix.voice[1], self._leg_treble)
+            self._leg_mix.voice[1].level = 1.0
+            self._wire(self._leg_mix.voice[0], self._bass_level)
+            self._wire(self._leg_mix.voice[1], self._treble_level)
             self._gain = self._leg_mix
             self._gbw = self._lp(1000.0)
             self._gbw.play(self._gain)
@@ -815,6 +840,8 @@ class Distortion(_component.Component):
             self._leg_mix = None
             self._leg_bass = None
             self._leg_treble = None
+            self._bass_level = None
+            self._treble_level = None
         if not scoop:
             self._out_hp = None
 
@@ -1120,11 +1147,12 @@ class Distortion(_component.Component):
         # crossfaded at a/(1+a), so its dry side is the follower. voice 1 is
         # b*HP(1539) at b/total. The two levels sum to 1 exactly, which is
         # where the 6 dB of clipper headroom over the old dry-minus-lowpass
-        # pair comes from.
+        # pair comes from. They are set on the level nodes, which round,
+        # and the mixer voices stay at an exact 1 (`LEVEL_LINE`).
         self._leg_bass.mix = a / (1.0 + a)
         self._leg_treble.mix = 1.0
-        self._leg_mix.voice[0].level = (1.0 + a) / total
-        self._leg_mix.voice[1].level = b / total
+        self._bass_level.set(post_gain=_f32((1.0 + a) / total * LEVEL_GAIN))
+        self._treble_level.set(post_gain=_f32(b / total * LEVEL_GAIN))
         boost = _component.db_to_gain(self.macro(BOOST))
         self._shaper.set(
             pre_gain=total * boost / V_SCALE,

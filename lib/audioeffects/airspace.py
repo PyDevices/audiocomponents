@@ -439,15 +439,10 @@ class AirSpace(_component.Component):
             self, (positions, patch_index, (list(kept[0]),)))
 
     def _dry_level(self, mix):
-        """The dry voice's level, min(1, 2 - Mix). At one channel unity is
-        handed as 1 - 2^-15, which every Mixer this class meets passes
-        through exactly: CircuitPython's own `audiomixer` turns 1.0 into
-        32768 / 32767 and puts the samples nearest the rails one LSB hot.
-        Two channels keep 1.0 (`MultiTapDelay._dry_level` has why)."""
-        level = 1.0 if mix <= 1.0 else 2.0 - mix
-        if level >= 1.0 and self._channel_count == 1:
-            return 1.0 - 2.0 ** -15
-        return level
+        """The dry voice's level, min(1, 2 - Mix). Unity is Q15 32768, which
+        a Mixer voice passes through exactly on every lane
+        (`MultiTapDelay._dry_level` has why)."""
+        return 1.0 if mix <= 1.0 else 2.0 - mix
 
     def _levels(self):
         mix = self._value(MIX_I)

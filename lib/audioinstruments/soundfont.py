@@ -34,6 +34,35 @@ sounding reads it outside the arena, just for that note. Where audiosampler
 has `SampleBuffer`, the arena's buffers sit outside the collected heap, so
 a `gc.collect()` doesn't read megabytes of samples looking for pointers.
 
+What a bank says, and what it doesn't. Each note plays with its region's
+volume envelope, low-pass filter (initial cutoff and resonance), modulation
+envelope (to pitch and cutoff), vibrato LFO and modulation LFO (to pitch,
+cutoff and volume), and the default modulators of the SoundFont 2.04
+specification (section 8.4) over them:
+
+- Note-on velocity to attenuation: the level goes as the square of the
+  velocity, which is how this instrument has always played velocity and
+  close to the specification's concave curve.
+- Note-on velocity to cutoff: down to 2400 cents (two octaves) lower at
+  velocity 0, linearly, so a softer note is darker. This applies only to a
+  region whose own filter is below its open 13500 cents: a region that
+  doesn't use its filter stays unfiltered at every velocity, and costs
+  nothing for it. The specification applies it to every region, which makes a
+  soft note on an unfiltered region darker too (5 kHz at velocity 0); here
+  such a region plays as the bank wrote it, on the sampler's cheaper path.
+- Mod wheel (Control Change 1) to vibrato depth: up to 50 cents at full
+  wheel, added to the region's own vibrato. Channel pressure does the same.
+- Volume (Control Change 7) and Expression (Control Change 11) to
+  attenuation, each by the same concave curve: the level goes as the square
+  of each. They start at 100 and 127, General MIDI's reset values, so a
+  channel that never sends Control Change 7 plays about 4 dB under full.
+- Pan (Control Change 10) and the pitch wheel, as described below.
+
+A bank's own modulators (its `pmod` and `imod` records), including any that
+would override these defaults, are not applied; the reader only notes
+whether a bank has any. Reverb and chorus sends (Control Change 91 and 93)
+have no effect here.
+
 Attenuation. A region's `initialAttenuation` is applied scaled by
 `ATTENUATION_SCALE` (0.4): the banks in circulation were voiced on players
 that scale it so, and played per the specification's centibels they come out
@@ -46,8 +75,9 @@ bipolar too: 64 is centre, 0 hard left, 127 hard right. It is an offset
 added to each region's own pan, so a stereo pair keeps its spread around
 the new centre, clamped at the edges. Moving it re-pans the voices already
 sounding, with the engine's ramp, and Control Change 10 on the instrument
-drives it, as it does Bank Select; the other GM controllers are the
-host's. A program change puts every macro back to the patch's defaults,
+drives it, as it does Bank Select. Control Change 1, 7 and 11 and channel
+pressure work as the default modulators above; the other GM controllers are
+the host's. A program change puts every macro back to the patch's defaults,
 Pan at centre.
 
 Thirty-two engine voices, one per region a note resolves to (a stereo pair
@@ -147,7 +177,7 @@ TAIL_MS = 100
 import audioinstruments._sf2 as _sf2
 from audioinstruments._support import (
     EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, EVENT_PITCH_BEND,
-    EVENT_CONTROL_CHANGE, key_of,
+    EVENT_CONTROL_CHANGE, EVENT_CHANNEL_PRESSURE, key_of,
 )
 from audioinstruments._support import Instrument
 
@@ -177,9 +207,27 @@ def _slab(nbytes):
 BEND_RANGE = 2.0
 
 _CC_BANK_MSB = 0
-_CC_BANK_LSB = 32
+_CC_MOD_WHEEL = 1
+_CC_VOLUME = 7
 _CC_PAN = 10
+_CC_EXPRESSION = 11
+_CC_BANK_LSB = 32
 _CC_SUSTAIN = 64
+
+#: The default modulators' amounts (SoundFont 2.04, section 8.4): velocity
+#: to cutoff, in cents at velocity 0; the mod wheel and channel pressure to
+#: vibrato depth, in cents at full scale.
+VELOCITY_TO_CUTOFF = -2400
+MOD_WHEEL_TO_VIBRATO = 50.0
+PRESSURE_TO_VIBRATO = 50.0
+
+#: A filter at or above this many absolute cents, with no resonance, is
+#: open: the specification's default, 19.9 kHz.
+OPEN_CUTOFF = 13500
+
+#: General MIDI's reset values for Control Change 7 and 11.
+DEFAULT_VOLUME = 100
+DEFAULT_EXPRESSION = 127
 
 
 def _bipolar(value0):
@@ -190,6 +238,24 @@ def _bipolar(value0):
     if midi >= 64.0:
         return (midi - 64.0) / 63.0
     return (midi - 64.0) / 64.0
+
+
+def _concave(value):
+    """A 0..127 controller as the gain of the specification's concave,
+    negative, unipolar curve over 96 dB: the square of its fraction."""
+    return (value / 127.0) ** 2
+
+
+def _voice_filter(region, velocity):
+    """(cutoff in Hz or None, resonance in dB) for `region` at `velocity`
+    (0..127), with the default velocity-to-cutoff modulator."""
+    cents = region.filter_cutoff
+    moved = region.mod_to_cutoff or region.lfo_to_cutoff
+    if cents >= OPEN_CUTOFF and region.resonance <= 0 and not moved:
+        return None, 0.0
+    if cents < OPEN_CUTOFF:
+        cents += VELOCITY_TO_CUTOFF * (1.0 - velocity / 127.0)
+    return _sf2.cents_to_hz(cents), region.resonance
 
 
 def _panned(region_pan, offset):
@@ -622,10 +688,11 @@ class Voices(object):
         self.channel_count = channel_count
         self.shared = shared
         #: `slots[i]` is engine voice i: None when free, else `[key, serial,
-        #: state, exclusive_class, level, pitch, pan, player]`, where `state`
-        #: is `HELD`, `RELEASING` or `FADED`, `level`, `pitch` and `pan` are
-        #: the region's own, before the live macros, and `player` is the
-        #: instrument's that holds it.
+        #: state, exclusive_class, level, pitch, pan, player, vibrato]`,
+        #: where `state` is `HELD`, `RELEASING` or `FADED`, `level`, `pitch`,
+        #: `pan` and `vibrato` (cents) are the region's own, before the live
+        #: macros and controllers, and `player` is the instrument's that
+        #: holds it.
         self.slots = [None] * int(voice_count)
         self._queue = None     # the writes waiting, while deferred
         self._pending = {}     # voice index -> playing, as the queue leaves it
@@ -836,6 +903,22 @@ class _Queued(object):
     def pan(self, value):
         self._send(setattr, (self._voice, "pan", value))
 
+    @property
+    def cutoff(self):
+        return self._voice.cutoff
+
+    @cutoff.setter
+    def cutoff(self, value):
+        self._send(setattr, (self._voice, "cutoff", value))
+
+    @property
+    def vibrato_depth(self):
+        return self._voice.vibrato_depth
+
+    @vibrato_depth.setter
+    def vibrato_depth(self, value):
+        self._send(setattr, (self._voice, "vibrato_depth", value))
+
 
 # --- the player ------------------------------------------------------------
 
@@ -865,6 +948,10 @@ class _Player(object):
         self.tune = 1.0
         self.bend = 1.0
         self.pan = 0.0
+        self.volume_cc = {}     # channel -> Control Change 7
+        self.expression = {}    # channel -> Control Change 11
+        self.wheel = {}         # channel -> vibrato cents from the mod wheel
+        self.pressure = {}      # channel -> vibrato cents from pressure
 
     # -- preset selection ---------------------------------------------------
 
@@ -952,6 +1039,10 @@ class _Player(object):
         serial = pool.serial
         voices = self.pool.voice
         detune_ratio = 2.0 ** (detune / 12.0) if detune else 1.0
+        channel = key[0]
+        controllers = self._controllers(channel)
+        extra_vibrato = (self.wheel.get(channel, 0.0)
+                         + self.pressure.get(channel, 0.0))
         # Choke before any of this note's regions start, so a stereo pair
         # in one class does not stop its own other half.
         for region in regions:
@@ -968,21 +1059,37 @@ class _Player(object):
                 vel = region.velocity / 127.0
             level = (region.attenuation ** ATTENUATION_SCALE) * vel * vel
             ratio = region.pitch_ratio * detune_ratio
+            cutoff, resonance = _voice_filter(region, vel * 127.0)
             i = self._allocate()
             voices[i].play(
                 pcm, rate=region.sample_rate,
                 pitch=ratio * self.tune * self.bend,
                 loop_start=loop_start, loop_end=loop_end, loop_mode=mode,
-                level=level * self.volume * pool.gain,
+                level=level * controllers * self.volume * pool.gain,
                 pan=_panned(region.pan, self.pan),
                 delay=region.delay,
                 attack=region.attack * self.attack_scale,
                 hold=region.hold, decay=region.decay,
                 sustain=region.sustain,
-                release=region.release * self.release_scale)
+                release=region.release * self.release_scale,
+                cutoff=cutoff, resonance=resonance,
+                mod_delay=region.mod_delay, mod_attack=region.mod_attack,
+                mod_hold=region.mod_hold, mod_decay=region.mod_decay,
+                mod_sustain=region.mod_sustain,
+                mod_release=region.mod_release * self.release_scale,
+                mod_to_pitch=region.mod_to_pitch,
+                mod_to_cutoff=region.mod_to_cutoff if cutoff else 0,
+                vibrato_delay=region.vibrato_delay,
+                vibrato_rate=region.vibrato_rate,
+                vibrato_depth=region.vibrato_to_pitch + extra_vibrato,
+                lfo_delay=region.lfo_delay, lfo_rate=region.lfo_rate,
+                lfo_to_pitch=region.lfo_to_pitch,
+                lfo_to_cutoff=region.lfo_to_cutoff if cutoff else 0,
+                lfo_to_volume=region.lfo_to_volume)
             self.bank.hold(voices[i], region.sample.index)
             self.slots[i] = [key, serial, HELD, region.exclusive_class,
-                             level, ratio, region.pan, self]
+                             level, ratio, region.pan, self,
+                             region.vibrato_to_pitch]
             indices.append(i)
         self.held[key] = indices
         if pool.reserve:
@@ -1036,11 +1143,29 @@ class _Player(object):
         for key in [k for k in self.sustained if k[0] == channel]:
             self.release(key)
 
-    def relevel(self):
+    def _controllers(self, channel):
+        """The gain Control Change 7 and 11 give `channel`."""
+        return (_concave(self.volume_cc.get(channel, DEFAULT_VOLUME))
+                * _concave(self.expression.get(channel, DEFAULT_EXPRESSION)))
+
+    def relevel(self, channel=None):
         voices = self.pool.voice
         for i, slot in enumerate(self.slots):
             if slot is not None and slot[7] is self and slot[2] != FADED:
-                voices[i].level = slot[4] * self.volume * self.pool.gain
+                if channel is not None and slot[0][0] != channel:
+                    continue
+                voices[i].level = (slot[4] * self._controllers(slot[0][0])
+                                   * self.volume * self.pool.gain)
+
+    def revibrato(self, channel):
+        """Give `channel`'s sounding notes the mod wheel and pressure's
+        vibrato over their region's own."""
+        extra = self.wheel.get(channel, 0.0) + self.pressure.get(channel, 0.0)
+        voices = self.pool.voice
+        for i, slot in enumerate(self.slots):
+            if (slot is not None and slot[7] is self
+                    and slot[0][0] == channel):
+                voices[i].vibrato_depth = slot[8] + extra
 
     def repitch(self):
         voices = self.pool.voice
@@ -1086,6 +1211,9 @@ class _Player(object):
         elif event_type == EVENT_PITCH_BEND:
             self.bend = 2.0 ** (value1 * BEND_RANGE / 12.0)
             self.repitch()
+        elif event_type == EVENT_CHANNEL_PRESSURE:
+            self.pressure[channel] = value0 * PRESSURE_TO_VIBRATO
+            self.revibrato(channel)
         elif event_type == EVENT_CONTROL_CHANGE:
             if data0 == _CC_BANK_MSB:
                 self.bank_msb = int(value0 * 127 + 0.5)
@@ -1093,6 +1221,15 @@ class _Player(object):
                 self.bank_lsb = int(value0 * 127 + 0.5)
             elif data0 == _CC_SUSTAIN:
                 self.sustain(channel, int(value0 * 127 + 0.5) >= 64)
+            elif data0 == _CC_MOD_WHEEL:
+                self.wheel[channel] = value0 * MOD_WHEEL_TO_VIBRATO
+                self.revibrato(channel)
+            elif data0 == _CC_VOLUME:
+                self.volume_cc[channel] = int(value0 * 127 + 0.5)
+                self.relevel(channel)
+            elif data0 == _CC_EXPRESSION:
+                self.expression[channel] = int(value0 * 127 + 0.5)
+                self.relevel(channel)
 
 
 class SoundFontInstrument(Instrument):
@@ -1151,6 +1288,9 @@ class SoundFontInstrument(Instrument):
     def reset(self):
         self._player.stop_all()
         self._player.bank_msb = self._player.bank_lsb = 0
+        for state in (self._player.volume_cc, self._player.expression,
+                      self._player.wheel, self._player.pressure):
+            state.clear()
         super().reset()
 
     @property

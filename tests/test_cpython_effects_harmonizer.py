@@ -177,20 +177,11 @@ def gains(mix):
     return (1.0 if mix <= 1.0 else 2.0 - mix), min(mix, 1.0)
 
 
-def f32(x):
-    """`x` rounded to single precision."""
-    import struct
-    return struct.unpack("f", struct.pack("f", x))[0]
-
-
 def mixer_scale(x, mul):
     """One sample through the Mixer's voice multiply at integer level `mul`
-    (32768 is unity): times `mul / 32767` in single precision, truncated
-    toward zero, clamped."""
-    if mul == 32768:
-        return x
-    y = int(f32(x * f32(mul / 32767.0)))
-    return max(-32768, min(32767, y))
+    (32768 is unity): CircuitPython 11.0.0-alpha.2's integer kernel,
+    (x * mul) >> 15, which rounds toward minus infinity, clamped."""
+    return max(-32768, min(32767, (x * mul) >> 15))
 
 
 def level_int(gain):
@@ -199,16 +190,16 @@ def level_int(gain):
 
 def pan_muls(level, pan):
     """(left, right) integer levels of a stereo voice at gain `level` and
-    pan `pan`: a pan right of centre attenuates the left, and the side that
-    is not attenuated still runs at 32767/32768 of the level at centre."""
+    pan `pan`: a pan right of centre attenuates the left, by 32768 - pan in
+    Q15, and the side that is not attenuated keeps the full level."""
     p = int(round(min(32767.0 / 32768, max(-32767.0 / 32768, pan))
                   * 32768.0))
     lvl = level_int(level)
     left, right = 32768, 32768
     if p >= 0:
-        left = 32767 - p
+        left = 32768 - p
     else:
-        right = 32767 + p
+        right = 32768 + p
     return (left * lvl) >> 15, (right * lvl) >> 15
 
 
