@@ -66,6 +66,16 @@ class's test file ties its claim sentences to tests.
 # `audiocore.get_buffer`, charges it too, and renders byte for byte what a
 # desktop does.
 #
+# **The offset is taken off ahead of the pole too.** On its own the pole's
+# float32 state stalls short of zero on a large constant, and at 44.1 kHz
+# shipped patch 6 came to rest at -1 LSB in silence once the Level stage
+# became an integer mixer. A second `Waveshaper` at x1 on a straight line
+# (`OFFSET_LINE`) subtracts the offset exactly, so the pole only ever holds
+# a few LSB: silence after a burst of noise or a sine is **0 at every
+# shipped patch at 48, 44.1, 22.05 and 96 kHz**. It moves patch 6's render
+# by at most 4 LSB and no other patch's at all, adds no latency, and is one
+# more x1 node on the clip branch that no board has timed.
+#
 # **Latency: zero samples** at every macro setting. The dry tap is a copy.
 # `oversample` puts group delay on the *clip branch only*: 3.3 samples at
 # x4, 3.9 at x8, which is **0.069 ms** at 48 kHz x4, **0.081 ms** at 48 kHz
@@ -474,6 +484,19 @@ def shipped_oversample(sample_rate):
 DC_BLOCK_HZ = 30.0
 DC_BLOCK_Q = 0.5
 
+#: The offset is also taken off *before* the pole, so the pole holds a few
+#: LSB rather than thousands. Its float32 recursion cannot step a large
+#: constant down by less than one rounding of it: fed shipped patch 6's
+#: offset at 44.1 kHz it came to rest at -0.7 LSB rather than on zero, which
+#: the Level stage's integer mixer floors to a standing -1 LSB for ever,
+#: and a burst of signal leaves it somewhere else in that band. The node
+#: that takes it off is a second `Waveshaper` at x1 on a straight line: a
+#: two-point curve at a `post_gain` of 32768 / 32767 plays `x + bias` back
+#: exactly, to the LSB, for every int16 `x`, so it adds no rounding to the
+#: clip branch and no latency.
+OFFSET_LINE = array("h", (-32767, 32767))
+OFFSET_GAIN = 32768.0 / 32767.0
+
 #: How many blocks `_settle_dc` will pull before it gives up. The pole needs
 #: about 3000 frames at 48 kHz; 64 blocks is 16384 frames, five times that.
 DC_SETTLE_BLOCKS = 64
@@ -637,6 +660,10 @@ class Overdrive(_component.Component):
         self._dc = audiobiquad.Biquad(
             mode=audiobiquad.HIGH_PASS, frequency=DC_BLOCK_HZ,
             Q=DC_BLOCK_Q, sample_rate=rate, channel_count=channels)
+        self._trim = audioshaper.Waveshaper(
+            sample_rate=rate, channel_count=channels, curve=OFFSET_LINE,
+            oversample=1, mix=1.0, pre_gain=1.0, post_gain=OFFSET_GAIN,
+            bias=0.0, hysteresis=0.0)
         # The clip branch is wired to the split *after* the offset has been
         # settled, below: a `play()` takes a block from whatever it is
         # handed, so re-pointing the shaper at `_c4` once the offset is
@@ -646,7 +673,8 @@ class Overdrive(_component.Component):
         self._hp.play(tap1)
         self._c4.play(self._hp)
         self._shaper.play(self._c4)
-        self._dc.play(self._shaper)
+        self._trim.play(self._shaper)
+        self._dc.play(self._trim)
 
         circuit = audiomixer.Mixer(voice_count=2, **self._pcm())
         self._lp = audiobiquad.Biquad(
@@ -672,6 +700,7 @@ class Overdrive(_component.Component):
         self._own(self._lp)
         self._own(circuit, reset=False)
         self._own(self._dc)
+        self._own(self._trim)
         self._own(self._shaper)
         self._own(self._c4)
         self._own(self._hp)
@@ -699,6 +728,7 @@ class Overdrive(_component.Component):
         # zero one - and charged once nothing will touch it again.
         if self._clip_bias:
             self._shaper.set(post_gain=0.0)
+            self._trim.set(bias=0.0)
         _component.open_level_gates(
             circuit, [circuit.voice[0], circuit.voice[1]], self._silence)
         _component.open_level_gates(out, [out.voice[0]], self._silence)
@@ -725,6 +755,11 @@ class Overdrive(_component.Component):
         return (CURVE[index] * (1.0 - rise)
                 + CURVE[index + 1] * rise) * self._post_gain
 
+    def _offset_bias(self):
+        """The cancel's `bias`: the offset to the nearest LSB, negated,
+        in the curve's units."""
+        return -round(self._shaper_dc()) / 32768.0
+
     def _settle_dc(self):
         """Charge the output capacitor before the first real block.
 
@@ -748,6 +783,7 @@ class Overdrive(_component.Component):
         blocks back, so it runs all `DC_SETTLE_BLOCKS` and the pole lands
         where the early stop leaves it, to the byte.
         """
+        self._trim.set(bias=self._offset_bias())
         if not (self._clip_bias or self._dc_charged):
             return False
         self._dc_charged = bool(self._clip_bias)
@@ -899,13 +935,15 @@ class Overdrive(_component.Component):
             self._hp.play(self._tap1)
             self._c4.play(self._hp)
             self._shaper.play(self._c4)
-            self._dc.play(self._shaper)
+            self._trim.play(self._shaper)
+            self._dc.play(self._trim)
             self._lp.play(self._circuit)
         self._circuit.voice[0].level = 1.0
         self._circuit.voice[1].level = 1.0
         self._out.voice[0].level = level
         if self._clip_bias:
             self._shaper.set(post_gain=0.0)
+            self._trim.set(bias=0.0)
         _component.open_level_gates(
             self._circuit, [self._circuit.voice[0], self._circuit.voice[1]],
             self._silence)
