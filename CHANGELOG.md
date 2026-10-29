@@ -6,6 +6,43 @@ here. The two packages version and release together, from this repository;
 Releases up to and including audiodsp's v0.1.1 shipped both packages from
 there, and are recorded in its changelog.
 
+## v0.4.2rc1 (2026-10-29)
+
+- Point at PyDevices/gallery (#240)
+- CONTRIBUTING: name the instrument gate's inputs by flag, not by path (#239)
+- Shorten AGENTS.md to tips; the sound-change and seam-gate rules move to CONTRIBUTING (#238)
+- Add simpletests for audioinstruments and audioeffects (#237)
+- AirSpace: count the repeats twice over against Loop Bass's high-pass (#236)
+- LadderFilter: bound the tail below Resonance 4 (#234)
+- DigitalDelay, PingPongDelay: bound the tail with Repeat Cut in (#232)
+- Player text and CLAIMS for seven effects; KIT_PLANTS across the effects (#233)
+- HighPass, LowPass: CLAIMS tables for what the player text says (#231)
+- Compressor: state the input level it stays clean at (#230)
+- Input ceilings: one stated level per effect, and the knobs that clip by design (#228)
+- Controls page: units for Compressor, Overdrive, Exciter and Distortion (#229)
+- Overdrive: back off Mix 0, the output capacitor is charged once (#227)
+- Player text: knob spans move to the Effect controls page (#226)
+- Effect controls page, rendered from the classes (#225)
+- Distortion: a patch chosen before the first pull plays a fresh build at that patch (#220)
+- Player text and CLAIMS for eight more effects (#223)
+- Vibrato: Level spans -12 to 0 dB, so the whole knob is audible (#224)
+- Kit ceiling: read each class at the level it states, and excuse what it says (#221)
+- Player text and CLAIMS for nine effects; KIT_PLANTS for six (#222)
+- Tests: a pull request runs only the tests its change can move (#218)
+- A reset keeps the frames the graph took; Compressor's lean route follows its macros (#217)
+- Claims tables for AutoPan, NoiseGate and LadderFilter (#215)
+- MultiTapDelay: the dry is exact on every interpreter at the pin (#214)
+- Claims rows for the eight delays and reverbs the kit read past (#213)
+- Tests: MultiTapDelay's native tests skip, with the reason, when a binary at the pin is missing (#211)
+- Docs: link the repo paths the prose names (#210)
+- Docs: S3 sequencing row re-measured (#209)
+- Docs: sequencing and residue figures re-measured (#207)
+- audioinstruments README: fifty-five instruments, as audioinstruments.ALL counts
+- Docs: the Docs link opens docs/ on GitHub, and the index reads there
+- Docs: keep docs/dev/exact-bin-size.md, which tests and tools cite
+- Docs: the bin-size dev note leaves the repo
+- Docs: restructure to Get started, Guides, Reference, How it works; Sphinx site on Read the Docs
+
 ## v0.4.1 (2026-10-22)
 
 - Tests: a release pull request and its merge skip the suite (#204)
