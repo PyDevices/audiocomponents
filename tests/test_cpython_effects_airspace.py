@@ -787,8 +787,6 @@ class TheSurface(unittest.TestCase):
                 with self.subTest(channels=channels, mix=mix):
                     set_value(effect, MIX_I, mix)
                     dry, wet = law_levels(mix)
-                    if channels == 1 and dry == 1.0:
-                        dry = 1.0 - 2.0 ** -15
                     self.assertAlmostEqual(voices[0].level, dry)
                     self.assertAlmostEqual(voices[1].level, wet)
             effect.deinit()
@@ -1202,15 +1200,20 @@ SCENARIOS = {
 #: sha1 of `moves_render` at 48 kHz stereo, 40 pulls, LCG noise at 4000 rms
 #: seed 11, with `get_buffer` present, per scenario in the order above:
 #: what the class rendered before `_replay` was taken out (07bf68a).
+#: Re-read once, when audiodsp took CircuitPython 11.0.0-alpha.2's integer
+#: mixer ((x * level) >> 15 for x * level / 32767 truncated): the class's
+#: code was the same on both sides, the old digests still reproduce on the
+#: audiodsp commit before the change, and the new ones keep the same
+#: scenarios equal to each other as the old ones did.
 GET_BUFFER_RENDERS = (
-    "c80ffad8df5fe4a5ae16ec41c51517575377f23c",
-    "2b4ab24f79b4dfd68f815bdff5f0e5b7e152e055",
-    "2b4ab24f79b4dfd68f815bdff5f0e5b7e152e055",
-    "7e03a853d8fddfa0fbc4b9f7efe034611c2fadd9",
-    "c80ffad8df5fe4a5ae16ec41c51517575377f23c",
-    "bc5deee2233815d6a61d8db1db2700ac1f5b5676",
-    "ae7ef874a87e15d9bbc1d6800aaa48015969c45e",
-    "2b4ab24f79b4dfd68f815bdff5f0e5b7e152e055",
+    "ee269d59de182b592e1039d0285f5e27b3238b71",
+    "34021bf776f3789e3813afc73094bb9bef3ecb58",
+    "34021bf776f3789e3813afc73094bb9bef3ecb58",
+    "6062fc883a56ca4767f0de40934c9f0accba8f55",
+    "ee269d59de182b592e1039d0285f5e27b3238b71",
+    "3621908f5c28db1295ffe8d2c3e2c0c9696d358a",
+    "08b65156619b4852fa5c0be1ebffc68a1f117cc0",
+    "34021bf776f3789e3813afc73094bb9bef3ecb58",
 )
 
 
