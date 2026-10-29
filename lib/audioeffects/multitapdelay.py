@@ -637,29 +637,19 @@ class MultiTapDelay(_component.Component):
         self._route()
 
     def _dry_level(self, mix):
-        """The dry voice's level, min(1, 2 - Mix). At one channel unity is
-        handed as 1 - 2^-15, which every Mixer this class meets passes
-        through exactly: CircuitPython's stock `audiomixer` turns a level
-        of 1.0 into 32768 / 32767 and puts the samples nearest the rails
-        one LSB hot, while 32767 / 32767 is 1. Two channels cannot do that
-        (the stock Mixer's pan law hands the left lane 32767 x level >> 15,
-        so 1 - 2^-15 is one LSB cold there), so they keep 1.0, which every
-        interpreter at AUDIODSP_PIN passes through exactly on both lanes."""
-        level = min(1.0, 2.0 - mix)
-        if level >= 1.0 and self._channel_count == 1:
-            return 1.0 - 2.0 ** -15
-        return level
+        """The dry voice's level, min(1, 2 - Mix). A Mixer voice scales by
+        (sample x Q15 level) >> 15 and a level of 1.0 is Q15 32768, so unity
+        passes every sample through exactly, mono and stereo, on every
+        interpreter at AUDIODSP_PIN."""
+        return min(1.0, 2.0 - mix)
 
     def _route(self):
         """Where the output port points, and what the tap node reads.
 
         Mix 0 hands the input adapter out through the port (`_bypass`, by
         way of `_through`), a width-1 MidSide that passes the source byte
-        for byte, so it is a
-        wire on every interpreter: CircuitPython's stock `audiomixer`
-        scales a voice at level 1.0 by 32768 / 32767, which puts every
-        sample at |value| >= 32736 one LSB out (audiodsp's own Mixer passes
-        unity through). The source is read through the adapter at every
+        for byte, so it is a wire on every interpreter without a Mixer
+        voice in the way. The source is read through the adapter at every
         Mix, so whatever part of a buffer it holds plays next either way.
         Nothing is pulled through the graph while the port is on the
         adapter, so nothing here may prime from it then: a `play()` would
