@@ -758,7 +758,7 @@ def _audiodsp_pin():
 def _audiodsp_installed():
     try:
         from importlib.metadata import version
-        return version("pydevices-audiodsp")
+        return version("omnipython-audiodsp")
     except Exception:
         return "not found"
 
@@ -769,7 +769,7 @@ def _instrument_advice(name):
             " probes.json records them at the audiodsp release AUDIODSP_PIN"
             " names: install audiodsp at %s (this interpreter has %s), for"
             " example"
-            ' pip install "pydevices-audiodsp @'
+            ' pip install "omnipython-audiodsp @'
             ' git+https://github.com/PyDevices/audiodsp@%s".'
             % (pin, _audiodsp_installed(), pin))
 

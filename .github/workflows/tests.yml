@@ -111,11 +111,11 @@ jobs:
         if: steps.audiodsp-wheel.outputs.cache-hit != 'true'
         run: >-
           python -m pip wheel --no-deps --wheel-dir .audiodsp-wheel
-          "pydevices-audiodsp @ git+https://github.com/PyDevices/audiodsp@${{ steps.pin.outputs.tag }}"
+          "omnipython-audiodsp @ git+https://github.com/PyDevices/audiodsp@${{ steps.pin.outputs.tag }}"
 
       - name: Install audiodsp at the pin
         shell: bash
-        run: python -m pip install .audiodsp-wheel/pydevices_audiodsp-*.whl
+        run: python -m pip install .audiodsp-wheel/omnipython_audiodsp-*.whl
 
       # Editable, so the tests exercise lib/ directly rather than a copy, and
       # so each package's own pyproject.toml is exercised too.
@@ -126,7 +126,7 @@ jobs:
       - run: python -m pip install numpy pytest pytest-xdist
 
       # --no-deps is load-bearing: without it a floor raised above the pinned
-      # release re-resolves pydevices-audiodsp from the index and every
+      # release re-resolves omnipython-audiodsp from the index and every
       # measurement is taken against a core AUDIODSP_PIN does not name -- the
       # failure the pin exists to prevent, arriving through packaging. Do not
       # drop the flag.

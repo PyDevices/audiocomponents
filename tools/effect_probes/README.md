@@ -77,7 +77,7 @@ the one CI installs. An audiodsp that renders the instruments differently
 fails the check, and the message says so; install audiodsp at the pin:
 
 ```
-pip install "pydevices-audiodsp @ git+https://github.com/PyDevices/audiodsp@<pin>"
+pip install "omnipython-audiodsp @ git+https://github.com/PyDevices/audiodsp@<pin>"
 ```
 
 That failure is the point of the check: it is how a change in the way
