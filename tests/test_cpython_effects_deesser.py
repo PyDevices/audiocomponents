@@ -72,12 +72,16 @@ STATE_FRAMES = 32 * 256 * 3 + 2 * 256 + 200 * 256 + 256
 #: patch and cannot dial it (`FrozenCrossover` in `KitChecks`).
 FROZEN_CORNER_HZ = 500.0
 
-#: The two patches that ship in HF-only mode. D1's level independence is
-#: recorded disconfirmed at both: the crossover is in the audio path there,
-#: and the low band it leaves alone carries no reduction, so the balance the
+#: The patch at which D1's level independence is recorded disconfirmed:
+#: Cymbal Edge, HF-only. The crossover is in the audio path there, and the
+#: low band it leaves alone carries no reduction, so the balance the
 #: detector reads moves with the programme level in a way broadband mode's
-#: single stream does not. Measured in `PatchSweep`.
-DEESS_HF_ONLY_PATCHES = (3, 4)
+#: single stream does not. Measured in `PatchSweep`: 1.321 dB over -6..-55
+#: dBFS. The other HF-only patch, Guitar Pick Noise (3), holds D1 at
+#: 0.583 dB since audiodsp took CircuitPython 11's integer mixer, which
+#: rounds the -55 dBFS probe's few-LSB dry voice where the float mixer
+#: truncated it toward zero (2.262 dB there).
+D1_MISSED_PATCHES = (4,)
 
 #: The Release-macro fault, as a multiplier on what the class pushes into
 #: the node. 250 puts every position of the 1-200 ms span past 200 ms, so
@@ -766,8 +770,8 @@ class Tier2(unittest.TestCase):
 
         # And the bound the verdict carries: drop the -55 dBFS probe and the
         # spread collapses at every Sensitivity. The trait holds from -6 to
-        # -40 dBFS; what fails is the bottom probe, whose own dry blend
-        # already spreads 0.643-1.253 dB with the gain cell muted (D7).
+        # -40 dBFS; what fails is the bottom probe, whose dry blend is a
+        # handful of LSB that the int16 mixer rounds.
         worst_loud = max(loud.values())
         print("  D1 over -6..-40 dBFS alone: worst %.3f dB at Sensitivity "
               "%.1f dB" % (worst_loud,
@@ -1540,17 +1544,15 @@ class PatchSweep(unittest.TestCase):
             del release_position
 
         # What the table is held to, and it is not "all green". D1 is
-        # recorded disconfirmed above Sensitivity 34 dB and it misses at the
-        # two HF-only patches, which is the disconfirmation meeting a
+        # recorded disconfirmed above Sensitivity 34 dB and it misses at
+        # HF-only patch 4, which is the disconfirmation meeting a
         # setting the class's own author published - the template's "not a
         # corner case, it is the product". The rows below are the verdict
         # this pack carries, so a change in either direction fails here.
-        broadband = [index for index in table
-                     if index not in DEESS_HF_ONLY_PATCHES]
-        for index in broadband:
-            self.assertLess(table[index][0], 1.0,
-                            "D1 at broadband patch %d" % index)
-        for index in DEESS_HF_ONLY_PATCHES:
+        held = [index for index in table if index not in D1_MISSED_PATCHES]
+        for index in held:
+            self.assertLess(table[index][0], 1.0, "D1 at patch %d" % index)
+        for index in D1_MISSED_PATCHES:
             self.assertGreater(table[index][0], 1.0,
                                "D1 is recorded disconfirmed at HF-only "
                                "patch %d" % index)
