@@ -36,7 +36,6 @@ if __name__ == "__main__":
     sys.path.insert(0, "lib")
     sys.path.insert(0, "tests/support")
 
-import kit_claims
 import kit_common as kc
 import lifecycle
 
@@ -62,6 +61,8 @@ def load_plants(cls, module=None):
         if module:
             mod = __import__(module)
         else:
+            # kit_claims reads source with ast, which only CPython has.
+            import kit_claims
             mod, _ = kit_claims.module_for(cls)
     except Exception as exc:                              # noqa: BLE001
         return None, "%s does not import: %s" % (name, type(exc).__name__)
