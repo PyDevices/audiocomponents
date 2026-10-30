@@ -265,8 +265,9 @@ SHARED = ("lib/audioeffects/_", "lib/audioeffects/__init__.py",
 #: (LowPass), Rack, Saturation (the recentre path) and Distortion (the graph
 #: rebuild). Measured on CPython at audiodsp v0.6.6rc8: 3 114 CPU seconds,
 #: about 13 minutes on a 4-core runner, where all 45 take 4.4 CPU hours.
-#: A push to main runs all 45, and so does a manual run or a pull request
-#: labelled `lifecycle: all classes` (.github/workflows/tests.yml).
+#: A push to main that changes a shared file runs all 45, and so do a
+#: manual run, the weekly run and a pull request labelled `lifecycle: all
+#: classes` (.github/workflows/tests.yml).
 SAMPLE = ("Bitcrusher", "Tremolo", "DigitalDelay", "Reverb", "Octaver",
           "LowPass", "Rack", "Saturation", "Distortion")
 

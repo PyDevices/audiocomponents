@@ -301,11 +301,14 @@ CI doesn't run all of it on every pull request:
   (`NODE_SAMPLE`) when it changes a shared file: `AUDIODSP_PIN`, the base
   class, `lifecycle.py`, the class matrix test, or a line of the adapters
   outside every node's own.
-- A push to main runs all 45 classes and every node, and so does a manual
-  run of the workflow or a pull request labelled `lifecycle: all classes`.
+- A push to main runs what that push changes, the same way, except that a
+  shared file runs all 45 classes and every node rather than the sample.
+  So do a manual run of the workflow, the weekly run on Monday and a pull
+  request labelled `lifecycle: all classes`.
 
-To tell what changed, CI diffs the pull request against its base branch,
-so the checkout fetches the history. A base git can't diff from fails the
+To tell what changed, CI diffs a pull request against its base branch and
+a push against the commit main moved from, so the checkout fetches the
+history. A base git can't diff from fails the
 run by name rather than quietly running everything: a depth-1 checkout once
 did that, and a pull request's run took 1 h 43 min. The workflow prints
 what each matrix will run in its "Show the lifecycle scope" step.

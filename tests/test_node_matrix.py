@@ -103,8 +103,9 @@ NODE_FILES = ("tests/support/node_matrix.py", "tests/test_node_matrix.py")
 #: (NodeSplitMix) and a free-running phase (NodeShimmerLoop, cheaper than
 #: NodeFlanger's LFO by minutes). Measured on CPython at audiodsp
 #: v0.6.6rc9: 86 s, where all 13 take 541 s (about 30 minutes on CI).
-#: A push to main runs every node, and so does a manual run or a pull
-#: request labelled `lifecycle: all classes` (.github/workflows/tests.yml).
+#: A push to main that changes a shared file runs every node, and so do a
+#: manual run, the weekly run and a pull request labelled `lifecycle: all
+#: classes` (.github/workflows/tests.yml).
 NODE_SAMPLE = ("NodeBiquad", "NodeEcho", "NodeSplitMix", "NodeShimmerLoop")
 
 

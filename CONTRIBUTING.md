@@ -53,6 +53,14 @@ python tests/parity/effects_library_smoke.py
 python -m flake8
 ```
 
+CI doesn't run all of the first line on every change. It runs the tests
+the change can move, chosen by `tools/scoped_tests.py --ci` from the diff:
+for a pull request against its base, for a push to main against the commit
+main moved from. A change to shared code (the base classes, the kit, the
+probes, `AUDIODSP_PIN`, the workflow) runs everything. The run's "Scope"
+step prints what it chose and why. The whole suite runs on every Python on
+a manual run of the Tests workflow and every Monday.
+
 Most work does not need the whole suite. [`tools/scoped_tests.py`](tools/scoped_tests.py) picks the
 files a change can break:
 

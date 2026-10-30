@@ -13,6 +13,8 @@ an integrator or an auditor needs everything.
     tools/scoped_tests.py contract        # the shared promises only
     tools/scoped_tests.py full            # everything, for a gate
     tools/scoped_tests.py --ci origin/main  # a pull request's tests, for CI
+    tools/scoped_tests.py --ci <sha>        # a push's tests, from the commit
+                                            # it moved main from
 
 It prints the scope it chose and why before running, so a report can quote it.
 Exit status is the suite's own. `--ci` runs nothing: it prints the test files
@@ -231,36 +233,140 @@ def choose(scope, modules):
     return sorted(picked), "; ".join(why[:4])
 
 
-#: What a pull request always runs, whatever it touched: the kit's tests, the
+#: What CI always runs, whatever the change touched: the kit's tests, the
 #: shared promises, and the two lifecycle matrices, which pick their own
 #: classes and nodes from the same diff (LIFECYCLE_CHANGED_FROM).
 CI_ALWAYS = KIT + ("test_kit",) + CONTRACT + (
     "test_lifecycle_matrix", "test_node_matrix")
 
-#: Paths every test leans on. A pull request that touches one runs the whole
+#: Paths every test leans on. A change that touches one runs the whole
 #: suite, because no mapping can say which tests it moved.
 CI_SHARED = (
     ".github/",
-    "tests/support/",
+    "tests/support/ulab/",
     "tests/conftest.py",
     "tools/effect_measurements",
     "tools/effect_probes/",
     "tools/scoped_tests.py",
     "lib/audioeffects/_",
     "lib/audioeffects/__init__.py",
+    "lib/audioinstruments/_",
+    "lib/audioinstruments/__init__.py",
     "AUDIODSP_PIN",
 )
 
-#: The roster tests that name every effect class, run when one class moves.
+#: The roster tests that name every class, run when one class moves.
 _ROSTERS = ("test_metadata_contract", "test_shared_circuit_overlap",
-            "test_cpython_effects_library")
+            "test_cpython_effects_library", "test_audio_component_api")
 
 #: Paths no test reads, besides the ones the workflow already ignores.
 _CI_SILENT = ("docs/", "LICENSE", "VERSION")
 
+#: A docs page a test compares with the classes, so it is not silent.
+_DOC_TESTS = {"docs/reference/effect-controls.md": "test_metadata_contract"}
+
+#: A test that goes through every effect class, or every instrument, runs
+#: when any one of them changes.
+_EVERY_EFFECT = re.compile(r"audioeffects\.ALL\b|\bkit_options\b|\bGATED\b")
+_EVERY_INSTRUMENT = re.compile(
+    r"audioinstruments\.(ALL|MELODIC|DRUM_MACHINES)\b|"
+    r"from audioinstruments import [^\n]*\b(ALL|MELODIC|DRUM_MACHINES)\b")
+
+
+def _source(rel):
+    try:
+        with open(os.path.join(ROOT, rel), encoding="utf-8",
+                  errors="replace") as handle:
+            return handle.read()
+    except OSError:
+        return ""
+
+
+def _helpers():
+    """{stem: path} for the python files under tests/ that are not tests:
+    tests/support/*.py and the helpers beside the tests. Their names are
+    unique, because the tests import them bare (tests/support is on
+    sys.path), so a stem is all an import has to name."""
+    out = {}
+    for folder in ("tests", "tests/support"):
+        for name in sorted(os.listdir(os.path.join(ROOT, folder))):
+            if name.endswith(".py") and not (folder == "tests" and
+                                             name.startswith("test_")):
+                out.setdefault(name[:-3], "%s/%s" % (folder, name))
+    return out
+
+
+def _imported_names(rel):
+    """Every name an import in `rel` mentions, dotted parts split, so that
+    `import kit_common as kc`, `from support import kit` and `from kit_probes
+    import x` all name the helper they load. Imports inside functions count."""
+    import ast
+    try:
+        tree = ast.parse(_source(rel))
+    except SyntaxError:
+        return None
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                names.update(alias.name.split("."))
+        elif isinstance(node, ast.ImportFrom):
+            names.update((node.module or "").split("."))
+            names.update(alias.name for alias in node.names)
+    return names
+
+
+def _importers(changed_helpers, modules):
+    """The test modules that import any of `changed_helpers` (stems), directly
+    or through other helpers. None when a file cannot be parsed."""
+    helpers = _helpers()
+    files = dict(("tests/%s.py" % m, m) for m in modules)
+    files.update((path, None) for path in helpers.values())
+    imports = {}
+    for path in files:
+        names = _imported_names(path)
+        if names is None:
+            return None
+        imports[path] = names & set(helpers)
+    reached = set(changed_helpers)
+    grew = True
+    while grew:
+        grew = False
+        for path, names in imports.items():
+            stem = os.path.basename(path)[:-3]
+            if files[path] is None and stem not in reached and \
+                    names & reached:
+                reached.add(stem)
+                grew = True
+    return sorted(m for path, m in files.items()
+                  if m is not None and imports[path] & reached)
+
+
+def _mentions(words, modules, pattern=None):
+    """The test modules whose text names one of `words`, or matches
+    `pattern`: a test that builds a class by its name reaches its module."""
+    word = re.compile(r"\b(%s)\b" % "|".join(re.escape(w) for w in words))
+    out = []
+    for module in modules:
+        text = _source("tests/%s.py" % module)
+        if word.search(text) or (pattern and pattern.search(text)):
+            out.append(module)
+    return out
+
+
+def _effect_classes(rel):
+    import ast
+    try:
+        tree = ast.parse(_source(rel))
+    except SyntaxError:
+        return []
+    return [n.name for n in tree.body
+            if isinstance(n, ast.ClassDef) and not n.name.startswith("_")]
+
 
 def _changed_since(base):
-    """The files this branch changed since it left `base`."""
+    """The files changed since `base`: a pull request's base branch, or the
+    commit a push to main moved from."""
     done = subprocess.run(["git", "diff", "--name-only", base + "...HEAD"],
                           cwd=ROOT, capture_output=True, text=True)
     if done.returncode:
@@ -276,30 +382,71 @@ def choose_ci(changed, modules):
     narrower run that misses a break is worse than a slow one.
     """
     picked, why = set(m for m in CI_ALWAYS if m in modules), []
+    helpers = []
     for path in changed:
         if path.startswith(CI_SHARED):
             return None, ["%s is shared, so the whole suite runs" % path]
+        if path in _DOC_TESTS:
+            if _DOC_TESTS[path] in modules:
+                picked.add(_DOC_TESTS[path])
+                why.append("%s is checked by %s" % (path, _DOC_TESTS[path]))
+            continue
         if path.startswith(_CI_SILENT) or (
-                path.endswith(".md") and not path.startswith("lib/")):
+                path.endswith(".md") and not path.startswith(("lib/",
+                                                              "tests/"))):
             continue
         name = os.path.basename(path)
-        if path.startswith("tests/") and "/" not in path[6:] and \
-                name.endswith(".py"):
+        top = "/" not in path[6:]
+        if path.startswith("tests/") and top and name.startswith("test_") \
+                and name.endswith(".py"):
             if name[:-3] in modules:
                 picked.add(name[:-3])
                 why.append("%s edited" % name[:-3])
+            continue
+        if name.endswith(".py") and (
+                (path.startswith("tests/") and top) or
+                (path.startswith("tests/support/") and
+                 "/" not in path[14:])):
+            helpers.append(name[:-3])
             continue
         if path.startswith("lib/audioeffects/") and \
                 "/" not in path[17:] and name.endswith(".py"):
             hits = _test_for_effect(name[:-3], modules)
             if hits and hits != ["test_cpython_effects_library"]:
+                words = [name[:-3]] + _effect_classes(path)
+                more = _mentions(words, modules, _EVERY_EFFECT)
                 picked.update(hits)
+                picked.update(more)
                 # The rosters that name every class read this one too.
                 picked.update(m for m in _ROSTERS if m in modules)
-                why.append("%s -> %s" % (name[:-3], ", ".join(hits)))
+                why.append("%s -> %s, and %d tests that name it or go "
+                           "through every effect"
+                           % (name[:-3], ", ".join(hits),
+                              len(set(more) - set(hits))))
+                continue
+        if path.startswith("lib/audioinstruments/") and \
+                "/" not in path[21:] and name.endswith(".py"):
+            hits = _mentions([name[:-3]], modules, _EVERY_INSTRUMENT)
+            if hits:
+                picked.update(hits)
+                picked.update(m for m in INSTRUMENTS + _ROSTERS
+                              if m in modules)
+                why.append("%s -> %d tests that name it or go through "
+                           "every instrument" % (name[:-3], len(hits)))
                 continue
         return None, ["%s has no tests of its own, so the whole suite runs"
                       % path]
+    if helpers:
+        users = _importers(helpers, modules)
+        if users is None:
+            return None, ["a test file does not parse, so the whole suite "
+                          "runs"]
+        if not users:
+            return None, ["%s is imported by no test, so the whole suite "
+                          "runs" % ", ".join(helpers)]
+        picked.update(users)
+        why.append("%s -> the %d tests that import it"
+                   % (", ".join(helpers), len(users)))
     return sorted(picked), why or ["only the tests every change runs"]
 
 
