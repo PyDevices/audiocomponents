@@ -327,6 +327,8 @@ class DigitalDelay(_component.Component):
     audiodsp tier; zero latency. The module docstring has the rest."""
 
     NAME = 'DigitalDelay'
+    #: NaN is this option's own stop, not the default (documented above).
+    _NAN_OWN = ('glide_ms',)
     DISPLAY_NAME = 'Digital Delay'
     CATEGORIES = ('Delay',)
     VERSION = '0.1.0'

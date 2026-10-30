@@ -623,9 +623,14 @@ def _without_nan(cls, options, keywords):
     documentation says. One rule here covers every class; none has to clean
     its own arguments.
 
+    A class that gives NaN a meaning of its own for an option (NaN Glide is
+    the jump, NaN damping is out of circuit, NaN interval is refused) names
+    it in `_NAN_OWN`, and that option reaches `_build` as passed.
+
     A NaN passed by position is dropped by name where the interpreter can
     name `_build`'s arguments (CPython); on one that cannot, only the
     keyword form is cleaned."""
+    own = cls._NAN_OWN
     if any(_is_nan(value) for value in options):
         code = getattr(cls._build, "__code__", None)
         if code is not None and len(options) <= code.co_argcount - 1:
@@ -633,7 +638,7 @@ def _without_nan(cls, options, keywords):
             keywords = dict(zip(names, options), **keywords)
             options = ()
     return options, {name: value for name, value in keywords.items()
-                     if not _is_nan(value)}
+                     if name in own or not _is_nan(value)}
 
 
 class MetadataError(ValueError):
@@ -822,6 +827,10 @@ class Component:
     MACRO_MODES = {}
     _MACRO_RANGES = ()
     PATCHES = {}
+
+    #: Constructor options for which NaN means something the class defines
+    #: (see `_without_nan`); every other NaN option is left out.
+    _NAN_OWN = ()
 
     #: Every `self._output = node` in every subclass re-points one stable
     #: port. See `output_port` at the top of this module.

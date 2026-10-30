@@ -52,7 +52,7 @@ def options_of(cls):
             continue
         if p.default is None or isinstance(p.default, (int, float)):
             names.append(p.name)
-    return names
+    return [n for n in names if n not in cls._NAN_OWN]
 
 
 class ANanOptionIsTheOptionLeftOut(unittest.TestCase):
@@ -75,6 +75,15 @@ class ANanOptionIsTheOptionLeftOut(unittest.TestCase):
             with self.subTest(effect=name):
                 self.assertEqual(render(cls(source(), NAN)),
                                  render(cls(source())))
+
+    def test_a_class_keeps_the_nan_meaning_it_documents(self):
+        self.assertEqual(
+            {name: getattr(audioeffects, name)._NAN_OWN
+             for name in audioeffects.ALL
+             if getattr(audioeffects, name)._NAN_OWN},
+            {"ShimmerHall": ("interval",), "ConvolutionReverb":
+             ("damping_hz",), "TapeDelay": ("glide_ms",),
+             "DigitalDelay": ("glide_ms",)})
 
     def test_a_number_still_plays_as_passed(self):
         cls = audioeffects.Chorus

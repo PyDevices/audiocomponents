@@ -231,6 +231,8 @@ class ShimmerHall(_component.Component):
     page."""
 
     NAME = 'ShimmerHall'
+    #: NaN is this option's own stop, not the default (documented above).
+    _NAN_OWN = ('interval',)
     DISPLAY_NAME = 'Shimmer Hall'
     CATEGORIES = ('Effect Rack', 'Reverb')
     VERSION = '0.1.0'

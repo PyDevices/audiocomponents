@@ -336,6 +336,8 @@ class TapeDelay(_component.Component):
     The module docstring is the player's manual."""
 
     NAME = 'TapeDelay'
+    #: NaN is this option's own stop, not the default (documented above).
+    _NAN_OWN = ('glide_ms',)
     DISPLAY_NAME = 'Tape Delay'
     CATEGORIES = ('Delay',)
     VERSION = '0.1.0'
