@@ -80,6 +80,14 @@ pressure work as the default modulators above; the other GM controllers are
 the host's. A program change puts every macro back to the patch's defaults,
 Pan at centre.
 
+The pitch wheel bends every note of the instrument by up to `bend_range`
+semitones either way, two until a host sets it (General MIDI's Pitch Bend
+Sensitivity, which a host reads from RPN 0). `tuning` shifts the whole
+instrument by a number of semitones, fractions included, for a host's
+RPN 1 and 2 (Channel Fine and Coarse Tuning); it is 0 until set. Both apply
+to the notes already sounding, and `reset()` puts them back, with the
+wheel centred.
+
 Thirty-two engine voices, one per region a note resolves to (a stereo pair
 is two). A new note with every voice busy steals the oldest releasing voice,
 then the oldest. A note in an exclusive class stops the sounding notes of
@@ -947,6 +955,9 @@ class _Player(object):
         self.release_scale = 1.0
         self.tune = 1.0
         self.bend = 1.0
+        self.bend_amount = 0.0  # the wheel, -1 to 1
+        self.bend_range = BEND_RANGE
+        self.tuning = 1.0       # the host's channel tuning, as a ratio
         self.pan = 0.0
         self.volume_cc = {}     # channel -> Control Change 7
         self.expression = {}    # channel -> Control Change 11
@@ -1063,7 +1074,7 @@ class _Player(object):
             i = self._allocate()
             voices[i].play(
                 pcm, rate=region.sample_rate,
-                pitch=ratio * self.tune * self.bend,
+                pitch=ratio * self.tune * self.bend * self.tuning,
                 loop_start=loop_start, loop_end=loop_end, loop_mode=mode,
                 level=level * controllers * self.volume * pool.gain,
                 pan=_panned(region.pan, self.pan),
@@ -1169,7 +1180,7 @@ class _Player(object):
 
     def repitch(self):
         voices = self.pool.voice
-        factor = self.tune * self.bend
+        factor = self.tune * self.bend * self.tuning
         for i, slot in enumerate(self.slots):
             if slot is not None and slot[7] is self:
                 voices[i].pitch = slot[5] * factor
@@ -1209,7 +1220,8 @@ class _Player(object):
                 self.pan = _bipolar(value0)
                 self.repan()
         elif event_type == EVENT_PITCH_BEND:
-            self.bend = 2.0 ** (value1 * BEND_RANGE / 12.0)
+            self.bend_amount = value1
+            self.bend = 2.0 ** (value1 * self.bend_range / 12.0)
             self.repitch()
         elif event_type == EVENT_CHANNEL_PRESSURE:
             self.pressure[channel] = value0 * PRESSURE_TO_VIBRATO
@@ -1243,6 +1255,7 @@ class SoundFontInstrument(Instrument):
     def __init__(self, player, patches, programs, macro_labels, note_map=None,
                  transport=None, bank_select=True):
         self._player = player
+        self._tuning = 0.0
         self._programs = programs
         self._bank_select = bank_select
         super().__init__(None, player.handle_event, patches, macro_labels,
@@ -1262,6 +1275,32 @@ class SoundFontInstrument(Instrument):
     @property
     def preset_name(self):
         return self._player.bank.presets.get(self.preset)
+
+    @property
+    def bend_range(self):
+        """Semitones the pitch wheel bends at full deflection, either way:
+        `BEND_RANGE` (2) until set. Setting it moves the notes sounding
+        with the wheel where it is."""
+        return self._player.bend_range
+
+    @bend_range.setter
+    def bend_range(self, semitones):
+        player = self._player
+        player.bend_range = float(semitones)
+        player.bend = 2.0 ** (player.bend_amount * player.bend_range / 12.0)
+        player.repitch()
+
+    @property
+    def tuning(self):
+        """The whole instrument's shift in semitones, fractions included:
+        0 until set."""
+        return self._tuning
+
+    @tuning.setter
+    def tuning(self, semitones):
+        self._tuning = float(semitones)
+        self._player.tuning = 2.0 ** (self._tuning / 12.0)
+        self._player.repitch()
 
     def control_change(self, controller, value, channel=0, sample_position=0):
         """Control Change 10 (Pan) moves the Pan macro, so the macro value
@@ -1291,6 +1330,11 @@ class SoundFontInstrument(Instrument):
         for state in (self._player.volume_cc, self._player.expression,
                       self._player.wheel, self._player.pressure):
             state.clear()
+        self._player.bend_amount = 0.0
+        self._player.bend = 1.0
+        self._player.bend_range = BEND_RANGE
+        self._tuning = 0.0
+        self._player.tuning = 1.0
         super().reset()
 
     @property

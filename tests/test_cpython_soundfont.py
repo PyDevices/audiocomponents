@@ -231,6 +231,40 @@ class SoundFontInstrumentTest(unittest.TestCase):
         self.inst.set_macro(2, 0)
         self.assertAlmostEqual(player.release_scale, 0.25, places=2)
 
+    def test_bend_range_and_tuning_move_held_voices(self):
+        player = self.inst._player
+        self.assertEqual(self.inst.bend_range, soundfont.BEND_RANGE)
+        self.assertEqual(self.inst.tuning, 0.0)
+        self.inst.note_on(60, 100)
+        slot = player.held[(0, 60)][0]
+        voice = self.inst.output.voice[slot]
+        ratio = player.slots[slot][5]
+        # Half the wheel down, then the range widened under it: the note
+        # follows without another bend message.
+        self.inst.pitch_bend(4096)
+        self.assertAlmostEqual(voice.pitch, ratio * 2 ** (-1 / 12.0), places=4)
+        self.inst.bend_range = 12
+        self.assertAlmostEqual(voice.pitch, ratio * 2 ** (-6 / 12.0), places=4)
+        self.inst.pitch_bend(0)
+        self.assertAlmostEqual(voice.pitch, ratio * 2 ** (-12 / 12.0), places=4)
+        self.inst.pitch_bend(4096)
+        self.inst.tuning = 2.5
+        self.assertAlmostEqual(voice.pitch, ratio * 2 ** (-3.5 / 12.0), places=4)
+        # A new note starts where the held one is.
+        self.inst.note_on(64, 100)
+        slot2 = player.held[(0, 64)][0]
+        self.assertAlmostEqual(self.inst.output.voice[slot2].pitch,
+                               player.slots[slot2][5] * 2 ** (-3.5 / 12.0),
+                               places=4)
+        # reset() puts the wheel, its range and the tuning back.
+        self.inst.reset()
+        self.assertEqual(self.inst.bend_range, soundfont.BEND_RANGE)
+        self.assertEqual(self.inst.tuning, 0.0)
+        self.inst.note_on(60, 100)
+        slot = player.held[(0, 60)][0]
+        self.assertAlmostEqual(self.inst.output.voice[slot].pitch,
+                               player.slots[slot][5], places=5)
+
     # -- pan ------------------------------------------------------------------
 
     PAN = soundfont.PAN_MACRO
