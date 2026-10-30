@@ -613,6 +613,29 @@ def let_go_of_source(head, source, consumers=()):
 # Metadata
 
 
+def _is_nan(value):
+    return isinstance(value, float) and value != value
+
+
+def _without_nan(cls, options, keywords):
+    """The constructor's options with every NaN taken out, so `_build` sees
+    that option as left out and uses its default, as each class's
+    documentation says. One rule here covers every class; none has to clean
+    its own arguments.
+
+    A NaN passed by position is dropped by name where the interpreter can
+    name `_build`'s arguments (CPython); on one that cannot, only the
+    keyword form is cleaned."""
+    if any(_is_nan(value) for value in options):
+        code = getattr(cls._build, "__code__", None)
+        if code is not None and len(options) <= code.co_argcount - 1:
+            names = code.co_varnames[1:1 + len(options)]
+            keywords = dict(zip(names, options), **keywords)
+            options = ()
+    return options, {name: value for name, value in keywords.items()
+                     if not _is_nan(value)}
+
+
 class MetadataError(ValueError):
     """A class's macro or patch tables do not have the frozen shape."""
 
@@ -829,6 +852,8 @@ class Component:
         if source_channels not in (1, 2):
             raise ValueError("an effect source must be 1 or 2 channels, not "
                              "%d" % source_channels)
+
+        options, keywords = _without_nan(cls, options, keywords)
 
         self._source = source
         self._sample_rate = sample_rate
