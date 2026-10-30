@@ -527,9 +527,12 @@ class CtorNan(KitPlain):
     the bottom stop."""
     NAME = "CtorNan"
 
-    def _build(self, mix=1.0, gain=1.0, patch=None):
+    def __init__(self, source, *options, **keywords):
+        # The base class drops a NaN option before `_build` runs, so the
+        # fault has to be planted where the NaN still shows.
+        gain = keywords.get("gain", 1.0)
         self._nan = gain != gain
-        KitPlain._build(self, mix, gain, patch)
+        KitPlain.__init__(self, source, *options, **keywords)
 
     def _level(self):
         if self._nan:

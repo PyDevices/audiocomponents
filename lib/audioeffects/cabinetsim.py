@@ -619,13 +619,27 @@ class CabinetSim(_component.Component):
         done here, on the MIDI number the host passed, where `+ 0.5` is
         exact in both precisions - snapping later, from the stored 0..1
         position, would put the tie back at every half-step.
-        `get_macro` reads back the snapped number, not the one sent.
+        `get_macro` reads back the snapped number, not the one sent. The one
+        exception is the number `get_macro` itself returns: sent straight
+        back it is kept, so a constructor option off the grid survives a
+        host's echo.
         """
         try:
             value = _component.clamped_midi(value)
         except (TypeError, ValueError):
             pass
         else:
+            if (isinstance(index, int) and not isinstance(index, bool)
+                    and 0 <= index < len(self._macros)
+                    and not self._deinited
+                    and value == self.get_macro(index)):
+                # A host echoing `get_macro()` back is not choosing a new
+                # position: a constructor option off the grid keeps the
+                # exact position it was built at, and the same number
+                # plays the same filter (the echo of 46.99 was 47).
+                return _component.Component.set_macro(
+                    self, index, value, channel=channel, note_id=note_id,
+                    sample_position=sample_position)
             # The clamp first, so +inf is the top stop and never reaches
             # int(); NaN fails `>= 0` and is the bottom stop, as in the base.
             value = (float(int(min(value, 127.0) + 0.5)) if value >= 0.0

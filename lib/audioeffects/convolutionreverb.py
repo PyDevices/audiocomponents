@@ -275,6 +275,8 @@ class ConvolutionReverb(_component.Component):
     """
 
     NAME = 'ConvolutionReverb'
+    #: NaN is this option's own stop, not the default (documented above).
+    _NAN_OWN = ('damping_hz',)
     DISPLAY_NAME = 'Convolution Reverb'
     CATEGORIES = ('Reverb',)
     VERSION = '0.1.0'
