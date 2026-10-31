@@ -1377,7 +1377,11 @@ def _sampler(sample_rate, channel_count, voice_count=MAX_VOICES):
 
 def voices_for(sample_rate, channel_count, voice_pool=None, voices=None):
     """`voice_pool` checked against the instrument's format, or a pool of
-    its own of `voices` voices (`MAX_VOICES` when None)."""
+    its own of `voices` voices (`MAX_VOICES` when None).
+
+    Call it before `open_bank`: a sampler's voices are one block, and once
+    a bank has filled the heap with its sample cache there may be plenty
+    free but no single gap that big."""
     if voice_pool is None:
         return Voices(sample_rate, channel_count,
                       MAX_VOICES if voices is None else voices, shared=False)
@@ -1390,13 +1394,24 @@ def voices_for(sample_rate, channel_count, voice_pool=None, voices=None):
     return voice_pool
 
 
+def _drop_own(pool, voice_pool):
+    """Free a pool `voices_for` made, when the bank it was for won't open."""
+    if voice_pool is None:
+        pool.deinit()
+
+
 def create(sample_rate, channel_count=2, transport=None, bank=None,
            voice_pool=None, voices=None):
     """The bank's melodic presets as one instrument; `bank` is a path, an
     open `SoundFont`, or None to look in the usual places. `voice_pool` is
     a `Voices` to share with other instruments, or None for its own of
     `voices` voices (`MAX_VOICES` when None)."""
-    loaded = open_bank(bank)
+    pool = voices_for(sample_rate, channel_count, voice_pool, voices)
+    try:
+        loaded = open_bank(bank)
+    except BaseException:
+        _drop_own(pool, voice_pool)
+        raise
     melodic = loaded.melodic_bank()
     programs = loaded.programs(melodic)
     patches = {}
@@ -1409,7 +1424,6 @@ def create(sample_rate, channel_count=2, transport=None, bank=None,
             name = "Program %d (empty)" % program
         patches[program] = (name, DEFAULT_MACROS)
         targets[program] = (melodic, program)
-    player = _Player(loaded, voices_for(sample_rate, channel_count,
-                                        voice_pool, voices), melodic)
+    player = _Player(loaded, pool, melodic)
     return SoundFontInstrument(player, patches, targets, MACRO_LABELS,
                                transport=transport)
