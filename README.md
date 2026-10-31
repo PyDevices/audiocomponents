@@ -1,5 +1,13 @@
 # audiocomponents
 
+> **This repository is archived.** Its two packages live on in their own
+> repositories: [audioinstruments](https://github.com/PyDevices/audioinstruments)
+> (the `omnipython-audioinstruments` distribution) and
+> [audioeffects](https://github.com/PyDevices/audioeffects)
+> (`omnipython-audioeffects`). The MIP names `audioinstruments` and
+> `audioeffects` install them from there. Everything below describes the last
+> release made here, 0.4.
+
 audiocomponents is the part of OmniPython that makes sound: 55 instruments
 (synthesizers, electromechanical keyboards and drum machines) and 45 effects,
 pure Python on audiodsp's audio nodes, the same on MicroPython-compatible
