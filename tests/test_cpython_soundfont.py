@@ -939,5 +939,77 @@ class BoundedCacheTest(unittest.TestCase):
         self.assertGreater(kit.sounding(), 0)
 
 
+class VoicesBeforeBankTest(unittest.TestCase):
+    """An instrument's own voices are made before its bank is opened: the
+    sampler's voices are one block, and a heap the bank has filled may
+    have no gap that big left."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="sf2order")
+        cls.path = os.path.join(cls.tmp, "tiny.sf2")
+        sf2_builder.tiny_bank().write(cls.path)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def setUp(self):
+        self.calls = []
+        real_sampler = soundfont._sampler
+        real_open = soundfont.open_bank
+
+        def sampler(*args, **kwargs):
+            self.calls.append("sampler")
+            return real_sampler(*args, **kwargs)
+
+        def open_bank(*args, **kwargs):
+            self.calls.append("bank")
+            return real_open(*args, **kwargs)
+
+        soundfont._sampler = sampler
+        soundfont.open_bank = open_bank
+        self.addCleanup(setattr, soundfont, "_sampler", real_sampler)
+        self.addCleanup(setattr, soundfont, "open_bank", real_open)
+
+    def test_soundfont_makes_its_voices_first(self):
+        inst = audioinstruments.create("soundfont", SR, bank=self.path)
+        self.addCleanup(inst.deinit)
+        self.assertEqual(self.calls, ["sampler", "bank"])
+
+    def test_drums_make_their_voices_first(self):
+        kit = audioinstruments.create("soundfont_drums", SR, bank=self.path)
+        self.addCleanup(kit.deinit)
+        self.assertEqual(self.calls, ["sampler", "bank"])
+
+    def test_a_bank_that_wont_open_frees_the_voices(self):
+        freed = []
+        real_deinit = soundfont.Voices.deinit
+
+        def deinit(pool):
+            freed.append(pool)
+            real_deinit(pool)
+
+        soundfont.Voices.deinit = deinit
+        self.addCleanup(setattr, soundfont.Voices, "deinit", real_deinit)
+        missing = os.path.join(self.tmp, "missing.sf2")
+        for name in ("soundfont", "soundfont_drums"):
+            with self.assertRaises(OSError):
+                audioinstruments.create(name, SR, bank=missing)
+        self.assertEqual(len(freed), 2)
+
+    def test_a_shared_pool_is_left_alone(self):
+        pool = soundfont.Voices(SR, 2, voice_count=4)
+        self.addCleanup(pool.deinit)
+        missing = os.path.join(self.tmp, "missing.sf2")
+        with self.assertRaises(OSError):
+            audioinstruments.create("soundfont", SR, bank=missing,
+                                    voice_pool=pool)
+        inst = audioinstruments.create("soundfont", SR, bank=self.path,
+                                       voice_pool=pool)
+        inst.note_on(60, 100)
+        self.assertGreater(inst.sounding(), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
